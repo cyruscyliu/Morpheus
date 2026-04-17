@@ -1,0 +1,1716 @@
+#!/usr/bin/env python3
+
+import argparse
+import collections
+import contextlib
+import json
+import logging
+import os
+import re
+import shutil
+import subprocess
+import sys
+import uuid
+from pathlib import Path
+from types import SimpleNamespace
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = REPO_ROOT / "src"
+MUTATORS_DIR = REPO_ROOT / "mutators"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+if str(MUTATORS_DIR) not in sys.path:
+    sys.path.insert(0, str(MUTATORS_DIR))
+
+from interfaces import (  # noqa: E402
+    collect_groups_for_interface,
+    collect_syscall_entries_from_files,
+    expand_presets,
+    extract_groups_from_file,
+    parse_interfaces,
+    parse_kernel_version,
+    write_groups_file,
+)
+from registry import (  # noqa: E402
+    apply_default_post_mutators,
+)
+
+DEFAULT_OUT_DIR = REPO_ROOT / "out"
+DEFAULT_BUILD_DIR = REPO_ROOT / "build"
+DEFAULT_ARCH = "x86_64"
+DEFAULT_BLOCKLIST = MUTATORS_DIR / "blocklist.txt"
+DEFAULT_EXTRA_EDGES = MUTATORS_DIR / "extra_edges.txt"
+DEFAULT_GROUPS = MUTATORS_DIR / "groups.txt"
+LOGGER = logging.getLogger("llcg")
+
+
+def configure_logging() -> None:
+    level_name = os.environ.get("LL_LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    logging.basicConfig(level=level, format="[%(levelname)s] %(message)s")
+
+
+def log_command(cmd, *, stdin_path: Path | None = None) -> None:
+    rendered = " ".join(str(part) for part in cmd)
+    if stdin_path is not None:
+        rendered = f"{rendered} < {stdin_path}"
+    LOGGER.debug("cmd: %s", rendered)
+
+
+def first_existing(candidates):
+    for candidate in candidates:
+        if candidate and candidate.exists():
+            return candidate
+    return None
+
+
+def run_logged(cmd, **kwargs):
+    log_command(cmd)
+    subprocess.run(cmd, check=True, **kwargs)
+
+
+def sanitize_tag(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("._-") or "unknown"
+
+
+def stable_path(path: Path, base_dir: Path) -> str:
+    try:
+        return path.resolve().relative_to(base_dir.resolve()).as_posix()
+    except ValueError:
+        return str(path.resolve())
+
+
+def path_view(path: Path, base_dir: Path) -> dict:
+    resolved = path.resolve()
+    portable = stable_path(resolved, base_dir)
+    return {
+        "portable": portable,
+        "runtime_path": portable,
+        "resolved_path": str(resolved),
+    }
+
+
+def artifact_entry(key: str, path: Path, base_dir: Path) -> dict:
+    return {
+        "key": key,
+        "path": stable_path(path, base_dir),
+        "exists": path.exists(),
+    }
+
+
+def file_exists_map(entries: dict[str, Path | None]) -> dict[str, bool]:
+    return {key: bool(path and Path(path).exists()) for key, path in entries.items()}
+
+
+def read_json(path: Path) -> dict:
+    LOGGER.debug("Reading JSON: %s", path)
+    data = json.loads(path.read_text())
+    if not isinstance(data, dict):
+        raise ValueError(f"Unexpected JSON structure in {path}")
+    return data
+
+
+def write_json(path: Path, payload: dict) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n")
+    LOGGER.debug("Wrote JSON: %s", path)
+    return path
+
+
+def write_lines(path: Path, lines) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w") as fh:
+        for line in lines:
+            fh.write(f"{line}\n")
+    LOGGER.debug("Wrote line file: %s", path)
+
+
+def read_lines(path: Path) -> list[str]:
+    return [line.strip() for line in path.read_text().splitlines() if line.strip()]
+
+
+def read_entries(path: Path) -> list[str]:
+    entries: list[str] = []
+    for line in path.read_text().splitlines():
+        text = line.strip()
+        if not text or text.startswith("#"):
+            continue
+        entries.append(text)
+    return entries
+
+
+def is_llvm_bitcode(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        header = path.read_bytes()[:4]
+    except OSError:
+        return False
+    return header == b"BC\xc0\xde"
+
+
+def dot_quote(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def load_dot_graph(path: Path) -> dict:
+    edge_re = re.compile(r'^\s*"((?:[^"\\]|\\.)*)"\s*->\s*"((?:[^"\\]|\\.)*)"(?:\s*\[[^\]]*\])?\s*;\s*$')
+    node_re = re.compile(r'^\s*"((?:[^"\\]|\\.)*)"(?:\s*\[[^\]]*\])?\s*;\s*$')
+    graph = {"nodes": set(), "edges": {}}
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("//"):
+            continue
+        edge_match = edge_re.match(line)
+        if edge_match:
+            src, dst = edge_match.groups()
+            graph["nodes"].add(src)
+            graph["nodes"].add(dst)
+            graph["edges"].setdefault(src, set()).add(dst)
+            continue
+        node_match = node_re.match(line)
+        if node_match:
+            graph["nodes"].add(node_match.group(1))
+    for node in list(graph["nodes"]):
+        graph["edges"].setdefault(node, set())
+    return graph
+
+
+def graph_nodes_in_use(graph: dict) -> set[str]:
+    nodes = set(graph["nodes"])
+    for src, dsts in graph["edges"].items():
+        nodes.add(src)
+        nodes.update(dsts)
+    return nodes
+
+
+def remove_isolated_nodes(graph: dict) -> None:
+    incoming: set[str] = set()
+    for dsts in graph["edges"].values():
+        incoming.update(dsts)
+    active = graph_nodes_in_use(graph)
+    kept = {node for node in active if graph["edges"].get(node) or node in incoming}
+    graph["nodes"] = kept
+    graph["edges"] = {node: {dst for dst in graph["edges"].get(node, set()) if dst in kept} for node in kept}
+
+
+def load_groups_files(paths: list[Path]) -> list[dict]:
+    groups: list[dict] = []
+    groups_by_label: dict[str, dict] = {}
+    loaded_files: set[Path] = set()
+
+    def new_group() -> dict:
+        return {
+            "label": "",
+            "entry_point": False,
+            "discard_unreachable": False,
+            "rank_hint": "",
+            "members": [],
+        }
+
+    def flush(current: dict | None) -> None:
+        if not current or not current["label"]:
+            return
+        modifying = any(member.startswith(("+", "-")) for member in current["members"])
+        if modifying:
+            existing = groups_by_label.get(current["label"])
+            if existing is None:
+                raise ValueError(f"Group modifier refers to unknown label: {current['label']}")
+            existing["entry_point"] = existing["entry_point"] or current["entry_point"]
+            existing["discard_unreachable"] = (
+                existing["discard_unreachable"] or current["discard_unreachable"]
+            )
+            if current["rank_hint"]:
+                existing["rank_hint"] = current["rank_hint"]
+            members = list(existing["members"])
+            for member in current["members"]:
+                op = member[0]
+                name = member[1:].strip()
+                if not name:
+                    continue
+                if op == "+":
+                    if name not in members:
+                        members.append(name)
+                elif op == "-":
+                    members = [item for item in members if item != name]
+                else:
+                    raise ValueError(f"Invalid group modifier entry: {member}")
+            existing["members"] = members
+            return
+
+        existing = groups_by_label.get(current["label"])
+        if existing is not None:
+            existing["entry_point"] = existing["entry_point"] or current["entry_point"]
+            existing["discard_unreachable"] = (
+                existing["discard_unreachable"] or current["discard_unreachable"]
+            )
+            if current["rank_hint"]:
+                existing["rank_hint"] = current["rank_hint"]
+            for member in current["members"]:
+                if member not in existing["members"]:
+                    existing["members"].append(member)
+            return
+
+        groups.append(current)
+        groups_by_label[current["label"]] = current
+
+    def parse_file(file_path: Path) -> None:
+        resolved = file_path.resolve()
+        if resolved in loaded_files:
+            return
+        loaded_files.add(resolved)
+
+        current: dict | None = None
+        for raw_line in resolved.read_text().splitlines():
+            line = raw_line.strip()
+            if line.startswith("#"):
+                continue
+            if not line:
+                flush(current)
+                current = None
+                continue
+            if line.startswith("import ") or line.startswith("@import ") or line.startswith("[import]"):
+                flush(current)
+                current = None
+                _, _, import_target = line.partition(" ")
+                target = import_target.strip()
+                if target:
+                    parse_file((resolved.parent / target).resolve())
+                continue
+            if current is None:
+                current = new_group()
+                while True:
+                    if line.startswith("[entry_point]"):
+                        current["entry_point"] = True
+                        line = line[len("[entry_point]"):].strip()
+                        continue
+                    if line.startswith("[not_reach_then_discard]"):
+                        current["discard_unreachable"] = True
+                        line = line[len("[not_reach_then_discard]"):].strip()
+                        continue
+                    if line.startswith("[rank_min]"):
+                        current["rank_hint"] = "min"
+                        line = line[len("[rank_min]"):].strip()
+                        continue
+                    if line.startswith("[rank_max]"):
+                        current["rank_hint"] = "max"
+                        line = line[len("[rank_max]"):].strip()
+                        continue
+                    break
+                current["label"] = line
+                continue
+            current["members"].append(line)
+
+        flush(current)
+
+    for path in paths:
+        parse_file(path)
+    return groups
+
+
+def load_groups_file(path: Path) -> list[dict]:
+    return load_groups_files([path])
+
+
+def apply_blocklist_post_mutator(graph: dict, blocklist_path: Path) -> None:
+    regexes = [re.compile(pattern) for pattern in read_entries(blocklist_path)]
+    if not regexes:
+        return
+    blocked = {
+        node
+        for node in graph_nodes_in_use(graph)
+        if any(regex.search(node) for regex in regexes)
+    }
+    if not blocked:
+        return
+    graph["nodes"].difference_update(blocked)
+    graph["edges"] = {
+        src: {dst for dst in dsts if dst not in blocked}
+        for src, dsts in graph["edges"].items()
+        if src not in blocked
+    }
+
+
+def apply_extra_edges_post_mutator(graph: dict, extra_edges_path: Path) -> None:
+    for entry in read_entries(extra_edges_path):
+        parts = entry.split()
+        if len(parts) != 2:
+            raise ValueError(f"Invalid extra edge entry in {extra_edges_path}: {entry}")
+        src, dst = parts
+        graph["nodes"].add(src)
+        graph["nodes"].add(dst)
+        graph["edges"].setdefault(src, set()).add(dst)
+        graph["edges"].setdefault(dst, set())
+
+
+def apply_reachability_post_mutator(graph: dict, groups: list[dict]) -> None:
+    targets = {
+        member
+        for group in groups
+        if group["discard_unreachable"]
+        for member in group["members"]
+    }
+    if not targets:
+        LOGGER.debug("Skipping reachability post-mutator because no discard anchors were configured")
+        return
+
+    entry_targets = {
+        member
+        for group in groups
+        for member in group["members"]
+        if group["entry_point"]
+    }
+    LOGGER.debug(
+        "Applying reachability post-mutator with %d discard anchors (%d entry-point anchors)",
+        len(targets),
+        len(entry_targets),
+    )
+
+    reverse: dict[str, set[str]] = {}
+    for src, dsts in graph["edges"].items():
+        for dst in dsts:
+            reverse.setdefault(dst, set()).add(src)
+
+    reachable: set[str] = set()
+    worklist = collections.deque(node for node in targets if node in graph["nodes"] or node in reverse)
+    reachable.update(worklist)
+    while worklist:
+        node = worklist.popleft()
+        for caller in reverse.get(node, set()):
+            if caller not in reachable:
+                reachable.add(caller)
+                worklist.append(caller)
+
+    worklist = collections.deque(node for node in targets if node in graph["nodes"] or node in reverse)
+    while worklist:
+        node = worklist.popleft()
+        for callee in graph["edges"].get(node, set()):
+            if callee not in reachable:
+                reachable.add(callee)
+                worklist.append(callee)
+
+    graph["nodes"] = {node for node in graph["nodes"] if node in reachable}
+    graph["edges"] = {
+        src: {dst for dst in dsts if dst in reachable}
+        for src, dsts in graph["edges"].items()
+        if src in reachable
+    }
+
+
+def collapse_graph_by_groups(graph: dict, groups: list[dict]) -> dict:
+    member_to_group: dict[str, str] = {}
+    for group in groups:
+        member_to_group[group["label"]] = group["label"]
+        for member in group["members"]:
+            member_to_group[member] = group["label"]
+
+    grouped_nodes = {node for node in graph_nodes_in_use(graph) if node in member_to_group}
+    collapsed = {"nodes": set(), "edges": {}}
+
+    for src in grouped_nodes:
+        src_group = member_to_group[src]
+        collapsed["nodes"].add(src_group)
+        collapsed["edges"].setdefault(src_group, set())
+        visited = {src}
+        worklist = collections.deque([src])
+        while worklist:
+            current = worklist.popleft()
+            for nxt in graph["edges"].get(current, set()):
+                if nxt in visited:
+                    continue
+                visited.add(nxt)
+                dst_group = member_to_group.get(nxt)
+                if dst_group:
+                    if dst_group != src_group:
+                        collapsed["nodes"].add(dst_group)
+                        collapsed["edges"].setdefault(dst_group, set())
+                        collapsed["edges"][src_group].add(dst_group)
+                    continue
+                worklist.append(nxt)
+
+    remove_isolated_nodes(collapsed)
+    return collapsed
+
+
+def write_dot_graph(path: Path, graph: dict, groups: list[dict] | None = None) -> Path:
+    groups = groups or []
+    nodes_in_graph = graph_nodes_in_use(graph)
+    grouped_nodes = {
+        member
+        for group in groups
+        for member in group["members"]
+        if member in nodes_in_graph
+    }
+
+    lines = [
+        "digraph DevilangCG {",
+        "    rankdir=LR;",
+        "    node [shape=box, style=filled, fillcolor=lightyellow];",
+        "",
+    ]
+
+    cluster_index = 0
+    for group in groups:
+        visible_members = [member for member in group["members"] if member in nodes_in_graph]
+        if not visible_members:
+            continue
+        lines.append(f"    subgraph cluster_{cluster_index} {{")
+        cluster_index += 1
+        lines.append(f"        label={dot_quote(group['label'])};")
+        lines.append('        style="rounded,filled";')
+        if group["entry_point"]:
+            lines.extend([
+                '        fillcolor="#eeffee";',
+                "        color=darkgreen;",
+                "        penwidth=2;",
+                "        fontcolor=darkgreen;",
+            ])
+        else:
+            lines.extend([
+                '        fillcolor="#ddeeff";',
+                "        color=steelblue;",
+                "        penwidth=2;",
+                "        fontcolor=steelblue;",
+            ])
+        if group["rank_hint"] == "min":
+            lines.append("        rank=min;")
+        elif group["rank_hint"] == "max":
+            lines.append("        rank=max;")
+        for member in visible_members:
+            lines.append(f"        {dot_quote(member)};")
+        lines.append("    }")
+        lines.append("")
+
+    emitted_nodes: set[str] = set()
+    for src in sorted(graph["edges"]):
+        dsts = sorted(graph["edges"][src])
+        if not dsts:
+            if src not in grouped_nodes:
+                lines.append(f"    {dot_quote(src)};")
+                emitted_nodes.add(src)
+            continue
+        for dst in dsts:
+            lines.append(f"    {dot_quote(src)} -> {dot_quote(dst)};")
+            emitted_nodes.add(src)
+            emitted_nodes.add(dst)
+
+    for node in sorted(nodes_in_graph - emitted_nodes - grouped_nodes):
+        lines.append(f"    {dot_quote(node)};")
+
+    lines.append("}")
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
+def infer_arch(args) -> str:
+    if args.llbic_json:
+        llbic_data = load_llbic_metadata(Path(args.llbic_json).resolve())
+        return str(llbic_data.get("arch") or DEFAULT_ARCH)
+    return DEFAULT_ARCH
+
+
+def infer_kernel_version(args, mutator_ctx: dict) -> str:
+    if mutator_ctx.get("kernel_version"):
+        return str(mutator_ctx["kernel_version"])
+    if args.llbic_json:
+        llbic_data = load_llbic_metadata(Path(args.llbic_json).resolve())
+        return str(llbic_data.get("kernel_version") or "")
+    return ""
+
+
+def print_result(payload: dict, as_json: bool) -> int:
+    if as_json:
+        sys.stdout.write(json.dumps(payload, indent=2) + "\n")
+        return 0
+
+    lines = [f"status={payload.get('status', 'unknown')}"]
+    if "summary" in payload:
+        lines.append(f"summary={payload['summary']}")
+    details = payload.get("details")
+    if isinstance(details, dict):
+        for key in ("run_id", "interface", "kernel_version", "arch", "manifest_command", "subject_status"):
+            if key in details and details[key] != "":
+                lines.append(f"{key}={details[key]}")
+    artifacts = payload.get("artifacts", [])
+    if isinstance(artifacts, dict):
+        for key, exists in artifacts.items():
+            lines.append(f"{key}={exists}")
+    else:
+        for artifact in artifacts:
+            key = artifact["key"]
+            path = artifact["path"]
+            exists = artifact["exists"]
+            if exists:
+                lines.append(f"{key}={path}")
+            else:
+                lines.append(f"{key}={path} exists={exists}")
+
+    LOGGER.info("Result:")
+    for line in lines:
+        sys.stdout.write(f"  {line}\n")
+    return 0
+
+
+def runtime_execution_mode() -> str:
+    if Path("/.dockerenv").exists():
+        return "docker"
+    return "host"
+
+
+def emit_runtime_payload() -> dict:
+    return {
+        "execution": runtime_execution_mode(),
+        "workspace_root": str(REPO_ROOT),
+    }
+
+
+def ensure_native_artifacts_present() -> None:
+    required = {
+        "build_dir": DEFAULT_BUILD_DIR,
+        "kallgraph_bin": DEFAULT_BUILD_DIR / "kallgraph" / "bin" / "KallGraph",
+        "callgraph_lib": DEFAULT_BUILD_DIR / "llvm-cg" / "libDevilang.so",
+        "extapi_bc": DEFAULT_BUILD_DIR / "svf" / "lib" / "extapi.bc",
+    }
+    missing = [key for key, path in required.items() if not path.exists()]
+    if missing:
+        missing_list = ", ".join(missing)
+        raise FileNotFoundError(
+            "required native llcg artifacts are missing "
+            f"({missing_list}); build them first with "
+            "'cmake -S . -B build && cmake --build build --parallel'"
+        )
+    LOGGER.info("Using prebuilt native artifacts from %s", DEFAULT_BUILD_DIR)
+
+
+def normalize_llbic_path(path_str: str, llbic_root: Path) -> Path:
+    path = Path(path_str)
+    if path.exists():
+        return path.resolve()
+
+    text = path.as_posix()
+    if not path.is_absolute():
+        candidate = llbic_root / text
+        if candidate.exists():
+            return candidate.resolve()
+    if text.startswith("/out/"):
+        candidate = llbic_root / text.lstrip("/")
+        if candidate.exists():
+            return candidate.resolve()
+    if text.startswith("/work/sources/"):
+        rel = text.removeprefix("/work/sources/")
+        candidate = llbic_root / "sources" / rel
+        if candidate.exists():
+            return candidate.resolve()
+    return path
+
+
+def load_llbic_metadata(llbic_json_path: Path):
+    data = json.loads(llbic_json_path.read_text())
+    if not isinstance(data, dict):
+        raise ValueError(f"Unexpected llbic JSON structure in {llbic_json_path}")
+    return data
+
+
+def derive_bc_index(all_bc_list_path: Path, llbic_data: dict, llbic_root: Path):
+    index = {}
+    host_bitcode_root = normalize_llbic_path(str(llbic_data.get("bitcode_root") or ""), llbic_root)
+    if not host_bitcode_root.exists():
+        kbuild_name = Path(str(llbic_data.get("kbuild_dir") or llbic_data.get("bitcode_root") or "")).name
+        candidate_roots = [
+            all_bc_list_path.parent / kbuild_name if kbuild_name else None,
+            all_bc_list_path.parent,
+        ]
+        for candidate in candidate_roots:
+            if candidate and candidate.exists():
+                host_bitcode_root = candidate.resolve()
+                break
+
+    bitcode_rel = llbic_data.get("bitcode_files_rel") or []
+    bitcode_abs = llbic_data.get("bitcode_files") or []
+    for rel, abs_path in zip(bitcode_rel, bitcode_abs):
+        rel_path = Path(rel).as_posix()
+        resolved = normalize_llbic_path(abs_path, llbic_root)
+        if not resolved.exists() and host_bitcode_root.exists():
+            candidate = host_bitcode_root / rel_path
+            if candidate.exists():
+                resolved = candidate.resolve()
+        index[rel_path] = resolved
+
+    if all_bc_list_path.is_file():
+        for line in all_bc_list_path.read_text().splitlines():
+            entry = line.strip()
+            if not entry or entry.startswith("#"):
+                continue
+            rel = Path(entry).as_posix()
+            resolved = normalize_llbic_path(entry, llbic_root)
+            if not resolved.exists() and host_bitcode_root.exists():
+                candidate = host_bitcode_root / rel
+                if candidate.exists():
+                    resolved = candidate.resolve()
+            index.setdefault(rel, resolved)
+
+    return index
+
+
+def source_to_object_rel(rel_source: str) -> str:
+    return Path(rel_source).with_suffix(".o").as_posix()
+
+
+def normalize_scope_files(kernel_root: Path, files: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for entry in files:
+        rel = entry.strip()
+        if not rel:
+            continue
+        path = (kernel_root / rel).resolve() if not Path(rel).is_absolute() else Path(rel).resolve()
+        try:
+            rel_norm = path.relative_to(kernel_root.resolve()).as_posix()
+        except ValueError as exc:
+            raise ValueError(f"File is outside source dir: {entry}") from exc
+        if rel_norm in seen:
+            continue
+        seen.add(rel_norm)
+        normalized.append(rel_norm)
+    return normalized
+
+
+def scope_name_from_files(files: list[str]) -> str:
+    label = "-".join(Path(rel).stem for rel in files)
+    return sanitize_tag(label or "file-scope")
+
+
+def collect_groups_for_files(kernel_root: Path, rel_sources: list[str], scope_name: str) -> dict:
+    files: list[Path] = []
+    scan_dirs: list[str] = []
+    seen_dirs: set[str] = set()
+    groups: list[tuple[str, list[str], str, int, str]] = []
+    seen_groups: set[str] = set()
+
+    for rel_source in rel_sources:
+        source_path = (kernel_root / rel_source).resolve()
+        if not source_path.is_file():
+            raise FileNotFoundError(f"Scoped file not found: {rel_source}")
+        files.append(source_path)
+        parent_rel = source_path.parent.relative_to(kernel_root).as_posix()
+        if parent_rel not in seen_dirs:
+            seen_dirs.add(parent_rel)
+            scan_dirs.append(parent_rel)
+        for group_name, funcs, rel, line, struct_type in extract_groups_from_file(source_path, kernel_root):
+            if group_name in seen_groups:
+                continue
+            seen_groups.add(group_name)
+            groups.append((group_name, funcs, rel, line, struct_type))
+
+    syscall_groups: list[tuple[str, list[str], str]] = []
+    _names, syscall_entries = collect_syscall_entries_from_files(files)
+    group_name = f"{scope_name}_syscall_helpers"
+    if syscall_entries and group_name not in seen_groups:
+        syscall_groups.append((group_name, syscall_entries, scope_name))
+
+    return {
+        "enabled_configs": set(),
+        "scan_dirs": scan_dirs,
+        "files": files,
+        "groups": groups,
+        "syscall_groups": syscall_groups,
+    }
+
+
+def build_output_stem(scope_label: str, kernel_version: str, arch: str, bc_list_path: Path):
+    stem_parts = []
+    primary_label = scope_label or sanitize_tag(bc_list_path.stem)
+    if primary_label:
+        stem_parts.append(primary_label)
+    if kernel_version:
+        stem_parts.append(kernel_version)
+    if arch:
+        stem_parts.append(arch)
+    return "_".join(part for part in stem_parts if part)
+
+
+def render_graphviz(dot_path: Path):
+    dot_bin = shutil.which("dot")
+    if not dot_bin:
+        LOGGER.warning("Graphviz 'dot' not found; skipping render for %s", dot_path)
+        return None, None
+    if not dot_path.is_file():
+        LOGGER.warning("DOT file not found; skipping render for %s", dot_path)
+        return None, None
+
+    svg_path = dot_path.with_suffix(".svg")
+    pdf_path = dot_path.with_suffix(".pdf")
+    run_logged([dot_bin, "-Tsvg", str(dot_path), "-o", str(svg_path)])
+    run_logged([dot_bin, "-Tpdf", str(dot_path), "-o", str(pdf_path)])
+    LOGGER.debug("Rendered SVG: %s", svg_path)
+    LOGGER.debug("Rendered PDF: %s", pdf_path)
+    return svg_path, pdf_path
+
+
+def write_empty_groups_file(path: Path, scope_label: str, arch: str) -> Path:
+    return write_groups_file(
+        path,
+        version="",
+        interface=scope_label,
+        arch=arch,
+        scan_dirs=[],
+        enabled_configs=set(),
+        groups=[],
+        syscall_groups=[],
+    )
+
+
+def collect_interface_mutator_payload(
+    *,
+    kernel_root: Path,
+    interfaces: list[str],
+    arch: str,
+    out_dir: Path,
+) -> tuple[dict, Path]:
+    LOGGER.info(
+        "Generating interface mutator for interfaces=%s arch=%s",
+        ",".join(interfaces),
+        arch,
+    )
+    kernel_version, _kconf, expanded = expand_presets(kernel_root, interfaces, arch=arch)
+    arch_tag = sanitize_tag(arch)
+    interface_label = sanitize_tag("-".join(interfaces))
+    manifest_path = out_dir / f"{interface_label}-mutator-{kernel_version}-{arch_tag}.json"
+    source_list_path = out_dir / f"{interface_label}-sources-{kernel_version}-{arch_tag}.txt"
+    groups_path = out_dir / f"{interface_label}-groups-{kernel_version}-{arch_tag}.txt"
+
+    aggregate_scan_dirs: list[str] = []
+    aggregate_scan_dir_seen: set[str] = set()
+    aggregate_configs: set[str] = set()
+    aggregate_groups: list[tuple[str, list[str], str, int, str]] = []
+    aggregate_group_seen: set[str] = set()
+    aggregate_syscall_groups: list[tuple[str, list[str], str]] = []
+    aggregate_syscall_seen: set[str] = set()
+    aggregate_files: list[str] = []
+    aggregate_file_seen: set[str] = set()
+    interface_details: dict[str, dict] = {}
+
+    for interface in interfaces:
+        info = collect_groups_for_interface(kernel_root, interface, expanded[interface], arch=arch)
+        rel_files = [path.relative_to(kernel_root).as_posix() for path in info["files"]]
+        for scan_dir in info["scan_dirs"]:
+            if scan_dir not in aggregate_scan_dir_seen:
+                aggregate_scan_dir_seen.add(scan_dir)
+                aggregate_scan_dirs.append(scan_dir)
+        aggregate_configs.update(info["enabled_configs"])
+        for rel_file in rel_files:
+            if rel_file not in aggregate_file_seen:
+                aggregate_file_seen.add(rel_file)
+                aggregate_files.append(rel_file)
+        for group in info["groups"]:
+            if group[0] not in aggregate_group_seen:
+                aggregate_group_seen.add(group[0])
+                aggregate_groups.append(group)
+        for syscall_group in info["syscall_groups"]:
+            if syscall_group[0] not in aggregate_syscall_seen:
+                aggregate_syscall_seen.add(syscall_group[0])
+                aggregate_syscall_groups.append(syscall_group)
+
+        interface_details[interface] = {
+            "scan_dirs": info["scan_dirs"],
+            "enabled_configs": sorted(info["enabled_configs"]),
+            "scanned_files": rel_files,
+            "groups_count": len(info["groups"]),
+            "syscall_group_count": len(info["syscall_groups"]),
+        }
+
+    write_lines(source_list_path, aggregate_files)
+    write_groups_file(
+        groups_path,
+        kernel_version,
+        ",".join(interfaces),
+        arch,
+        aggregate_scan_dirs,
+        aggregate_configs,
+        aggregate_groups,
+        aggregate_syscall_groups,
+    )
+
+    payload = {
+        "command": "mutator",
+        "mutator_kind": "interfaces",
+        "status": "success",
+        "exit_code": 0,
+        "summary": "generated interface mutator metadata from kernel sources",
+        "details": {
+            "mutator_roles": ["pre", "post"],
+            "kernel_version": kernel_version,
+            "arch": arch,
+            "interfaces": interfaces,
+            "interface_label": interface_label,
+            "source_dir": stable_path(kernel_root, out_dir),
+            "source_list": stable_path(source_list_path, out_dir),
+            "groups_file": stable_path(groups_path, out_dir),
+            "scan_dirs": aggregate_scan_dirs,
+            "enabled_configs": sorted(aggregate_configs),
+            "scanned_files": aggregate_files,
+            "groups_count": len(aggregate_groups),
+            "syscall_group_count": len(aggregate_syscall_groups),
+            "per_interface": interface_details,
+        },
+        "runtime": emit_runtime_payload(),
+        "paths": {
+            "manifest": path_view(manifest_path, out_dir),
+            "source_dir": path_view(kernel_root, out_dir),
+            "source_list": path_view(source_list_path, out_dir),
+            "groups_file": path_view(groups_path, out_dir),
+        },
+        "artifacts": [
+            artifact_entry("mutator_manifest", manifest_path, out_dir),
+            artifact_entry("source_list", source_list_path, out_dir),
+            artifact_entry("groups_file", groups_path, out_dir),
+        ],
+    }
+    write_json(manifest_path, payload)
+    payload["artifacts"][0]["exists"] = True
+    return payload, manifest_path
+
+
+def collect_file_mutator_payload(
+    *,
+    kernel_root: Path,
+    files: list[str],
+    scope_name: str,
+    arch: str,
+    out_dir: Path,
+) -> tuple[dict, Path]:
+    LOGGER.info("Generating file mutator for %d file(s) arch=%s", len(files), arch)
+    normalized_files = normalize_scope_files(kernel_root, files)
+    if not normalized_files:
+        raise ValueError("At least one --file is required")
+    kernel_version = parse_kernel_version(kernel_root)
+    scope_label = sanitize_tag(scope_name or scope_name_from_files(normalized_files))
+    arch_tag = sanitize_tag(arch)
+    manifest_path = out_dir / f"{scope_label}-mutator-{kernel_version}-{arch_tag}.json"
+    source_list_path = out_dir / f"{scope_label}-sources-{kernel_version}-{arch_tag}.txt"
+    write_lines(source_list_path, normalized_files)
+
+    payload = {
+        "command": "mutator",
+        "mutator_kind": "files",
+        "status": "success",
+        "exit_code": 0,
+        "summary": "generated file-scoped mutator metadata from kernel sources",
+        "details": {
+            "mutator_roles": ["pre"],
+            "kernel_version": kernel_version,
+            "arch": arch,
+            "files": normalized_files,
+            "scope_label": scope_label,
+            "source_dir": stable_path(kernel_root, out_dir),
+            "source_list": stable_path(source_list_path, out_dir),
+        },
+        "runtime": emit_runtime_payload(),
+        "paths": {
+            "manifest": path_view(manifest_path, out_dir),
+            "source_dir": path_view(kernel_root, out_dir),
+            "source_list": path_view(source_list_path, out_dir),
+        },
+        "artifacts": [
+            artifact_entry("mutator_manifest", manifest_path, out_dir),
+            artifact_entry("source_list", source_list_path, out_dir),
+        ],
+    }
+    write_json(manifest_path, payload)
+    payload["artifacts"][0]["exists"] = True
+    return payload, manifest_path
+
+
+def load_mutator_manifest(path: Path) -> dict:
+    payload = read_json(path)
+    if payload.get("command") != "mutator":
+        raise ValueError(f"{path} is not a llcg mutator manifest")
+    if payload.get("mutator_kind") not in {"interfaces", "files"}:
+        raise ValueError(f"{path} is not a supported mutator manifest")
+    return payload
+
+
+def resolve_mutator_filter_specs(filter_specs: list[str], out_dir: Path) -> list[tuple[Path, dict]]:
+    resolved: list[tuple[Path, dict]] = []
+    seen_paths: set[Path] = set()
+    for spec in filter_specs:
+        text = spec.strip()
+        if not text:
+            continue
+        raw_candidate = Path(text).expanduser()
+        candidates_to_try = []
+        if raw_candidate.is_absolute():
+            candidates_to_try.append(raw_candidate.resolve())
+        else:
+            candidates_to_try.append((Path.cwd() / raw_candidate).resolve())
+            candidates_to_try.append((out_dir / raw_candidate).resolve())
+            candidates_to_try.append((REPO_ROOT / raw_candidate).resolve())
+
+        manifest_path = None
+        for candidate in candidates_to_try:
+            if candidate.is_file():
+                manifest_path = candidate
+                break
+        if manifest_path is None:
+            candidates = sorted(out_dir.glob(f"{text}-mutator-*.json"))
+            if len(candidates) == 0:
+                raise ValueError(f"No mutator manifest matched filter '{text}' in {out_dir}")
+            if len(candidates) > 1:
+                raise ValueError(
+                    f"Filter '{text}' matched multiple mutator manifests in {out_dir}; pass the manifest path instead"
+                )
+            manifest_path = candidates[0].resolve()
+
+        if manifest_path in seen_paths:
+            continue
+        seen_paths.add(manifest_path)
+        resolved.append((manifest_path, load_mutator_manifest(manifest_path)))
+    return resolved
+
+
+def merge_mutator_payloads(mutator_payloads: list[tuple[Path, dict]], out_dir: Path) -> dict:
+    if not mutator_payloads:
+        return {
+            "manifest_paths": [],
+            "manifest_payloads": [],
+            "pre_mutators": {},
+            "post_mutators": {},
+            "source_files": [],
+            "groups_files": [],
+            "kernel_version": "",
+            "scope_label": "",
+        }
+
+    pre_mutators: dict[str, list[str]] = {}
+    post_mutators: dict[str, list[str]] = {}
+    source_files: list[str] = []
+    groups_files: list[Path] = []
+    group_seen: set[Path] = set()
+    file_seen: set[str] = set()
+    labels: list[str] = []
+    kernel_version = ""
+
+    for manifest_path, payload in mutator_payloads:
+        details = payload.get("details", {})
+        kind = payload.get("mutator_kind")
+        roles = set(details.get("mutator_roles", ["pre", "post"]))
+        if not kernel_version:
+            kernel_version = details.get("kernel_version", "")
+        values = []
+        if kind == "interfaces":
+            values = list(details.get("interfaces", []))
+            label = details.get("interface_label", "")
+            rel_files = list(details.get("scanned_files", []))
+        else:
+            values = list(details.get("files", []))
+            label = details.get("scope_label", "")
+            rel_files = list(details.get("files", []))
+        if label and label not in labels:
+            labels.append(label)
+        if values:
+            key = kind[:-1] if kind.endswith("s") else kind
+            if "pre" in roles:
+                pre_mutators.setdefault(key, [])
+            if "post" in roles:
+                post_mutators.setdefault(key, [])
+            for value in values:
+                if "pre" in roles and value not in pre_mutators[key]:
+                    pre_mutators[key].append(value)
+                if "post" in roles and value not in post_mutators[key]:
+                    post_mutators[key].append(value)
+        for rel_file in rel_files:
+            if rel_file not in file_seen:
+                file_seen.add(rel_file)
+                source_files.append(rel_file)
+        groups_ref = details.get("groups_file", "")
+        if groups_ref:
+            groups_path = (manifest_path.parent / groups_ref).resolve() if not Path(groups_ref).is_absolute() else Path(groups_ref).resolve()
+            if groups_path not in group_seen:
+                group_seen.add(groups_path)
+                groups_files.append(groups_path)
+
+    return {
+        "manifest_paths": [path for path, _payload in mutator_payloads],
+        "manifest_payloads": [payload for _path, payload in mutator_payloads],
+        "pre_mutators": pre_mutators,
+        "post_mutators": post_mutators,
+        "source_files": source_files,
+        "groups_files": groups_files,
+        "kernel_version": kernel_version,
+        "scope_label": sanitize_tag("-".join(labels)) if labels else "",
+    }
+
+
+def combine_groups_files(groups_files: list[Path], out_dir: Path, scope_label: str, kernel_version: str, arch: str) -> Path | None:
+    if not groups_files:
+        return None
+    if len(groups_files) == 1:
+        return groups_files[0]
+    combined_path = out_dir / f"{scope_label or 'combined'}-groups-{kernel_version}-{sanitize_tag(arch)}.txt"
+    blocks: list[str] = []
+    for path in groups_files:
+        blocks.append(path.read_text())
+    combined_path.write_text("\n\n".join(blocks).rstrip() + "\n")
+    return combined_path
+
+
+def prepare_mutator_context(args, out_dir: Path) -> dict:
+    resolved = resolve_mutator_filter_specs(args.filters or [], out_dir)
+    merged = merge_mutator_payloads(resolved, out_dir)
+    arch = infer_arch(args)
+    LOGGER.debug(
+        "Preparing mutator context: filters=%s resolved=%d arch=%s",
+        args.filters or [],
+        len(resolved),
+        arch,
+    )
+    context = {
+        "out_dir": out_dir,
+        "default_blocklist": str(DEFAULT_BLOCKLIST),
+        "default_extra_edges": str(DEFAULT_EXTRA_EDGES),
+    }
+    post_mutators = dict(merged["post_mutators"])
+    if not resolved:
+        return {
+            "manifest_payloads": [],
+            "manifest_paths": [],
+            "manifest_base_dir": out_dir,
+            "pre_mutators": {},
+            "post_mutators": {},
+            "source_files": [],
+            "groups_file": None,
+            "kernel_version": "",
+            "scope_label": "",
+        }
+    post_mutators.update(apply_default_post_mutators(args=args, context=context))
+    groups_file = combine_groups_files(
+        merged["groups_files"],
+        out_dir,
+        merged["scope_label"],
+        merged["kernel_version"],
+        arch,
+    )
+    return {
+        "manifest_payloads": merged["manifest_payloads"],
+        "manifest_paths": merged["manifest_paths"],
+        "manifest_base_dir": out_dir,
+        "pre_mutators": merged["pre_mutators"],
+        "post_mutators": post_mutators,
+        "source_files": merged["source_files"],
+        "groups_file": groups_file.resolve() if groups_file else None,
+        "kernel_version": merged["kernel_version"],
+        "scope_label": merged["scope_label"],
+    }
+
+
+def resolve_source_scope_to_bitcode(
+    *,
+    llbic_json_path: Path,
+    all_bc_list_path: Path,
+    source_files: list[str],
+) -> tuple[list[str], list[Path], list[str]]:
+    LOGGER.debug("Resolving source scope to bitcode via %s", llbic_json_path)
+    llbic_data = load_llbic_metadata(llbic_json_path)
+    llbic_root = llbic_json_path.parents[2]
+    bc_index = derive_bc_index(all_bc_list_path, llbic_data, llbic_root)
+
+    object_rels: list[str] = []
+    object_paths: list[Path] = []
+    missing_objects: list[str] = []
+    seen_objects: set[str] = set()
+    for rel_source in source_files:
+        obj_rel = source_to_object_rel(rel_source)
+        obj_path = bc_index.get(obj_rel)
+        if obj_path is None or not obj_path.is_file():
+            missing_objects.append(obj_rel)
+            continue
+        if obj_rel in seen_objects:
+            continue
+        seen_objects.add(obj_rel)
+        object_rels.append(obj_rel)
+        object_paths.append(obj_path.resolve())
+
+    return object_rels, object_paths, missing_objects
+
+
+def prepare_run_inputs(args, out_dir: Path) -> dict:
+    mutator_ctx = prepare_mutator_context(args, out_dir)
+    arch = infer_arch(args)
+    scope_name = sanitize_tag(args.scope_name) if args.scope_name else ""
+    LOGGER.info("Preparing run inputs in %s", out_dir)
+    LOGGER.debug(
+        "Run inputs: bitcode_list=%s filters=%s scope_name=%s arch=%s",
+        args.bitcode_list,
+        args.filters,
+        scope_name,
+        arch,
+    )
+
+    direct_bitcode_list = Path(args.bitcode_list).resolve() if args.bitcode_list else None
+    if direct_bitcode_list and (
+        mutator_ctx["pre_mutators"].get("interface")
+        or mutator_ctx["pre_mutators"].get("file")
+    ):
+        raise ValueError(
+            "--bitcode-list is the direct input mode and cannot be combined with source-scoped "
+            "filters; omit --bitcode-list when you want source-derived scope resolution"
+        )
+
+    source_scope_files: list[str] = []
+    kernel_version = infer_kernel_version(args, mutator_ctx)
+    scope_mode = "bitcode-list"
+    if mutator_ctx["pre_mutators"].get("file"):
+        source_scope_files = mutator_ctx["source_files"]
+        scope_mode = "file-mutator"
+    elif mutator_ctx["pre_mutators"].get("interface"):
+        source_scope_files = mutator_ctx["source_files"]
+        scope_mode = "interface-mutator"
+
+    if direct_bitcode_list and not source_scope_files:
+        bitcode_list_path = direct_bitcode_list
+        bc_entries = [Path(line).resolve() for line in read_lines(bitcode_list_path)]
+        if not bc_entries:
+            raise ValueError(f"No bitcode entries found in {bitcode_list_path}")
+        scope_label = scope_name or mutator_ctx["scope_label"] or sanitize_tag(bitcode_list_path.stem)
+        groups_path = (
+            mutator_ctx["groups_file"]
+            if mutator_ctx["groups_file"]
+            else write_empty_groups_file(
+                out_dir / f"{scope_label}-groups-{sanitize_tag(arch)}.txt",
+                scope_label,
+                arch,
+            )
+        )
+        return {
+            "kernel_version": kernel_version,
+            "arch": arch,
+            "scope_label": scope_label,
+            "scope": {"mode": scope_mode, "files": []},
+            "bitcode_list_path": bitcode_list_path,
+            "bitcode_entries": bc_entries,
+            "groups_path": groups_path.resolve(),
+            "source_files": [],
+            "object_rels": [],
+            "missing_objects": [],
+            "resolved_inputs": {
+                "source_dir": "",
+                "llbic_json": stable_path(Path(args.llbic_json).resolve(), out_dir) if args.llbic_json else "",
+                "all_bc_list": stable_path(Path(args.all_bc_list).resolve(), out_dir) if args.all_bc_list else "",
+                "source_list": "",
+                "object_list": "",
+                "bitcode_list": stable_path(bitcode_list_path, out_dir),
+                "groups_file": stable_path(groups_path, out_dir),
+            },
+            "warnings": [],
+            "mutator_ctx": mutator_ctx,
+        }
+
+    if not source_scope_files and not direct_bitcode_list:
+        raise ValueError(
+            "run requires either --bitcode-list or at least one --filter that resolves to an existing mutator manifest"
+        )
+
+    if not args.llbic_json or not args.all_bc_list:
+        raise ValueError("--llbic-json and --all-bc-list are required to resolve source scope to bitcode")
+
+    llbic_json_path = Path(args.llbic_json).resolve()
+    all_bc_list_path = Path(args.all_bc_list).resolve()
+
+    scope_label = scope_name or mutator_ctx["scope_label"] or "mutated"
+    source_list_path = out_dir / f"{scope_label}-sources-{kernel_version}-{sanitize_tag(arch)}.txt"
+    write_lines(source_list_path, source_scope_files)
+    groups_path = mutator_ctx["groups_file"]
+    if groups_path is None:
+        groups_path = write_empty_groups_file(
+            out_dir / f"{scope_label}-groups-{kernel_version}-{sanitize_tag(arch)}.txt",
+            scope_label,
+            arch,
+        )
+
+    object_rels, object_paths, missing_objects = resolve_source_scope_to_bitcode(
+        llbic_json_path=llbic_json_path,
+        all_bc_list_path=all_bc_list_path,
+        source_files=source_scope_files,
+    )
+    if not object_paths:
+        raise ValueError("No bitcode objects resolved from the selected source scope")
+    LOGGER.info("Resolved %d bitcode object(s) from source scope", len(object_paths))
+
+    arch_tag = sanitize_tag(arch)
+    object_list_path = out_dir / f"{scope_label}-objects-{kernel_version}-{arch_tag}.txt"
+    bitcode_list_path = out_dir / f"{scope_label}-bitcode-{kernel_version}-{arch_tag}.list"
+    write_lines(object_list_path, object_rels)
+    write_lines(bitcode_list_path, [str(path) for path in object_paths])
+
+    warnings = []
+    if missing_objects:
+        warnings.append({"type": "missing_objects", "count": len(missing_objects)})
+
+    return {
+        "kernel_version": kernel_version,
+        "arch": arch,
+        "scope_label": scope_label,
+        "scope": {"mode": scope_mode, "files": source_scope_files},
+        "bitcode_list_path": bitcode_list_path,
+        "bitcode_entries": object_paths,
+        "groups_path": groups_path.resolve(),
+        "source_files": source_scope_files,
+        "object_rels": object_rels,
+        "missing_objects": missing_objects,
+        "resolved_inputs": {
+            "source_dir": "",
+            "llbic_json": stable_path(llbic_json_path, out_dir),
+            "all_bc_list": stable_path(all_bc_list_path, out_dir),
+            "source_list": stable_path(source_list_path, out_dir),
+            "object_list": stable_path(object_list_path, out_dir),
+            "bitcode_list": stable_path(bitcode_list_path, out_dir),
+            "groups_file": stable_path(groups_path, out_dir),
+        },
+        "warnings": warnings,
+        "mutator_ctx": mutator_ctx,
+    }
+
+
+def run_pipeline(
+    args,
+    bc_list_path: Path,
+    bc_entries,
+    groups_path: Path,
+    scope_label: str,
+    kernel_version: str,
+    arch: str,
+    out_dir: Path,
+):
+    LOGGER.info(
+        "Running pipeline: scope=%s kernel=%s arch=%s",
+        scope_label,
+        kernel_version or "unknown",
+        arch,
+    )
+    stem = build_output_stem(scope_label, kernel_version, arch, bc_list_path)
+    kallgraph_root = out_dir / f"{stem}_kallgraph"
+    kallgraph_root.mkdir(parents=True, exist_ok=True)
+
+    existing = {p for p in kallgraph_root.iterdir()}
+    kallgraph_bin = first_existing([DEFAULT_BUILD_DIR / "kallgraph" / "bin" / "KallGraph"])
+    if kallgraph_bin is None:
+        raise FileNotFoundError("Could not find KallGraph binary after native build.")
+
+    callgraph_lib = first_existing([DEFAULT_BUILD_DIR / "llvm-cg" / "libDevilang.so"])
+    if callgraph_lib is None:
+        raise FileNotFoundError("Could not find the callgraph pass library after native build.")
+
+    opt_bin = shutil.which(f"opt-{args.clang}") or shutil.which("opt")
+    if not opt_bin:
+        raise FileNotFoundError(f"Could not find LLVM opt binary for clang {args.clang}")
+
+    run_logged(
+        [
+            str(kallgraph_bin),
+            f"@{bc_list_path}",
+            f"-OutputDir={kallgraph_root}",
+            "-ThreadNum=1",
+        ]
+        + ([f"-ExtAPIPath={(DEFAULT_BUILD_DIR / 'svf' / 'lib' / 'extapi.bc').resolve()}"])
+    )
+
+    created = sorted(
+        [p for p in kallgraph_root.iterdir() if p.is_dir() and p not in existing],
+        key=lambda p: p.name,
+        reverse=True,
+    )
+    if not created:
+        created = sorted([p for p in kallgraph_root.iterdir() if p.is_dir()], key=lambda p: p.name, reverse=True)
+    if not created:
+        raise RuntimeError(f"KallGraph did not create an output directory under {kallgraph_root}")
+
+    kallgraph_output = created[0]
+    callgraphs = sorted(
+        kallgraph_output.glob("callgraph*"),
+        key=lambda p: int(p.name.removeprefix("callgraph")),
+    )
+    if not callgraphs:
+        raise RuntimeError(f"No callgraph files found in {kallgraph_output}")
+    latest_callgraph = callgraphs[-1]
+
+    raw_dot_path = out_dir / f".{stem}_cg_raw.dot"
+    dot_path = out_dir / f"{stem}_cg.dot"
+    cmd = [
+        opt_bin,
+        "-enable-new-pm=0",
+        "-load",
+        str(callgraph_lib),
+        "-llvm-cg",
+        f"-llvm-cg-kallgraph={latest_callgraph}",
+        f"-llvm-cg-bc-list={bc_list_path}",
+        f"-llvm-cg-dot-output={raw_dot_path}",
+    ]
+
+    log_path = out_dir / f"{stem}_callgraph.log"
+    with bc_entries[0].open("rb") as stub_in, log_path.open("w") as log_out:
+        log_command(cmd, stdin_path=bc_entries[0])
+        subprocess.run(cmd, stdin=stub_in, stdout=subprocess.DEVNULL, stderr=log_out, check=True)
+
+    collapsed_path = out_dir / f"{stem}_cg_collapsed.dot"
+    graph = load_dot_graph(raw_dot_path)
+    group_inputs: list[Path] = []
+    if groups_path.is_file():
+        group_inputs.append(groups_path)
+    if DEFAULT_GROUPS.is_file():
+        group_inputs.append(DEFAULT_GROUPS)
+    groups = load_groups_files(group_inputs) if group_inputs else []
+
+    for blocklist_file in args.post_mutators.get("blocklist", []):
+        apply_blocklist_post_mutator(graph, Path(blocklist_file))
+    for extra_edges_file in args.post_mutators.get("extra_edges", []):
+        apply_extra_edges_post_mutator(graph, Path(extra_edges_file))
+    if args.post_mutators.get("reachability"):
+        apply_reachability_post_mutator(graph, groups)
+    remove_isolated_nodes(graph)
+    write_dot_graph(dot_path, graph, groups)
+
+    collapsed_graph = collapse_graph_by_groups(graph, groups) if groups else {
+        "nodes": set(graph["nodes"]),
+        "edges": {src: set(dsts) for src, dsts in graph["edges"].items()},
+    }
+    write_dot_graph(collapsed_path, collapsed_graph)
+
+    kallgraph_copy = out_dir / f"{stem}_kallgraph.txt"
+    shutil.copy2(latest_callgraph, kallgraph_copy)
+    dot_svg_path, dot_pdf_path = render_graphviz(dot_path)
+    collapsed_svg_path, collapsed_pdf_path = render_graphviz(collapsed_path)
+
+    LOGGER.debug("KallGraph output dir: %s", kallgraph_output)
+    LOGGER.debug("KallGraph callgraph: %s", kallgraph_copy)
+    LOGGER.debug("Raw callgraph DOT (internal): %s", raw_dot_path)
+    LOGGER.debug("Final callgraph DOT: %s", dot_path)
+    LOGGER.debug("Collapsed callgraph DOT: %s", collapsed_path)
+    LOGGER.debug("Callgraph log: %s", log_path)
+    return {
+        "scope_label": scope_label,
+        "bc_list": bc_list_path,
+        "groups": groups_path,
+        "kallgraph": kallgraph_copy,
+        "dot": dot_path,
+        "dot_svg": dot_svg_path,
+        "dot_pdf": dot_pdf_path,
+        "collapsed": collapsed_path,
+        "collapsed_svg": collapsed_svg_path,
+        "collapsed_pdf": collapsed_pdf_path,
+        "log": log_path,
+    }
+
+
+def build_run_manifest(
+    *,
+    manifest_path: Path,
+    status: str,
+    exit_code: int,
+    summary: str,
+    run_id: str,
+    scope_label: str,
+    kernel_version: str,
+    arch: str,
+    clang_version: str,
+    out_dir: Path,
+    resolved_inputs: dict,
+    pre_filters: dict,
+    post_filters: dict,
+    scope: dict,
+    mutator_manifest_paths: list[Path],
+    planned_stages: list[str],
+    result: dict | None = None,
+    failures: list | None = None,
+    warnings: list | None = None,
+) -> dict:
+    failures = failures or []
+    warnings = warnings or []
+
+    detail_paths: dict[str, str] = {
+        "source_dir": resolved_inputs.get("source_dir", ""),
+        "llbic_json": resolved_inputs.get("llbic_json", ""),
+        "all_bc_list": resolved_inputs.get("all_bc_list", ""),
+        "source_list": resolved_inputs.get("source_list", ""),
+        "object_list": resolved_inputs.get("object_list", ""),
+        "bitcode_list": resolved_inputs.get("bitcode_list", ""),
+        "groups_file": resolved_inputs.get("groups_file", ""),
+    }
+    detail_lists = {
+        "mutator_manifests": [stable_path(path, out_dir) for path in mutator_manifest_paths],
+    }
+    if result:
+        detail_paths.update(
+            {
+                "kallgraph_text": stable_path(Path(result["kallgraph"]), out_dir),
+                "cg_dot": stable_path(Path(result["dot"]), out_dir),
+                "cg_collapsed_dot": stable_path(Path(result["collapsed"]), out_dir),
+                "cg_svg": stable_path(Path(result["dot_svg"]), out_dir) if result.get("dot_svg") else "",
+                "cg_pdf": stable_path(Path(result["dot_pdf"]), out_dir) if result.get("dot_pdf") else "",
+                "cg_collapsed_svg": stable_path(Path(result["collapsed_svg"]), out_dir) if result.get("collapsed_svg") else "",
+                "cg_collapsed_pdf": stable_path(Path(result["collapsed_pdf"]), out_dir) if result.get("collapsed_pdf") else "",
+                "log_file": stable_path(Path(result["log"]), out_dir),
+            }
+        )
+
+    path_entries: dict[str, Path] = {"manifest": manifest_path.resolve()}
+    for key, portable in detail_paths.items():
+        if not portable:
+            continue
+        path_entries[key] = (
+            Path(portable).resolve() if Path(portable).is_absolute() else (out_dir / portable).resolve()
+        )
+
+    return {
+        "command": "run",
+        "status": status,
+        "exit_code": exit_code,
+        "summary": summary,
+        "details": {
+            "run_id": run_id,
+            "interface": scope_label,
+            "pre_mutators": pre_filters,
+            "post_mutators": post_filters,
+            "scope": scope,
+            "kernel_version": kernel_version,
+            "arch": arch,
+            "clang": clang_version,
+            "planned_stages": planned_stages,
+            **detail_paths,
+            **detail_lists,
+        },
+        "warnings": warnings,
+        "failures": failures,
+        "runtime": emit_runtime_payload(),
+        "paths": {key: path_view(path, out_dir) for key, path in path_entries.items()},
+        "artifacts": file_exists_map(path_entries),
+    }
+
+
+def run_payload_from_args(args) -> dict:
+    out_dir = Path(args.output).resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = out_dir / "llcg-manifest.json"
+    LOGGER.info("Starting llcg run in %s", out_dir)
+
+    ensure_native_artifacts_present()
+    prepared = prepare_run_inputs(args, out_dir)
+    run_id = (
+        f"{prepared['kernel_version'] or 'unknown'}-"
+        f"{sanitize_tag(prepared['scope_label'])}-"
+        f"{sanitize_tag(prepared['arch'])}-"
+        f"{uuid.uuid4().hex[:8]}"
+    )
+    planned_stages = ["native-artifacts", "prepare-inputs", "kallgraph", "render"]
+
+    run_args = SimpleNamespace(
+        clang=args.clang,
+        post_mutators=prepared["mutator_ctx"]["post_mutators"],
+    )
+
+    try:
+        with contextlib.redirect_stdout(sys.stderr if args.json else sys.stdout):
+            result = run_pipeline(
+                run_args,
+                prepared["bitcode_list_path"],
+                prepared["bitcode_entries"],
+                prepared["groups_path"],
+                prepared["scope_label"],
+                prepared["kernel_version"],
+                sanitize_tag(prepared["arch"]),
+                out_dir,
+            )
+    except Exception as exc:
+        LOGGER.exception("Pipeline execution failed")
+        payload = build_run_manifest(
+            manifest_path=manifest_path,
+            status="failure",
+            exit_code=1,
+            summary="callgraph generation failed during pipeline execution",
+            run_id=run_id,
+            scope_label=prepared["scope_label"],
+            kernel_version=prepared["kernel_version"],
+            arch=prepared["arch"],
+            clang_version=str(args.clang),
+            out_dir=out_dir,
+            resolved_inputs=prepared["resolved_inputs"],
+            pre_filters=prepared["mutator_ctx"]["pre_mutators"],
+            post_filters=prepared["mutator_ctx"]["post_mutators"],
+            scope=prepared["scope"],
+            mutator_manifest_paths=prepared["mutator_ctx"]["manifest_paths"],
+            planned_stages=planned_stages,
+            failures=[{"type": "run_error", "error": str(exc)}],
+            warnings=prepared["warnings"],
+        )
+        write_json(manifest_path, payload)
+        return payload
+
+    payload = build_run_manifest(
+        manifest_path=manifest_path,
+        status="success",
+        exit_code=0,
+        summary="generated callgraph artifacts from resolved bitcode inputs",
+        run_id=run_id,
+        scope_label=prepared["scope_label"],
+        kernel_version=prepared["kernel_version"],
+        arch=prepared["arch"],
+        clang_version=str(args.clang),
+        out_dir=out_dir,
+        resolved_inputs=prepared["resolved_inputs"],
+        pre_filters=prepared["mutator_ctx"]["pre_mutators"],
+        post_filters=prepared["mutator_ctx"]["post_mutators"],
+        scope=prepared["scope"],
+        mutator_manifest_paths=prepared["mutator_ctx"]["manifest_paths"],
+        planned_stages=planned_stages,
+        result=result,
+        warnings=prepared["warnings"],
+    )
+    write_json(manifest_path, payload)
+    return payload
+
+
+def command_run(args) -> int:
+    LOGGER.debug("Handling run command")
+    payload = run_payload_from_args(args)
+    print_result(payload, args.json)
+    return 0 if payload["status"] == "success" else 1
+
+
+def command_genmutator_interfaces(args) -> int:
+    LOGGER.debug("Handling genmutator interfaces command")
+    kernel_root = Path(args.source_dir).resolve()
+    out_dir = Path(args.output).resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    interfaces = parse_interfaces(args.interfaces)
+    payload, _manifest_path = collect_interface_mutator_payload(
+        kernel_root=kernel_root,
+        interfaces=interfaces,
+        arch=args.arch,
+        out_dir=out_dir,
+    )
+    return print_result(payload, args.json)
+
+
+def command_genmutator_files(args) -> int:
+    LOGGER.debug("Handling genmutator files command")
+    kernel_root = Path(args.source_dir).resolve()
+    out_dir = Path(args.output).resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    payload, _manifest_path = collect_file_mutator_payload(
+        kernel_root=kernel_root,
+        files=args.files,
+        scope_name=args.scope_name,
+        arch=args.arch,
+        out_dir=out_dir,
+    )
+    return print_result(payload, args.json)
+
+
+def command_inspect(args) -> int:
+    LOGGER.debug("Handling inspect command")
+    manifest_path = Path(args.target).resolve()
+    payload = read_json(manifest_path)
+    if payload.get("command") == "mutator":
+        manifest_label = "mutator"
+    else:
+        manifest_label = payload.get("command", "unknown")
+    inspected = {
+        "command": "inspect",
+        "status": "success",
+        "exit_code": 0,
+        "summary": "summarized existing llcg manifest",
+        "details": {
+            "manifest": stable_path(manifest_path, manifest_path.parent),
+            "manifest_command": manifest_label,
+            "subject_status": payload.get("status", "unknown"),
+            **payload.get("details", {}),
+        },
+        "runtime": emit_runtime_payload(),
+        "paths": {
+            "manifest": path_view(manifest_path, manifest_path.parent),
+            **payload.get("paths", {}),
+        },
+        "artifacts": payload.get("artifacts", {}),
+    }
+    return print_result(inspected, args.json)
+
+
+def add_common_runtime_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--output", "-o", default=str(DEFAULT_OUT_DIR))
+    parser.add_argument("--clang", required=True)
+    parser.add_argument("--json", action="store_true")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="llcg",
+        description="Generate Linux kernel callgraphs from bitcode lists, with optional source-derived mutators.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    genmutator_parser = subparsers.add_parser("genmutator", help="Generate reusable mutator artifacts.")
+    genmutator_subparsers = genmutator_parser.add_subparsers(dest="genmutator_command", required=True)
+    genmutator_interfaces = genmutator_subparsers.add_parser(
+        "interfaces",
+        help="Generate an interface mutator manifest from a kernel source tree.",
+    )
+    genmutator_interfaces.add_argument("--source-dir", required=True)
+    genmutator_interfaces.add_argument("--interfaces", required=True)
+    genmutator_interfaces.add_argument("--output", "-o", default=str(DEFAULT_OUT_DIR))
+    genmutator_interfaces.add_argument("--arch", default="x86_64")
+    genmutator_interfaces.add_argument("--json", action="store_true")
+    genmutator_interfaces.set_defaults(handler=command_genmutator_interfaces)
+    genmutator_files = genmutator_subparsers.add_parser(
+        "files",
+        help="Generate a file-scoped mutator manifest from a kernel source tree.",
+    )
+    genmutator_files.add_argument("--source-dir", required=True)
+    genmutator_files.add_argument("--file", dest="files", action="append", required=True, default=[])
+    genmutator_files.add_argument("--scope-name", default="")
+    genmutator_files.add_argument("--output", "-o", default=str(DEFAULT_OUT_DIR))
+    genmutator_files.add_argument("--arch", default="x86_64")
+    genmutator_files.add_argument("--json", action="store_true")
+    genmutator_files.set_defaults(handler=command_genmutator_files)
+
+    run_parser = subparsers.add_parser("run", help="Run KallGraph and the LLVM callgraph pass using prebuilt native components.")
+    run_parser.add_argument("--bitcode-list", default="")
+    run_parser.add_argument("--llbic-json", default="")
+    run_parser.add_argument("--all-bc-list", default="")
+    run_parser.add_argument("--filter", dest="filters", action="append", default=[])
+    run_parser.add_argument("--scope-name", default="")
+    add_common_runtime_flags(run_parser)
+    run_parser.set_defaults(handler=command_run)
+
+    inspect_parser = subparsers.add_parser("inspect", help="Inspect an existing run or mutator manifest JSON.")
+    inspect_parser.add_argument("target")
+    inspect_parser.add_argument("--json", action="store_true")
+    inspect_parser.set_defaults(handler=command_inspect)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    configure_logging()
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        return args.handler(args)
+    except Exception as exc:
+        if getattr(args, "json", False):
+            sys.stdout.write(
+                json.dumps(
+                    {
+                        "status": "failure",
+                        "error": str(exc),
+                    },
+                    indent=2,
+                )
+                + "\n"
+            )
+        else:
+            sys.stderr.write(f"error: {exc}\n")
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

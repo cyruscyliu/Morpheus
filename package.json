@@ -1,0 +1,17 @@
+{
+  "name": "ossr",
+  "private": true,
+  "version": "0.1.0",
+  "description": "OSSR monorepo for composable tools and workflows",
+  "packageManager": "pnpm@10.8.1",
+  "scripts": {
+    "build": "pnpm --filter @ossr/cli build && pnpm --filter @ossr/web test",
+    "dev": "pnpm --filter @ossr/cli dev",
+    "test": "pnpm --filter @ossr/cli test && pnpm --filter @ossr/web test",
+    "lint": "pnpm --filter @ossr/cli lint"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,0 +1,73 @@
+# KallGraph
+
+KallGraph is based on LLVM & SVF, first we need to build and set LLVM/SVF properly.
+
+We use LLVM/Clang 15.x to build, follow the instructions:
+https://releases.llvm.org/14.0.0/docs/CMake.html
+For better performance, build with -DCMAKE_BUILD_TYPE=Release
+
+We use the vendored upstream SVF 3.3 tree in `SVF-3.3`, following the command:
+```
+cmake -S SVF-3.3 -B SVF-3.3/build \
+  -DCMAKE_C_COMPILER=clang-15 \
+  -DCMAKE_CXX_COMPILER=clang++-15 \
+  -DLLVM_DIR=/usr/lib/llvm-15/lib/cmake/llvm \
+  -DZ3_DIR=/usr \
+  -DSVF_WARN_AS_ERROR=OFF \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build SVF-3.3/build -j
+```
+
+Before running KallGraph, make sure you have compiled target programs' LLVM IRs, and put those IR paths in a file like src/sample_input/bc.list, we give an example as follows to use MLTA IRDumper to build linux-6.5 IRs.
+
+[MLTA](https://github.com/umnsec/mlta) provides a decent tool to compile LLVM IRs for Linux kernels, to use them, following commands:
+```
+git clone https://github.com/umnsec/mlta.git
+cd mlta/IRDumper
+(Use `clang-15` for IR generation and keep opaque pointers disabled.)
+make
+cd ..
+(Consider replacing MLTA's irgen with our modified irgen.sh, and setup paths correctly)
+chmod +x irgen.sh
+./irgen.sh
+```
+
+Since we are compiling LLVM IRs not binaries, there will be lots of compilation errors for binaries, but it won't effect the output of IRs.
+
+To get the bc.list under the folder of linux source code:
+```
+find ./ -name "*.bc" ! -name "*timeconst.bc" > bc.list
+```
+
+Later on, just use the path to this bc.list as one of the input of KallGraph.
+
+Build KallGraph:
+
+```
+cmake -S . -B build \
+  -DCMAKE_C_COMPILER=clang-15 \
+  -DCMAKE_CXX_COMPILER=clang++-15 \
+  -DLLVM_DIR=/usr/lib/llvm-15/lib/cmake/llvm \
+  -DSVF_DIR=$PWD/SVF-3.3/build/lib/cmake/SVF \
+  -DZ3_DIR=/usr \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j4
+```
+
+Run KallGraph (don't forget to use symbol '@' before the /path/to/bc.list):
+```
+build/bin/KallGraph @src/sample_input/bc.list -OutputDir=src/sample_output/ -ThreadNum=64 -ExtAPIPath=$PWD/SVF-3.3/build/lib/extapi.bc
+```
+
+The output callgraph is at /path/to/OutputDir/callgraph
+
+Please cite the following research paper:
+```
+@inproceedings{li2025redefining,
+  title={Redefining Indirect Call Analysis with KallGraph},
+  author={Li, Guoren and Sridharan, Manu and Qian, Zhiyun},
+  booktitle={2025 IEEE Symposium on Security and Privacy (SP)},
+  pages={2734--2752},
+  year={2025},
+}
+```

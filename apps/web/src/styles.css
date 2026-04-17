@@ -1,0 +1,274 @@
+:root {
+  --bg: #f5f0e8;
+  --panel: rgba(255, 251, 245, 0.88);
+  --panel-strong: #fff8ef;
+  --text: #1b1a18;
+  --muted: #695d4d;
+  --line: rgba(61, 45, 20, 0.16);
+  --accent: #9f432c;
+  --accent-soft: rgba(159, 67, 44, 0.12);
+  --ok: #29624d;
+  --warn: #a35717;
+  --bad: #9a2e2e;
+  --shadow: 0 24px 60px rgba(58, 39, 18, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Iowan Old Style", "Palatino Linotype", serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(201, 128, 79, 0.18), transparent 32%),
+    linear-gradient(180deg, #f8f2e8 0%, var(--bg) 100%);
+}
+
+.page-shell {
+  width: min(1200px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 32px 0 48px;
+}
+
+.hero,
+.panel {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow);
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  border-radius: 28px;
+  padding: 28px;
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.78rem;
+  color: var(--accent);
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+}
+
+h1 {
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 0.96;
+  max-width: 10ch;
+}
+
+.subhead,
+.meta-label,
+.muted,
+label,
+th,
+.empty-state {
+  color: var(--muted);
+}
+
+.subhead {
+  margin: 12px 0 0;
+  max-width: 58ch;
+  font-size: 1.02rem;
+}
+
+.hero-meta {
+  min-width: 180px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: var(--panel-strong);
+  align-self: start;
+}
+
+.layout {
+  display: grid;
+  gap: 24px;
+}
+
+.panel {
+  border-radius: 24px;
+  padding: 22px;
+}
+
+.panel-header {
+  margin-bottom: 18px;
+}
+
+.panel-header-inline {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  padding: 16px;
+  border-radius: 18px;
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+}
+
+.card strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 1.8rem;
+}
+
+.toolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+
+select {
+  min-width: 140px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: white;
+  color: var(--text);
+  font: inherit;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+tbody tr {
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+tbody tr:hover,
+tbody tr.is-selected {
+  background: var(--accent-soft);
+}
+
+a {
+  color: inherit;
+}
+
+.repo-link {
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.detail-card {
+  display: grid;
+  gap: 18px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.detail-block {
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 0.84rem;
+  text-transform: capitalize;
+}
+
+.status-pill[data-tone="active"],
+.status-pill[data-tone="aligned"],
+.status-pill[data-tone="ahead-only"] {
+  color: var(--ok);
+}
+
+.status-pill[data-tone="recent"],
+.status-pill[data-tone="behind"],
+.status-pill[data-tone="quiet"] {
+  color: var(--warn);
+}
+
+.status-pill[data-tone="stale"],
+.status-pill[data-tone="drifting"] {
+  color: var(--bad);
+}
+
+.commit-list,
+.error-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.commit-list li,
+.error-list li {
+  margin-bottom: 10px;
+}
+
+.empty-state {
+  margin: 12px 0 0;
+}
+
+@media (max-width: 720px) {
+  .page-shell {
+    width: min(100vw - 20px, 1200px);
+    padding-top: 20px;
+  }
+
+  .hero {
+    flex-direction: column;
+  }
+
+  th:nth-child(4),
+  td:nth-child(4),
+  th:nth-child(5),
+  td:nth-child(5) {
+    min-width: 150px;
+  }
+}
+

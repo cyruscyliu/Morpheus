@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ossr</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <h1>ossr-release</h1>
+        </div>
+        <div class="hero-meta">
+          <span class="meta-label">Last snapshot</span>
+          <strong id="generated-at">Loading</strong>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel">
+          <div class="panel-header panel-header-inline">
+            <h2>Repositories</h2>
+            <div class="toolbar">
+              <label>
+                Status
+                <select id="status-filter">
+                  <option value="all">All</option>
+                </select>
+              </label>
+              <label>
+                Type
+                <select id="type-filter">
+                  <option value="all">All</option>
+                  <option value="repo">Repo</option>
+                  <option value="fork">Fork</option>
+                </select>
+              </label>
+              <label>
+                Sort
+                <select id="sort-select">
+                  <option value="activity">Recently updated</option>
+                  <option value="name">Name</option>
+                  <option value="status">Status</option>
+                  <option value="drift">Fork drift</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Repository</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Last push</th>
+                  <th>Latest commit</th>
+                  <th>Drift</th>
+                </tr>
+              </thead>
+              <tbody id="repo-table-body"></tbody>
+            </table>
+          </div>
+          <p id="empty-state" class="empty-state" hidden>No repositories match the current filters.</p>
+        </section>
+
+        <section class="panel detail-panel">
+          <div class="panel-header">
+            <h2>Repository Detail</h2>
+          </div>
+          <div id="repo-detail" class="detail-card">
+            <p class="empty-state">Select a repository from the table to inspect its recent changes.</p>
+          </div>
+        </section>
+
+      </main>
+    </div>
+
+    <script type="module" src="./app.mjs"></script>
+  </body>
+</html>

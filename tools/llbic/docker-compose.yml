@@ -1,0 +1,39 @@
+services:
+  llbase:
+    container_name: llbase
+    build:
+      context: ../llbase
+      dockerfile: docker/Dockerfile
+    image: ghcr.io/jianxiaoyitech/llbase:latest
+    user: "${UID:-1000}:${GID:-1000}"
+    stdin_open: true
+    tty: true
+    volumes:
+      - ../llbase:/workspace
+    working_dir: /workspace
+
+  llbase-mid:
+    container_name: llbase-mid
+    build:
+      context: ../llbase
+      dockerfile: docker/Dockerfile.mid
+    image: ghcr.io/jianxiaoyitech/llbase:mid
+    user: "${UID:-1000}:${GID:-1000}"
+    stdin_open: true
+    tty: true
+    volumes:
+      - ../llbase:/workspace
+    working_dir: /workspace
+
+  llbase-legacy:
+    container_name: llbase-legacy
+    build:
+      context: ../llbase
+      dockerfile: docker/Dockerfile.legacy
+    image: ghcr.io/jianxiaoyitech/llbase:legacy
+    user: "${UID:-1000}:${GID:-1000}"
+    stdin_open: true
+    tty: true
+    volumes:
+      - ../llbase:/workspace
+    working_dir: /workspace

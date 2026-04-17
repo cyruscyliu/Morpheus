@@ -1,0 +1,23 @@
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+*.tsbuildinfo
+apps/web/dist/
+apps/web/generated/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Imported tool outputs
+tools/llcg/build/
+tools/llcg/out/
+tools/llbic/out/
+tools/llbic/sources/
+tools/llbic/status/
+
+# Generic local artifacts
+tmp/
+*.log

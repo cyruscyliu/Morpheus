@@ -1,0 +1,36 @@
+# Build artifacts
+*.o
+
+# Generated ANTLR files (regenerate with: make generate)
+libs/*.cpp
+libs/*.h
+libs/*.interp
+libs/*.tokens
+
+# Editor/IDE
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+.claude
+
+# Python
+__pycache__/
+*.pyc
+.codex
+
+# OS
+.DS_Store
+Thumbs.db
+
+build/
+bin/*
+!bin/llcg
+bin/__pycache__/
+src/KallGraph/build/
+src/KallGraph/SVF-3.3/build/
+compile_commands.json
+
+# Generated analysis outputs
+out/

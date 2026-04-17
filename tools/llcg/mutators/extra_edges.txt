@@ -1,0 +1,19 @@
+# Manual indirect call edges
+# Format:
+#   caller callee    — add an edge
+#   ! caller callee  — suppress (remove) an edge
+# Use this for function pointer stores that static analysis cannot resolve,
+# or to remove false-positive edges produced by KallGraph.
+
+# virtio_mmio: notify callback stored in local variable and passed to
+# vring_create_virtqueue
+virtqueue_notify vm_notify
+virtqueue_add_split vm_notify_with_data
+
+# virtio_mmio: callback callback stored in local variable and passed to
+# virtio_find_vqs_ctx
+vring_interrupt skb_recv_done
+vring_interrupt skb_xmit_done
+
+!vm_find_vqs vm_interrupt
+

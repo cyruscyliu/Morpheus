@@ -1,0 +1,102 @@
+# Each block defines one cluster rectangle in the DOT output.
+# First non-blank/non-comment line = group label.
+# Optional pruning marker on the label line:
+#   [not_reach_then_discard] group_name
+# Functions that cannot reach any member of marked group(s) are discarded.
+# If no group is marked, reachability pruning is skipped.
+# Subsequent lines = member function names.
+# Blank line separates groups.
+#
+# Member modification syntax (for tweaking imported groups):
+#   +member_name   add member to the group
+#   -member_name   remove member from the group
+# If any member has a +/- prefix, the block modifies an existing group
+# (looked up by label) instead of defining a new one.
+
+[entry_point][rank_max] virtio_mmio_isr
+vm_interrupt
+
+[entry_point][rank_max] io_ops
+iowrite64
+iowrite32_rep
+iowrite16_rep
+iowrite8_rep
+iowrite32
+iowrite16
+iowrite8
+writeq
+writel
+writew
+writeb
+vga_w
+vga_w_fast
+__ew32
+igb_wr32
+_aty_st_le32
+_aty_st_8
+vp_iowrite8
+vp_iowrite16
+vp_iowrite32
+vp_iowrite64_twopart
+snd_hdac_reg_writeb
+snd_hdac_reg_writew
+pvscsi_reg_write
+vmw_write
+ioread64
+ioread32_rep
+ioread16_rep
+ioread8_rep
+ioread32
+ioread16
+ioread8
+readq
+readl
+readw
+readb
+vga_r
+__er32
+igb_rd32
+_aty_ld_le32
+vp_ioread8
+vp_ioread16
+vp_ioread32
+snd_hdac_reg_readb
+snd_hdac_reg_readw
+pvscsi_reg_read
+vmw_read
+outl
+outw
+outb
+e1000_io_write
+inl
+inw
+inb
+pci_write_config_dword
+pci_write_config_word
+pci_write_config_byte
+pcie_write_config_dword
+pcie_write_config_word
+pci_read_config_dword
+pci_read_config_word
+pci_read_config_byte
+pcie_read_config_dword
+pcie_read_config_word
+
+[entry_point][rank_max] virtqueue_update_desc
+alloc_indirect_packed
+alloc_indirect_split
+vring_map_single
+vring_map_one_sg
+virtqueue_add_indirect_packed
+virtqueue_add_desc_split
+
+[entry_point][rank_min] module_init
+module_init
+
+driver_init
+virtio_mmio_init
+
+# from drivers/virtio/virtio_mmio.c:566 (virtio_config_ops)
+virtio_mmio_config_ops
++vm_notify
++vm_notify_with_data

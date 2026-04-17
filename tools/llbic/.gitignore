@@ -1,0 +1,25 @@
+# Build artifacts
+build/
+out/
+*.o
+*.so
+*.bc
+
+# Downloaded / extracted sources
+sources/
+
+# Docker
+.bash_history
+
+# IDE
+.idea
+.vscode
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Logs
+*.log

@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { renderHelp, getHelp } from '../dist/help.js';
 
-test('main help lists remote commands', () => {
+test('main help stays local-focused', () => {
   const help = renderHelp();
-  assert.match(help, /remote-build/);
-  assert.match(help, /remote-fetch/);
+  assert.doesNotMatch(help, /remote-build/);
+  assert.doesNotMatch(help, /remote-fetch/);
 });
 
 test('command help renders usage', () => {
@@ -15,6 +15,6 @@ test('command help renders usage', () => {
 });
 
 test('help metadata is discoverable', () => {
-  const command = getHelp('remote-build');
-  assert.equal(command?.name, 'remote-build');
+  const command = getHelp('build');
+  assert.equal(command?.name, 'build');
 });

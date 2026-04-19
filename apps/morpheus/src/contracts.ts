@@ -9,6 +9,10 @@ const MORPHEUS_APP_CONTRACT = {
   commands: [
     "workspace create",
     "workspace show",
+    "remote run",
+    "remote inspect",
+    "remote logs",
+    "remote fetch",
     "tool list",
     "tool verify",
     "tool path",
@@ -19,10 +23,23 @@ const MORPHEUS_APP_CONTRACT = {
     "contracts"
   ],
   nonGoals: [
-    "workflow execution",
     "workflow scheduling",
     "owning tool lifecycles"
   ]
+};
+
+const REMOTE_RUNS_CONTRACT = {
+  id: "remote-managed-runs",
+  type: "management",
+  description: "Manage SSH-backed single-tool remote runs and remote workspaces",
+  commands: [
+    "remote run --tool buildroot",
+    "remote inspect",
+    "remote logs",
+    "remote fetch"
+  ],
+  remoteWorkspaceBoundary: "remote workspaces are supported only through Morpheus",
+  firstTool: "buildroot"
 };
 
 const WORKSPACE_CONTRACT = {
@@ -76,6 +93,7 @@ function getContracts() {
     generatedAt: new Date().toISOString(),
     contracts: {
       morpheusApp: MORPHEUS_APP_CONTRACT,
+      remoteRuns: REMOTE_RUNS_CONTRACT,
       workspace: WORKSPACE_CONTRACT,
       runs: RUNS_CONTRACT,
       toolCatalog: {
@@ -93,6 +111,7 @@ function getContracts() {
 
 module.exports = {
   MORPHEUS_APP_CONTRACT,
+  REMOTE_RUNS_CONTRACT,
   WORKSPACE_CONTRACT,
   RUNS_CONTRACT,
   TOOL_CATALOG_CONTRACT,

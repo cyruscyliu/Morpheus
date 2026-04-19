@@ -8,10 +8,6 @@ export function manifestPathForOutput(outputDir: string): string {
   return path.join(outputDir, '.buildroot-cli', 'build.json');
 }
 
-export function remoteBuildDir(workspace: string, id: string): string {
-  return path.posix.join(workspace, 'builds', id);
-}
-
 export function buildrootTarballUrl(version: string): string {
   return `https://buildroot.org/downloads/buildroot-${version}.tar.gz`;
 }

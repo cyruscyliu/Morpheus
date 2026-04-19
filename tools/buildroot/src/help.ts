@@ -24,26 +24,6 @@ export const COMMANDS: HelpCommand[] = [
     usage: ['buildroot clean --output DIR', 'buildroot clean --path DIR'],
   },
   {
-    name: 'remote-build',
-    summary: 'Provision and run a Buildroot build over SSH',
-    usage: ['buildroot remote-build --ssh TARGET --workspace DIR --buildroot-version VER [--defconfig NAME] [--detach] [--make-arg ARG ...] [--env KEY=VALUE ...] [-- ...]'],
-  },
-  {
-    name: 'remote-inspect',
-    summary: 'Inspect a remote build by generated id',
-    usage: ['buildroot remote-inspect --ssh TARGET --workspace DIR --id BUILD_ID'],
-  },
-  {
-    name: 'remote-logs',
-    summary: 'Read remote build logs by generated id',
-    usage: ['buildroot remote-logs --ssh TARGET --workspace DIR --id BUILD_ID [--follow]'],
-  },
-  {
-    name: 'remote-fetch',
-    summary: 'Copy explicit remote paths for a build id',
-    usage: ['buildroot remote-fetch --ssh TARGET --workspace DIR --id BUILD_ID --dest DIR --path REMOTE_PATH [--path REMOTE_GLOB ...]'],
-  },
-  {
     name: 'version',
     summary: 'Print buildroot CLI version',
     usage: ['buildroot version'],
@@ -66,7 +46,7 @@ export function renderHelp(command?: string): string {
   const entry = getHelp(command);
   if (!entry) {
     const lines = [
-      'buildroot — Unix-like CLI for local and remote Buildroot workflows',
+      'buildroot — Unix-like CLI for local Buildroot workflows',
       '',
       'Usage:',
       '  buildroot <command> [options]',

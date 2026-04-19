@@ -1,54 +1,45 @@
 # buildroot
 
-Run local and SSH-backed remote Buildroot workflows with one stable CLI.
+Run local Buildroot workflows with one stable CLI.
 
-`buildroot` is a Buildroot orchestration CLI for users, tool builders, and
-agent workflows that need explicit commands, inspectable metadata, and
+`buildroot` is a local Buildroot orchestration CLI for users, tool builders,
+and agent workflows that need explicit commands, inspectable metadata, and
 machine-readable output instead of ad hoc shell scripts.
+
+Remote workspace support is not part of `buildroot`.
+Use `morpheus remote ...` when you need SSH-backed remote runs.
 
 ## Quick start
 
 ```bash
-buildroot remote-build \
-  --ssh builder@example.com:2222 \
-  --workspace workflow-workspace \
-  --buildroot-version 2025.02.1 \
+buildroot build \
+  --source ./buildroot-src \
+  --output ./out \
   --defconfig qemu_x86_64_defconfig \
   --json
 ```
 
 That single command:
 
-- Connects to the remote host over SSH.
-- Provisions the requested official Buildroot release if needed.
-- Reuses cached tarballs or extracted trees when available.
-- Creates a generated build id and persistent remote metadata.
-- Streams logs and prints a final JSON summary.
+- Runs a local Buildroot build from an explicit source tree
+- Writes output into an explicit local output directory
+- Records stable local metadata for later inspection
+- Prints a machine-readable result with `--json`
 
-Expected remote workspace layout:
+Expected local output layout:
 
 ```text
-workflow-workspace/
-  tools/
-    buildroot/
-      cache/
-        buildroot-2025.02.1.tar.gz
-      src/
-        buildroot-2025.02.1/
-      builds/
-        br-20260419-abcdef12/
-          manifest.json
-          stdout.log
-          output/
+out/
+  .buildroot-cli/
+    build.json
+  images/
 ```
 
-Inspect an existing remote build without rerunning it:
+Inspect an existing local build:
 
 ```bash
-buildroot remote-inspect \
-  --ssh builder@example.com:2222 \
-  --workspace workflow-workspace \
-  --id br-20260419-abcdef12 \
+buildroot inspect \
+  --output ./out \
   --json
 ```
 
@@ -56,21 +47,17 @@ Example response shape:
 
 ```json
 {
-  "command": "remote-inspect",
+  "command": "inspect",
   "status": "success",
   "exit_code": 0,
-  "summary": "inspected remote build",
+  "summary": "inspected local Buildroot build",
   "details": {
     "manifest": {
-      "id": "br-20260419-abcdef12",
-      "mode": "remote",
+      "mode": "local",
       "status": "success",
-      "command": "remote-build",
-      "workspace": "workflow-workspace",
-      "buildrootVersion": "2025.02.1",
-      "defconfig": "qemu_x86_64_defconfig",
-      "buildDir": "workflow-workspace/tools/buildroot/builds/br-20260419-abcdef12",
-      "logFile": "workflow-workspace/tools/buildroot/builds/br-20260419-abcdef12/stdout.log"
+      "command": "build",
+      "source": "./buildroot-src",
+      "output": "./out"
     }
   }
 }
@@ -84,10 +71,6 @@ The public command tree is:
 buildroot build
 buildroot inspect
 buildroot clean
-buildroot remote-build
-buildroot remote-inspect
-buildroot remote-logs
-buildroot remote-fetch
 buildroot version
 buildroot help
 ```
@@ -113,64 +96,27 @@ Use `clean` to remove a local output or explicit path:
 buildroot clean --output ./out
 ```
 
-Use `remote-build` for SSH-backed provisioning and execution:
+When you need a remote workspace, use Morpheus instead:
 
 ```bash
-buildroot remote-build \
+morpheus remote run \
+  --tool buildroot \
   --ssh builder@example.com:2222 \
   --workspace workflow-workspace \
   --buildroot-version 2025.02.1 \
-  --defconfig qemu_x86_64_defconfig
-```
-
-Use `remote-build --detach` when you want a build id immediately:
-
-```bash
-buildroot remote-build \
-  --ssh builder@example.com:2222 \
-  --workspace workflow-workspace \
-  --buildroot-version 2025.02.1 \
-  --detach \
   --json
-```
-
-Use `remote-logs` and `remote-inspect` to work with an existing build id:
-
-```bash
-buildroot remote-logs \
-  --ssh builder@example.com:2222 \
-  --workspace workflow-workspace \
-  --id br-20260419-abcdef12
-
-buildroot remote-inspect \
-  --ssh builder@example.com:2222 \
-  --workspace workflow-workspace \
-  --id br-20260419-abcdef12 \
-  --json
-```
-
-Use `remote-fetch` only with explicit paths:
-
-```bash
-buildroot remote-fetch \
-  --ssh builder@example.com:2222 \
-  --workspace workflow-workspace \
-  --id br-20260419-abcdef12 \
-  --dest ./artifacts \
-  --path output/images/*
 ```
 
 ## Flags
 
-The CLI owns orchestration flags such as `--ssh`, `--workspace`,
-`--buildroot-version`, `--output`, `--json`, and `--detach`.
+Local Buildroot execution flags are:
 
-Buildroot-specific execution flags are:
-
-- `--defconfig NAME`: run a defconfig target before the final build.
-- `--make-arg ARG`: pass a repeated explicit make argument.
-- `--env KEY=VALUE`: pass a repeated environment variable.
-- `-- ...`: forward remaining raw arguments to the final `make` invocation.
+- `--source DIR`: Buildroot source directory
+- `--output DIR`: local output directory
+- `--defconfig NAME`: run a defconfig target before the final build
+- `--make-arg ARG`: pass a repeated explicit make argument
+- `--env KEY=VALUE`: pass a repeated environment variable
+- `-- ...`: forward remaining raw arguments to the final `make` invocation
 
 Example:
 
@@ -188,66 +134,27 @@ buildroot build \
 
 Every command supports `--json`, including `--help` and errors.
 
-Successful commands emit one JSON object unless the command streams logs.
-Streaming commands emit newline-delimited JSON events followed by a final
-summary object.
-
 Example:
 
 ```bash
 buildroot --json --help
-buildroot remote-build \
+buildroot build \
   --json \
-  --ssh builder@example.com:2222 \
-  --workspace workflow-workspace \
-  --buildroot-version 2025.02.1
+  --source ./buildroot-src \
+  --output ./out
 ```
-
-Example final object:
-
-```json
-{
-  "command": "remote-build",
-  "status": "success",
-  "exit_code": 0,
-  "summary": "completed remote Buildroot build",
-  "details": {
-    "id": "br-20260419-abcdef12",
-    "workspace": "workflow-workspace",
-    "build_dir": "workflow-workspace/tools/buildroot/builds/br-20260419-abcdef12",
-    "manifest": "workflow-workspace/tools/buildroot/builds/br-20260419-abcdef12/manifest.json",
-    "log_file": "workflow-workspace/tools/buildroot/builds/br-20260419-abcdef12/stdout.log"
-  }
-}
-```
-
-## Provisioning
-
-`remote-build` provisions Buildroot from the official release tarball pattern:
-
-```text
-https://buildroot.org/downloads/buildroot-<version>.tar.gz
-```
-
-The tool reuses cached tarballs and extracted source trees inside the remote
-workspace when the requested version already exists.
-
-The `--workspace` value is intended to be a shared high-level workflow
-workspace. `buildroot` should use a namespaced tool area within that workspace
-rather than assuming it owns the workspace root.
 
 ## Stable metadata
 
-For automation, these files are the primary stable contracts:
+For automation, this file is the primary stable contract:
 
-- `manifest.json`: build identity, mode, status, version, and workspace state.
-- `stdout.log`: captured build output for later inspection.
+- `<output>/.buildroot-cli/build.json`
 
-Local builds store metadata under:
+## Remote boundary
 
-```text
-<output>/.buildroot-cli/build.json
-```
+- `buildroot` supports local execution only
+- `morpheus` owns remote workspaces and SSH-backed remote runs
+- remote inspect, logs, and fetch move to `morpheus remote ...`
 
 ## Smoke test
 

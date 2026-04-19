@@ -3,6 +3,7 @@
 
 const path = require("path");
 const { getContracts } = require("./contracts");
+const { handleRemoteCommand } = require("./remote");
 const { handleRunsCommand } = require("./runs");
 const { handleToolCommand } = require("./tools");
 const { handleWorkspaceCommand } = require("./workspace");
@@ -11,6 +12,7 @@ const { workspacePaths } = require("./paths");
 function parseArgs(argv) {
   const positionals = [];
   const flags = {};
+  const booleanFlags = new Set(["json", "help"]);
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -25,7 +27,7 @@ function parseArgs(argv) {
 
     const key = token.slice(2);
     const next = argv[index + 1];
-    if (next && !next.startsWith("--")) {
+    if (!booleanFlags.has(key) && next && !next.startsWith("--")) {
       flags[key] = next;
       index += 1;
     } else {
@@ -44,6 +46,10 @@ function usage() {
   process.stdout.write(
     [
       "Usage:",
+      "  node apps/morpheus/dist/cli.js remote run --tool buildroot --ssh TARGET --workspace DIR --buildroot-version VER [--json]",
+      "  node apps/morpheus/dist/cli.js remote inspect --ssh TARGET --workspace DIR --id RUN_ID [--json]",
+      "  node apps/morpheus/dist/cli.js remote logs --ssh TARGET --workspace DIR --id RUN_ID [--follow] [--json]",
+      "  node apps/morpheus/dist/cli.js remote fetch --ssh TARGET --workspace DIR --id RUN_ID --dest DIR --path REMOTE_PATH [--json]",
       "  node apps/morpheus/dist/cli.js workspace create [--json]",
       "  node apps/morpheus/dist/cli.js workspace show [--json]",
       "  node apps/morpheus/dist/cli.js tool <subcommand> [--json]",
@@ -53,6 +59,14 @@ function usage() {
       "  node apps/morpheus/dist/cli.js runs export-html [<run-id>] [--out <path>] [--run-root <path>]"
     ].join("\n") + "\n"
   );
+}
+
+function argvAfterCommand(argv, command) {
+  const index = argv.indexOf(command);
+  if (index < 0) {
+    return [];
+  }
+  return argv.slice(index + 1);
 }
 
 function main() {
@@ -71,19 +85,23 @@ function main() {
     return 0;
   }
 
+  if (command === "remote") {
+    return handleRemoteCommand(argvAfterCommand(argv, "remote"));
+  }
+
   if (command === "workspace") {
-    return handleWorkspaceCommand(argv.slice(1));
+    return handleWorkspaceCommand(argvAfterCommand(argv, "workspace"));
   }
 
   if (command === "runs") {
-    return handleRunsCommand(argv.slice(1), {
+    return handleRunsCommand(argvAfterCommand(argv, "runs"), {
       runRoot: paths.runs,
       outputRoot: path.join(paths.root, "runs-view")
     });
   }
 
   if (command === "tool") {
-    return handleToolCommand(argv.slice(1));
+    return handleToolCommand(argvAfterCommand(argv, "tool"));
   }
 
   throw new Error(`unknown command: ${command}`);
@@ -92,6 +110,19 @@ function main() {
 try {
   process.exitCode = main();
 } catch (error) {
-  process.stderr.write(`${error.message}\n`);
+  if (process.argv.includes("--json")) {
+    printJson({
+      command: process.argv.slice(2).filter((arg) => arg !== "--json").slice(0, 2).join(" ") || "help",
+      status: "error",
+      exit_code: 1,
+      summary: error.message,
+      error: {
+        code: "morpheus_error",
+        message: error.message
+      }
+    });
+  } else {
+    process.stderr.write(`${error.message}\n`);
+  }
   process.exitCode = 1;
 }

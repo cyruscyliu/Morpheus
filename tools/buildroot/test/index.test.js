@@ -15,11 +15,11 @@ test('help supports json', () => {
 });
 
 test('errors support json', () => {
-  const result = spawnSync(process.execPath, [bin, '--json', 'remote-fetch', '--ssh', 'host:22', '--workspace', 'workflow-workspace', '--id', 'br-1', '--dest', './tmp'], { encoding: 'utf8', cwd: path.resolve(process.cwd()) });
+  const result = spawnSync(process.execPath, [bin, '--json', 'remote-build', '--ssh', 'host:22'], { encoding: 'utf8', cwd: path.resolve(process.cwd()) });
   assert.notEqual(result.status, 0);
   const payload = JSON.parse(result.stdout.trim());
   assert.equal(payload.status, 'error');
-  assert.equal(payload.error.code, 'missing_paths');
+  assert.equal(payload.error.code, 'unknown_command');
 });
 
 test('local build smoke fixture produces an artifact and manifest', () => {

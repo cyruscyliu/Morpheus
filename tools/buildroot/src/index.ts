@@ -5,8 +5,7 @@ import { renderHelp, COMMANDS, getHelp } from './help.js';
 import { emitErrorText, emitJson, emitText } from './io.js';
 import { runLocalBuild, runInspect, runClean } from './local.js';
 import { parseArgv } from './parser.js';
-import { runRemoteBuild, runRemoteFetch, runRemoteInspect, runRemoteLogs } from './remote.js';
-import type { CleanOptions, CliContext, InspectOptions, LocalBuildOptions, RemoteBuildOptions, RemoteFetchOptions, RemoteInspectOptions, RemoteLogsOptions } from './types.js';
+import type { CleanOptions, CliContext, InspectOptions, LocalBuildOptions } from './types.js';
 
 const VERSION = '0.1.0';
 
@@ -48,14 +47,6 @@ async function main(argv: string[]): Promise<number> {
       return runInspect(context, parsed.options as InspectOptions);
     case 'clean':
       return runClean(context, parsed.options as CleanOptions);
-    case 'remote-build':
-      return runRemoteBuild(context, parsed.options as RemoteBuildOptions);
-    case 'remote-inspect':
-      return runRemoteInspect(context, parsed.options as RemoteInspectOptions);
-    case 'remote-logs':
-      return runRemoteLogs(context, parsed.options as RemoteLogsOptions);
-    case 'remote-fetch':
-      return runRemoteFetch(context, parsed.options as RemoteFetchOptions);
     default:
       throw new CliError('unknown_command', `Unknown command: ${String(parsed.command)}`);
   }

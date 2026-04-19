@@ -76,3 +76,26 @@ test("workflow commands are no longer part of the app surface", () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /unknown command: workflow/);
 });
+
+test("remote help is available through Morpheus", () => {
+  const result = run(["remote", "--help"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /remote run/);
+  assert.match(result.stdout, /remote fetch/);
+});
+
+test("remote run validates required buildroot flags in JSON mode", () => {
+  const result = run(["--json", "remote", "run", "--tool", "buildroot"]);
+  assert.equal(result.status, 1);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "error");
+  assert.match(payload.summary, /remote run requires --ssh TARGET/);
+});
+
+test("remote inspect validates existing run flags in JSON mode", () => {
+  const result = run(["--json", "remote", "inspect", "--ssh", "host:22"]);
+  assert.equal(result.status, 1);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "error");
+  assert.match(payload.summary, /remote inspect requires --workspace DIR/);
+});

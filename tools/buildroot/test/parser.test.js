@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseArgv } from '../dist/parser.js';
-import { parseSshTarget } from '../dist/ssh.js';
 
 test('parses help with json', () => {
   const parsed = parseArgv(['--json', '--help']);
@@ -20,21 +19,6 @@ test('parses local build flags and passthrough', () => {
   assert.deepEqual(parsed.options.env, { CC: 'clang' });
 });
 
-test('parses ssh targets with ports', () => {
-  assert.deepEqual(parseSshTarget('alice@example.com:2222'), {
-    original: 'alice@example.com:2222',
-    user: 'alice',
-    host: 'example.com',
-    port: 2222,
-  });
-  assert.deepEqual(parseSshTarget('ssh://alice@example.com:2200'), {
-    original: 'ssh://alice@example.com:2200',
-    user: 'alice',
-    host: 'example.com',
-    port: 2200,
-  });
-});
-
-test('remote-fetch requires explicit paths', () => {
-  assert.throws(() => parseArgv(['remote-fetch', '--ssh', 'host:22', '--workspace', 'workflow-workspace', '--id', 'br-1', '--dest', './artifacts']), /remote-fetch requires at least one --path/);
+test('remote commands are no longer accepted', () => {
+  assert.throws(() => parseArgv(['remote-build', '--ssh', 'host:22']), /Unknown command: remote-build/);
 });

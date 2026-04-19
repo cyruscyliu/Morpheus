@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
@@ -21,6 +23,26 @@ test("workspace show returns JSON metadata", () => {
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.root, "work");
   assert.equal(typeof payload.directories.runs.exists, "boolean");
+});
+
+test("workspace create builds the standard directory layout", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-work-"));
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+
+  const result = run(["workspace", "create", "--json"], {
+    env: {
+      ...process.env,
+      MORPHEUS_WORK_ROOT: workspaceRoot
+    }
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.created.length, 8);
+  assert.equal(payload.workspace.directories.runs.exists, true);
+  assert.equal(fs.existsSync(path.join(workspaceRoot, "runs")), true);
+
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 
 test("tool list discovers repo-local tools", () => {

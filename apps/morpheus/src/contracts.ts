@@ -7,6 +7,7 @@ const MORPHEUS_APP_CONTRACT = {
   type: "application",
   description: "Orthogonal management layer for workspace metadata, tools, and runs",
   commands: [
+    "workspace create",
     "workspace show",
     "tool list",
     "tool verify",
@@ -29,6 +30,7 @@ const WORKSPACE_CONTRACT = {
   type: "management",
   description: "Describe shared workspace roots and their current presence on disk",
   commands: [
+    "workspace create",
     "workspace show"
   ],
   workspaceStateLayout: [

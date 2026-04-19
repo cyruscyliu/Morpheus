@@ -44,6 +44,7 @@ function usage() {
   process.stdout.write(
     [
       "Usage:",
+      "  node apps/morpheus/dist/cli.js workspace create [--json]",
       "  node apps/morpheus/dist/cli.js workspace show [--json]",
       "  node apps/morpheus/dist/cli.js tool <subcommand> [--json]",
       "  node apps/morpheus/dist/cli.js contracts",

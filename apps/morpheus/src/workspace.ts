@@ -30,6 +30,7 @@ function parseWorkspaceArgs(argv) {
 function workspaceUsage() {
   return [
     "Usage:",
+    "  node apps/morpheus/dist/cli.js workspace create [--json]",
     "  node apps/morpheus/dist/cli.js workspace show [--json]"
   ].join("\n");
 }
@@ -66,6 +67,29 @@ function describeWorkspace() {
   };
 }
 
+function createWorkspace() {
+  const paths = workspacePaths();
+  const created = [];
+  const existing = [];
+
+  for (const targetPath of Object.values(paths)) {
+    if (fs.existsSync(targetPath)) {
+      existing.push(statDir(targetPath));
+      continue;
+    }
+
+    fs.mkdirSync(targetPath, { recursive: true });
+    created.push(statDir(targetPath));
+  }
+
+  return {
+    root: toRelative(workRoot()),
+    created,
+    existing,
+    workspace: describeWorkspace()
+  };
+}
+
 function printWorkspaceHuman(summary) {
   process.stdout.write("Workspace\n");
   process.stdout.write(`  root: ${summary.root}\n`);
@@ -76,6 +100,12 @@ function printWorkspaceHuman(summary) {
   }
 }
 
+function printCreateHuman(result) {
+  process.stdout.write(`Workspace created at ${result.root}\n`);
+  process.stdout.write(`  created: ${result.created.length}\n`);
+  process.stdout.write(`  existing: ${result.existing.length}\n`);
+}
+
 function handleWorkspaceCommand(argv) {
   const subcommand = argv[0];
   if (!subcommand || subcommand === "help" || subcommand === "--help") {
@@ -84,21 +114,33 @@ function handleWorkspaceCommand(argv) {
   }
 
   const { flags } = parseWorkspaceArgs(argv.slice(1));
-  if (subcommand !== "show") {
-    throw new Error(`unknown workspace subcommand: ${subcommand}`);
-  }
+  if (subcommand === "create") {
+    const result = createWorkspace();
+    if (flags.json) {
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      return 0;
+    }
 
-  const summary = describeWorkspace();
-  if (flags.json) {
-    process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+    printCreateHuman(result);
     return 0;
   }
 
-  printWorkspaceHuman(summary);
-  return 0;
+  if (subcommand === "show") {
+    const summary = describeWorkspace();
+    if (flags.json) {
+      process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+      return 0;
+    }
+
+    printWorkspaceHuman(summary);
+    return 0;
+  }
+
+  throw new Error(`unknown workspace subcommand: ${subcommand}`);
 }
 
 module.exports = {
+  createWorkspace,
   describeWorkspace,
   handleWorkspaceCommand
 };

@@ -1,0 +1,16 @@
+{
+  "runId": "sample-run",
+  "kind": "inspection",
+  "stepCount": 1,
+  "artifactCount": 1,
+  "assessmentCount": 0,
+  "steps": [
+    {
+      "id": "step-001-catalog",
+      "name": "catalog",
+      "kind": "inspection",
+      "status": "completed",
+      "dir": "steps/step-001-catalog"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "id": "step-003-verify",
+  "name": "verify",
+  "kind": "assessment",
+  "description": "Verify required manifests, outputs, and provenance",
+  "status": "success",
+  "startedAt": "2026-03-19T09:38:16.138Z",
+  "endedAt": "2026-03-19T09:38:16.141Z",
+  "verificationStatus": "success"
+}

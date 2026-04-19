@@ -1,0 +1,34 @@
+digraph DevilangCG_collapsed {
+    rankdir=LR;
+    node [shape=box, style=filled, fillcolor=lightyellow];
+
+    "diag_net_ops" [fillcolor="#ddeeff", color=steelblue, penwidth=2, fontcolor=steelblue];
+    "genl_pernet_ops" [fillcolor="#ddeeff", color=steelblue, penwidth=2, fontcolor=steelblue];
+    "sk_filter_verifier_ops" [fillcolor="#ddeeff", color=steelblue, penwidth=2, fontcolor=steelblue];
+    "lwt_xmit_verifier_ops" [fillcolor="#ddeeff", color=steelblue, penwidth=2, fontcolor=steelblue];
+    "virtio_bus" [fillcolor="#ddeeff", color=steelblue, penwidth=2, fontcolor=steelblue];
+    "lwt_in_verifier_ops" [fillcolor="#ddeeff", color=steelblue, penwidth=2, fontcolor=steelblue];
+    "netlink_rhashtable_params" [fillcolor="#ddeeff", color=steelblue, penwidth=2, fontcolor=steelblue];
+    "netlink_ops" [fillcolor="#ddeeff", color=steelblue, penwidth=2, fontcolor=steelblue];
+    "rtnetlink_net_ops" [fillcolor="#ddeeff", color=steelblue, penwidth=2, fontcolor=steelblue];
+    "virtio_net_driver" [fillcolor="#ddeeff", color=steelblue, penwidth=2, fontcolor=steelblue];
+    "virtnet_ethtool_ops" [fillcolor="#ddeeff", color=steelblue, penwidth=2, fontcolor=steelblue];
+    "cg_skb_verifier_ops" [fillcolor="#ddeeff", color=steelblue, penwidth=2, fontcolor=steelblue];
+    "lwt_out_verifier_ops" [fillcolor="#ddeeff", color=steelblue, penwidth=2, fontcolor=steelblue];
+    "lwt_seg6local_verifier_ops" [fillcolor="#ddeeff", color=steelblue, penwidth=2, fontcolor=steelblue];
+    "cfg" [fillcolor="#ddeeff", color=steelblue, penwidth=2, fontcolor=steelblue];
+    "virtio_mmio_driver" [fillcolor="#ddeeff", color=steelblue, penwidth=2, fontcolor=steelblue];
+
+    "diag_net_ops" -> "netlink_rhashtable_params";
+    "genl_pernet_ops" -> "netlink_rhashtable_params";
+    "lwt_xmit_verifier_ops" -> "lwt_out_verifier_ops";
+    "lwt_in_verifier_ops" -> "lwt_out_verifier_ops";
+    "netlink_ops" -> "netlink_rhashtable_params";
+    "rtnetlink_net_ops" -> "netlink_rhashtable_params";
+    "virtio_net_driver" -> "netlink_rhashtable_params";
+    "virtnet_ethtool_ops" -> "netlink_rhashtable_params";
+    "cg_skb_verifier_ops" -> "sk_filter_verifier_ops";
+    "lwt_seg6local_verifier_ops" -> "lwt_out_verifier_ops";
+    "cfg" -> "netlink_rhashtable_params";
+    "virtio_mmio_driver" -> "virtio_bus";
+}

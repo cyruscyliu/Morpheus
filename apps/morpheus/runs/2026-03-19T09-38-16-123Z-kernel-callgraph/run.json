@@ -1,0 +1,17 @@
+{
+  "id": "2026-03-19T09-38-16-123Z-kernel-callgraph",
+  "kind": "kernel-callgraph",
+  "changeName": "traceable-research-runtime",
+  "status": "success",
+  "createdAt": "2026-03-19T09:38:16.124Z",
+  "runDir": "/home/debian/Projects/research-os/research-runtime/runs/2026-03-19T09-38-16-123Z-kernel-callgraph",
+  "completedAt": "2026-03-19T09:38:16.142Z",
+  "summary": {
+    "requestedKernelVersion": "6.18",
+    "resolvedKernelVersion": "6.18.16",
+    "arch": "arm64",
+    "interface": "networking",
+    "buildMode": "reused",
+    "verificationStatus": "success"
+  }
+}

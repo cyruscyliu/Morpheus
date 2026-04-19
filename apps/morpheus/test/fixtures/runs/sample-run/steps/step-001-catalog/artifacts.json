@@ -1,0 +1,14 @@
+[
+  {
+    "id": "artifact-01",
+    "role": "report",
+    "type": "json",
+    "label": "report",
+    "path": "steps/step-001-catalog/outputs/report.json",
+    "sha256": null,
+    "retention": "reference",
+    "metadata": {
+      "tool": "buildroot"
+    }
+  }
+]

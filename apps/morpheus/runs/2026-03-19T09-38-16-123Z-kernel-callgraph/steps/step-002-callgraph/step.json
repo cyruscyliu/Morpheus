@@ -1,0 +1,10 @@
+{
+  "id": "step-002-callgraph",
+  "name": "callgraph",
+  "kind": "tool",
+  "description": "Run explicit Devilang callgraph pipeline",
+  "status": "success",
+  "startedAt": "2026-03-19T09:38:16.132Z",
+  "endedAt": "2026-03-19T09:38:16.138Z",
+  "interface": "networking"
+}

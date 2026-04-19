@@ -1,0 +1,10 @@
+{
+  "id": "step-004-reflect",
+  "name": "reflect",
+  "kind": "assessment",
+  "description": "Record structured reflection for the run",
+  "status": "success",
+  "startedAt": "2026-03-19T09:37:04.338Z",
+  "endedAt": "2026-03-19T09:37:04.339Z",
+  "reflectionStatus": "success"
+}

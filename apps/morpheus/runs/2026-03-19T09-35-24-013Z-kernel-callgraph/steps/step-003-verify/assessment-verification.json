@@ -1,0 +1,43 @@
+{
+  "id": "step-003-verify-verification",
+  "kind": "verification",
+  "createdAt": "2026-03-19T09:37:04.338Z",
+  "status": "success",
+  "checks": [
+    {
+      "name": "llbic_manifest_present",
+      "result": "pass",
+      "detail": "/home/debian/Projects/research-os/llbic/out/linux-6.18.16/llbic.json"
+    },
+    {
+      "name": "llbic_manifest_success",
+      "result": "pass",
+      "detail": "success"
+    },
+    {
+      "name": "bitcode_list_nonempty",
+      "result": "pass",
+      "detail": "9040"
+    },
+    {
+      "name": "devilang_manifest_present",
+      "result": "pass",
+      "detail": "/home/debian/Projects/research-os/research-runtime/runs/2026-03-19T09-35-24-013Z-kernel-callgraph/steps/step-002-callgraph/outputs/devilang-manifest.json"
+    },
+    {
+      "name": "callgraph_dot_present",
+      "result": "pass",
+      "detail": "/home/debian/Projects/research-os/research-runtime/runs/2026-03-19T09-35-24-013Z-kernel-callgraph/steps/step-002-callgraph/outputs/networking_6.18.16_networking-bitcode-6.18.16-arm64_arm64_devilang_cg.dot"
+    },
+    {
+      "name": "kallgraph_copy_present",
+      "result": "pass",
+      "detail": "/home/debian/Projects/research-os/research-runtime/runs/2026-03-19T09-35-24-013Z-kernel-callgraph/steps/step-002-callgraph/outputs/networking_6.18.16_networking-bitcode-6.18.16-arm64_arm64_kallgraph.txt"
+    },
+    {
+      "name": "provenance_links_recorded",
+      "result": "pass",
+      "detail": "7"
+    }
+  ]
+}

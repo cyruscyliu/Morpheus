@@ -1,0 +1,11 @@
+{
+  "id": "sample-run",
+  "kind": "inspection",
+  "status": "completed",
+  "createdAt": "2026-04-18T10:00:00.000Z",
+  "completedAt": "2026-04-18T10:01:30.000Z",
+  "summary": {
+    "tool": "buildroot",
+    "artifact": "images/rootfs.tar"
+  }
+}

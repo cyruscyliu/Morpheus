@@ -2,18 +2,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const repoRoot = process.cwd();
-const toolsDir = path.join(repoRoot, 'tools');
+const descriptorRoots = [
+  path.join(repoRoot, 'tools'),
+  path.join(repoRoot, 'apps'),
+];
 const binDir = path.join(repoRoot, 'bin');
 const marker = '# managed-by-install-bin';
 
 function listToolDescriptors() {
-  if (!fs.existsSync(toolsDir)) {
-    return [];
-  }
-
-  return fs.readdirSync(toolsDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => path.join(toolsDir, entry.name, 'tool.json'))
+  return descriptorRoots
+    .filter((root) => fs.existsSync(root))
+    .flatMap((root) => fs.readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(root, entry.name, 'tool.json')))
     .filter((descriptorPath) => fs.existsSync(descriptorPath))
     .map((descriptorPath) => {
       const toolRoot = path.dirname(descriptorPath);

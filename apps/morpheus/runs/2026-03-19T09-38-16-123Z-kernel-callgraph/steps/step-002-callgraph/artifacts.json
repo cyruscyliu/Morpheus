@@ -1,0 +1,42 @@
+[
+  {
+    "id": "step-002-callgraph-artifact-01",
+    "role": "manifest",
+    "type": "devilang-manifest",
+    "label": "devilang-manifest",
+    "path": "/tmp/devilang-run-test/devilang-manifest.json",
+    "sha256": "7eeb7c9fa42e871c6b5282187a27aa2b882c4e64ae11bf613accbfbb2970418b",
+    "retention": "generated",
+    "metadata": {}
+  },
+  {
+    "id": "step-002-callgraph-artifact-02",
+    "role": "output",
+    "type": "callgraph-dot",
+    "label": "callgraph-dot",
+    "path": "/tmp/devilang-run-test/networking_6.18.16_networking-bitcode-6.18.16-arm64_arm64_devilang_cg.dot",
+    "sha256": "7aa8f1f9d0daa10f5caafb9bc31d851e6198158e5a90d0ec340f87868625fa68",
+    "retention": "generated",
+    "metadata": {}
+  },
+  {
+    "id": "step-002-callgraph-artifact-03",
+    "role": "output",
+    "type": "kallgraph-text",
+    "label": "kallgraph-text",
+    "path": "/tmp/devilang-run-test/networking_6.18.16_networking-bitcode-6.18.16-arm64_arm64_kallgraph.txt",
+    "sha256": "7e4d4b1f959f0d02abda1e49c27bc01c5d2f1047a7368fb8eefa09120e332594",
+    "retention": "generated",
+    "metadata": {}
+  },
+  {
+    "id": "step-002-callgraph-artifact-04",
+    "role": "output",
+    "type": "callgraph-svg",
+    "label": "callgraph-svg",
+    "path": "/tmp/devilang-run-test/networking_6.18.16_networking-bitcode-6.18.16-arm64_arm64_devilang_cg.svg",
+    "sha256": "bd33f64ea72f613a05798c799c1d062b22eb41906fd29f454a750a83f7f213df",
+    "retention": "generated",
+    "metadata": {}
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "name": "@morpheus/app",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Morpheus management CLI for workspace metadata, tools, and runs",
+  "type": "commonjs",
+  "scripts": {
+    "build": "pnpm exec tsc -p tsconfig.json",
+    "lint": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "morpheus": "node dist/cli.js",
+    "test": "pnpm run build && node --test test/*.test.js"
+  }
+}

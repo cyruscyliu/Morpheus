@@ -1,0 +1,8 @@
+{
+  "argv": [
+    "buildroot",
+    "inspect",
+    "--id",
+    "br-test"
+  ]
+}

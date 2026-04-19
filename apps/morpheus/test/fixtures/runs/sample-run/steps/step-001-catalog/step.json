@@ -1,0 +1,9 @@
+{
+  "id": "step-001-catalog",
+  "name": "catalog",
+  "kind": "inspection",
+  "description": "Inspect a prior artifact",
+  "status": "completed",
+  "startedAt": "2026-04-18T10:00:10.000Z",
+  "endedAt": "2026-04-18T10:00:50.000Z"
+}

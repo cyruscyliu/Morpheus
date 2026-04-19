@@ -1,0 +1,7 @@
+{
+  "prompt": "build kernel 6.18 and generate a callgraph for networking",
+  "requestedKernelVersion": "6.18",
+  "resolvedKernelVersion": "6.18.16",
+  "arch": "arm64",
+  "interface": "networking"
+}

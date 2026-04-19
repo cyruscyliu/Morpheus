@@ -1,0 +1,578 @@
+# Auto-generated ops groups for Linux kernel analysis.
+# kernel=6.18.16
+# interface=networking
+# arch=arm64
+# scan_dirs=drivers/virtio,drivers/net,net
+# enabled_configs=CONFIG_BPF,CONFIG_CRYPTO_LIB_SHA256,CONFIG_DIMLIB,CONFIG_FAILOVER,CONFIG_GENERIC_NET_UTILS,CONFIG_NET,CONFIG_NETDEVICES,CONFIG_NET_CORE,CONFIG_NET_FAILOVER,CONFIG_NLATTR,CONFIG_VIRTIO,CONFIG_VIRTIO_ANCHOR,CONFIG_VIRTIO_MMIO,CONFIG_VIRTIO_NET
+
+# from drivers/net/loopback.c:138 (ethtool_ops)
+loopback_ethtool_ops
+always_on
+ethtool_op_get_ts_info
+
+# from drivers/net/loopback.c:154 (net_device_ops)
+loopback_ops
+loopback_dev_init
+loopback_xmit
+loopback_get_stats64
+eth_mac_addr
+
+# from drivers/net/loopback.c:261 (net_device_ops)
+blackhole_netdev_ops
+blackhole_netdev_xmit
+blackhole_neigh_construct
+
+# from drivers/net/net_failover.c:303 (net_device_ops)
+failover_dev_ops
+net_failover_open
+net_failover_close
+net_failover_start_xmit
+net_failover_select_queue
+net_failover_get_stats
+net_failover_change_mtu
+net_failover_set_rx_mode
+net_failover_vlan_rx_add_vid
+net_failover_vlan_rx_kill_vid
+eth_validate_addr
+passthru_features_check
+
+# from drivers/net/net_failover.c:348 (ethtool_ops)
+failover_ethtool_ops
+nfo_ethtool_get_drvinfo
+ethtool_op_get_link
+nfo_ethtool_get_link_ksettings
+
+# from drivers/net/net_failover.c:683 (failover_ops)
+net_failover_ops
+net_failover_slave_pre_register
+net_failover_slave_register
+net_failover_slave_pre_unregister
+net_failover_slave_unregister
+net_failover_slave_link_change
+net_failover_slave_name_change
+net_failover_handle_frame
+
+# from drivers/net/virtio_net.c:5648 (ethtool_ops)
+virtnet_ethtool_ops
+virtnet_get_drvinfo
+ethtool_op_get_link
+virtnet_get_ringparam
+virtnet_set_ringparam
+virtnet_get_strings
+virtnet_get_sset_count
+virtnet_get_ethtool_stats
+virtnet_set_channels
+virtnet_get_channels
+ethtool_op_get_ts_info
+virtnet_get_link_ksettings
+virtnet_set_link_ksettings
+virtnet_set_coalesce
+virtnet_get_coalesce
+virtnet_set_per_queue_coalesce
+virtnet_get_per_queue_coalesce
+virtnet_get_rxfh_key_size
+virtnet_get_rxfh_indir_size
+virtnet_get_rxfh
+virtnet_set_rxfh
+virtnet_get_hashflow
+virtnet_set_hashflow
+virtnet_get_rx_ring_count
+
+# from drivers/net/virtio_net.c:5765 (netdev_stat_ops)
+virtnet_stat_ops
+virtnet_get_queue_stats_rx
+virtnet_get_queue_stats_tx
+virtnet_get_base_stats
+
+# from drivers/net/virtio_net.c:6274 (net_device_ops)
+virtnet_netdev
+virtnet_open
+virtnet_close
+start_xmit
+eth_validate_addr
+virtnet_set_mac_address
+virtnet_set_rx_mode
+virtnet_stats
+virtnet_vlan_rx_add_vid
+virtnet_vlan_rx_kill_vid
+virtnet_xdp
+virtnet_xdp_xmit
+virtnet_xsk_wakeup
+passthru_features_check
+virtnet_get_phys_port_name
+virtnet_set_features
+virtnet_tx_timeout
+
+# from drivers/net/virtio_net.c:6781 (xdp_metadata_ops)
+virtnet_xdp_metadata_ops
+virtnet_xdp_rx_hash
+
+# from drivers/net/virtio_net.c:7287 (virtio_driver)
+virtio_net_driver
+features
+features_legacy
+id_table
+virtnet_validate
+virtnet_probe
+virtnet_remove
+virtnet_config_changed
+virtnet_freeze
+virtnet_restore
+
+# from drivers/virtio/virtio.c:438 (bus_type)
+virtio_bus
+virtio_dev_match
+virtio_dev_groups
+virtio_uevent
+virtio_dev_probe
+virtio_dev_remove
+virtio_irq_get_affinity
+virtio_dev_shutdown
+
+# from drivers/virtio/virtio_mmio.c:522 (virtio_config_ops)
+virtio_mmio_config_ops
+vm_get
+vm_set
+vm_generation
+vm_get_status
+vm_set_status
+vm_reset
+vm_find_vqs
+vm_del_vqs
+vm_get_features
+vm_finalize_features
+vm_bus_name
+vm_get_shm_region
+vm_synchronize_cbs
+
+# from drivers/virtio/virtio_mmio.c:751 (kernel_param_ops)
+vm_cmdline_param_ops
+vm_cmdline_set
+vm_cmdline_get
+
+# from drivers/virtio/virtio_mmio.c:800 (platform_driver)
+virtio_mmio_driver
+virtio_mmio_probe
+virtio_mmio_remove
+virtio_mmio_match
+
+# from net/core/dev.c:8746 (netdev_notifier_changeupper_info)
+changeupper_info
+dev
+extack
+upper_dev
+master
+upper_info
+
+# from net/core/dev.c:10546 (bpf_link_ops)
+bpf_xdp_link_lops
+bpf_xdp_link_release
+bpf_xdp_link_dealloc
+bpf_xdp_link_detach
+bpf_xdp_link_show_fdinfo
+bpf_xdp_link_fill_link_info
+bpf_xdp_link_update
+
+# from net/core/dev.c:13086 (smp_hotplug_thread)
+backlog_threads
+backlog_napi_should_run
+run_backlog_napi
+backlog_napi_setup
+
+# from net/core/dst.c:271 (dst_ops)
+dst_blackhole_ops
+dst_blackhole_neigh_lookup
+dst_blackhole_check
+dst_blackhole_cow_metrics
+dst_blackhole_update_pmtu
+dst_blackhole_redirect
+dst_blackhole_mtu
+
+# from net/core/fib_notifier.c:185 (pernet_operations)
+fib_notifier_net_ops
+fib_notifier_net_init
+fib_notifier_net_exit
+
+# from net/core/filter.c:11115 (bpf_verifier_ops)
+sk_filter_verifier_ops
+sk_filter_func_proto
+sk_filter_is_valid_access
+bpf_convert_ctx_access
+bpf_gen_ld_abs
+
+# from net/core/filter.c:11122 (bpf_prog_ops)
+sk_filter_prog_ops
+bpf_prog_test_run_skb
+
+# from net/core/filter.c:11126 (bpf_verifier_ops)
+tc_cls_act_verifier_ops
+tc_cls_act_func_proto
+tc_cls_act_is_valid_access
+tc_cls_act_convert_ctx_access
+tc_cls_act_prologue
+bpf_gen_ld_abs
+tc_cls_act_btf_struct_access
+
+# from net/core/filter.c:11135 (bpf_prog_ops)
+tc_cls_act_prog_ops
+bpf_prog_test_run_skb
+
+# from net/core/filter.c:11139 (bpf_verifier_ops)
+xdp_verifier_ops
+xdp_func_proto
+xdp_is_valid_access
+xdp_convert_ctx_access
+bpf_noop_prologue
+xdp_btf_struct_access
+
+# from net/core/filter.c:11147 (bpf_prog_ops)
+xdp_prog_ops
+bpf_prog_test_run_xdp
+
+# from net/core/filter.c:11151 (bpf_verifier_ops)
+cg_skb_verifier_ops
+cg_skb_func_proto
+cg_skb_is_valid_access
+bpf_convert_ctx_access
+
+# from net/core/filter.c:11157 (bpf_prog_ops)
+cg_skb_prog_ops
+bpf_prog_test_run_skb
+
+# from net/core/filter.c:11161 (bpf_verifier_ops)
+lwt_in_verifier_ops
+lwt_in_func_proto
+lwt_is_valid_access
+bpf_convert_ctx_access
+
+# from net/core/filter.c:11167 (bpf_prog_ops)
+lwt_in_prog_ops
+bpf_prog_test_run_skb
+
+# from net/core/filter.c:11171 (bpf_verifier_ops)
+lwt_out_verifier_ops
+lwt_out_func_proto
+lwt_is_valid_access
+bpf_convert_ctx_access
+
+# from net/core/filter.c:11177 (bpf_prog_ops)
+lwt_out_prog_ops
+bpf_prog_test_run_skb
+
+# from net/core/filter.c:11181 (bpf_verifier_ops)
+lwt_xmit_verifier_ops
+lwt_xmit_func_proto
+lwt_is_valid_access
+bpf_convert_ctx_access
+tc_cls_act_prologue
+
+# from net/core/filter.c:11188 (bpf_prog_ops)
+lwt_xmit_prog_ops
+bpf_prog_test_run_skb
+
+# from net/core/filter.c:11192 (bpf_verifier_ops)
+lwt_seg6local_verifier_ops
+lwt_seg6local_func_proto
+lwt_is_valid_access
+bpf_convert_ctx_access
+
+# from net/core/filter.c:11201 (bpf_verifier_ops)
+cg_sock_verifier_ops
+sock_filter_func_proto
+sock_filter_is_valid_access
+bpf_sock_convert_ctx_access
+
+# from net/core/filter.c:11210 (bpf_verifier_ops)
+cg_sock_addr_verifier_ops
+sock_addr_func_proto
+sock_addr_is_valid_access
+sock_addr_convert_ctx_access
+
+# from net/core/filter.c:11219 (bpf_verifier_ops)
+sock_ops_verifier_ops
+sock_ops_func_proto
+sock_ops_is_valid_access
+sock_ops_convert_ctx_access
+
+# from net/core/filter.c:11228 (bpf_verifier_ops)
+sk_skb_verifier_ops
+sk_skb_func_proto
+sk_skb_is_valid_access
+sk_skb_convert_ctx_access
+sk_skb_prologue
+
+# from net/core/filter.c:11238 (bpf_verifier_ops)
+sk_msg_verifier_ops
+sk_msg_func_proto
+sk_msg_is_valid_access
+sk_msg_convert_ctx_access
+bpf_noop_prologue
+
+# from net/core/filter.c:11248 (bpf_verifier_ops)
+flow_dissector_verifier_ops
+flow_dissector_func_proto
+flow_dissector_is_valid_access
+flow_dissector_convert_ctx_access
+
+# from net/core/filter.c:11254 (bpf_prog_ops)
+flow_dissector_prog_ops
+bpf_prog_test_run_flow_dissector
+
+# from net/core/filter.c:11588 (bpf_verifier_ops)
+sk_reuseport_verifier_ops
+sk_reuseport_func_proto
+sk_reuseport_is_valid_access
+sk_reuseport_convert_ctx_access
+
+# from net/core/filter.c:11796 (bpf_prog_ops)
+sk_lookup_prog_ops
+bpf_prog_test_run_sk_lookup
+
+# from net/core/filter.c:11800 (bpf_verifier_ops)
+sk_lookup_verifier_ops
+sk_lookup_func_proto
+sk_lookup_is_valid_access
+sk_lookup_convert_ctx_access
+
+# from net/core/neighbour.c:3527 (seq_operations)
+neigh_stat_seq_ops
+neigh_stat_seq_start
+neigh_stat_seq_next
+neigh_stat_seq_stop
+neigh_stat_seq_show
+
+# from net/core/net-sysfs.c:953 (sysfs_ops)
+rx_queue_sysfs_ops
+rx_queue_attr_show
+rx_queue_attr_store
+
+# from net/core/net-sysfs.c:1204 (kobj_type)
+rx_queue_ktype
+rx_queue_release
+rx_queue_namespace
+rx_queue_get_ownership
+
+# from net/core/net-sysfs.c:1414 (sysfs_ops)
+netdev_queue_sysfs_ops
+netdev_queue_attr_show
+netdev_queue_attr_store
+
+# from net/core/net-sysfs.c:1954 (kobj_type)
+netdev_queue_ktype
+netdev_queue_release
+netdev_queue_namespace
+netdev_queue_get_ownership
+
+# from net/core/net-sysfs.c:2208 (kobj_ns_type_operations)
+net_ns_type_operations
+net_current_may_mount
+net_grab_current_ns
+net_netlink_ns
+net_initial_ns
+net_drop_ns
+
+# from net/core/net-sysfs.c:2270 (class)
+net_class
+netdev_release
+net_class_groups
+netdev_uevent
+net_namespace
+net_get_ownership
+
+# from net/core/net_namespace.c:1175 (net_fill_args)
+fillargs
+portid
+cmd
+id
+
+# from net/core/net_namespace.c:1544 (proc_ns_operations)
+netns_operations
+netns_get
+netns_put
+netns_install
+netns_owner
+
+# from net/core/rtnetlink.c:3801 (rtnl_newlink_params)
+params
+link_net
+peer_net
+tb
+data
+
+# from net/core/rtnetlink.c:6910 (netlink_dump_control)
+c
+dumpit
+min_dump_alloc
+owner
+flags
+
+# from net/core/rtnetlink.c:7048 (pernet_operations)
+rtnetlink_net_ops
+rtnetlink_net_init
+rtnetlink_net_exit
+
+# from net/core/skbuff.c:1841 (ubuf_info_ops)
+msg_zerocopy_ubuf_ops
+msg_zerocopy_complete
+
+# from net/core/skbuff.c:3191 (splice_pipe_desc)
+spd
+pages
+partial
+sock_spd_release
+
+# from net/core/sock.c:4007 (pernet_operations)
+net_inuse_ops
+sock_inuse_init_net
+sock_inuse_exit_net
+
+# from net/core/sock.c:4304 (seq_operations)
+proto_seq_ops
+proto_seq_start
+proto_seq_next
+proto_seq_stop
+proto_seq_show
+
+# from net/core/sock_diag.c:344 (pernet_operations)
+diag_net_ops
+diag_net_init
+diag_net_exit
+
+# from net/netlink/af_netlink.c:257 (pernet_operations)
+netlink_tap_net_ops
+netlink_tap_init_net
+
+# from net/netlink/af_netlink.c:2784 (seq_operations)
+netlink_seq_ops
+netlink_seq_start
+netlink_seq_next
+netlink_seq_stop
+netlink_seq_show
+
+# from net/netlink/af_netlink.c:2804 (proto_ops)
+netlink_ops
+netlink_release
+netlink_bind
+netlink_connect
+sock_no_socketpair
+sock_no_accept
+netlink_getname
+datagram_poll
+netlink_ioctl
+sock_no_listen
+sock_no_shutdown
+netlink_setsockopt
+netlink_getsockopt
+netlink_sendmsg
+netlink_recvmsg
+sock_no_mmap
+
+# from net/netlink/af_netlink.c:2824 (net_proto_family)
+netlink_family_ops
+netlink_create
+
+# from net/netlink/af_netlink.c:2881 (rhashtable_params)
+netlink_rhashtable_params
+netlink_compare_arg_len
+netlink_hash
+netlink_compare
+
+# from net/netlink/genetlink.c:1880 (netlink_kernel_cfg)
+cfg
+genl_rcv
+genl_bind
+genl_unbind
+genl_release
+
+# from net/netlink/genetlink.c:1906 (pernet_operations)
+genl_pernet_ops
+genl_pernet_init
+genl_pernet_exit
+
+# from net/sched/sch_mq.c:255 (Qdisc_class_ops)
+mq_class_ops
+mq_select_queue
+mq_graft
+mq_leaf
+mq_find
+mq_walk
+mq_dump_class
+mq_dump_class_stats
+
+# from net/socket.c:156 (file_operations)
+[entry_point][rank_min] socket_file_ops
+sock_read_iter
+sock_write_iter
+sock_poll
+sock_ioctl
+compat_sock_ioctl
+io_uring_cmd_sock
+sock_mmap
+sock_close
+sock_fasync
+splice_to_socket
+sock_splice_read
+sock_splice_eof
+sock_show_fdinfo
+
+# from net/socket.c:365 (super_operations)
+sockfs_ops
+sock_alloc_inode
+sock_free_inode
+simple_statfs
+
+# from net/socket.c:380 (dentry_operations)
+sockfs_dentry_operations
+sockfs_dname
+
+# from net/socket.c:619 (inode_operations)
+sockfs_inode_ops
+sockfs_listxattr
+sockfs_setattr
+
+# from SYSCALL_DEFINE in interface=networking
+[entry_point][rank_min] networking_syscall_helpers
+__do_sys_socket
+__se_sys_socket
+__do_sys_socketpair
+__se_sys_socketpair
+__do_sys_bind
+__se_sys_bind
+__do_sys_listen
+__se_sys_listen
+__do_sys_accept4
+__se_sys_accept4
+__do_sys_accept
+__se_sys_accept
+__do_sys_connect
+__se_sys_connect
+__do_sys_getsockname
+__se_sys_getsockname
+__do_sys_getpeername
+__se_sys_getpeername
+__do_sys_sendto
+__se_sys_sendto
+__do_sys_send
+__se_sys_send
+__do_sys_recvfrom
+__se_sys_recvfrom
+__do_sys_recv
+__se_sys_recv
+__do_sys_setsockopt
+__se_sys_setsockopt
+__do_sys_getsockopt
+__se_sys_getsockopt
+__do_sys_shutdown
+__se_sys_shutdown
+__do_sys_sendmsg
+__se_sys_sendmsg
+__do_sys_sendmmsg
+__se_sys_sendmmsg
+__do_sys_recvmsg
+__se_sys_recvmsg
+__do_sys_recvmmsg
+__se_sys_recvmmsg
+__do_sys_recvmmsg_time32
+__se_sys_recvmmsg_time32
+__do_sys_socketcall
+__se_sys_socketcall

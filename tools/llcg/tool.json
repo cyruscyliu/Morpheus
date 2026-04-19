@@ -1,0 +1,5 @@
+{
+  "name": "llcg",
+  "runtime": "exec",
+  "entry": "bin/llcg"
+}

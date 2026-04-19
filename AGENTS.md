@@ -25,6 +25,8 @@
 - Keep implementations small, testable, and easy to extend.
 - When adding a new CLI package or tool, update the relevant `pnpm` workspace,
   build, lint, test, and smoke commands as needed.
+- When adding a repo-local tool wrapper, declare it in `tools/<tool>/tool.json`
+  so `install:bin` can discover it automatically.
 
 ## `tools/` README Principles
 

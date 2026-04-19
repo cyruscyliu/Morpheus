@@ -2,7 +2,7 @@
   "name": "ns3l",
   "private": true,
   "version": "0.1.0",
-  "description": "Morpheus research platform for North Star Systems Security Lab (NS3L)",
+  "description": "Morpheus is a research platform from North Star Systems Security Lab (NS3L).",
   "packageManager": "pnpm@10.8.1",
   "scripts": {
     "build": "pnpm run build:packages && pnpm run build:apps && pnpm run build:tools",

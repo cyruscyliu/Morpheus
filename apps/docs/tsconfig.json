@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "types": ["node", "vite/client"],
     "lib": ["DOM", "ES2022"],
     "outDir": ".tsbuild",
     "rootDir": ".",

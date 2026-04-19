@@ -1,4 +1,5 @@
 import type { CatalogEntry, CatalogKind } from "../catalog.js";
+import { renderMarkdown } from "./markdown.js";
 
 export function filterCatalog(entries: CatalogEntry[], kind: CatalogKind | "all"): CatalogEntry[] {
   if (kind === "all") {
@@ -27,32 +28,45 @@ export function getSelectedEntry(entries: CatalogEntry[], hash: string): Catalog
 
 export function renderOverview(entries: CatalogEntry[]): string {
   const counts = countByKind(entries);
-  const cards: Array<[string, number]> = [
-    ["Catalog entries", entries.length],
-    ["Tools", counts.tool],
-    ["Workflows", counts.workflow],
+  return `${entries.length} entries · ${counts.tool} tools · ${counts.workflow} workflows`;
+}
+
+export function renderSectionNav(
+  entries: CatalogEntry[],
+  activeSection: CatalogKind | "all",
+): string {
+  const counts = countByKind(entries);
+  const items: Array<{ key: CatalogKind | "all"; label: string; count: number }> = [
+    { key: "all", label: "all", count: entries.length },
+    { key: "tool", label: "tools", count: counts.tool },
+    { key: "workflow", label: "workflows", count: counts.workflow },
   ];
-  return cards
-    .map(
-      ([label, value]) =>
-        `<article class="card"><span class="muted">${label}</span><strong>${value}</strong></article>`,
-    )
+
+  return items
+    .map((item) => {
+      const current = item.key === activeSection ? 'aria-current="true"' : "";
+      return `
+        <button class="nav-item" data-section="${item.key}" ${current}>
+          <span>${item.label}</span>
+          <span class="nav-count">${item.count}</span>
+        </button>
+      `;
+    })
     .join("");
 }
 
-export function renderTable(entries: CatalogEntry[], selectedName: string | null): string {
+export function renderList(entries: CatalogEntry[], selectedName: string | null): string {
   return entries
     .map((entry) => {
       const rowClass = entry.name === selectedName ? "is-selected" : "";
       return `
-        <tr data-entry-name="${entry.name}" class="${rowClass}">
-          <td>
-            <a class="repo-link" href="#entry=${encodeURIComponent(entry.name)}">${entry.name}</a>
-          </td>
-          <td>${entry.kind}</td>
-          <td>${entry.summary}</td>
-          <td><code>${entry.path}</code></td>
-        </tr>
+        <article data-entry-name="${entry.name}" class="entry-item ${rowClass}">
+          <a class="entry-link" href="#entry=${encodeURIComponent(entry.name)}">
+            <span class="entry-name">${entry.name}</span>
+            <span class="entry-summary">${entry.summary}</span>
+            <code class="entry-path">${entry.path}</code>
+          </a>
+        </article>
       `;
     })
     .join("");
@@ -63,31 +77,13 @@ export function renderDetail(entry: CatalogEntry | null): string {
     return `<p class="empty-state">No catalog entry is available.</p>`;
   }
 
-  const highlights = entry.highlights.map((item) => `<li>${item}</li>`).join("");
-  const commands = entry.commands.map((item) => `<li><code>${item}</code></li>`).join("");
-
   return `
-    <div class="detail-grid">
-      <div class="detail-block">
-        <h3>${entry.name}</h3>
-        <p>${entry.description}</p>
+    <article class="detail-block markdown-body">
+      <div class="readme-meta">
+        <span class="status-pill" data-tone="${entry.kind}">${entry.kind}</span>
+        <code>${entry.path}/README.md</code>
       </div>
-      <div class="detail-block">
-        <h3>Kind</h3>
-        <p><span class="status-pill" data-tone="${entry.kind}">${entry.kind}</span></p>
-      </div>
-      <div class="detail-block">
-        <h3>Path</h3>
-        <p><code>${entry.path}</code></p>
-      </div>
-    </div>
-    <div class="detail-block">
-      <h3>Highlights</h3>
-      <ul class="commit-list">${highlights}</ul>
-    </div>
-    <div class="detail-block">
-      <h3>Example commands</h3>
-      <ul class="commit-list">${commands}</ul>
-    </div>
+      ${renderMarkdown(entry.readme || `# ${entry.name}\n\nREADME unavailable.`)}
+    </article>
   `;
 }

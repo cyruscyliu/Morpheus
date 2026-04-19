@@ -1,36 +1,61 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { getCatalog } from "../src/catalog.js";
+import type { CatalogEntry } from "../src/catalog.js";
+import { createCatalogFromReadmes } from "../src/lib/catalog-discovery.js";
 import {
   countByKind,
   filterCatalog,
   getSelectedEntry,
   renderDetail,
+  renderList,
   renderOverview,
-  renderTable,
+  renderSectionNav,
 } from "../src/lib/catalog-view.js";
 
-const catalog = getCatalog();
+const catalog: CatalogEntry[] = [
+  ...createCatalogFromReadmes(
+    {
+      "../../../tools/llbase/README.md": "# llbase\n\nShared container runtime images for the LLVM Linux tooling family.",
+      "../../../tools/llbic/README.md": "# llbic\n\nCompile Linux kernels to LLVM bitcode and kernel images.",
+      "../../../tools/llcg/README.md": "# llcg\n\nGenerate Linux kernel callgraphs from LLVM bitcode inputs.",
+    },
+    "tool",
+  ),
+  ...createCatalogFromReadmes(
+    {
+      "../../../workflows/kernel-callgraph/README.md":
+        "# kernel-callgraph\n\nCompile a kernel to LLVM bitcode with llbic, then generate a scoped callgraph with llcg.",
+    },
+    "workflow",
+  ),
+];
 
 test("overview rendering uses catalog counts", () => {
-  const html = renderOverview(catalog);
-  assert.match(html, /Catalog entries/);
-  assert.match(html, />4</);
-  assert.match(html, /Workflows/);
+  const summary = renderOverview(catalog);
+  assert.match(summary, /4 entries/);
+  assert.match(summary, /3 tools/);
+  assert.match(summary, /1 workflows/);
 });
 
-test("table rendering includes paths and selection marker", () => {
-  const html = renderTable(catalog, "llbic");
+test("list rendering includes paths and selection marker", () => {
+  const html = renderList(catalog, "llbic");
   assert.match(html, /tools\/llbic/);
   assert.match(html, /is-selected/);
+});
+
+test("section nav renders counts and current state", () => {
+  const html = renderSectionNav(catalog, "tool");
+  assert.match(html, /tools/);
+  assert.match(html, /aria-current="true"/);
 });
 
 test("detail rendering includes highlights and commands", () => {
   const entry = catalog[1];
   const html = renderDetail(entry);
-  assert.match(html, /Kernel build automation/);
-  assert.match(html, /llbic build 6\.18\.16/);
+  assert.match(html, /<h1>llbic<\/h1>/);
+  assert.match(html, /Compile Linux kernels to LLVM bitcode and kernel images\./);
+  assert.match(html, /README\.md/);
 });
 
 test("filtering and counts reflect tools and workflows", () => {

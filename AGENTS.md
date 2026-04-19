@@ -23,6 +23,8 @@
 - Require explicit user intent for ambiguous or destructive actions.
 - Prefer persistent metadata for long-running or remote workflows.
 - Keep implementations small, testable, and easy to extend.
+- When adding a new CLI package or tool, update the relevant `pnpm` workspace,
+  build, lint, test, and smoke commands as needed.
 
 ## `tools/` README Principles
 

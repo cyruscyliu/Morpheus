@@ -5,6 +5,11 @@
   "description": "Morpheus is a research platform from North Star Systems Security Lab (NS3L).",
   "packageManager": "pnpm@10.8.1",
   "scripts": {
+    "setup": "pnpm install && pnpm build:tools",
+    "setup:llbase": "pnpm install && pnpm run build:tool:llbase",
+    "setup:llbic": "pnpm install && pnpm run build:tool:llbic",
+    "setup:llcg": "pnpm install && pnpm run build:tool:llcg",
+    "setup:buildroot": "pnpm install && pnpm --filter @morpheus/buildroot build",
     "build": "pnpm run build:packages && pnpm run build:apps && pnpm run build:tools",
     "build:packages": "pnpm --filter @morpheus/core build && pnpm --filter @morpheus/schemas build && pnpm --filter @morpheus/tool-registry build && pnpm --filter @morpheus/workflows build",
     "build:apps": "pnpm --filter @morpheus/cli build && pnpm --filter @morpheus/docs build",
@@ -14,6 +19,7 @@
     "build:tool:llcg": "cmake -S tools/llcg -B tools/llcg/build && cmake --build tools/llcg/build --parallel",
     "dev:docs": "pnpm --filter @morpheus/docs dev",
     "dev:cli": "pnpm --filter @morpheus/cli dev",
+    "smoke:tool:buildroot": "pnpm --filter @morpheus/buildroot smoke",
     "test": "pnpm --filter @morpheus/cli test && pnpm --filter @morpheus/docs test && pnpm --filter @morpheus/buildroot test",
     "lint": "pnpm --filter @morpheus/cli lint && pnpm --filter @morpheus/docs lint && pnpm --filter @morpheus/buildroot lint",
     "build:tool:buildroot": "pnpm --filter @morpheus/buildroot build"

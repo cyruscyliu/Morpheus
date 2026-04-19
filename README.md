@@ -2,7 +2,7 @@
 
 Morpheus is a research platform from North Star Systems Security Lab (NS3L).
 
-## Quick Start
+## Quick start
 
 Install dependencies:
 
@@ -16,7 +16,21 @@ Build the workspace:
 pnpm build
 ```
 
-Start the Morpheus docs app locally:
+Set up all tools:
+
+```bash
+pnpm setup
+```
+
+List available project scripts:
+
+```bash
+pnpm run
+```
+
+## Development
+
+Start the documentation site locally:
 
 ```bash
 pnpm dev:docs

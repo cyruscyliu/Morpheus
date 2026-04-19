@@ -4,7 +4,7 @@ The SSR OS effort depends on a mix of owned and reused public GitHub repositorie
 
 ## What Changes
 
-- Add `ossr`, a static dashboard for a user-provided list of public GitHub repositories.
+- Add `ns3l`, a static dashboard for a user-provided list of public GitHub repositories.
 - Fetch repository metadata, recent commit activity, and fork relationships from GitHub and publish derived snapshot data for the dashboard.
 - Compute automated status indicators from repository activity and fork drift without requiring manual annotations.
 - Present an overview page, a sortable repository list, and per-repository detail views suitable for GitHub Pages hosting.

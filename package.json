@@ -1,14 +1,21 @@
 {
-  "name": "ossr",
+  "name": "ns3l",
   "private": true,
   "version": "0.1.0",
-  "description": "OSSR monorepo for composable tools and workflows",
+  "description": "Morpheus research platform for North Star Systems Security Lab (NS3L)",
   "packageManager": "pnpm@10.8.1",
   "scripts": {
-    "build": "pnpm --filter @ossr/cli build && pnpm --filter @ossr/web test",
-    "dev": "pnpm --filter @ossr/cli dev",
-    "test": "pnpm --filter @ossr/cli test && pnpm --filter @ossr/web test",
-    "lint": "pnpm --filter @ossr/cli lint"
+    "build": "pnpm run build:packages && pnpm run build:apps && pnpm run build:tools",
+    "build:packages": "pnpm --filter @morpheus/core build && pnpm --filter @morpheus/schemas build && pnpm --filter @morpheus/tool-registry build && pnpm --filter @morpheus/workflows build",
+    "build:apps": "pnpm --filter @morpheus/cli build && pnpm --filter @morpheus/docs build",
+    "build:tools": "pnpm run build:tool:llbase && pnpm run build:tool:llbic && pnpm run build:tool:llcg",
+    "build:tool:llbase": "docker compose -f tools/llbase/docker-compose.yml build llbase llbase-mid llbase-legacy",
+    "build:tool:llbic": "make -C tools/llbic/IRDumper dumper",
+    "build:tool:llcg": "cmake -S tools/llcg -B tools/llcg/build && cmake --build tools/llcg/build --parallel",
+    "dev:docs": "pnpm --filter @morpheus/docs dev",
+    "dev:cli": "pnpm --filter @morpheus/cli dev",
+    "test": "pnpm --filter @morpheus/cli test && pnpm --filter @morpheus/docs test",
+    "lint": "pnpm --filter @morpheus/cli lint && pnpm --filter @morpheus/docs lint"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Morpheus</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">North Star Systems Security Lab</p>
+          <h1>Morpheus</h1>
+          <p class="subhead">
+            A research platform for low-level systems security, centered on reusable
+            tools, reproducible workflows, and training-ready artifacts.
+          </p>
+        </div>
+        <div class="hero-meta">
+          <span class="meta-label">Focus</span>
+          <strong>Kernel tooling, bitcode, and callgraphs</strong>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel">
+          <div class="panel-header panel-header-inline">
+            <div>
+              <h2>Catalog</h2>
+              <p class="subhead">Morpheus now presents the tools and workflows in this repository, not tracked GitHub repositories.</p>
+            </div>
+            <div class="toolbar">
+              <label>
+                Kind
+                <select id="kind-filter">
+                  <option value="all">All</option>
+                  <option value="tool">Tools</option>
+                  <option value="workflow">Workflows</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div id="catalog-overview" class="cards"></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Kind</th>
+                  <th>Summary</th>
+                  <th>Path</th>
+                </tr>
+              </thead>
+              <tbody id="catalog-table-body"></tbody>
+            </table>
+          </div>
+          <p id="empty-state" class="empty-state" hidden>No catalog entries match the current filter.</p>
+        </section>
+
+        <section class="panel detail-panel">
+          <div class="panel-header">
+            <h2>Entry Detail</h2>
+          </div>
+          <div id="catalog-detail" class="detail-card">
+            <p class="empty-state">Select a tool or workflow to inspect its role in Morpheus.</p>
+          </div>
+        </section>
+
+      </main>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

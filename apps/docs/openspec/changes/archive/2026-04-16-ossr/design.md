@@ -1,6 +1,6 @@
 ## Context
 
-`ossr` is a public-only tracker for a user-provided list of GitHub repositories. The dashboard will be hosted on GitHub Pages, so the implementation needs to avoid server-side state and client-side authentication. The tracker must stay repo-centric and automated: it should derive repository status from GitHub data rather than from manually maintained metadata.
+`ns3l` is a public-only tracker for a user-provided list of GitHub repositories. The dashboard will be hosted on GitHub Pages, so the implementation needs to avoid server-side state and client-side authentication. The tracker must stay repo-centric and automated: it should derive repository status from GitHub data rather than from manually maintained metadata.
 
 ## Goals / Non-Goals
 

@@ -1,0 +1,15 @@
+{
+  "name": "@morpheus/docs",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite --host 127.0.0.1 --port 4173",
+    "lint": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "test": "pnpm exec tsc -p tsconfig.json && node --test .tsbuild/tests/test_app.js"
+  },
+  "devDependencies": {
+    "vite": "^7.1.3"
+  }
+}

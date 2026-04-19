@@ -1,4 +1,4 @@
-import type { CatalogEntry } from "@ossr/core";
+import type { CatalogEntry } from "@morpheus/core";
 
 export const workflowCatalog: CatalogEntry[] = [
   {

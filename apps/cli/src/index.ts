@@ -1,5 +1,5 @@
-import { toolCatalog } from "@ossr/tool-registry";
-import { workflowCatalog } from "@ossr/workflows";
+import { toolCatalog } from "@morpheus/tool-registry";
+import { workflowCatalog } from "@morpheus/workflows";
 
 function printList(kind: "tool" | "workflow") {
   const items = kind === "tool" ? toolCatalog : workflowCatalog;
@@ -11,8 +11,8 @@ function printList(kind: "tool" | "workflow") {
 const [, , category, command] = process.argv;
 
 if (!category || category === "help" || category === "--help") {
-  console.log("ossr tool list");
-  console.log("ossr workflow list");
+  console.log("morpheus tool list");
+  console.log("morpheus workflow list");
   process.exit(0);
 }
 

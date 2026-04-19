@@ -1,7 +1,7 @@
 # github-repo-tracking Specification
 
 ## Purpose
-TBD - created by archiving change ossr. Update Purpose after archive.
+TBD - created by archiving change ns3l. Update Purpose after archive.
 ## Requirements
 ### Requirement: Track configured public GitHub repositories
 The system SHALL read a configured list of GitHub repositories identified as `owner/repo` and include each valid public repository in the generated tracking dataset.
@@ -65,4 +65,3 @@ The system SHALL render the tracker as a static site using generated snapshot da
 #### Scenario: Show snapshot freshness
 - **WHEN** a user opens the dashboard
 - **THEN** the site displays the timestamp of the most recently generated snapshot
-

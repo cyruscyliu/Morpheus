@@ -3,13 +3,14 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
-apps/web/dist/
-apps/web/generated/
+apps/docs/dist/
+apps/docs/.tsbuild/
 __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
 venv/
+.DS_Store
 
 # Imported tool outputs
 tools/llcg/build/

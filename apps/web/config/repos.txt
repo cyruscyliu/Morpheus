@@ -1,7 +1,0 @@
-# Add one public GitHub repository per line as owner/repo.
-# Blank lines and comments are ignored.
-cyruscyliu/CLI-Anything-OSSR
-cyruscyliu/llbic
-cyruscyliu/llbase
-cyruscyliu/llcg
-

@@ -1,10 +1,10 @@
 {
-  "name": "@ossr/cli",
+  "name": "@morpheus/cli",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "ossr": "dist/index.js"
+    "morpheus": "dist/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -13,9 +13,9 @@
     "test": "node --test dist/index.test.js"
   },
   "dependencies": {
-    "@ossr/core": "workspace:*",
-    "@ossr/tool-registry": "workspace:*",
-    "@ossr/workflows": "workspace:*"
+    "@morpheus/core": "workspace:*",
+    "@morpheus/tool-registry": "workspace:*",
+    "@morpheus/workflows": "workspace:*"
   },
   "devDependencies": {
     "ts-node": "^10.9.2"

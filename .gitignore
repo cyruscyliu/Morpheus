@@ -18,6 +18,7 @@ tools/llcg/out/
 tools/llbic/out/
 tools/llbic/sources/
 tools/llbic/status/
+tools/buildroot/.tmp-smoke-out/
 
 # Generic local artifacts
 tmp/

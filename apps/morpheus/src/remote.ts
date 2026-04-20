@@ -3,15 +3,26 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
+const {
+  registerManagedRun,
+  readManagedRun,
+  removeManagedRun,
+  listManagedRuns
+} = require("./managed-state");
+const { applyConfigDefaults } = require("./config");
 
-function parseRemoteArgs(argv) {
-  const positionals = [];
+const BUILDROOT_TOOL = "buildroot";
+const MANAGED_TOOL_ADAPTERS = {
+  [BUILDROOT_TOOL]: {
+    name: BUILDROOT_TOOL,
+    modes: ["local", "remote"]
+  }
+};
+
+function parseRunArgs(argv) {
   const flags = {};
-  const repeatable = {
-    env: [],
-    "make-arg": [],
-    path: []
-  };
+  const repeatable = { env: [], "make-arg": [], path: [] };
+  const booleanFlags = new Set(["json", "detach", "follow", "verbose"]);
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -19,9 +30,7 @@ function parseRemoteArgs(argv) {
       flags.forwarded = argv.slice(index + 1);
       break;
     }
-
     if (!token.startsWith("--")) {
-      positionals.push(token);
       continue;
     }
 
@@ -36,7 +45,7 @@ function parseRemoteArgs(argv) {
       continue;
     }
 
-    if (next && !next.startsWith("--")) {
+    if (!booleanFlags.has(key) && next && !next.startsWith("--")) {
       flags[key] = next;
       index += 1;
     } else {
@@ -45,24 +54,24 @@ function parseRemoteArgs(argv) {
   }
 
   return {
-    positionals,
-    flags: {
-      ...flags,
-      env: repeatable.env,
-      makeArg: repeatable["make-arg"],
-      paths: repeatable.path,
-      forwarded: flags.forwarded || []
-    }
+    ...flags,
+    env: repeatable.env,
+    makeArg: repeatable["make-arg"],
+    paths: repeatable.path,
+    forwarded: flags.forwarded || []
   };
 }
 
-function remoteUsage() {
+function managedRunUsage() {
   return [
     "Usage:",
-    "  node apps/morpheus/dist/cli.js remote run --tool buildroot --ssh TARGET --workspace DIR --buildroot-version VER [--defconfig NAME] [--detach] [--json]",
-    "  node apps/morpheus/dist/cli.js remote inspect --ssh TARGET --workspace DIR --id RUN_ID [--json]",
-    "  node apps/morpheus/dist/cli.js remote logs --ssh TARGET --workspace DIR --id RUN_ID [--follow] [--json]",
-    "  node apps/morpheus/dist/cli.js remote fetch --ssh TARGET --workspace DIR --id RUN_ID --dest DIR --path REMOTE_PATH [--path REMOTE_GLOB ...] [--json]"
+    "  node apps/morpheus/dist/cli.js run --tool buildroot --mode local --workspace DIR (--source DIR | --buildroot-version VER) [--defconfig NAME] [--json]",
+    "  node apps/morpheus/dist/cli.js run --tool buildroot --mode remote --ssh TARGET --workspace DIR (--source DIR | --buildroot-version VER) [--defconfig NAME] [--detach] [--json]",
+    "  node apps/morpheus/dist/cli.js inspect --id RUN_ID [--json]",
+    "  node apps/morpheus/dist/cli.js logs --id RUN_ID [--follow] [--json]",
+    "  node apps/morpheus/dist/cli.js fetch --id RUN_ID --dest DIR --path RUN_PATH [--path RUN_GLOB ...] [--json]",
+    "  node apps/morpheus/dist/cli.js list [--workspace DIR] [--ssh TARGET] [--json]",
+    "  node apps/morpheus/dist/cli.js remove --id RUN_ID [--json]"
   ].join("\n");
 }
 
@@ -84,7 +93,6 @@ function parseSshTarget(input) {
   if (!match || !match.groups || !match.groups.host) {
     throw new Error(`invalid SSH target: ${input}`);
   }
-
   return {
     original: input,
     user: match.groups.user,
@@ -127,16 +135,40 @@ function generateRunId(tool) {
   return `${tool}-${stamp}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
 function buildrootTarballUrl(version) {
   return `https://buildroot.org/downloads/buildroot-${version}.tar.gz`;
 }
 
-function toolWorkspace(workspace, tool) {
+function localWorkspaceRoot(workspace) {
+  return path.resolve(process.cwd(), workspace);
+}
+
+function localToolWorkspace(workspace, tool) {
+  return path.join(localWorkspaceRoot(workspace), "tools", tool);
+}
+
+function localRunDir(workspace, tool, id) {
+  return path.join(localToolWorkspace(workspace, tool), "runs", id);
+}
+
+function localManifestPath(workspace, tool, id) {
+  return path.join(localRunDir(workspace, tool, id), "manifest.json");
+}
+
+function localLogPath(workspace, tool, id) {
+  return path.join(localRunDir(workspace, tool, id), "stdout.log");
+}
+
+function remoteToolWorkspace(workspace, tool) {
   return path.posix.join(workspace, "tools", tool);
 }
 
 function remoteRunDir(workspace, tool, id) {
-  return path.posix.join(toolWorkspace(workspace, tool), "runs", id);
+  return path.posix.join(remoteToolWorkspace(workspace, tool), "runs", id);
 }
 
 function remoteManifestPath(workspace, tool, id) {
@@ -152,19 +184,24 @@ function runSsh(target, script, streamOutput) {
     encoding: "utf8",
     stdio: streamOutput ? ["ignore", "inherit", "pipe"] : ["ignore", "pipe", "pipe"]
   });
-  return {
-    stdout: result.stdout || "",
-    stderr: result.stderr || "",
-    exitCode: result.status == null ? 1 : result.status,
-    error: result.error || null
-  };
+  return normalizeSpawnResult(result);
+}
+
+function runCommand(command, args, options) {
+  const result = spawnSync(command, args, {
+    encoding: "utf8",
+    cwd: options && options.cwd,
+    env: options && options.env,
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  return normalizeSpawnResult(result);
 }
 
 function runShell(command) {
-  const result = spawnSync("bash", ["-lc", command], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"]
-  });
+  return runCommand("bash", ["-lc", command]);
+}
+
+function normalizeSpawnResult(result) {
   return {
     stdout: result.stdout || "",
     stderr: result.stderr || "",
@@ -181,61 +218,319 @@ function emitText(value) {
   process.stdout.write(`${value}\n`);
 }
 
-function buildrootRemoteScript(options, id) {
-  const toolRoot = toolWorkspace(options.workspace, "buildroot");
-  const cacheDir = path.posix.join(toolRoot, "cache");
-  const srcRoot = path.posix.join(toolRoot, "src");
-  const runDir = remoteRunDir(options.workspace, "buildroot", id);
-  const tarball = path.posix.join(cacheDir, `buildroot-${options.buildrootVersion}.tar.gz`);
-  const sourceDir = path.posix.join(srcRoot, `buildroot-${options.buildrootVersion}`);
-  const outputDir = path.posix.join(runDir, "output");
-  const manifest = remoteManifestPath(options.workspace, "buildroot", id);
-  const logFile = remoteLogPath(options.workspace, "buildroot", id);
-  const defconfigCommand = options.defconfig
-    ? `make O=${shellQuote(outputDir)} ${options.defconfig}`
-    : ":";
-  const envPrefix = Object.entries(options.env)
-    .map(([key, value]) => `${key}=${shellQuote(value)}`)
-    .join(" ");
-  const makeCommand = [
-    envPrefix,
-    "make",
-    `O=${shellQuote(outputDir)}`,
-    ...options.makeArgs.map(shellQuote),
-    ...options.forwarded.map(shellQuote)
-  ].filter(Boolean).join(" ");
-  const manifestJson = JSON.stringify({
+function writeJson(filePath, value) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function readJson(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+}
+
+function appendLog(logFile, result) {
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
+  fs.appendFileSync(logFile, result.stdout || "", "utf8");
+  fs.appendFileSync(logFile, result.stderr || "", "utf8");
+}
+
+function requireFlag(flags, name, message) {
+  if (!flags[name]) {
+    throw new Error(message || `missing required flag: --${name}`);
+  }
+  return flags[name];
+}
+
+function resolveManagedTool(tool) {
+  const adapter = MANAGED_TOOL_ADAPTERS[tool];
+  if (!adapter) {
+    throw new Error(`unsupported tool: ${tool}`);
+  }
+  return adapter;
+}
+
+function requireManagedTool(flags, command) {
+  const tool = requireFlag(flags, "tool", `${command} requires --tool buildroot`);
+  return resolveManagedTool(tool);
+}
+
+function ensureLocalBuildrootSource(options) {
+  if (options.source) {
+    return path.resolve(process.cwd(), options.source);
+  }
+
+  const version = requireFlag(
+    options,
+    "buildrootVersion",
+    "run requires --buildroot-version VER when --source is not provided"
+  );
+  const toolRoot = localToolWorkspace(options.workspace, BUILDROOT_TOOL);
+  const cacheDir = path.join(toolRoot, "cache");
+  const srcRoot = path.join(toolRoot, "src");
+  const tarball = path.join(cacheDir, `buildroot-${version}.tar.gz`);
+  const sourceDir = path.join(srcRoot, `buildroot-${version}`);
+
+  fs.mkdirSync(cacheDir, { recursive: true });
+  fs.mkdirSync(srcRoot, { recursive: true });
+
+  if (!fs.existsSync(tarball)) {
+    const download = runCommand("curl", ["-fsSL", buildrootTarballUrl(version), "-o", tarball]);
+    if (download.exitCode !== 0) {
+      throw new Error(download.stderr || `failed to download Buildroot ${version}`);
+    }
+  }
+
+  if (!fs.existsSync(sourceDir)) {
+    const extract = runCommand("tar", ["-xzf", tarball, "-C", srcRoot]);
+    if (extract.exitCode !== 0) {
+      throw new Error(extract.stderr || `failed to extract Buildroot ${version}`);
+    }
+  }
+
+  return sourceDir;
+}
+
+function parseBuildrootRunOptions(flags) {
+  const adapter = requireManagedTool(flags, "run");
+  const mode = requireFlag(flags, "mode", "run requires --mode local|remote");
+  if (!adapter.modes.includes(mode)) {
+    throw new Error(`unsupported run mode: ${mode}`);
+  }
+
+  const options = {
+    tool: adapter.name,
+    mode,
+    workspace: requireFlag(flags, "workspace", "run requires --workspace DIR"),
+    buildrootVersion: flags["buildroot-version"] || null,
+    source: flags.source || null,
+    defconfig: flags.defconfig || null,
+    makeArgs: flags.makeArg || [],
+    env: parseKeyValues(flags.env || []),
+    forwarded: flags.forwarded || [],
+    detach: Boolean(flags.detach),
+    json: Boolean(flags.json)
+  };
+
+  if (mode === "remote") {
+    options.ssh = parseSshTarget(requireFlag(flags, "ssh", "remote mode requires --ssh TARGET"));
+    if (!options.buildrootVersion && !options.source) {
+      throw new Error("remote mode requires --source DIR or --buildroot-version VER");
+    }
+  }
+
+  if (mode === "local" && !options.source && !options.buildrootVersion) {
+    throw new Error("local mode requires --source DIR or --buildroot-version VER");
+  }
+
+  return options;
+}
+
+function parseExistingRunOptions(flags, command) {
+  const tool = flags.tool || BUILDROOT_TOOL;
+  resolveManagedTool(tool);
+  const id = requireFlag(flags, "id", `${command} requires --id RUN_ID`);
+  const record = readManagedRun(id);
+  const ssh = flags.ssh ? parseSshTarget(flags.ssh) : null;
+  return {
+    workspace: flags.workspace || (record ? record.workspace : null),
     id,
-    tool: "buildroot",
-    mode: "remote",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    status: options.detach ? "submitted" : "running",
-    command: "remote run",
-    workspace: options.workspace,
+    tool,
+    ssh: ssh || (record && record.ssh ? parseSshTarget(record.ssh) : null),
+    json: Boolean(flags.json),
+    follow: Boolean(flags.follow),
+    record
+  };
+}
+
+function buildCanonicalManifest(base) {
+  return {
+    schemaVersion: 1,
+    id: base.id,
+    tool: base.tool,
+    mode: base.mode,
+    command: "run",
+    status: base.status,
+    createdAt: base.createdAt,
+    updatedAt: base.updatedAt,
+    workspace: base.workspace,
+    buildrootVersion: base.buildrootVersion || null,
+    source: base.source || null,
+    defconfig: base.defconfig || null,
+    makeArgs: base.makeArgs || [],
+    env: base.env || {},
+    forwarded: base.forwarded || [],
+    runDir: base.runDir,
+    outputDir: base.outputDir,
+    logFile: base.logFile,
+    manifest: base.manifest,
+    transport: base.transport || null,
+    exitCode: base.exitCode,
+    errorMessage: base.errorMessage
+  };
+}
+
+function registerRunFromManifest(manifest, ssh) {
+  return registerManagedRun({
+    id: manifest.id,
+    tool: manifest.tool,
+    mode: manifest.mode,
+    workspace: manifest.mode === "local"
+      ? path.resolve(process.cwd(), manifest.workspace)
+      : manifest.workspace,
+    ssh: ssh ? ssh.original : null,
+    status: manifest.status,
+    createdAt: manifest.createdAt,
+    updatedAt: manifest.updatedAt,
+    manifest: manifest.manifest,
+    logFile: manifest.logFile,
+    runDir: manifest.runDir,
+    outputDir: manifest.outputDir
+  });
+}
+
+function normalizeWorkspaceFilter(record, workspace) {
+  if (!workspace) {
+    return true;
+  }
+  if (record.mode === "local") {
+    return path.resolve(process.cwd(), record.workspace) === path.resolve(process.cwd(), workspace);
+  }
+  return record.workspace === workspace;
+}
+
+function runLocalBuildroot(options) {
+  const id = generateRunId(BUILDROOT_TOOL);
+  const runDir = localRunDir(options.workspace, BUILDROOT_TOOL, id);
+  const outputDir = path.join(runDir, "output");
+  const manifest = localManifestPath(options.workspace, BUILDROOT_TOOL, id);
+  const logFile = localLogPath(options.workspace, BUILDROOT_TOOL, id);
+  const createdAt = nowIso();
+  const source = ensureLocalBuildrootSource(options);
+  fs.mkdirSync(outputDir, { recursive: true });
+  fs.writeFileSync(logFile, "", "utf8");
+
+  const base = {
+    id,
+    tool: BUILDROOT_TOOL,
+    mode: "local",
+    status: "running",
+    createdAt,
+    updatedAt: createdAt,
+    workspace: path.relative(process.cwd(), localWorkspaceRoot(options.workspace)) || ".",
     buildrootVersion: options.buildrootVersion,
-    defconfig: options.defconfig || null,
-    ssh: options.ssh,
+    source,
+    defconfig: options.defconfig,
     makeArgs: options.makeArgs,
     env: options.env,
     forwarded: options.forwarded,
     runDir,
     outputDir,
-    logFile
-  }, null, 2);
+    logFile,
+    manifest,
+    transport: { type: "local" }
+  };
+  writeJson(manifest, buildCanonicalManifest(base));
+
+  let exitCode = 0;
+  let errorMessage;
+  const env = { ...process.env, ...options.env };
+
+  if (options.defconfig) {
+    const defconfig = runCommand("make", ["-C", source, `O=${outputDir}`, options.defconfig], { env });
+    appendLog(logFile, defconfig);
+    if (!options.json) {
+      process.stdout.write(defconfig.stdout);
+      process.stderr.write(defconfig.stderr);
+    }
+    if (defconfig.exitCode !== 0) {
+      exitCode = defconfig.exitCode;
+      errorMessage = defconfig.stderr || defconfig.stdout || "Buildroot defconfig failed";
+    }
+  }
+
+  if (exitCode === 0) {
+    const build = runCommand("make", ["-C", source, `O=${outputDir}`, ...options.makeArgs, ...options.forwarded], { env });
+    appendLog(logFile, build);
+    if (!options.json) {
+      process.stdout.write(build.stdout);
+      process.stderr.write(build.stderr);
+    }
+    exitCode = build.exitCode;
+    if (build.exitCode !== 0) {
+      errorMessage = build.stderr || build.stdout || "local Buildroot run failed";
+    }
+  }
+
+  const finalManifest = buildCanonicalManifest({
+    ...base,
+    status: exitCode === 0 ? "success" : "error",
+    updatedAt: nowIso(),
+    exitCode,
+    errorMessage
+  });
+  writeJson(manifest, finalManifest);
+  registerRunFromManifest(finalManifest, null);
+
+  return {
+    command: "run",
+    status: finalManifest.status,
+    exit_code: exitCode,
+    summary: exitCode === 0 ? "completed managed Buildroot run" : "managed Buildroot run failed",
+    details: { id, tool: BUILDROOT_TOOL, mode: "local", workspace: options.workspace, run_dir: runDir, manifest, log_file: logFile, output_dir: outputDir },
+    error: exitCode === 0 ? undefined : { code: "managed_run_failed", message: errorMessage || "managed run failed" }
+  };
+}
+
+function buildrootRemoteScript(options, id) {
+  const toolRoot = remoteToolWorkspace(options.workspace, BUILDROOT_TOOL);
+  const cacheDir = path.posix.join(toolRoot, "cache");
+  const srcRoot = path.posix.join(toolRoot, "src");
+  const runDir = remoteRunDir(options.workspace, BUILDROOT_TOOL, id);
+  const tarball = options.buildrootVersion
+    ? path.posix.join(cacheDir, `buildroot-${options.buildrootVersion}.tar.gz`)
+    : null;
+  const sourceDir = options.source
+    ? path.posix.join(srcRoot, `${id}-source`)
+    : path.posix.join(srcRoot, `buildroot-${options.buildrootVersion}`);
+  const outputDir = path.posix.join(runDir, "output");
+  const manifest = remoteManifestPath(options.workspace, BUILDROOT_TOOL, id);
+  const logFile = remoteLogPath(options.workspace, BUILDROOT_TOOL, id);
+  const createdAt = nowIso();
+  const defconfigCommand = options.defconfig ? `make O=${shellQuote(outputDir)} ${options.defconfig}` : ":";
+  const envPrefix = Object.entries(options.env).map(([key, value]) => `${key}=${shellQuote(value)}`).join(" ");
+  const makeCommand = [envPrefix, "make", `O=${shellQuote(outputDir)}`, ...options.makeArgs.map(shellQuote), ...options.forwarded.map(shellQuote)].filter(Boolean).join(" ");
+  const initialManifest = buildCanonicalManifest({
+    id,
+    tool: BUILDROOT_TOOL,
+    mode: "remote",
+    status: options.detach ? "submitted" : "running",
+    createdAt,
+    updatedAt: createdAt,
+    workspace: options.workspace,
+    buildrootVersion: options.buildrootVersion,
+    source: sourceDir,
+    defconfig: options.defconfig,
+    makeArgs: options.makeArgs,
+    env: options.env,
+    forwarded: options.forwarded,
+    runDir,
+    outputDir,
+    logFile,
+    manifest,
+    transport: { type: "ssh", target: options.ssh }
+  });
 
   return `
 set -euo pipefail
 mkdir -p ${shellQuote(cacheDir)} ${shellQuote(srcRoot)} ${shellQuote(runDir)} ${shellQuote(outputDir)}
 : > ${shellQuote(logFile)}
-if [ ! -f ${shellQuote(tarball)} ]; then
+${options.source ? ":" : `if [ ! -f ${shellQuote(tarball)} ]; then
   curl -fsSL ${shellQuote(buildrootTarballUrl(options.buildrootVersion))} -o ${shellQuote(tarball)}
 fi
 if [ ! -d ${shellQuote(sourceDir)} ]; then
   tar -xzf ${shellQuote(tarball)} -C ${shellQuote(srcRoot)}
-fi
+fi`}
 cat > ${shellQuote(manifest)} <<'JSON'
-${manifestJson}
+${JSON.stringify(initialManifest, null, 2)}
 JSON
 cd ${shellQuote(sourceDir)}
 set +e
@@ -266,169 +561,231 @@ exit "\${exit_code}"
 `;
 }
 
-function requireFlag(flags, name, message) {
-  if (!flags[name]) {
-    throw new Error(message || `missing required flag: --${name}`);
+function runRemoteBuildroot(options) {
+  const id = generateRunId(BUILDROOT_TOOL);
+  const remoteSourceDir = options.source
+    ? path.posix.join(remoteToolWorkspace(options.workspace, BUILDROOT_TOOL), "src", `${id}-source`)
+    : null;
+  if (options.source) {
+    const sourceRoot = path.resolve(process.cwd(), options.source);
+    const parent = path.dirname(sourceRoot);
+    const base = path.basename(sourceRoot);
+    const destinationParent = path.posix.dirname(remoteSourceDir);
+    const pipeline = `tar -C ${shellQuote(parent)} -cf - ${shellQuote(base)} | ssh ${sshArgs(options.ssh).map(shellQuote).join(" ")} bash -lc ${shellQuote(`mkdir -p ${shellQuote(destinationParent)} && tar -xf - -C ${shellQuote(destinationParent)} && mv ${shellQuote(path.posix.join(destinationParent, base))} ${shellQuote(remoteSourceDir)}`)}`;
+    runRequiredShell(pipeline, "failed to sync remote Buildroot source");
   }
-  return flags[name];
-}
-
-function parseBuildrootRunOptions(flags) {
-  const tool = requireFlag(flags, "tool", "remote run requires --tool buildroot");
-  if (tool !== "buildroot") {
-    throw new Error(`unsupported remote tool: ${tool}`);
-  }
-  return {
-    tool,
-    ssh: parseSshTarget(requireFlag(flags, "ssh", "remote run requires --ssh TARGET")),
-    workspace: requireFlag(flags, "workspace", "remote run requires --workspace DIR"),
-    buildrootVersion: requireFlag(flags, "buildroot-version", "remote run requires --buildroot-version VER"),
-    defconfig: flags.defconfig || null,
-    makeArgs: flags.makeArg || [],
-    env: parseKeyValues(flags.env || []),
-    forwarded: flags.forwarded || [],
-    detach: Boolean(flags.detach)
+  const runOptions = {
+    ...options,
+    source: remoteSourceDir || options.source
   };
-}
-
-function parseExistingRunOptions(flags, command) {
-  return {
-    ssh: parseSshTarget(requireFlag(flags, "ssh", `remote ${command} requires --ssh TARGET`)),
-    workspace: requireFlag(flags, "workspace", `remote ${command} requires --workspace DIR`),
-    id: requireFlag(flags, "id", `remote ${command} requires --id RUN_ID`),
-    tool: flags.tool || "buildroot"
-  };
-}
-
-function runRemoteRun(flags) {
-  const options = parseBuildrootRunOptions(flags);
-  const id = generateRunId("buildroot");
-  const script = buildrootRemoteScript(options, id);
-  const manifest = remoteManifestPath(options.workspace, "buildroot", id);
-  const runDir = remoteRunDir(options.workspace, "buildroot", id);
-  const logFile = remoteLogPath(options.workspace, "buildroot", id);
+  const script = buildrootRemoteScript(runOptions, id);
+  const manifest = remoteManifestPath(options.workspace, BUILDROOT_TOOL, id);
+  const runDir = remoteRunDir(options.workspace, BUILDROOT_TOOL, id);
+  const logFile = remoteLogPath(options.workspace, BUILDROOT_TOOL, id);
 
   if (options.detach) {
     const detachedScript = `nohup bash -lc ${shellQuote(script)} > /dev/null 2>&1 < /dev/null & echo $!`;
     const result = runSsh(options.ssh, detachedScript, false);
     if (result.exitCode !== 0) {
-      throw new Error(result.stderr || "failed to submit remote run");
+      throw new Error(result.stderr || "failed to submit managed remote run");
     }
-    const pid = Number.parseInt(result.stdout.trim(), 10);
     return {
-      command: "remote run",
+      command: "run",
       status: "submitted",
       exit_code: 0,
-      summary: "submitted remote Buildroot run",
-      details: { id, tool: "buildroot", workspace: options.workspace, run_dir: runDir, manifest, log_file: logFile, pid }
+      summary: "submitted managed remote Buildroot run",
+      details: { id, tool: BUILDROOT_TOOL, mode: "remote", workspace: options.workspace, run_dir: runDir, manifest, log_file: logFile, pid: Number.parseInt(result.stdout.trim(), 10) }
     };
   }
 
-  const result = runSsh(options.ssh, script, !flags.json);
-  if (flags.json) {
+  const result = runSsh(options.ssh, script, !options.json);
+  if (options.json) {
     for (const line of result.stdout.split(/\r?\n/)) {
       if (line) {
-        emitJson({
-          command: "remote run",
-          status: "stream",
-          exit_code: 0,
-          details: { event: "log", id, line }
-        });
+        emitJson({ command: "run", status: "stream", exit_code: 0, details: { event: "log", id, mode: "remote", line } });
       }
     }
   }
-  return {
-    command: "remote run",
+  const payload = {
+    command: "run",
     status: result.exitCode === 0 ? "success" : "error",
     exit_code: result.exitCode,
-    summary: result.exitCode === 0 ? "completed remote Buildroot run" : "remote Buildroot run failed",
-    details: { id, tool: "buildroot", workspace: options.workspace, run_dir: runDir, manifest, log_file: logFile },
-    error: result.exitCode === 0 ? undefined : { code: "remote_run_failed", message: result.stderr || "remote run failed" }
+    summary: result.exitCode === 0 ? "completed managed remote Buildroot run" : "managed remote Buildroot run failed",
+    details: { id, tool: BUILDROOT_TOOL, mode: "remote", workspace: options.workspace, run_dir: runDir, manifest, log_file: logFile },
+    error: result.exitCode === 0 ? undefined : { code: "managed_run_failed", message: result.stderr || "managed remote run failed" }
   };
+  const manifestResult = JSON.parse(
+    runRequiredSsh(options.ssh, `cat ${shellQuote(manifest)}`, `failed to read remote manifest: ${manifest}`).stdout
+  );
+  registerRunFromManifest(manifestResult, options.ssh);
+  return payload;
 }
 
-function runRemoteInspect(flags) {
-  const options = parseExistingRunOptions(flags, "inspect");
-  const manifest = remoteManifestPath(options.workspace, options.tool, options.id);
-  const result = runSsh(options.ssh, `cat ${shellQuote(manifest)}`, false);
-  if (result.exitCode !== 0) {
-    throw new Error(`failed to read remote manifest: ${manifest}`);
+function runManagedRun(flags) {
+  const options = parseBuildrootRunOptions(flags);
+  if (options.mode === "local") {
+    return runLocalBuildroot(options);
   }
+  return runRemoteBuildroot(options);
+}
+
+function inspectManagedRun(flags) {
+  const options = parseExistingRunOptions(flags, "inspect");
+  if (!options.workspace) {
+    throw new Error(`inspect could not resolve workspace for run: ${options.id}`);
+  }
+  const manifestPath = options.ssh
+    ? remoteManifestPath(options.workspace, options.tool, options.id)
+    : localManifestPath(options.workspace, options.tool, options.id);
+  const manifest = options.ssh
+    ? JSON.parse(runRequiredSsh(options.ssh, `cat ${shellQuote(manifestPath)}`, `failed to read remote manifest: ${manifestPath}`).stdout)
+    : readJson(manifestPath);
   return {
-    command: "remote inspect",
+    command: "inspect",
     status: "success",
     exit_code: 0,
-    summary: "inspected remote run",
-    details: { manifest: JSON.parse(result.stdout) }
+    summary: "inspected managed run",
+    details: { manifest }
   };
 }
 
-function runRemoteLogs(flags) {
+function logsManagedRun(flags) {
   const options = parseExistingRunOptions(flags, "logs");
-  const logFile = remoteLogPath(options.workspace, options.tool, options.id);
-  const command = flags.follow ? `tail -n +1 -f ${shellQuote(logFile)}` : `cat ${shellQuote(logFile)}`;
-  const result = runSsh(options.ssh, command, !flags.json);
-  if (result.exitCode !== 0) {
-    throw new Error(`failed to read remote logs: ${logFile}`);
+  if (!options.workspace) {
+    throw new Error(`logs could not resolve workspace for run: ${options.id}`);
   }
-  if (flags.json) {
-    for (const line of result.stdout.split(/\r?\n/)) {
+  const logFile = options.ssh
+    ? remoteLogPath(options.workspace, options.tool, options.id)
+    : localLogPath(options.workspace, options.tool, options.id);
+  let output = "";
+  if (options.ssh) {
+    const command = options.follow ? `tail -n +1 -f ${shellQuote(logFile)}` : `cat ${shellQuote(logFile)}`;
+    output = runRequiredSsh(options.ssh, command, `failed to read remote logs: ${logFile}`, !options.json).stdout;
+  } else {
+    output = fs.readFileSync(logFile, "utf8");
+    if (!options.json) {
+      process.stdout.write(output);
+    }
+  }
+  if (options.json) {
+    for (const line of output.split(/\r?\n/)) {
       if (line) {
-        emitJson({
-          command: "remote logs",
-          status: "stream",
-          exit_code: 0,
-          details: { event: "log", id: options.id, line }
-        });
+        emitJson({ command: "logs", status: "stream", exit_code: 0, details: { event: "log", id: options.id, line } });
       }
     }
   }
   return {
-    command: "remote logs",
+    command: "logs",
     status: "success",
     exit_code: 0,
-    summary: "streamed remote logs",
-    details: { id: options.id, tool: options.tool, follow: Boolean(flags.follow), log_file: logFile }
+    summary: "streamed managed run logs",
+    details: { id: options.id, tool: options.tool, log_file: logFile, follow: options.follow }
   };
 }
 
-function runRemoteFetch(flags) {
+function fetchManagedRun(flags) {
   const options = parseExistingRunOptions(flags, "fetch");
-  const destination = path.resolve(process.cwd(), requireFlag(flags, "dest", "remote fetch requires --dest DIR"));
+  if (!options.workspace) {
+    throw new Error(`fetch could not resolve workspace for run: ${options.id}`);
+  }
+  const destination = path.resolve(process.cwd(), requireFlag(flags, "dest", "fetch requires --dest DIR"));
   const paths = flags.paths || [];
   if (paths.length === 0) {
-    throw new Error("remote fetch requires at least one --path REMOTE_PATH");
+    throw new Error("fetch requires at least one --path RUN_PATH");
   }
   fs.mkdirSync(destination, { recursive: true });
-  const remoteBase = remoteRunDir(options.workspace, options.tool, options.id);
-  const remotePaths = paths.map((entry) => (
-    entry.startsWith("/") ? entry : path.posix.join(remoteBase, entry)
-  ));
-  const pipeline = `ssh ${sshArgs(options.ssh).map(shellQuote).join(" ")} bash -lc ${shellQuote(`tar -cf - ${remotePaths.map(shellQuote).join(" ")}`)} | tar -xf - -C ${shellQuote(destination)}`;
-  const result = runShell(pipeline);
-  if (result.exitCode !== 0) {
-    throw new Error(result.stderr || "failed to fetch remote paths");
+
+  if (options.ssh) {
+    const remoteBase = remoteRunDir(options.workspace, options.tool, options.id);
+    const remotePaths = paths.map((entry) => entry.startsWith("/") ? entry : path.posix.join(remoteBase, entry));
+    const pipeline = `ssh ${sshArgs(options.ssh).map(shellQuote).join(" ")} bash -lc ${shellQuote(`tar -cf - ${remotePaths.map(shellQuote).join(" ")}`)} | tar -xf - -C ${shellQuote(destination)}`;
+    runRequiredShell(pipeline, "failed to fetch remote paths");
+  } else {
+    const localBase = localRunDir(options.workspace, options.tool, options.id);
+    const localPaths = paths.map((entry) => path.resolve(localBase, entry));
+    const pipeline = `tar -cf - ${localPaths.map(shellQuote).join(" ")} | tar -xf - -C ${shellQuote(destination)}`;
+    runRequiredShell(pipeline, "failed to fetch local paths");
   }
+
   return {
-    command: "remote fetch",
+    command: "fetch",
     status: "success",
     exit_code: 0,
-    summary: "fetched explicit remote paths",
+    summary: "fetched explicit managed run paths",
     details: { id: options.id, tool: options.tool, dest: destination, paths }
   };
 }
 
-function printRemoteResult(result, flags) {
+function listManagedRunRecords(flags) {
+  const records = listManagedRuns()
+    .filter((record) => normalizeWorkspaceFilter(record, flags.workspace))
+    .filter((record) => !flags.ssh || record.ssh === flags.ssh)
+    .filter((record) => !flags.tool || record.tool === flags.tool);
+  return {
+    command: "list",
+    status: "success",
+    exit_code: 0,
+    summary: `listed ${records.length} managed runs`,
+    details: {
+      runs: records
+    }
+  };
+}
+
+function removeManagedRunCommand(flags) {
+  const options = parseExistingRunOptions(flags, "remove");
+  if (!options.workspace) {
+    throw new Error(`remove could not resolve workspace for run: ${options.id}`);
+  }
+  if (options.ssh) {
+    runRequiredSsh(
+      options.ssh,
+      `rm -rf ${shellQuote(remoteRunDir(options.workspace, options.tool, options.id))}`,
+      "failed to remove remote managed run"
+    );
+  } else {
+    fs.rmSync(localRunDir(options.workspace, options.tool, options.id), {
+      recursive: true,
+      force: true
+    });
+  }
+  removeManagedRun(options.id);
+  return {
+    command: "remove",
+    status: "success",
+    exit_code: 0,
+    summary: "removed managed run",
+    details: {
+      id: options.id,
+      tool: options.tool,
+      workspace: options.workspace,
+      ssh: options.ssh ? options.ssh.original : null
+    }
+  };
+}
+
+function runRequiredSsh(target, script, message, streamOutput) {
+  const result = runSsh(target, script, Boolean(streamOutput));
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr || message);
+  }
+  return result;
+}
+
+function runRequiredShell(command, message) {
+  const result = runShell(command);
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr || message);
+  }
+  return result;
+}
+
+function printManagedResult(result, flags) {
   if (flags.json) {
     emitJson(result);
     return;
   }
-  if (result.status === "submitted") {
-    emitText(`submitted: ${result.details.id}`);
-    emitText(`manifest: ${result.details.manifest}`);
-    return;
-  }
-  if (result.details && result.details.manifest && result.details.manifest.id) {
+  if (result.details && result.details.manifest) {
     emitText(`id: ${result.details.manifest.id}`);
     emitText(`status: ${result.details.manifest.status}`);
     return;
@@ -439,37 +796,51 @@ function printRemoteResult(result, flags) {
   emitText(result.summary || result.status);
 }
 
-function handleRemoteCommand(argv) {
-  const subcommand = argv[0];
-  if (!subcommand || subcommand === "help" || subcommand === "--help") {
-    process.stdout.write(`${remoteUsage()}\n`);
+function handleManagedRunCommand(command, argv) {
+  if (!command || command === "help" || command === "--help") {
+    process.stdout.write(`${managedRunUsage()}\n`);
     return 0;
   }
 
-  const { flags } = parseRemoteArgs(argv.slice(1));
+  const parsedFlags = parseRunArgs(argv);
+  const { flags } = applyConfigDefaults(parsedFlags, {
+    allowGlobalRemote: command === "run" && parsedFlags.mode !== "local",
+    allowToolDefaults: command === "run"
+  });
+  if (flags.help) {
+    process.stdout.write(`${managedRunUsage()}\n`);
+    return 0;
+  }
   let result;
-  if (subcommand === "run") {
-    result = runRemoteRun(flags);
-  } else if (subcommand === "inspect") {
-    result = runRemoteInspect(flags);
-  } else if (subcommand === "logs") {
-    result = runRemoteLogs(flags);
-  } else if (subcommand === "fetch") {
-    result = runRemoteFetch(flags);
+  if (command === "run") {
+    result = runManagedRun(flags);
+  } else if (command === "list") {
+    result = listManagedRunRecords(flags);
+  } else if (command === "inspect") {
+    result = inspectManagedRun(flags);
+  } else if (command === "logs") {
+    result = logsManagedRun(flags);
+  } else if (command === "fetch") {
+    result = fetchManagedRun(flags);
+  } else if (command === "remove") {
+    result = removeManagedRunCommand(flags);
   } else {
-    throw new Error(`unknown remote subcommand: ${subcommand}`);
+    throw new Error(`unknown managed run command: ${command}`);
   }
 
-  printRemoteResult(result, flags);
+  printManagedResult(result, flags);
   return result.exit_code || 0;
 }
 
 module.exports = {
-  handleRemoteCommand,
-  parseRemoteArgs,
+  handleManagedRunCommand,
+  managedRunUsage,
+  parseRunArgs,
   parseSshTarget,
+  localRunDir,
+  localManifestPath,
+  localLogPath,
   remoteRunDir,
   remoteManifestPath,
-  remoteLogPath,
-  remoteUsage
+  remoteLogPath
 };

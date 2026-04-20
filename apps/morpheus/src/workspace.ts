@@ -1,11 +1,16 @@
 // @ts-nocheck
 const fs = require("fs");
 const path = require("path");
+const { spawnSync } = require("child_process");
 const { workRoot, workspacePaths } = require("./paths");
+const { registerManagedWorkspace } = require("./managed-state");
+const { applyConfigDefaults } = require("./config");
+const { logDebug } = require("./logger");
 
 function parseWorkspaceArgs(argv) {
   const positionals = [];
   const flags = {};
+  const booleanFlags = new Set(["json", "verbose"]);
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -16,7 +21,7 @@ function parseWorkspaceArgs(argv) {
 
     const key = token.slice(2);
     const next = argv[index + 1];
-    if (next && !next.startsWith("--")) {
+    if (!booleanFlags.has(key) && next && !next.startsWith("--")) {
       flags[key] = next;
       index += 1;
     } else {
@@ -31,7 +36,11 @@ function workspaceUsage() {
   return [
     "Usage:",
     "  node apps/morpheus/dist/cli.js workspace create [--json]",
-    "  node apps/morpheus/dist/cli.js workspace show [--json]"
+    "  node apps/morpheus/dist/cli.js workspace show [--json]",
+    "  node apps/morpheus/dist/cli.js workspace create --workspace DIR [--json]",
+    "  node apps/morpheus/dist/cli.js workspace show --workspace DIR [--json]",
+    "  node apps/morpheus/dist/cli.js workspace create --ssh TARGET --workspace DIR [--json]",
+    "  node apps/morpheus/dist/cli.js workspace show --ssh TARGET --workspace DIR [--json]"
   ].join("\n");
 }
 
@@ -44,6 +53,95 @@ function statDir(targetPath) {
     path: toRelative(targetPath),
     exists: fs.existsSync(targetPath),
     kind: "directory"
+  };
+}
+
+function parseSshTarget(input) {
+  if (input.startsWith("ssh://")) {
+    const url = new URL(input);
+    if (!url.hostname) {
+      throw new Error(`invalid SSH target: ${input}`);
+    }
+    return {
+      original: input,
+      user: url.username || undefined,
+      host: url.hostname,
+      port: url.port ? Number(url.port) : undefined
+    };
+  }
+
+  const match = /^(?:(?<user>[^@]+)@)?(?<host>[^:]+)(?::(?<port>\d+))?$/.exec(input);
+  if (!match || !match.groups || !match.groups.host) {
+    throw new Error(`invalid SSH target: ${input}`);
+  }
+  return {
+    original: input,
+    user: match.groups.user,
+    host: match.groups.host,
+    port: match.groups.port ? Number(match.groups.port) : undefined
+  };
+}
+
+function sshDestination(target) {
+  return target.user ? `${target.user}@${target.host}` : target.host;
+}
+
+function sshArgs(target) {
+  const args = [];
+  if (target.port !== undefined) {
+    args.push("-p", String(target.port));
+  }
+  args.push(sshDestination(target));
+  return args;
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+function runSsh(target, script) {
+  logDebug("workspace", "running ssh workspace command", {
+    ssh: target.original
+  });
+  const result = spawnSync("ssh", [...sshArgs(target), "bash", "-lc", script], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  return {
+    stdout: result.stdout || "",
+    stderr: result.stderr || "",
+    exitCode: result.status == null ? 1 : result.status
+  };
+}
+
+function managedWorkspacePaths(root, platform) {
+  const join = platform === "remote" ? path.posix.join : path.join;
+  return {
+    root,
+    tools: join(root, "tools"),
+    downloads: join(root, "downloads"),
+    sources: join(root, "sources"),
+    builds: join(root, "builds"),
+    runs: join(root, "runs"),
+    cache: join(root, "cache"),
+    tmp: join(root, "tmp")
+  };
+}
+
+function managedWorkspaceShape(root, platform, stats) {
+  const paths = managedWorkspacePaths(root, platform);
+  const entries = {};
+  for (const [name, targetPath] of Object.entries(paths)) {
+    entries[name] = {
+      path: targetPath,
+      exists: Boolean(stats[name]),
+      kind: "directory"
+    };
+  }
+  return {
+    root,
+    mode: platform === "remote" ? "remote" : "local",
+    directories: entries
   };
 }
 
@@ -90,6 +188,114 @@ function createWorkspace() {
   };
 }
 
+function describeManagedWorkspace(workspaceRoot) {
+  const paths = managedWorkspacePaths(path.resolve(process.cwd(), workspaceRoot), "local");
+  const stats = {};
+  for (const [name, targetPath] of Object.entries(paths)) {
+    stats[name] = fs.existsSync(targetPath);
+  }
+  return managedWorkspaceShape(paths.root, "local", stats);
+}
+
+function createManagedWorkspace(workspaceRoot) {
+  const paths = managedWorkspacePaths(path.resolve(process.cwd(), workspaceRoot), "local");
+  const created = [];
+  const existing = [];
+
+  logDebug("workspace", "creating local managed workspace", {
+    root: paths.root
+  });
+
+  for (const [name, targetPath] of Object.entries(paths)) {
+    const entry = { path: targetPath, exists: true, kind: "directory" };
+    if (fs.existsSync(targetPath)) {
+      existing.push(entry);
+      continue;
+    }
+    fs.mkdirSync(targetPath, { recursive: true });
+    created.push(entry);
+  }
+
+  const result = {
+    root: paths.root,
+    mode: "local",
+    created,
+    existing,
+    workspace: describeManagedWorkspace(workspaceRoot)
+  };
+  registerManagedWorkspace({
+    root: result.root,
+    mode: result.mode,
+    directories: result.workspace.directories
+  });
+  return result;
+}
+
+function describeRemoteWorkspace(target, workspaceRoot) {
+  const paths = managedWorkspacePaths(workspaceRoot, "remote");
+  const script = `
+set -euo pipefail
+python3 - <<'PY'
+import json
+paths = ${JSON.stringify(paths)}
+result = {name: False for name in paths}
+from pathlib import Path
+for name, value in paths.items():
+    result[name] = Path(value).is_dir()
+print(json.dumps(result))
+PY
+`;
+  const result = runSsh(target, script);
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr || "failed to inspect remote workspace");
+  }
+  return {
+    ssh: target.original,
+    ...managedWorkspaceShape(workspaceRoot, "remote", JSON.parse(result.stdout))
+  };
+}
+
+function createRemoteWorkspace(target, workspaceRoot) {
+  const paths = managedWorkspacePaths(workspaceRoot, "remote");
+  logDebug("workspace", "creating remote managed workspace", {
+    root: workspaceRoot,
+    ssh: target.original
+  });
+  const script = `
+set -euo pipefail
+mkdir -p ${Object.values(paths).map(shellQuote).join(" ")}
+python3 - <<'PY'
+import json
+paths = ${JSON.stringify(paths)}
+print(json.dumps(list(paths.values())))
+PY
+`;
+  const result = runSsh(target, script);
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr || "failed to create remote workspace");
+  }
+  const createdPaths = JSON.parse(result.stdout);
+  const summary = {
+    root: workspaceRoot,
+    mode: "remote",
+    ssh: target.original,
+    created: createdPaths.map((targetPath) => ({
+      path: targetPath,
+      exists: true,
+      kind: "directory"
+    })),
+    existing: [],
+    workspace: describeRemoteWorkspace(target, workspaceRoot)
+  };
+  registerManagedWorkspace({
+    root: summary.root,
+    mode: summary.mode,
+    ssh: summary.ssh,
+    directories: summary.workspace.directories
+  });
+  return summary;
+}
+
 function printWorkspaceHuman(summary) {
   process.stdout.write("Workspace\n");
   process.stdout.write(`  root: ${summary.root}\n`);
@@ -106,6 +312,50 @@ function printCreateHuman(result) {
   process.stdout.write(`  existing: ${result.existing.length}\n`);
 }
 
+function aggregateWorkspaceResults(localResult, remoteResult) {
+  return {
+    mode: "hybrid",
+    local: localResult,
+    remote: remoteResult
+  };
+}
+
+function printHybridCreateHuman(result) {
+  process.stdout.write("Local workspace\n");
+  process.stdout.write(`  root: ${result.local.root}\n`);
+  for (const [name, info] of Object.entries(result.local.workspace.directories)) {
+    process.stdout.write(
+      `  ${name}: ${info.path} (${info.exists ? "present" : "missing"})\n`
+    );
+  }
+  process.stdout.write("Remote workspace\n");
+  process.stdout.write(`  ssh: ${result.remote.ssh}\n`);
+  process.stdout.write(`  root: ${result.remote.root}\n`);
+  for (const [name, info] of Object.entries(result.remote.workspace.directories)) {
+    process.stdout.write(
+      `  ${name}: ${info.path} (${info.exists ? "present" : "missing"})\n`
+    );
+  }
+}
+
+function printHybridShowHuman(result) {
+  process.stdout.write("Local workspace\n");
+  process.stdout.write(`  root: ${result.local.root}\n`);
+  for (const [name, info] of Object.entries(result.local.directories)) {
+    process.stdout.write(
+      `  ${name}: ${info.path} (${info.exists ? "present" : "missing"})\n`
+    );
+  }
+  process.stdout.write("Remote workspace\n");
+  process.stdout.write(`  ssh: ${result.remote.ssh}\n`);
+  process.stdout.write(`  root: ${result.remote.root}\n`);
+  for (const [name, info] of Object.entries(result.remote.directories)) {
+    process.stdout.write(
+      `  ${name}: ${info.path} (${info.exists ? "present" : "missing"})\n`
+    );
+  }
+}
+
 function handleWorkspaceCommand(argv) {
   const subcommand = argv[0];
   if (!subcommand || subcommand === "help" || subcommand === "--help") {
@@ -113,8 +363,66 @@ function handleWorkspaceCommand(argv) {
     return 0;
   }
 
-  const { flags } = parseWorkspaceArgs(argv.slice(1));
+  const { flags: rawFlags } = parseWorkspaceArgs(argv.slice(1));
+  const { flags } = applyConfigDefaults(rawFlags, { allowGlobalRemote: false });
+  const sshTarget = flags.ssh ? parseSshTarget(flags.ssh) : null;
+  const explicitWorkspace = flags.workspace || null;
+  const configuredLocalWorkspace =
+    !rawFlags.workspace && !rawFlags.ssh ? flags.localWorkspace || null : null;
+  const createBothFromConfig = Boolean(
+    configuredLocalWorkspace &&
+      sshTarget &&
+      explicitWorkspace &&
+      configuredLocalWorkspace !== explicitWorkspace
+  );
+
+  logDebug("workspace", "resolved workspace command", {
+    subcommand,
+    rawFlags,
+    flags,
+    createBothFromConfig
+  });
+
   if (subcommand === "create") {
+    if (createBothFromConfig) {
+      const localResult = createManagedWorkspace(configuredLocalWorkspace);
+      const remoteResult = createRemoteWorkspace(sshTarget, explicitWorkspace);
+      const result = aggregateWorkspaceResults(localResult, remoteResult);
+      if (flags.json) {
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+        return 0;
+      }
+      printHybridCreateHuman(result);
+      return 0;
+    }
+
+    if (sshTarget) {
+      if (!explicitWorkspace) {
+        throw new Error("workspace create requires --workspace DIR when --ssh is set");
+      }
+      const result = createRemoteWorkspace(sshTarget, explicitWorkspace);
+      if (flags.json) {
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+        return 0;
+      }
+      process.stdout.write(`Remote workspace created at ${result.root}\n`);
+      process.stdout.write(`  ssh: ${result.ssh}\n`);
+      process.stdout.write(`  created: ${result.created.length}\n`);
+      return 0;
+    }
+
+    if (explicitWorkspace) {
+      const result = createManagedWorkspace(explicitWorkspace);
+      if (flags.json) {
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+        return 0;
+      }
+      process.stdout.write(`Workspace created at ${result.root}\n`);
+      process.stdout.write(`  created: ${result.created.length}\n`);
+      process.stdout.write(`  existing: ${result.existing.length}\n`);
+      return 0;
+    }
+
     const result = createWorkspace();
     if (flags.json) {
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -126,6 +434,50 @@ function handleWorkspaceCommand(argv) {
   }
 
   if (subcommand === "show") {
+    if (createBothFromConfig) {
+      const summary = {
+        mode: "hybrid",
+        local: describeManagedWorkspace(configuredLocalWorkspace),
+        remote: describeRemoteWorkspace(sshTarget, explicitWorkspace)
+      };
+      if (flags.json) {
+        process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+        return 0;
+      }
+      printHybridShowHuman(summary);
+      return 0;
+    }
+
+    if (sshTarget) {
+      if (!explicitWorkspace) {
+        throw new Error("workspace show requires --workspace DIR when --ssh is set");
+      }
+      const summary = describeRemoteWorkspace(sshTarget, explicitWorkspace);
+      if (flags.json) {
+        process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+        return 0;
+      }
+      process.stdout.write("Remote workspace\n");
+      process.stdout.write(`  ssh: ${summary.ssh}\n`);
+      process.stdout.write(`  root: ${summary.root}\n`);
+      for (const [name, info] of Object.entries(summary.directories)) {
+        process.stdout.write(
+          `  ${name}: ${info.path} (${info.exists ? "present" : "missing"})\n`
+        );
+      }
+      return 0;
+    }
+
+    if (explicitWorkspace) {
+      const summary = describeManagedWorkspace(explicitWorkspace);
+      if (flags.json) {
+        process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+        return 0;
+      }
+      printWorkspaceHuman(summary);
+      return 0;
+    }
+
     const summary = describeWorkspace();
     if (flags.json) {
       process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
@@ -141,6 +493,10 @@ function handleWorkspaceCommand(argv) {
 
 module.exports = {
   createWorkspace,
+  createManagedWorkspace,
+  createRemoteWorkspace,
   describeWorkspace,
+  describeManagedWorkspace,
+  describeRemoteWorkspace,
   handleWorkspaceCommand
 };

@@ -7,7 +7,7 @@ and agent workflows that need explicit commands, inspectable metadata, and
 machine-readable output instead of ad hoc shell scripts.
 
 Remote workspace support is not part of `buildroot`.
-Use `morpheus remote ...` when you need SSH-backed remote runs.
+Use `morpheus run --tool buildroot --mode remote ...` for managed remote runs.
 
 ## Quick start
 
@@ -96,14 +96,50 @@ Use `clean` to remove a local output or explicit path:
 buildroot clean --output ./out
 ```
 
-When you need a remote workspace, use Morpheus instead:
+When you need a managed workspace, use Morpheus instead:
 
 ```bash
-morpheus remote run \
+morpheus run \
   --tool buildroot \
+  --mode remote \
   --ssh builder@example.com:2222 \
   --workspace workflow-workspace \
-  --buildroot-version 2025.02.1 \
+  --source ./buildroot-src \
+  --json
+```
+
+With one local workspace and one remote workspace in `morpheus.yaml`, you can
+omit `--ssh`:
+
+```yaml
+workspace:
+  root: ./workflow-workspace
+  remote: true
+remote:
+  ssh: builder@example.com:2222
+  workspace:
+    root: ./remote-workflow-workspace
+```
+
+Or make only Buildroot run remotely:
+
+```yaml
+workspace:
+  root: ./workflow-workspace
+remote:
+  ssh: builder@example.com:2222
+  workspace:
+    root: ./remote-buildroot-workspace
+tools:
+  buildroot:
+    mode: remote
+```
+
+```bash
+morpheus workspace create --json
+morpheus run \
+  --tool buildroot \
+  --source ./buildroot-src \
   --json
 ```
 
@@ -153,8 +189,10 @@ For automation, this file is the primary stable contract:
 ## Remote boundary
 
 - `buildroot` supports local execution only
-- `morpheus` owns remote workspaces and SSH-backed remote runs
-- remote inspect, logs, and fetch move to `morpheus remote ...`
+- `morpheus` owns managed workspaces and managed runs
+- use `morpheus run --tool buildroot --mode local|remote`
+- use `morpheus list`, `morpheus inspect`, `morpheus logs`, `morpheus fetch`,
+  and `morpheus remove`
 
 ## Smoke test
 

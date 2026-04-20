@@ -3,7 +3,7 @@
 
 const path = require("path");
 const { getContracts } = require("./contracts");
-const { handleRemoteCommand } = require("./remote");
+const { handleManagedRunCommand } = require("./remote");
 const { handleRunsCommand } = require("./runs");
 const { handleToolCommand } = require("./tools");
 const { handleWorkspaceCommand } = require("./workspace");
@@ -12,7 +12,7 @@ const { workspacePaths } = require("./paths");
 function parseArgs(argv) {
   const positionals = [];
   const flags = {};
-  const booleanFlags = new Set(["json", "help"]);
+  const booleanFlags = new Set(["json", "help", "verbose"]);
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -46,10 +46,13 @@ function usage() {
   process.stdout.write(
     [
       "Usage:",
-      "  node apps/morpheus/dist/cli.js remote run --tool buildroot --ssh TARGET --workspace DIR --buildroot-version VER [--json]",
-      "  node apps/morpheus/dist/cli.js remote inspect --ssh TARGET --workspace DIR --id RUN_ID [--json]",
-      "  node apps/morpheus/dist/cli.js remote logs --ssh TARGET --workspace DIR --id RUN_ID [--follow] [--json]",
-      "  node apps/morpheus/dist/cli.js remote fetch --ssh TARGET --workspace DIR --id RUN_ID --dest DIR --path REMOTE_PATH [--json]",
+      "  node apps/morpheus/dist/cli.js run --tool buildroot --mode local --workspace DIR (--source DIR | --buildroot-version VER) [--json]",
+      "  node apps/morpheus/dist/cli.js run --tool buildroot --mode remote --ssh TARGET --workspace DIR (--source DIR | --buildroot-version VER) [--json]",
+      "  node apps/morpheus/dist/cli.js list [--workspace DIR] [--ssh TARGET] [--json]",
+      "  node apps/morpheus/dist/cli.js inspect --id RUN_ID [--json]",
+      "  node apps/morpheus/dist/cli.js logs --id RUN_ID [--follow] [--json]",
+      "  node apps/morpheus/dist/cli.js fetch --id RUN_ID --dest DIR --path RUN_PATH [--json]",
+      "  node apps/morpheus/dist/cli.js remove --id RUN_ID [--json]",
       "  node apps/morpheus/dist/cli.js workspace create [--json]",
       "  node apps/morpheus/dist/cli.js workspace show [--json]",
       "  node apps/morpheus/dist/cli.js tool <subcommand> [--json]",
@@ -61,12 +64,12 @@ function usage() {
   );
 }
 
-function argvAfterCommand(argv, command) {
+function argvWithoutCommand(argv, command) {
   const index = argv.indexOf(command);
   if (index < 0) {
-    return [];
+    return [...argv];
   }
-  return argv.slice(index + 1);
+  return [...argv.slice(0, index), ...argv.slice(index + 1)];
 }
 
 function main() {
@@ -85,23 +88,23 @@ function main() {
     return 0;
   }
 
-  if (command === "remote") {
-    return handleRemoteCommand(argvAfterCommand(argv, "remote"));
+  if (["run", "list", "inspect", "logs", "fetch", "remove"].includes(command)) {
+    return handleManagedRunCommand(command, argvWithoutCommand(argv, command));
   }
 
   if (command === "workspace") {
-    return handleWorkspaceCommand(argvAfterCommand(argv, "workspace"));
+    return handleWorkspaceCommand(argvWithoutCommand(argv, "workspace"));
   }
 
   if (command === "runs") {
-    return handleRunsCommand(argvAfterCommand(argv, "runs"), {
+    return handleRunsCommand(argvWithoutCommand(argv, "runs"), {
       runRoot: paths.runs,
       outputRoot: path.join(paths.root, "runs-view")
     });
   }
 
   if (command === "tool") {
-    return handleToolCommand(argvAfterCommand(argv, "tool"));
+    return handleToolCommand(argvWithoutCommand(argv, "tool"));
   }
 
   throw new Error(`unknown command: ${command}`);

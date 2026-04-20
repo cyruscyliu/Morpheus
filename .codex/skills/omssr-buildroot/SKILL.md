@@ -69,7 +69,7 @@ If the user needs a remote workspace:
 Typical remote handoff:
 
 ```bash
-node apps/morpheus/dist/cli.js run \
+node apps/morpheus/dist/cli.js tool run \
   --tool buildroot \
   --mode remote \
   --ssh builder@example.com:2222 \

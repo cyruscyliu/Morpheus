@@ -176,6 +176,14 @@ function applyRemoteReference(configValue, next, remoteName) {
     return;
   }
 
+  if (!configValue.remote) {
+    return;
+  }
+
+  if (!remoteName) {
+    return;
+  }
+
   const remoteWorkspace = resolveRemoteWorkspaceName(configValue, remoteName);
   if (remoteWorkspace) {
     next.remoteWorkspace = remoteWorkspace.root;
@@ -183,10 +191,6 @@ function applyRemoteReference(configValue, next, remoteName) {
     next.ssh = remoteWorkspace.ssh;
     next.remote = remoteWorkspace.name;
     next.remoteTarget = remoteWorkspace.target;
-    return;
-  }
-
-  if (!remoteName) {
     return;
   }
 
@@ -232,14 +236,14 @@ function applyConfigDefaults(flags, options) {
   if (!next.ssh) {
     const remoteName = workspaceEntry && workspaceEntry.remote;
     if (remoteName === true || remoteName === "true") {
-      applyRemoteReference(value, next, null);
+      applyRemoteReference(value, next, "remote");
     } else {
       applyRemoteReference(value, next, remoteName);
     }
   }
 
   if (!next.ssh && allowGlobalRemote) {
-    applyRemoteReference(value, next, null);
+    applyRemoteReference(value, next, "remote");
   }
 
   if (!next.ssh && allowGlobalRemote) {

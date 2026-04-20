@@ -320,14 +320,14 @@ test("workflow commands are no longer part of the app surface", () => {
 });
 
 test("managed run help is available through Morpheus", () => {
-  const result = run(["run", "--help"]);
+  const result = run(["tool", "run", "--help"]);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /--mode local/);
   assert.match(result.stdout, /--mode remote/);
 });
 
 test("managed run validates required mode in JSON mode", () => {
-  const result = run(["--json", "run", "--tool", "buildroot"], {
+  const result = run(["--json", "tool", "run", "--tool", "buildroot"], {
     cwd: os.tmpdir(),
     env: isolatedEnv()
   });
@@ -338,7 +338,7 @@ test("managed run validates required mode in JSON mode", () => {
 });
 
 test("inspect validates managed run flags in JSON mode", () => {
-  const result = run(["--json", "inspect"]);
+  const result = run(["--json", "tool", "inspect"]);
   assert.equal(result.status, 1);
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.status, "error");
@@ -350,6 +350,7 @@ test("managed local Buildroot run creates a Morpheus run record", () => {
 
   const result = run([
     "--json",
+    "tool",
     "run",
     "--tool",
     "buildroot",
@@ -372,6 +373,7 @@ test("managed local Buildroot run creates a Morpheus run record", () => {
 
   const inspect = run([
     "--json",
+    "tool",
     "inspect",
     "--id",
     payload.details.id
@@ -382,12 +384,12 @@ test("managed local Buildroot run creates a Morpheus run record", () => {
   assert.equal(inspectPayload.details.manifest.id, payload.details.id);
   assert.equal(inspectPayload.details.manifest.mode, "local");
 
-  const list = run(["--json", "list", "--workspace", workspaceRoot]);
+  const list = run(["--json", "tool", "runs", "--workspace", workspaceRoot]);
   assert.equal(list.status, 0, list.stderr || list.stdout);
   const listPayload = JSON.parse(list.stdout);
   assert.equal(listPayload.details.runs.some((item) => item.id === payload.details.id), true);
 
-  const remove = run(["--json", "remove", "--id", payload.details.id]);
+  const remove = run(["--json", "tool", "remove", "--id", payload.details.id]);
   assert.equal(remove.status, 0, remove.stderr || remove.stdout);
   assert.equal(fs.existsSync(path.join(workspaceRoot, "tools", "buildroot", "runs", payload.details.id)), false);
 
@@ -424,6 +426,43 @@ test("managed remote run resolves ssh and workspace from morpheus.yaml", () => {
   assert.equal(resolved.flags.ssh, "builder@example.com:2222");
   assert.equal(resolved.flags.remote, "remote");
   assert.equal(resolved.flags.remoteTarget, "remote");
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("explicit local tool workspace is not overridden by morpheus.yaml remote", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-local-project-"));
+  const explicitWorkspace = path.join(projectRoot, "local-workspace");
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "remote:",
+      "  ssh: builder@example.com:2222",
+      "  workspace:",
+      "    root: ./remote-workflow-workspace",
+      "tools:",
+      "  buildroot:",
+      "    mode: remote",
+      ""
+    ].join("\n")
+  );
+
+  const previousCwd = process.cwd();
+  process.chdir(projectRoot);
+  const { applyConfigDefaults } = require(path.join(appRoot, "dist", "config.js"));
+  const resolved = applyConfigDefaults({
+    tool: "buildroot",
+    mode: "local",
+    workspace: explicitWorkspace,
+    source: buildrootFixture
+  }, { allowGlobalRemote: false, allowToolDefaults: true });
+  process.chdir(previousCwd);
+
+  assert.equal(resolved.flags.workspace, explicitWorkspace);
+  assert.equal(resolved.flags.ssh, undefined);
+  assert.equal(resolved.flags.remote, undefined);
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });

@@ -57,7 +57,7 @@ Typical flow:
 
 ```bash
 node apps/morpheus/dist/cli.js workspace create --json
-node apps/morpheus/dist/cli.js run \
+node apps/morpheus/dist/cli.js tool run \
   --tool buildroot \
   --mode remote \
   --source tools/buildroot/test/fixtures/minimal-buildroot \
@@ -75,7 +75,7 @@ The main user-facing commands are:
 ```text
 morpheus workspace create
 morpheus workspace show
-morpheus run
+morpheus tool run
 morpheus list
 morpheus inspect
 morpheus logs
@@ -95,12 +95,12 @@ Use these commands by intent:
 
 - `workspace create`: create the standard local workspace layout.
 - `workspace show`: inspect workspace roots and their current presence.
-- `run`: start a managed tool run in local or remote mode.
-- `list`: list managed runs, optionally scoped by workspace or SSH target.
-- `inspect`: inspect managed manifest state by run id.
-- `logs`: stream or read managed logs by run id.
-- `fetch`: copy explicit paths from a managed run.
-- `remove`: remove a managed run by id.
+- `tool run`: start a managed tool run in local or remote mode.
+- `tool runs`: list managed runs, optionally scoped by workspace or SSH target.
+- `tool inspect`: inspect managed manifest state by run id.
+- `tool logs`: stream or read managed logs by run id.
+- `tool fetch`: copy explicit paths from a managed run.
+- `tool remove`: remove a managed run by id.
 
 ## Managed Workspace Model
 
@@ -132,7 +132,7 @@ Expected managed layout for Buildroot:
 Use explicit SSH targets with host and optional port for remote mode:
 
 ```bash
-node apps/morpheus/dist/cli.js run \
+node apps/morpheus/dist/cli.js tool run \
   --tool buildroot \
   --mode remote \
   --ssh builder@example.com:2222 \
@@ -144,7 +144,7 @@ node apps/morpheus/dist/cli.js run \
 Use local mode when Morpheus should manage the same tool in a local workspace:
 
 ```bash
-node apps/morpheus/dist/cli.js run \
+node apps/morpheus/dist/cli.js tool run \
   --tool buildroot \
   --mode local \
   --workspace workflow-workspace \
@@ -175,6 +175,6 @@ Prefer `--json` for automation.
 ## Boundary Rules
 
 - Use `buildroot` directly for unmanaged Buildroot work.
-- Use `morpheus run --tool buildroot --mode local|remote` for managed runs.
+- Use `morpheus tool run --tool buildroot --mode local|remote` for managed runs.
 - Use `morpheus list` and `morpheus remove` for managed run lifecycle work.
 - Do not assume `buildroot remote-*` exists.

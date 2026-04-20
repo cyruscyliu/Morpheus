@@ -2,6 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const { repoRoot } = require("./paths");
+const { handleManagedRunCommand } = require("./remote");
 
 function descriptorPath(toolName) {
   return path.join(repoRoot(), "tools", toolName, "tool.json");
@@ -128,9 +129,33 @@ function parseToolArgs(argv) {
   return { positionals, flags };
 }
 
+function extractToolSubcommand(argv) {
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (!token.startsWith("--")) {
+      return {
+        subcommand: token,
+        rest: [...argv.slice(0, index), ...argv.slice(index + 1)]
+      };
+    }
+  }
+
+  return {
+    subcommand: null,
+    rest: [...argv]
+  };
+}
+
 function toolUsage() {
   return [
     "Usage:",
+    "  node apps/morpheus/dist/cli.js tool run --tool buildroot --mode local --workspace DIR (--source DIR | --buildroot-version VER) [--json]",
+    "  node apps/morpheus/dist/cli.js tool run --tool buildroot --mode remote --ssh TARGET --workspace DIR (--source DIR | --buildroot-version VER) [--json]",
+    "  node apps/morpheus/dist/cli.js tool runs [--workspace DIR] [--ssh TARGET] [--json]",
+    "  node apps/morpheus/dist/cli.js tool inspect --id RUN_ID [--json]",
+    "  node apps/morpheus/dist/cli.js tool logs --id RUN_ID [--follow] [--json]",
+    "  node apps/morpheus/dist/cli.js tool fetch --id RUN_ID --dest DIR --path RUN_PATH [--json]",
+    "  node apps/morpheus/dist/cli.js tool remove --id RUN_ID [--json]",
     "  node apps/morpheus/dist/cli.js tool list [--json]",
     "  node apps/morpheus/dist/cli.js tool verify [<name>|--all] [--json]",
     "  node apps/morpheus/dist/cli.js tool path <name>",
@@ -185,13 +210,17 @@ function printMaybeJson(value, flags) {
 }
 
 function handleToolCommand(argv) {
-  const subcommand = argv[0];
+  const { subcommand, rest } = extractToolSubcommand(argv);
   if (!subcommand || subcommand === "help" || subcommand === "--help") {
     process.stdout.write(`${toolUsage()}\n`);
     return 0;
   }
 
-  const { positionals, flags } = parseToolArgs(argv.slice(1));
+  if (["run", "runs", "inspect", "logs", "fetch", "remove"].includes(subcommand)) {
+    return handleManagedRunCommand(subcommand === "runs" ? "list" : subcommand, rest);
+  }
+
+  const { positionals, flags } = parseToolArgs(rest);
 
   if (subcommand === "list") {
     const items = listDeclaredTools().map((tool) => ({

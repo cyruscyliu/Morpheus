@@ -65,13 +65,13 @@ function parseRunArgs(argv) {
 function managedRunUsage() {
   return [
     "Usage:",
-    "  node apps/morpheus/dist/cli.js run --tool buildroot --mode local --workspace DIR (--source DIR | --buildroot-version VER) [--defconfig NAME] [--json]",
-    "  node apps/morpheus/dist/cli.js run --tool buildroot --mode remote --ssh TARGET --workspace DIR (--source DIR | --buildroot-version VER) [--defconfig NAME] [--detach] [--json]",
-    "  node apps/morpheus/dist/cli.js inspect --id RUN_ID [--json]",
-    "  node apps/morpheus/dist/cli.js logs --id RUN_ID [--follow] [--json]",
-    "  node apps/morpheus/dist/cli.js fetch --id RUN_ID --dest DIR --path RUN_PATH [--path RUN_GLOB ...] [--json]",
-    "  node apps/morpheus/dist/cli.js list [--workspace DIR] [--ssh TARGET] [--json]",
-    "  node apps/morpheus/dist/cli.js remove --id RUN_ID [--json]"
+    "  node apps/morpheus/dist/cli.js tool run --tool buildroot --mode local --workspace DIR (--source DIR | --buildroot-version VER) [--defconfig NAME] [--json]",
+    "  node apps/morpheus/dist/cli.js tool run --tool buildroot --mode remote --ssh TARGET --workspace DIR (--source DIR | --buildroot-version VER) [--defconfig NAME] [--detach] [--json]",
+    "  node apps/morpheus/dist/cli.js tool runs [--workspace DIR] [--ssh TARGET] [--json]",
+    "  node apps/morpheus/dist/cli.js tool inspect --id RUN_ID [--json]",
+    "  node apps/morpheus/dist/cli.js tool logs --id RUN_ID [--follow] [--json]",
+    "  node apps/morpheus/dist/cli.js tool fetch --id RUN_ID --dest DIR --path RUN_PATH [--path RUN_GLOB ...] [--json]",
+    "  node apps/morpheus/dist/cli.js tool remove --id RUN_ID [--json]"
   ].join("\n");
 }
 
@@ -807,6 +807,20 @@ function handleManagedRunCommand(command, argv) {
     allowGlobalRemote: command === "run" && parsedFlags.mode !== "local",
     allowToolDefaults: command === "run"
   });
+  const existingRunCommand = ["inspect", "logs", "fetch", "remove"].includes(command);
+  if (existingRunCommand) {
+    if (!Object.prototype.hasOwnProperty.call(parsedFlags, "workspace")) {
+      delete flags.workspace;
+    }
+    if (!Object.prototype.hasOwnProperty.call(parsedFlags, "ssh")) {
+      delete flags.ssh;
+    }
+    if (!Object.prototype.hasOwnProperty.call(parsedFlags, "remote")) {
+      delete flags.remote;
+      delete flags.remoteTarget;
+      delete flags.remoteWorkspace;
+    }
+  }
   if (flags.help) {
     process.stdout.write(`${managedRunUsage()}\n`);
     return 0;

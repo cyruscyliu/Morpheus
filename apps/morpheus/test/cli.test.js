@@ -46,6 +46,13 @@ while argv:
     if argv[0] == "-p":
         argv = argv[2:]
         continue
+    if len(argv) == 1:
+        script = argv[0]
+        root = ${JSON.stringify(remoteRoot)}
+        rewritten = script.replace("'/remote-workspace'", "'" + root + "'")
+        rewritten = rewritten.replace("/remote-workspace", root)
+        result = subprocess.run(["bash", "-lc", rewritten], check=False)
+        raise SystemExit(result.returncode)
     if argv[0] == "bash":
         argv = argv[1:]
         break
@@ -83,6 +90,9 @@ while argv:
     if argv[0] == "-p":
         argv = argv[2:]
         continue
+    if len(argv) == 1:
+        result = subprocess.run(["bash", "-lc", argv[0]], check=False)
+        raise SystemExit(result.returncode)
     if argv[0] == "bash":
         argv = argv[1:]
         break
@@ -95,6 +105,19 @@ if len(argv) < 2 or argv[0] != "-lc":
 result = subprocess.run(["bash", "-lc", argv[1]], check=False)
 raise SystemExit(result.returncode)
 `,
+    { mode: 0o755 }
+  );
+  return {
+    PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`
+  };
+}
+
+function makeEmptyPsEnv() {
+  const fakeBin = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-fake-ps-"));
+  const psPath = path.join(fakeBin, "ps");
+  fs.writeFileSync(
+    psPath,
+    "#!/usr/bin/env sh\nexit 0\n",
     { mode: 0o755 }
   );
   return {
@@ -615,6 +638,132 @@ test("managed remote Buildroot run can fetch configured artifacts back locally",
     fs.existsSync(path.join(projectRoot, "workflow-workspace", "tools", "buildroot", "runs", payload.details.id, "artifacts", "images", "rootfs.cpio.gz")),
     true
   );
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+  fs.rmSync(remoteRoot, { recursive: true, force: true });
+});
+
+test("tool runs can discover remote managed runs from workspace state", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-list-project-"));
+  const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-list-root-"));
+  const runId = "buildroot-20260420-deadbeef";
+  const runRoot = path.join(remoteRoot, "tools", "buildroot", "runs", runId);
+  fs.mkdirSync(runRoot, { recursive: true });
+  fs.writeFileSync(
+    path.join(runRoot, "manifest.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      id: runId,
+      tool: "buildroot",
+      mode: "remote",
+      command: "run",
+      status: "running",
+      createdAt: "2026-04-20T15:00:00.000Z",
+      updatedAt: "2026-04-20T15:10:00.000Z",
+      workspace: "/remote-workspace",
+      runDir: "/remote-workspace/tools/buildroot/runs/buildroot-20260420-deadbeef",
+      outputDir: "/remote-workspace/tools/buildroot/runs/buildroot-20260420-deadbeef/output",
+      logFile: "/remote-workspace/tools/buildroot/runs/buildroot-20260420-deadbeef/stdout.log",
+      manifest: "/remote-workspace/tools/buildroot/runs/buildroot-20260420-deadbeef/manifest.json",
+      artifacts: []
+    }, null, 2)
+  );
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "remote:",
+      "  ssh: builder@example.com:2222",
+      "  workspace:",
+      "    root: /remote-workspace",
+      ""
+    ].join("\n")
+  );
+
+  const env = {
+    ...process.env,
+    ...makeFakeSshEnv(remoteRoot),
+    ...makeEmptyPsEnv(),
+    MORPHEUS_ASSUME_REMOTE_RUN_INACTIVE: "1",
+    MORPHEUS_STATE_ROOT: path.join(projectRoot, ".state")
+  };
+
+  const result = run(["--json", "tool", "runs"], { env, cwd: projectRoot });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.details.runs.some((item) => item.id === runId), true);
+  assert.equal(payload.details.runs.find((item) => item.id === runId).ssh, "builder@example.com:2222");
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+  fs.rmSync(remoteRoot, { recursive: true, force: true });
+});
+
+test("tool inspect reconciles a stale remote running manifest to success", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-inspect-project-"));
+  const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-inspect-root-"));
+  const runId = "buildroot-20260420-stale0001";
+  const runRoot = path.join(remoteRoot, "tools", "buildroot", "runs", runId);
+  const outputRoot = path.join(runRoot, "output");
+  fs.mkdirSync(path.join(outputRoot, "images"), { recursive: true });
+  fs.writeFileSync(path.join(outputRoot, "images", "Image"), "kernel");
+  fs.writeFileSync(path.join(outputRoot, "images", "rootfs.cpio.gz"), "rootfs");
+  fs.writeFileSync(
+    path.join(runRoot, "manifest.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      id: runId,
+      tool: "buildroot",
+      mode: "remote",
+      command: "run",
+      status: "running",
+      createdAt: "2026-04-20T15:00:00.000Z",
+      updatedAt: "2026-04-20T15:00:00.000Z",
+      workspace: remoteRoot,
+      outputDir: path.join(remoteRoot, "tools", "buildroot", "runs", "buildroot-20260420-stale0001", "output"),
+      runDir: path.join(remoteRoot, "tools", "buildroot", "runs", "buildroot-20260420-stale0001"),
+      logFile: path.join(remoteRoot, "tools", "buildroot", "runs", "buildroot-20260420-stale0001", "stdout.log"),
+      manifest: path.join(remoteRoot, "tools", "buildroot", "runs", "buildroot-20260420-stale0001", "manifest.json"),
+      expectedArtifacts: ["images/Image", "images/rootfs.cpio.gz"],
+      artifacts: []
+    }, null, 2)
+  );
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "remote:",
+      "  ssh: builder@example.com:2222",
+      "  workspace:",
+      `    root: ${remoteRoot}`,
+      ""
+    ].join("\n")
+  );
+
+  const env = {
+    ...process.env,
+    ...makeFakeSshEnv(remoteRoot),
+    MORPHEUS_STATE_ROOT: path.join(projectRoot, ".state")
+  };
+
+  const result = run([
+    "--json",
+    "tool",
+    "inspect",
+    "--id",
+    runId,
+    "--workspace",
+    remoteRoot,
+    "--ssh",
+    "builder@example.com:2222"
+  ], { env, cwd: projectRoot });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.details.manifest.status, "success");
+  assert.equal(payload.details.manifest.artifacts.length, 2);
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
   fs.rmSync(remoteRoot, { recursive: true, force: true });

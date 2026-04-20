@@ -17,7 +17,6 @@ const MORPHEUS_APP_CONTRACT = {
     "tool remove",
     "tool list",
     "tool verify",
-    "tool path",
     "tool resolve",
     "runs list",
     "runs show",
@@ -88,7 +87,6 @@ const TOOL_CATALOG_CONTRACT = {
   commands: [
     "tool list",
     "tool verify",
-    "tool path",
     "tool resolve"
   ]
 };

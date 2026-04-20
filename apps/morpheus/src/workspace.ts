@@ -99,11 +99,15 @@ function shellQuote(value) {
   return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
 
+function sshCommand(script) {
+  return `bash -lc ${shellQuote(script)}`;
+}
+
 function runSsh(target, script) {
   logDebug("workspace", "running ssh workspace command", {
     ssh: target.original
   });
-  const result = spawnSync("ssh", [...sshArgs(target), "bash", "-lc", script], {
+  const result = spawnSync("ssh", [...sshArgs(target), sshCommand(script)], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
   });

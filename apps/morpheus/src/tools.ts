@@ -158,7 +158,6 @@ function toolUsage() {
     "  node apps/morpheus/dist/cli.js tool remove --id RUN_ID [--json]",
     "  node apps/morpheus/dist/cli.js tool list [--json]",
     "  node apps/morpheus/dist/cli.js tool verify [<name>|--all] [--json]",
-    "  node apps/morpheus/dist/cli.js tool path <name>",
     "  node apps/morpheus/dist/cli.js tool resolve <name> [--json]"
   ].join("\n");
 }
@@ -247,19 +246,6 @@ async function handleToolCommand(argv) {
       process.stdout.write(`${formatVerifyText(results)}\n`);
     }
     return results.some((item) => item.status !== "valid") ? 1 : 0;
-  }
-
-  if (subcommand === "path") {
-    const name = positionals[0];
-    if (!name) {
-      throw new Error("tool path requires a tool name");
-    }
-    const result = verifyTool(name);
-    if (result.status !== "valid") {
-      throw new Error(`tool is not valid: ${name}`);
-    }
-    printMaybeJson(result.entrypoint, flags);
-    return 0;
   }
 
   if (subcommand === "resolve") {

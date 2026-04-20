@@ -65,6 +65,8 @@ Use the wrappers from `bin/`:
 ./bin/llbic --help
 ./bin/llcg --help
 ./bin/morpheus --help
+./bin/morpheus tool resolve buildroot --json
+./bin/morpheus --json tool inspect --id <run-id>
 ```
 
 For a repo-local Morpheus config, start from:

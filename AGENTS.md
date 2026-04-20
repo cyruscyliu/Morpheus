@@ -27,6 +27,10 @@
   build, lint, test, and smoke commands as needed.
 - When adding a repo-local tool wrapper, declare it in `tools/<tool>/tool.json`
   so `install:bin` can discover it automatically.
+- When updating a tool, update its skill and `tools/<tool>/README.md` in the
+  same change.
+- When inspecting Morpheus-managed tool runs, prefer Morpheus `tool`
+  subcommands over direct remote shell access.
 
 ## `tools/` README Principles
 

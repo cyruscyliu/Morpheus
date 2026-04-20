@@ -86,7 +86,6 @@ morpheus runs show
 morpheus runs export-html
 morpheus tool list
 morpheus tool verify
-morpheus tool path
 morpheus tool resolve
 morpheus contracts
 ```
@@ -97,7 +96,8 @@ Use these commands by intent:
 - `workspace show`: inspect workspace roots and their current presence.
 - `tool run`: start a managed tool run in local or remote mode.
 - `tool runs`: list managed runs, optionally scoped by workspace or SSH target.
-- `tool inspect`: inspect managed manifest state by run id.
+- `tool inspect`: inspect managed manifest state by run id and reconcile stale
+  remote runs when final state was not written back cleanly.
 - `tool logs`: stream or read managed logs by run id.
 - `tool fetch`: copy explicit paths from a managed run.
 - `tool remove`: remove a managed run by id.

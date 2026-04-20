@@ -125,6 +125,10 @@ function shellQuote(value) {
   return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
 
+function sshCommand(script) {
+  return `bash -lc ${shellQuote(script)}`;
+}
+
 function parseKeyValues(values) {
   const result = {};
   for (const item of values || []) {
@@ -256,7 +260,7 @@ function remoteLogPath(workspace, tool, id) {
 }
 
 function runSsh(target, script, streamOutput) {
-  const result = spawnSync("ssh", [...sshArgs(target), "bash", "-lc", script], {
+  const result = spawnSync("ssh", [...sshArgs(target), sshCommand(script)], {
     encoding: "utf8",
     stdio: streamOutput ? ["ignore", "inherit", "pipe"] : ["ignore", "pipe", "pipe"]
   });
@@ -265,7 +269,7 @@ function runSsh(target, script, streamOutput) {
 
 function runSshStreaming(target, script, handlers) {
   return new Promise((resolve) => {
-    const child = spawn("ssh", [...sshArgs(target), "bash", "-lc", script], {
+    const child = spawn("ssh", [...sshArgs(target), sshCommand(script)], {
       stdio: ["ignore", "pipe", "pipe"]
     });
     let stdout = "";
@@ -529,6 +533,112 @@ function registerRunFromManifest(manifest, ssh) {
     outputDir: manifest.outputDir,
     artifacts: manifest.artifacts || []
   });
+}
+
+function registerRemoteRunRecord(details, ssh) {
+  return registerManagedRun({
+    id: details.id,
+    tool: details.tool || BUILDROOT_TOOL,
+    mode: "remote",
+    workspace: details.workspace,
+    ssh: ssh ? ssh.original : null,
+    status: details.status,
+    createdAt: details.createdAt,
+    updatedAt: details.updatedAt,
+    manifest: details.manifest,
+    logFile: details.logFile,
+    runDir: details.runDir,
+    outputDir: details.outputDir,
+    artifacts: details.artifacts || []
+  });
+}
+
+function buildRemoteArtifactRecords(manifest) {
+  return (manifest.expectedArtifacts || []).map((requestedPath) => ({
+    path: requestedPath,
+    remote_location: path.posix.join(manifest.outputDir, requestedPath)
+  }));
+}
+
+function reconcileRemoteManifest(manifest, ssh) {
+  if (!manifest || manifest.mode !== "remote" || manifest.status !== "running") {
+    return manifest;
+  }
+  const assumeInactive = process.env.MORPHEUS_ASSUME_REMOTE_RUN_INACTIVE === "1";
+  const manifestBase64 = Buffer.from(JSON.stringify(manifest), "utf8").toString("base64");
+
+  const script = `
+python3 - <<'PY'
+import base64
+import json
+import os
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+manifest = json.loads(base64.b64decode(${shellQuote(manifestBase64)}).decode("utf-8"))
+manifest_path = Path(manifest["manifest"])
+paths = [manifest["id"], manifest["runDir"], manifest["outputDir"]]
+active = ${assumeInactive ? "False" : `False
+ps = subprocess.run(["ps", "-eo", "pid=,args="], capture_output=True, text=True, check=False)
+current_pid = os.getpid()
+parent_pid = os.getppid()
+for line in ps.stdout.splitlines():
+    line = line.strip()
+    if not line:
+        continue
+    pid_text, _, args = line.partition(" ")
+    try:
+        pid = int(pid_text)
+    except ValueError:
+        continue
+    if pid in (current_pid, parent_pid):
+        continue
+    markers = (
+        " make ",
+        "make O=",
+        "make -C ",
+        "./configure",
+        " set -euo pipefail ",
+        " tee -a ",
+        " gcc ",
+        " cc1 ",
+        " ld "
+    )
+    if any(token and token in args for token in paths) and any(marker in args for marker in markers):
+        active = True
+        break`}
+if not active:
+    expected = manifest.get("expectedArtifacts", [])
+    artifacts = []
+    all_present = True
+    for relpath in expected:
+        fullpath = os.path.join(manifest["outputDir"], relpath)
+        if os.path.exists(fullpath):
+            artifacts.append({
+                "path": relpath,
+                "remote_location": fullpath
+            })
+        else:
+            all_present = False
+    manifest["updatedAt"] = datetime.now(timezone.utc).isoformat()
+    if expected and all_present:
+        manifest["status"] = "success"
+        manifest["exitCode"] = 0
+        manifest["artifacts"] = artifacts
+        manifest.pop("errorMessage", None)
+    else:
+        manifest["status"] = "error"
+        manifest["exitCode"] = manifest.get("exitCode", 1) or 1
+        manifest["errorMessage"] = "remote run stopped without final manifest update"
+        if artifacts:
+            manifest["artifacts"] = artifacts
+    if manifest_path.parent.exists():
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\\n")
+print(json.dumps(manifest))
+PY
+`;
+  return JSON.parse(runRequiredSsh(ssh, script, "failed to reconcile remote manifest").stdout);
 }
 
 function normalizeWorkspaceFilter(record, workspace) {
@@ -856,6 +966,19 @@ async function runRemoteBuildroot(options) {
   const runDir = remoteRunDir(options.workspace, BUILDROOT_TOOL, id);
   const logFile = remoteLogPath(options.workspace, BUILDROOT_TOOL, id);
   const outputDir = path.posix.join(runDir, "output");
+  registerRemoteRunRecord({
+    id,
+    tool: BUILDROOT_TOOL,
+    workspace: options.workspace,
+    status: options.detach ? "submitted" : "running",
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    manifest,
+    logFile,
+    runDir,
+    outputDir,
+    artifacts: []
+  }, options.ssh);
 
   if (options.detach) {
     const detachedScript = `nohup bash -lc ${shellQuote(script)} > /dev/null 2>&1 < /dev/null & echo $!`;
@@ -915,7 +1038,7 @@ async function runManagedRun(flags) {
   return await runRemoteBuildroot(options);
 }
 
-function inspectManagedRun(flags) {
+async function inspectManagedRun(flags) {
   const options = parseExistingRunOptions(flags, "inspect");
   if (!options.workspace) {
     throw new Error(`inspect could not resolve workspace for run: ${options.id}`);
@@ -924,10 +1047,19 @@ function inspectManagedRun(flags) {
     ? remoteManifestPath(options.workspace, options.tool, options.id)
     : localManifestPath(options.workspace, options.tool, options.id);
   const manifest = options.ssh
-    ? JSON.parse(runRequiredSsh(options.ssh, `cat ${shellQuote(manifestPath)}`, `failed to read remote manifest: ${manifestPath}`).stdout)
+    ? reconcileRemoteManifest(
+      JSON.parse(runRequiredSsh(options.ssh, `cat ${shellQuote(manifestPath)}`, `failed to read remote manifest: ${manifestPath}`).stdout),
+      options.ssh
+    )
     : readJson(manifestPath);
+  if ((!manifest.artifacts || manifest.artifacts.length === 0) && manifest.status === "success" && options.ssh) {
+    manifest.artifacts = buildRemoteArtifactRecords(manifest);
+  }
   if ((!manifest.artifacts || manifest.artifacts.length === 0) && options.record && options.record.artifacts) {
     manifest.artifacts = options.record.artifacts;
+  }
+  if (options.ssh) {
+    registerRunFromManifest(manifest, options.ssh);
   }
   return {
     command: "inspect",
@@ -938,7 +1070,7 @@ function inspectManagedRun(flags) {
   };
 }
 
-function logsManagedRun(flags) {
+async function logsManagedRun(flags) {
   const options = parseExistingRunOptions(flags, "logs");
   if (!options.workspace) {
     throw new Error(`logs could not resolve workspace for run: ${options.id}`);
@@ -949,7 +1081,25 @@ function logsManagedRun(flags) {
   let output = "";
   if (options.ssh) {
     const command = options.follow ? `tail -n +1 -f ${shellQuote(logFile)}` : `cat ${shellQuote(logFile)}`;
-    output = runRequiredSsh(options.ssh, command, `failed to read remote logs: ${logFile}`, !options.json).stdout;
+    if (options.json) {
+      const result = await runSshStreaming(options.ssh, command, {
+        onStdoutLine(line) {
+          if (line) {
+            emitJson({
+              command: "logs",
+              status: "stream",
+              exit_code: 0,
+              details: { event: "log", id: options.id, line }
+            });
+          }
+        }
+      });
+      if (result.exitCode !== 0) {
+        throw new Error(result.stderr || `failed to read remote logs: ${logFile}`);
+      }
+    } else {
+      output = runRequiredSsh(options.ssh, command, `failed to read remote logs: ${logFile}`, true).stdout;
+    }
   } else {
     output = fs.readFileSync(logFile, "utf8");
     if (!options.json) {
@@ -1006,6 +1156,7 @@ function fetchManagedRun(flags) {
 }
 
 function listManagedRunRecords(flags) {
+  hydrateManagedRunsFromWorkspace(flags);
   const records = listManagedRuns()
     .filter((record) => normalizeWorkspaceFilter(record, flags.workspace))
     .filter((record) => !flags.ssh || record.ssh === flags.ssh)
@@ -1019,6 +1170,93 @@ function listManagedRunRecords(flags) {
       runs: records
     }
   };
+}
+
+function candidateListContexts(flags) {
+  const contexts = [];
+  const pushContext = (workspace, ssh) => {
+    if (!workspace) {
+      return;
+    }
+    const key = `${ssh || "local"}::${workspace}`;
+    if (contexts.some((item) => item.key === key)) {
+      return;
+    }
+    contexts.push({ key, workspace, ssh });
+  };
+
+  if (flags.workspace || flags.ssh) {
+    pushContext(flags.workspace || null, flags.ssh || null);
+  }
+
+  const resolved = applyConfigDefaults({ ...flags }, {
+    allowGlobalRemote: true,
+    allowToolDefaults: true
+  }).flags;
+  pushContext(resolved.localWorkspace || resolved.workspace, null);
+  if (resolved.ssh && resolved.remoteWorkspace) {
+    pushContext(resolved.remoteWorkspace, resolved.ssh);
+  } else if (resolved.ssh && resolved.workspace && path.isAbsolute(resolved.workspace)) {
+    pushContext(resolved.workspace, resolved.ssh);
+  }
+
+  return contexts;
+}
+
+function hydrateManagedRunsFromWorkspace(flags) {
+  for (const context of candidateListContexts(flags)) {
+    if (context.ssh) {
+      hydrateRemoteManagedRuns(context.workspace, parseSshTarget(context.ssh));
+      continue;
+    }
+    hydrateLocalManagedRuns(context.workspace);
+  }
+}
+
+function hydrateLocalManagedRuns(workspace) {
+  const runsRoot = path.join(path.resolve(process.cwd(), workspace), "tools");
+  if (!fs.existsSync(runsRoot)) {
+    return;
+  }
+  const manifests = fs.readdirSync(runsRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .flatMap((entry) => {
+      const toolRunsRoot = path.join(runsRoot, entry.name, "runs");
+      if (!fs.existsSync(toolRunsRoot)) {
+        return [];
+      }
+      return fs.readdirSync(toolRunsRoot, { withFileTypes: true })
+        .filter((item) => item.isDirectory())
+        .map((item) => path.join(toolRunsRoot, item.name, "manifest.json"))
+        .filter((filePath) => fs.existsSync(filePath));
+    });
+  for (const manifestPath of manifests) {
+    const manifest = readJson(manifestPath);
+    registerRunFromManifest(manifest, null);
+  }
+}
+
+function hydrateRemoteManagedRuns(workspace, ssh) {
+  const script = `
+python3 - <<'PY'
+import json
+from pathlib import Path
+root = Path(${shellQuote(path.posix.join(workspace, "tools"))})
+items = []
+if root.exists():
+    for manifest in root.glob("*/runs/*/manifest.json"):
+        try:
+            items.append(json.loads(manifest.read_text()))
+        except Exception:
+            pass
+print(json.dumps(items))
+PY
+`;
+  const result = runRequiredSsh(ssh, script, "failed to discover remote managed runs");
+  const manifests = JSON.parse(result.stdout || "[]");
+  for (const manifest of manifests) {
+    registerRunFromManifest(manifest, ssh);
+  }
 }
 
 function removeManagedRunCommand(flags) {
@@ -1110,6 +1348,14 @@ async function handleManagedRunCommand(command, argv) {
       delete flags.remoteWorkspace;
     }
   }
+  if (command === "list") {
+    if (!Object.prototype.hasOwnProperty.call(parsedFlags, "workspace")) {
+      delete flags.workspace;
+    }
+    if (!Object.prototype.hasOwnProperty.call(parsedFlags, "ssh")) {
+      delete flags.ssh;
+    }
+  }
   if (flags.help) {
     process.stdout.write(`${managedRunUsage()}\n`);
     return 0;
@@ -1120,9 +1366,9 @@ async function handleManagedRunCommand(command, argv) {
   } else if (command === "list") {
     result = listManagedRunRecords(flags);
   } else if (command === "inspect") {
-    result = inspectManagedRun(flags);
+    result = await inspectManagedRun(flags);
   } else if (command === "logs") {
-    result = logsManagedRun(flags);
+    result = await logsManagedRun(flags);
   } else if (command === "fetch") {
     result = fetchManagedRun(flags);
   } else if (command === "remove") {

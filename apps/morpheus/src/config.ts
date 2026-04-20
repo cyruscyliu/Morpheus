@@ -167,7 +167,23 @@ function resolveToolName(configValue, name) {
   return {
     name,
     mode: item.mode || null,
-    remote: item.remote || null
+    remote: item.remote || null,
+    source: item.source || null,
+    buildrootVersion: item["buildroot-version"] || item.buildrootVersion || null,
+    defconfig: item.defconfig || null,
+    makeArgs: Array.isArray(item["make-arg"])
+      ? [...item["make-arg"]]
+      : Array.isArray(item["make-args"])
+        ? [...item["make-args"]]
+        : Array.isArray(item.makeArgs)
+          ? [...item.makeArgs]
+          : null,
+    artifacts: Array.isArray(item.artifacts) ? [...item.artifacts] : null,
+    configFragment: Array.isArray(item["config-fragment"])
+      ? [...item["config-fragment"]]
+      : Array.isArray(item.configFragment)
+        ? [...item.configFragment]
+        : null
   };
 }
 
@@ -229,6 +245,30 @@ function applyConfigDefaults(flags, options) {
 
   if (toolEntry && toolEntry.remote && next.mode !== "local" && !next.remote && !next.ssh) {
     next.remote = toolEntry.remote;
+  }
+
+  if (toolEntry && toolEntry.source && !next.source) {
+    next.source = resolveLocalPath(baseDir, toolEntry.source);
+  }
+
+  if (toolEntry && toolEntry.buildrootVersion && !next["buildroot-version"]) {
+    next["buildroot-version"] = toolEntry.buildrootVersion;
+  }
+
+  if (toolEntry && toolEntry.defconfig && !next.defconfig) {
+    next.defconfig = toolEntry.defconfig;
+  }
+
+  if (toolEntry && toolEntry.makeArgs && !next.makeArg) {
+    next.makeArg = [...toolEntry.makeArgs];
+  }
+
+  if (toolEntry && toolEntry.artifacts && !next.artifact) {
+    next.artifact = [...toolEntry.artifacts];
+  }
+
+  if (toolEntry && toolEntry.configFragment && !next["config-fragment"]) {
+    next["config-fragment"] = [...toolEntry.configFragment];
   }
 
   applyRemoteReference(value, next, next.remote);

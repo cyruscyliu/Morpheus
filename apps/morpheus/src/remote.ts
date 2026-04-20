@@ -1,8 +1,9 @@
 // @ts-nocheck
 const crypto = require("crypto");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 const {
   registerManagedRun,
   readManagedRun,
@@ -21,7 +22,13 @@ const MANAGED_TOOL_ADAPTERS = {
 
 function parseRunArgs(argv) {
   const flags = {};
-  const repeatable = { env: [], "make-arg": [], path: [] };
+  const repeatable = {
+    env: [],
+    "make-arg": [],
+    path: [],
+    artifact: [],
+    "config-fragment": []
+  };
   const booleanFlags = new Set(["json", "detach", "follow", "verbose"]);
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -130,6 +137,75 @@ function parseKeyValues(values) {
   return result;
 }
 
+function normalizeArtifactRequests(values) {
+  const items = Array.isArray(values) ? values : values ? [values] : [];
+  return items.map((item) => String(item)).filter(Boolean);
+}
+
+function normalizeConfigFragment(values) {
+  const items = Array.isArray(values) ? values : values ? [values] : [];
+  return items.map((item) => String(item)).filter(Boolean);
+}
+
+function hasParallelMakeArg(values) {
+  return (values || []).some((value) => {
+    const item = String(value);
+    return /^-j(\d+)?$/.test(item) || /^-j\$\((nproc|proc)\)$/.test(item) || /^--jobs(=.+)?$/.test(item);
+  });
+}
+
+function detectLocalParallelism() {
+  return Math.max(
+    1,
+    typeof os.availableParallelism === "function"
+      ? os.availableParallelism()
+      : ((os.cpus() || []).length || 1)
+  );
+}
+
+function isDynamicParallelMakeArg(value) {
+  return /^-j\$\((nproc|proc)\)$/.test(String(value));
+}
+
+function resolveLocalMakeArg(value) {
+  if (isDynamicParallelMakeArg(value)) {
+    return `-j${detectLocalParallelism()}`;
+  }
+  return String(value);
+}
+
+function resolveRemoteShellMakeArg(value) {
+  if (isDynamicParallelMakeArg(value)) {
+    return '"-j${MORPHEUS_MAKE_JOBS}"';
+  }
+  return shellQuote(value);
+}
+
+function localParallelMakeArgs(values) {
+  if (hasParallelMakeArg(values)) {
+    return (values || []).map((value) => resolveLocalMakeArg(value));
+  }
+  return [`-j${detectLocalParallelism()}`, ...(values || [])];
+}
+
+function remoteParallelMakeArgs(values) {
+  const dynamicParallel = (values || []).some((value) => isDynamicParallelMakeArg(value));
+  if (hasParallelMakeArg(values)) {
+    return {
+      manifestArgs: [...values],
+      shellArgs: values.map((value) => resolveRemoteShellMakeArg(value)),
+      shellSetup: dynamicParallel
+        ? 'MORPHEUS_MAKE_JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 1)"'
+        : ""
+    };
+  }
+  return {
+    manifestArgs: ["-j$(nproc)", ...(values || [])],
+    shellArgs: [`"-j\${MORPHEUS_MAKE_JOBS}"`, ...(values || []).map((value) => shellQuote(value))],
+    shellSetup: 'MORPHEUS_MAKE_JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 1)"'
+  };
+}
+
 function generateRunId(tool) {
   const stamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
   return `${tool}-${stamp}-${crypto.randomUUID().slice(0, 8)}`;
@@ -185,6 +261,67 @@ function runSsh(target, script, streamOutput) {
     stdio: streamOutput ? ["ignore", "inherit", "pipe"] : ["ignore", "pipe", "pipe"]
   });
   return normalizeSpawnResult(result);
+}
+
+function runSshStreaming(target, script, handlers) {
+  return new Promise((resolve) => {
+    const child = spawn("ssh", [...sshArgs(target), "bash", "-lc", script], {
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    let stdoutRemainder = "";
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+
+    child.stdout.on("data", (chunk) => {
+      if (handlers && handlers.collectStdout) {
+        stdout += chunk;
+      }
+      stdoutRemainder += chunk;
+      const lines = stdoutRemainder.split(/\r?\n/);
+      stdoutRemainder = lines.pop() || "";
+      for (const line of lines) {
+        if (handlers && handlers.onStdoutLine) {
+          handlers.onStdoutLine(line);
+        }
+      }
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+      if (handlers && handlers.onStderr) {
+        handlers.onStderr(chunk);
+      }
+    });
+
+    child.on("error", (error) => {
+      resolve({
+        stdout,
+        stderr,
+        exitCode: 1,
+        error
+      });
+    });
+
+    child.on("close", (code) => {
+      if (stdoutRemainder) {
+        if (handlers && handlers.collectStdout) {
+          stdout += stdoutRemainder;
+        }
+        if (handlers && handlers.onStdoutLine) {
+          handlers.onStdoutLine(stdoutRemainder);
+        }
+      }
+      resolve({
+        stdout,
+        stderr,
+        exitCode: code == null ? 1 : code,
+        error: null
+      });
+    });
+  });
 }
 
 function runCommand(command, args, options) {
@@ -300,9 +437,12 @@ function parseBuildrootRunOptions(flags) {
     tool: adapter.name,
     mode,
     workspace: requireFlag(flags, "workspace", "run requires --workspace DIR"),
+    localWorkspace: flags.localWorkspace || null,
     buildrootVersion: flags["buildroot-version"] || null,
     source: flags.source || null,
     defconfig: flags.defconfig || null,
+    expectedArtifacts: normalizeArtifactRequests(flags.artifact || flags.artifacts),
+    configFragment: normalizeConfigFragment(flags["config-fragment"]),
     makeArgs: flags.makeArg || [],
     env: parseKeyValues(flags.env || []),
     forwarded: flags.forwarded || [],
@@ -355,6 +495,9 @@ function buildCanonicalManifest(base) {
     buildrootVersion: base.buildrootVersion || null,
     source: base.source || null,
     defconfig: base.defconfig || null,
+    configFragment: base.configFragment || [],
+    expectedArtifacts: base.expectedArtifacts || [],
+    artifacts: base.artifacts || [],
     makeArgs: base.makeArgs || [],
     env: base.env || {},
     forwarded: base.forwarded || [],
@@ -383,7 +526,8 @@ function registerRunFromManifest(manifest, ssh) {
     manifest: manifest.manifest,
     logFile: manifest.logFile,
     runDir: manifest.runDir,
-    outputDir: manifest.outputDir
+    outputDir: manifest.outputDir,
+    artifacts: manifest.artifacts || []
   });
 }
 
@@ -397,6 +541,91 @@ function normalizeWorkspaceFilter(record, workspace) {
   return record.workspace === workspace;
 }
 
+function localArtifactDir(workspace, tool, id) {
+  return path.join(localToolWorkspace(workspace, tool), "runs", id, "artifacts");
+}
+
+function validateAndResolveLocalArtifacts(outputDir, requestedPaths) {
+  const artifacts = [];
+  for (const requestedPath of requestedPaths || []) {
+    const resolvedPath = path.resolve(outputDir, requestedPath);
+    if (!fs.existsSync(resolvedPath)) {
+      throw new Error(`expected artifact is missing: ${requestedPath}`);
+    }
+    artifacts.push({
+      path: requestedPath,
+      location: resolvedPath
+    });
+  }
+  return artifacts;
+}
+
+function applyLocalConfigFragment(source, outputDir, fragmentLines, logFile, jsonMode, env) {
+  if (!fragmentLines || fragmentLines.length === 0) {
+    return { exitCode: 0, stderr: "", stdout: "" };
+  }
+
+  fs.mkdirSync(outputDir, { recursive: true });
+  fs.appendFileSync(path.join(outputDir, ".config"), `${fragmentLines.join("\n")}\n`, "utf8");
+  const result = runCommand("make", ["-C", source, `O=${outputDir}`, "olddefconfig"], { env });
+  appendLog(logFile, result);
+  if (!jsonMode) {
+    process.stdout.write(result.stdout);
+    process.stderr.write(result.stderr);
+  }
+  return result;
+}
+
+function fetchRemoteArtifacts(options, id, outputDir) {
+  if (!options.expectedArtifacts || options.expectedArtifacts.length === 0) {
+    return [];
+  }
+
+  if (!options.localWorkspace) {
+    return options.expectedArtifacts.map((requestedPath) => ({
+      path: requestedPath,
+      remote_location: path.posix.join(outputDir, requestedPath)
+    }));
+  }
+
+  const destination = localArtifactDir(options.localWorkspace, BUILDROOT_TOOL, id);
+  fs.mkdirSync(destination, { recursive: true });
+  const archiveBase64 = runRequiredSsh(
+    options.ssh,
+    `
+python3 - <<'PY'
+import base64
+import io
+import os
+import tarfile
+paths = ${JSON.stringify(options.expectedArtifacts)}
+root = ${JSON.stringify(outputDir)}
+buffer = io.BytesIO()
+with tarfile.open(fileobj=buffer, mode="w") as archive:
+    for relpath in paths:
+        fullpath = os.path.join(root, relpath)
+        if not os.path.exists(fullpath):
+            raise SystemExit(f"missing artifact: {relpath}")
+        archive.add(fullpath, arcname=relpath)
+print(base64.b64encode(buffer.getvalue()).decode("ascii"))
+PY
+`,
+    "failed to fetch configured Buildroot artifacts"
+  ).stdout.trim();
+  const archivePath = path.join(destination, "artifacts.tar");
+  fs.writeFileSync(archivePath, Buffer.from(archiveBase64, "base64"));
+  const extract = runCommand("tar", ["-xf", archivePath, "-C", destination]);
+  fs.rmSync(archivePath, { force: true });
+  if (extract.exitCode !== 0) {
+    throw new Error(extract.stderr || "failed to extract configured Buildroot artifacts");
+  }
+  return options.expectedArtifacts.map((requestedPath) => ({
+    path: requestedPath,
+    remote_location: path.posix.join(outputDir, requestedPath),
+    local_location: path.join(destination, requestedPath)
+  }));
+}
+
 function runLocalBuildroot(options) {
   const id = generateRunId(BUILDROOT_TOOL);
   const runDir = localRunDir(options.workspace, BUILDROOT_TOOL, id);
@@ -407,6 +636,7 @@ function runLocalBuildroot(options) {
   const source = ensureLocalBuildrootSource(options);
   fs.mkdirSync(outputDir, { recursive: true });
   fs.writeFileSync(logFile, "", "utf8");
+  const makeArgs = localParallelMakeArgs(options.makeArgs);
 
   const base = {
     id,
@@ -419,7 +649,9 @@ function runLocalBuildroot(options) {
     buildrootVersion: options.buildrootVersion,
     source,
     defconfig: options.defconfig,
-    makeArgs: options.makeArgs,
+    configFragment: options.configFragment,
+    expectedArtifacts: options.expectedArtifacts,
+    makeArgs,
     env: options.env,
     forwarded: options.forwarded,
     runDir,
@@ -448,7 +680,22 @@ function runLocalBuildroot(options) {
   }
 
   if (exitCode === 0) {
-    const build = runCommand("make", ["-C", source, `O=${outputDir}`, ...options.makeArgs, ...options.forwarded], { env });
+    const olddefconfig = applyLocalConfigFragment(
+      source,
+      outputDir,
+      options.configFragment,
+      logFile,
+      options.json,
+      env
+    );
+    if (olddefconfig.exitCode !== 0) {
+      exitCode = olddefconfig.exitCode;
+      errorMessage = olddefconfig.stderr || olddefconfig.stdout || "Buildroot olddefconfig failed";
+    }
+  }
+
+  if (exitCode === 0) {
+    const build = runCommand("make", ["-C", source, `O=${outputDir}`, ...makeArgs, ...options.forwarded], { env });
     appendLog(logFile, build);
     if (!options.json) {
       process.stdout.write(build.stdout);
@@ -460,10 +707,16 @@ function runLocalBuildroot(options) {
     }
   }
 
+  let artifacts = [];
+  if (exitCode === 0) {
+    artifacts = validateAndResolveLocalArtifacts(outputDir, options.expectedArtifacts);
+  }
+
   const finalManifest = buildCanonicalManifest({
     ...base,
     status: exitCode === 0 ? "success" : "error",
     updatedAt: nowIso(),
+    artifacts,
     exitCode,
     errorMessage
   });
@@ -475,7 +728,7 @@ function runLocalBuildroot(options) {
     status: finalManifest.status,
     exit_code: exitCode,
     summary: exitCode === 0 ? "completed managed Buildroot run" : "managed Buildroot run failed",
-    details: { id, tool: BUILDROOT_TOOL, mode: "local", workspace: options.workspace, run_dir: runDir, manifest, log_file: logFile, output_dir: outputDir },
+    details: { id, tool: BUILDROOT_TOOL, mode: "local", workspace: options.workspace, run_dir: runDir, manifest, log_file: logFile, output_dir: outputDir, artifacts },
     error: exitCode === 0 ? undefined : { code: "managed_run_failed", message: errorMessage || "managed run failed" }
   };
 }
@@ -495,9 +748,22 @@ function buildrootRemoteScript(options, id) {
   const manifest = remoteManifestPath(options.workspace, BUILDROOT_TOOL, id);
   const logFile = remoteLogPath(options.workspace, BUILDROOT_TOOL, id);
   const createdAt = nowIso();
+  const makeArgs = remoteParallelMakeArgs(options.makeArgs);
   const defconfigCommand = options.defconfig ? `make O=${shellQuote(outputDir)} ${options.defconfig}` : ":";
+  const configFragmentCommand = options.configFragment.length > 0
+    ? `cat >> ${shellQuote(path.posix.join(outputDir, ".config"))} <<'CONFIG'
+${options.configFragment.join("\n")}
+CONFIG
+make O=${shellQuote(outputDir)} olddefconfig`
+    : ":";
   const envPrefix = Object.entries(options.env).map(([key, value]) => `${key}=${shellQuote(value)}`).join(" ");
-  const makeCommand = [envPrefix, "make", `O=${shellQuote(outputDir)}`, ...options.makeArgs.map(shellQuote), ...options.forwarded.map(shellQuote)].filter(Boolean).join(" ");
+  const makeCommand = [
+    envPrefix,
+    "make",
+    `O=${shellQuote(outputDir)}`,
+    ...makeArgs.shellArgs,
+    ...options.forwarded.map(shellQuote)
+  ].filter(Boolean).join(" ");
   const initialManifest = buildCanonicalManifest({
     id,
     tool: BUILDROOT_TOOL,
@@ -509,7 +775,9 @@ function buildrootRemoteScript(options, id) {
     buildrootVersion: options.buildrootVersion,
     source: sourceDir,
     defconfig: options.defconfig,
-    makeArgs: options.makeArgs,
+    configFragment: options.configFragment,
+    expectedArtifacts: options.expectedArtifacts,
+    makeArgs: makeArgs.manifestArgs,
     env: options.env,
     forwarded: options.forwarded,
     runDir,
@@ -519,8 +787,9 @@ function buildrootRemoteScript(options, id) {
     transport: { type: "ssh", target: options.ssh }
   });
 
-  return `
+return `
 set -euo pipefail
+${makeArgs.shellSetup}
 mkdir -p ${shellQuote(cacheDir)} ${shellQuote(srcRoot)} ${shellQuote(runDir)} ${shellQuote(outputDir)}
 : > ${shellQuote(logFile)}
 ${options.source ? ":" : `if [ ! -f ${shellQuote(tarball)} ]; then
@@ -536,6 +805,7 @@ cd ${shellQuote(sourceDir)}
 set +e
 {
   ${defconfigCommand}
+  ${configFragmentCommand}
   ${makeCommand}
 } 2>&1 | tee -a ${shellQuote(logFile)}
 exit_code=\${PIPESTATUS[0]}
@@ -544,14 +814,17 @@ status=success
 if [ "\${exit_code}" -ne 0 ]; then
   status=error
 fi
+export MORPHEUS_STATUS="\${status}"
+export MORPHEUS_EXIT_CODE="\${exit_code}"
 python3 - <<'PY'
 import json
+import os
 from pathlib import Path
 from datetime import datetime, timezone
 file = Path(${shellQuote(manifest)})
 data = json.loads(file.read_text())
-data['status'] = '${'${status}'}'
-data['exitCode'] = int('${'${exit_code}'}')
+data['status'] = os.environ['MORPHEUS_STATUS']
+data['exitCode'] = int(os.environ['MORPHEUS_EXIT_CODE'])
 data['updatedAt'] = datetime.now(timezone.utc).isoformat()
 if data['status'] == 'error':
     data['errorMessage'] = 'remote Buildroot run failed'
@@ -561,7 +834,7 @@ exit "\${exit_code}"
 `;
 }
 
-function runRemoteBuildroot(options) {
+async function runRemoteBuildroot(options) {
   const id = generateRunId(BUILDROOT_TOOL);
   const remoteSourceDir = options.source
     ? path.posix.join(remoteToolWorkspace(options.workspace, BUILDROOT_TOOL), "src", `${id}-source`)
@@ -582,6 +855,7 @@ function runRemoteBuildroot(options) {
   const manifest = remoteManifestPath(options.workspace, BUILDROOT_TOOL, id);
   const runDir = remoteRunDir(options.workspace, BUILDROOT_TOOL, id);
   const logFile = remoteLogPath(options.workspace, BUILDROOT_TOOL, id);
+  const outputDir = path.posix.join(runDir, "output");
 
   if (options.detach) {
     const detachedScript = `nohup bash -lc ${shellQuote(script)} > /dev/null 2>&1 < /dev/null & echo $!`;
@@ -594,39 +868,51 @@ function runRemoteBuildroot(options) {
       status: "submitted",
       exit_code: 0,
       summary: "submitted managed remote Buildroot run",
-      details: { id, tool: BUILDROOT_TOOL, mode: "remote", workspace: options.workspace, run_dir: runDir, manifest, log_file: logFile, pid: Number.parseInt(result.stdout.trim(), 10) }
+      details: { id, tool: BUILDROOT_TOOL, mode: "remote", workspace: options.workspace, run_dir: runDir, manifest, log_file: logFile, output_dir: outputDir, pid: Number.parseInt(result.stdout.trim(), 10) }
     };
   }
 
-  const result = runSsh(options.ssh, script, !options.json);
-  if (options.json) {
-    for (const line of result.stdout.split(/\r?\n/)) {
-      if (line) {
-        emitJson({ command: "run", status: "stream", exit_code: 0, details: { event: "log", id, mode: "remote", line } });
+  const result = options.json
+    ? await runSshStreaming(options.ssh, script, {
+      onStdoutLine(line) {
+        if (line) {
+          emitJson({
+            command: "run",
+            status: "stream",
+            exit_code: 0,
+            details: { event: "log", id, mode: "remote", line }
+          });
+        }
       }
-    }
+    })
+    : runSsh(options.ssh, script, true);
+
+  if (result.error) {
+    throw new Error(result.error.message || "failed to execute managed remote run");
   }
   const payload = {
     command: "run",
     status: result.exitCode === 0 ? "success" : "error",
     exit_code: result.exitCode,
     summary: result.exitCode === 0 ? "completed managed remote Buildroot run" : "managed remote Buildroot run failed",
-    details: { id, tool: BUILDROOT_TOOL, mode: "remote", workspace: options.workspace, run_dir: runDir, manifest, log_file: logFile },
+    details: { id, tool: BUILDROOT_TOOL, mode: "remote", workspace: options.workspace, run_dir: runDir, manifest, log_file: logFile, output_dir: outputDir },
     error: result.exitCode === 0 ? undefined : { code: "managed_run_failed", message: result.stderr || "managed remote run failed" }
   };
   const manifestResult = JSON.parse(
     runRequiredSsh(options.ssh, `cat ${shellQuote(manifest)}`, `failed to read remote manifest: ${manifest}`).stdout
   );
+  manifestResult.artifacts = fetchRemoteArtifacts(options, id, manifestResult.outputDir);
   registerRunFromManifest(manifestResult, options.ssh);
+  payload.details.artifacts = manifestResult.artifacts;
   return payload;
 }
 
-function runManagedRun(flags) {
+async function runManagedRun(flags) {
   const options = parseBuildrootRunOptions(flags);
   if (options.mode === "local") {
     return runLocalBuildroot(options);
   }
-  return runRemoteBuildroot(options);
+  return await runRemoteBuildroot(options);
 }
 
 function inspectManagedRun(flags) {
@@ -640,6 +926,9 @@ function inspectManagedRun(flags) {
   const manifest = options.ssh
     ? JSON.parse(runRequiredSsh(options.ssh, `cat ${shellQuote(manifestPath)}`, `failed to read remote manifest: ${manifestPath}`).stdout)
     : readJson(manifestPath);
+  if ((!manifest.artifacts || manifest.artifacts.length === 0) && options.record && options.record.artifacts) {
+    manifest.artifacts = options.record.artifacts;
+  }
   return {
     command: "inspect",
     status: "success",
@@ -796,7 +1085,7 @@ function printManagedResult(result, flags) {
   emitText(result.summary || result.status);
 }
 
-function handleManagedRunCommand(command, argv) {
+async function handleManagedRunCommand(command, argv) {
   if (!command || command === "help" || command === "--help") {
     process.stdout.write(`${managedRunUsage()}\n`);
     return 0;
@@ -827,7 +1116,7 @@ function handleManagedRunCommand(command, argv) {
   }
   let result;
   if (command === "run") {
-    result = runManagedRun(flags);
+    result = await runManagedRun(flags);
   } else if (command === "list") {
     result = listManagedRunRecords(flags);
   } else if (command === "inspect") {

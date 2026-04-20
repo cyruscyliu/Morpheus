@@ -430,6 +430,196 @@ test("managed remote run resolves ssh and workspace from morpheus.yaml", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("tool config can provide buildroot defaults and expected artifacts", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-defaults-project-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "remote:",
+      "  ssh: builder@example.com:2222",
+      "  workspace:",
+      "    root: ./remote-workflow-workspace",
+      "tools:",
+      "  buildroot:",
+      "    mode: remote",
+      "    buildroot-version: 2025.02.1",
+      "    defconfig: qemu_aarch64_virt_defconfig",
+      "    make-args:",
+      "      - -j16",
+      "    config-fragment:",
+      "      - BR2_TOOLCHAIN_BUILDROOT_GLIBC=y",
+      "      - BR2_TARGET_GENERIC_GETTY_PORT=\"ttyAMA0\"",
+      "    artifacts:",
+      "      - images/Image",
+      "      - images/rootfs.cpio.gz",
+      ""
+    ].join("\n")
+  );
+
+  const previousCwd = process.cwd();
+  process.chdir(projectRoot);
+  const { applyConfigDefaults } = require(path.join(appRoot, "dist", "config.js"));
+  const resolved = applyConfigDefaults({
+    tool: "buildroot"
+  }, { allowGlobalRemote: true, allowToolDefaults: true });
+  process.chdir(previousCwd);
+
+  assert.equal(resolved.flags.mode, "remote");
+  assert.equal(resolved.flags["buildroot-version"], "2025.02.1");
+  assert.equal(resolved.flags.defconfig, "qemu_aarch64_virt_defconfig");
+  assert.deepEqual(resolved.flags.makeArg, ["-j16"]);
+  assert.deepEqual(resolved.flags["config-fragment"], [
+    "BR2_TOOLCHAIN_BUILDROOT_GLIBC=y",
+    "BR2_TARGET_GENERIC_GETTY_PORT=\"ttyAMA0\""
+  ]);
+  assert.deepEqual(resolved.flags.artifact, ["images/Image", "images/rootfs.cpio.gz"]);
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("managed remote Buildroot JSON run streams large logs without truncation", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-stream-project-"));
+  const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-stream-root-"));
+  const sourceRoot = path.join(remoteRoot, "tools", "buildroot", "src", "buildroot-2025.02.1");
+  fs.mkdirSync(sourceRoot, { recursive: true });
+  fs.writeFileSync(
+    path.join(sourceRoot, "Makefile"),
+    [
+      ".DEFAULT_GOAL := all",
+      "",
+      "qemu_aarch64_virt_defconfig:",
+      "\t@mkdir -p $(O) $(O)/images",
+      "\t@printf 'BR2_aarch64=y\\n' > $(O)/.config",
+      "",
+      "olddefconfig:",
+      "\t@mkdir -p $(O) $(O)/images",
+      "",
+      "all:",
+      "\t@mkdir -p $(O)/images",
+      "\t@i=1; while [ $$i -le 25000 ]; do echo \"stream line $$i from fake remote build\"; i=`expr $$i + 1`; done",
+      "\t@printf 'kernel' > $(O)/images/Image",
+      "\t@gzip -nc $(O)/images/Image > $(O)/images/rootfs.cpio.gz",
+      ""
+    ].join("\n")
+  );
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "remote:",
+      "  ssh: builder@example.com:2222",
+      "  workspace:",
+      "    root: /remote-workspace",
+      "tools:",
+      "  buildroot:",
+      "    mode: remote",
+      "    buildroot-version: 2025.02.1",
+      "    defconfig: qemu_aarch64_virt_defconfig",
+      "    artifacts:",
+      "      - images/Image",
+      "      - images/rootfs.cpio.gz",
+      ""
+    ].join("\n")
+  );
+
+  const env = {
+    ...process.env,
+    ...makeFakeSshEnv(remoteRoot)
+  };
+
+  const result = run([
+    "--json",
+    "tool",
+    "run",
+    "--tool",
+    "buildroot"
+  ], { env, cwd: projectRoot, maxBuffer: 1024 * 1024 * 64 });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const lines = result.stdout.trim().split(/\r?\n/);
+  assert.ok(lines.length > 1000);
+  const payload = JSON.parse(lines.at(-1));
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.artifacts.length, 2);
+  assert.equal(payload.details.id.startsWith("buildroot-"), true);
+  assert.match(lines[0], /"status":"stream"/);
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+  fs.rmSync(remoteRoot, { recursive: true, force: true });
+});
+
+test("managed remote Buildroot run can fetch configured artifacts back locally", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-artifacts-project-"));
+  const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-artifacts-root-"));
+  const seededSourceRoot = path.join(
+    remoteRoot,
+    "tools",
+    "buildroot",
+    "src",
+    "buildroot-2025.02.1"
+  );
+  fs.mkdirSync(path.dirname(seededSourceRoot), { recursive: true });
+  fs.cpSync(buildrootFixture, seededSourceRoot, { recursive: true });
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "remote:",
+      "  ssh: builder@example.com:2222",
+      "  workspace:",
+      "    root: /remote-workspace",
+      "tools:",
+      "  buildroot:",
+      "    mode: remote",
+      "    buildroot-version: 2025.02.1",
+      "    defconfig: qemu_aarch64_virt_defconfig",
+      "    config-fragment:",
+      "      - BR2_TOOLCHAIN_BUILDROOT_GLIBC=y",
+      "      - BR2_TARGET_GENERIC_GETTY_PORT=\"ttyAMA0\"",
+      "    artifacts:",
+      "      - images/Image",
+      "      - images/rootfs.cpio.gz",
+      ""
+    ].join("\n")
+  );
+
+  const env = {
+    ...process.env,
+    ...makeFakeSshEnv(remoteRoot)
+  };
+
+  const result = run([
+    "--json",
+    "tool",
+    "run",
+    "--tool",
+    "buildroot"
+  ], { env, cwd: projectRoot });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.mode, "remote");
+  assert.equal(payload.details.artifacts.length, 2);
+  assert.equal(
+    fs.existsSync(path.join(projectRoot, "workflow-workspace", "tools", "buildroot", "runs", payload.details.id, "artifacts", "images", "Image")),
+    true
+  );
+  assert.equal(
+    fs.existsSync(path.join(projectRoot, "workflow-workspace", "tools", "buildroot", "runs", payload.details.id, "artifacts", "images", "rootfs.cpio.gz")),
+    true
+  );
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+  fs.rmSync(remoteRoot, { recursive: true, force: true });
+});
+
 test("explicit local tool workspace is not overridden by morpheus.yaml remote", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-local-project-"));
   const explicitWorkspace = path.join(projectRoot, "local-workspace");

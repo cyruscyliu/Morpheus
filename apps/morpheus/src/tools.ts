@@ -209,7 +209,7 @@ function printMaybeJson(value, flags) {
   }
 }
 
-function handleToolCommand(argv) {
+async function handleToolCommand(argv) {
   const { subcommand, rest } = extractToolSubcommand(argv);
   if (!subcommand || subcommand === "help" || subcommand === "--help") {
     process.stdout.write(`${toolUsage()}\n`);
@@ -217,7 +217,7 @@ function handleToolCommand(argv) {
   }
 
   if (["run", "runs", "inspect", "logs", "fetch", "remove"].includes(subcommand)) {
-    return handleManagedRunCommand(subcommand === "runs" ? "list" : subcommand, rest);
+    return await handleManagedRunCommand(subcommand === "runs" ? "list" : subcommand, rest);
   }
 
   const { positionals, flags } = parseToolArgs(rest);

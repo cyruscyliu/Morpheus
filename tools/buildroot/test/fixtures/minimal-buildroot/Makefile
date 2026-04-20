@@ -1,7 +1,7 @@
 O ?= .output
 TARGET_NAME ?= smoke-rootfs
 
-.PHONY: all qemu_x86_64_defconfig clean showvars
+.PHONY: all qemu_x86_64_defconfig qemu_aarch64_virt_defconfig olddefconfig clean showvars
 
 all: $(O)/images/$(TARGET_NAME).tar
 
@@ -10,10 +10,20 @@ qemu_x86_64_defconfig:
 	@printf '%s\n' 'BR2_x86_64=y' 'BR2_PACKAGE_BUSYBOX=y' > $(O)/.config
 	@printf '%s\n' 'configured qemu_x86_64_defconfig' > $(O)/defconfig.log
 
+qemu_aarch64_virt_defconfig:
+	@mkdir -p $(O)
+	@printf '%s\n' 'BR2_aarch64=y' 'BR2_PACKAGE_BUSYBOX=y' > $(O)/.config
+	@printf '%s\n' 'configured qemu_aarch64_virt_defconfig' > $(O)/defconfig.log
+
+olddefconfig:
+	@printf '%s\n' 'applied olddefconfig' >> $(O)/defconfig.log
+
 $(O)/images/$(TARGET_NAME).tar: $(O)/.config
 	@mkdir -p $(O)/images $(O)/target
 	@printf '%s\n' 'hello from minimal buildroot smoke target' > $(O)/target/hello.txt
 	@tar -cf $@ -C $(O)/target hello.txt
+	@printf '%s\n' 'fake arm64 kernel image' > $(O)/images/Image
+	@gzip -nc $(O)/target/hello.txt > $(O)/images/rootfs.cpio.gz
 	@printf '%s\n' 'built $(TARGET_NAME).tar' > $(O)/build.log
 
 clean:

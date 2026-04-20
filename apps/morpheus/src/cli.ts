@@ -65,7 +65,7 @@ function argvWithoutCommand(argv, command) {
   return [...argv.slice(0, index), ...argv.slice(index + 1)];
 }
 
-function main() {
+async function main() {
   const argv = process.argv.slice(2);
   const { positionals, flags } = parseArgs(argv);
   const command = positionals[0];
@@ -93,28 +93,30 @@ function main() {
   }
 
   if (command === "tool") {
-    return handleToolCommand(argvWithoutCommand(argv, "tool"));
+    return await handleToolCommand(argvWithoutCommand(argv, "tool"));
   }
 
   throw new Error(`unknown command: ${command}`);
 }
 
-try {
-  process.exitCode = main();
-} catch (error) {
-  if (process.argv.includes("--json")) {
-    printJson({
-      command: process.argv.slice(2).filter((arg) => arg !== "--json").slice(0, 2).join(" ") || "help",
-      status: "error",
-      exit_code: 1,
-      summary: error.message,
-      error: {
-        code: "morpheus_error",
-        message: error.message
-      }
-    });
-  } else {
-    process.stderr.write(`${error.message}\n`);
+(async () => {
+  try {
+    process.exitCode = await main();
+  } catch (error) {
+    if (process.argv.includes("--json")) {
+      printJson({
+        command: process.argv.slice(2).filter((arg) => arg !== "--json").slice(0, 2).join(" ") || "help",
+        status: "error",
+        exit_code: 1,
+        summary: error.message,
+        error: {
+          code: "morpheus_error",
+          message: error.message
+        }
+      });
+    } else {
+      process.stderr.write(`${error.message}\n`);
+    }
+    process.exitCode = 1;
   }
-  process.exitCode = 1;
-}
+})();

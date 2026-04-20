@@ -1,0 +1,19 @@
+# Example Morpheus workspace config.
+#
+# Copy this file to `morpheus.yaml` and adjust the paths or SSH target for your
+# machine.
+
+workspace:
+  root: ./hyperarm-workspace
+
+# Uncomment this block to let `morpheus workspace create` and
+# `morpheus workspace show` manage both a local workspace and a remote
+# workspace from one config.
+# remote:
+#   ssh: user@example.com
+#   workspace:
+#     root: /home/user/hyperarm-workspace
+
+tools:
+  buildroot:
+    mode: remote

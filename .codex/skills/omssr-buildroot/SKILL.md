@@ -16,8 +16,8 @@ It supports local builds, local manifest inspection, local cleanup, and
 explicit JSON output.
 
 Remote workspaces are not part of `buildroot`.
-Use Morpheus for SSH-backed remote runs, remote inspection, remote logs, and
-remote fetch operations.
+Use Morpheus for managed local or remote runs, inspection, logs, and fetch
+operations when workspace-managed execution matters.
 
 ## First Steps
 
@@ -69,8 +69,9 @@ If the user needs a remote workspace:
 Typical remote handoff:
 
 ```bash
-node apps/morpheus/dist/cli.js remote run \
+node apps/morpheus/dist/cli.js run \
   --tool buildroot \
+  --mode remote \
   --ssh builder@example.com:2222 \
   --workspace workflow-workspace \
   --buildroot-version 2025.02.1 \

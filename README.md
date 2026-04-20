@@ -64,4 +64,11 @@ Use the wrappers from `bin/`:
 ./bin/buildroot --help
 ./bin/llbic --help
 ./bin/llcg --help
+./bin/morpheus --help
+```
+
+For a repo-local Morpheus config, start from:
+
+```bash
+cp morpheus.example.yaml morpheus.yaml
 ```

@@ -111,6 +111,9 @@ morpheus run \
 With one local workspace and one remote workspace in `morpheus.yaml`, you can
 omit `--ssh`:
 
+Start from `morpheus.example.yaml` at the repo root, then copy it to
+`morpheus.yaml` and adjust the values for your machine.
+
 ```yaml
 workspace:
   root: ./workflow-workspace

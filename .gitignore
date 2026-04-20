@@ -23,4 +23,4 @@ tools/buildroot/.tmp-smoke-out/
 # Generic local artifacts
 tmp/
 *.log
-work/
+morpheus.yaml

@@ -169,6 +169,9 @@ function resolveToolName(configValue, name) {
     mode: item.mode || null,
     remote: item.remote || null,
     source: item.source || null,
+    patchDir: item["patch-dir"] || item.patchDir || null,
+    reuseBuildDir: item["reuse-build-dir"] ?? item.reuseBuildDir ?? null,
+    buildDirKey: item["build-dir-key"] || item.buildDirKey || null,
     buildrootVersion: item["buildroot-version"] || item.buildrootVersion || null,
     defconfig: item.defconfig || null,
     makeArgs: Array.isArray(item["make-arg"])
@@ -249,6 +252,19 @@ function applyConfigDefaults(flags, options) {
 
   if (toolEntry && toolEntry.source && !next.source) {
     next.source = resolveLocalPath(baseDir, toolEntry.source);
+  }
+
+  if (toolEntry && toolEntry.patchDir && !next["patch-dir"]) {
+    next["patch-dir"] = resolveLocalPath(baseDir, toolEntry.patchDir);
+  }
+
+  if (toolEntry && toolEntry.reuseBuildDir !== null
+    && !Object.prototype.hasOwnProperty.call(next, "reuse-build-dir")) {
+    next["reuse-build-dir"] = Boolean(toolEntry.reuseBuildDir);
+  }
+
+  if (toolEntry && toolEntry.buildDirKey && !next["build-dir-key"]) {
+    next["build-dir-key"] = toolEntry.buildDirKey;
   }
 
   if (toolEntry && toolEntry.buildrootVersion && !next["buildroot-version"]) {

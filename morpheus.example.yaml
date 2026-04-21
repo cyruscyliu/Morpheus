@@ -17,3 +17,23 @@ workspace:
 tools:
   buildroot:
     mode: remote
+    buildroot-version: 2025.02.12
+    reuse-build-dir: true
+    build-dir-key: arm64-dev
+    patch-dir: ./hyperarm-workspace/tools/buildroot/patches
+    defconfig: qemu_aarch64_virt_defconfig
+    make-args:
+      - -j$(nproc)
+    config-fragment:
+      - BR2_LINUX_KERNEL=y
+      - BR2_LINUX_KERNEL_CUSTOM_VERSION=y
+      - BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.16"
+      - BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
+      - BR2_TARGET_GENERIC_GETTY=y
+      - BR2_TARGET_GENERIC_GETTY_PORT="ttyAMA0"
+      - BR2_TARGET_ROOTFS_CPIO=y
+      - BR2_TARGET_ROOTFS_CPIO_GZIP=y
+      - BR2_PACKAGE_PCIUTILS=y
+    artifacts:
+      - images/Image
+      - images/rootfs.cpio.gz

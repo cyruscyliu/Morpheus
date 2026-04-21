@@ -1,0 +1,16 @@
+{
+  "id": "buildroot-20260421075644-e80edd56",
+  "tool": "buildroot",
+  "mode": "remote",
+  "workspace": "/home/debian/hyperarm-workspace",
+  "ssh": "debian@mcc96e5308801.dyn.epfl.ch",
+  "status": "error",
+  "createdAt": "2026-04-21T07:56:44.600Z",
+  "updatedAt": "2026-04-21T08:01:45.889443+00:00",
+  "manifest": "/home/debian/hyperarm-workspace/tools/buildroot/runs/buildroot-20260421075644-e80edd56/manifest.json",
+  "logFile": "/home/debian/hyperarm-workspace/tools/buildroot/runs/buildroot-20260421075644-e80edd56/stdout.log",
+  "runDir": "/home/debian/hyperarm-workspace/tools/buildroot/runs/buildroot-20260421075644-e80edd56",
+  "outputDir": "/home/debian/hyperarm-workspace/tools/buildroot/runs/buildroot-20260421075644-e80edd56/output",
+  "artifacts": [],
+  "registeredAt": "2026-04-21T08:04:07.626Z"
+}

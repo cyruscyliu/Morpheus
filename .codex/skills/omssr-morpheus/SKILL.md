@@ -51,6 +51,13 @@ remote:
 tools:
   buildroot:
     mode: remote
+    reuse-build-dir: true
+    build-dir-key: arm64-dev
+    patch-dir: ./workflow-workspace/tools/buildroot/patches
+    config-fragment:
+      - BR2_LINUX_KERNEL=y
+      - BR2_LINUX_KERNEL_CUSTOM_VERSION=y
+      - BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.16"
 ```
 
 Typical flow:
@@ -107,6 +114,20 @@ Use these commands by intent:
 Treat `--workspace` as a shared high-level workspace root.
 Morpheus owns the managed workspace lifecycle.
 Tools do not own managed workspaces directly.
+Keep Buildroot patch trees inside the managed workspace when possible, for
+example under `tools/buildroot/patches/linux/`.
+Use `reuse-build-dir: true` when you want a persistent Buildroot `O=` tree
+under `tools/buildroot/builds/<key>/` instead of a fresh per-run output tree.
+When you set a custom kernel tarball version, Morpheus can also populate the
+matching `linux.hash` and `linux-headers.hash` entries in that workspace patch
+tree.
+When `patch-dir/linux/*.patch` exists, Morpheus stages those kernel patches
+into a patched kernel tarball for the run so `linux-headers` can reuse the
+source tarball without trying to apply full kernel patches itself.
+Morpheus also writes run-local hash entries for that patched tarball so the
+Buildroot download phase accepts the rewritten tarball name.
+The rewritten tarball name includes a kernel patch fingerprint so reusable
+build dirs do not reuse a stale cached tarball after patch edits.
 
 Expected managed layout for Buildroot:
 

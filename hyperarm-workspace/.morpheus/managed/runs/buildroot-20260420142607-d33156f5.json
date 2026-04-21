@@ -1,0 +1,15 @@
+{
+  "id": "buildroot-20260420142607-d33156f5",
+  "tool": "buildroot",
+  "mode": "local",
+  "workspace": "/tmp/morpheus-run-debug-sIs1mL",
+  "ssh": null,
+  "status": "success",
+  "createdAt": "2026-04-20T14:26:07.354Z",
+  "updatedAt": "2026-04-20T14:26:07.368Z",
+  "manifest": "/tmp/morpheus-run-debug-sIs1mL/tools/buildroot/runs/buildroot-20260420142607-d33156f5/manifest.json",
+  "logFile": "/tmp/morpheus-run-debug-sIs1mL/tools/buildroot/runs/buildroot-20260420142607-d33156f5/stdout.log",
+  "runDir": "/tmp/morpheus-run-debug-sIs1mL/tools/buildroot/runs/buildroot-20260420142607-d33156f5",
+  "outputDir": "/tmp/morpheus-run-debug-sIs1mL/tools/buildroot/runs/buildroot-20260420142607-d33156f5/output",
+  "registeredAt": "2026-04-20T14:26:07.371Z"
+}

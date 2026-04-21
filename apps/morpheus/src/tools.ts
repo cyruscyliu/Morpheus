@@ -149,8 +149,8 @@ function extractToolSubcommand(argv) {
 function toolUsage() {
   return [
     "Usage:",
-    "  node apps/morpheus/dist/cli.js tool run --tool buildroot --mode local --workspace DIR (--source DIR | --buildroot-version VER) [--json]",
-    "  node apps/morpheus/dist/cli.js tool run --tool buildroot --mode remote --ssh TARGET --workspace DIR (--source DIR | --buildroot-version VER) [--json]",
+    "  node apps/morpheus/dist/cli.js tool run --tool buildroot --mode local --workspace DIR (--source DIR | --buildroot-version VER) [--patch-dir DIR] [--reuse-build-dir] [--build-dir-key KEY] [--json]",
+    "  node apps/morpheus/dist/cli.js tool run --tool buildroot --mode remote --ssh TARGET --workspace DIR (--source DIR | --buildroot-version VER) [--patch-dir DIR] [--reuse-build-dir] [--build-dir-key KEY] [--json]",
     "  node apps/morpheus/dist/cli.js tool runs [--workspace DIR] [--ssh TARGET] [--json]",
     "  node apps/morpheus/dist/cli.js tool inspect --id RUN_ID [--json]",
     "  node apps/morpheus/dist/cli.js tool logs --id RUN_ID [--follow] [--json]",

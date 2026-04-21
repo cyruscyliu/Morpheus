@@ -4,6 +4,14 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
+const {
+  effectiveBuildrootConfigFragment,
+  kernelPatchFingerprint,
+  listKernelPatchFiles,
+  copyPatchTreeWithoutKernelPatches,
+  ensurePatchedKernelTarballHashes,
+  effectiveBuildDirKey
+} = require("../dist/remote.js");
 
 const appRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(appRoot, "..", "..");
@@ -51,7 +59,13 @@ while argv:
         root = ${JSON.stringify(remoteRoot)}
         rewritten = script.replace("'/remote-workspace'", "'" + root + "'")
         rewritten = rewritten.replace("/remote-workspace", root)
-        result = subprocess.run(["bash", "-lc", rewritten], check=False)
+        result = subprocess.run(
+            ["bash", "-lc", rewritten],
+            stdin=sys.stdin.buffer,
+            stdout=sys.stdout.buffer,
+            stderr=sys.stderr.buffer,
+            check=False,
+        )
         raise SystemExit(result.returncode)
     if argv[0] == "bash":
         argv = argv[1:]
@@ -66,13 +80,20 @@ script = argv[1]
 root = ${JSON.stringify(remoteRoot)}
 rewritten = script.replace("'/remote-workspace'", "'" + root + "'")
 rewritten = rewritten.replace("/remote-workspace", root)
-result = subprocess.run(["bash", "-lc", rewritten], check=False)
+result = subprocess.run(
+    ["bash", "-lc", rewritten],
+    stdin=sys.stdin.buffer,
+    stdout=sys.stdout.buffer,
+    stderr=sys.stderr.buffer,
+    check=False,
+)
 raise SystemExit(result.returncode)
 `,
     { mode: 0o755 }
   );
   return {
-    PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`
+    PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`,
+    MORPHEUS_SSH_BIN: sshPath
   };
 }
 
@@ -91,7 +112,13 @@ while argv:
         argv = argv[2:]
         continue
     if len(argv) == 1:
-        result = subprocess.run(["bash", "-lc", argv[0]], check=False)
+        result = subprocess.run(
+            ["bash", "-lc", argv[0]],
+            stdin=sys.stdin.buffer,
+            stdout=sys.stdout.buffer,
+            stderr=sys.stderr.buffer,
+            check=False,
+        )
         raise SystemExit(result.returncode)
     if argv[0] == "bash":
         argv = argv[1:]
@@ -102,13 +129,20 @@ if len(argv) < 2 or argv[0] != "-lc":
     print("unexpected ssh invocation", file=sys.stderr)
     raise SystemExit(1)
 
-result = subprocess.run(["bash", "-lc", argv[1]], check=False)
+result = subprocess.run(
+    ["bash", "-lc", argv[1]],
+    stdin=sys.stdin.buffer,
+    stdout=sys.stdout.buffer,
+    stderr=sys.stderr.buffer,
+    check=False,
+)
 raise SystemExit(result.returncode)
 `,
     { mode: 0o755 }
   );
   return {
-    PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`
+    PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`,
+    MORPHEUS_SSH_BIN: sshPath
   };
 }
 
@@ -125,21 +159,135 @@ function makeEmptyPsEnv() {
   };
 }
 
+function makeFakeCurlEnv(hashLines) {
+  const fakeBin = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-fake-curl-"));
+  const curlPath = path.join(fakeBin, "curl");
+  fs.writeFileSync(
+    curlPath,
+    `#!/usr/bin/env sh
+cat <<'EOF'
+${hashLines.join("\n")}
+EOF
+`,
+    { mode: 0o755 }
+  );
+  return {
+    PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`
+  };
+}
+
+test("kernel patch helpers keep linux hashes but move linux patches out of global patching", () => {
+  const patchRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-kernel-patches-"));
+  const globalRoot = path.join(patchRoot, "..", `${path.basename(patchRoot)}-global`);
+  fs.mkdirSync(path.join(patchRoot, "linux"), { recursive: true });
+  fs.mkdirSync(path.join(patchRoot, "linux-headers"), { recursive: true });
+  fs.mkdirSync(path.join(patchRoot, "busybox"), { recursive: true });
+  fs.writeFileSync(path.join(patchRoot, "linux", "0001-demo.patch"), "diff --git a/a b/a\n");
+  fs.writeFileSync(path.join(patchRoot, "linux", "linux.hash"), "sha256  deadbeef  linux-6.18.16.tar.xz\n");
+  fs.writeFileSync(path.join(patchRoot, "linux-headers", "linux-headers.hash"), "sha256  deadbeef  linux-6.18.16.tar.xz\n");
+  fs.writeFileSync(path.join(patchRoot, "busybox", "0001-busybox.patch"), "diff --git a/a b/a\n");
+
+  assert.deepEqual(
+    listKernelPatchFiles(patchRoot).map((filePath) => path.relative(patchRoot, filePath)),
+    ["linux/0001-demo.patch"]
+  );
+
+  copyPatchTreeWithoutKernelPatches(patchRoot, globalRoot);
+  assert.equal(fs.existsSync(path.join(globalRoot, "linux", "0001-demo.patch")), false);
+  assert.equal(fs.existsSync(path.join(globalRoot, "linux", "linux.hash")), true);
+  assert.equal(fs.existsSync(path.join(globalRoot, "linux-headers", "linux-headers.hash")), true);
+  assert.equal(fs.existsSync(path.join(globalRoot, "busybox", "0001-busybox.patch")), true);
+
+  fs.rmSync(patchRoot, { recursive: true, force: true });
+  fs.rmSync(globalRoot, { recursive: true, force: true });
+});
+
+test("effective Buildroot config switches patched kernels to a custom tarball", () => {
+  const fragment = effectiveBuildrootConfigFragment([
+    "BR2_LINUX_KERNEL_CUSTOM_VERSION=y",
+    "BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE=\"6.18.16\"",
+    "BR2_TARGET_ROOTFS_CPIO_GZIP=y"
+  ], {
+    globalPatchDir: "/remote/patches-global",
+    kernelTarballLocation: "file:///remote/linux-6.18.16-patched.tar.xz"
+  });
+
+  assert.equal(fragment.includes("BR2_LINUX_KERNEL_CUSTOM_VERSION=y"), false);
+  assert.equal(fragment.includes("BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE=\"6.18.16\""), false);
+  assert.equal(fragment.includes("BR2_LINUX_KERNEL_CUSTOM_TARBALL=y"), true);
+  assert.equal(
+    fragment.includes("BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION=\"file:///remote/linux-6.18.16-patched.tar.xz\""),
+    true
+  );
+  assert.equal(fragment.includes("BR2_GLOBAL_PATCH_DIR=\"/remote/patches-global\""), true);
+  assert.equal(fragment.includes("BR2_TARGET_ROOTFS_CPIO_GZIP=y"), true);
+});
+
+test("patched kernel tarball hashes are added to run-local linux hash files", () => {
+  const patchRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-patched-kernel-hashes-"));
+  const tarballPath = path.join(patchRoot, "linux-6.18.16-patched.tar.xz");
+  fs.mkdirSync(path.join(patchRoot, "linux"), { recursive: true });
+  fs.mkdirSync(path.join(patchRoot, "linux-headers"), { recursive: true });
+  fs.writeFileSync(tarballPath, "patched-kernel-tarball");
+
+  ensurePatchedKernelTarballHashes(patchRoot, tarballPath);
+
+  assert.match(
+    fs.readFileSync(path.join(patchRoot, "linux", "linux.hash"), "utf8"),
+    /linux-6\.18\.16-patched\.tar\.xz/
+  );
+  assert.match(
+    fs.readFileSync(path.join(patchRoot, "linux-headers", "linux-headers.hash"), "utf8"),
+    /linux-6\.18\.16-patched\.tar\.xz/
+  );
+
+  fs.rmSync(patchRoot, { recursive: true, force: true });
+});
+
+test("kernel patch fingerprint changes when patch contents change", () => {
+  const patchRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-kernel-fingerprint-"));
+  fs.mkdirSync(path.join(patchRoot, "linux"), { recursive: true });
+  const patchPath = path.join(patchRoot, "linux", "0001-demo.patch");
+  fs.writeFileSync(patchPath, "diff --git a/a b/a\n+one\n");
+  const first = kernelPatchFingerprint(patchRoot, ["linux/0001-demo.patch"]);
+  fs.writeFileSync(patchPath, "diff --git a/a b/a\n+two\n");
+  const second = kernelPatchFingerprint(patchRoot, ["linux/0001-demo.patch"]);
+
+  assert.notEqual(first, second);
+
+  fs.rmSync(patchRoot, { recursive: true, force: true });
+});
+
+test("effective build dir key defaults to default when reuse is enabled", () => {
+  assert.equal(effectiveBuildDirKey({ reuseBuildDir: false, buildDirKey: null }), null);
+  assert.equal(effectiveBuildDirKey({ reuseBuildDir: true, buildDirKey: null }), "default");
+  assert.equal(effectiveBuildDirKey({ reuseBuildDir: true, buildDirKey: "arm64-dev" }), "arm64-dev");
+});
+
 test("workspace show returns JSON metadata", () => {
-  const result = run(["workspace", "show", "--json"]);
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-show-project-"));
+  const result = run(["workspace", "show", "--json"], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
   assert.equal(result.status, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
-  assert.equal(payload.root, "work");
+  assert.equal(typeof payload.root, "string");
+  assert.equal(path.basename(payload.root).startsWith("morpheus-test-work-"), true);
   assert.equal(typeof payload.directories.runs.exists, "boolean");
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
 test("workspace create builds the standard directory layout", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-create-project-"));
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-work-"));
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 
   const result = run(["workspace", "create", "--json"], {
+    cwd: projectRoot,
     env: {
-      ...process.env,
+      ...isolatedEnv(),
       MORPHEUS_WORK_ROOT: workspaceRoot
     }
   });
@@ -151,6 +299,7 @@ test("workspace create builds the standard directory layout", () => {
   assert.equal(fs.existsSync(path.join(workspaceRoot, "runs")), true);
 
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
 test("workspace create supports explicit local managed workspaces", () => {
@@ -370,6 +519,7 @@ test("inspect validates managed run flags in JSON mode", () => {
 
 test("managed local Buildroot run creates a Morpheus run record", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-run-"));
+  const env = isolatedEnv();
 
   const result = run([
     "--json",
@@ -385,7 +535,10 @@ test("managed local Buildroot run creates a Morpheus run record", () => {
     buildrootFixture,
     "--defconfig",
     "qemu_x86_64_defconfig"
-  ]);
+  ], {
+    cwd: workspaceRoot,
+    env
+  });
 
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
@@ -400,21 +553,66 @@ test("managed local Buildroot run creates a Morpheus run record", () => {
     "inspect",
     "--id",
     payload.details.id
-  ]);
+  ], {
+    cwd: workspaceRoot,
+    env
+  });
 
   assert.equal(inspect.status, 0, inspect.stderr || inspect.stdout);
   const inspectPayload = JSON.parse(inspect.stdout);
   assert.equal(inspectPayload.details.manifest.id, payload.details.id);
   assert.equal(inspectPayload.details.manifest.mode, "local");
 
-  const list = run(["--json", "tool", "runs", "--workspace", workspaceRoot]);
+  const list = run(["--json", "tool", "runs", "--workspace", workspaceRoot], {
+    cwd: workspaceRoot,
+    env
+  });
   assert.equal(list.status, 0, list.stderr || list.stdout);
   const listPayload = JSON.parse(list.stdout);
   assert.equal(listPayload.details.runs.some((item) => item.id === payload.details.id), true);
 
-  const remove = run(["--json", "tool", "remove", "--id", payload.details.id]);
+  const remove = run(["--json", "tool", "remove", "--id", payload.details.id], {
+    cwd: workspaceRoot,
+    env
+  });
   assert.equal(remove.status, 0, remove.stderr || remove.stdout);
   assert.equal(fs.existsSync(path.join(workspaceRoot, "tools", "buildroot", "runs", payload.details.id)), false);
+
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
+test("managed local Buildroot run can reuse a persistent build directory", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-run-reuse-"));
+  const env = isolatedEnv();
+
+  const result = run([
+    "--json",
+    "tool",
+    "run",
+    "--tool",
+    "buildroot",
+    "--mode",
+    "local",
+    "--workspace",
+    workspaceRoot,
+    "--source",
+    buildrootFixture,
+    "--defconfig",
+    "qemu_x86_64_defconfig",
+    "--reuse-build-dir",
+    "--build-dir-key",
+    "dev"
+  ], {
+    cwd: workspaceRoot,
+    env
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+  assert.equal(
+    payload.details.output_dir,
+    path.join(workspaceRoot, "tools", "buildroot", "builds", "dev", "output")
+  );
 
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
@@ -453,6 +651,65 @@ test("managed remote run resolves ssh and workspace from morpheus.yaml", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("tool config can enable a reusable remote build directory", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-reuse-project-"));
+  const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-reuse-root-"));
+  const seededSourceRoot = path.join(
+    remoteRoot,
+    "tools",
+    "buildroot",
+    "src",
+    "buildroot-2025.02.1"
+  );
+  fs.mkdirSync(path.dirname(seededSourceRoot), { recursive: true });
+  fs.cpSync(buildrootFixture, seededSourceRoot, { recursive: true });
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "remote:",
+      "  ssh: builder@example.com:2222",
+      "  workspace:",
+      "    root: /remote-workspace",
+      "tools:",
+      "  buildroot:",
+      "    mode: remote",
+      "    buildroot-version: 2025.02.1",
+      "    reuse-build-dir: true",
+      "    build-dir-key: arm64-dev",
+      "    defconfig: qemu_aarch64_virt_defconfig",
+      "    artifacts:",
+      "      - images/Image",
+      ""
+    ].join("\n")
+  );
+
+  const env = {
+    ...process.env,
+    ...makeFakeSshEnv(remoteRoot)
+  };
+
+  const result = run([
+    "--json",
+    "tool",
+    "run",
+    "--tool",
+    "buildroot"
+  ], { env, cwd: projectRoot });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+  assert.equal(
+    payload.details.output_dir,
+    "/remote-workspace/tools/buildroot/builds/arm64-dev/output"
+  );
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+  fs.rmSync(remoteRoot, { recursive: true, force: true });
+});
+
 test("tool config can provide buildroot defaults and expected artifacts", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-defaults-project-"));
   writeConfig(
@@ -468,6 +725,7 @@ test("tool config can provide buildroot defaults and expected artifacts", () => 
       "  buildroot:",
       "    mode: remote",
       "    buildroot-version: 2025.02.1",
+      "    patch-dir: ./workflow-workspace/tools/buildroot/patches",
       "    defconfig: qemu_aarch64_virt_defconfig",
       "    make-args:",
       "      - -j16",
@@ -491,6 +749,10 @@ test("tool config can provide buildroot defaults and expected artifacts", () => 
 
   assert.equal(resolved.flags.mode, "remote");
   assert.equal(resolved.flags["buildroot-version"], "2025.02.1");
+  assert.equal(
+    resolved.flags["patch-dir"],
+    path.join(projectRoot, "workflow-workspace", "tools", "buildroot", "patches")
+  );
   assert.equal(resolved.flags.defconfig, "qemu_aarch64_virt_defconfig");
   assert.deepEqual(resolved.flags.makeArg, ["-j16"]);
   assert.deepEqual(resolved.flags["config-fragment"], [
@@ -521,7 +783,7 @@ test("managed remote Buildroot JSON run streams large logs without truncation", 
       "",
       "all:",
       "\t@mkdir -p $(O)/images",
-      "\t@i=1; while [ $$i -le 25000 ]; do echo \"stream line $$i from fake remote build\"; i=`expr $$i + 1`; done",
+      "\t@i=1; while [ $$i -le 5000 ]; do echo \"stream line $$i from fake remote build\"; i=`expr $$i + 1`; done",
       "\t@printf 'kernel' > $(O)/images/Image",
       "\t@gzip -nc $(O)/images/Image > $(O)/images/rootfs.cpio.gz",
       ""
@@ -637,6 +899,171 @@ test("managed remote Buildroot run can fetch configured artifacts back locally",
   assert.equal(
     fs.existsSync(path.join(projectRoot, "workflow-workspace", "tools", "buildroot", "runs", payload.details.id, "artifacts", "images", "rootfs.cpio.gz")),
     true
+  );
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+  fs.rmSync(remoteRoot, { recursive: true, force: true });
+});
+
+test("managed remote Buildroot run syncs a Buildroot patch dir into the remote workspace", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-patch-project-"));
+  const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-patch-root-"));
+  const seededSourceRoot = path.join(
+    remoteRoot,
+    "tools",
+    "buildroot",
+    "src",
+    "buildroot-2025.02.1"
+  );
+  const patchRoot = path.join(projectRoot, "workflow-workspace", "tools", "buildroot", "patches", "busybox");
+  fs.mkdirSync(patchRoot, { recursive: true });
+  fs.writeFileSync(
+    path.join(patchRoot, "0001-demo.patch"),
+    [
+      "diff --git a/demo.txt b/demo.txt",
+      "--- a/demo.txt",
+      "+++ b/demo.txt",
+      "@@ -1 +1 @@",
+      "-old",
+      "+new",
+      ""
+    ].join("\n")
+  );
+  fs.mkdirSync(path.dirname(seededSourceRoot), { recursive: true });
+  fs.cpSync(buildrootFixture, seededSourceRoot, { recursive: true });
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "remote:",
+      "  ssh: builder@example.com:2222",
+      "  workspace:",
+      "    root: /remote-workspace",
+      "tools:",
+      "  buildroot:",
+      "    mode: remote",
+      "    buildroot-version: 2025.02.1",
+      "    patch-dir: ./workflow-workspace/tools/buildroot/patches",
+      "    defconfig: qemu_aarch64_virt_defconfig",
+      "    artifacts:",
+      "      - images/Image",
+      ""
+    ].join("\n")
+  );
+
+  const env = {
+    ...process.env,
+    ...makeFakeSshEnv(remoteRoot)
+  };
+
+  const result = run([
+    "--json",
+    "tool",
+    "run",
+    "--tool",
+    "buildroot"
+  ], { env, cwd: projectRoot });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+  const remoteManifestPath = path.join(
+    remoteRoot,
+    "tools",
+    "buildroot",
+    "runs",
+    payload.details.id,
+    "manifest.json"
+  );
+  const remoteManifest = JSON.parse(fs.readFileSync(remoteManifestPath, "utf8"));
+  assert.equal(
+    remoteManifest.patchDir,
+    path.join(remoteRoot, "tools", "buildroot", "patches", payload.details.id)
+  );
+  assert.equal(
+    fs.existsSync(path.join(remoteRoot, "tools", "buildroot", "patches", payload.details.id, "busybox", "0001-demo.patch")),
+    true
+  );
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+  fs.rmSync(remoteRoot, { recursive: true, force: true });
+});
+
+test("managed remote Buildroot run records a custom kernel hash in the workspace patch tree", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-kernel-hash-project-"));
+  const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-kernel-hash-root-"));
+  const seededSourceRoot = path.join(
+    remoteRoot,
+    "tools",
+    "buildroot",
+    "src",
+    "buildroot-2025.02.1"
+  );
+  const patchRoot = path.join(projectRoot, "workflow-workspace", "tools", "buildroot", "patches", "linux");
+  fs.mkdirSync(patchRoot, { recursive: true });
+  fs.mkdirSync(path.dirname(seededSourceRoot), { recursive: true });
+  fs.cpSync(buildrootFixture, seededSourceRoot, { recursive: true });
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "remote:",
+      "  ssh: builder@example.com:2222",
+      "  workspace:",
+      "    root: /remote-workspace",
+      "tools:",
+      "  buildroot:",
+      "    mode: remote",
+      "    buildroot-version: 2025.02.1",
+      "    patch-dir: ./workflow-workspace/tools/buildroot/patches",
+      "    defconfig: qemu_aarch64_virt_defconfig",
+      "    config-fragment:",
+      "      - BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE=\"6.18.16\"",
+      "    artifacts:",
+      "      - images/Image",
+      ""
+    ].join("\n")
+  );
+
+  const env = {
+    ...process.env,
+    ...makeFakeSshEnv(remoteRoot),
+    ...makeFakeCurlEnv([
+      "sha256  deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef  linux-6.18.16.tar.xz"
+    ])
+  };
+
+  const result = run([
+    "--json",
+    "tool",
+    "run",
+    "--tool",
+    "buildroot"
+  ], { env, cwd: projectRoot });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const hashFile = path.join(projectRoot, "workflow-workspace", "tools", "buildroot", "patches", "linux", "linux.hash");
+  assert.equal(fs.existsSync(hashFile), true);
+  assert.match(
+    fs.readFileSync(hashFile, "utf8"),
+    /linux-6\.18\.16\.tar\.xz/
+  );
+  const headersHashFile = path.join(
+    projectRoot,
+    "workflow-workspace",
+    "tools",
+    "buildroot",
+    "patches",
+    "linux-headers",
+    "linux-headers.hash"
+  );
+  assert.equal(fs.existsSync(headersHashFile), true);
+  assert.match(
+    fs.readFileSync(headersHashFile, "utf8"),
+    /linux-6\.18\.16\.tar\.xz/
   );
 
   fs.rmSync(projectRoot, { recursive: true, force: true });

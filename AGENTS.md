@@ -31,6 +31,13 @@
   same change.
 - When inspecting Morpheus-managed tool runs, prefer Morpheus `tool`
   subcommands over direct remote shell access.
+- For source-managing tools such as Buildroot and QEMU, prefer stable managed
+  source paths under `<workspace>/tools/<tool>/src/`.
+- For those tools, keep reusable builds under
+  `<workspace>/tools/<tool>/builds/` and run records under
+  `<workspace>/tools/<tool>/runs/`.
+- Treat external source trees as transient sync inputs when needed, not as the
+  canonical paths stored in `morpheus.yaml`.
 
 ## `tools/` README Principles
 

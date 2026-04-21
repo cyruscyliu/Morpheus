@@ -1,0 +1,11 @@
+{
+  "files.exclude": {
+    "hyperarm-workspace": true
+  },
+  "search.exclude": {
+    "hyperarm-workspace": true
+  },
+  "files.watcherExclude": {
+    "hyperarm-workspace/**": true
+  }
+}

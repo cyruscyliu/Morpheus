@@ -1,6 +1,6 @@
 ---
 name: morpheus
-description: Manage Morpheus workspace metadata, managed local and remote tool runs, logs, manifests, and explicit artifact fetches. Use when the user needs Morpheus-managed Buildroot runs, local or remote workspaces, or Morpheus app behavior.
+description: Manage Morpheus workspace metadata, managed local and remote tool runs, logs, manifests, explicit artifact fetches, and Morpheus-managed buildroot/qemu/nvirsh workflows. Use when the user needs Morpheus-managed tool runs, local or remote workspaces, or Morpheus app behavior.
 license: MIT
 compatibility: Designed for Codex CLI (or similar products)
 ---
@@ -15,7 +15,7 @@ Use this skill when you need to work with the `morpheus` app in this repo.
 It owns workspace metadata, managed local and remote runs, manifests, logs,
 and explicit fetch behavior for supported tools.
 
-For now, Buildroot is the first managed tool.
+Managed tools currently include Buildroot, local `qemu`, and local `nvirsh`.
 
 ## First Steps
 
@@ -60,6 +60,72 @@ tools:
       - BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.16"
 ```
 
+Optional repo-local config for local `nvirsh` with Buildroot-wired runtime
+artifacts:
+
+```yaml
+workspace:
+  root: ./workflow-workspace
+tools:
+  qemu:
+    mode: local
+    path: ./workflow-workspace/tools/qemu/bin/qemu-system-aarch64
+  nvirsh:
+    mode: local
+    target: sel4
+    name: sel4-dev
+    microkit-sdk: ./deps/microkit-sdk
+    microkit-version: 1.4.1
+    toolchain: ./deps/arm-gnu-toolchain
+    libvmm-dir: ./deps/libvmm
+    sel4-dir: ./deps/seL4
+    sel4-version: 15.0.0
+    dependencies:
+      qemu:
+        tool: qemu
+        artifact: qemu-system-aarch64
+      kernel:
+        tool: buildroot
+        artifact: images/Image
+      initrd:
+        tool: buildroot
+        artifact: images/rootfs.cpio.gz
+```
+
+When the deps already exist somewhere else on disk, materialize them into the
+workspace-local paths declared above with:
+
+```bash
+node scripts/nvirsh/prepare-sel4-deps.mjs \
+  --qemu /path/to/qemu-system-aarch64 \
+  --microkit-sdk /path/to/microkit-sdk \
+  --toolchain /path/to/arm-gnu-toolchain \
+  --libvmm-dir /path/to/libvmm \
+  --sel4-dir /path/to/seL4 \
+  --json
+```
+
+This script uses symlinks by default and does not download anything.
+
+Register the workspace-local QEMU executable as a managed dependency with:
+
+```bash
+node apps/morpheus/dist/cli.js tool run \
+  --tool qemu \
+  --json
+```
+
+Or build the executable into the workspace from a local source tree:
+
+```bash
+node apps/morpheus/dist/cli.js tool run \
+  --tool qemu \
+  --mode build \
+  --source ./workflow-workspace/tools/qemu/src/qemu \
+  --target-list aarch64-softmmu \
+  --json
+```
+
 Typical flow:
 
 ```bash
@@ -70,7 +136,7 @@ node apps/morpheus/dist/cli.js tool run \
   --source tools/buildroot/test/fixtures/minimal-buildroot \
   --defconfig qemu_x86_64_defconfig \
   --json
-node apps/morpheus/dist/cli.js inspect \
+node apps/morpheus/dist/cli.js tool inspect \
   --id buildroot-20260419-abcdef12 \
   --json
 ```
@@ -83,11 +149,11 @@ The main user-facing commands are:
 morpheus workspace create
 morpheus workspace show
 morpheus tool run
-morpheus list
-morpheus inspect
-morpheus logs
-morpheus fetch
-morpheus remove
+morpheus tool runs
+morpheus tool inspect
+morpheus tool logs
+morpheus tool fetch
+morpheus tool remove
 morpheus runs list
 morpheus runs show
 morpheus runs export-html
@@ -102,6 +168,10 @@ Use these commands by intent:
 - `workspace create`: create the standard local workspace layout.
 - `workspace show`: inspect workspace roots and their current presence.
 - `tool run`: start a managed tool run in local or remote mode.
+- `tool run --tool nvirsh`: resolve configured runtime dependencies and launch
+  local `nvirsh` from concrete artifact paths.
+- `tool run --tool qemu`: register a local QEMU executable as a managed
+  dependency artifact, or build and register one from a local source tree.
 - `tool runs`: list managed runs, optionally scoped by workspace or SSH target.
 - `tool inspect`: inspect managed manifest state by run id and reconcile stale
   remote runs when final state was not written back cleanly.
@@ -148,6 +218,11 @@ Expected managed layout for Buildroot:
           manifest.json
           stdout.log
           output/
+    nvirsh/
+      runs/
+        <id>/
+          manifest.json
+          stdout.log
 ```
 
 Use explicit SSH targets with host and optional port for remote mode:
@@ -174,6 +249,15 @@ node apps/morpheus/dist/cli.js tool run \
   --json
 ```
 
+Use Morpheus-managed `nvirsh` when the stable configuration lives in
+`morpheus.yaml` and Morpheus should resolve producer artifacts first:
+
+```bash
+node apps/morpheus/dist/cli.js tool run \
+  --tool nvirsh \
+  --json
+```
+
 Use `--detach` when you want the run id immediately and plan to follow up with
 `inspect`, `logs`, or `fetch`.
 
@@ -196,6 +280,9 @@ Prefer `--json` for automation.
 ## Boundary Rules
 
 - Use `buildroot` directly for unmanaged Buildroot work.
+- Use `nvirsh` directly for unmanaged local target lifecycle work.
 - Use `morpheus tool run --tool buildroot --mode local|remote` for managed runs.
-- Use `morpheus list` and `morpheus remove` for managed run lifecycle work.
+- Use `morpheus tool run --tool nvirsh` when Morpheus must resolve runtime
+  dependencies from managed producer outputs.
+- Use Morpheus `tool` subcommands for managed run lifecycle work.
 - Do not assume `buildroot remote-*` exists.

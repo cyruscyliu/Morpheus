@@ -8,7 +8,7 @@
     "build": "pnpm exec tsc -p tsconfig.json",
     "lint": "pnpm exec tsc -p tsconfig.json --noEmit",
     "morpheus": "node dist/cli.js",
-    "test": "pnpm run build && node --test test/*.test.js"
+    "test": "pnpm --filter @morpheus/qemu build && pnpm --filter @morpheus/nvirsh build && pnpm run build && node --test test/*.test.js"
   },
   "dependencies": {
     "yaml": "^2.8.3"

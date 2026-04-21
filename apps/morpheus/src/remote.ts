@@ -10,14 +10,26 @@ const {
   removeManagedRun,
   listManagedRuns
 } = require("./managed-state");
+const { runManagedNvirsh } = require("./nvirsh");
+const { runManagedQemu } = require("./qemu");
 const { applyConfigDefaults, resolveLocalPath } = require("./config");
 const { logDebug } = require("./logger");
 
 const BUILDROOT_TOOL = "buildroot";
+const QEMU_TOOL = "qemu";
+const NVIRSH_TOOL = "nvirsh";
 const MANAGED_TOOL_ADAPTERS = {
   [BUILDROOT_TOOL]: {
     name: BUILDROOT_TOOL,
     modes: ["local", "remote"]
+  },
+  [QEMU_TOOL]: {
+    name: QEMU_TOOL,
+    modes: ["local"]
+  },
+  [NVIRSH_TOOL]: {
+    name: NVIRSH_TOOL,
+    modes: ["local"]
   }
 };
 
@@ -26,6 +38,9 @@ function parseRunArgs(argv) {
   const repeatable = {
     env: [],
     "make-arg": [],
+    "qemu-arg": [],
+    "configure-arg": [],
+    "target-list": [],
     path: [],
     artifact: [],
     "config-fragment": []
@@ -65,6 +80,9 @@ function parseRunArgs(argv) {
     ...flags,
     env: repeatable.env,
     makeArg: repeatable["make-arg"],
+    "qemu-arg": repeatable["qemu-arg"],
+    "configure-arg": repeatable["configure-arg"],
+    "target-list": repeatable["target-list"],
     paths: repeatable.path,
     forwarded: flags.forwarded || []
   };
@@ -75,6 +93,9 @@ function managedRunUsage() {
     "Usage:",
     "  node apps/morpheus/dist/cli.js tool run --tool buildroot --mode local --workspace DIR (--source DIR | --buildroot-version VER) [--defconfig NAME] [--patch-dir DIR] [--reuse-build-dir] [--build-dir-key KEY] [--json]",
     "  node apps/morpheus/dist/cli.js tool run --tool buildroot --mode remote --ssh TARGET --workspace DIR (--source DIR | --buildroot-version VER) [--defconfig NAME] [--patch-dir DIR] [--reuse-build-dir] [--build-dir-key KEY] [--detach] [--json]",
+    "  node apps/morpheus/dist/cli.js tool run --tool qemu --mode local --workspace DIR --path PATH [--json]",
+    "  node apps/morpheus/dist/cli.js tool run --tool qemu --mode build --workspace DIR --source DIR [--build-dir-key KEY] [--target-list NAME ...] [--configure-arg ARG ...] [--json]",
+    "  node apps/morpheus/dist/cli.js tool run --tool nvirsh --mode local --workspace DIR [--target sel4] [--json]",
     "  node apps/morpheus/dist/cli.js tool runs [--workspace DIR] [--ssh TARGET] [--json]",
     "  node apps/morpheus/dist/cli.js tool inspect --id RUN_ID [--json]",
     "  node apps/morpheus/dist/cli.js tool logs --id RUN_ID [--follow] [--json]",
@@ -430,7 +451,7 @@ function resolveManagedTool(tool) {
 }
 
 function requireManagedTool(flags, command) {
-  const tool = requireFlag(flags, "tool", `${command} requires --tool buildroot`);
+  const tool = requireFlag(flags, "tool", `${command} requires --tool buildroot|nvirsh`);
   return resolveManagedTool(tool);
 }
 
@@ -1485,6 +1506,13 @@ async function runRemoteBuildroot(options) {
 }
 
 async function runManagedRun(flags) {
+  const adapter = requireManagedTool(flags, "run");
+  if (adapter.name === QEMU_TOOL) {
+    return runManagedQemu(flags);
+  }
+  if (adapter.name === NVIRSH_TOOL) {
+    return await runManagedNvirsh(flags);
+  }
   const options = parseBuildrootRunOptions(flags);
   if (options.mode === "local") {
     return runLocalBuildroot(options);

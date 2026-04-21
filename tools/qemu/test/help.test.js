@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { renderHelp, getHelp } from '../dist/help.js';
+
+test('main help stays flat', () => {
+  const help = renderHelp();
+  assert.match(help, /inspect/);
+});
+
+test('command help renders usage', () => {
+  const help = renderHelp('inspect');
+  assert.match(help, /--path PATH/);
+});
+
+test('help metadata is discoverable', () => {
+  const command = getHelp('inspect');
+  assert.equal(command?.name, 'inspect');
+});

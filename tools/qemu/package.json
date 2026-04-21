@@ -1,0 +1,15 @@
+{
+  "name": "@morpheus/qemu",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "qemu": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "pnpm exec tsc -p tsconfig.json && node --test test/*.test.js",
+    "smoke": "pnpm exec tsc -p tsconfig.json && node scripts/smoke.mjs"
+  }
+}

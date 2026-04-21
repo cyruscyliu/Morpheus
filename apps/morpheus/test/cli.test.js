@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
+const { pathToFileURL } = require("node:url");
 const {
   effectiveBuildrootConfigFragment,
   kernelPatchFingerprint,
@@ -465,7 +466,7 @@ test("tool list discovers repo-local tools", () => {
   const payload = JSON.parse(result.stdout);
   assert.deepEqual(
     payload.tools.map((tool) => tool.name),
-    ["buildroot", "llbic", "llcg"]
+    ["buildroot", "llbic", "llcg", "nvirsh", "qemu"]
   );
 });
 
@@ -760,6 +761,458 @@ test("tool config can provide buildroot defaults and expected artifacts", () => 
     "BR2_TARGET_GENERIC_GETTY_PORT=\"ttyAMA0\""
   ]);
   assert.deepEqual(resolved.flags.artifact, ["images/Image", "images/rootfs.cpio.gz"]);
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("tool config can provide nvirsh defaults", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-nvirsh-config-project-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "tools:",
+      "  qemu:",
+      "    mode: local",
+      "    path: ./workflow-workspace/tools/qemu/bin/qemu-system-aarch64",
+      "  nvirsh:",
+      "    mode: local",
+      "    target: sel4",
+      "    name: sel4-dev",
+      "    microkit-sdk: ./deps/microkit-sdk",
+      "    microkit-version: 1.4.1",
+      "    toolchain: ./deps/arm-gnu-toolchain",
+      "    libvmm-dir: ./deps/libvmm",
+      "    sel4-dir: ./deps/seL4",
+      "    sel4-version: 15.0.0",
+      "    qemu-args:",
+      "      - -machine",
+      "      - virt",
+      ""
+    ].join("\n")
+  );
+
+  const previousCwd = process.cwd();
+  process.chdir(projectRoot);
+  const { applyConfigDefaults } = require(path.join(appRoot, "dist", "config.js"));
+  const resolved = applyConfigDefaults({
+    tool: "nvirsh"
+  }, { allowToolDefaults: true });
+  process.chdir(previousCwd);
+
+  assert.equal(resolved.flags.mode, "local");
+  assert.equal(resolved.flags.target, "sel4");
+  assert.equal(resolved.flags.name, "sel4-dev");
+  assert.equal(resolved.flags["microkit-version"], "1.4.1");
+  assert.equal(resolved.flags["sel4-version"], "15.0.0");
+  assert.deepEqual(resolved.flags["qemu-arg"], ["-machine", "virt"]);
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("tool config can provide qemu defaults", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-qemu-config-project-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "tools:",
+      "  qemu:",
+      "    mode: local",
+      "    path: ./workflow-workspace/tools/qemu/bin/qemu-system-aarch64",
+      ""
+    ].join("\n")
+  );
+
+  const previousCwd = process.cwd();
+  process.chdir(projectRoot);
+  const { applyConfigDefaults } = require(path.join(appRoot, "dist", "config.js"));
+  const resolved = applyConfigDefaults({
+    tool: "qemu"
+  }, { allowToolDefaults: true });
+  process.chdir(previousCwd);
+
+  assert.equal(resolved.flags.mode, "local");
+  assert.equal(
+    resolved.flags.path,
+    path.join(projectRoot, "workflow-workspace", "tools", "qemu", "bin", "qemu-system-aarch64")
+  );
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("managed qemu run registers a local executable artifact", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-qemu-project-"));
+  const workspaceRoot = path.join(projectRoot, "workflow-workspace");
+  const qemuPath = path.join(workspaceRoot, "tools", "qemu", "bin", "qemu-system-aarch64");
+  fs.mkdirSync(path.dirname(qemuPath), { recursive: true });
+  fs.writeFileSync(
+    qemuPath,
+    [
+      "#!/usr/bin/env sh",
+      "if [ \"$1\" = \"--version\" ]; then",
+      "  echo \"qemu stub 1.0\"",
+      "  exit 0",
+      "fi",
+      "exit 0",
+      ""
+    ].join("\n"),
+    { mode: 0o755 }
+  );
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "tools:",
+      "  qemu:",
+      "    mode: local",
+      "    path: ./workflow-workspace/tools/qemu/bin/qemu-system-aarch64",
+      ""
+    ].join("\n")
+  );
+
+  const result = run([
+    "--json",
+    "tool",
+    "run",
+    "--tool",
+    "qemu"
+  ], {
+    cwd: projectRoot,
+    env: {
+      ...isolatedEnv(),
+      MORPHEUS_STATE_ROOT: path.join(projectRoot, ".state")
+    }
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.tool, "qemu");
+  assert.equal(payload.details.manifest.artifacts[0].path, "qemu-system-aarch64");
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("managed qemu run can build an executable from source", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-qemu-build-project-"));
+  const workspaceRoot = path.join(projectRoot, "workflow-workspace");
+  const sourceRoot = path.join(workspaceRoot, "tools", "qemu", "src", "qemu");
+  fs.mkdirSync(sourceRoot, { recursive: true });
+  fs.writeFileSync(
+    path.join(sourceRoot, "configure"),
+    [
+      "#!/usr/bin/env sh",
+      "set -eu",
+      "prefix=''",
+      "for arg in \"$@\"; do",
+      "  case \"$arg\" in",
+      "    --prefix=*) prefix=\"${arg#--prefix=}\" ;;",
+      "  esac",
+      "done",
+      "cat > Makefile <<EOF",
+      "all:",
+      "\t@mkdir -p build-out",
+      "\t@printf '%s\\n' '#!/usr/bin/env sh' 'if [ \"$$1\" = \"--version\" ]; then echo \"qemu built 1.0\"; exit 0; fi' 'exit 0' > build-out/qemu-system-aarch64",
+      "\t@chmod +x build-out/qemu-system-aarch64",
+      "install:",
+      "\t@mkdir -p ${prefix}/bin",
+      "\t@cp build-out/qemu-system-aarch64 ${prefix}/bin/qemu-system-aarch64",
+      "EOF",
+      ""
+    ].join("\n"),
+    { mode: 0o755 }
+  );
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "tools:",
+      "  qemu:",
+      "    mode: build",
+      "    source: ./workflow-workspace/tools/qemu/src/qemu",
+      "    build-dir-key: aarch64-softmmu",
+      "    target-list:",
+      "      - aarch64-softmmu",
+      ""
+    ].join("\n")
+  );
+
+  const result = run([
+    "--json",
+    "tool",
+    "run",
+    "--tool",
+    "qemu"
+  ], {
+    cwd: projectRoot,
+    env: {
+      ...isolatedEnv(),
+      MORPHEUS_STATE_ROOT: path.join(projectRoot, ".state")
+    }
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.mode, "build");
+  assert.equal(payload.details.manifest.source, sourceRoot);
+  assert.equal(
+    payload.details.manifest.stagedSource,
+    path.join(workspaceRoot, "tools", "qemu", "builds", "aarch64-softmmu", "source")
+  );
+  assert.equal(
+    fs.existsSync(path.join(workspaceRoot, "tools", "qemu", "builds", "aarch64-softmmu", "install", "bin", "qemu-system-aarch64")),
+    true
+  );
+  assert.equal(
+    fs.existsSync(path.join(workspaceRoot, "tools", "qemu", "builds", "aarch64-softmmu", "source", "configure")),
+    true
+  );
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("managed qemu run can fetch and unpack a managed source tree from qemu-version", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-qemu-fetch-project-"));
+  const workspaceRoot = path.join(projectRoot, "workflow-workspace");
+  const archiveSourceParent = path.join(projectRoot, "archive-src");
+  const archiveSource = path.join(archiveSourceParent, "qemu-1.0.0");
+  const archivePath = path.join(projectRoot, "qemu-1.0.0.tar.xz");
+  fs.mkdirSync(archiveSource, { recursive: true });
+  fs.writeFileSync(
+    path.join(archiveSource, "configure"),
+    [
+      "#!/usr/bin/env sh",
+      "set -eu",
+      "prefix=''",
+      "for arg in \"$@\"; do",
+      "  case \"$arg\" in",
+      "    --prefix=*) prefix=\"${arg#--prefix=}\" ;;",
+      "  esac",
+      "done",
+      "cat > Makefile <<EOF",
+      "all:",
+      "\t@mkdir -p build-out",
+      "\t@printf '%s\\n' '#!/usr/bin/env sh' 'if [ \"$$1\" = \"--version\" ]; then echo \"qemu fetched 1.0\"; exit 0; fi' 'exit 0' > build-out/qemu-system-aarch64",
+      "\t@chmod +x build-out/qemu-system-aarch64",
+      "install:",
+      "\t@mkdir -p ${prefix}/bin",
+      "\t@cp build-out/qemu-system-aarch64 ${prefix}/bin/qemu-system-aarch64",
+      "EOF",
+      ""
+    ].join("\n"),
+    { mode: 0o755 }
+  );
+  const archive = spawnSync("tar", ["-cJf", archivePath, "-C", archiveSourceParent, "qemu-1.0.0"], {
+    encoding: "utf8"
+  });
+  assert.equal(archive.status, 0, archive.stdout || archive.stderr);
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "tools:",
+      "  qemu:",
+      "    mode: build",
+      "    qemu-version: 1.0.0",
+      `    archive-url: ${pathToFileURL(archivePath).toString()}`,
+      ""
+    ].join("\n")
+  );
+
+  const result = run([
+    "--json",
+    "tool",
+    "run",
+    "--tool",
+    "qemu"
+  ], {
+    cwd: projectRoot,
+    env: {
+      ...isolatedEnv(),
+      MORPHEUS_STATE_ROOT: path.join(projectRoot, ".state")
+    }
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.manifest.qemuVersion, "1.0.0");
+  assert.equal(
+    payload.details.manifest.source,
+    path.join(workspaceRoot, "tools", "qemu", "src", "qemu-1.0.0")
+  );
+  assert.equal(
+    fs.existsSync(path.join(workspaceRoot, "tools", "qemu", "src", "qemu-1.0.0", "configure")),
+    true
+  );
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("managed nvirsh run resolves buildroot artifacts from morpheus.yaml", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-nvirsh-project-"));
+  const workspaceRoot = path.join(projectRoot, "workflow-workspace");
+  const buildrootRunId = "buildroot-20260421-abcdef01";
+  const buildrootRunDir = path.join(workspaceRoot, "tools", "buildroot", "runs", buildrootRunId);
+  const buildrootOutputDir = path.join(buildrootRunDir, "output");
+  const kernelPath = path.join(buildrootOutputDir, "images", "Image");
+  const initrdPath = path.join(buildrootOutputDir, "images", "rootfs.cpio.gz");
+  const depsRoot = path.join(projectRoot, "deps");
+  const qemuPath = path.join(workspaceRoot, "tools", "qemu", "bin", "qemu-system-aarch64");
+  const microkitSdk = path.join(depsRoot, "microkit-sdk");
+  const toolchain = path.join(depsRoot, "arm-gnu-toolchain");
+  const libvmmDir = path.join(depsRoot, "libvmm");
+  const sel4Dir = path.join(depsRoot, "seL4");
+
+  fs.mkdirSync(path.dirname(kernelPath), { recursive: true });
+  fs.writeFileSync(kernelPath, "kernel");
+  fs.writeFileSync(initrdPath, "initrd");
+  fs.mkdirSync(path.dirname(qemuPath), { recursive: true });
+  fs.mkdirSync(depsRoot, { recursive: true });
+  fs.writeFileSync(
+    qemuPath,
+    [
+      "#!/usr/bin/env sh",
+      "if [ \"$1\" = \"--version\" ]; then",
+      "  echo \"qemu stub 1.0\"",
+      "  exit 0",
+      "fi",
+      "echo \"managed qemu launch: $*\"",
+      "exit 0",
+      ""
+    ].join("\n"),
+    { mode: 0o755 }
+  );
+  for (const dir of [microkitSdk, toolchain, libvmmDir, sel4Dir]) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.writeFileSync(path.join(microkitSdk, "VERSION"), "1.4.1\n");
+  fs.writeFileSync(path.join(toolchain, "VERSION"), "arm-toolchain\n");
+  fs.writeFileSync(path.join(libvmmDir, "VERSION"), "libvmm-dev\n");
+  fs.writeFileSync(path.join(sel4Dir, "VERSION"), "15.0.0\n");
+
+  fs.writeFileSync(
+    path.join(buildrootRunDir, "manifest.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      id: buildrootRunId,
+      tool: "buildroot",
+      mode: "local",
+      command: "run",
+      status: "success",
+      createdAt: "2026-04-21T08:00:00.000Z",
+      updatedAt: "2026-04-21T08:00:00.000Z",
+      workspace: workspaceRoot,
+      runDir: buildrootRunDir,
+      outputDir: buildrootOutputDir,
+      logFile: path.join(buildrootRunDir, "stdout.log"),
+      manifest: path.join(buildrootRunDir, "manifest.json"),
+      artifacts: [
+        { path: "images/Image", location: kernelPath },
+        { path: "images/rootfs.cpio.gz", location: initrdPath }
+      ]
+    }, null, 2)
+  );
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "tools:",
+      "  qemu:",
+      "    mode: local",
+      "    path: ./workflow-workspace/tools/qemu/bin/qemu-system-aarch64",
+      "  nvirsh:",
+      "    mode: local",
+      "    target: sel4",
+      "    name: sel4-dev",
+      "    microkit-sdk: ./deps/microkit-sdk",
+      "    microkit-version: 1.4.1",
+      "    toolchain: ./deps/arm-gnu-toolchain",
+      "    libvmm-dir: ./deps/libvmm",
+      "    sel4-dir: ./deps/seL4",
+      "    sel4-version: 15.0.0",
+      "    qemu-args:",
+      "      - -machine",
+      "      - virt",
+      "    dependencies:",
+      "      qemu:",
+      "        tool: qemu",
+      "        artifact: qemu-system-aarch64",
+      "      kernel:",
+      "        tool: buildroot",
+      "        artifact: images/Image",
+      "      initrd:",
+      "        tool: buildroot",
+      "        artifact: images/rootfs.cpio.gz",
+      ""
+    ].join("\n")
+  );
+
+  const qemuRegister = run([
+    "--json",
+    "tool",
+    "run",
+    "--tool",
+    "qemu"
+  ], {
+    cwd: projectRoot,
+    env: {
+      ...isolatedEnv(),
+      MORPHEUS_STATE_ROOT: path.join(projectRoot, ".state")
+    }
+  });
+  assert.equal(qemuRegister.status, 0, qemuRegister.stderr || qemuRegister.stdout);
+
+  const result = run([
+    "--json",
+    "tool",
+    "run",
+    "--tool",
+    "nvirsh"
+  ], {
+    cwd: projectRoot,
+    env: {
+      ...isolatedEnv(),
+      MORPHEUS_STATE_ROOT: path.join(projectRoot, ".state")
+    }
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.tool, "nvirsh");
+  assert.equal(payload.details.manifest.tool, "nvirsh");
+  assert.equal(payload.details.manifest.artifacts.length, 2);
+
+  const inspect = run([
+    "--json",
+    "tool",
+    "inspect",
+    "--tool",
+    "nvirsh",
+    "--id",
+    payload.details.id
+  ], {
+    cwd: projectRoot,
+    env: {
+      ...isolatedEnv(),
+      MORPHEUS_STATE_ROOT: path.join(projectRoot, ".state")
+    }
+  });
+  assert.equal(inspect.status, 0, inspect.stderr || inspect.stdout);
+  const inspectPayload = JSON.parse(inspect.stdout.trim());
+  assert.equal(inspectPayload.details.manifest.tool, "nvirsh");
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });

@@ -173,7 +173,34 @@ function resolveToolName(configValue, name) {
     reuseBuildDir: item["reuse-build-dir"] ?? item.reuseBuildDir ?? null,
     buildDirKey: item["build-dir-key"] || item.buildDirKey || null,
     buildrootVersion: item["buildroot-version"] || item.buildrootVersion || null,
+    qemuVersion: item["qemu-version"] || item.qemuVersion || null,
+    archiveUrl: item["archive-url"] || item.archiveUrl || null,
+    executable: item.executable || null,
+    path: item.path || null,
+    targetList: Array.isArray(item["target-list"])
+      ? [...item["target-list"]]
+      : Array.isArray(item.targetList)
+        ? [...item.targetList]
+        : null,
+    configureArgs: Array.isArray(item["configure-arg"])
+      ? [...item["configure-arg"]]
+      : Array.isArray(item["configure-args"])
+        ? [...item["configure-args"]]
+        : Array.isArray(item.configureArgs)
+          ? [...item.configureArgs]
+          : null,
     defconfig: item.defconfig || null,
+    target: item.target || null,
+    instanceName: item.name || null,
+    qemu: item.qemu || null,
+    microkitSdk: item["microkit-sdk"] || item.microkitSdk || null,
+    microkitVersion: item["microkit-version"] || item.microkitVersion || null,
+    toolchain: item.toolchain || null,
+    libvmmDir: item["libvmm-dir"] || item.libvmmDir || null,
+    sel4Dir: item["sel4-dir"] || item.sel4Dir || null,
+    sel4Version: item["sel4-version"] || item.sel4Version || null,
+    board: item.board || null,
+    append: item.append || null,
     makeArgs: Array.isArray(item["make-arg"])
       ? [...item["make-arg"]]
       : Array.isArray(item["make-args"])
@@ -181,12 +208,22 @@ function resolveToolName(configValue, name) {
         : Array.isArray(item.makeArgs)
           ? [...item.makeArgs]
           : null,
+    qemuArgs: Array.isArray(item["qemu-arg"])
+      ? [...item["qemu-arg"]]
+      : Array.isArray(item["qemu-args"])
+        ? [...item["qemu-args"]]
+        : Array.isArray(item.qemuArgs)
+          ? [...item.qemuArgs]
+          : null,
     artifacts: Array.isArray(item.artifacts) ? [...item.artifacts] : null,
     configFragment: Array.isArray(item["config-fragment"])
       ? [...item["config-fragment"]]
       : Array.isArray(item.configFragment)
         ? [...item.configFragment]
         : null
+    ,
+    dependencies: item.dependencies || null,
+    raw: item
   };
 }
 
@@ -225,6 +262,7 @@ function applyConfigDefaults(flags, options) {
   const next = { ...flags };
   const allowGlobalRemote = Boolean(options && options.allowGlobalRemote);
   const allowToolDefaults = Boolean(options && options.allowToolDefaults);
+  const toolDisallowsRemote = next.tool === "qemu" || next.tool === "nvirsh";
 
   let workspaceEntry = null;
   if (next.workspace) {
@@ -254,6 +292,22 @@ function applyConfigDefaults(flags, options) {
     next.source = resolveLocalPath(baseDir, toolEntry.source);
   }
 
+  if (toolEntry && toolEntry.path && !next.path) {
+    next.path = resolveLocalPath(baseDir, toolEntry.path);
+  }
+
+  if (toolEntry && toolEntry.executable && !next.path) {
+    next.path = resolveLocalPath(baseDir, toolEntry.executable);
+  }
+
+  if (toolEntry && toolEntry.targetList && !next["target-list"]) {
+    next["target-list"] = [...toolEntry.targetList];
+  }
+
+  if (toolEntry && toolEntry.configureArgs && !next["configure-arg"]) {
+    next["configure-arg"] = [...toolEntry.configureArgs];
+  }
+
   if (toolEntry && toolEntry.patchDir && !next["patch-dir"]) {
     next["patch-dir"] = resolveLocalPath(baseDir, toolEntry.patchDir);
   }
@@ -271,12 +325,68 @@ function applyConfigDefaults(flags, options) {
     next["buildroot-version"] = toolEntry.buildrootVersion;
   }
 
+  if (toolEntry && toolEntry.qemuVersion && !next["qemu-version"]) {
+    next["qemu-version"] = toolEntry.qemuVersion;
+  }
+
+  if (toolEntry && toolEntry.archiveUrl && !next["archive-url"]) {
+    next["archive-url"] = toolEntry.archiveUrl;
+  }
+
   if (toolEntry && toolEntry.defconfig && !next.defconfig) {
     next.defconfig = toolEntry.defconfig;
   }
 
+  if (toolEntry && toolEntry.target && !next.target) {
+    next.target = toolEntry.target;
+  }
+
+  if (toolEntry && toolEntry.instanceName && !next.name) {
+    next.name = toolEntry.instanceName;
+  }
+
+  if (toolEntry && toolEntry.qemu && !next.qemu) {
+    next.qemu = resolveLocalPath(baseDir, toolEntry.qemu);
+  }
+
+  if (toolEntry && toolEntry.microkitSdk && !next["microkit-sdk"]) {
+    next["microkit-sdk"] = resolveLocalPath(baseDir, toolEntry.microkitSdk);
+  }
+
+  if (toolEntry && toolEntry.microkitVersion && !next["microkit-version"]) {
+    next["microkit-version"] = toolEntry.microkitVersion;
+  }
+
+  if (toolEntry && toolEntry.toolchain && !next.toolchain) {
+    next.toolchain = resolveLocalPath(baseDir, toolEntry.toolchain);
+  }
+
+  if (toolEntry && toolEntry.libvmmDir && !next["libvmm-dir"]) {
+    next["libvmm-dir"] = resolveLocalPath(baseDir, toolEntry.libvmmDir);
+  }
+
+  if (toolEntry && toolEntry.sel4Dir && !next["sel4-dir"]) {
+    next["sel4-dir"] = resolveLocalPath(baseDir, toolEntry.sel4Dir);
+  }
+
+  if (toolEntry && toolEntry.sel4Version && !next["sel4-version"]) {
+    next["sel4-version"] = toolEntry.sel4Version;
+  }
+
+  if (toolEntry && toolEntry.board && !next.board) {
+    next.board = toolEntry.board;
+  }
+
+  if (toolEntry && toolEntry.append && !next.append) {
+    next.append = toolEntry.append;
+  }
+
   if (toolEntry && toolEntry.makeArgs && !next.makeArg) {
     next.makeArg = [...toolEntry.makeArgs];
+  }
+
+  if (toolEntry && toolEntry.qemuArgs && !next["qemu-arg"]) {
+    next["qemu-arg"] = [...toolEntry.qemuArgs];
   }
 
   if (toolEntry && toolEntry.artifacts && !next.artifact) {
@@ -287,9 +397,11 @@ function applyConfigDefaults(flags, options) {
     next["config-fragment"] = [...toolEntry.configFragment];
   }
 
-  applyRemoteReference(value, next, next.remote);
+  if (!toolDisallowsRemote) {
+    applyRemoteReference(value, next, next.remote);
+  }
 
-  if (!next.ssh) {
+  if (!next.ssh && !toolDisallowsRemote) {
     const remoteName = workspaceEntry && workspaceEntry.remote;
     if (remoteName === true || remoteName === "true") {
       applyRemoteReference(value, next, "remote");
@@ -298,11 +410,11 @@ function applyConfigDefaults(flags, options) {
     }
   }
 
-  if (!next.ssh && allowGlobalRemote) {
+  if (!next.ssh && allowGlobalRemote && !toolDisallowsRemote) {
     applyRemoteReference(value, next, "remote");
   }
 
-  if (!next.ssh && allowGlobalRemote) {
+  if (!next.ssh && allowGlobalRemote && !toolDisallowsRemote) {
     const remote = resolveDefaultRemote(value);
     if (remote) {
       next.ssh = remote.ssh;

@@ -37,3 +37,43 @@ tools:
     artifacts:
       - images/Image
       - images/rootfs.cpio.gz
+  qemu:
+    mode: build
+    qemu-version: 8.2.7
+    reuse-build-dir: true
+    build-dir-key: qemu-8.2.7-aarch64-softmmu
+    target-list:
+      - aarch64-softmmu
+    artifacts:
+      - qemu-system-aarch64
+  nvirsh:
+    mode: local
+    target: sel4
+    name: sel4-dev
+    microkit-sdk: ./deps/microkit-sdk
+    microkit-version: 1.4.1
+    toolchain: ./deps/arm-gnu-toolchain
+    libvmm-dir: ./deps/libvmm
+    sel4-dir: ./deps/seL4
+    sel4-version: 15.0.0
+    append: console=ttyAMA0
+    qemu-args:
+      - -machine
+      - virt,virtualization=on,gic-version=3
+      - -cpu
+      - cortex-a57
+      - -smp
+      - "4"
+      - -m
+      - "2048"
+      - -nographic
+    dependencies:
+      qemu:
+        tool: qemu
+        artifact: qemu-system-aarch64
+      kernel:
+        tool: buildroot
+        artifact: images/Image
+      initrd:
+        tool: buildroot
+        artifact: images/rootfs.cpio.gz

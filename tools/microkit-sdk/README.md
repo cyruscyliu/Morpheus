@@ -68,6 +68,16 @@ morpheus tool build \
   --json
 ```
 
+If you need a Microkit SDK built from source (for development), use the repo
+script which wraps Microkit's `build_sdk.py` and auto-detects flag names:
+
+```bash
+pnpm run build:microkit:sdk -- \
+  --microkit-dir ./deps/microkit \
+  --sel4-dir ./deps/seL4 \
+  --json
+```
+
 ## Flags
 
 - `microkit-sdk inspect --path PATH`: local SDK directory to inspect

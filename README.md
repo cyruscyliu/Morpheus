@@ -139,6 +139,16 @@ Register the workspace-local dependencies as managed artifacts with:
 ./bin/morpheus --json tool build --tool qemu
 ```
 
+When you want to build a Microkit SDK from source (instead of fetching a
+prebuilt archive), use:
+
+```bash
+pnpm run build:microkit:sdk -- \
+  --microkit-dir ./deps/microkit \
+  --sel4-dir ./deps/seL4 \
+  --json
+```
+
 Or build QEMU into the workspace from a local source tree when the configured
 `tools.qemu.path` does not exist yet:
 
@@ -160,12 +170,13 @@ tools:
     path: ./hyperarm-workspace/tools/qemu/bin/qemu-system-aarch64
   microkit-sdk:
     mode: local
-    path: ./hyperarm-workspace/tools/microkit-sdk/sdk
     microkit-version: 2.0.1
+    # archive-url: file:///tmp/microkit-sdk-2.0.1.tar.gz
   sel4:
     mode: local
-    path: ./hyperarm-workspace/tools/sel4/src/seL4
     sel4-version: 15.0.0
+    # git-url: https://github.com/seL4/seL4.git
+    # git-ref: 15.0.0
   nvirsh:
     mode: local
     target: sel4

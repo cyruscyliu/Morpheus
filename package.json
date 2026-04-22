@@ -16,6 +16,7 @@
     "setup:sel4": "pnpm install && pnpm --filter @morpheus/sel4 build && pnpm run install:bin",
     "setup:morpheus": "pnpm install && pnpm --filter @morpheus/app build && pnpm run install:bin",
     "prepare:tool:nvirsh:sel4": "node scripts/nvirsh/prepare-sel4-deps.mjs",
+    "build:microkit:sdk": "node scripts/microkit/build-sdk.mjs",
     "build": "pnpm run build:packages && pnpm run build:apps && pnpm run build:tools",
     "build:packages": "pnpm --filter @morpheus/core build && pnpm --filter @morpheus/schemas build && pnpm --filter @morpheus/tool-registry build && pnpm --filter @morpheus/workflows build",
     "build:apps": "pnpm --filter @morpheus/app build && pnpm --filter @morpheus/docs build",

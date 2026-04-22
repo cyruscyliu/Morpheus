@@ -48,14 +48,15 @@ tools:
       - qemu-system-aarch64
   microkit-sdk:
     mode: local
-    path: ./hyperarm-workspace/tools/microkit-sdk/sdk
     microkit-version: 2.0.1
+    # archive-url: file:///tmp/microkit-sdk-2.0.1.tar.gz
     artifacts:
       - sdk-dir
   sel4:
     mode: local
-    path: ./hyperarm-workspace/tools/sel4/src/seL4
     sel4-version: 15.0.0
+    # git-url: https://github.com/seL4/seL4.git
+    # git-ref: 15.0.0
     artifacts:
       - source-dir
   nvirsh:

@@ -74,6 +74,10 @@ If you want to avoid downloads, set `tools.microkit-sdk.microkit-dir` to an
 existing Microkit checkout and set `tools.sel4.path` to an existing seL4
 checkout.
 
+Microkit SDK builds for aarch64 targets typically require an aarch64 bare-metal
+toolchain (for example `aarch64-none-elf-gcc`). Morpheus can manage this as an
+additional artifact when building the SDK from source.
+
 If you need a Microkit SDK built from source (for development), use the repo
 script which wraps Microkit's `build_sdk.py` and auto-detects flag names:
 
@@ -108,6 +112,21 @@ For incremental workflows, set:
 - `tools.microkit-sdk.build-dir-key: <name>`
 
 This keeps the managed SDK directory under `tools/microkit-sdk/builds/<key>/`.
+
+## Toolchain
+
+When building the SDK from source, Morpheus can also ensure the Arm GNU
+toolchain is present under the workspace and record it as an additional
+artifact:
+
+- `toolchain-dir`: extracted toolchain root directory
+
+Configure it in `morpheus.yaml` under `tools.microkit-sdk`:
+
+- `toolchain-version`: toolchain version to fetch (default: `12.2.rel1`)
+- `toolchain-archive-url`: override archive URL
+- `toolchain-dir`: use an existing toolchain instead of fetching
+- `toolchain-prefix-aarch64`: default `aarch64-none-elf`
 
 ## Network requirements
 

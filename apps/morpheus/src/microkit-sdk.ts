@@ -44,6 +44,18 @@ function defaultMicrokitArchiveUrl(version) {
   return `https://github.com/seL4/microkit/archive/refs/tags/${version}.tar.gz`;
 }
 
+function defaultArmGnuToolchainVersion() {
+  return "12.2.rel1";
+}
+
+function defaultArmGnuToolchainArchiveUrl(version) {
+  return `https://developer.arm.com/-/media/Files/downloads/gnu/${version}/binrel/arm-gnu-toolchain-${version}-x86_64-aarch64-none-elf.tar.xz`;
+}
+
+function defaultArmGnuToolchainRoot(workspace, version) {
+  return path.join(localToolWorkspace(workspace, TOOL), "deps", `arm-gnu-toolchain-${version}`);
+}
+
 function localManifestPath(workspace, tool, id) {
   return path.join(localRunDir(workspace, tool, id), "manifest.json");
 }
@@ -69,6 +81,10 @@ function loadMicrokitConfig() {
       archiveUrl: item["archive-url"] || item.archiveUrl || null,
       microkitArchiveUrl: item["microkit-archive-url"] || item.microkitArchiveUrl || null,
       microkitDir: item["microkit-dir"] || item.microkitDir || null,
+      toolchainDir: item["toolchain-dir"] || item.toolchainDir || null,
+      toolchainVersion: item["toolchain-version"] || item.toolchainVersion || null,
+      toolchainArchiveUrl: item["toolchain-archive-url"] || item.toolchainArchiveUrl || null,
+      toolchainPrefixAarch64: item["toolchain-prefix-aarch64"] || item.toolchainPrefixAarch64 || null,
     }
   };
 }
@@ -181,6 +197,78 @@ function ensureFetchedMicrokitSourceTree({ workspace, source, microkitVersion, a
   };
 }
 
+function ensureArmGnuToolchain({ workspace, toolchainDir, toolchainVersion, toolchainArchiveUrl }) {
+  if (toolchainDir) {
+    const resolved = toolchainDir;
+    const gcc = path.join(resolved, "bin", "aarch64-none-elf-gcc");
+    if (!fs.existsSync(gcc)) {
+      throw new Error(`toolchain-dir is missing expected aarch64-none-elf toolchain: ${gcc}`);
+    }
+    return {
+      root: resolved,
+      binDir: path.join(resolved, "bin"),
+      fetched: false,
+      archive: null,
+      archive_url: null,
+      version: toolchainVersion || null,
+    };
+  }
+
+  const version = toolchainVersion || defaultArmGnuToolchainVersion();
+  const archiveUrlValue = toolchainArchiveUrl || defaultArmGnuToolchainArchiveUrl(version);
+  const toolRoot = localToolWorkspace(workspace, TOOL);
+  const downloadsDir = path.join(toolRoot, "downloads");
+  const archiveName = path.basename(new URL(archiveUrlValue).pathname);
+  const archivePath = path.join(downloadsDir, archiveName);
+  const extractRoot = path.join(downloadsDir, ".extract-toolchain");
+  const destination = defaultArmGnuToolchainRoot(workspace, version);
+
+  const gcc = path.join(destination, "bin", "aarch64-none-elf-gcc");
+  if (fs.existsSync(gcc)) {
+    return {
+      root: destination,
+      binDir: path.join(destination, "bin"),
+      fetched: false,
+      archive: archivePath,
+      archive_url: archiveUrlValue,
+      version,
+    };
+  }
+
+  fs.mkdirSync(downloadsDir, { recursive: true });
+  if (!fs.existsSync(archivePath)) {
+    const download = runCommand("curl", ["-fsSL", archiveUrlValue, "-o", archivePath], undefined);
+    if (download.status !== 0) {
+      throw new Error(download.stderr || download.stdout || `Failed to download toolchain: ${archiveUrlValue}`);
+    }
+  }
+
+  removeDirectory(extractRoot);
+  extractArchive(archivePath, extractRoot);
+  const entries = fs.readdirSync(extractRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+  if (entries.length !== 1) {
+    throw new Error(`Expected one extracted toolchain directory in ${extractRoot}`);
+  }
+
+  removeDirectory(destination);
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.renameSync(path.join(extractRoot, entries[0].name), destination);
+  removeDirectory(extractRoot);
+
+  if (!fs.existsSync(gcc)) {
+    throw new Error(`Extracted toolchain is missing expected gcc: ${gcc}`);
+  }
+
+  return {
+    root: destination,
+    binDir: path.join(destination, "bin"),
+    fetched: true,
+    archive: archivePath,
+    archive_url: archiveUrlValue,
+    version,
+  };
+}
+
 function parseRunOptions(flags) {
   const workspace = flags.workspace;
   if (!workspace) {
@@ -205,6 +293,12 @@ function parseRunOptions(flags) {
     microkitDir: flags["microkit-dir"]
       ? path.resolve(process.cwd(), flags["microkit-dir"])
       : resolveLocalPath(baseDir, value.microkitDir),
+    toolchainDir: flags["toolchain-dir"]
+      ? path.resolve(process.cwd(), flags["toolchain-dir"])
+      : resolveLocalPath(baseDir, value.toolchainDir),
+    toolchainVersion: flags["toolchain-version"] || value.toolchainVersion || null,
+    toolchainArchiveUrl: flags["toolchain-archive-url"] || value.toolchainArchiveUrl || null,
+    toolchainPrefixAarch64: flags["toolchain-prefix-aarch64"] || value.toolchainPrefixAarch64 || "aarch64-none-elf",
     reuseBuildDir: Boolean(flags["reuse-build-dir"] ?? value.reuseBuildDir),
     buildDirKey: flags["build-dir-key"] || value.buildDirKey || "default",
   };
@@ -294,6 +388,18 @@ function localManifest(options, runDir, manifestPath, logFile, inspected) {
 }
 
 function buildManifest(options, runDir, manifestPath, fetched) {
+  const artifacts = [
+    {
+      path: "sdk-dir",
+      location: fetched.details.directory.path
+    }
+  ];
+  if (options.toolchainResolved && options.toolchainResolved.root) {
+    artifacts.push({
+      path: "toolchain-dir",
+      location: options.toolchainResolved.root
+    });
+  }
   return {
     schemaVersion: 1,
     id: options.id,
@@ -315,12 +421,8 @@ function buildManifest(options, runDir, manifestPath, fetched) {
     logFile: path.join(runDir, "stdout.log"),
     manifest: manifestPath,
     directory: fetched.details.directory,
-    artifacts: [
-      {
-        path: "sdk-dir",
-        location: fetched.details.directory.path
-      }
-    ],
+    toolchain: options.toolchainResolved || null,
+    artifacts,
     transport: null,
     exitCode: 0
   };
@@ -348,6 +450,13 @@ function runManagedMicrokitSdk(flags) {
   } else {
     let sourceBuild = null;
     let inspected = null;
+
+    options.toolchainResolved = ensureArmGnuToolchain({
+      workspace: options.workspace,
+      toolchainDir: options.toolchainDir,
+      toolchainVersion: options.toolchainVersion,
+      toolchainArchiveUrl: options.toolchainArchiveUrl,
+    });
 
     if (!options.microkitDir && (options.microkitVersion || options.microkitArchiveUrl)) {
       options.microkitDir = defaultManagedMicrokitSource(options.workspace, options.microkitVersion);
@@ -384,6 +493,10 @@ function runManagedMicrokitSdk(flags) {
           sel4Dir,
           "--sdk-out",
           options.path,
+          "--toolchain-bin-dir",
+          options.toolchainResolved.binDir,
+          "--toolchain-prefix-aarch64",
+          options.toolchainPrefixAarch64,
           "--force"
         ]),
         "failed to build Microkit SDK from source"

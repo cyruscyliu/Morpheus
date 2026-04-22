@@ -43,4 +43,6 @@ microkit-sdk help
   and records the managed SDK directory inside the workspace. For source builds,
   Morpheus can fetch the Microkit source tree automatically and run
   `build_sdk.py` when `tools.microkit-sdk.microkit-version` is configured.
+- Source builds may also require an aarch64 bare-metal toolchain; Morpheus can
+  fetch and register this as an additional `toolchain-dir` artifact.
 - `nvirsh` should consume the resolved SDK artifact, not provision it.

@@ -36,6 +36,9 @@ function usage() {
     "  --microkit-dir DIR      Microkit source directory (must contain build_sdk.py)",
     "  --sel4-dir DIR          seL4 source directory",
     "  --sdk-out DIR           SDK output directory (default: tools.microkit-sdk.path or workspace-managed path)",
+    "  --toolchain-bin-dir DIR Toolchain bin directory to add to PATH (optional)",
+    "  --toolchain-prefix-aarch64 PREFIX",
+    "                          Prefix for aarch64-none-elf toolchain binaries (optional)",
     "  --force                 Replace existing SDK output directory",
     "  --json                  Emit machine-readable output",
     "  --help                  Print help",
@@ -181,7 +184,7 @@ function detectMicrokitVersion(microkitDir) {
   return null;
 }
 
-function buildMicrokitSdk({ microkitDir, sel4Dir, sdkOut, force }) {
+function buildMicrokitSdk({ microkitDir, sel4Dir, sdkOut, toolchainBinDir, toolchainPrefixAarch64, force }) {
   const buildScript = path.join(microkitDir, "build_sdk.py");
   if (!fs.existsSync(buildScript)) {
     throw new Error(`microkit-dir does not contain build_sdk.py: ${buildScript}`);
@@ -201,16 +204,34 @@ function buildMicrokitSdk({ microkitDir, sel4Dir, sdkOut, force }) {
   if (!sel4Flag) {
     throw new Error("build_sdk.py does not advertise a --sel4 flag; update the script candidates list");
   }
+  const toolchainPrefixFlag = extractPythonFlag(help.stdout, ["toolchain-prefix-aarch64", "toolchain_prefix_aarch64"]);
 
   const version = detectMicrokitVersion(microkitDir);
   if (!version) {
     throw new Error(`Unable to detect Microkit version from ${microkitDir}`);
   }
 
+  const env = {
+    ...process.env,
+    PATH: toolchainBinDir
+      ? `${toolchainBinDir}${path.delimiter}${process.env.PATH || ""}`
+      : process.env.PATH
+  };
+
   const result = runCommand(
     "python3",
-    [buildScript, sel4Flag, sel4Dir, "--version", version, "--skip-tar"],
-    { cwd: microkitDir }
+    [
+      buildScript,
+      sel4Flag,
+      sel4Dir,
+      "--version",
+      version,
+      ...(toolchainPrefixFlag && toolchainPrefixAarch64
+        ? [toolchainPrefixFlag, toolchainPrefixAarch64]
+        : []),
+      "--skip-tar"
+    ],
+    { cwd: microkitDir, env }
   );
   const logFile = path.join(sdkOut, "build.log");
   fs.writeFileSync(logFile, `${result.stdout || ""}${result.stderr || ""}`, "utf8");
@@ -224,7 +245,13 @@ function buildMicrokitSdk({ microkitDir, sel4Dir, sdkOut, force }) {
   }
   fs.cpSync(releaseDir, sdkOut, { recursive: true });
 
-  return { logFile, sel4Flag, version, releaseDir };
+  return {
+    logFile,
+    sel4Flag,
+    toolchainPrefixFlag,
+    version,
+    releaseDir
+  };
 }
 
 function defaultSdkOut({ workspaceRoot, microkitVersion }) {
@@ -260,6 +287,8 @@ function main(argv) {
     configDir,
     flags["sdk-out"] || microkitConfig.path || defaultSdkOut({ workspaceRoot, microkitVersion })
   );
+  const toolchainBinDir = resolveLocalPath(configDir, flags["toolchain-bin-dir"] || microkitConfig["toolchain-bin-dir"]);
+  const toolchainPrefixAarch64 = String(flags["toolchain-prefix-aarch64"] || microkitConfig["toolchain-prefix-aarch64"] || "").trim() || null;
 
   if (!microkitDir) {
     throw new Error("missing --microkit-dir (or tools.microkit-sdk.microkit-dir/source in morpheus.yaml)");
@@ -273,6 +302,8 @@ function main(argv) {
     microkitDir,
     sel4Dir,
     sdkOut,
+    toolchainBinDir,
+    toolchainPrefixAarch64,
     force: Boolean(flags.force),
   });
 
@@ -292,7 +323,14 @@ function main(argv) {
       microkit_release_dir: path.relative(process.cwd(), output.releaseDir),
       detected_flags: {
         sel4: output.sel4Flag,
+        toolchain_prefix_aarch64: output.toolchainPrefixFlag,
       },
+      toolchain: toolchainBinDir
+        ? {
+          bin_dir: path.relative(process.cwd(), toolchainBinDir),
+          prefix_aarch64: toolchainPrefixAarch64,
+        }
+        : null,
     },
   };
 

@@ -23,12 +23,14 @@ single `build` subcommand.
 `build` may:
 
 - reuse existing local source state
-- fetch or clone missing upstream inputs automatically
+- fetch missing upstream inputs automatically
 - unpack or stage managed sources
 - compile or otherwise materialize tool outputs
 
 This keeps the public surface small while still allowing the implementation to
-handle source acquisition internally.
+handle source acquisition internally. There should not be a separate `fetch`
+subcommand for these tools: `build` is the public entrypoint for both fetching
+and building.
 
 Current build-oriented tools:
 

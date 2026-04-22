@@ -8,6 +8,10 @@ const { repoRoot } = require("./paths");
 
 const TOOL = "sel4";
 
+function defaultArchiveUrl(sel4Version) {
+  return `https://github.com/seL4/seL4/archive/refs/tags/${sel4Version}.tar.gz`;
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -122,6 +126,10 @@ function parseRunOptions(flags) {
   }
 
   options.provisioning = fs.existsSync(options.path) ? "path" : "build";
+
+  if (options.provisioning === "build" && !options.archiveUrl && options.sel4Version) {
+    options.archiveUrl = defaultArchiveUrl(options.sel4Version);
+  }
 
   if (options.provisioning === "build" && !options.archiveUrl) {
     throw new Error(

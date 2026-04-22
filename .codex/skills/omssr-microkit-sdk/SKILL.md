@@ -40,5 +40,7 @@ microkit-sdk help
 - `morpheus tool build --tool microkit-sdk --mode local` records an existing SDK
   directory as a managed artifact when `tools.microkit-sdk.path` exists.
 - Otherwise, `morpheus tool build --tool microkit-sdk --mode local` materializes
-  and records the managed SDK directory inside the workspace.
+  and records the managed SDK directory inside the workspace. For source builds,
+  Morpheus can fetch the Microkit source tree automatically and run
+  `build_sdk.py` when `tools.microkit-sdk.microkit-version` is configured.
 - `nvirsh` should consume the resolved SDK artifact, not provision it.

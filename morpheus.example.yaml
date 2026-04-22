@@ -52,6 +52,7 @@ tools:
     reuse-build-dir: true
     build-dir-key: microkit-sdk-2.0.1
     # archive-url: file:///tmp/microkit-sdk-2.0.1.tar.gz
+    # microkit-archive-url: https://github.com/seL4/microkit/archive/refs/tags/2.0.1.tar.gz
     # microkit-dir: ./deps/microkit
     artifacts:
       - sdk-dir

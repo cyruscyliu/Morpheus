@@ -64,9 +64,15 @@ morpheus tool build \
   --tool microkit-sdk \
   --mode local \
   --microkit-version 2.0.1 \
-  --archive-url file:///tmp/microkit-sdk-2.0.1.tar.gz \
   --json
 ```
+
+That command treats `build` as the full entrypoint: it can fetch missing
+upstream inputs (Microkit sources, seL4 sources) and then build the SDK.
+
+If you want to avoid downloads, set `tools.microkit-sdk.microkit-dir` to an
+existing Microkit checkout and set `tools.sel4.path` to an existing seL4
+checkout.
 
 If you need a Microkit SDK built from source (for development), use the repo
 script which wraps Microkit's `build_sdk.py` and auto-detects flag names:
@@ -102,6 +108,12 @@ For incremental workflows, set:
 - `tools.microkit-sdk.build-dir-key: <name>`
 
 This keeps the managed SDK directory under `tools/microkit-sdk/builds/<key>/`.
+
+## Network requirements
+
+Microkit source builds compile a Rust tool via Cargo. If your environment has
+no access to `crates.io`, you must provide an offline Cargo setup or prebuilt
+artifacts.
 
 ## JSON
 

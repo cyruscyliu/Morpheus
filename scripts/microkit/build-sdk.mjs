@@ -170,6 +170,17 @@ function extractPythonFlag(helpText, candidates) {
   return null;
 }
 
+function detectMicrokitVersion(microkitDir) {
+  const candidates = ["VERSION", "version.txt", ".morpheus-version"];
+  for (const name of candidates) {
+    const candidate = path.join(microkitDir, name);
+    if (fs.existsSync(candidate)) {
+      return fs.readFileSync(candidate, "utf8").trim().split(/\r?\n/)[0] || null;
+    }
+  }
+  return null;
+}
+
 function buildMicrokitSdk({ microkitDir, sel4Dir, sdkOut, force }) {
   const buildScript = path.join(microkitDir, "build_sdk.py");
   if (!fs.existsSync(buildScript)) {
@@ -186,18 +197,19 @@ function buildMicrokitSdk({ microkitDir, sel4Dir, sdkOut, force }) {
     throw new Error(help.stderr || help.stdout || "failed to query build_sdk.py --help");
   }
 
-  const sel4Flag = extractPythonFlag(help.stdout, ["sel4-dir", "sel4", "sel4_source", "sel4-source"]);
-  const outputFlag = extractPythonFlag(help.stdout, ["sdk-out", "sdk-dir", "sdk", "output", "output-dir", "out"]);
+  const sel4Flag = extractPythonFlag(help.stdout, ["sel4", "sel4-dir", "sel4_source", "sel4-source"]);
   if (!sel4Flag) {
     throw new Error("build_sdk.py does not advertise a --sel4 flag; update the script candidates list");
   }
-  if (!outputFlag) {
-    throw new Error("build_sdk.py does not advertise an output flag; update the script candidates list");
+
+  const version = detectMicrokitVersion(microkitDir);
+  if (!version) {
+    throw new Error(`Unable to detect Microkit version from ${microkitDir}`);
   }
 
   const result = runCommand(
     "python3",
-    [buildScript, sel4Flag, sel4Dir, outputFlag, sdkOut],
+    [buildScript, sel4Flag, sel4Dir, "--version", version, "--skip-tar"],
     { cwd: microkitDir }
   );
   const logFile = path.join(sdkOut, "build.log");
@@ -206,7 +218,13 @@ function buildMicrokitSdk({ microkitDir, sel4Dir, sdkOut, force }) {
     throw new Error(result.stderr || result.stdout || "microkit SDK build failed");
   }
 
-  return { logFile, sel4Flag, outputFlag };
+  const releaseDir = path.join(microkitDir, "release", `microkit-sdk-${version}`);
+  if (!fs.existsSync(releaseDir)) {
+    throw new Error(`Microkit SDK build did not produce expected release dir: ${releaseDir}`);
+  }
+  fs.cpSync(releaseDir, sdkOut, { recursive: true });
+
+  return { logFile, sel4Flag, version, releaseDir };
 }
 
 function defaultSdkOut({ workspaceRoot, microkitVersion }) {
@@ -270,9 +288,10 @@ function main(argv) {
       sel4_dir: path.relative(process.cwd(), sel4Dir),
       sdk_out: path.relative(process.cwd(), sdkOut),
       build_log: path.relative(process.cwd(), output.logFile),
+      microkit_version: output.version,
+      microkit_release_dir: path.relative(process.cwd(), output.releaseDir),
       detected_flags: {
         sel4: output.sel4Flag,
-        output: output.outputFlag,
       },
     },
   };

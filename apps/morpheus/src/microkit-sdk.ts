@@ -35,6 +35,15 @@ function defaultManagedSource(workspace, version) {
   return path.join(localToolWorkspace(workspace, TOOL), "sdk", version ? `microkit-sdk-${version}` : "microkit-sdk");
 }
 
+function defaultManagedMicrokitSource(workspace, version) {
+  const suffix = version ? `microkit-${version}` : "microkit";
+  return path.join(localToolWorkspace(workspace, TOOL), "src", suffix);
+}
+
+function defaultMicrokitArchiveUrl(version) {
+  return `https://github.com/seL4/microkit/archive/refs/tags/${version}.tar.gz`;
+}
+
 function localManifestPath(workspace, tool, id) {
   return path.join(localRunDir(workspace, tool, id), "manifest.json");
 }
@@ -58,6 +67,7 @@ function loadMicrokitConfig() {
       ...item,
       microkitVersion: item["microkit-version"] || item.microkitVersion || item.version || null,
       archiveUrl: item["archive-url"] || item.archiveUrl || null,
+      microkitArchiveUrl: item["microkit-archive-url"] || item.microkitArchiveUrl || null,
       microkitDir: item["microkit-dir"] || item.microkitDir || null,
     }
   };
@@ -96,6 +106,81 @@ function runBuildSdk(args) {
   });
 }
 
+function runCommand(command, args, options = {}) {
+  return spawnSync(command, args, {
+    encoding: "utf8",
+    cwd: options.cwd,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+function removeDirectory(targetPath) {
+  fs.rmSync(targetPath, { recursive: true, force: true });
+}
+
+function extractArchive(archivePath, destination) {
+  fs.mkdirSync(destination, { recursive: true });
+  const extracted = runCommand("tar", ["-xf", archivePath, "-C", destination], undefined);
+  if (extracted.status !== 0) {
+    throw new Error(extracted.stderr || extracted.stdout || `Failed to extract ${archivePath}`);
+  }
+}
+
+function ensureFetchedMicrokitSourceTree({ workspace, source, microkitVersion, archiveUrl }) {
+  const buildScript = path.join(source, "build_sdk.py");
+  if (fs.existsSync(buildScript)) {
+    return {
+      source,
+      fetched: false,
+      archive: null,
+      archive_url: archiveUrl,
+    };
+  }
+
+  const archiveUrlValue = archiveUrl || (microkitVersion ? defaultMicrokitArchiveUrl(microkitVersion) : null);
+  if (!archiveUrlValue) {
+    throw new Error(`Missing Microkit source tree (and no archive URL configured): ${source}`);
+  }
+
+  const toolRoot = localToolWorkspace(workspace, TOOL);
+  const downloadsDir = path.join(toolRoot, "downloads");
+  const archiveName = path.basename(new URL(archiveUrlValue).pathname);
+  const archivePath = path.join(downloadsDir, archiveName);
+  const extractRoot = path.join(downloadsDir, ".extract");
+
+  fs.mkdirSync(downloadsDir, { recursive: true });
+  if (!fs.existsSync(archivePath)) {
+    const download = runCommand("curl", ["-fsSL", archiveUrlValue, "-o", archivePath], undefined);
+    if (download.status !== 0) {
+      throw new Error(download.stderr || download.stdout || `Failed to download Microkit source: ${archiveUrlValue}`);
+    }
+  }
+
+  removeDirectory(extractRoot);
+  extractArchive(archivePath, extractRoot);
+
+  const entries = fs.readdirSync(extractRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+  if (entries.length !== 1) {
+    throw new Error(`Expected one extracted source directory in ${extractRoot}`);
+  }
+
+  removeDirectory(source);
+  fs.mkdirSync(path.dirname(source), { recursive: true });
+  fs.renameSync(path.join(extractRoot, entries[0].name), source);
+  removeDirectory(extractRoot);
+
+  if (!fs.existsSync(path.join(source, "build_sdk.py"))) {
+    throw new Error(`Fetched Microkit source is missing build_sdk.py at: ${path.join(source, "build_sdk.py")}`);
+  }
+
+  return {
+    source,
+    fetched: true,
+    archive: archivePath,
+    archive_url: archiveUrlValue,
+  };
+}
+
 function parseRunOptions(flags) {
   const workspace = flags.workspace;
   if (!workspace) {
@@ -116,6 +201,7 @@ function parseRunOptions(flags) {
       : resolveLocalPath(baseDir, value.path || value.source),
     microkitVersion: flags["microkit-version"] || value.microkitVersion || null,
     archiveUrl: flags["archive-url"] || value.archiveUrl || null,
+    microkitArchiveUrl: flags["microkit-archive-url"] || value.microkitArchiveUrl || null,
     microkitDir: flags["microkit-dir"]
       ? path.resolve(process.cwd(), flags["microkit-dir"])
       : resolveLocalPath(baseDir, value.microkitDir),
@@ -135,13 +221,21 @@ function parseRunOptions(flags) {
 
   options.provisioning = fs.existsSync(options.path) ? "path" : "build";
 
-  if (options.provisioning === "build" && !options.archiveUrl && !options.microkitDir) {
+  if (
+    options.provisioning === "build" &&
+    !options.archiveUrl &&
+    !options.microkitDir &&
+    !options.microkitVersion &&
+    !options.microkitArchiveUrl
+  ) {
     throw new Error(
       [
         "microkit-sdk build requires a source input.",
         "Provide one of:",
-        "- tools.microkit-sdk.microkit-dir: a local Microkit checkout containing build_sdk.py (no downloads), or",
-        "- tools.microkit-sdk.archive-url: an archive URL to fetch when the SDK directory is missing, or",
+        "- tools.microkit-sdk.microkit-version: infer a default Microkit source archive URL and build the SDK, or",
+        "- tools.microkit-sdk.microkit-archive-url: archive URL for the Microkit source tree, or",
+        "- tools.microkit-sdk.microkit-dir: a local Microkit checkout containing build_sdk.py, or",
+        "- tools.microkit-sdk.archive-url: an archive URL for a prebuilt SDK directory, or",
         "- tools.microkit-sdk.path: an existing SDK directory to register.",
         "",
         `Resolved SDK path was: ${options.path}`,
@@ -254,6 +348,17 @@ function runManagedMicrokitSdk(flags) {
   } else {
     let sourceBuild = null;
     let inspected = null;
+
+    if (!options.microkitDir && (options.microkitVersion || options.microkitArchiveUrl)) {
+      options.microkitDir = defaultManagedMicrokitSource(options.workspace, options.microkitVersion);
+      const fetched = ensureFetchedMicrokitSourceTree({
+        workspace: options.workspace,
+        source: options.microkitDir,
+        microkitVersion: options.microkitVersion,
+        archiveUrl: options.microkitArchiveUrl,
+      });
+      sourceBuild = { details: { microkit_source: fetched.source, microkit_archive: fetched.archive, microkit_archive_url: fetched.archive_url } };
+    }
 
     if (options.microkitDir) {
       const buildSdkScript = path.join(options.microkitDir, "build_sdk.py");

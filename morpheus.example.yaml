@@ -65,7 +65,7 @@ tools:
     sel4-version: 15.0.0
     reuse-build-dir: true
     build-dir-key: sel4-15.0.0
-    # patch-dir: ./tools/sel4/patches/fuzz-sel4
+    # patch-dir: ./hyperarm-workspace/tools/sel4/patches/fuzz-sel4
     artifacts:
       - source-dir
   nvirsh:

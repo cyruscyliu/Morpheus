@@ -1,6 +1,7 @@
 // @ts-nocheck
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { spawnSync } = require("child_process");
 const { loadConfig, configDir, resolveLocalPath } = require("./config");
 const { registerManagedRun, registerManagedWorkspace } = require("./managed-state");
@@ -44,6 +45,40 @@ function defaultMicrokitArchiveUrl(version) {
   return `https://github.com/seL4/microkit/archive/refs/tags/${version}.tar.gz`;
 }
 
+function looksLikeMicrokitSdk(sdkDir) {
+  if (!sdkDir || !fs.existsSync(sdkDir)) {
+    return false;
+  }
+  const microkitBin = path.join(sdkDir, "bin", "microkit");
+  return fs.existsSync(microkitBin);
+}
+
+function microkitBuildMetaPath(sdkDir) {
+  return path.join(sdkDir, ".morpheus-build.json");
+}
+
+function stableJsonFingerprint(value) {
+  const encoded = JSON.stringify(value, Object.keys(value).sort());
+  return crypto.createHash("sha256").update(encoded).digest("hex");
+}
+
+function loadBuildMeta(sdkDir) {
+  const metaPath = microkitBuildMetaPath(sdkDir);
+  if (!fs.existsSync(metaPath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(metaPath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function writeBuildMeta(sdkDir, meta) {
+  fs.mkdirSync(sdkDir, { recursive: true });
+  fs.writeFileSync(microkitBuildMetaPath(sdkDir), `${JSON.stringify(meta, null, 2)}\n`, "utf8");
+}
+
 function defaultArmGnuToolchainVersion() {
   return "12.2.rel1";
 }
@@ -81,6 +116,8 @@ function loadMicrokitConfig() {
       archiveUrl: item["archive-url"] || item.archiveUrl || null,
       microkitArchiveUrl: item["microkit-archive-url"] || item.microkitArchiveUrl || null,
       microkitDir: item["microkit-dir"] || item.microkitDir || null,
+      boards: item.boards || null,
+      configs: item.configs || null,
       toolchainDir: item["toolchain-dir"] || item.toolchainDir || null,
       toolchainVersion: item["toolchain-version"] || item.toolchainVersion || null,
       toolchainArchiveUrl: item["toolchain-archive-url"] || item.toolchainArchiveUrl || null,
@@ -112,13 +149,14 @@ function runTool(args) {
   });
 }
 
-function runBuildSdk(args) {
+function runBuildSdk(args, options = {}) {
   return spawnSync(process.execPath, [
     path.join(repoRoot(), "scripts", "microkit", "build-sdk.mjs"),
     ...args
   ], {
     encoding: "utf8",
-    cwd: process.cwd()
+    cwd: process.cwd(),
+    env: options.env || process.env
   });
 }
 
@@ -126,6 +164,7 @@ function runCommand(command, args, options = {}) {
   return spawnSync(command, args, {
     encoding: "utf8",
     cwd: options.cwd,
+    env: options.env,
     stdio: ["ignore", "pipe", "pipe"],
   });
 }
@@ -269,6 +308,72 @@ function ensureArmGnuToolchain({ workspace, toolchainDir, toolchainVersion, tool
   };
 }
 
+function pythonVenvRoot(workspace) {
+  return path.join(localToolWorkspace(workspace, TOOL), "deps", "python");
+}
+
+function pythonVenvBinDir(venvRoot) {
+  return path.join(venvRoot, "bin");
+}
+
+function pythonVenvPython(venvRoot) {
+  return path.join(pythonVenvBinDir(venvRoot), "python3");
+}
+
+function ensurePythonModule(python, module) {
+  const result = runCommand(python, ["-c", `import ${module}`], undefined);
+  return result.status === 0;
+}
+
+function ensurePythonVenvWithDeps(workspace) {
+  const venvRoot = pythonVenvRoot(workspace);
+  const python = pythonVenvPython(venvRoot);
+  if (!fs.existsSync(python)) {
+    fs.mkdirSync(path.dirname(venvRoot), { recursive: true });
+    const created = runCommand("python3", ["-m", "venv", venvRoot], undefined);
+    if (created.status !== 0) {
+      throw new Error(created.stderr || created.stdout || `failed to create python venv at ${venvRoot}`);
+    }
+  }
+
+  const missing = [];
+  if (!ensurePythonModule(python, "pyfdt.pyfdt")) {
+    missing.push("pyfdt");
+  }
+  if (!ensurePythonModule(python, "yaml")) {
+    missing.push("pyyaml");
+  }
+  if (!ensurePythonModule(python, "jinja2")) {
+    missing.push("jinja2");
+  }
+  if (!ensurePythonModule(python, "lxml.etree")) {
+    missing.push("lxml");
+  }
+  if (!ensurePythonModule(python, "ply.yacc")) {
+    missing.push("ply");
+  }
+  if (!ensurePythonModule(python, "jsonschema")) {
+    missing.push("jsonschema");
+  }
+
+  if (missing.length > 0) {
+    const pip = runCommand(python, ["-m", "pip", "install", "--upgrade", "pip"], undefined);
+    if (pip.status !== 0) {
+      throw new Error(pip.stderr || pip.stdout || "failed to upgrade pip in venv");
+    }
+    const installed = runCommand(python, ["-m", "pip", "install", ...missing], undefined);
+    if (installed.status !== 0) {
+      throw new Error(installed.stderr || installed.stdout || `failed to install python deps in venv: ${missing.join(", ")}`);
+    }
+  }
+
+  return {
+    root: venvRoot,
+    python,
+    binDir: pythonVenvBinDir(venvRoot),
+  };
+}
+
 function parseRunOptions(flags) {
   const workspace = flags.workspace;
   if (!workspace) {
@@ -293,6 +398,8 @@ function parseRunOptions(flags) {
     microkitDir: flags["microkit-dir"]
       ? path.resolve(process.cwd(), flags["microkit-dir"])
       : resolveLocalPath(baseDir, value.microkitDir),
+    boards: flags.boards || value.boards || null,
+    configs: flags.configs || value.configs || null,
     toolchainDir: flags["toolchain-dir"]
       ? path.resolve(process.cwd(), flags["toolchain-dir"])
       : resolveLocalPath(baseDir, value.toolchainDir),
@@ -313,7 +420,13 @@ function parseRunOptions(flags) {
     throw new Error("microkit-sdk requires tools.microkit-sdk.path or tools.microkit-sdk.microkit-version in morpheus.yaml");
   }
 
-  options.provisioning = fs.existsSync(options.path) ? "path" : "build";
+  const sdkPresent = looksLikeMicrokitSdk(options.path);
+  const explicitBuildInputs = Boolean(options.microkitDir || options.microkitArchiveUrl || options.archiveUrl);
+
+  // Treat `reuse-build-dir` as an explicit opt-in to "managed build semantics".
+  // Otherwise, prefer "register an existing SDK directory" when it looks valid.
+  options.buildIntent = Boolean(options.reuseBuildDir || !sdkPresent || explicitBuildInputs);
+  options.provisioning = options.buildIntent ? "build" : "path";
 
   if (
     options.provisioning === "build" &&
@@ -359,6 +472,18 @@ function registerManifest(manifest) {
 }
 
 function localManifest(options, runDir, manifestPath, logFile, inspected) {
+  const artifacts = [
+    {
+      path: "sdk-dir",
+      location: inspected.details.directory.path
+    }
+  ];
+  if (options.toolchainResolved && options.toolchainResolved.root) {
+    artifacts.push({
+      path: "toolchain-dir",
+      location: options.toolchainResolved.root
+    });
+  }
   return {
     schemaVersion: 1,
     id: options.id,
@@ -376,12 +501,7 @@ function localManifest(options, runDir, manifestPath, logFile, inspected) {
     logFile,
     manifest: manifestPath,
     directory: inspected.details.directory,
-    artifacts: [
-      {
-        path: "sdk-dir",
-        location: inspected.details.directory.path
-      }
-    ],
+    artifacts,
     transport: null,
     exitCode: 0
   };
@@ -440,6 +560,7 @@ function runManagedMicrokitSdk(flags) {
   fs.mkdirSync(runDir, { recursive: true });
 
   let manifest;
+
   if (options.provisioning === "path") {
     const inspected = parseJsonResult(
       runTool(["--json", "inspect", "--path", options.path]),
@@ -451,15 +572,82 @@ function runManagedMicrokitSdk(flags) {
     let sourceBuild = null;
     let inspected = null;
 
-    options.toolchainResolved = ensureArmGnuToolchain({
-      workspace: options.workspace,
-      toolchainDir: options.toolchainDir,
-      toolchainVersion: options.toolchainVersion,
-      toolchainArchiveUrl: options.toolchainArchiveUrl,
-    });
+    const sdkPresent = looksLikeMicrokitSdk(options.path);
+    const desiredMicrokitDir =
+      options.microkitDir ||
+      ((options.microkitVersion || options.microkitArchiveUrl) ? defaultManagedMicrokitSource(options.workspace, options.microkitVersion) : null);
 
-    if (!options.microkitDir && (options.microkitVersion || options.microkitArchiveUrl)) {
-      options.microkitDir = defaultManagedMicrokitSource(options.workspace, options.microkitVersion);
+    if (desiredMicrokitDir) {
+      options.toolchainResolved = ensureArmGnuToolchain({
+        workspace: options.workspace,
+        toolchainDir: options.toolchainDir,
+        toolchainVersion: options.toolchainVersion,
+        toolchainArchiveUrl: options.toolchainArchiveUrl,
+      });
+      const sel4 = runManagedSel4({ workspace: options.workspace, mode: "local" });
+      options.sel4Resolved = {
+        run_id: sel4.details.id,
+        source_dir: sel4.details.manifest.directory.path,
+        patches: sel4.details.manifest.patches || null,
+      };
+
+      const sel4Dir = options.sel4Resolved ? options.sel4Resolved.source_dir : null;
+      if (!sel4Dir) {
+        throw new Error("failed to resolve seL4 dependency for microkit-sdk build");
+      }
+
+      const buildInputs = {
+        microkit_version: options.microkitVersion || null,
+        microkit_source: desiredMicrokitDir,
+        sel4_source: sel4Dir,
+        sel4_patches_fingerprint:
+          options.sel4Resolved && options.sel4Resolved.patches ? options.sel4Resolved.patches.fingerprint : null,
+        toolchain_version: options.toolchainResolved ? options.toolchainResolved.version : null,
+        toolchain_archive_url: options.toolchainResolved ? options.toolchainResolved.archive_url : null,
+        toolchain_root: options.toolchainResolved ? options.toolchainResolved.root : null,
+        boards: options.boards || null,
+        configs: options.configs || null,
+      };
+      const fingerprint = stableJsonFingerprint(buildInputs);
+      const existingMeta = loadBuildMeta(options.path);
+
+      if (sdkPresent && !existingMeta) {
+        writeBuildMeta(options.path, {
+          schemaVersion: 1,
+          createdAt: nowIso(),
+          fingerprint,
+          inputs: buildInputs,
+          adopted: true,
+        });
+        const inspected = parseJsonResult(
+          runTool(["--json", "inspect", "--path", options.path]),
+          "failed to inspect adopted Microkit SDK directory"
+        );
+        fs.writeFileSync(logFile, `adopted-existing-sdk: true\nfingerprint: ${fingerprint}\n`, "utf8");
+        const synthesized = { details: { source: options.path, microkit_version: options.microkitVersion || null, archive: null, archive_url: null, directory: inspected.details.directory } };
+        manifest = buildManifest(options, runDir, manifestPath, synthesized);
+        manifest.skippedBuild = true;
+        manifest.buildInputs = buildInputs;
+        manifest.sel4 = options.sel4Resolved || null;
+        return finalizeRun(options, manifest, runDir, manifestPath, logFile);
+      }
+
+      if (sdkPresent && existingMeta && existingMeta.fingerprint === fingerprint) {
+        const inspected = parseJsonResult(
+          runTool(["--json", "inspect", "--path", options.path]),
+          "failed to inspect cached Microkit SDK directory"
+        );
+        fs.writeFileSync(logFile, `cached-sdk: true\nfingerprint: ${fingerprint}\n`, "utf8");
+        const synthesized = { details: { source: options.path, microkit_version: options.microkitVersion || null, archive: null, archive_url: null, directory: inspected.details.directory } };
+        manifest = buildManifest(options, runDir, manifestPath, synthesized);
+        manifest.skippedBuild = true;
+        manifest.buildInputs = buildInputs;
+        manifest.sel4 = options.sel4Resolved || null;
+        return finalizeRun(options, manifest, runDir, manifestPath, logFile);
+      }
+
+      // Need a build: ensure we have a Microkit source tree available.
+      options.microkitDir = desiredMicrokitDir;
       const fetched = ensureFetchedMicrokitSourceTree({
         workspace: options.workspace,
         source: options.microkitDir,
@@ -467,9 +655,7 @@ function runManagedMicrokitSdk(flags) {
         archiveUrl: options.microkitArchiveUrl,
       });
       sourceBuild = { details: { microkit_source: fetched.source, microkit_archive: fetched.archive, microkit_archive_url: fetched.archive_url } };
-    }
 
-    if (options.microkitDir) {
       const buildSdkScript = path.join(options.microkitDir, "build_sdk.py");
       if (!fs.existsSync(buildSdkScript)) {
         throw new Error(
@@ -482,8 +668,11 @@ function runManagedMicrokitSdk(flags) {
           ].join("\n")
         );
       }
-      const sel4 = runManagedSel4({ workspace: options.workspace, mode: "local" });
-      const sel4Dir = sel4.details.manifest.directory.path;
+      const python = ensurePythonVenvWithDeps(options.workspace);
+      const env = {
+        ...process.env,
+        PATH: `${python.binDir}${path.delimiter}${process.env.PATH || ""}`,
+      };
       sourceBuild = parseJsonResult(
         runBuildSdk([
           "--json",
@@ -493,12 +682,14 @@ function runManagedMicrokitSdk(flags) {
           sel4Dir,
           "--sdk-out",
           options.path,
+          ...(options.boards ? ["--boards", options.boards] : []),
+          ...(options.configs ? ["--configs", options.configs] : []),
           "--toolchain-bin-dir",
           options.toolchainResolved.binDir,
           "--toolchain-prefix-aarch64",
           options.toolchainPrefixAarch64,
           "--force"
-        ]),
+        ], { env }),
         "failed to build Microkit SDK from source"
       );
       inspected = parseJsonResult(
@@ -529,8 +720,17 @@ function runManagedMicrokitSdk(flags) {
       manifest = buildManifest(options, runDir, manifestPath, synthesized);
       manifest.sourceBuild = true;
       manifest.microkitDir = options.microkitDir;
-      manifest.sel4Dir = sourceBuild.details ? sourceBuild.details.sel4_dir : null;
+      manifest.sel4Dir = sel4Dir;
       manifest.buildLog = sourceBuild.details ? sourceBuild.details.build_log : null;
+      manifest.buildInputs = buildInputs;
+      manifest.sel4 = options.sel4Resolved || null;
+      writeBuildMeta(options.path, {
+        schemaVersion: 1,
+        createdAt: nowIso(),
+        fingerprint,
+        inputs: buildInputs,
+        adopted: false,
+      });
     } else {
       const fetched = parseJsonResult(
         runTool([
@@ -548,21 +748,31 @@ function runManagedMicrokitSdk(flags) {
     }
   }
 
+  return finalizeRun(options, manifest, runDir, manifestPath, logFile);
+}
+
+function finalizeRun(options, manifest, runDir, manifestPath, logFile) {
   writeJson(manifestPath, manifest);
   registerManifest(manifest);
+
+  const actualProvisioning = manifest.provisioning;
+  const summary =
+    actualProvisioning === "path"
+      ? "registered managed Microkit SDK directory"
+      : manifest.skippedBuild
+        ? "reused managed Microkit SDK directory"
+        : "built and registered managed Microkit SDK directory";
 
   return {
     command: "run",
     status: "success",
     exit_code: 0,
-    summary: options.provisioning === "path"
-      ? "registered managed Microkit SDK directory"
-      : "built and registered managed Microkit SDK directory",
+    summary,
     details: {
       id: manifest.id,
       tool: TOOL,
       mode: manifest.mode,
-      provisioning: manifest.provisioning,
+      provisioning: actualProvisioning,
       workspace: options.workspace,
       run_dir: runDir,
       manifest,

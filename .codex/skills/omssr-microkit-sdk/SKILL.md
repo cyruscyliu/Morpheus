@@ -37,12 +37,14 @@ microkit-sdk help
 
 - `microkit-sdk` owns local SDK inspection.
 - `microkit-sdk` owns archive fetch and unpack for managed SDK directories.
-- `morpheus tool build --tool microkit-sdk --mode local` records an existing SDK
-  directory as a managed artifact when `tools.microkit-sdk.path` exists.
-- Otherwise, `morpheus tool build --tool microkit-sdk --mode local` materializes
-  and records the managed SDK directory inside the workspace. For source builds,
-  Morpheus can fetch the Microkit source tree automatically and run
-  `build_sdk.py` when `tools.microkit-sdk.microkit-version` is configured.
+- `morpheus tool build --tool microkit-sdk --mode local` behaves like a build
+  workflow when any build inputs are configured (for example
+  `tools.microkit-sdk.microkit-version` or `tools.microkit-sdk.microkit-dir`):
+  - ensures the Arm GNU aarch64-none-elf toolchain exists (records `toolchain-dir`)
+  - ensures the seL4 dependency exists and applies `tools.sel4.patch-dir`
+  - builds the SDK when missing, otherwise reuses it
+- If only `tools.microkit-sdk.path` is configured (and no build inputs), Morpheus
+  records that directory as the managed `sdk-dir` artifact.
 - Source builds may also require an aarch64 bare-metal toolchain; Morpheus can
   fetch and register this as an additional `toolchain-dir` artifact.
 - `nvirsh` should consume the resolved SDK artifact, not provision it.

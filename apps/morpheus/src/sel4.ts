@@ -62,6 +62,8 @@ function loadSel4Config() {
       sel4Version: item["sel4-version"] || item.sel4Version || item.version || null,
       archiveUrl: item["archive-url"] || item.archiveUrl || null,
       patchDir: item["patch-dir"] || item.patchDir || null,
+      reuseBuildDir: item["reuse-build-dir"] ?? item.reuseBuildDir ?? null,
+      buildDirKey: item["build-dir-key"] || item.buildDirKey || null,
     }
   };
 }
@@ -130,6 +132,9 @@ function parseRunOptions(flags) {
   }
 
   options.provisioning = fs.existsSync(options.path) ? "path" : "build";
+  if (options.patchDir) {
+    options.provisioning = "build";
+  }
 
   if (options.provisioning === "build" && !options.archiveUrl && options.sel4Version) {
     options.archiveUrl = defaultArchiveUrl(options.sel4Version);

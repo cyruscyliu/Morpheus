@@ -102,9 +102,15 @@ Managed `morpheus tool build --tool microkit-sdk` supports placement modes:
 
 Within that placement mode, Morpheus picks the provisioning strategy:
 
-- if `tools.microkit-sdk.path` exists, register it as the `sdk-dir` artifact
-- otherwise, run `microkit-sdk build` to fetch/unpack into the workspace and
-  register the resulting directory
+- If you configured build inputs (for example `tools.microkit-sdk.microkit-version`
+  or `tools.microkit-sdk.microkit-dir`), Morpheus treats `tool build` as a
+  build-oriented workflow:
+  - ensures the Arm GNU toolchain is available (and records `toolchain-dir`)
+  - ensures the seL4 source dependency is available (and applies `tools.sel4.patch-dir`)
+  - builds the SDK if missing (or if tracked inputs changed)
+  - otherwise, reuses the existing SDK directory and records build inputs
+- If you only configured `tools.microkit-sdk.path` (and no build inputs),
+  Morpheus registers that directory as the `sdk-dir` artifact.
 
 For incremental workflows, set:
 
@@ -112,6 +118,15 @@ For incremental workflows, set:
 - `tools.microkit-sdk.build-dir-key: <name>`
 
 This keeps the managed SDK directory under `tools/microkit-sdk/builds/<key>/`.
+
+## Reuse and rebuilds
+
+When Morpheus runs a source build, it records a small metadata file in the SDK
+directory (`.morpheus-build.json`) containing a fingerprint of the inputs (Microkit
+version/source, seL4 patch fingerprint, toolchain version, selected boards/configs).
+
+If the fingerprint matches on the next run, Morpheus reuses the SDK directory
+instead of rebuilding.
 
 ## Toolchain
 

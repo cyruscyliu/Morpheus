@@ -271,12 +271,47 @@ function applyPatches(source: string, patchDir: string, patchFiles: string[], lo
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
   fs.writeFileSync(logFile, '', 'utf8');
 
+  const isGit = fs.existsSync(path.join(source, '.git'));
+
   for (const patchFile of patchFiles) {
-    const result = runCommand('patch', ['-d', source, '-p1', '-i', patchFile], undefined);
     fs.appendFileSync(logFile, `>>> ${path.relative(patchDir, patchFile)}\n`, 'utf8');
+    let result;
+
+    if (isGit) {
+      const check = runCommand('git', ['-C', source, 'apply', '--check', patchFile], undefined);
+      fs.appendFileSync(logFile, check.stdout || '', 'utf8');
+      fs.appendFileSync(logFile, check.stderr || '', 'utf8');
+
+      if (check.status === 0) {
+        result = runCommand('git', ['-C', source, 'apply', patchFile], undefined);
+      } else {
+        const reverseCheck = runCommand('git', ['-C', source, 'apply', '--reverse', '--check', patchFile], undefined);
+        fs.appendFileSync(logFile, reverseCheck.stdout || '', 'utf8');
+        fs.appendFileSync(logFile, reverseCheck.stderr || '', 'utf8');
+        if (reverseCheck.status === 0) {
+          fs.appendFileSync(logFile, 'already applied; skipping\n', 'utf8');
+          continue;
+        }
+        throw new CliError(
+          'patch_failed',
+          `Failed to apply patch ${path.relative(patchDir, patchFile)} (see ${logFile})`
+        );
+      }
+    } else {
+      result = runCommand('patch', ['-d', source, '-p1', '-N', '-i', patchFile], undefined);
+    }
+
     fs.appendFileSync(logFile, result.stdout || '', 'utf8');
     fs.appendFileSync(logFile, result.stderr || '', 'utf8');
     if (result.status !== 0) {
+      const combined = `${result.stdout || ''}\n${result.stderr || ''}`;
+      if (
+        combined.includes('Reversed (or previously applied) patch detected!') &&
+        !combined.includes('FAILED')
+      ) {
+        fs.appendFileSync(logFile, 'already applied; skipping\n', 'utf8');
+        continue;
+      }
       throw new CliError(
         'patch_failed',
         `Failed to apply patch ${path.relative(patchDir, patchFile)} (see ${logFile})`
@@ -323,24 +358,42 @@ async function buildDirectory(flags: Record<string, unknown>) {
               dir: patchDir,
               files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
               fingerprint,
-              applied: false,
+              applied: true,
               log_file: patchLogFile,
             }
           },
         };
       }
-      if (!archiveUrl) {
-        throw new CliError(
-          'patch_state_mismatch',
-          [
-            `Managed seL4 source directory exists but patch state differs: ${source}`,
-            'Either:',
-            '- provide --archive-url so sel4 can re-fetch and re-apply patches, or',
-            `- remove the existing directory and re-run sel4 build.`,
-          ].join('\n')
-        );
-      }
-      removeDirectory(source);
+      applyPatches(source, patchDir, patchFiles, patchLogFile as string);
+      writePatchState(source, {
+        appliedAt: new Date().toISOString(),
+        dir: patchDir,
+        files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
+        fingerprint,
+      });
+      const inspected = inspectDirectory({ path: source });
+      return {
+        command: 'build',
+        status: 'success',
+        exit_code: 0,
+        summary: 'reused managed seL4 source directory',
+        details: {
+          source,
+          fetched_source: false,
+          archive: null,
+          archive_url: archiveUrl,
+          sel4_version: sel4Version || inspected.details.directory.version,
+          directory: inspected.details.directory,
+          artifact: inspected.details.artifact,
+          patches: {
+            dir: patchDir,
+            files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
+            fingerprint,
+            applied: true,
+            log_file: patchLogFile,
+          }
+        },
+      };
     }
     const inspected = inspectDirectory({ path: source });
     return {

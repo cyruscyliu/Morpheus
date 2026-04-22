@@ -958,6 +958,9 @@ test("managed microkit-sdk run registers a local sdk artifact", () => {
   const sdkPath = path.join(workspaceRoot, "tools", "microkit-sdk", "sdk");
   fs.mkdirSync(sdkPath, { recursive: true });
   fs.writeFileSync(path.join(sdkPath, "VERSION"), "2.0.1\n");
+  fs.mkdirSync(path.join(sdkPath, "bin"), { recursive: true });
+  fs.writeFileSync(path.join(sdkPath, "bin", "microkit"), "#!/bin/sh\necho microkit\n", "utf8");
+  fs.chmodSync(path.join(sdkPath, "bin", "microkit"), 0o755);
 
   writeConfig(
     projectRoot,
@@ -1273,6 +1276,9 @@ test("managed nvirsh run resolves buildroot artifacts from morpheus.yaml", () =>
     fs.mkdirSync(dir, { recursive: true });
   }
   fs.writeFileSync(path.join(microkitSdk, "VERSION"), "1.4.1\n");
+  fs.mkdirSync(path.join(microkitSdk, "bin"), { recursive: true });
+  fs.writeFileSync(path.join(microkitSdk, "bin", "microkit"), "#!/usr/bin/env sh\necho microkit\n", "utf8");
+  fs.chmodSync(path.join(microkitSdk, "bin", "microkit"), 0o755);
   fs.writeFileSync(path.join(toolchain, "VERSION"), "arm-toolchain\n");
   fs.writeFileSync(path.join(libvmmDir, "VERSION"), "libvmm-dev\n");
   fs.writeFileSync(path.join(sel4Dir, "VERSION"), "15.0.0\n");

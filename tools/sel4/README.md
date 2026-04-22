@@ -76,7 +76,7 @@ morpheus tool build \
   --tool sel4 \
   --mode local \
   --sel4-version 15.0.0 \
-  --patch-dir ./tools/sel4/patches/fuzz-sel4 \
+  --patch-dir ./hyperarm-workspace/tools/sel4/patches/fuzz-sel4 \
   --json
 ```
 

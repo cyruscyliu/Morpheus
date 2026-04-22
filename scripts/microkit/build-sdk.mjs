@@ -36,6 +36,8 @@ function usage() {
     "  --microkit-dir DIR      Microkit source directory (must contain build_sdk.py)",
     "  --sel4-dir DIR          seL4 source directory",
     "  --sdk-out DIR           SDK output directory (default: tools.microkit-sdk.path or workspace-managed path)",
+    "  --boards LIST           Comma-separated list of Microkit boards to build (optional)",
+    "  --configs LIST          Comma-separated list of configurations to build (optional)",
     "  --toolchain-bin-dir DIR Toolchain bin directory to add to PATH (optional)",
     "  --toolchain-prefix-aarch64 PREFIX",
     "                          Prefix for aarch64-none-elf toolchain binaries (optional)",
@@ -184,7 +186,16 @@ function detectMicrokitVersion(microkitDir) {
   return null;
 }
 
-function buildMicrokitSdk({ microkitDir, sel4Dir, sdkOut, toolchainBinDir, toolchainPrefixAarch64, force }) {
+function buildMicrokitSdk({
+  microkitDir,
+  sel4Dir,
+  sdkOut,
+  boards,
+  configs,
+  toolchainBinDir,
+  toolchainPrefixAarch64,
+  force
+}) {
   const buildScript = path.join(microkitDir, "build_sdk.py");
   if (!fs.existsSync(buildScript)) {
     throw new Error(`microkit-dir does not contain build_sdk.py: ${buildScript}`);
@@ -226,6 +237,8 @@ function buildMicrokitSdk({ microkitDir, sel4Dir, sdkOut, toolchainBinDir, toolc
       sel4Dir,
       "--version",
       version,
+      ...(boards ? ["--boards", boards] : []),
+      ...(configs ? ["--configs", configs] : []),
       ...(toolchainPrefixFlag && toolchainPrefixAarch64
         ? [toolchainPrefixFlag, toolchainPrefixAarch64]
         : []),
@@ -287,6 +300,8 @@ function main(argv) {
     configDir,
     flags["sdk-out"] || microkitConfig.path || defaultSdkOut({ workspaceRoot, microkitVersion })
   );
+  const boards = String(flags.boards || microkitConfig.boards || "").trim() || null;
+  const configs = String(flags.configs || microkitConfig.configs || "").trim() || null;
   const toolchainBinDir = resolveLocalPath(configDir, flags["toolchain-bin-dir"] || microkitConfig["toolchain-bin-dir"]);
   const toolchainPrefixAarch64 = String(flags["toolchain-prefix-aarch64"] || microkitConfig["toolchain-prefix-aarch64"] || "").trim() || null;
 
@@ -302,6 +317,8 @@ function main(argv) {
     microkitDir,
     sel4Dir,
     sdkOut,
+    boards,
+    configs,
     toolchainBinDir,
     toolchainPrefixAarch64,
     force: Boolean(flags.force),
@@ -324,6 +341,10 @@ function main(argv) {
       detected_flags: {
         sel4: output.sel4Flag,
         toolchain_prefix_aarch64: output.toolchainPrefixFlag,
+      },
+      selection: {
+        boards,
+        configs,
       },
       toolchain: toolchainBinDir
         ? {

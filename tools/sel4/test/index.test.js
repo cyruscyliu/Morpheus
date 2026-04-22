@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const bin = path.resolve(process.cwd(), 'dist/index.js');
@@ -36,26 +37,23 @@ test('inspect reports directory metadata', () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('build can clone a managed seL4 source tree from git', () => {
+test('build can materialize a managed seL4 source tree from an archive url', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sel4-tool-fetch-'));
   const origin = path.join(root, 'origin');
+  const sourceDirName = 'seL4-15.0.0';
+  const extractedSource = path.join(origin, sourceDirName);
   const source = path.join(root, 'managed-src', 'seL4-15.0.0');
-  fs.mkdirSync(origin, { recursive: true });
+  fs.mkdirSync(extractedSource, { recursive: true });
+  fs.writeFileSync(path.join(extractedSource, 'VERSION'), '15.0.0\n');
+  fs.writeFileSync(path.join(extractedSource, 'README.md'), '# seL4\n');
 
-  let result = spawnSync('git', ['init'], { cwd: origin, encoding: 'utf8' });
-  assert.equal(result.status, 0, result.stdout || result.stderr);
-  result = spawnSync('git', ['config', 'user.email', 'test@example.com'], { cwd: origin, encoding: 'utf8' });
-  assert.equal(result.status, 0, result.stdout || result.stderr);
-  result = spawnSync('git', ['config', 'user.name', 'Test User'], { cwd: origin, encoding: 'utf8' });
-  assert.equal(result.status, 0, result.stdout || result.stderr);
-  fs.writeFileSync(path.join(origin, 'README.md'), '# seL4\n');
-  result = spawnSync('git', ['add', '.'], { cwd: origin, encoding: 'utf8' });
-  assert.equal(result.status, 0, result.stdout || result.stderr);
-  result = spawnSync('git', ['commit', '-m', 'init'], { cwd: origin, encoding: 'utf8' });
-  assert.equal(result.status, 0, result.stdout || result.stderr);
-  result = spawnSync('git', ['tag', '15.0.0'], { cwd: origin, encoding: 'utf8' });
+  const archivePath = path.join(root, 'sel4-source.tar.xz');
+  let result = spawnSync('tar', ['-cJf', archivePath, '-C', origin, sourceDirName], {
+    encoding: 'utf8',
+  });
   assert.equal(result.status, 0, result.stdout || result.stderr);
 
+  const archiveUrl = pathToFileURL(archivePath).toString();
   result = run([
     '--json',
     'build',
@@ -63,16 +61,15 @@ test('build can clone a managed seL4 source tree from git', () => {
     source,
     '--sel4-version',
     '15.0.0',
-    '--git-url',
-    origin,
-    '--git-ref',
-    '15.0.0',
+    '--archive-url',
+    archiveUrl,
   ]);
   assert.equal(result.status, 0, result.stdout || result.stderr);
   const payload = JSON.parse(result.stdout.trim());
   assert.equal(payload.status, 'success');
   assert.equal(payload.details.fetched_source, true);
   assert.equal(fs.existsSync(path.join(source, 'README.md')), true);
+  assert.equal(payload.details.archive_url, archiveUrl);
 
   fs.rmSync(root, { recursive: true, force: true });
 });

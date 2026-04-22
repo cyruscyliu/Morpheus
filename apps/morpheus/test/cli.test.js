@@ -995,25 +995,22 @@ test("managed microkit-sdk run registers a local sdk artifact", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
-test("managed sel4 run can build a source tree from git", () => {
+test("managed sel4 run can build a source tree from an archive url", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-sel4-fetch-project-"));
   const workspaceRoot = path.join(projectRoot, "workflow-workspace");
   const origin = path.join(projectRoot, "origin-seL4");
-  fs.mkdirSync(origin, { recursive: true });
+  const sourceName = "seL4-15.0.0";
+  const sourceDir = path.join(origin, sourceName);
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.writeFileSync(path.join(sourceDir, "VERSION"), "15.0.0\n");
+  fs.writeFileSync(path.join(sourceDir, "README.md"), "# seL4\n");
 
-  let command = spawnSync("git", ["init"], { cwd: origin, encoding: "utf8" });
+  const archivePath = path.join(projectRoot, "sel4-source.tar.xz");
+  const command = spawnSync("tar", ["-cJf", archivePath, "-C", origin, sourceName], {
+    encoding: "utf8"
+  });
   assert.equal(command.status, 0, command.stdout || command.stderr);
-  command = spawnSync("git", ["config", "user.email", "test@example.com"], { cwd: origin, encoding: "utf8" });
-  assert.equal(command.status, 0, command.stdout || command.stderr);
-  command = spawnSync("git", ["config", "user.name", "Test User"], { cwd: origin, encoding: "utf8" });
-  assert.equal(command.status, 0, command.stdout || command.stderr);
-  fs.writeFileSync(path.join(origin, "README.md"), "# seL4\n");
-  command = spawnSync("git", ["add", "."], { cwd: origin, encoding: "utf8" });
-  assert.equal(command.status, 0, command.stdout || command.stderr);
-  command = spawnSync("git", ["commit", "-m", "init"], { cwd: origin, encoding: "utf8" });
-  assert.equal(command.status, 0, command.stdout || command.stderr);
-  command = spawnSync("git", ["tag", "15.0.0"], { cwd: origin, encoding: "utf8" });
-  assert.equal(command.status, 0, command.stdout || command.stderr);
+  const archiveUrl = pathToFileURL(archivePath).toString();
 
   writeConfig(
     projectRoot,
@@ -1024,8 +1021,7 @@ test("managed sel4 run can build a source tree from git", () => {
       "  sel4:",
       "    mode: local",
       "    sel4-version: 15.0.0",
-      `    git-url: ${origin}`,
-      "    git-ref: 15.0.0",
+      `    archive-url: ${archiveUrl}`,
       ""
     ].join("\n")
   );

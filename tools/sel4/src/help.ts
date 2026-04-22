@@ -11,14 +11,12 @@ export const COMMANDS = [
     name: 'build',
     summary: 'Materialize a managed seL4 source directory',
     usage: [
-      'sel4 build --source DIR [--sel4-version VER] [--archive-url URL] [--git-url URL] [--git-ref REF]',
+      'sel4 build --source DIR [--sel4-version VER] [--archive-url URL]',
     ],
     flags: [
       { name: '--source DIR', summary: 'Managed seL4 source directory' },
       { name: '--sel4-version VER', summary: 'seL4 version to record in metadata' },
       { name: '--archive-url URL', summary: 'Archive URL to fetch when --source is missing' },
-      { name: '--git-url URL', summary: 'Git URL to clone when --source is missing' },
-      { name: '--git-ref REF', summary: 'Git ref to checkout after clone' },
     ],
   },
   {

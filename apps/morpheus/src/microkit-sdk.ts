@@ -248,6 +248,18 @@ function runManagedMicrokitSdk(flags) {
     let inspected = null;
 
     if (options.microkitDir) {
+      const buildSdkScript = path.join(options.microkitDir, "build_sdk.py");
+      if (!fs.existsSync(buildSdkScript)) {
+        throw new Error(
+          [
+            `microkit-sdk source builds require tools.microkit-sdk.microkit-dir to contain build_sdk.py: ${buildSdkScript}`,
+            "Either:",
+            "- set tools.microkit-sdk.microkit-dir to a Microkit checkout that contains build_sdk.py, and configure tools.sel4 so Morpheus can build the seL4 dependency, or",
+            "- remove tools.microkit-sdk.microkit-dir and provide tools.microkit-sdk.archive-url, or",
+            "- set tools.microkit-sdk.path to an existing SDK directory."
+          ].join("\n")
+        );
+      }
       const sel4 = runManagedSel4({ workspace: options.workspace, mode: "local" });
       const sel4Dir = sel4.details.manifest.directory.path;
       sourceBuild = parseJsonResult(

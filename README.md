@@ -180,8 +180,7 @@ tools:
     sel4-version: 15.0.0
     reuse-build-dir: true
     build-dir-key: sel4-15.0.0
-    # git-url: https://github.com/seL4/seL4.git
-    # git-ref: 15.0.0
+    # archive-url: https://github.com/seL4/seL4/archive/refs/tags/15.0.0.tar.gz
   nvirsh:
     mode: local
     target: sel4
@@ -228,8 +227,7 @@ tools:
   sel4:
     mode: local
     sel4-version: 15.0.0
-    git-url: https://github.com/seL4/seL4.git
-    git-ref: 15.0.0
+    archive-url: https://github.com/seL4/seL4/archive/refs/tags/15.0.0.tar.gz
 ```
 
 Run it through Morpheus after a successful local Buildroot run:

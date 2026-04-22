@@ -10,7 +10,7 @@ test('main help stays flat', () => {
 
 test('command help renders usage', () => {
   const help = renderHelp('build');
-  assert.match(help, /--git-url URL/);
+  assert.match(help, /--archive-url URL/);
 });
 
 test('help metadata is discoverable', () => {

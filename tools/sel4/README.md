@@ -5,8 +5,8 @@ Inspect, build, and register seL4 source directories with one stable CLI.
 `sel4` is a small local tool that treats the seL4 source tree as a first-class
 artifact. It does not own target launch behavior. Consumer tools such as
 `nvirsh` can depend on its resolved source path through Morpheus, whether that
-directory comes from an existing local checkout, a managed archive fetch, or a
-managed Git clone into the workspace.
+directory comes from an existing local checkout or a managed archive fetch into
+the workspace.
 
 ## Quick start
 
@@ -65,8 +65,7 @@ morpheus tool build \
   --tool sel4 \
   --mode local \
   --sel4-version 15.0.0 \
-  --git-url https://github.com/seL4/seL4.git \
-  --git-ref 15.0.0 \
+  --archive-url https://github.com/seL4/seL4/archive/refs/tags/15.0.0.tar.gz \
   --json
 ```
 
@@ -77,8 +76,6 @@ morpheus tool build \
 - `sel4 build --sel4-version VER`: expected seL4 version to record
 - `sel4 build --archive-url URL`: archive URL to fetch when the source is
   missing
-- `sel4 build --git-url URL`: Git URL to clone when the source is missing
-- `sel4 build --git-ref REF`: Git ref to checkout after clone
 
 Managed `morpheus tool build --tool sel4` supports placement modes:
 
@@ -87,8 +84,8 @@ Managed `morpheus tool build --tool sel4` supports placement modes:
 Within that placement mode, Morpheus picks the provisioning strategy:
 
 - if `tools.sel4.path` exists, register it as the `source-dir` artifact
-- otherwise, run `sel4 build` to clone/fetch into the workspace and register
-  the resulting source directory
+- otherwise, run `sel4 build` to fetch an archive into the workspace and
+  register the resulting source directory
 
 For incremental workflows, set:
 
@@ -104,7 +101,7 @@ Every command supports `--json`, including help and errors.
 ## Morpheus boundary
 
 - `sel4` owns local directory inspection
-- `sel4` owns archive fetch or Git clone for managed source directories
+- `sel4` owns archive fetch for managed source directories
 - `morpheus` owns `local` vs `remote` placement and tool dependency wiring
 - `nvirsh` should consume the resolved source artifact, not provision it
 

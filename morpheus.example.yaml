@@ -60,8 +60,6 @@ tools:
     sel4-version: 15.0.0
     reuse-build-dir: true
     build-dir-key: sel4-15.0.0
-    # git-url: https://github.com/seL4/seL4.git
-    # git-ref: 15.0.0
     artifacts:
       - source-dir
   nvirsh:

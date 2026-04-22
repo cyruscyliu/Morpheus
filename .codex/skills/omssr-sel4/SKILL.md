@@ -12,8 +12,8 @@ Use this skill when you need to work with the repo-local `sel4` tool.
 ## Purpose
 
 `sel4` is a minimal local CLI for source directory inspection and managed
-builds. It validates the source directory, detects local version metadata
-when available, and exposes a stable artifact record that Morpheus can pass to
+builds. It validates the source directory, detects local version metadata when
+available, and exposes a stable artifact record that Morpheus can pass to
 dependent tools such as `nvirsh`.
 
 ## First Steps
@@ -36,7 +36,7 @@ sel4 help
 ## Managed Boundary
 
 - `sel4` owns local source inspection.
-- `sel4` owns archive fetch and Git clone for managed source directories.
+- `sel4` owns archive fetch for managed source directories.
 - `morpheus tool build --tool sel4 --mode local` records an existing source tree
   as a managed artifact when `tools.sel4.path` exists.
 - Otherwise, `morpheus tool build --tool sel4 --mode local` materializes and

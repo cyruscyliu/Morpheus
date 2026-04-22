@@ -202,26 +202,13 @@ function toolRootFromSource(source: string) {
   return path.resolve(path.dirname(source), '..');
 }
 
-function cloneSource(source: string, gitUrl: string, gitRef: string | null) {
-  fs.mkdirSync(path.dirname(source), { recursive: true });
-  const cloned = runCommand('git', ['clone', gitUrl, source], undefined);
-  if (cloned.status !== 0) {
-    throw new CliError('clone_failed', cloned.stderr || cloned.stdout || `Failed to clone ${gitUrl}`);
-  }
-  if (gitRef) {
-    const checkedOut = runCommand('git', ['-C', source, 'checkout', gitRef], undefined);
-    if (checkedOut.status !== 0) {
-      throw new CliError('checkout_failed', checkedOut.stderr || checkedOut.stdout || `Failed to checkout ${gitRef}`);
-    }
-  }
-}
-
 async function buildDirectory(flags: Record<string, unknown>) {
+  if (typeof flags['git-url'] === 'string' || typeof flags['git-ref'] === 'string') {
+    throw new CliError('unsupported_flag', 'sel4 build no longer supports --git-url/--git-ref; use --archive-url or provide an existing --source directory');
+  }
   const source = requirePathFlag(flags, 'source');
   const sel4Version = optionalStringFlag(flags, 'sel4-version');
   const archiveUrl = optionalStringFlag(flags, 'archive-url');
-  const gitUrl = optionalStringFlag(flags, 'git-url');
-  const gitRef = optionalStringFlag(flags, 'git-ref');
 
   if (fileExists(source)) {
     const inspected = inspectDirectory({ path: source });
@@ -235,8 +222,6 @@ async function buildDirectory(flags: Record<string, unknown>) {
         fetched_source: false,
         archive: null,
         archive_url: archiveUrl,
-        git_url: gitUrl,
-        git_ref: gitRef,
         sel4_version: sel4Version || inspected.details.directory.version,
         directory: inspected.details.directory,
         artifact: inspected.details.artifact,
@@ -244,36 +229,32 @@ async function buildDirectory(flags: Record<string, unknown>) {
     };
   }
 
-  if (!archiveUrl && !gitUrl) {
+  if (!archiveUrl) {
     throw new CliError('missing_source', `Missing seL4 source directory: ${source}`);
   }
 
-  if (gitUrl) {
-    cloneSource(source, gitUrl, gitRef);
-  } else {
-    const toolRoot = toolRootFromSource(source);
-    const downloadsDir = path.join(toolRoot, 'downloads');
-    const archiveName = path.basename(new URL(archiveUrl as string).pathname);
-    const archivePath = path.join(downloadsDir, archiveName);
-    const extractRoot = path.join(downloadsDir, '.extract');
+  const toolRoot = toolRootFromSource(source);
+  const downloadsDir = path.join(toolRoot, 'downloads');
+  const archiveName = path.basename(new URL(archiveUrl as string).pathname);
+  const archivePath = path.join(downloadsDir, archiveName);
+  const extractRoot = path.join(downloadsDir, '.extract');
 
-    fs.mkdirSync(downloadsDir, { recursive: true });
-    if (!fs.existsSync(archivePath)) {
-      await fetchFile(archiveUrl as string, archivePath);
-    }
-
-    removeDirectory(extractRoot);
-    extractArchive(archivePath, extractRoot);
-    const entries = fs.readdirSync(extractRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
-    if (entries.length !== 1) {
-      throw new CliError('extract_failed', `Expected one extracted source directory in ${extractRoot}`);
-    }
-
-    removeDirectory(source);
-    fs.mkdirSync(path.dirname(source), { recursive: true });
-    fs.renameSync(path.join(extractRoot, entries[0].name), source);
-    removeDirectory(extractRoot);
+  fs.mkdirSync(downloadsDir, { recursive: true });
+  if (!fs.existsSync(archivePath)) {
+    await fetchFile(archiveUrl as string, archivePath);
   }
+
+  removeDirectory(extractRoot);
+  extractArchive(archivePath, extractRoot);
+  const entries = fs.readdirSync(extractRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+  if (entries.length !== 1) {
+    throw new CliError('extract_failed', `Expected one extracted source directory in ${extractRoot}`);
+  }
+
+  removeDirectory(source);
+  fs.mkdirSync(path.dirname(source), { recursive: true });
+  fs.renameSync(path.join(extractRoot, entries[0].name), source);
+  removeDirectory(extractRoot);
 
   if (sel4Version && !firstVersionLine(source)) {
     fs.writeFileSync(path.join(source, '.morpheus-version'), `${sel4Version}\n`, 'utf8');
@@ -285,18 +266,16 @@ async function buildDirectory(flags: Record<string, unknown>) {
     status: 'success',
     exit_code: 0,
     summary: 'built managed seL4 source directory',
-    details: {
-      source,
-      fetched_source: true,
-      archive: archiveUrl ? path.join(toolRootFromSource(source), 'downloads', path.basename(new URL(archiveUrl).pathname)) : null,
-      archive_url: archiveUrl,
-      git_url: gitUrl,
-      git_ref: gitRef,
-      sel4_version: sel4Version || inspected.details.directory.version,
-      directory: inspected.details.directory,
-      artifact: inspected.details.artifact,
-    },
-  };
+      details: {
+        source,
+        fetched_source: true,
+        archive: archiveUrl ? path.join(toolRootFromSource(source), 'downloads', path.basename(new URL(archiveUrl).pathname)) : null,
+        archive_url: archiveUrl,
+        sel4_version: sel4Version || inspected.details.directory.version,
+        directory: inspected.details.directory,
+        artifact: inspected.details.artifact,
+      },
+    };
 }
 
 async function main(argv: string[]) {

@@ -57,8 +57,6 @@ function loadSel4Config() {
       ...item,
       sel4Version: item["sel4-version"] || item.sel4Version || item.version || null,
       archiveUrl: item["archive-url"] || item.archiveUrl || null,
-      gitUrl: item["git-url"] || item.gitUrl || null,
-      gitRef: item["git-ref"] || item.gitRef || null,
     }
   };
 }
@@ -87,6 +85,9 @@ function runTool(args) {
 }
 
 function parseRunOptions(flags) {
+  if (flags["git-url"] || flags["git-ref"]) {
+    throw new Error("sel4 no longer supports --git-url/--git-ref; use --archive-url or set tools.sel4.path");
+  }
   const workspace = flags.workspace;
   if (!workspace) {
     throw new Error("run requires --workspace DIR or a workspace root in morpheus.yaml");
@@ -106,8 +107,6 @@ function parseRunOptions(flags) {
       : resolveLocalPath(baseDir, value.path || value.source),
     sel4Version: flags["sel4-version"] || value.sel4Version || null,
     archiveUrl: flags["archive-url"] || value.archiveUrl || null,
-    gitUrl: flags["git-url"] || value.gitUrl || null,
-    gitRef: flags["git-ref"] || value.gitRef || null,
     reuseBuildDir: Boolean(flags["reuse-build-dir"] ?? value.reuseBuildDir),
     buildDirKey: flags["build-dir-key"] || value.buildDirKey || "default",
   };
@@ -124,13 +123,10 @@ function parseRunOptions(flags) {
 
   options.provisioning = fs.existsSync(options.path) ? "path" : "build";
 
-  if (
-    options.provisioning === "build" &&
-    !options.sel4Version &&
-    !options.archiveUrl &&
-    !options.gitUrl
-  ) {
-    throw new Error("sel4 build requires tools.sel4.sel4-version, tools.sel4.archive-url, or tools.sel4.git-url");
+  if (options.provisioning === "build" && !options.archiveUrl) {
+    throw new Error(
+      "sel4 build requires tools.sel4.archive-url when tools.sel4.path is missing (or set tools.sel4.path to an existing checkout)"
+    );
   }
 
   return options;
@@ -200,8 +196,6 @@ function buildManifest(options, runDir, manifestPath, fetched) {
     sel4Version: options.sel4Version || fetched.details.sel4_version || null,
     archive: fetched.details.archive || null,
     archiveUrl: fetched.details.archive_url || options.archiveUrl || null,
-    gitUrl: fetched.details.git_url || options.gitUrl || null,
-    gitRef: fetched.details.git_ref || options.gitRef || null,
     runDir,
     outputDir: fetched.details.source,
     logFile: path.join(runDir, "stdout.log"),
@@ -245,9 +239,7 @@ function runManagedSel4(flags) {
         "--source",
         options.path,
         ...(options.sel4Version ? ["--sel4-version", options.sel4Version] : []),
-        ...(options.archiveUrl ? ["--archive-url", options.archiveUrl] : []),
-        ...(options.gitUrl ? ["--git-url", options.gitUrl] : []),
-        ...(options.gitRef ? ["--git-ref", options.gitRef] : [])
+        ...(options.archiveUrl ? ["--archive-url", options.archiveUrl] : [])
       ]),
       "failed to build seL4 source directory"
     );

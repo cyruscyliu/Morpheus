@@ -21,13 +21,14 @@ export const COMMANDS: HelpTopic[] = [
     name: 'build',
     summary: 'Fetch/update libvmm source and build an example',
     usage: [
-      'libvmm build --source DIR --microkit-sdk DIR --board NAME [--example NAME] [--linux PATH] [--initrd PATH] [--qemu PATH] [--toolchain-bin-dir DIR] [--git-url URL] [--git-ref REF] [--make-target TARGET] [--make-arg ARG ...] [--json]',
+      'libvmm build --source DIR --microkit-sdk DIR --board NAME [--example NAME] [--patch-dir DIR] [--linux PATH] [--initrd PATH] [--qemu PATH] [--toolchain-bin-dir DIR] [--git-url URL] [--git-ref REF] [--make-target TARGET] [--make-arg ARG ...] [--json]',
     ],
     flags: [
       '--source DIR',
       '--microkit-sdk DIR',
       '--board NAME',
       '--example NAME (default: virtio)',
+      '--patch-dir DIR (optional; applies *.patch/*.diff after fetch/update)',
       '--linux PATH (optional; passed as LINUX=... to make)',
       '--initrd PATH (optional; passed as INITRD=... to make)',
       '--qemu PATH (optional; passed as QEMU=... to make)',

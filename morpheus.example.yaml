@@ -74,6 +74,7 @@ tools:
     build-dir-key: libvmm-main
     board: qemu_virt_aarch64
     example: virtio
+    # patch-dir: ./hyperarm-workspace/tools/libvmm/patches
     # linux: ./out/Image
     # initrd: ./out/rootfs.cpio.gz
     artifacts:

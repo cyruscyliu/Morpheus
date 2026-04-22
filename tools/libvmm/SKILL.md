@@ -33,6 +33,6 @@ libvmm help
 ## Managed Boundary
 
 - `libvmm` owns provisioning a git checkout and running `git submodule update`.
+- `libvmm` can apply workspace-local patches when a patch directory is provided.
 - `libvmm` can build an example with `make` when a Microkit SDK path is provided.
 - Morpheus should pass Microkit SDK paths via dependency artifacts.
-

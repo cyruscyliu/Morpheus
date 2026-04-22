@@ -31,6 +31,7 @@ Build the `virtio` example (requires a Microkit SDK):
 ```bash
 libvmm build \
   --source ./hyperarm-workspace/tools/libvmm/src/libvmm-main \
+  --patch-dir ./hyperarm-workspace/tools/libvmm/patches \
   --microkit-sdk ./hyperarm-workspace/tools/microkit-sdk/builds/microkit-sdk-2.0.1/sdk \
   --board qemu_virt_aarch64 \
   --example virtio \
@@ -47,6 +48,15 @@ This command:
 - Runs `git submodule update --init --recursive`
 - Invokes `make` in `examples/<example>` with `MICROKIT_SDK` and `MICROKIT_BOARD`
   (and optionally `LINUX`, `INITRD`, `QEMU`)
+
+## Patching
+
+If you need to customize libvmm's example Makefiles (for example to tweak QEMU
+invocation flags), keep your patches in the workspace and apply them with
+`--patch-dir`.
+
+Morpheus-managed builds should set `tools.libvmm.patch-dir` in `morpheus.yaml`
+to a workspace-local directory (for example `./hyperarm-workspace/tools/libvmm/patches`).
 
 ## Dependencies
 

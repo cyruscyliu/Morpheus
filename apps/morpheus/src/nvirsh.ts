@@ -264,6 +264,20 @@ function parseRunOptions(flags) {
   const dependencies = value.dependencies || {};
   const kernel = resolveDependencyArtifact(workspace, toolConfig.baseDir, flags.kernel, dependencies.kernel, "kernel");
   const initrd = resolveDependencyArtifact(workspace, toolConfig.baseDir, flags.initrd, dependencies.initrd, "initrd");
+  const toolchain = resolveDependencyArtifact(
+    workspace,
+    toolConfig.baseDir,
+    flags.toolchain,
+    dependencies.toolchain || value.toolchain,
+    "toolchain"
+  );
+  const libvmmDir = resolveDependencyArtifact(
+    workspace,
+    toolConfig.baseDir,
+    flags["libvmm-dir"],
+    dependencies.libvmm || dependencies["libvmm-dir"] || value["libvmm-dir"] || value.libvmmDir,
+    "libvmm-dir"
+  );
 
   return {
     id: runId,
@@ -282,8 +296,8 @@ function parseRunOptions(flags) {
       "microkit-sdk"
     ),
     microkitVersion: flags["microkit-version"] || value["microkit-version"] || value.microkitVersion || null,
-    toolchain: flags.toolchain || resolveRuntimePath(toolConfig.baseDir, value.toolchain),
-    libvmmDir: flags["libvmm-dir"] || resolveRuntimePath(toolConfig.baseDir, value["libvmm-dir"] || value.libvmmDir),
+    toolchain,
+    libvmmDir,
     sel4Dir: resolveDependencyArtifact(
       workspace,
       toolConfig.baseDir,
@@ -304,6 +318,8 @@ function parseRunOptions(flags) {
     dependencies: {
       qemu: dependencies.qemu || value.qemu || null,
       microkitSdk: dependencies["microkit-sdk"] || dependencies.microkitSdk || value["microkit-sdk"] || value.microkitSdk || null,
+      toolchain: dependencies.toolchain || value.toolchain || null,
+      libvmm: dependencies.libvmm || dependencies["libvmm-dir"] || value["libvmm-dir"] || value.libvmmDir || null,
       kernel: dependencies.kernel || null,
       initrd: dependencies.initrd || null,
       sel4: dependencies.sel4 || dependencies["sel4-dir"] || value.sel4 || value["sel4-dir"] || value.sel4Dir || null

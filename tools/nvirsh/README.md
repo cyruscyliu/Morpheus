@@ -13,22 +13,9 @@ dependencies rather than direct `tools.nvirsh.*` paths when possible.
 
 ## Quick start
 
-Materialize existing local dependencies into the workspace:
-
-```bash
-node scripts/nvirsh/prepare-sel4-deps.mjs \
-  --qemu /path/to/qemu-system-aarch64 \
-  --microkit-sdk /path/to/microkit-sdk \
-  --toolchain /path/to/arm-gnu-toolchain \
-  --libvmm-dir /path/to/libvmm \
-  --sel4-dir /path/to/seL4
-```
-
-That command:
-
-- Reads the target workspace-local dependency paths from `morpheus.yaml`
-- Uses symlinks by default, so it does not duplicate large trees
-- Keeps `nvirsh` itself focused on validation and runtime behavior
+When using Morpheus-managed dependencies, prefer configuring dependencies in
+`morpheus.yaml` and running `morpheus tool build --tool nvirsh`. Morpheus will
+resolve tool artifacts into concrete `nvirsh prepare` flags.
 
 ```bash
 nvirsh prepare \

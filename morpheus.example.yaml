@@ -86,8 +86,6 @@ tools:
     target: sel4
     name: sel4-dev
     microkit-version: 1.4.1
-    toolchain: ./deps/arm-gnu-toolchain
-    libvmm-dir: ./deps/libvmm
     sel4-version: 15.0.0
     append: console=ttyAMA0
     qemu-args:
@@ -107,6 +105,12 @@ tools:
       microkit-sdk:
         tool: microkit-sdk
         artifact: sdk-dir
+      toolchain:
+        tool: microkit-sdk
+        artifact: toolchain-dir
+      libvmm:
+        tool: libvmm
+        artifact: libvmm-dir
       kernel:
         tool: buildroot
         artifact: images/Image

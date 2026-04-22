@@ -85,19 +85,6 @@ tools:
     mode: local
     target: sel4
     name: sel4-dev
-    microkit-version: 1.4.1
-    sel4-version: 15.0.0
-    append: console=ttyAMA0
-    qemu-args:
-      - -machine
-      - virt,virtualization=on,gic-version=3
-      - -cpu
-      - cortex-a57
-      - -smp
-      - "4"
-      - -m
-      - "2048"
-      - -nographic
     dependencies:
       qemu:
         tool: qemu

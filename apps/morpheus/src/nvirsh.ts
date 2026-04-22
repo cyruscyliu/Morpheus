@@ -307,7 +307,6 @@ function parseRunOptions(flags) {
     ),
     sel4Version: flags["sel4-version"] || value["sel4-version"] || value.sel4Version || "15.0.0",
     board: flags.board || value.board || "qemu_arm_virt",
-    append: flags.append || value.append || null,
     qemuArgs: flags["qemu-arg"]
       || value["qemu-arg"]
       || value["qemu-args"]
@@ -357,9 +356,6 @@ function prepareArgs(options) {
   if (options.board) {
     args.push("--board", options.board);
   }
-  if (options.append) {
-    args.push("--append", options.append);
-  }
   for (const value of options.qemuArgs || []) {
     args.push("--qemu-arg", value);
   }
@@ -382,9 +378,6 @@ function launchArgs(options) {
     options.initrd,
     "--detach"
   ];
-  if (options.append) {
-    args.push("--append", options.append);
-  }
   for (const value of options.qemuArgs || []) {
     args.push("--qemu-arg", value);
   }

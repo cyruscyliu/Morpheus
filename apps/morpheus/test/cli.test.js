@@ -1005,6 +1005,21 @@ test("managed sel4 run can build a source tree from an archive url", () => {
   fs.writeFileSync(path.join(sourceDir, "VERSION"), "15.0.0\n");
   fs.writeFileSync(path.join(sourceDir, "README.md"), "# seL4\n");
 
+  const patchDir = path.join(projectRoot, "sel4-patches");
+  fs.mkdirSync(patchDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(patchDir, "0001-readme.patch"),
+    [
+      "--- a/README.md",
+      "+++ b/README.md",
+      "@@ -1 +1 @@",
+      "-# seL4",
+      "+# seL4 patched",
+      ""
+    ].join("\n"),
+    "utf8"
+  );
+
   const archivePath = path.join(projectRoot, "sel4-source.tar.xz");
   const command = spawnSync("tar", ["-cJf", archivePath, "-C", origin, sourceName], {
     encoding: "utf8"
@@ -1022,6 +1037,7 @@ test("managed sel4 run can build a source tree from an archive url", () => {
       "    mode: local",
       "    sel4-version: 15.0.0",
       `    archive-url: ${archiveUrl}`,
+      `    patch-dir: ${patchDir}`,
       ""
     ].join("\n")
   );
@@ -1048,6 +1064,10 @@ test("managed sel4 run can build a source tree from an archive url", () => {
   assert.equal(
     payload.details.manifest.source,
     path.join(workspaceRoot, "tools", "sel4", "src", "seL4-15.0.0")
+  );
+  assert.equal(
+    fs.readFileSync(path.join(payload.details.manifest.source, "README.md"), "utf8").trim(),
+    "# seL4 patched"
   );
 
   fs.rmSync(projectRoot, { recursive: true, force: true });

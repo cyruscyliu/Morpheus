@@ -11,6 +11,7 @@ test('main help stays flat', () => {
 test('command help renders usage', () => {
   const help = renderHelp('build');
   assert.match(help, /--archive-url URL/);
+  assert.match(help, /--patch-dir DIR/);
 });
 
 test('help metadata is discoverable', () => {

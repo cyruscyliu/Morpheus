@@ -69,6 +69,17 @@ morpheus tool build \
   --json
 ```
 
+To apply workspace-local patches after fetching, pass a patch directory:
+
+```bash
+morpheus tool build \
+  --tool sel4 \
+  --mode local \
+  --sel4-version 15.0.0 \
+  --patch-dir ./hyperarm-workspace/tools/sel4/patches \
+  --json
+```
+
 ## Flags
 
 - `sel4 inspect --path PATH`: local source directory to inspect
@@ -76,6 +87,8 @@ morpheus tool build \
 - `sel4 build --sel4-version VER`: expected seL4 version to record
 - `sel4 build --archive-url URL`: archive URL to fetch when the source is
   missing
+- `sel4 build --patch-dir DIR`: directory containing `.patch`/`.diff` files to
+  apply after fetching
 
 Managed `morpheus tool build --tool sel4` supports placement modes:
 
@@ -102,6 +115,7 @@ Every command supports `--json`, including help and errors.
 
 - `sel4` owns local directory inspection
 - `sel4` owns archive fetch for managed source directories
+- `sel4` can optionally apply workspace-local patches after fetch
 - `morpheus` owns `local` vs `remote` placement and tool dependency wiring
 - `nvirsh` should consume the resolved source artifact, not provision it
 

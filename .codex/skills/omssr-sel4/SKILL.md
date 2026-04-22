@@ -37,6 +37,8 @@ sel4 help
 
 - `sel4` owns local source inspection.
 - `sel4` owns archive fetch for managed source directories.
+- `sel4` can optionally apply workspace-local patches after fetch when a patch
+  directory is provided.
 - `morpheus tool build --tool sel4 --mode local` records an existing source tree
   as a managed artifact when `tools.sel4.path` exists.
 - Otherwise, `morpheus tool build --tool sel4 --mode local` materializes and

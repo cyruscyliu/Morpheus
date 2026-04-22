@@ -47,6 +47,21 @@ test('build can materialize a managed seL4 source tree from an archive url', () 
   fs.writeFileSync(path.join(extractedSource, 'VERSION'), '15.0.0\n');
   fs.writeFileSync(path.join(extractedSource, 'README.md'), '# seL4\n');
 
+  const patchesDir = path.join(root, 'patches');
+  fs.mkdirSync(patchesDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(patchesDir, '0001-readme.patch'),
+    [
+      '--- a/README.md',
+      '+++ b/README.md',
+      '@@ -1 +1 @@',
+      '-# seL4',
+      '+# seL4 patched',
+      '',
+    ].join('\n'),
+    'utf8'
+  );
+
   const archivePath = path.join(root, 'sel4-source.tar.xz');
   let result = spawnSync('tar', ['-cJf', archivePath, '-C', origin, sourceDirName], {
     encoding: 'utf8',
@@ -63,6 +78,8 @@ test('build can materialize a managed seL4 source tree from an archive url', () 
     '15.0.0',
     '--archive-url',
     archiveUrl,
+    '--patch-dir',
+    patchesDir,
   ]);
   assert.equal(result.status, 0, result.stdout || result.stderr);
   const payload = JSON.parse(result.stdout.trim());
@@ -70,6 +87,8 @@ test('build can materialize a managed seL4 source tree from an archive url', () 
   assert.equal(payload.details.fetched_source, true);
   assert.equal(fs.existsSync(path.join(source, 'README.md')), true);
   assert.equal(payload.details.archive_url, archiveUrl);
+  assert.equal(fs.readFileSync(path.join(source, 'README.md'), 'utf8').trim(), '# seL4 patched');
+  assert.equal(payload.details.patches?.applied, true);
 
   fs.rmSync(root, { recursive: true, force: true });
 });

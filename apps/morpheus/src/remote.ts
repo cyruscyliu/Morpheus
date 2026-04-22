@@ -109,7 +109,7 @@ function managedRunUsage() {
     "  node apps/morpheus/dist/cli.js tool build --tool microkit-sdk --mode local --workspace DIR (--path PATH | --microkit-version VER) [--archive-url URL] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool qemu --mode local --workspace DIR (--path PATH | --qemu-version VER) [--archive-url URL] [--build-dir-key KEY] [--target-list NAME ...] [--configure-arg ARG ...] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool nvirsh --mode local --workspace DIR [--target sel4] [--json]",
-    "  node apps/morpheus/dist/cli.js tool build --tool sel4 --mode local --workspace DIR (--path PATH | --sel4-version VER) [--archive-url URL] [--json]",
+    "  node apps/morpheus/dist/cli.js tool build --tool sel4 --mode local --workspace DIR (--path PATH | --sel4-version VER) [--archive-url URL] [--patch-dir DIR] [--json]",
     "  node apps/morpheus/dist/cli.js runs list --managed [--workspace DIR] [--ssh TARGET] [--json]",
     "  node apps/morpheus/dist/cli.js runs inspect --id RUN_ID [--json]",
     "  node apps/morpheus/dist/cli.js runs logs --id RUN_ID [--follow] [--json]",

@@ -4,6 +4,7 @@ import path from 'node:path';
 import process from 'node:process';
 import http from 'node:http';
 import https from 'node:https';
+import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
@@ -202,6 +203,88 @@ function toolRootFromSource(source: string) {
   return path.resolve(path.dirname(source), '..');
 }
 
+function resolveOptionalPath(flags: Record<string, unknown>, name: string) {
+  const value = String(flags[name] || '').trim();
+  if (!value) {
+    return null;
+  }
+  return path.resolve(process.cwd(), value);
+}
+
+function listPatchFiles(patchDir: string) {
+  const results: string[] = [];
+  const stack: string[] = [patchDir];
+
+  while (stack.length > 0) {
+    const current = stack.pop() as string;
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      if (entry.name.startsWith('.')) {
+        continue;
+      }
+      const nextPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(nextPath);
+        continue;
+      }
+      if (entry.isFile() && (entry.name.endsWith('.patch') || entry.name.endsWith('.diff'))) {
+        results.push(nextPath);
+      }
+    }
+  }
+
+  results.sort((a, b) => a.localeCompare(b));
+  return results;
+}
+
+function patchFingerprint(patchDir: string, patchFiles: string[]) {
+  const hash = crypto.createHash('sha256');
+  for (const filePath of patchFiles) {
+    hash.update(path.relative(patchDir, filePath));
+    hash.update('\0');
+    hash.update(fs.readFileSync(filePath));
+    hash.update('\0');
+  }
+  return hash.digest('hex');
+}
+
+function patchStatePath(source: string) {
+  return path.join(source, '.morpheus-patches.json');
+}
+
+function readPatchState(source: string) {
+  const statePath = patchStatePath(source);
+  if (!fs.existsSync(statePath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function writePatchState(source: string, state: unknown) {
+  fs.writeFileSync(patchStatePath(source), `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+}
+
+function applyPatches(source: string, patchDir: string, patchFiles: string[], logFile: string) {
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
+  fs.writeFileSync(logFile, '', 'utf8');
+
+  for (const patchFile of patchFiles) {
+    const result = runCommand('patch', ['-d', source, '-p1', '-i', patchFile], undefined);
+    fs.appendFileSync(logFile, `>>> ${path.relative(patchDir, patchFile)}\n`, 'utf8');
+    fs.appendFileSync(logFile, result.stdout || '', 'utf8');
+    fs.appendFileSync(logFile, result.stderr || '', 'utf8');
+    if (result.status !== 0) {
+      throw new CliError(
+        'patch_failed',
+        `Failed to apply patch ${path.relative(patchDir, patchFile)} (see ${logFile})`
+      );
+    }
+  }
+}
+
 async function buildDirectory(flags: Record<string, unknown>) {
   if (typeof flags['git-url'] === 'string' || typeof flags['git-ref'] === 'string') {
     throw new CliError('unsupported_flag', 'sel4 build no longer supports --git-url/--git-ref; use --archive-url or provide an existing --source directory');
@@ -209,8 +292,56 @@ async function buildDirectory(flags: Record<string, unknown>) {
   const source = requirePathFlag(flags, 'source');
   const sel4Version = optionalStringFlag(flags, 'sel4-version');
   const archiveUrl = optionalStringFlag(flags, 'archive-url');
+  const patchDir = resolveOptionalPath(flags, 'patch-dir');
+  const patchFiles = patchDir ? listPatchFiles(patchDir) : [];
+  const fingerprint = patchDir ? patchFingerprint(patchDir, patchFiles) : null;
+  const patchLogFile = patchDir ? path.join(source, '.morpheus-patches.log') : null;
+
+  if (patchDir && !fileExists(patchDir)) {
+    throw new CliError('missing_directory', `Missing patch directory: ${patchDir}`);
+  }
 
   if (fileExists(source)) {
+    if (patchDir) {
+      const state = readPatchState(source);
+      if (state && state.fingerprint === fingerprint) {
+        const inspected = inspectDirectory({ path: source });
+        return {
+          command: 'build',
+          status: 'success',
+          exit_code: 0,
+          summary: 'reused managed seL4 source directory',
+          details: {
+            source,
+            fetched_source: false,
+            archive: null,
+            archive_url: archiveUrl,
+            sel4_version: sel4Version || inspected.details.directory.version,
+            directory: inspected.details.directory,
+            artifact: inspected.details.artifact,
+            patches: {
+              dir: patchDir,
+              files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
+              fingerprint,
+              applied: false,
+              log_file: patchLogFile,
+            }
+          },
+        };
+      }
+      if (!archiveUrl) {
+        throw new CliError(
+          'patch_state_mismatch',
+          [
+            `Managed seL4 source directory exists but patch state differs: ${source}`,
+            'Either:',
+            '- provide --archive-url so sel4 can re-fetch and re-apply patches, or',
+            `- remove the existing directory and re-run sel4 build.`,
+          ].join('\n')
+        );
+      }
+      removeDirectory(source);
+    }
     const inspected = inspectDirectory({ path: source });
     return {
       command: 'build',
@@ -225,6 +356,15 @@ async function buildDirectory(flags: Record<string, unknown>) {
         sel4_version: sel4Version || inspected.details.directory.version,
         directory: inspected.details.directory,
         artifact: inspected.details.artifact,
+        patches: patchDir
+          ? {
+            dir: patchDir,
+            files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
+            fingerprint,
+            applied: false,
+            log_file: patchLogFile,
+          }
+          : null,
       },
     };
   }
@@ -256,6 +396,18 @@ async function buildDirectory(flags: Record<string, unknown>) {
   fs.renameSync(path.join(extractRoot, entries[0].name), source);
   removeDirectory(extractRoot);
 
+  let patchesApplied = false;
+  if (patchDir && patchLogFile) {
+    applyPatches(source, patchDir, patchFiles, patchLogFile);
+    writePatchState(source, {
+      appliedAt: new Date().toISOString(),
+      dir: patchDir,
+      files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
+      fingerprint,
+    });
+    patchesApplied = true;
+  }
+
   if (sel4Version && !firstVersionLine(source)) {
     fs.writeFileSync(path.join(source, '.morpheus-version'), `${sel4Version}\n`, 'utf8');
   }
@@ -266,16 +418,25 @@ async function buildDirectory(flags: Record<string, unknown>) {
     status: 'success',
     exit_code: 0,
     summary: 'built managed seL4 source directory',
-      details: {
-        source,
-        fetched_source: true,
-        archive: archiveUrl ? path.join(toolRootFromSource(source), 'downloads', path.basename(new URL(archiveUrl).pathname)) : null,
-        archive_url: archiveUrl,
-        sel4_version: sel4Version || inspected.details.directory.version,
-        directory: inspected.details.directory,
-        artifact: inspected.details.artifact,
-      },
-    };
+    details: {
+      source,
+      fetched_source: true,
+      archive: archiveUrl ? path.join(toolRootFromSource(source), 'downloads', path.basename(new URL(archiveUrl).pathname)) : null,
+      archive_url: archiveUrl,
+      sel4_version: sel4Version || inspected.details.directory.version,
+      directory: inspected.details.directory,
+      artifact: inspected.details.artifact,
+      patches: patchDir
+        ? {
+          dir: patchDir,
+          files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
+          fingerprint,
+          applied: patchesApplied,
+          log_file: patchLogFile,
+        }
+        : null,
+    },
+  };
 }
 
 async function main(argv: string[]) {

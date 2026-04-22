@@ -61,6 +61,7 @@ function loadSel4Config() {
       ...item,
       sel4Version: item["sel4-version"] || item.sel4Version || item.version || null,
       archiveUrl: item["archive-url"] || item.archiveUrl || null,
+      patchDir: item["patch-dir"] || item.patchDir || null,
     }
   };
 }
@@ -111,6 +112,9 @@ function parseRunOptions(flags) {
       : resolveLocalPath(baseDir, value.path || value.source),
     sel4Version: flags["sel4-version"] || value.sel4Version || null,
     archiveUrl: flags["archive-url"] || value.archiveUrl || null,
+    patchDir: flags["patch-dir"]
+      ? path.resolve(process.cwd(), flags["patch-dir"])
+      : resolveLocalPath(baseDir, value.patchDir),
     reuseBuildDir: Boolean(flags["reuse-build-dir"] ?? value.reuseBuildDir),
     buildDirKey: flags["build-dir-key"] || value.buildDirKey || "default",
   };
@@ -171,6 +175,7 @@ function localManifest(options, runDir, manifestPath, logFile, inspected) {
     updatedAt: nowIso(),
     workspace: options.workspace,
     buildDirKey: options.reuseBuildDir ? options.buildDirKey : null,
+    patchDir: options.patchDir || null,
     runDir,
     outputDir: runDir,
     logFile,
@@ -204,6 +209,8 @@ function buildManifest(options, runDir, manifestPath, fetched) {
     sel4Version: options.sel4Version || fetched.details.sel4_version || null,
     archive: fetched.details.archive || null,
     archiveUrl: fetched.details.archive_url || options.archiveUrl || null,
+    patchDir: options.patchDir || null,
+    patches: fetched.details.patches || null,
     runDir,
     outputDir: fetched.details.source,
     logFile: path.join(runDir, "stdout.log"),
@@ -247,7 +254,8 @@ function runManagedSel4(flags) {
         "--source",
         options.path,
         ...(options.sel4Version ? ["--sel4-version", options.sel4Version] : []),
-        ...(options.archiveUrl ? ["--archive-url", options.archiveUrl] : [])
+        ...(options.archiveUrl ? ["--archive-url", options.archiveUrl] : []),
+        ...(options.patchDir ? ["--patch-dir", options.patchDir] : [])
       ]),
       "failed to build seL4 source directory"
     );

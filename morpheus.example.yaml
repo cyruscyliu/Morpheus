@@ -68,6 +68,18 @@ tools:
     # patch-dir: ./hyperarm-workspace/tools/sel4/patches/fuzz-sel4
     artifacts:
       - source-dir
+  libvmm:
+    mode: local
+    reuse-build-dir: true
+    build-dir-key: libvmm-main
+    board: qemu_virt_aarch64
+    example: virtio
+    # linux: ./out/Image
+    # initrd: ./out/rootfs.cpio.gz
+    artifacts:
+      - libvmm-dir
+      - example-dir
+      - example-build-dir
   nvirsh:
     mode: local
     target: sel4

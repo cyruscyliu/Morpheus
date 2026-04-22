@@ -521,7 +521,7 @@ test("tool list discovers repo-local tools", () => {
   const payload = JSON.parse(result.stdout);
   assert.deepEqual(
     payload.tools.map((tool) => tool.name),
-    ["buildroot", "llbic", "llcg", "microkit-sdk", "nvirsh", "qemu", "sel4"]
+    ["buildroot", "libvmm", "llbic", "llcg", "microkit-sdk", "nvirsh", "qemu", "sel4"]
   );
 });
 

@@ -14,6 +14,7 @@ const { runManagedMicrokitSdk } = require("./microkit-sdk");
 const { runManagedNvirsh } = require("./nvirsh");
 const { runManagedQemu } = require("./qemu");
 const { runManagedSel4 } = require("./sel4");
+const { runManagedLibvmm } = require("./libvmm");
 const { applyConfigDefaults, resolveLocalPath } = require("./config");
 const { logDebug } = require("./logger");
 const { writeStdout, writeStdoutLine } = require("./io");
@@ -23,6 +24,7 @@ const MICROKIT_SDK_TOOL = "microkit-sdk";
 const QEMU_TOOL = "qemu";
 const NVIRSH_TOOL = "nvirsh";
 const SEL4_TOOL = "sel4";
+const LIBVMM_TOOL = "libvmm";
 const MANAGED_TOOL_ADAPTERS = {
   [BUILDROOT_TOOL]: {
     name: BUILDROOT_TOOL,
@@ -42,6 +44,10 @@ const MANAGED_TOOL_ADAPTERS = {
   },
   [SEL4_TOOL]: {
     name: SEL4_TOOL,
+    modes: ["local"]
+  },
+  [LIBVMM_TOOL]: {
+    name: LIBVMM_TOOL,
     modes: ["local"]
   }
 };
@@ -110,6 +116,7 @@ function managedRunUsage() {
     "  node apps/morpheus/dist/cli.js tool build --tool qemu --mode local --workspace DIR (--path PATH | --qemu-version VER) [--archive-url URL] [--build-dir-key KEY] [--target-list NAME ...] [--configure-arg ARG ...] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool nvirsh --mode local --workspace DIR [--target sel4] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool sel4 --mode local --workspace DIR (--path PATH | --sel4-version VER) [--archive-url URL] [--patch-dir DIR] [--json]",
+    "  node apps/morpheus/dist/cli.js tool build --tool libvmm --mode local --workspace DIR [--source DIR] [--board NAME] [--example NAME] [--linux PATH] [--initrd PATH] [--qemu PATH] [--make-arg KEY=VALUE ...] [--json]",
     "  node apps/morpheus/dist/cli.js runs list --managed [--workspace DIR] [--ssh TARGET] [--json]",
     "  node apps/morpheus/dist/cli.js runs inspect --id RUN_ID [--json]",
     "  node apps/morpheus/dist/cli.js runs logs --id RUN_ID [--follow] [--json]",
@@ -465,7 +472,7 @@ function resolveManagedTool(tool) {
 }
 
 function requireManagedTool(flags, command) {
-  const tool = requireFlag(flags, "tool", `${command} requires --tool buildroot|microkit-sdk|qemu|nvirsh|sel4`);
+  const tool = requireFlag(flags, "tool", `${command} requires --tool buildroot|microkit-sdk|qemu|nvirsh|sel4|libvmm`);
   return resolveManagedTool(tool);
 }
 
@@ -1532,6 +1539,9 @@ async function runManagedRun(flags) {
   }
   if (adapter.name === SEL4_TOOL) {
     return runManagedSel4(flags);
+  }
+  if (adapter.name === LIBVMM_TOOL) {
+    return runManagedLibvmm(flags);
   }
   const options = parseBuildrootRunOptions(flags);
   if (options.mode === "local") {

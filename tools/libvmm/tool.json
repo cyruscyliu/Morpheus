@@ -1,0 +1,5 @@
+{
+  "name": "libvmm",
+  "runtime": "node",
+  "entry": "dist/index.js"
+}

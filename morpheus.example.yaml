@@ -85,6 +85,7 @@ tools:
     mode: local
     target: sel4
     name: sel4-dev
+    board: qemu_virt_aarch64
     dependencies:
       qemu:
         tool: qemu

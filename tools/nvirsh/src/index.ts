@@ -369,6 +369,7 @@ function runCommandForManifest(manifest: Record<string, any>, flags: Record<stri
     throw new CliError('missing_artifact', `Missing initrd artifact: ${initrd}`);
   }
 
+  const isSel4Dev = manifest.target === 'sel4' && String(manifest.id || '') === 'sel4-dev';
   const runtimeArgs = Array.isArray(flags['qemu-arg']) && (flags['qemu-arg'] as string[]).length > 0
     ? [...(flags['qemu-arg'] as string[])]
     : [...((manifest.prerequisites?.qemuArgs as string[]) || [])];
@@ -378,19 +379,27 @@ function runCommandForManifest(manifest: Record<string, any>, flags: Record<stri
   }
 
   const append = String(flags.append || manifest.prerequisites?.append || '');
-  const command = [
-    String(manifest.prerequisites.qemu),
-    '-kernel',
-    kernel,
-    '-initrd',
-    initrd,
-    ...runtimeArgs,
-  ];
-  if (append) {
-    command.push('-append', append);
-  }
-  if (Array.isArray(flags.forwarded)) {
-    command.push(...(flags.forwarded as string[]));
+  const command = isSel4Dev
+    ? [
+      process.execPath,
+      path.resolve(path.dirname(new URL(import.meta.url).pathname), 'libvmm-runner.js'),
+      manifestPath(flags),
+    ]
+    : [
+      String(manifest.prerequisites.qemu),
+      '-kernel',
+      kernel,
+      '-initrd',
+      initrd,
+      ...runtimeArgs,
+    ];
+  if (!isSel4Dev) {
+    if (append) {
+      command.push('-append', append);
+    }
+    if (Array.isArray(flags.forwarded)) {
+      command.push(...(flags.forwarded as string[]));
+    }
   }
 
   manifest.command = 'run';
@@ -403,6 +412,8 @@ function runCommandForManifest(manifest: Record<string, any>, flags: Record<stri
     append,
     qemuArgs: runtimeArgs,
     command,
+    runner: isSel4Dev ? 'libvmm-runner.js' : 'runner.js',
+    launcher: isSel4Dev ? 'libvmm-virtio' : null,
   };
   manifest.errorMessage = null;
   manifest.exitCode = null;
@@ -417,7 +428,8 @@ function runLaunch(flags: Record<string, unknown>) {
   }
 
   const nextManifest = runCommandForManifest(manifest, flags);
-  const runner = path.resolve(path.dirname(new URL(import.meta.url).pathname), 'runner.js');
+  const runnerName = nextManifest.runtime?.runner || 'runner.js';
+  const runner = path.resolve(path.dirname(new URL(import.meta.url).pathname), runnerName);
   const child = spawn(process.execPath, [runner, manifestPath(flags)], {
     detached: true,
     stdio: 'ignore',

@@ -57,6 +57,17 @@ test('prepare and run manage local sel4 state', async () => {
   for (const dir of [microkitSdk, toolchain, libvmmDir, sel4Dir]) {
     fs.mkdirSync(dir, { recursive: true });
   }
+  fs.mkdirSync(path.join(libvmmDir, 'examples', 'virtio'), { recursive: true });
+  fs.writeFileSync(
+    path.join(libvmmDir, 'examples', 'virtio', 'Makefile'),
+    [
+      '.PHONY: qemu',
+      'qemu:',
+      '\t$(QEMU) -machine virt',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
   fs.writeFileSync(path.join(microkitSdk, 'VERSION'), '1.4.1\n');
   fs.writeFileSync(path.join(toolchain, 'VERSION'), 'arm-toolchain\n');
   fs.writeFileSync(path.join(libvmmDir, 'VERSION'), 'libvmm-dev\n');

@@ -5,6 +5,7 @@ const { spawnSync } = require("child_process");
 const { loadConfig, configDir, resolveLocalPath } = require("./config");
 const { registerManagedRun, registerManagedWorkspace } = require("./managed-state");
 const { repoRoot } = require("./paths");
+const { runManagedSel4 } = require("./sel4");
 
 const TOOL = "microkit-sdk";
 
@@ -57,6 +58,7 @@ function loadMicrokitConfig() {
       ...item,
       microkitVersion: item["microkit-version"] || item.microkitVersion || item.version || null,
       archiveUrl: item["archive-url"] || item.archiveUrl || null,
+      microkitDir: item["microkit-dir"] || item.microkitDir || null,
     }
   };
 }
@@ -84,6 +86,16 @@ function runTool(args) {
   });
 }
 
+function runBuildSdk(args) {
+  return spawnSync(process.execPath, [
+    path.join(repoRoot(), "scripts", "microkit", "build-sdk.mjs"),
+    ...args
+  ], {
+    encoding: "utf8",
+    cwd: process.cwd()
+  });
+}
+
 function parseRunOptions(flags) {
   const workspace = flags.workspace;
   if (!workspace) {
@@ -104,9 +116,16 @@ function parseRunOptions(flags) {
       : resolveLocalPath(baseDir, value.path || value.source),
     microkitVersion: flags["microkit-version"] || value.microkitVersion || null,
     archiveUrl: flags["archive-url"] || value.archiveUrl || null,
+    microkitDir: flags["microkit-dir"]
+      ? path.resolve(process.cwd(), flags["microkit-dir"])
+      : resolveLocalPath(baseDir, value.microkitDir),
+    reuseBuildDir: Boolean(flags["reuse-build-dir"] ?? value.reuseBuildDir),
+    buildDirKey: flags["build-dir-key"] || value.buildDirKey || "default",
   };
 
-  if (!options.path && options.microkitVersion) {
+  if (options.reuseBuildDir) {
+    options.path = path.join(localToolWorkspace(workspace, TOOL), "builds", options.buildDirKey, "sdk");
+  } else if (!options.path && options.microkitVersion) {
     options.path = defaultManagedSource(workspace, options.microkitVersion);
   }
 
@@ -117,7 +136,9 @@ function parseRunOptions(flags) {
   options.provisioning = fs.existsSync(options.path) ? "path" : "build";
 
   if (options.provisioning === "build" && !options.microkitVersion && !options.archiveUrl) {
-    throw new Error("microkit-sdk build requires tools.microkit-sdk.microkit-version or tools.microkit-sdk.archive-url");
+    if (!options.microkitDir) {
+      throw new Error("microkit-sdk build requires tools.microkit-sdk.microkit-version, tools.microkit-sdk.archive-url, or tools.microkit-sdk.microkit-dir");
+    }
   }
 
   return options;
@@ -153,6 +174,7 @@ function localManifest(options, runDir, manifestPath, logFile, inspected) {
     createdAt: nowIso(),
     updatedAt: nowIso(),
     workspace: options.workspace,
+    buildDirKey: options.reuseBuildDir ? options.buildDirKey : null,
     runDir,
     outputDir: runDir,
     logFile,
@@ -182,6 +204,7 @@ function buildManifest(options, runDir, manifestPath, fetched) {
     updatedAt: nowIso(),
     workspace: options.workspace,
     source: fetched.details.source,
+    buildDirKey: options.reuseBuildDir ? options.buildDirKey : null,
     microkitVersion: options.microkitVersion || fetched.details.microkit_version || null,
     archive: fetched.details.archive || null,
     archiveUrl: fetched.details.archive_url || options.archiveUrl || null,
@@ -221,19 +244,70 @@ function runManagedMicrokitSdk(flags) {
     fs.writeFileSync(logFile, `${inspected.details.directory.version || ""}\n`, "utf8");
     manifest = localManifest(options, runDir, manifestPath, logFile, inspected);
   } else {
-    const fetched = parseJsonResult(
-      runTool([
-        "--json",
-        "build",
-        "--source",
-        options.path,
-        ...(options.microkitVersion ? ["--microkit-version", options.microkitVersion] : []),
-        ...(options.archiveUrl ? ["--archive-url", options.archiveUrl] : [])
-      ]),
-      "failed to build Microkit SDK directory"
-    );
-    fs.writeFileSync(logFile, `${fetched.details.directory.version || ""}\n`, "utf8");
-    manifest = buildManifest(options, runDir, manifestPath, fetched);
+    let sourceBuild = null;
+    let inspected = null;
+
+    if (options.microkitDir) {
+      const sel4 = runManagedSel4({ workspace: options.workspace, mode: "local" });
+      const sel4Dir = sel4.details.manifest.directory.path;
+      sourceBuild = parseJsonResult(
+        runBuildSdk([
+          "--json",
+          "--microkit-dir",
+          options.microkitDir,
+          "--sel4-dir",
+          sel4Dir,
+          "--sdk-out",
+          options.path,
+          "--force"
+        ]),
+        "failed to build Microkit SDK from source"
+      );
+      inspected = parseJsonResult(
+        runTool(["--json", "inspect", "--path", options.path]),
+        "failed to inspect built Microkit SDK directory"
+      );
+
+      fs.writeFileSync(
+        logFile,
+        [
+          "source-build: true",
+          sourceBuild.details && sourceBuild.details.build_log ? `build_log: ${sourceBuild.details.build_log}` : null,
+          inspected.details && inspected.details.directory && inspected.details.directory.version ? `version: ${inspected.details.directory.version}` : null,
+          ""
+        ].filter(Boolean).join("\n"),
+        "utf8"
+      );
+
+      const synthesized = {
+        details: {
+          source: options.path,
+          microkit_version: options.microkitVersion || null,
+          archive: null,
+          archive_url: null,
+          directory: inspected.details.directory
+        }
+      };
+      manifest = buildManifest(options, runDir, manifestPath, synthesized);
+      manifest.sourceBuild = true;
+      manifest.microkitDir = options.microkitDir;
+      manifest.sel4Dir = sourceBuild.details ? sourceBuild.details.sel4_dir : null;
+      manifest.buildLog = sourceBuild.details ? sourceBuild.details.build_log : null;
+    } else {
+      const fetched = parseJsonResult(
+        runTool([
+          "--json",
+          "build",
+          "--source",
+          options.path,
+          ...(options.microkitVersion ? ["--microkit-version", options.microkitVersion] : []),
+          ...(options.archiveUrl ? ["--archive-url", options.archiveUrl] : [])
+        ]),
+        "failed to build Microkit SDK directory"
+      );
+      fs.writeFileSync(logFile, `${fetched.details.directory.version || ""}\n`, "utf8");
+      manifest = buildManifest(options, runDir, manifestPath, fetched);
+    }
   }
 
   writeJson(manifestPath, manifest);

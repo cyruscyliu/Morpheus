@@ -96,6 +96,13 @@ Within that placement mode, Morpheus picks the provisioning strategy:
 - otherwise, run `microkit-sdk build` to fetch/unpack into the workspace and
   register the resulting directory
 
+For incremental workflows, set:
+
+- `tools.microkit-sdk.reuse-build-dir: true`
+- `tools.microkit-sdk.build-dir-key: <name>`
+
+This keeps the managed SDK directory under `tools/microkit-sdk/builds/<key>/`.
+
 ## JSON
 
 Every command supports `--json`, including help and errors.

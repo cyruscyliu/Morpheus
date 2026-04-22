@@ -90,6 +90,13 @@ Within that placement mode, Morpheus picks the provisioning strategy:
 - otherwise, run `sel4 build` to clone/fetch into the workspace and register
   the resulting source directory
 
+For incremental workflows, set:
+
+- `tools.sel4.reuse-build-dir: true`
+- `tools.sel4.build-dir-key: <name>`
+
+This keeps the managed source directory under `tools/sel4/builds/<key>/`.
+
 ## JSON
 
 Every command supports `--json`, including help and errors.

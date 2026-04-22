@@ -108,9 +108,13 @@ function parseRunOptions(flags) {
     archiveUrl: flags["archive-url"] || value.archiveUrl || null,
     gitUrl: flags["git-url"] || value.gitUrl || null,
     gitRef: flags["git-ref"] || value.gitRef || null,
+    reuseBuildDir: Boolean(flags["reuse-build-dir"] ?? value.reuseBuildDir),
+    buildDirKey: flags["build-dir-key"] || value.buildDirKey || "default",
   };
 
-  if (!options.path && options.sel4Version) {
+  if (options.reuseBuildDir) {
+    options.path = path.join(localToolWorkspace(workspace, TOOL), "builds", options.buildDirKey, "source");
+  } else if (!options.path && options.sel4Version) {
     options.path = defaultManagedSource(workspace, options.sel4Version);
   }
 
@@ -162,6 +166,7 @@ function localManifest(options, runDir, manifestPath, logFile, inspected) {
     createdAt: nowIso(),
     updatedAt: nowIso(),
     workspace: options.workspace,
+    buildDirKey: options.reuseBuildDir ? options.buildDirKey : null,
     runDir,
     outputDir: runDir,
     logFile,
@@ -191,6 +196,7 @@ function buildManifest(options, runDir, manifestPath, fetched) {
     updatedAt: nowIso(),
     workspace: options.workspace,
     source: fetched.details.source,
+    buildDirKey: options.reuseBuildDir ? options.buildDirKey : null,
     sel4Version: options.sel4Version || fetched.details.sel4_version || null,
     archive: fetched.details.archive || null,
     archiveUrl: fetched.details.archive_url || options.archiveUrl || null,

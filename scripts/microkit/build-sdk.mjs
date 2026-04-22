@@ -43,7 +43,7 @@ function usage() {
 }
 
 function emitJson(value) {
-  fs.writeSync(1, `${JSON.stringify(value, null, 2)}\n`);
+  fs.writeSync(1, `${JSON.stringify(value)}\n`);
 }
 
 function countIndent(line) {
@@ -304,4 +304,3 @@ try {
   }
   process.exitCode = 1;
 }
-

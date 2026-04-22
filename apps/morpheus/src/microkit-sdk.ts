@@ -135,10 +135,18 @@ function parseRunOptions(flags) {
 
   options.provisioning = fs.existsSync(options.path) ? "path" : "build";
 
-  if (options.provisioning === "build" && !options.microkitVersion && !options.archiveUrl) {
-    if (!options.microkitDir) {
-      throw new Error("microkit-sdk build requires tools.microkit-sdk.microkit-version, tools.microkit-sdk.archive-url, or tools.microkit-sdk.microkit-dir");
-    }
+  if (options.provisioning === "build" && !options.archiveUrl && !options.microkitDir) {
+    throw new Error(
+      [
+        "microkit-sdk build requires a source input.",
+        "Provide one of:",
+        "- tools.microkit-sdk.microkit-dir: a local Microkit checkout containing build_sdk.py (no downloads), or",
+        "- tools.microkit-sdk.archive-url: an archive URL to fetch when the SDK directory is missing, or",
+        "- tools.microkit-sdk.path: an existing SDK directory to register.",
+        "",
+        `Resolved SDK path was: ${options.path}`,
+      ].join("\n")
+    );
   }
 
   return options;

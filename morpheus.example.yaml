@@ -105,6 +105,3 @@ tools:
       initrd:
         tool: buildroot
         artifact: images/rootfs.cpio.gz
-      sel4:
-        tool: sel4
-        artifact: source-dir

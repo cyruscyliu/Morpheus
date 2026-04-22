@@ -2,12 +2,12 @@ export const COMMANDS = [
   {
     name: 'doctor',
     summary: 'Validate target prerequisites without writing state',
-    usage: ['nvirsh doctor --target sel4 --qemu PATH --microkit-sdk DIR --toolchain DIR --libvmm-dir DIR --sel4-dir DIR'],
+    usage: ['nvirsh doctor --target sel4 --qemu PATH --microkit-sdk DIR --toolchain DIR --libvmm-dir DIR'],
   },
   {
     name: 'prepare',
     summary: 'Validate and materialize target-local prepared state',
-    usage: ['nvirsh prepare --target sel4 --state-dir DIR --qemu PATH --microkit-sdk DIR --toolchain DIR --libvmm-dir DIR --sel4-dir DIR'],
+    usage: ['nvirsh prepare --target sel4 --state-dir DIR --qemu PATH --microkit-sdk DIR --toolchain DIR --libvmm-dir DIR'],
   },
   {
     name: 'run',

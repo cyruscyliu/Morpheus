@@ -298,14 +298,6 @@ function parseRunOptions(flags) {
     microkitVersion: flags["microkit-version"] || value["microkit-version"] || value.microkitVersion || null,
     toolchain,
     libvmmDir,
-    sel4Dir: resolveDependencyArtifact(
-      workspace,
-      toolConfig.baseDir,
-      flags["sel4-dir"],
-      dependencies.sel4 || dependencies["sel4-dir"] || value.sel4 || value["sel4-dir"] || value.sel4Dir,
-      "sel4"
-    ),
-    sel4Version: flags["sel4-version"] || value["sel4-version"] || value.sel4Version || "15.0.0",
     board: flags.board || value.board || "qemu_arm_virt",
     qemuArgs: flags["qemu-arg"]
       || value["qemu-arg"]
@@ -321,7 +313,7 @@ function parseRunOptions(flags) {
       libvmm: dependencies.libvmm || dependencies["libvmm-dir"] || value["libvmm-dir"] || value.libvmmDir || null,
       kernel: dependencies.kernel || null,
       initrd: dependencies.initrd || null,
-      sel4: dependencies.sel4 || dependencies["sel4-dir"] || value.sel4 || value["sel4-dir"] || value.sel4Dir || null
+      sel4: null
     },
     createdAt: nowIso()
   };
@@ -345,10 +337,6 @@ function prepareArgs(options) {
     options.toolchain,
     "--libvmm-dir",
     options.libvmmDir,
-    "--sel4-dir",
-    options.sel4Dir,
-    "--sel4-version",
-    options.sel4Version
   ];
   if (options.microkitVersion) {
     args.push("--microkit-version", options.microkitVersion);

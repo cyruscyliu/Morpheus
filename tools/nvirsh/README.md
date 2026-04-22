@@ -35,9 +35,7 @@ nvirsh prepare \
   --microkit-sdk ./deps/microkit-sdk \
   --microkit-version 1.4.1 \
   --toolchain ./deps/arm-gnu-toolchain \
-  --libvmm-dir ./deps/libvmm \
-  --sel4-dir ./deps/seL4 \
-  --sel4-version 15.0.0
+  --libvmm-dir ./deps/libvmm
 ```
 
 That command:
@@ -102,7 +100,7 @@ nvirsh help
 Use `doctor` when you want validation without state writes:
 
 ```bash
-nvirsh doctor --target sel4 --qemu ./deps/qemu-system-aarch64 --microkit-sdk ./deps/microkit-sdk --toolchain ./deps/arm-gnu-toolchain --libvmm-dir ./deps/libvmm --sel4-dir ./deps/seL4 --json
+nvirsh doctor --target sel4 --qemu ./deps/qemu-system-aarch64 --microkit-sdk ./deps/microkit-sdk --toolchain ./deps/arm-gnu-toolchain --libvmm-dir ./deps/libvmm --json
 ```
 
 Use `inspect` to read a prepared or running manifest:
@@ -128,7 +126,6 @@ pnpm prepare:tool:nvirsh:sel4 \
   --microkit-sdk /path/to/microkit-sdk \
   --toolchain /path/to/arm-gnu-toolchain \
   --libvmm-dir /path/to/libvmm \
-  --sel4-dir /path/to/seL4 \
   --json
 ```
 
@@ -144,8 +141,6 @@ The initial `sel4` target uses these stable flags:
 - `--microkit-version VER`: expected Microkit SDK version
 - `--toolchain DIR`: local ARM toolchain root
 - `--libvmm-dir DIR`: local `libvmm` source or checkout root
-- `--sel4-dir DIR`: local seL4 source root
-- `--sel4-version VER`: expected seL4 version, initially `15.0.0`
 - `--kernel PATH`: explicit kernel artifact for `run`
 - `--initrd PATH`: explicit initrd artifact for `run`
 - `--qemu-arg ARG`: extra QEMU argument, repeatable

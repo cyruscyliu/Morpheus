@@ -205,9 +205,7 @@ function validateSel4Prerequisites(flags: Record<string, unknown>) {
   const microkitSdk = resolvePathValue(requireFlag(flags, 'microkit-sdk'));
   const toolchain = resolvePathValue(requireFlag(flags, 'toolchain'));
   const libvmmDir = resolvePathValue(requireFlag(flags, 'libvmm-dir'));
-  const sel4Dir = resolvePathValue(requireFlag(flags, 'sel4-dir'));
   const microkitVersion = String(flags['microkit-version'] || '');
-  const sel4Version = String(flags['sel4-version'] || MICROKIT_SEL4_VERSION);
 
   const checks = [
     {
@@ -238,13 +236,6 @@ function validateSel4Prerequisites(flags: Record<string, unknown>) {
       exists: fileExists(libvmmDir),
       detectedVersion: libvmmDir && fileExists(libvmmDir) ? detectVersion(libvmmDir) : null,
     },
-    {
-      name: 'sel4-dir',
-      path: sel4Dir,
-      exists: fileExists(sel4Dir),
-      detectedVersion: sel4Dir && fileExists(sel4Dir) ? detectVersion(sel4Dir) : null,
-      expectedVersion: sel4Version,
-    },
   ];
 
   for (const check of checks) {
@@ -271,8 +262,6 @@ function validateSel4Prerequisites(flags: Record<string, unknown>) {
     microkitVersion: microkitVersion || null,
     toolchain,
     libvmmDir,
-    sel4Dir,
-    sel4Version,
     board: String(flags.board || 'qemu_arm_virt'),
     qemuArgs: Array.isArray(flags['qemu-arg']) ? [...(flags['qemu-arg'] as string[])] : [],
     append: String(flags.append || ''),

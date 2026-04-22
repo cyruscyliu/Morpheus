@@ -37,7 +37,6 @@ test('prepare and run manage local sel4 state', async () => {
   const microkitSdk = path.join(depsDir, 'microkit-sdk');
   const toolchain = path.join(depsDir, 'arm-toolchain');
   const libvmmDir = path.join(depsDir, 'libvmm');
-  const sel4Dir = path.join(depsDir, 'sel4');
   const kernel = path.join(root, 'Image');
   const initrd = path.join(root, 'rootfs.cpio.gz');
 
@@ -54,7 +53,7 @@ test('prepare and run manage local sel4 state', async () => {
       '',
     ].join('\n'),
   );
-  for (const dir of [microkitSdk, toolchain, libvmmDir, sel4Dir]) {
+  for (const dir of [microkitSdk, toolchain, libvmmDir]) {
     fs.mkdirSync(dir, { recursive: true });
   }
   fs.mkdirSync(path.join(libvmmDir, 'examples', 'virtio'), { recursive: true });
@@ -71,7 +70,6 @@ test('prepare and run manage local sel4 state', async () => {
   fs.writeFileSync(path.join(microkitSdk, 'VERSION'), '1.4.1\n');
   fs.writeFileSync(path.join(toolchain, 'VERSION'), 'arm-toolchain\n');
   fs.writeFileSync(path.join(libvmmDir, 'VERSION'), 'libvmm-dev\n');
-  fs.writeFileSync(path.join(sel4Dir, 'VERSION'), '15.0.0\n');
   fs.writeFileSync(kernel, 'kernel');
   fs.writeFileSync(initrd, 'initrd');
 
@@ -94,10 +92,6 @@ test('prepare and run manage local sel4 state', async () => {
     toolchain,
     '--libvmm-dir',
     libvmmDir,
-    '--sel4-dir',
-    sel4Dir,
-    '--sel4-version',
-    '15.0.0',
   ]);
   assert.equal(prepare.status, 0, prepare.stdout || prepare.stderr);
   const preparePayload = JSON.parse(prepare.stdout.trim());

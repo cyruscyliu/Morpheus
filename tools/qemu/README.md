@@ -54,16 +54,18 @@ Use Morpheus when the executable should be a managed dependency for another
 tool:
 
 ```bash
-morpheus tool run --tool qemu --mode local --path ./hyperarm-workspace/tools/qemu/bin/qemu-system-aarch64 --json
+morpheus tool build --tool qemu --mode local --path ./hyperarm-workspace/tools/qemu/bin/qemu-system-aarch64 --json
 ```
 
-Or have Morpheus build it:
+Or have Morpheus build it into the workspace when the configured executable
+path does not exist yet:
 
 ```bash
-morpheus tool run \
+morpheus tool build \
   --tool qemu \
-  --mode build \
-  --build-dir-key aarch64-softmmu \
+  --mode local \
+  --qemu-version 8.2.7 \
+  --build-dir-key qemu-8.2.7-aarch64-softmmu \
   --target-list aarch64-softmmu \
   --json
 ```
@@ -80,14 +82,15 @@ morpheus tool run \
   `aarch64-softmmu`
 - `qemu build --configure-arg ARG`: repeatable extra configure argument
 
-Managed `morpheus tool run --tool qemu` supports two modes:
+Managed `morpheus tool build --tool qemu` supports placement modes:
 
-- `mode: local`: validate and register an existing executable
-- `mode: build`: fetch or reuse the configured source, unpack it into
-  `tools/qemu/src/`, stage a build copy under `tools/qemu/builds/`, then
-  configure, build, install, and register the executable
-- Build mode can use `tools.qemu.qemu-version` to fetch
-  `https://download.qemu.org/qemu-<version>.tar.xz`
+- `mode: local`: execute QEMU locally (no remote runner today)
+
+Within that placement mode, Morpheus picks the provisioning strategy:
+
+- if `tools.qemu.path` exists, register it as the `qemu-system-aarch64` artifact
+- otherwise, run `qemu build` to fetch/unpack/build/install into the workspace
+  and register the resulting executable
 
 ## JSON
 
@@ -98,7 +101,7 @@ Every command supports `--json`, including help and errors.
 - `qemu` owns local executable inspection
 - `qemu` owns fetch, unpack, source staging, and build/install for managed
   builds
-- `morpheus` owns `local` vs `build` mode orchestration
+- `morpheus` owns `local` vs `remote` placement and tool dependency wiring
 - `nvirsh` should consume the resolved executable path, not provision QEMU
 
 ## Smoke test

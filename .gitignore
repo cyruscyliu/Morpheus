@@ -24,3 +24,9 @@ tools/buildroot/.tmp-smoke-out/
 tmp/
 *.log
 morpheus.yaml
+
+# Repo-local workspace (example)
+hyperarm-workspace/tools/
+hyperarm-workspace/.morpheus/managed/runs/qemu-*.json
+hyperarm-workspace/.morpheus/managed/runs/microkit-sdk-*.json
+hyperarm-workspace/.morpheus/managed/runs/sel4-*.json

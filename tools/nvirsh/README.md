@@ -7,9 +7,9 @@ inspection, logs, stop, and cleanup. It does not own remote execution,
 workspace transport, or producer-specific artifact discovery.
 
 Before `nvirsh prepare`, stage existing local `sel4` dependencies into the
-workspace-local deps tree referenced by `morpheus.yaml`. When Morpheus manages
-the workflow, QEMU should come from the `qemu` tool dependency rather than a
-direct `tools.nvirsh.qemu` path.
+workspace-local tree referenced by `morpheus.yaml`. When Morpheus manages the
+workflow, QEMU, Microkit SDK, and `seL4` should come from managed tool
+dependencies rather than direct `tools.nvirsh.*` paths when possible.
 
 ## Quick start
 
@@ -168,8 +168,10 @@ nvirsh inspect --state-dir ./.nvirsh/sel4-dev --json
 - `nvirsh` stays local and artifact-driven
 - `morpheus` owns `morpheus.yaml` configuration
 - `morpheus` resolves the `qemu` tool dependency into a concrete executable
+- `morpheus` can resolve `microkit-sdk` and `sel4` tool dependencies into
+  concrete local directories
 - `morpheus` resolves producer artifacts, such as Buildroot outputs
-- `morpheus tool run --tool nvirsh` invokes `nvirsh` with concrete paths
+- `morpheus tool build --tool nvirsh` invokes `nvirsh` with concrete paths
 - `scripts/nvirsh/prepare-sel4-deps.mjs` stages existing local deps into the
   workspace-local paths declared in `morpheus.yaml`
 

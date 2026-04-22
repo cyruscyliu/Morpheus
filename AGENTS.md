@@ -29,8 +29,8 @@
   so `install:bin` can discover it automatically.
 - When updating a tool, update its skill and `tools/<tool>/README.md` in the
   same change.
-- When inspecting Morpheus-managed tool runs, prefer Morpheus `tool`
-  subcommands over direct remote shell access.
+- When inspecting Morpheus-managed tool runs (especially remote runs), use the
+  Morpheus `tool` subcommands instead of direct remote shell access.
 - For source-managing tools such as Buildroot and QEMU, prefer stable managed
   source paths under `<workspace>/tools/<tool>/src/`.
 - For those tools, keep reusable builds under

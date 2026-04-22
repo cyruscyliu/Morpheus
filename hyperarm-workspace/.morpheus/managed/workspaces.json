@@ -1,50 +1,8 @@
 [
   {
-    "root": "/home/debian/Projects/Morpheus/hyperarm-workspace",
     "mode": "local",
-    "directories": {
-      "root": {
-        "path": "/home/debian/Projects/Morpheus/hyperarm-workspace",
-        "exists": true,
-        "kind": "directory"
-      },
-      "tools": {
-        "path": "/home/debian/Projects/Morpheus/hyperarm-workspace/tools",
-        "exists": true,
-        "kind": "directory"
-      },
-      "downloads": {
-        "path": "/home/debian/Projects/Morpheus/hyperarm-workspace/downloads",
-        "exists": true,
-        "kind": "directory"
-      },
-      "sources": {
-        "path": "/home/debian/Projects/Morpheus/hyperarm-workspace/sources",
-        "exists": true,
-        "kind": "directory"
-      },
-      "builds": {
-        "path": "/home/debian/Projects/Morpheus/hyperarm-workspace/builds",
-        "exists": true,
-        "kind": "directory"
-      },
-      "runs": {
-        "path": "/home/debian/Projects/Morpheus/hyperarm-workspace/runs",
-        "exists": true,
-        "kind": "directory"
-      },
-      "cache": {
-        "path": "/home/debian/Projects/Morpheus/hyperarm-workspace/cache",
-        "exists": true,
-        "kind": "directory"
-      },
-      "tmp": {
-        "path": "/home/debian/Projects/Morpheus/hyperarm-workspace/tmp",
-        "exists": true,
-        "kind": "directory"
-      }
-    },
-    "registeredAt": "2026-04-21T07:28:34.103Z"
+    "root": "/home/debian/Projects/Morpheus/hyperarm-workspace",
+    "registeredAt": "2026-04-22T08:55:51.493Z"
   },
   {
     "root": "/tmp/morpheus-managed-1Mznfg/local-workspace",
@@ -188,6 +146,53 @@
     "registeredAt": "2026-04-21T08:51:00.549Z"
   },
   {
+    "root": "/tmp/morpheus-managed-864b09/local-workspace",
+    "mode": "local",
+    "directories": {
+      "root": {
+        "path": "/tmp/morpheus-managed-864b09/local-workspace",
+        "exists": true,
+        "kind": "directory"
+      },
+      "tools": {
+        "path": "/tmp/morpheus-managed-864b09/local-workspace/tools",
+        "exists": true,
+        "kind": "directory"
+      },
+      "downloads": {
+        "path": "/tmp/morpheus-managed-864b09/local-workspace/downloads",
+        "exists": true,
+        "kind": "directory"
+      },
+      "sources": {
+        "path": "/tmp/morpheus-managed-864b09/local-workspace/sources",
+        "exists": true,
+        "kind": "directory"
+      },
+      "builds": {
+        "path": "/tmp/morpheus-managed-864b09/local-workspace/builds",
+        "exists": true,
+        "kind": "directory"
+      },
+      "runs": {
+        "path": "/tmp/morpheus-managed-864b09/local-workspace/runs",
+        "exists": true,
+        "kind": "directory"
+      },
+      "cache": {
+        "path": "/tmp/morpheus-managed-864b09/local-workspace/cache",
+        "exists": true,
+        "kind": "directory"
+      },
+      "tmp": {
+        "path": "/tmp/morpheus-managed-864b09/local-workspace/tmp",
+        "exists": true,
+        "kind": "directory"
+      }
+    },
+    "registeredAt": "2026-04-22T09:06:23.533Z"
+  },
+  {
     "root": "/tmp/morpheus-managed-87zufS/local-workspace",
     "mode": "local",
     "directories": {
@@ -233,6 +238,53 @@
       }
     },
     "registeredAt": "2026-04-21T07:43:09.794Z"
+  },
+  {
+    "root": "/tmp/morpheus-managed-8tRcEO/local-workspace",
+    "mode": "local",
+    "directories": {
+      "root": {
+        "path": "/tmp/morpheus-managed-8tRcEO/local-workspace",
+        "exists": true,
+        "kind": "directory"
+      },
+      "tools": {
+        "path": "/tmp/morpheus-managed-8tRcEO/local-workspace/tools",
+        "exists": true,
+        "kind": "directory"
+      },
+      "downloads": {
+        "path": "/tmp/morpheus-managed-8tRcEO/local-workspace/downloads",
+        "exists": true,
+        "kind": "directory"
+      },
+      "sources": {
+        "path": "/tmp/morpheus-managed-8tRcEO/local-workspace/sources",
+        "exists": true,
+        "kind": "directory"
+      },
+      "builds": {
+        "path": "/tmp/morpheus-managed-8tRcEO/local-workspace/builds",
+        "exists": true,
+        "kind": "directory"
+      },
+      "runs": {
+        "path": "/tmp/morpheus-managed-8tRcEO/local-workspace/runs",
+        "exists": true,
+        "kind": "directory"
+      },
+      "cache": {
+        "path": "/tmp/morpheus-managed-8tRcEO/local-workspace/cache",
+        "exists": true,
+        "kind": "directory"
+      },
+      "tmp": {
+        "path": "/tmp/morpheus-managed-8tRcEO/local-workspace/tmp",
+        "exists": true,
+        "kind": "directory"
+      }
+    },
+    "registeredAt": "2026-04-22T09:02:24.600Z"
   },
   {
     "root": "/tmp/morpheus-managed-8V5cZM/local-workspace",
@@ -564,6 +616,147 @@
     "registeredAt": "2026-04-21T07:29:51.276Z"
   },
   {
+    "root": "/tmp/morpheus-managed-FIU7pp/local-workspace",
+    "mode": "local",
+    "directories": {
+      "root": {
+        "path": "/tmp/morpheus-managed-FIU7pp/local-workspace",
+        "exists": true,
+        "kind": "directory"
+      },
+      "tools": {
+        "path": "/tmp/morpheus-managed-FIU7pp/local-workspace/tools",
+        "exists": true,
+        "kind": "directory"
+      },
+      "downloads": {
+        "path": "/tmp/morpheus-managed-FIU7pp/local-workspace/downloads",
+        "exists": true,
+        "kind": "directory"
+      },
+      "sources": {
+        "path": "/tmp/morpheus-managed-FIU7pp/local-workspace/sources",
+        "exists": true,
+        "kind": "directory"
+      },
+      "builds": {
+        "path": "/tmp/morpheus-managed-FIU7pp/local-workspace/builds",
+        "exists": true,
+        "kind": "directory"
+      },
+      "runs": {
+        "path": "/tmp/morpheus-managed-FIU7pp/local-workspace/runs",
+        "exists": true,
+        "kind": "directory"
+      },
+      "cache": {
+        "path": "/tmp/morpheus-managed-FIU7pp/local-workspace/cache",
+        "exists": true,
+        "kind": "directory"
+      },
+      "tmp": {
+        "path": "/tmp/morpheus-managed-FIU7pp/local-workspace/tmp",
+        "exists": true,
+        "kind": "directory"
+      }
+    },
+    "registeredAt": "2026-04-22T09:06:50.451Z"
+  },
+  {
+    "root": "/tmp/morpheus-managed-gDxRsq/local-workspace",
+    "mode": "local",
+    "directories": {
+      "root": {
+        "path": "/tmp/morpheus-managed-gDxRsq/local-workspace",
+        "exists": true,
+        "kind": "directory"
+      },
+      "tools": {
+        "path": "/tmp/morpheus-managed-gDxRsq/local-workspace/tools",
+        "exists": true,
+        "kind": "directory"
+      },
+      "downloads": {
+        "path": "/tmp/morpheus-managed-gDxRsq/local-workspace/downloads",
+        "exists": true,
+        "kind": "directory"
+      },
+      "sources": {
+        "path": "/tmp/morpheus-managed-gDxRsq/local-workspace/sources",
+        "exists": true,
+        "kind": "directory"
+      },
+      "builds": {
+        "path": "/tmp/morpheus-managed-gDxRsq/local-workspace/builds",
+        "exists": true,
+        "kind": "directory"
+      },
+      "runs": {
+        "path": "/tmp/morpheus-managed-gDxRsq/local-workspace/runs",
+        "exists": true,
+        "kind": "directory"
+      },
+      "cache": {
+        "path": "/tmp/morpheus-managed-gDxRsq/local-workspace/cache",
+        "exists": true,
+        "kind": "directory"
+      },
+      "tmp": {
+        "path": "/tmp/morpheus-managed-gDxRsq/local-workspace/tmp",
+        "exists": true,
+        "kind": "directory"
+      }
+    },
+    "registeredAt": "2026-04-22T09:02:46.208Z"
+  },
+  {
+    "root": "/tmp/morpheus-managed-hAIap6/local-workspace",
+    "mode": "local",
+    "directories": {
+      "root": {
+        "path": "/tmp/morpheus-managed-hAIap6/local-workspace",
+        "exists": true,
+        "kind": "directory"
+      },
+      "tools": {
+        "path": "/tmp/morpheus-managed-hAIap6/local-workspace/tools",
+        "exists": true,
+        "kind": "directory"
+      },
+      "downloads": {
+        "path": "/tmp/morpheus-managed-hAIap6/local-workspace/downloads",
+        "exists": true,
+        "kind": "directory"
+      },
+      "sources": {
+        "path": "/tmp/morpheus-managed-hAIap6/local-workspace/sources",
+        "exists": true,
+        "kind": "directory"
+      },
+      "builds": {
+        "path": "/tmp/morpheus-managed-hAIap6/local-workspace/builds",
+        "exists": true,
+        "kind": "directory"
+      },
+      "runs": {
+        "path": "/tmp/morpheus-managed-hAIap6/local-workspace/runs",
+        "exists": true,
+        "kind": "directory"
+      },
+      "cache": {
+        "path": "/tmp/morpheus-managed-hAIap6/local-workspace/cache",
+        "exists": true,
+        "kind": "directory"
+      },
+      "tmp": {
+        "path": "/tmp/morpheus-managed-hAIap6/local-workspace/tmp",
+        "exists": true,
+        "kind": "directory"
+      }
+    },
+    "registeredAt": "2026-04-22T08:44:55.465Z"
+  },
+  {
     "root": "/tmp/morpheus-managed-hp7rpC/local-workspace",
     "mode": "local",
     "directories": {
@@ -609,6 +802,53 @@
       }
     },
     "registeredAt": "2026-04-21T09:10:35.365Z"
+  },
+  {
+    "root": "/tmp/morpheus-managed-INR2iC/local-workspace",
+    "mode": "local",
+    "directories": {
+      "root": {
+        "path": "/tmp/morpheus-managed-INR2iC/local-workspace",
+        "exists": true,
+        "kind": "directory"
+      },
+      "tools": {
+        "path": "/tmp/morpheus-managed-INR2iC/local-workspace/tools",
+        "exists": true,
+        "kind": "directory"
+      },
+      "downloads": {
+        "path": "/tmp/morpheus-managed-INR2iC/local-workspace/downloads",
+        "exists": true,
+        "kind": "directory"
+      },
+      "sources": {
+        "path": "/tmp/morpheus-managed-INR2iC/local-workspace/sources",
+        "exists": true,
+        "kind": "directory"
+      },
+      "builds": {
+        "path": "/tmp/morpheus-managed-INR2iC/local-workspace/builds",
+        "exists": true,
+        "kind": "directory"
+      },
+      "runs": {
+        "path": "/tmp/morpheus-managed-INR2iC/local-workspace/runs",
+        "exists": true,
+        "kind": "directory"
+      },
+      "cache": {
+        "path": "/tmp/morpheus-managed-INR2iC/local-workspace/cache",
+        "exists": true,
+        "kind": "directory"
+      },
+      "tmp": {
+        "path": "/tmp/morpheus-managed-INR2iC/local-workspace/tmp",
+        "exists": true,
+        "kind": "directory"
+      }
+    },
+    "registeredAt": "2026-04-22T09:05:01.486Z"
   },
   {
     "root": "/tmp/morpheus-managed-lc1ifc/local-workspace",
@@ -1034,6 +1274,53 @@
     "registeredAt": "2026-04-21T08:04:04.875Z"
   },
   {
+    "root": "/tmp/morpheus-managed-Urfl8S/local-workspace",
+    "mode": "local",
+    "directories": {
+      "root": {
+        "path": "/tmp/morpheus-managed-Urfl8S/local-workspace",
+        "exists": true,
+        "kind": "directory"
+      },
+      "tools": {
+        "path": "/tmp/morpheus-managed-Urfl8S/local-workspace/tools",
+        "exists": true,
+        "kind": "directory"
+      },
+      "downloads": {
+        "path": "/tmp/morpheus-managed-Urfl8S/local-workspace/downloads",
+        "exists": true,
+        "kind": "directory"
+      },
+      "sources": {
+        "path": "/tmp/morpheus-managed-Urfl8S/local-workspace/sources",
+        "exists": true,
+        "kind": "directory"
+      },
+      "builds": {
+        "path": "/tmp/morpheus-managed-Urfl8S/local-workspace/builds",
+        "exists": true,
+        "kind": "directory"
+      },
+      "runs": {
+        "path": "/tmp/morpheus-managed-Urfl8S/local-workspace/runs",
+        "exists": true,
+        "kind": "directory"
+      },
+      "cache": {
+        "path": "/tmp/morpheus-managed-Urfl8S/local-workspace/cache",
+        "exists": true,
+        "kind": "directory"
+      },
+      "tmp": {
+        "path": "/tmp/morpheus-managed-Urfl8S/local-workspace/tmp",
+        "exists": true,
+        "kind": "directory"
+      }
+    },
+    "registeredAt": "2026-04-22T09:04:43.062Z"
+  },
+  {
     "root": "/tmp/morpheus-managed-yd9gji/local-workspace",
     "mode": "local",
     "directories": {
@@ -1126,7 +1413,7 @@
         "kind": "directory"
       }
     },
-    "registeredAt": "2026-04-21T09:48:52.803Z"
+    "registeredAt": "2026-04-22T09:07:04.830Z"
   },
   {
     "root": "/home/debian/hyperarm-workspace",

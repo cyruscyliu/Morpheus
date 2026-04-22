@@ -2,12 +2,14 @@
 // @ts-nocheck
 
 const path = require("path");
+const { handleConfigCommand } = require("./config-check");
 const { getContracts } = require("./contracts");
 const { handleManagedRunCommand } = require("./remote");
 const { handleRunsCommand } = require("./runs");
 const { handleToolCommand } = require("./tools");
 const { handleWorkspaceCommand } = require("./workspace");
 const { workspacePaths } = require("./paths");
+const { writeStdout, writeStdoutLine, writeStderrLine } = require("./io");
 
 function parseArgs(argv) {
   const positionals = [];
@@ -39,18 +41,24 @@ function parseArgs(argv) {
 }
 
 function printJson(value) {
-  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+  writeStdoutLine(JSON.stringify(value, null, 2));
 }
 
 function usage() {
-  process.stdout.write(
+  writeStdout(
     [
       "Usage:",
       "  node apps/morpheus/dist/cli.js workspace create [--json]",
       "  node apps/morpheus/dist/cli.js workspace show [--json]",
+      "  node apps/morpheus/dist/cli.js config check [--json]",
       "  node apps/morpheus/dist/cli.js tool <subcommand> [--json]",
       "  node apps/morpheus/dist/cli.js contracts",
       "  node apps/morpheus/dist/cli.js runs list [--json] [--run-root <path>]",
+      "  node apps/morpheus/dist/cli.js runs list --managed [--json] [--workspace DIR] [--ssh TARGET]",
+      "  node apps/morpheus/dist/cli.js runs inspect --id RUN_ID [--json]",
+      "  node apps/morpheus/dist/cli.js runs logs --id RUN_ID [--follow] [--json]",
+      "  node apps/morpheus/dist/cli.js runs fetch --id RUN_ID --dest DIR --path RUN_PATH [--path RUN_GLOB ...] [--json]",
+      "  node apps/morpheus/dist/cli.js runs remove --id RUN_ID [--json]",
       "  node apps/morpheus/dist/cli.js runs show <run-id> [--json] [--run-root <path>]",
       "  node apps/morpheus/dist/cli.js runs export-html [<run-id>] [--out <path>] [--run-root <path>]"
     ].join("\n") + "\n"
@@ -63,6 +71,19 @@ function argvWithoutCommand(argv, command) {
     return [...argv];
   }
   return [...argv.slice(0, index), ...argv.slice(index + 1)];
+}
+
+function extractSubcommand(argv) {
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (!token.startsWith("--")) {
+      return {
+        subcommand: token,
+        rest: [...argv.slice(0, index), ...argv.slice(index + 1)]
+      };
+    }
+  }
+  return { subcommand: null, rest: [...argv] };
 }
 
 async function main() {
@@ -85,8 +106,25 @@ async function main() {
     return handleWorkspaceCommand(argvWithoutCommand(argv, "workspace"));
   }
 
+  if (command === "config") {
+    return handleConfigCommand(argvWithoutCommand(argv, "config"));
+  }
+
   if (command === "runs") {
-    return handleRunsCommand(argvWithoutCommand(argv, "runs"), {
+    const runsArgv = argvWithoutCommand(argv, "runs");
+    const { subcommand: runsCommand, rest } = extractSubcommand(runsArgv);
+    const managedAlias = runsCommand === "list" && rest.includes("--managed");
+    const managedSubcommands = new Set(["inspect", "logs", "fetch", "remove"]);
+    if (managedAlias) {
+      return await handleManagedRunCommand(
+        "list",
+        rest.filter((token) => token !== "--managed")
+      );
+    }
+    if (managedSubcommands.has(runsCommand)) {
+      return await handleManagedRunCommand(runsCommand, rest);
+    }
+    return handleRunsCommand([runsCommand, ...rest].filter(Boolean), {
       runRoot: paths.runs,
       outputRoot: path.join(paths.root, "runs-view")
     });
@@ -115,7 +153,7 @@ async function main() {
         }
       });
     } else {
-      process.stderr.write(`${error.message}\n`);
+      writeStderrLine(error.message);
     }
     process.exitCode = 1;
   }

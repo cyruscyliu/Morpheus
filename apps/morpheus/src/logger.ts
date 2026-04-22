@@ -1,4 +1,5 @@
 // @ts-nocheck
+const fs = require("node:fs");
 
 function isVerboseEnabled() {
   return (
@@ -19,7 +20,7 @@ function logDebug(scope, message, fields) {
   if (!isVerboseEnabled()) {
     return;
   }
-  process.stderr.write(`[morpheus:${scope}] ${message}${formatFields(fields)}\n`);
+  fs.writeSync(2, `[morpheus:${scope}] ${message}${formatFields(fields)}\n`);
 }
 
 module.exports = {

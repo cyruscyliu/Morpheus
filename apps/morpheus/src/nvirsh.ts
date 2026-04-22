@@ -274,11 +274,23 @@ function parseRunOptions(flags) {
     target: flags.target || value.target || "sel4",
     name: flags.name || value.name || runId,
     qemu: resolveDependencyArtifact(workspace, toolConfig.baseDir, flags.qemu, dependencies.qemu || value.qemu, "qemu"),
-    microkitSdk: flags["microkit-sdk"] || resolveRuntimePath(toolConfig.baseDir, value["microkit-sdk"] || value.microkitSdk),
+    microkitSdk: resolveDependencyArtifact(
+      workspace,
+      toolConfig.baseDir,
+      flags["microkit-sdk"],
+      dependencies["microkit-sdk"] || dependencies.microkitSdk || value["microkit-sdk"] || value.microkitSdk,
+      "microkit-sdk"
+    ),
     microkitVersion: flags["microkit-version"] || value["microkit-version"] || value.microkitVersion || null,
     toolchain: flags.toolchain || resolveRuntimePath(toolConfig.baseDir, value.toolchain),
     libvmmDir: flags["libvmm-dir"] || resolveRuntimePath(toolConfig.baseDir, value["libvmm-dir"] || value.libvmmDir),
-    sel4Dir: flags["sel4-dir"] || resolveRuntimePath(toolConfig.baseDir, value["sel4-dir"] || value.sel4Dir),
+    sel4Dir: resolveDependencyArtifact(
+      workspace,
+      toolConfig.baseDir,
+      flags["sel4-dir"],
+      dependencies.sel4 || dependencies["sel4-dir"] || value.sel4 || value["sel4-dir"] || value.sel4Dir,
+      "sel4"
+    ),
     sel4Version: flags["sel4-version"] || value["sel4-version"] || value.sel4Version || "15.0.0",
     board: flags.board || value.board || "qemu_arm_virt",
     append: flags.append || value.append || null,
@@ -291,8 +303,10 @@ function parseRunOptions(flags) {
     initrd,
     dependencies: {
       qemu: dependencies.qemu || value.qemu || null,
+      microkitSdk: dependencies["microkit-sdk"] || dependencies.microkitSdk || value["microkit-sdk"] || value.microkitSdk || null,
       kernel: dependencies.kernel || null,
-      initrd: dependencies.initrd || null
+      initrd: dependencies.initrd || null,
+      sel4: dependencies.sel4 || dependencies["sel4-dir"] || value.sel4 || value["sel4-dir"] || value.sel4Dir || null
     },
     createdAt: nowIso()
   };

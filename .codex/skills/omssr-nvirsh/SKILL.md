@@ -100,4 +100,6 @@ node tools/nvirsh/dist/index.js run \
 - Keep `nvirsh` local-only.
 - Keep stable config in `morpheus.yaml` when Morpheus is involved.
 - Pass explicit runtime artifact paths to `nvirsh`.
+- Prefer managed Morpheus tool dependencies for `qemu`, `microkit-sdk`, and
+  `sel4` when those artifacts are already registered.
 - Prefer Morpheus `tool` subcommands when the workflow depends on other tools.

@@ -1,7 +1,4 @@
 {
-  "files.exclude": {
-    "hyperarm-workspace": true
-  },
   "search.exclude": {
     "hyperarm-workspace": true
   },

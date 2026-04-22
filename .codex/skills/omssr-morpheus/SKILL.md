@@ -1,6 +1,6 @@
 ---
 name: morpheus
-description: Manage Morpheus workspace metadata, managed local and remote tool runs, logs, manifests, explicit artifact fetches, and Morpheus-managed buildroot/qemu/nvirsh workflows. Use when the user needs Morpheus-managed tool runs, local or remote workspaces, or Morpheus app behavior.
+description: Manage Morpheus workspace metadata, managed local and remote tool runs, logs, manifests, explicit artifact fetches, and Morpheus-managed buildroot/qemu/nvirsh workflows. Use when the user needs Morpheus-managed tool builds and run inspection.
 license: MIT
 compatibility: Designed for Codex CLI (or similar products)
 ---
@@ -15,7 +15,8 @@ Use this skill when you need to work with the `morpheus` app in this repo.
 It owns workspace metadata, managed local and remote runs, manifests, logs,
 and explicit fetch behavior for supported tools.
 
-Managed tools currently include Buildroot, local `qemu`, and local `nvirsh`.
+Managed tools currently include Buildroot, local `qemu`, local
+`microkit-sdk`, local `sel4`, and local `nvirsh`.
 
 ## First Steps
 
@@ -67,29 +68,41 @@ artifacts:
 workspace:
   root: ./workflow-workspace
 tools:
+  microkit-sdk:
+    mode: local
+    path: ./deps/microkit-sdk
+    microkit-version: 1.4.1
   qemu:
     mode: local
     path: ./workflow-workspace/tools/qemu/bin/qemu-system-aarch64
+  sel4:
+    mode: local
+    path: ./deps/seL4
+    sel4-version: 15.0.0
   nvirsh:
     mode: local
     target: sel4
     name: sel4-dev
-    microkit-sdk: ./deps/microkit-sdk
     microkit-version: 1.4.1
     toolchain: ./deps/arm-gnu-toolchain
     libvmm-dir: ./deps/libvmm
-    sel4-dir: ./deps/seL4
     sel4-version: 15.0.0
     dependencies:
       qemu:
         tool: qemu
         artifact: qemu-system-aarch64
+      microkit-sdk:
+        tool: microkit-sdk
+        artifact: sdk-dir
       kernel:
         tool: buildroot
         artifact: images/Image
       initrd:
         tool: buildroot
         artifact: images/rootfs.cpio.gz
+      sel4:
+        tool: sel4
+        artifact: source-dir
 ```
 
 When the deps already exist somewhere else on disk, materialize them into the
@@ -107,10 +120,16 @@ node scripts/nvirsh/prepare-sel4-deps.mjs \
 
 This script uses symlinks by default and does not download anything.
 
-Register the workspace-local QEMU executable as a managed dependency with:
+Register the workspace-local dependencies as managed artifacts with:
 
 ```bash
-node apps/morpheus/dist/cli.js tool run \
+node apps/morpheus/dist/cli.js tool build \
+  --tool microkit-sdk \
+  --json
+node apps/morpheus/dist/cli.js tool build \
+  --tool sel4 \
+  --json
+node apps/morpheus/dist/cli.js tool build \
   --tool qemu \
   --json
 ```
@@ -118,9 +137,9 @@ node apps/morpheus/dist/cli.js tool run \
 Or build the executable into the workspace from a local source tree:
 
 ```bash
-node apps/morpheus/dist/cli.js tool run \
+node apps/morpheus/dist/cli.js tool build \
   --tool qemu \
-  --mode build \
+  --mode local \
   --source ./workflow-workspace/tools/qemu/src/qemu \
   --target-list aarch64-softmmu \
   --json
@@ -130,13 +149,13 @@ Typical flow:
 
 ```bash
 node apps/morpheus/dist/cli.js workspace create --json
-node apps/morpheus/dist/cli.js tool run \
+node apps/morpheus/dist/cli.js tool build \
   --tool buildroot \
   --mode remote \
   --source tools/buildroot/test/fixtures/minimal-buildroot \
   --defconfig qemu_x86_64_defconfig \
   --json
-node apps/morpheus/dist/cli.js tool inspect \
+node apps/morpheus/dist/cli.js runs inspect \
   --id buildroot-20260419-abcdef12 \
   --json
 ```
@@ -148,18 +167,17 @@ The main user-facing commands are:
 ```text
 morpheus workspace create
 morpheus workspace show
-morpheus tool run
-morpheus tool runs
-morpheus tool inspect
-morpheus tool logs
-morpheus tool fetch
-morpheus tool remove
+morpheus tool build
 morpheus runs list
+morpheus runs list --managed
+morpheus runs inspect
+morpheus runs logs
+morpheus runs fetch
+morpheus runs remove
 morpheus runs show
 morpheus runs export-html
 morpheus tool list
-morpheus tool verify
-morpheus tool resolve
+morpheus tool list --verify
 morpheus contracts
 ```
 
@@ -167,17 +185,21 @@ Use these commands by intent:
 
 - `workspace create`: create the standard local workspace layout.
 - `workspace show`: inspect workspace roots and their current presence.
-- `tool run`: start a managed tool run in local or remote mode.
-- `tool run --tool nvirsh`: resolve configured runtime dependencies and launch
+- `tool build`: start a managed tool run in local or remote mode.
+- `tool build --tool nvirsh`: resolve configured runtime dependencies and launch
   local `nvirsh` from concrete artifact paths.
-- `tool run --tool qemu`: register a local QEMU executable as a managed
+- `tool build --tool microkit-sdk`: register or build a managed Microkit SDK
+  directory for downstream consumers.
+- `tool build --tool qemu`: register a local QEMU executable as a managed
   dependency artifact, or build and register one from a local source tree.
-- `tool runs`: list managed runs, optionally scoped by workspace or SSH target.
-- `tool inspect`: inspect managed manifest state by run id and reconcile stale
+- `tool build --tool sel4`: register or build a managed `seL4` source directory
+  for downstream consumers.
+- `runs list --managed`: list managed runs, optionally scoped by workspace or SSH target.
+- `runs inspect`: inspect managed manifest state by run id and reconcile stale
   remote runs when final state was not written back cleanly.
-- `tool logs`: stream or read managed logs by run id.
-- `tool fetch`: copy explicit paths from a managed run.
-- `tool remove`: remove a managed run by id.
+- `runs logs`: stream or read managed logs by run id.
+- `runs fetch`: copy explicit paths from a managed run.
+- `runs remove`: remove a managed run by id.
 
 ## Managed Workspace Model
 
@@ -228,7 +250,7 @@ Expected managed layout for Buildroot:
 Use explicit SSH targets with host and optional port for remote mode:
 
 ```bash
-node apps/morpheus/dist/cli.js tool run \
+node apps/morpheus/dist/cli.js tool build \
   --tool buildroot \
   --mode remote \
   --ssh builder@example.com:2222 \
@@ -240,7 +262,7 @@ node apps/morpheus/dist/cli.js tool run \
 Use local mode when Morpheus should manage the same tool in a local workspace:
 
 ```bash
-node apps/morpheus/dist/cli.js tool run \
+node apps/morpheus/dist/cli.js tool build \
   --tool buildroot \
   --mode local \
   --workspace workflow-workspace \
@@ -253,7 +275,7 @@ Use Morpheus-managed `nvirsh` when the stable configuration lives in
 `morpheus.yaml` and Morpheus should resolve producer artifacts first:
 
 ```bash
-node apps/morpheus/dist/cli.js tool run \
+node apps/morpheus/dist/cli.js tool build \
   --tool nvirsh \
   --json
 ```
@@ -281,8 +303,8 @@ Prefer `--json` for automation.
 
 - Use `buildroot` directly for unmanaged Buildroot work.
 - Use `nvirsh` directly for unmanaged local target lifecycle work.
-- Use `morpheus tool run --tool buildroot --mode local|remote` for managed runs.
-- Use `morpheus tool run --tool nvirsh` when Morpheus must resolve runtime
+- Use `morpheus tool build --tool buildroot --mode local|remote` for managed runs.
+- Use `morpheus tool build --tool nvirsh` when Morpheus must resolve runtime
   dependencies from managed producer outputs.
-- Use Morpheus `tool` subcommands for managed run lifecycle work.
+- Use Morpheus `runs` subcommands for managed run lifecycle work.
 - Do not assume `buildroot remote-*` exists.

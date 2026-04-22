@@ -262,7 +262,7 @@ function applyConfigDefaults(flags, options) {
   const next = { ...flags };
   const allowGlobalRemote = Boolean(options && options.allowGlobalRemote);
   const allowToolDefaults = Boolean(options && options.allowToolDefaults);
-  const toolDisallowsRemote = next.tool === "qemu" || next.tool === "nvirsh";
+  const toolDisallowsRemote = ["microkit-sdk", "qemu", "nvirsh", "sel4"].includes(next.tool);
 
   let workspaceEntry = null;
   if (next.workspace) {

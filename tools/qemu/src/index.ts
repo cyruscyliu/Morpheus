@@ -24,11 +24,11 @@ class CliError extends Error {
 }
 
 function emitJson(value: unknown) {
-  process.stdout.write(`${JSON.stringify(value)}\n`);
+  fs.writeSync(1, `${JSON.stringify(value)}\n`);
 }
 
 function emitText(value: string) {
-  process.stdout.write(`${value}\n`);
+  fs.writeSync(1, `${value}\n`);
 }
 
 function parseArgv(argv: string[]) {

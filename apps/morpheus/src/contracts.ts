@@ -9,16 +9,15 @@ const MORPHEUS_APP_CONTRACT = {
   commands: [
     "workspace create",
     "workspace show",
-    "tool run",
-    "tool runs",
-    "tool inspect",
-    "tool logs",
-    "tool fetch",
-    "tool remove",
+    "config check",
+    "tool build",
     "tool list",
-    "tool verify",
-    "tool resolve",
     "runs list",
+    "runs list --managed",
+    "runs inspect",
+    "runs logs",
+    "runs fetch",
+    "runs remove",
     "runs show",
     "runs export-html",
     "contracts"
@@ -34,13 +33,13 @@ const MANAGED_RUNS_CONTRACT = {
   type: "management",
   description: "Manage single-tool local and remote runs with stable Morpheus metadata",
   commands: [
-    "tool run --tool buildroot --mode local",
-    "tool run --tool buildroot --mode remote",
-    "tool runs",
-    "tool inspect --id <run-id>",
-    "tool logs --id <run-id>",
-    "tool fetch --id <run-id>",
-    "tool remove --id <run-id>"
+    "tool build --tool buildroot --mode local",
+    "tool build --tool buildroot --mode remote",
+    "runs list --managed",
+    "runs inspect --id <run-id>",
+    "runs logs --id <run-id>",
+    "runs fetch --id <run-id>",
+    "runs remove --id <run-id>"
   ],
   directToolCliBoundary: "direct tool CLIs remain available as unmanaged paths",
   modes: ["local", "remote"],
@@ -86,8 +85,7 @@ const TOOL_CATALOG_CONTRACT = {
   description: "Discover repo-local tool descriptors and verify their entrypoints and wrappers",
   commands: [
     "tool list",
-    "tool verify",
-    "tool resolve"
+    "tool list --verify"
   ]
 };
 

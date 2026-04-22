@@ -1,0 +1,5 @@
+{
+  "name": "sel4",
+  "runtime": "node",
+  "entry": "dist/index.js"
+}

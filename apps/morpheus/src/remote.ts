@@ -10,18 +10,27 @@ const {
   removeManagedRun,
   listManagedRuns
 } = require("./managed-state");
+const { runManagedMicrokitSdk } = require("./microkit-sdk");
 const { runManagedNvirsh } = require("./nvirsh");
 const { runManagedQemu } = require("./qemu");
+const { runManagedSel4 } = require("./sel4");
 const { applyConfigDefaults, resolveLocalPath } = require("./config");
 const { logDebug } = require("./logger");
+const { writeStdout, writeStdoutLine } = require("./io");
 
 const BUILDROOT_TOOL = "buildroot";
+const MICROKIT_SDK_TOOL = "microkit-sdk";
 const QEMU_TOOL = "qemu";
 const NVIRSH_TOOL = "nvirsh";
+const SEL4_TOOL = "sel4";
 const MANAGED_TOOL_ADAPTERS = {
   [BUILDROOT_TOOL]: {
     name: BUILDROOT_TOOL,
     modes: ["local", "remote"]
+  },
+  [MICROKIT_SDK_TOOL]: {
+    name: MICROKIT_SDK_TOOL,
+    modes: ["local"]
   },
   [QEMU_TOOL]: {
     name: QEMU_TOOL,
@@ -29,6 +38,10 @@ const MANAGED_TOOL_ADAPTERS = {
   },
   [NVIRSH_TOOL]: {
     name: NVIRSH_TOOL,
+    modes: ["local"]
+  },
+  [SEL4_TOOL]: {
+    name: SEL4_TOOL,
     modes: ["local"]
   }
 };
@@ -91,16 +104,17 @@ function parseRunArgs(argv) {
 function managedRunUsage() {
   return [
     "Usage:",
-    "  node apps/morpheus/dist/cli.js tool run --tool buildroot --mode local --workspace DIR (--source DIR | --buildroot-version VER) [--defconfig NAME] [--patch-dir DIR] [--reuse-build-dir] [--build-dir-key KEY] [--json]",
-    "  node apps/morpheus/dist/cli.js tool run --tool buildroot --mode remote --ssh TARGET --workspace DIR (--source DIR | --buildroot-version VER) [--defconfig NAME] [--patch-dir DIR] [--reuse-build-dir] [--build-dir-key KEY] [--detach] [--json]",
-    "  node apps/morpheus/dist/cli.js tool run --tool qemu --mode local --workspace DIR --path PATH [--json]",
-    "  node apps/morpheus/dist/cli.js tool run --tool qemu --mode build --workspace DIR --source DIR [--build-dir-key KEY] [--target-list NAME ...] [--configure-arg ARG ...] [--json]",
-    "  node apps/morpheus/dist/cli.js tool run --tool nvirsh --mode local --workspace DIR [--target sel4] [--json]",
-    "  node apps/morpheus/dist/cli.js tool runs [--workspace DIR] [--ssh TARGET] [--json]",
-    "  node apps/morpheus/dist/cli.js tool inspect --id RUN_ID [--json]",
-    "  node apps/morpheus/dist/cli.js tool logs --id RUN_ID [--follow] [--json]",
-    "  node apps/morpheus/dist/cli.js tool fetch --id RUN_ID --dest DIR --path RUN_PATH [--path RUN_GLOB ...] [--json]",
-    "  node apps/morpheus/dist/cli.js tool remove --id RUN_ID [--json]"
+    "  node apps/morpheus/dist/cli.js tool build --tool buildroot --mode local --workspace DIR (--source DIR | --buildroot-version VER) [--defconfig NAME] [--patch-dir DIR] [--reuse-build-dir] [--build-dir-key KEY] [--json]",
+    "  node apps/morpheus/dist/cli.js tool build --tool buildroot --mode remote --ssh TARGET --workspace DIR (--source DIR | --buildroot-version VER) [--defconfig NAME] [--patch-dir DIR] [--reuse-build-dir] [--build-dir-key KEY] [--detach] [--json]",
+    "  node apps/morpheus/dist/cli.js tool build --tool microkit-sdk --mode local --workspace DIR (--path PATH | --microkit-version VER) [--archive-url URL] [--json]",
+    "  node apps/morpheus/dist/cli.js tool build --tool qemu --mode local --workspace DIR (--path PATH | --qemu-version VER) [--archive-url URL] [--build-dir-key KEY] [--target-list NAME ...] [--configure-arg ARG ...] [--json]",
+    "  node apps/morpheus/dist/cli.js tool build --tool nvirsh --mode local --workspace DIR [--target sel4] [--json]",
+    "  node apps/morpheus/dist/cli.js tool build --tool sel4 --mode local --workspace DIR (--path PATH | --sel4-version VER) [--archive-url URL] [--git-url URL] [--git-ref REF] [--json]",
+    "  node apps/morpheus/dist/cli.js runs list --managed [--workspace DIR] [--ssh TARGET] [--json]",
+    "  node apps/morpheus/dist/cli.js runs inspect --id RUN_ID [--json]",
+    "  node apps/morpheus/dist/cli.js runs logs --id RUN_ID [--follow] [--json]",
+    "  node apps/morpheus/dist/cli.js runs fetch --id RUN_ID --dest DIR --path RUN_PATH [--path RUN_GLOB ...] [--json]",
+    "  node apps/morpheus/dist/cli.js runs remove --id RUN_ID [--json]"
   ].join("\n");
 }
 
@@ -413,11 +427,11 @@ function normalizeSpawnResult(result) {
 }
 
 function emitJson(value) {
-  process.stdout.write(`${JSON.stringify(value)}\n`);
+  writeStdoutLine(JSON.stringify(value));
 }
 
 function emitText(value) {
-  process.stdout.write(`${value}\n`);
+  writeStdoutLine(value);
 }
 
 function writeJson(filePath, value) {
@@ -451,7 +465,7 @@ function resolveManagedTool(tool) {
 }
 
 function requireManagedTool(flags, command) {
-  const tool = requireFlag(flags, "tool", `${command} requires --tool buildroot|nvirsh`);
+  const tool = requireFlag(flags, "tool", `${command} requires --tool buildroot|microkit-sdk|qemu|nvirsh|sel4`);
   return resolveManagedTool(tool);
 }
 
@@ -540,10 +554,10 @@ function parseBuildrootRunOptions(flags) {
 }
 
 function parseExistingRunOptions(flags, command) {
-  const tool = flags.tool || BUILDROOT_TOOL;
-  resolveManagedTool(tool);
   const id = requireFlag(flags, "id", `${command} requires --id RUN_ID`);
   const record = readManagedRun(id);
+  const tool = flags.tool || (record ? record.tool : BUILDROOT_TOOL);
+  resolveManagedTool(tool);
   const ssh = flags.ssh ? parseSshTarget(flags.ssh) : null;
   return {
     workspace: flags.workspace || (record ? record.workspace : null),
@@ -1015,7 +1029,7 @@ tar -C ${shellQuote(stagingDir)} -cJf ${shellQuote(patchedTarball)} linux-${vers
   const result = runCommand("bash", ["-lc", script], { env: { ...process.env, ...options.env } });
   appendLog(logFile, result);
   if (!jsonMode) {
-    process.stdout.write(result.stdout);
+    writeStdout(result.stdout);
     process.stderr.write(result.stderr);
   }
   if (result.exitCode !== 0) {
@@ -1042,7 +1056,7 @@ function applyLocalConfigFragment(source, outputDir, fragmentLines, logFile, jso
   const result = runCommand("make", ["-C", source, `O=${outputDir}`, "olddefconfig"], { env });
   appendLog(logFile, result);
   if (!jsonMode) {
-    process.stdout.write(result.stdout);
+    writeStdout(result.stdout);
     process.stderr.write(result.stderr);
   }
   return result;
@@ -1179,7 +1193,7 @@ function runLocalBuildroot(options) {
     const defconfig = runCommand("make", ["-C", source, `O=${outputDir}`, options.defconfig], { env });
     appendLog(logFile, defconfig);
     if (!options.json) {
-      process.stdout.write(defconfig.stdout);
+      writeStdout(defconfig.stdout);
       process.stderr.write(defconfig.stderr);
     }
     if (defconfig.exitCode !== 0) {
@@ -1207,7 +1221,7 @@ function runLocalBuildroot(options) {
     const build = runCommand("make", ["-C", source, `O=${outputDir}`, ...makeArgs, ...options.forwarded], { env });
     appendLog(logFile, build);
     if (!options.json) {
-      process.stdout.write(build.stdout);
+      writeStdout(build.stdout);
       process.stderr.write(build.stderr);
     }
     exitCode = build.exitCode;
@@ -1507,11 +1521,17 @@ async function runRemoteBuildroot(options) {
 
 async function runManagedRun(flags) {
   const adapter = requireManagedTool(flags, "run");
+  if (adapter.name === MICROKIT_SDK_TOOL) {
+    return runManagedMicrokitSdk(flags);
+  }
   if (adapter.name === QEMU_TOOL) {
     return runManagedQemu(flags);
   }
   if (adapter.name === NVIRSH_TOOL) {
     return await runManagedNvirsh(flags);
+  }
+  if (adapter.name === SEL4_TOOL) {
+    return runManagedSel4(flags);
   }
   const options = parseBuildrootRunOptions(flags);
   if (options.mode === "local") {
@@ -1585,7 +1605,7 @@ async function logsManagedRun(flags) {
   } else {
     output = fs.readFileSync(logFile, "utf8");
     if (!options.json) {
-      process.stdout.write(output);
+      writeStdout(output);
     }
   }
   if (options.json) {
@@ -1837,7 +1857,7 @@ function printManagedResult(result, flags) {
 
 async function handleManagedRunCommand(command, argv) {
   if (!command || command === "help" || command === "--help") {
-    process.stdout.write(`${managedRunUsage()}\n`);
+    writeStdoutLine(managedRunUsage());
     return 0;
   }
 
@@ -1869,7 +1889,7 @@ async function handleManagedRunCommand(command, argv) {
     }
   }
   if (flags.help) {
-    process.stdout.write(`${managedRunUsage()}\n`);
+    writeStdoutLine(managedRunUsage());
     return 0;
   }
   let result;

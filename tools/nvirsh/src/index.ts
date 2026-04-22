@@ -22,11 +22,11 @@ class CliError extends Error {
 }
 
 function emitJson(value: unknown) {
-  process.stdout.write(`${JSON.stringify(value)}\n`);
+  fs.writeSync(1, `${JSON.stringify(value)}\n`);
 }
 
 function emitText(value: string) {
-  process.stdout.write(`${value}\n`);
+  fs.writeSync(1, `${value}\n`);
 }
 
 function readJson(filePath: string) {
@@ -469,7 +469,7 @@ async function runLogs(flags: Record<string, unknown>) {
       });
       return;
     }
-    process.stdout.write(`${line}\n`);
+    fs.writeSync(1, `${line}\n`);
   };
 
   const initial = fs.readFileSync(filePath, 'utf8');

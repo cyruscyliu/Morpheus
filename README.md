@@ -41,6 +41,18 @@ pnpm dev:docs
 
 Then open `http://127.0.0.1:4173`.
 
+CLI conventions for repo-local tools are documented in
+`docs/cli-conventions.md`.
+
+Validate `morpheus.yaml` with:
+
+```bash
+./bin/morpheus config check --json
+```
+
+The checker currently enforces one important rule: `tools.<name>.mode` should
+be only `local` or `remote`.
+
 ## Tool setup
 
 Set up one tool at a time when needed:
@@ -50,8 +62,10 @@ pnpm setup:llbase
 pnpm setup:llbic
 pnpm setup:llcg
 pnpm setup:buildroot
+pnpm setup:microkit-sdk
 pnpm setup:qemu
 pnpm setup:nvirsh
+pnpm setup:sel4
 ```
 
 Install or refresh the repo-local CLI wrappers directly:
@@ -64,14 +78,15 @@ Use the wrappers from `bin/`:
 
 ```bash
 ./bin/buildroot --help
+./bin/microkit-sdk --help
 ./bin/qemu --help
 ./bin/llbic --help
 ./bin/llcg --help
 ./bin/nvirsh --help
+./bin/sel4 --help
 ./bin/morpheus --help
-./bin/morpheus tool resolve buildroot --json
-./bin/morpheus tool resolve nvirsh --json
-./bin/morpheus --json tool inspect --id <run-id>
+./bin/morpheus tool list --verify --json
+./bin/morpheus --json runs inspect --id <run-id>
 ```
 
 For a repo-local Morpheus config, start from:
@@ -116,18 +131,21 @@ pnpm prepare:tool:nvirsh:sel4 \
 
 The script uses symlinks by default, so it does not download or duplicate
 large trees unless you pass `--copy`.
-Register the workspace-local QEMU executable as a managed dependency with:
+Register the workspace-local dependencies as managed artifacts with:
 
 ```bash
-./bin/morpheus --json tool run --tool qemu
+./bin/morpheus --json tool build --tool microkit-sdk
+./bin/morpheus --json tool build --tool sel4
+./bin/morpheus --json tool build --tool qemu
 ```
 
-Or build QEMU into the workspace from a local source tree:
+Or build QEMU into the workspace from a local source tree when the configured
+`tools.qemu.path` does not exist yet:
 
 ```bash
-./bin/morpheus tool run \
+./bin/morpheus tool build \
   --tool qemu \
-  --mode build \
+  --mode local \
   --source ./hyperarm-workspace/tools/qemu/src/qemu \
   --target-list aarch64-softmmu \
   --json
@@ -140,26 +158,38 @@ tools:
   qemu:
     mode: local
     path: ./hyperarm-workspace/tools/qemu/bin/qemu-system-aarch64
+  microkit-sdk:
+    mode: local
+    path: ./hyperarm-workspace/tools/microkit-sdk/sdk
+    microkit-version: 2.0.1
+  sel4:
+    mode: local
+    path: ./hyperarm-workspace/tools/sel4/src/seL4
+    sel4-version: 15.0.0
   nvirsh:
     mode: local
     target: sel4
     name: sel4-dev
-    microkit-sdk: ./deps/microkit-sdk
     microkit-version: 1.4.1
     toolchain: ./deps/arm-gnu-toolchain
     libvmm-dir: ./deps/libvmm
-    sel4-dir: ./deps/seL4
     sel4-version: 15.0.0
     dependencies:
       qemu:
         tool: qemu
         artifact: qemu-system-aarch64
+      microkit-sdk:
+        tool: microkit-sdk
+        artifact: sdk-dir
       kernel:
         tool: buildroot
         artifact: images/Image
       initrd:
         tool: buildroot
         artifact: images/rootfs.cpio.gz
+      sel4:
+        tool: sel4
+        artifact: source-dir
 ```
 
 For a built QEMU instead:
@@ -167,17 +197,29 @@ For a built QEMU instead:
 ```yaml
 tools:
   qemu:
-    mode: build
+    mode: local
+    qemu-version: 8.2.7
     source: ./hyperarm-workspace/tools/qemu/src/qemu
     build-dir-key: aarch64-softmmu
     target-list:
       - aarch64-softmmu
 ```
 
+For a built `seL4` source tree instead:
+
+```yaml
+tools:
+  sel4:
+    mode: local
+    sel4-version: 15.0.0
+    git-url: https://github.com/seL4/seL4.git
+    git-ref: 15.0.0
+```
+
 Run it through Morpheus after a successful local Buildroot run:
 
 ```bash
-./bin/morpheus --json tool run --tool nvirsh
+./bin/morpheus --json tool build --tool nvirsh
 ```
 
 ## TODO

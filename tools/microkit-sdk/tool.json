@@ -1,0 +1,5 @@
+{
+  "name": "microkit-sdk",
+  "runtime": "node",
+  "entry": "dist/index.js"
+}

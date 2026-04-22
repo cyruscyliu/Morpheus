@@ -1,6 +1,7 @@
 // @ts-nocheck
 const fs = require("fs");
 const path = require("path");
+const { writeStdoutLine } = require("./io");
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -54,6 +55,11 @@ function runsUsage() {
   return [
     "Usage:",
     "  node apps/morpheus/dist/cli.js runs list [--json] [--run-root <path>]",
+    "  node apps/morpheus/dist/cli.js runs list --managed [--json] [--workspace DIR] [--ssh TARGET]",
+    "  node apps/morpheus/dist/cli.js runs inspect --id RUN_ID [--json]",
+    "  node apps/morpheus/dist/cli.js runs logs --id RUN_ID [--follow] [--json]",
+    "  node apps/morpheus/dist/cli.js runs fetch --id RUN_ID --dest DIR --path RUN_PATH [--path RUN_GLOB ...] [--json]",
+    "  node apps/morpheus/dist/cli.js runs remove --id RUN_ID [--json]",
     "  node apps/morpheus/dist/cli.js runs show <run-id> [--json] [--run-root <path>]",
     "  node apps/morpheus/dist/cli.js runs export-html [<run-id>] [--out <path>] [--run-root <path>]"
   ].join("\n");
@@ -746,17 +752,17 @@ function exportRunsHtml(runRoot, outputPath, runId) {
 
 function printRunOutput(value, flags, formatter) {
   if (flags.json) {
-    process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+    writeStdoutLine(JSON.stringify(value, null, 2));
     return;
   }
 
-  process.stdout.write(`${formatter(value)}\n`);
+  writeStdoutLine(formatter(value));
 }
 
 function handleRunsCommand(argv, options) {
   const subcommand = argv[0];
   if (!subcommand || subcommand === "help" || subcommand === "--help") {
-    process.stdout.write(`${runsUsage()}\n`);
+    writeStdoutLine(runsUsage());
     return 0;
   }
 

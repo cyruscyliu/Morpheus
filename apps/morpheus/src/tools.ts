@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const { repoRoot } = require("./paths");
 const { handleManagedRunCommand } = require("./remote");
+const { writeStdoutLine } = require("./io");
 
 function descriptorPath(toolName) {
   return path.join(repoRoot(), "tools", toolName, "tool.json");
@@ -48,25 +49,11 @@ function requireTool(name) {
   return definition;
 }
 
-function getInstallRoot(name) {
-  const definition = requireTool(name);
-  return path.join(repoRoot(), definition.installRoot);
-}
-
-function getEntrypoint(name) {
-  const definition = requireTool(name);
-  return path.join(getInstallRoot(name), definition.entry);
-}
-
-function getWrapperPath(name) {
-  return path.join(repoRoot(), "bin", name);
-}
-
 function verifyTool(name) {
   const definition = requireTool(name);
-  const installRoot = getInstallRoot(name);
-  const entrypoint = getEntrypoint(name);
-  const wrapperPath = getWrapperPath(name);
+  const installRoot = path.join(repoRoot(), definition.installRoot);
+  const entrypoint = path.join(installRoot, definition.entry);
+  const wrapperPath = path.join(repoRoot(), "bin", name);
   const issues = [];
 
   if (!fs.existsSync(installRoot)) {
@@ -96,13 +83,6 @@ function verifyTool(name) {
     wrapper: path.relative(repoRoot(), wrapperPath),
     issues
   };
-}
-
-function selectToolNames(argv, flags) {
-  if (flags.all || argv.length === 0) {
-    return listDeclaredTools().map((tool) => tool.name);
-  }
-  return [argv[0]];
 }
 
 function parseToolArgs(argv) {
@@ -149,16 +129,8 @@ function extractToolSubcommand(argv) {
 function toolUsage() {
   return [
     "Usage:",
-    "  node apps/morpheus/dist/cli.js tool run --tool buildroot --mode local --workspace DIR (--source DIR | --buildroot-version VER) [--patch-dir DIR] [--reuse-build-dir] [--build-dir-key KEY] [--json]",
-    "  node apps/morpheus/dist/cli.js tool run --tool buildroot --mode remote --ssh TARGET --workspace DIR (--source DIR | --buildroot-version VER) [--patch-dir DIR] [--reuse-build-dir] [--build-dir-key KEY] [--json]",
-    "  node apps/morpheus/dist/cli.js tool runs [--workspace DIR] [--ssh TARGET] [--json]",
-    "  node apps/morpheus/dist/cli.js tool inspect --id RUN_ID [--json]",
-    "  node apps/morpheus/dist/cli.js tool logs --id RUN_ID [--follow] [--json]",
-    "  node apps/morpheus/dist/cli.js tool fetch --id RUN_ID --dest DIR --path RUN_PATH [--json]",
-    "  node apps/morpheus/dist/cli.js tool remove --id RUN_ID [--json]",
-    "  node apps/morpheus/dist/cli.js tool list [--json]",
-    "  node apps/morpheus/dist/cli.js tool verify [<name>|--all] [--json]",
-    "  node apps/morpheus/dist/cli.js tool resolve <name> [--json]"
+    "  node apps/morpheus/dist/cli.js tool build --tool <name> [--json] [...tool flags]",
+    "  node apps/morpheus/dist/cli.js tool list [--json] [--verify]"
   ].join("\n");
 }
 
@@ -172,110 +144,73 @@ function formatToolListText(items) {
     .join("\n");
 }
 
-function formatVerifyText(items) {
-  if (items.length === 0) {
-    return "No tools selected.";
-  }
-
-  return items
-    .map((tool) => {
-      const suffix = tool.issues.length > 0 ? `\t${tool.issues.join("; ")}` : "";
-      return `${tool.name}\t${tool.status}${suffix}`;
-    })
-    .join("\n");
-}
-
-function formatResolveText(value) {
-  return [
-    `name: ${value.name}`,
-    `runtime: ${value.definition.runtime}`,
-    `descriptor: ${value.definition.descriptorPath}`,
-    `installRoot: ${value.resolved.installRoot}`,
-    `entrypoint: ${value.resolved.entrypoint}`,
-    `wrapper: ${value.resolved.wrapper}`,
-    `status: ${value.verification.status}`
-  ].join("\n");
-}
-
 function printMaybeJson(value, flags) {
   if (typeof value === "string") {
-    process.stdout.write(`${value}\n`);
+    writeStdoutLine(value);
     return;
   }
 
   if (flags.json) {
-    process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+    writeStdoutLine(JSON.stringify(value, null, 2));
   }
 }
 
 async function handleToolCommand(argv) {
   const { subcommand, rest } = extractToolSubcommand(argv);
   if (!subcommand || subcommand === "help" || subcommand === "--help") {
-    process.stdout.write(`${toolUsage()}\n`);
+    writeStdoutLine(toolUsage());
     return 0;
   }
 
-  if (["run", "runs", "inspect", "logs", "fetch", "remove"].includes(subcommand)) {
-    return await handleManagedRunCommand(subcommand === "runs" ? "list" : subcommand, rest);
+  if (["build", "run"].includes(subcommand)) {
+    return await handleManagedRunCommand("run", rest);
   }
 
   const { positionals, flags } = parseToolArgs(rest);
 
   if (subcommand === "list") {
-    const items = listDeclaredTools().map((tool) => ({
-      name: tool.name,
-      runtime: tool.runtime,
-      descriptorPath: tool.descriptorPath,
-      installRoot: tool.installRoot,
-      entry: tool.entry
-    }));
+    const includeVerification = Boolean(flags.verify);
+    const tools = listDeclaredTools();
+    const items = tools.map((tool) => {
+      const payload = {
+        name: tool.name,
+        runtime: tool.runtime,
+        descriptorPath: tool.descriptorPath,
+        installRoot: tool.installRoot,
+        entry: tool.entry
+      };
+      if (!includeVerification) {
+        return payload;
+      }
+      const verification = verifyTool(tool.name);
+      return {
+        ...payload,
+        resolved: {
+          installRoot: verification.installRoot,
+          entrypoint: verification.entrypoint,
+          wrapper: verification.wrapper
+        },
+        verification: {
+          status: verification.status,
+          issues: verification.issues
+        }
+      };
+    });
     if (flags.json) {
       printMaybeJson({ tools: items }, flags);
     } else {
-      process.stdout.write(`${formatToolListText(items)}\n`);
+      if (!includeVerification) {
+        writeStdoutLine(formatToolListText(items));
+        return 0;
+      }
+      const lines = items.map((item) => {
+        const status = item.verification.status;
+        const issues = item.verification.issues.length > 0 ? `\t${item.verification.issues.join("; ")}` : "";
+        return `${item.name}\t${status}${issues}`;
+      });
+      writeStdoutLine(lines.length === 0 ? "No tools declared." : lines.join("\n"));
     }
     return 0;
-  }
-
-  if (subcommand === "verify") {
-    const names = selectToolNames(positionals, flags);
-    const results = names.map((name) => verifyTool(name));
-    if (flags.json) {
-      printMaybeJson({ verified: results }, flags);
-    } else {
-      process.stdout.write(`${formatVerifyText(results)}\n`);
-    }
-    return results.some((item) => item.status !== "valid") ? 1 : 0;
-  }
-
-  if (subcommand === "resolve") {
-    const name = positionals[0];
-    if (!name) {
-      throw new Error("tool resolve requires a tool name");
-    }
-    const definition = requireTool(name);
-    const result = verifyTool(name);
-    const payload = {
-      name,
-      definition: {
-        runtime: definition.runtime,
-        descriptorPath: definition.descriptorPath,
-        installRoot: definition.installRoot,
-        entry: definition.entry
-      },
-      resolved: {
-        installRoot: path.relative(repoRoot(), getInstallRoot(name)),
-        entrypoint: path.relative(repoRoot(), getEntrypoint(name)),
-        wrapper: path.relative(repoRoot(), getWrapperPath(name))
-      },
-      verification: result
-    };
-    if (flags.json) {
-      printMaybeJson(payload, flags);
-    } else {
-      process.stdout.write(`${formatResolveText(payload)}\n`);
-    }
-    return result.status === "valid" ? 0 : 1;
   }
 
   throw new Error(`unknown tool subcommand: ${subcommand}`);
@@ -285,7 +220,5 @@ module.exports = {
   handleToolCommand,
   listDeclaredTools,
   verifyTool,
-  getEntrypoint,
-  getInstallRoot,
   repoRoot
 };

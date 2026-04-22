@@ -280,6 +280,61 @@ test("workspace show returns JSON metadata", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("config check reports success for local and remote modes", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-check-ok-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "tools:",
+      "  buildroot:",
+      "    mode: remote",
+      "  nvirsh:",
+      "    mode: local",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["config", "check", "--json"], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "success");
+  assert.deepEqual(payload.details.allowed_tool_modes, ["local", "remote"]);
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("config check rejects non-local-non-remote modes", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-check-bad-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "tools:",
+      "  qemu:",
+      "    mode: build",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["config", "check", "--json"], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 1, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "error");
+  assert.equal(payload.details.issues[0].path, "tools.qemu.mode");
+  assert.match(payload.details.issues[0].message, /expected one of: local, remote/);
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
 test("workspace create builds the standard directory layout", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-create-project-"));
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-work-"));
@@ -466,7 +521,7 @@ test("tool list discovers repo-local tools", () => {
   const payload = JSON.parse(result.stdout);
   assert.deepEqual(
     payload.tools.map((tool) => tool.name),
-    ["buildroot", "llbic", "llcg", "nvirsh", "qemu"]
+    ["buildroot", "llbic", "llcg", "microkit-sdk", "nvirsh", "qemu", "sel4"]
   );
 });
 
@@ -493,14 +548,14 @@ test("workflow commands are no longer part of the app surface", () => {
 });
 
 test("managed run help is available through Morpheus", () => {
-  const result = run(["tool", "run", "--help"]);
+  const result = run(["tool", "build", "--help"]);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /--mode local/);
   assert.match(result.stdout, /--mode remote/);
 });
 
 test("managed run validates required mode in JSON mode", () => {
-  const result = run(["--json", "tool", "run", "--tool", "buildroot"], {
+  const result = run(["--json", "tool", "build", "--tool", "buildroot"], {
     cwd: os.tmpdir(),
     env: isolatedEnv()
   });
@@ -511,7 +566,7 @@ test("managed run validates required mode in JSON mode", () => {
 });
 
 test("inspect validates managed run flags in JSON mode", () => {
-  const result = run(["--json", "tool", "inspect"]);
+  const result = run(["--json", "runs", "inspect"]);
   assert.equal(result.status, 1);
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.status, "error");
@@ -525,7 +580,7 @@ test("managed local Buildroot run creates a Morpheus run record", () => {
   const result = run([
     "--json",
     "tool",
-    "run",
+    "build",
     "--tool",
     "buildroot",
     "--mode",
@@ -550,7 +605,7 @@ test("managed local Buildroot run creates a Morpheus run record", () => {
 
   const inspect = run([
     "--json",
-    "tool",
+    "runs",
     "inspect",
     "--id",
     payload.details.id
@@ -564,7 +619,7 @@ test("managed local Buildroot run creates a Morpheus run record", () => {
   assert.equal(inspectPayload.details.manifest.id, payload.details.id);
   assert.equal(inspectPayload.details.manifest.mode, "local");
 
-  const list = run(["--json", "tool", "runs", "--workspace", workspaceRoot], {
+  const list = run(["--json", "runs", "list", "--managed", "--workspace", workspaceRoot], {
     cwd: workspaceRoot,
     env
   });
@@ -572,7 +627,7 @@ test("managed local Buildroot run creates a Morpheus run record", () => {
   const listPayload = JSON.parse(list.stdout);
   assert.equal(listPayload.details.runs.some((item) => item.id === payload.details.id), true);
 
-  const remove = run(["--json", "tool", "remove", "--id", payload.details.id], {
+  const remove = run(["--json", "runs", "remove", "--id", payload.details.id], {
     cwd: workspaceRoot,
     env
   });
@@ -589,7 +644,7 @@ test("managed local Buildroot run can reuse a persistent build directory", () =>
   const result = run([
     "--json",
     "tool",
-    "run",
+    "build",
     "--tool",
     "buildroot",
     "--mode",
@@ -695,7 +750,7 @@ test("tool config can enable a reusable remote build directory", () => {
   const result = run([
     "--json",
     "tool",
-    "run",
+    "build",
     "--tool",
     "buildroot"
   ], { env, cwd: projectRoot });
@@ -878,7 +933,7 @@ test("managed qemu run registers a local executable artifact", () => {
   const result = run([
     "--json",
     "tool",
-    "run",
+    "build",
     "--tool",
     "qemu"
   ], {
@@ -893,6 +948,111 @@ test("managed qemu run registers a local executable artifact", () => {
   assert.equal(payload.status, "success");
   assert.equal(payload.details.tool, "qemu");
   assert.equal(payload.details.manifest.artifacts[0].path, "qemu-system-aarch64");
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("managed microkit-sdk run registers a local sdk artifact", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-microkit-project-"));
+  const workspaceRoot = path.join(projectRoot, "workflow-workspace");
+  const sdkPath = path.join(workspaceRoot, "tools", "microkit-sdk", "sdk");
+  fs.mkdirSync(sdkPath, { recursive: true });
+  fs.writeFileSync(path.join(sdkPath, "VERSION"), "2.0.1\n");
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "tools:",
+      "  microkit-sdk:",
+      "    mode: local",
+      "    path: ./workflow-workspace/tools/microkit-sdk/sdk",
+      "    microkit-version: 2.0.1",
+      ""
+    ].join("\n")
+  );
+
+  const result = run([
+    "--json",
+    "tool",
+    "build",
+    "--tool",
+    "microkit-sdk"
+  ], {
+    cwd: projectRoot,
+    env: {
+      ...isolatedEnv(),
+      MORPHEUS_STATE_ROOT: path.join(projectRoot, ".state")
+    }
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.tool, "microkit-sdk");
+  assert.equal(payload.details.manifest.artifacts[0].path, "sdk-dir");
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("managed sel4 run can build a source tree from git", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-sel4-fetch-project-"));
+  const workspaceRoot = path.join(projectRoot, "workflow-workspace");
+  const origin = path.join(projectRoot, "origin-seL4");
+  fs.mkdirSync(origin, { recursive: true });
+
+  let command = spawnSync("git", ["init"], { cwd: origin, encoding: "utf8" });
+  assert.equal(command.status, 0, command.stdout || command.stderr);
+  command = spawnSync("git", ["config", "user.email", "test@example.com"], { cwd: origin, encoding: "utf8" });
+  assert.equal(command.status, 0, command.stdout || command.stderr);
+  command = spawnSync("git", ["config", "user.name", "Test User"], { cwd: origin, encoding: "utf8" });
+  assert.equal(command.status, 0, command.stdout || command.stderr);
+  fs.writeFileSync(path.join(origin, "README.md"), "# seL4\n");
+  command = spawnSync("git", ["add", "."], { cwd: origin, encoding: "utf8" });
+  assert.equal(command.status, 0, command.stdout || command.stderr);
+  command = spawnSync("git", ["commit", "-m", "init"], { cwd: origin, encoding: "utf8" });
+  assert.equal(command.status, 0, command.stdout || command.stderr);
+  command = spawnSync("git", ["tag", "15.0.0"], { cwd: origin, encoding: "utf8" });
+  assert.equal(command.status, 0, command.stdout || command.stderr);
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "tools:",
+      "  sel4:",
+      "    mode: local",
+      "    sel4-version: 15.0.0",
+      `    git-url: ${origin}`,
+      "    git-ref: 15.0.0",
+      ""
+    ].join("\n")
+  );
+
+  const result = run([
+    "--json",
+    "tool",
+    "build",
+    "--tool",
+    "sel4"
+  ], {
+    cwd: projectRoot,
+    env: {
+      ...isolatedEnv(),
+      MORPHEUS_STATE_ROOT: path.join(projectRoot, ".state")
+    }
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.tool, "sel4");
+  assert.equal(payload.details.manifest.artifacts[0].path, "source-dir");
+  assert.equal(
+    payload.details.manifest.source,
+    path.join(workspaceRoot, "tools", "sel4", "src", "seL4-15.0.0")
+  );
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
@@ -934,7 +1094,7 @@ test("managed qemu run can build an executable from source", () => {
       "  root: ./workflow-workspace",
       "tools:",
       "  qemu:",
-      "    mode: build",
+      "    mode: local",
       "    source: ./workflow-workspace/tools/qemu/src/qemu",
       "    build-dir-key: aarch64-softmmu",
       "    target-list:",
@@ -960,7 +1120,8 @@ test("managed qemu run can build an executable from source", () => {
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim());
   assert.equal(payload.status, "success");
-  assert.equal(payload.details.mode, "build");
+  assert.equal(payload.details.mode, "local");
+  assert.equal(payload.details.provisioning, "build");
   assert.equal(payload.details.manifest.source, sourceRoot);
   assert.equal(
     payload.details.manifest.stagedSource,
@@ -1021,7 +1182,7 @@ test("managed qemu run can fetch and unpack a managed source tree from qemu-vers
       "  root: ./workflow-workspace",
       "tools:",
       "  qemu:",
-      "    mode: build",
+      "    mode: local",
       "    qemu-version: 1.0.0",
       `    archive-url: ${pathToFileURL(archivePath).toString()}`,
       ""
@@ -1068,10 +1229,10 @@ test("managed nvirsh run resolves buildroot artifacts from morpheus.yaml", () =>
   const initrdPath = path.join(buildrootOutputDir, "images", "rootfs.cpio.gz");
   const depsRoot = path.join(projectRoot, "deps");
   const qemuPath = path.join(workspaceRoot, "tools", "qemu", "bin", "qemu-system-aarch64");
-  const microkitSdk = path.join(depsRoot, "microkit-sdk");
+  const microkitSdk = path.join(workspaceRoot, "tools", "microkit-sdk", "sdk");
   const toolchain = path.join(depsRoot, "arm-gnu-toolchain");
   const libvmmDir = path.join(depsRoot, "libvmm");
-  const sel4Dir = path.join(depsRoot, "seL4");
+  const sel4Dir = path.join(workspaceRoot, "tools", "sel4", "src", "seL4");
 
   fs.mkdirSync(path.dirname(kernelPath), { recursive: true });
   fs.writeFileSync(kernelPath, "kernel");
@@ -1132,15 +1293,21 @@ test("managed nvirsh run resolves buildroot artifacts from morpheus.yaml", () =>
       "  qemu:",
       "    mode: local",
       "    path: ./workflow-workspace/tools/qemu/bin/qemu-system-aarch64",
+      "  microkit-sdk:",
+      "    mode: local",
+      "    path: ./workflow-workspace/tools/microkit-sdk/sdk",
+      "    microkit-version: 1.4.1",
+      "  sel4:",
+      "    mode: local",
+      "    path: ./workflow-workspace/tools/sel4/src/seL4",
+      "    sel4-version: 15.0.0",
       "  nvirsh:",
       "    mode: local",
       "    target: sel4",
       "    name: sel4-dev",
-      "    microkit-sdk: ./deps/microkit-sdk",
       "    microkit-version: 1.4.1",
       "    toolchain: ./deps/arm-gnu-toolchain",
       "    libvmm-dir: ./deps/libvmm",
-      "    sel4-dir: ./deps/seL4",
       "    sel4-version: 15.0.0",
       "    qemu-args:",
       "      - -machine",
@@ -1149,12 +1316,18 @@ test("managed nvirsh run resolves buildroot artifacts from morpheus.yaml", () =>
       "      qemu:",
       "        tool: qemu",
       "        artifact: qemu-system-aarch64",
+      "      microkit-sdk:",
+      "        tool: microkit-sdk",
+      "        artifact: sdk-dir",
       "      kernel:",
       "        tool: buildroot",
       "        artifact: images/Image",
       "      initrd:",
       "        tool: buildroot",
       "        artifact: images/rootfs.cpio.gz",
+      "      sel4:",
+      "        tool: sel4",
+      "        artifact: source-dir",
       ""
     ].join("\n")
   );
@@ -1174,10 +1347,40 @@ test("managed nvirsh run resolves buildroot artifacts from morpheus.yaml", () =>
   });
   assert.equal(qemuRegister.status, 0, qemuRegister.stderr || qemuRegister.stdout);
 
-  const result = run([
+  const microkitRegister = run([
     "--json",
     "tool",
     "run",
+    "--tool",
+    "microkit-sdk"
+  ], {
+    cwd: projectRoot,
+    env: {
+      ...isolatedEnv(),
+      MORPHEUS_STATE_ROOT: path.join(projectRoot, ".state")
+    }
+  });
+  assert.equal(microkitRegister.status, 0, microkitRegister.stderr || microkitRegister.stdout);
+
+  const sel4Register = run([
+    "--json",
+    "tool",
+    "build",
+    "--tool",
+    "sel4"
+  ], {
+    cwd: projectRoot,
+    env: {
+      ...isolatedEnv(),
+      MORPHEUS_STATE_ROOT: path.join(projectRoot, ".state")
+    }
+  });
+  assert.equal(sel4Register.status, 0, sel4Register.stderr || sel4Register.stdout);
+
+  const result = run([
+    "--json",
+    "tool",
+    "build",
     "--tool",
     "nvirsh"
   ], {
@@ -1197,10 +1400,8 @@ test("managed nvirsh run resolves buildroot artifacts from morpheus.yaml", () =>
 
   const inspect = run([
     "--json",
-    "tool",
+    "runs",
     "inspect",
-    "--tool",
-    "nvirsh",
     "--id",
     payload.details.id
   ], {
@@ -1523,7 +1724,7 @@ test("managed remote Buildroot run records a custom kernel hash in the workspace
   fs.rmSync(remoteRoot, { recursive: true, force: true });
 });
 
-test("tool runs can discover remote managed runs from workspace state", () => {
+test("runs list --managed can discover remote managed runs from workspace state", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-list-project-"));
   const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-list-root-"));
   const runId = "buildroot-20260420-deadbeef";
@@ -1570,7 +1771,7 @@ test("tool runs can discover remote managed runs from workspace state", () => {
     MORPHEUS_STATE_ROOT: path.join(projectRoot, ".state")
   };
 
-  const result = run(["--json", "tool", "runs"], { env, cwd: projectRoot });
+  const result = run(["--json", "runs", "list", "--managed"], { env, cwd: projectRoot });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.details.runs.some((item) => item.id === runId), true);
@@ -1580,7 +1781,7 @@ test("tool runs can discover remote managed runs from workspace state", () => {
   fs.rmSync(remoteRoot, { recursive: true, force: true });
 });
 
-test("tool inspect reconciles a stale remote running manifest to success", () => {
+test("runs inspect reconciles a stale remote running manifest to success", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-inspect-project-"));
   const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-inspect-root-"));
   const runId = "buildroot-20260420-stale0001";
@@ -1631,7 +1832,7 @@ test("tool inspect reconciles a stale remote running manifest to success", () =>
 
   const result = run([
     "--json",
-    "tool",
+    "runs",
     "inspect",
     "--id",
     runId,

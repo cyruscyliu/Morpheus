@@ -224,7 +224,9 @@ function main(argv) {
   const configDir = path.dirname(configPath);
   const rawConfig = fs.readFileSync(configPath, 'utf8');
   const qemuConfig = parseToolSection(rawConfig, 'qemu');
+  const microkitConfig = parseToolSection(rawConfig, 'microkit-sdk');
   const nvirshConfig = parseToolSection(rawConfig, 'nvirsh');
+  const sel4Config = parseToolSection(rawConfig, 'sel4');
   if (!qemuConfig) {
     throw new Error('morpheus.yaml is missing tools.qemu');
   }
@@ -234,10 +236,20 @@ function main(argv) {
 
   const targets = {
     qemu: resolveLocalPath(configDir, qemuConfig.path || qemuConfig.executable),
-    'microkit-sdk': resolveLocalPath(configDir, nvirshConfig['microkit-sdk'] || nvirshConfig.microkitSdk),
+    'microkit-sdk': resolveLocalPath(
+      configDir,
+      (microkitConfig && (microkitConfig.path || microkitConfig.source))
+        || nvirshConfig['microkit-sdk']
+        || nvirshConfig.microkitSdk
+    ),
     toolchain: resolveLocalPath(configDir, nvirshConfig.toolchain),
     'libvmm-dir': resolveLocalPath(configDir, nvirshConfig['libvmm-dir'] || nvirshConfig.libvmmDir),
-    'sel4-dir': resolveLocalPath(configDir, nvirshConfig['sel4-dir'] || nvirshConfig.sel4Dir),
+    'sel4-dir': resolveLocalPath(
+      configDir,
+      (sel4Config && (sel4Config.path || sel4Config.source))
+        || nvirshConfig['sel4-dir']
+        || nvirshConfig.sel4Dir
+    ),
   };
 
   const sources = {

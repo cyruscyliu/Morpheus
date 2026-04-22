@@ -115,15 +115,15 @@ function parseRunOptions(flags) {
     throw new Error("run requires --workspace DIR or a workspace root in morpheus.yaml");
   }
   const { baseDir, value } = loadQemuConfig();
-  const mode = flags.mode || value.mode || "local";
-  if (!["local", "build"].includes(mode)) {
-    throw new Error("qemu supports only --mode local|build");
+  const placementMode = flags.mode || value.mode || "local";
+  if (placementMode !== "local") {
+    throw new Error("qemu supports only --mode local");
   }
 
   const options = {
     id: generateRunId(),
     workspace,
-    mode,
+    mode: placementMode,
     executable: flags.path
       ? path.resolve(process.cwd(), flags.path)
       : resolveLocalPath(baseDir, value.path || value.executable),
@@ -141,11 +141,21 @@ function parseRunOptions(flags) {
     options.source = defaultManagedSource(workspace, options.qemuVersion);
   }
 
-  if (mode === "local" && !options.executable) {
-    throw new Error("qemu local mode requires --path PATH or tools.qemu.path in morpheus.yaml");
+  const hasExecutable = Boolean(options.executable && fs.existsSync(options.executable));
+  options.provisioning = hasExecutable ? "path" : "build";
+
+  if (options.provisioning === "path" && !options.executable) {
+    throw new Error("qemu requires --path PATH or tools.qemu.path in morpheus.yaml");
   }
-  if (mode === "build" && !options.source) {
-    throw new Error("qemu build mode requires tools.qemu.source or tools.qemu.qemu-version in morpheus.yaml");
+
+  if (options.provisioning === "build") {
+    const sourceExists = Boolean(options.source && fs.existsSync(options.source));
+    if (!options.qemuVersion && !options.archiveUrl && !sourceExists) {
+      throw new Error("qemu build requires tools.qemu.qemu-version, tools.qemu.archive-url, or an existing tools.qemu.source directory");
+    }
+    if (!options.source) {
+      throw new Error("qemu build requires tools.qemu.source or tools.qemu.qemu-version in morpheus.yaml");
+    }
   }
 
   return options;
@@ -175,6 +185,7 @@ function localExecutableManifest(options, runDir, manifestPath, logFile, inspect
     id: options.id,
     tool: TOOL,
     mode: "local",
+    provisioning: "path",
     command: "run",
     status: "success",
     createdAt: nowIso(),
@@ -201,7 +212,8 @@ function buildModeManifest(options, runDir, manifestPath, result) {
     schemaVersion: 1,
     id: options.id,
     tool: TOOL,
-    mode: "build",
+    mode: "local",
+    provisioning: "build",
     command: "run",
     status: "success",
     createdAt: nowIso(),
@@ -245,7 +257,7 @@ function runManagedQemu(flags) {
   fs.mkdirSync(runDir, { recursive: true });
 
   let manifest;
-  if (options.mode === "local") {
+  if (options.provisioning === "path") {
     const inspected = parseJsonResult(
       runQemuTool(["--json", "inspect", "--path", options.executable]),
       "failed to inspect QEMU executable"
@@ -284,13 +296,14 @@ function runManagedQemu(flags) {
     command: "run",
     status: "success",
     exit_code: 0,
-    summary: options.mode === "local"
+    summary: options.provisioning === "path"
       ? "registered managed qemu executable"
       : "built and registered managed qemu executable",
     details: {
       id: manifest.id,
       tool: TOOL,
       mode: manifest.mode,
+      provisioning: manifest.provisioning,
       workspace: options.workspace,
       run_dir: runDir,
       manifest,

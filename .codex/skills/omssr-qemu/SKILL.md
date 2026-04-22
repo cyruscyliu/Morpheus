@@ -14,8 +14,7 @@ Use this skill when you need to work with the repo-local `qemu` tool.
 `qemu` is a minimal local CLI for executable inspection and managed builds.
 It validates the binary, reads `--version`, and exposes a stable artifact
 record that Morpheus can pass to dependent tools such as `nvirsh`.
-Morpheus manages two execution modes around that contract: `local` and
-`build`.
+Morpheus manages execution placement around that contract: today `local` only.
 Managed build mode can fetch a QEMU release tarball, unpack it into the
 canonical managed source path from `morpheus.yaml`, stage the build copy, and
 build/install the executable itself.
@@ -40,10 +39,11 @@ qemu help
 ## Managed Boundary
 
 - `qemu` owns local executable inspection.
-- `morpheus tool run --tool qemu --mode local` records an existing executable
-  as a managed artifact.
-- `morpheus tool run --tool qemu --mode build` builds and records the managed
-  artifact from the canonical managed source path inside the workspace.
+- `morpheus tool build --tool qemu --mode local` records an existing executable
+  as a managed artifact when `tools.qemu.path` exists.
+- Otherwise, `morpheus tool build --tool qemu --mode local` builds and records
+  the managed artifact from the canonical managed source path inside the
+  workspace (fetching/unpacking as needed).
 - The `qemu` CLI owns fetch, unpack, source staging, and build/install for the
   managed build path.
 - `nvirsh` should consume the resolved QEMU artifact, not provision the binary.

@@ -5,6 +5,7 @@ const { spawnSync } = require("child_process");
 const { applyConfigDefaults } = require("./config");
 const { repoRoot } = require("./paths");
 const { writeStdoutLine } = require("./io");
+const { logDebug } = require("./logger");
 const {
   createWorkflowRun,
   createWorkflowStep,
@@ -122,6 +123,13 @@ function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, co
     toolArgv: steps[index] && steps[index].toolArgv ? steps[index].toolArgv : []
   }));
 
+  logDebug("workflow", "created workflow run", {
+    id: workflow.id,
+    workflow: workflow.workflow,
+    workspace: workflow.workspace,
+    steps: createdSteps.map((step) => ({ id: step.id, tool: step.tool, name: step.name }))
+  });
+
   updateWorkflowRun(workflow.runDir, (current) => ({
     ...current,
     status: "running",
@@ -155,6 +163,18 @@ function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, co
       ...toolArgv
     ];
 
+    logDebug("workflow", "running workflow step", {
+      workflow: workflow.id,
+      step: step.id,
+      tool: step.tool,
+      argv: args.slice(1)
+    });
+    fs.appendFileSync(
+      step.logFile,
+      `\n[morpheus:workflow] step ${step.id} (${step.tool}) argv=${JSON.stringify(args.slice(1))}\n`,
+      "utf8"
+    );
+
     const result = spawnSync(process.execPath, args, {
       encoding: "utf8",
       cwd: process.cwd(),
@@ -175,6 +195,13 @@ function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, co
     const status = result.status === 0 ? "success" : "error";
     exitCode = result.status == null ? 1 : result.status;
 
+    logDebug("workflow", "completed workflow step", {
+      workflow: workflow.id,
+      step: step.id,
+      tool: step.tool,
+      status,
+      exitCode
+    });
     const updatedStep = updateWorkflowStep(step.stepDir, (current) => ({
       ...current,
       status,

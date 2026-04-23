@@ -273,8 +273,9 @@ async function handleToolCommand(argv) {
 
     if (tool === "nvirsh") {
       const dependencies = sortToolDependencies(toolDependencyNamesFromConfig(tool));
+      const inheritedArgs = flags.verbose ? ["--verbose"] : [];
       const steps = [
-        ...dependencies.map((name) => ({ tool: name, name: `${name}.build`, toolArgv: [] })),
+        ...dependencies.map((name) => ({ tool: name, name: `${name}.build`, toolArgv: inheritedArgs })),
         { tool, name: `${tool}.build`, toolArgv }
       ];
       return runToolBuildWorkflow({

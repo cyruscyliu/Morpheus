@@ -155,8 +155,11 @@ function sshDestination(target) {
   return target.user ? `${target.user}@${target.host}` : target.host;
 }
 
-function sshArgs(target) {
+function sshArgs(target, options = {}) {
   const args = [];
+  if (options.noSystemConfig) {
+    args.push("-F", "/dev/null");
+  }
   if (target.port !== undefined) {
     args.push("-p", String(target.port));
   }
@@ -341,17 +344,43 @@ function remoteLogPath(workspace, tool, id) {
   return path.posix.join(remoteRunDir(workspace, tool, id), "stdout.log");
 }
 
+function wantsSshNoConfigRetry(result) {
+  const stderr = String(result && result.stderr ? result.stderr : "");
+  return /Bad owner or permissions on .*ssh_config\.d/.test(stderr);
+}
+
 function runSsh(target, script, streamOutput) {
-  const result = spawnSync(sshBinary(), [...sshArgs(target), sshCommand(script)], {
-    encoding: "utf8",
-    stdio: streamOutput ? ["ignore", "inherit", "pipe"] : ["ignore", "pipe", "pipe"]
+  const run = (noSystemConfig) => spawnSync(
+    sshBinary(),
+    [...sshArgs(target, { noSystemConfig }), sshCommand(script)],
+    {
+      encoding: "utf8",
+      stdio: streamOutput ? ["ignore", "inherit", "pipe"] : ["ignore", "pipe", "pipe"]
+    }
+  );
+
+  logDebug("remote", "running ssh command", {
+    ssh: target.original,
+    stream: Boolean(streamOutput),
   });
+
+  let result = run(false);
+  if (result.status !== 0 && wantsSshNoConfigRetry(result)) {
+    logDebug("remote", "retrying ssh command with -F /dev/null", {
+      ssh: target.original,
+    });
+    result = run(true);
+  }
   return normalizeSpawnResult(result);
 }
 
 function runSshStreaming(target, script, handlers) {
-  return new Promise((resolve) => {
-    const child = spawn(sshBinary(), [...sshArgs(target), sshCommand(script)], {
+  const run = (noSystemConfig) => new Promise((resolve) => {
+    logDebug("remote", "running ssh streaming command", {
+      ssh: target.original,
+      noSystemConfig,
+    });
+    const child = spawn(sshBinary(), [...sshArgs(target, { noSystemConfig }), sshCommand(script)], {
       stdio: ["ignore", "pipe", "pipe"]
     });
     let stdout = "";
@@ -407,6 +436,13 @@ function runSshStreaming(target, script, handlers) {
         error: null
       });
     });
+  });
+
+  return run(false).then((result) => {
+    if (result.exitCode !== 0 && wantsSshNoConfigRetry(result)) {
+      return run(true);
+    }
+    return result;
   });
 }
 

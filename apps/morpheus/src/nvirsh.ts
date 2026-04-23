@@ -16,6 +16,83 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function resolveExecutable(command) {
+  if (command.includes(path.sep)) {
+    return command;
+  }
+  const pathValue = process.env.PATH || "";
+  for (const entry of pathValue.split(path.delimiter)) {
+    if (!entry) {
+      continue;
+    }
+    const candidate = path.join(entry, command);
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+  return command;
+}
+
+function sshBinary() {
+  return process.env.MORPHEUS_SSH_BIN || resolveExecutable("ssh");
+}
+
+function parseSshTarget(input) {
+  if (!input) {
+    throw new Error("missing ssh target");
+  }
+  if (input.startsWith("ssh://")) {
+    const url = new URL(input);
+    if (!url.hostname) {
+      throw new Error(`invalid SSH target: ${input}`);
+    }
+    return {
+      original: input,
+      user: url.username || undefined,
+      host: url.hostname,
+      port: url.port ? Number(url.port) : undefined
+    };
+  }
+
+  const match = /^(?:(?<user>[^@]+)@)?(?<host>[^:]+)(?::(?<port>\d+))?$/.exec(input);
+  if (!match || !match.groups || !match.groups.host) {
+    throw new Error(`invalid SSH target: ${input}`);
+  }
+  return {
+    original: input,
+    user: match.groups.user,
+    host: match.groups.host,
+    port: match.groups.port ? Number(match.groups.port) : undefined
+  };
+}
+
+function sshDestination(target) {
+  return target.user ? `${target.user}@${target.host}` : target.host;
+}
+
+function sshArgs(target, options = {}) {
+  const args = [];
+  if (options.noSystemConfig) {
+    args.push("-F", "/dev/null");
+  }
+  if (target.port !== undefined) {
+    args.push("-p", String(target.port));
+  }
+  args.push(sshDestination(target));
+  return args;
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+function sshCommand(script) {
+  return `bash -lc ${shellQuote(script)}`;
+}
+
 function generateRunId() {
   const stamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
   const random = Math.random().toString(16).slice(2, 10);
@@ -127,6 +204,40 @@ function artifactLocation(artifact) {
   return artifact && (artifact.local_location || artifact.location || artifact.localPath || artifact.path);
 }
 
+function localArtifactDir(workspace, tool, id) {
+  return path.join(localToolWorkspace(workspace, tool), "runs", id, "artifacts");
+}
+
+function normalizeRemotePath(dirPath, relativePath) {
+  return path.posix.join(String(dirPath).replace(/\/+$/, ""), String(relativePath).replace(/^\/+/, ""));
+}
+
+function fetchRemoteArtifact(record, remotePath, localPath) {
+  const ssh = parseSshTarget(record.ssh);
+  fs.mkdirSync(path.dirname(localPath), { recursive: true });
+
+  const run = (noSystemConfig) => spawnSync(
+    sshBinary(),
+    [...sshArgs(ssh, { noSystemConfig }), sshCommand(`cat ${shellQuote(remotePath)}`)],
+    { stdio: ["ignore", "pipe", "pipe"], maxBuffer: 1024 * 1024 * 1024 }
+  );
+
+  let result = run(false);
+  const stderr = (result.stderr || Buffer.from("")).toString("utf8");
+  if (result.status !== 0 && /Bad owner or permissions on/.test(stderr)) {
+    result = run(true);
+  }
+
+  if (result.status !== 0) {
+    const message = (result.stderr || Buffer.from("")).toString("utf8")
+      || (result.stdout || Buffer.from("")).toString("utf8")
+      || `failed to fetch remote artifact: ${remotePath}`;
+    throw new Error(message.trim());
+  }
+
+  fs.writeFileSync(localPath, result.stdout || Buffer.from(""));
+}
+
 function hydrateToolRunRecords(workspace, tool) {
   const runsRoot = path.join(localWorkspaceRoot(workspace), "tools", tool, "runs");
   if (!fs.existsSync(runsRoot)) {
@@ -185,6 +296,7 @@ function resolveDependencyArtifact(workspace, baseDir, explicitPath, spec, label
   } else {
     hydrateToolRunRecords(workspace, spec.tool);
   }
+
   const records = listManagedRuns()
     .filter((record) => record.tool === spec.tool)
     .filter((record) => !spec.id || record.id === spec.id)
@@ -199,6 +311,47 @@ function resolveDependencyArtifact(workspace, baseDir, explicitPath, spec, label
       const resolved = artifactLocation(artifact);
       if (resolved && fs.existsSync(resolved)) {
         return resolved;
+      }
+      if (artifact.remote_location && record.mode === "remote" && record.ssh) {
+        const destination = path.join(localArtifactDir(workspace, record.tool, record.id), spec.artifact);
+        fetchRemoteArtifact(record, artifact.remote_location, destination);
+        const updated = {
+          ...record,
+          artifacts: (record.artifacts || []).map((entry) => entry.path === artifact.path
+            ? { ...entry, local_location: destination }
+            : entry
+          )
+        };
+        registerManagedRun(updated);
+        return destination;
+      }
+    }
+
+    if (record.outputDir) {
+      if (record.mode === "local") {
+        const candidate = path.join(record.outputDir, spec.artifact);
+        if (fs.existsSync(candidate)) {
+          return candidate;
+        }
+      }
+
+      if (record.mode === "remote" && record.ssh) {
+        const remoteLocation = normalizeRemotePath(record.outputDir, spec.artifact);
+        const destination = path.join(localArtifactDir(workspace, record.tool, record.id), spec.artifact);
+        fetchRemoteArtifact(record, remoteLocation, destination);
+        const updated = {
+          ...record,
+          artifacts: [
+            ...(record.artifacts || []),
+            {
+              path: spec.artifact,
+              remote_location: remoteLocation,
+              local_location: destination
+            }
+          ]
+        };
+        registerManagedRun(updated);
+        return destination;
       }
     }
   }

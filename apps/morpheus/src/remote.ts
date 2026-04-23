@@ -1339,15 +1339,34 @@ function buildrootRemoteScript(options, id) {
     ? path.posix.join(buildRoot, "kernel-src")
     : null;
   const defconfigCommand = options.defconfig ? `make O=${shellQuote(outputDir)} ${options.defconfig}` : ":";
+  const wantsNoopPostImage = (options.configFragment || []).some((line) => /BR2_ROOTFS_POST_IMAGE_SCRIPT\s*=\s*""/.test(String(line)));
+  const noopPostImageScript = wantsNoopPostImage
+    ? path.posix.join(buildRoot, "morpheus-post-image.sh")
+    : null;
   const configFragment = effectiveBuildrootConfigFragment(options.configFragment, {
     globalPatchDir,
     kernelTarballLocation: kernelTarball ? `file://${kernelTarball}` : null
+  }).map((line) => {
+    if (!wantsNoopPostImage) {
+      return line;
+    }
+    if (/BR2_ROOTFS_POST_IMAGE_SCRIPT\s*=\s*""/.test(String(line))) {
+      return `BR2_ROOTFS_POST_IMAGE_SCRIPT="${noopPostImageScript}"`;
+    }
+    return line;
   });
   const configFragmentCommand = configFragment.length > 0
     ? `cat >> ${shellQuote(path.posix.join(outputDir, ".config"))} <<'CONFIG'
 ${configFragment.join("\n")}
 CONFIG
 make O=${shellQuote(outputDir)} olddefconfig`
+    : ":";
+  const noopPostImageCommand = wantsNoopPostImage
+    ? `cat > ${shellQuote(noopPostImageScript)} <<'SH'
+#!/bin/sh
+exit 0
+SH
+chmod +x ${shellQuote(noopPostImageScript)}`
     : ":";
   const kernelPatchSetupCommand = kernelPatchFiles.length > 0
     ? `
@@ -1422,6 +1441,7 @@ set +e
   ${kernelPatchSetupCommand}
   cd ${shellQuote(sourceDir)}
   ${defconfigCommand}
+  ${noopPostImageCommand}
   ${configFragmentCommand}
   ${makeCommand}
 } 2>&1 | tee -a ${shellQuote(logFile)}

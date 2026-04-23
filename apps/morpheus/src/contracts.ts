@@ -52,8 +52,7 @@ const WORKSPACE_CONTRACT = {
   description: "Describe shared workspace roots and their current presence on disk",
   commands: [
     "workspace create",
-    "workspace show",
-    "workspace clean --deprecated --yes"
+    "workspace show"
   ],
   workspaceStateLayout: [
     "<workspace>/tools/",

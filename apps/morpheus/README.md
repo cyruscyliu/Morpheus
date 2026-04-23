@@ -36,21 +36,11 @@ Tool caches remain reusable under:
 - `<workspace>/tools/<tool>/builds/`
 - `<workspace>/tools/<tool>/cache/`
 
-Deprecated workspace-root directories:
-
-- `<workspace>/{builds,cache,downloads,sources}` (deprecated)
-
-Remove deprecated directories explicitly with:
-
-```bash
-./bin/morpheus workspace clean --deprecated --yes
-```
-
 ## Usage
 
 The public command tree includes:
 
-- `workspace create|show|clean`
+- `workspace create|show`
 - `config check`
 - `tool build|run|list`
 - `workflow run|inspect|logs`

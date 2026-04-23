@@ -153,7 +153,6 @@ The main user-facing commands are:
 ```text
 morpheus workspace create
 morpheus workspace show
-morpheus workspace clean
 morpheus tool build
 morpheus runs list
 morpheus runs list --managed
@@ -175,8 +174,6 @@ Use these commands by intent:
 
 - `workspace create`: create the standard local workspace layout.
 - `workspace show`: inspect workspace roots and their current presence.
-- `workspace clean --deprecated --yes`: remove deprecated workspace-root
-  directories (`builds/`, `cache/`, `downloads/`, `sources/`).
 - `tool build`: start a managed tool run in local or remote mode.
 - `tool build --tool nvirsh`: build configured producer-tool dependencies (for
   example Buildroot) and then launch local `nvirsh` from resolved artifact

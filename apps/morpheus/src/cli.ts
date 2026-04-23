@@ -51,7 +51,6 @@ function usage() {
       "Usage:",
       "  node apps/morpheus/dist/cli.js workspace create [--json]",
       "  node apps/morpheus/dist/cli.js workspace show [--json]",
-      "  node apps/morpheus/dist/cli.js workspace clean --deprecated --yes [--json]",
       "  node apps/morpheus/dist/cli.js config check [--json]",
       "  node apps/morpheus/dist/cli.js tool <subcommand> [--json]",
       "  node apps/morpheus/dist/cli.js workflow <subcommand> [--json]",

@@ -442,7 +442,6 @@ test("workspace create and show support explicit remote managed workspaces", () 
   assert.equal(showPayload.mode, "remote");
   assert.equal(showPayload.ssh, "builder@example.com:2222");
   assert.equal(showPayload.directories.tmp.exists, true);
-  assert.equal(showPayload.deprecated.cache.exists, false);
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
@@ -2087,7 +2086,6 @@ test("workspace show supports remote managed workspace lookup", () => {
   assert.equal(payload.mode, "remote");
   assert.equal(payload.directories.tools.exists, true);
   assert.equal(payload.directories.runs.exists, true);
-  assert.equal(payload.deprecated.sources.exists, false);
 
   fs.rmSync(remoteRoot, { recursive: true, force: true });
 });

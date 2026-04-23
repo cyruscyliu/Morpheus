@@ -46,6 +46,8 @@ This command:
 
 - Clones or updates `https://github.com/au-ts/libvmm`
 - Runs `git submodule update --init --recursive`
+- Treats git operations as non-interactive and applies timeouts (so a missing
+  credential prompt does not hang forever)
 - Invokes `make` in `examples/<example>` with `MICROKIT_SDK` and `MICROKIT_BOARD`
   (and optionally `LINUX`, `INITRD`, `QEMU`)
 

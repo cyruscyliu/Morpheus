@@ -210,12 +210,31 @@ function applyPatches(source: string, patchDir: string, patchFiles: string[], lo
   }
 }
 
-function runCommand(command: string, args: string[], cwd?: string) {
+function runCommand(
+  command: string,
+  args: string[],
+  cwd?: string,
+  options?: { timeoutMs?: number; env?: NodeJS.ProcessEnv },
+) {
   return spawnSync(command, args, {
     encoding: 'utf8',
     cwd,
+    env: options?.env,
+    timeout: options?.timeoutMs,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+}
+
+function gitEnv() {
+  return {
+    ...process.env,
+    GIT_TERMINAL_PROMPT: '0',
+  };
+}
+
+function isSpawnTimeout(result: ReturnType<typeof spawnSync>) {
+  const error = result.error as NodeJS.ErrnoException | null | undefined;
+  return Boolean(error && (error.code === 'ETIMEDOUT' || error.code === 'ESRCH'));
 }
 
 function firstVersionLine(dirPath: string) {
@@ -283,7 +302,13 @@ function ensureGitRepo(source: string, gitUrl: string) {
   }
 
   fs.mkdirSync(path.dirname(source), { recursive: true });
-  const clone = runCommand('git', ['clone', gitUrl, source], undefined);
+  const clone = runCommand('git', ['clone', gitUrl, source], undefined, {
+    timeoutMs: 10 * 60 * 1000,
+    env: gitEnv(),
+  });
+  if (isSpawnTimeout(clone)) {
+    throw new CliError('clone_timeout', `Timed out cloning ${gitUrl}`);
+  }
   if (clone.status !== 0) {
     throw new CliError('clone_failed', clone.stderr || clone.stdout || `Failed to clone ${gitUrl}`);
   }
@@ -291,18 +316,30 @@ function ensureGitRepo(source: string, gitUrl: string) {
 }
 
 function checkoutRef(source: string, gitRef: string) {
-  const fetch = runCommand('git', ['-C', source, 'fetch', '--all', '--tags', '--prune'], undefined);
+  const fetch = runCommand('git', ['-C', source, 'fetch', '--all', '--tags', '--prune'], undefined, {
+    timeoutMs: 10 * 60 * 1000,
+    env: gitEnv(),
+  });
+  if (isSpawnTimeout(fetch)) {
+    throw new CliError('fetch_timeout', 'Timed out fetching libvmm updates');
+  }
   if (fetch.status !== 0) {
     throw new CliError('fetch_failed', fetch.stderr || fetch.stdout || 'Failed to fetch libvmm updates');
   }
-  const checkout = runCommand('git', ['-C', source, 'checkout', gitRef], undefined);
+  const checkout = runCommand('git', ['-C', source, 'checkout', gitRef], undefined, { env: gitEnv() });
   if (checkout.status !== 0) {
     throw new CliError('checkout_failed', checkout.stderr || checkout.stdout || `Failed to checkout ${gitRef}`);
   }
 }
 
 function updateSubmodules(source: string) {
-  const submodule = runCommand('git', ['-C', source, 'submodule', 'update', '--init', '--recursive'], undefined);
+  const submodule = runCommand('git', ['-C', source, 'submodule', 'update', '--init', '--recursive'], undefined, {
+    timeoutMs: 10 * 60 * 1000,
+    env: gitEnv(),
+  });
+  if (isSpawnTimeout(submodule)) {
+    throw new CliError('submodule_timeout', 'Timed out initializing libvmm submodules');
+  }
   if (submodule.status !== 0) {
     throw new CliError('submodule_failed', submodule.stderr || submodule.stdout || 'Failed to init libvmm submodules');
   }

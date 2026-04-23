@@ -10,7 +10,7 @@ depend on it.
 ## Quick start
 
 ```bash
-libvmm inspect --path ./hyperarm-workspace/tools/libvmm/src/libvmm --json
+libvmm inspect --path <workspace>/tools/libvmm/src/libvmm --json
 ```
 
 ## Usage
@@ -30,14 +30,14 @@ Build the `virtio` example (requires a Microkit SDK):
 
 ```bash
 libvmm build \
-  --source ./hyperarm-workspace/tools/libvmm/src/libvmm-main \
-  --patch-dir ./hyperarm-workspace/tools/libvmm/patches \
-  --microkit-sdk ./hyperarm-workspace/tools/microkit-sdk/builds/microkit-sdk-2.0.1/sdk \
+  --source <workspace>/tools/libvmm/src/libvmm-main \
+  --patch-dir <workspace>/tools/libvmm/patches \
+  --microkit-sdk <workspace>/tools/microkit-sdk/builds/microkit-sdk-2.0.1/sdk \
   --board qemu_virt_aarch64 \
   --example virtio \
   --linux ./out/Image \
   --initrd ./out/rootfs.cpio.gz \
-  --qemu ./hyperarm-workspace/tools/qemu/bin/qemu-system-aarch64 \
+  --qemu <workspace>/tools/qemu/bin/qemu-system-aarch64 \
   --make-target qemu \
   --json
 ```
@@ -56,7 +56,10 @@ invocation flags), keep your patches in the workspace and apply them with
 `--patch-dir`.
 
 Morpheus-managed builds should set `tools.libvmm.patch-dir` in `morpheus.yaml`
-to a workspace-local directory (for example `./hyperarm-workspace/tools/libvmm/patches`).
+to a workspace-local directory (for example `<workspace>/tools/libvmm/patches`).
+
+When Morpheus runs libvmm provisioning, the execution is recorded as a workflow
+run under `<workspace>/runs/<workflow-run-id>/`.
 
 ## Dependencies
 

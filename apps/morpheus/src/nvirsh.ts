@@ -111,6 +111,11 @@ function localRunDir(workspace, tool, id) {
   return path.join(localToolWorkspace(workspace, tool), "runs", id);
 }
 
+function resolveRunDirOverride() {
+  const override = process.env.MORPHEUS_RUN_DIR_OVERRIDE;
+  return override ? path.resolve(process.cwd(), override) : null;
+}
+
 function localManifestPath(workspace, tool, id) {
   return path.join(localRunDir(workspace, tool, id), "manifest.json");
 }
@@ -171,6 +176,7 @@ function loadNvirshConfig() {
 function hydrateBuildrootRunRecords(workspace) {
   const runsRoot = path.join(localWorkspaceRoot(workspace), "tools", "buildroot", "runs");
   if (!fs.existsSync(runsRoot)) {
+    hydrateWorkflowStepRunRecords(workspace, "buildroot");
     return;
   }
   for (const entry of fs.readdirSync(runsRoot, { withFileTypes: true })) {
@@ -198,6 +204,8 @@ function hydrateBuildrootRunRecords(workspace) {
       artifacts: manifest.artifacts || []
     });
   }
+
+  hydrateWorkflowStepRunRecords(workspace, "buildroot");
 }
 
 function artifactLocation(artifact) {
@@ -206,6 +214,58 @@ function artifactLocation(artifact) {
 
 function localArtifactDir(workspace, tool, id) {
   return path.join(localToolWorkspace(workspace, tool), "runs", id, "artifacts");
+}
+
+function hydrateWorkflowStepRunRecords(workspace, tool) {
+  const runsRoot = path.join(localWorkspaceRoot(workspace), "runs");
+  if (!fs.existsSync(runsRoot)) {
+    return;
+  }
+
+  for (const runEntry of fs.readdirSync(runsRoot, { withFileTypes: true })) {
+    if (!runEntry.isDirectory()) {
+      continue;
+    }
+    const stepsRoot = path.join(runsRoot, runEntry.name, "steps");
+    if (!fs.existsSync(stepsRoot)) {
+      continue;
+    }
+    for (const stepEntry of fs.readdirSync(stepsRoot, { withFileTypes: true })) {
+      if (!stepEntry.isDirectory()) {
+        continue;
+      }
+      const manifestPath = path.join(stepsRoot, stepEntry.name, "manifest.json");
+      if (!fs.existsSync(manifestPath)) {
+        continue;
+      }
+      let manifest;
+      try {
+        manifest = readJson(manifestPath);
+      } catch {
+        continue;
+      }
+      if (!manifest || manifest.tool !== tool) {
+        continue;
+      }
+      registerManagedRun({
+        id: manifest.id,
+        tool: manifest.tool,
+        mode: manifest.mode,
+        workspace: path.resolve(process.cwd(), workspace),
+        ssh: manifest.transport && manifest.transport.type === "ssh" && manifest.transport.target
+          ? manifest.transport.target.original
+          : null,
+        status: manifest.status,
+        createdAt: manifest.createdAt,
+        updatedAt: manifest.updatedAt,
+        manifest: manifest.manifest,
+        logFile: manifest.logFile,
+        runDir: manifest.runDir,
+        outputDir: manifest.outputDir,
+        artifacts: manifest.artifacts || []
+      });
+    }
+  }
 }
 
 function normalizeRemotePath(dirPath, relativePath) {
@@ -241,6 +301,7 @@ function fetchRemoteArtifact(record, remotePath, localPath) {
 function hydrateToolRunRecords(workspace, tool) {
   const runsRoot = path.join(localWorkspaceRoot(workspace), "tools", tool, "runs");
   if (!fs.existsSync(runsRoot)) {
+    hydrateWorkflowStepRunRecords(workspace, tool);
     return;
   }
   for (const entry of fs.readdirSync(runsRoot, { withFileTypes: true })) {
@@ -268,6 +329,8 @@ function hydrateToolRunRecords(workspace, tool) {
       artifacts: manifest.artifacts || []
     });
   }
+
+  hydrateWorkflowStepRunRecords(workspace, tool);
 }
 
 function resolveDependencyArtifact(workspace, baseDir, explicitPath, spec, label) {
@@ -413,7 +476,8 @@ function parseRunOptions(flags) {
     throw new Error("run requires --workspace DIR or a workspace root in morpheus.yaml");
   }
   const runId = generateRunId();
-  const runDir = localRunDir(workspace, TOOL, runId);
+  const overriddenRunDir = resolveRunDirOverride();
+  const runDir = overriddenRunDir || localRunDir(workspace, TOOL, runId);
   const dependencies = value.dependencies || {};
   const kernel = resolveDependencyArtifact(workspace, toolConfig.baseDir, flags.kernel, dependencies.kernel, "kernel");
   const initrd = resolveDependencyArtifact(workspace, toolConfig.baseDir, flags.initrd, dependencies.initrd, "initrd");
@@ -436,8 +500,8 @@ function parseRunOptions(flags) {
     id: runId,
     workspace,
     runDir,
-    manifestPath: localManifestPath(workspace, TOOL, runId),
-    logFile: localLogPath(workspace, TOOL, runId),
+    manifestPath: path.join(runDir, "manifest.json"),
+    logFile: path.join(runDir, "stdout.log"),
     target: flags.target || value.target || "sel4",
     name: flags.name || value.name || runId,
     qemu: resolveDependencyArtifact(workspace, toolConfig.baseDir, flags.qemu, dependencies.qemu || value.qemu, "qemu"),

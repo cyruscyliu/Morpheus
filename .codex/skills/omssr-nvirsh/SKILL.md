@@ -25,8 +25,8 @@ When those concerns matter, use Morpheus around it.
 2. Run `node tools/nvirsh/dist/index.js --help` to inspect the current surface.
 3. Prefer `--json` for machine-readable output.
 4. Reuse `inspect` and `logs` before rerunning a target.
-5. Use `scripts/nvirsh/prepare-sel4-deps.mjs` to stage existing local deps
-   into the workspace-local paths from `morpheus.yaml`.
+5. Prefer running `nvirsh` through Morpheus so tool dependencies are resolved
+   from `morpheus.yaml`.
 
 ## Command Surface
 
@@ -67,32 +67,9 @@ Expected pinned compatibility:
 ## Example Flow
 
 ```bash
-node scripts/nvirsh/prepare-sel4-deps.mjs \
-  --qemu /path/to/qemu-system-aarch64 \
-  --microkit-sdk /path/to/microkit-sdk \
-  --toolchain /path/to/arm-gnu-toolchain \
-  --libvmm-dir /path/to/libvmm \
-  --sel4-dir /path/to/seL4 \
-  --json
+./bin/morpheus workspace create
 
-node tools/nvirsh/dist/index.js prepare \
-  --target sel4 \
-  --state-dir ./.nvirsh/sel4-dev \
-  --qemu ./deps/qemu-system-aarch64 \
-  --microkit-sdk ./deps/microkit-sdk \
-  --microkit-version 1.4.1 \
-  --toolchain ./deps/arm-gnu-toolchain \
-  --libvmm-dir ./deps/libvmm \
-  --sel4-dir ./deps/seL4 \
-  --sel4-version 15.0.0 \
-  --json
-
-node tools/nvirsh/dist/index.js run \
-  --target sel4 \
-  --state-dir ./.nvirsh/sel4-dev \
-  --kernel ./out/Image \
-  --initrd ./out/rootfs.cpio.gz \
-  --json
+./bin/morpheus --json tool build --tool nvirsh
 ```
 
 ## Boundary Rules

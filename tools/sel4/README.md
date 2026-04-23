@@ -8,11 +8,14 @@ artifact. It does not own target launch behavior. Consumer tools such as
 directory comes from an existing local checkout or a managed archive fetch into
 the workspace.
 
+When Morpheus runs seL4 provisioning, the execution is recorded as a workflow
+run under `<workspace>/runs/<workflow-run-id>/`.
+
 ## Quick start
 
 ```bash
 sel4 inspect \
-  --path ./hyperarm-workspace/tools/sel4/src/seL4 \
+  --path <workspace>/tools/sel4/src/seL4 \
   --json
 ```
 
@@ -33,7 +36,7 @@ Example response shape:
   "details": {
     "artifact": {
       "path": "source-dir",
-      "location": "./hyperarm-workspace/tools/sel4/src/seL4"
+      "location": "<workspace>/tools/sel4/src/seL4"
     }
   }
 }
@@ -54,7 +57,7 @@ Use Morpheus when the source tree should be a managed dependency for another
 tool:
 
 ```bash
-morpheus tool build --tool sel4 --mode local --path ./hyperarm-workspace/tools/sel4/src/seL4 --json
+morpheus tool build --tool sel4 --mode local --path <workspace>/tools/sel4/src/seL4 --json
 ```
 
 Or have Morpheus build it into the workspace when the configured directory
@@ -76,7 +79,7 @@ morpheus tool build \
   --tool sel4 \
   --mode local \
   --sel4-version 15.0.0 \
-  --patch-dir ./hyperarm-workspace/tools/sel4/patches/fuzz-sel4 \
+  --patch-dir <workspace>/tools/sel4/patches/fuzz-sel4 \
   --json
 ```
 

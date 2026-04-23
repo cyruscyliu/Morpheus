@@ -9,6 +9,9 @@ machine-readable output instead of ad hoc shell scripts.
 Remote workspace support is not part of `buildroot`.
 Use `morpheus tool build --tool buildroot --mode remote ...` for managed remote runs.
 
+When Morpheus runs Buildroot, the execution is recorded as a workflow run under
+`<workspace>/runs/<workflow-run-id>/`.
+
 ## Quick start
 
 ```bash

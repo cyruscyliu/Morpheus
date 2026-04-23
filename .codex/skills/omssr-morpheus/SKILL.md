@@ -27,6 +27,7 @@ When operating as an agent in this repo:
 3. Prefer `--json` when the output will be consumed programmatically.
 4. Use `inspect` or `logs` to re-read prior run state instead of rerunning
    work when possible.
+5. Morpheus records tool executions as workflow runs under `<workspace>/runs/`.
 
 Optional repo-local config for one local workspace and one remote workspace:
 
@@ -105,21 +106,6 @@ tools:
         artifact: source-dir
 ```
 
-When the deps already exist somewhere else on disk, materialize them into the
-workspace-local paths declared above with:
-
-```bash
-node scripts/nvirsh/prepare-sel4-deps.mjs \
-  --qemu /path/to/qemu-system-aarch64 \
-  --microkit-sdk /path/to/microkit-sdk \
-  --toolchain /path/to/arm-gnu-toolchain \
-  --libvmm-dir /path/to/libvmm \
-  --sel4-dir /path/to/seL4 \
-  --json
-```
-
-This script uses symlinks by default and does not download anything.
-
 Register the workspace-local dependencies as managed artifacts with:
 
 ```bash
@@ -167,6 +153,7 @@ The main user-facing commands are:
 ```text
 morpheus workspace create
 morpheus workspace show
+morpheus workspace clean
 morpheus tool build
 morpheus runs list
 morpheus runs list --managed
@@ -176,6 +163,9 @@ morpheus runs fetch
 morpheus runs remove
 morpheus runs show
 morpheus runs export-html
+morpheus workflow run
+morpheus workflow inspect
+morpheus workflow logs
 morpheus tool list
 morpheus tool list --verify
 morpheus contracts
@@ -185,9 +175,12 @@ Use these commands by intent:
 
 - `workspace create`: create the standard local workspace layout.
 - `workspace show`: inspect workspace roots and their current presence.
+- `workspace clean --deprecated --yes`: remove deprecated workspace-root
+  directories (`builds/`, `cache/`, `downloads/`, `sources/`).
 - `tool build`: start a managed tool run in local or remote mode.
-- `tool build --tool nvirsh`: resolve configured runtime dependencies and launch
-  local `nvirsh` from concrete artifact paths.
+- `tool build --tool nvirsh`: build configured producer-tool dependencies (for
+  example Buildroot) and then launch local `nvirsh` from resolved artifact
+  paths.
 - `tool build --tool microkit-sdk`: register or build a managed Microkit SDK
   directory for downstream consumers.
 - `tool build --tool qemu`: register a local QEMU executable as a managed

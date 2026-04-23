@@ -12,7 +12,7 @@ release fetch, unpack, and build flow.
 
 ```bash
 qemu inspect \
-  --path ./hyperarm-workspace/tools/qemu/bin/qemu-system-aarch64 \
+  --path <workspace>/tools/qemu/bin/qemu-system-aarch64 \
   --json
 ```
 
@@ -33,7 +33,7 @@ Example response shape:
   "details": {
     "artifact": {
       "path": "qemu-system-aarch64",
-      "location": "./hyperarm-workspace/tools/qemu/bin/qemu-system-aarch64"
+      "location": "<workspace>/tools/qemu/bin/qemu-system-aarch64"
     }
   }
 }
@@ -54,7 +54,7 @@ Use Morpheus when the executable should be a managed dependency for another
 tool:
 
 ```bash
-morpheus tool build --tool qemu --mode local --path ./hyperarm-workspace/tools/qemu/bin/qemu-system-aarch64 --json
+morpheus tool build --tool qemu --mode local --path <workspace>/tools/qemu/bin/qemu-system-aarch64 --json
 ```
 
 Or have Morpheus build it into the workspace when the configured executable
@@ -69,6 +69,9 @@ morpheus tool build \
   --target-list aarch64-softmmu \
   --json
 ```
+
+When Morpheus runs QEMU provisioning, the execution is recorded as a workflow
+run under `<workspace>/runs/<workflow-run-id>/`.
 
 ## Flags
 

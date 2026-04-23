@@ -34,8 +34,10 @@
 - For source-managing tools such as Buildroot and QEMU, prefer stable managed
   source paths under `<workspace>/tools/<tool>/src/`.
 - For those tools, keep reusable builds under
-  `<workspace>/tools/<tool>/builds/` and run records under
-  `<workspace>/tools/<tool>/runs/`.
+  `<workspace>/tools/<tool>/builds/`.
+- Store workflow and tool execution records under `<workspace>/runs/`.
+- Deprecate `<workspace>/{builds,cache,downloads,sources}` at the workspace
+  root; keep caches under `<workspace>/tools/<tool>/...`.
 - Treat external source trees as transient sync inputs when needed, not as the
   canonical paths stored in `morpheus.yaml`.
 

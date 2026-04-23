@@ -36,6 +36,7 @@ function isolatedEnv(extra = {}) {
   return {
     ...process.env,
     MORPHEUS_WORK_ROOT: fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-test-work-")),
+    MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1",
     ...extra
   };
 }
@@ -94,7 +95,8 @@ raise SystemExit(result.returncode)
   );
   return {
     PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`,
-    MORPHEUS_SSH_BIN: sshPath
+    MORPHEUS_SSH_BIN: sshPath,
+    MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1"
   };
 }
 
@@ -143,7 +145,8 @@ raise SystemExit(result.returncode)
   );
   return {
     PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`,
-    MORPHEUS_SSH_BIN: sshPath
+    MORPHEUS_SSH_BIN: sshPath,
+    MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1"
   };
 }
 
@@ -376,7 +379,7 @@ test("workspace create builds the standard directory layout", () => {
 
   assert.equal(result.status, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
-  assert.equal(payload.created.length, 8);
+  assert.equal(payload.created.length, 4);
   assert.equal(payload.workspace.directories.runs.exists, true);
   assert.equal(fs.existsSync(path.join(workspaceRoot, "runs")), true);
 
@@ -438,7 +441,8 @@ test("workspace create and show support explicit remote managed workspaces", () 
   const showPayload = JSON.parse(show.stdout);
   assert.equal(showPayload.mode, "remote");
   assert.equal(showPayload.ssh, "builder@example.com:2222");
-  assert.equal(showPayload.directories.cache.exists, true);
+  assert.equal(showPayload.directories.tmp.exists, true);
+  assert.equal(showPayload.deprecated.cache.exists, false);
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
@@ -599,10 +603,11 @@ test("runs show reads fixture run packages", () => {
   assert.equal(payload.steps[0].artifactCount, 1);
 });
 
-test("workflow commands are no longer part of the app surface", () => {
-  const result = run(["workflow", "list"]);
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /unknown command: workflow/);
+test("workflow commands are available through Morpheus", () => {
+  const result = run(["workflow", "--help"]);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /workflow run/);
+  assert.match(result.stdout, /workflow inspect/);
 });
 
 test("managed run help is available through Morpheus", () => {
@@ -612,10 +617,44 @@ test("managed run help is available through Morpheus", () => {
   assert.match(result.stdout, /--mode remote/);
 });
 
+test("tool build creates a single-step workflow run", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-tool-"));
+  const env = isolatedEnv({ MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "0" });
+
+  const result = run([
+    "--json",
+    "tool",
+    "build",
+    "--tool",
+    "buildroot",
+    "--mode",
+    "local",
+    "--workspace",
+    workspaceRoot,
+    "--source",
+    buildrootFixture,
+    "--defconfig",
+    "qemu_x86_64_defconfig"
+  ], { cwd: workspaceRoot, env });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.command, "tool build");
+  assert.equal(payload.details.id.startsWith("wf-"), true);
+
+  const runDir = path.join(workspaceRoot, "runs", payload.details.id);
+  assert.equal(fs.existsSync(path.join(runDir, "workflow.json")), true);
+  assert.equal(fs.existsSync(path.join(runDir, "run.json")), true);
+  assert.equal(fs.existsSync(path.join(runDir, "steps")), true);
+
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  fs.rmSync(env.MORPHEUS_WORK_ROOT, { recursive: true, force: true });
+});
+
 test("managed run validates required mode in JSON mode", () => {
   const result = run(["--json", "tool", "build", "--tool", "buildroot"], {
     cwd: os.tmpdir(),
-    env: isolatedEnv()
+    env: isolatedEnv({ MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1" })
   });
   assert.equal(result.status, 1);
   const payload = JSON.parse(result.stdout);
@@ -633,7 +672,7 @@ test("inspect validates managed run flags in JSON mode", () => {
 
 test("managed local Buildroot run creates a Morpheus run record", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-run-"));
-  const env = isolatedEnv();
+  const env = isolatedEnv({ MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1" });
 
   const result = run([
     "--json",
@@ -697,7 +736,7 @@ test("managed local Buildroot run creates a Morpheus run record", () => {
 
 test("managed local Buildroot run can reuse a persistent build directory", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-run-reuse-"));
-  const env = isolatedEnv();
+  const env = isolatedEnv({ MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1" });
 
   const result = run([
     "--json",
@@ -2046,7 +2085,9 @@ test("workspace show supports remote managed workspace lookup", () => {
   assert.equal(show.status, 0, show.stderr || show.stdout);
   const payload = JSON.parse(show.stdout);
   assert.equal(payload.mode, "remote");
-  assert.equal(payload.directories.sources.exists, true);
+  assert.equal(payload.directories.tools.exists, true);
+  assert.equal(payload.directories.runs.exists, true);
+  assert.equal(payload.deprecated.sources.exists, false);
 
   fs.rmSync(remoteRoot, { recursive: true, force: true });
 });

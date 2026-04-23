@@ -11,6 +11,9 @@ workspace-local tree referenced by `morpheus.yaml`. When Morpheus manages the
 workflow, QEMU, Microkit SDK, and `seL4` should come from managed tool
 dependencies rather than direct `tools.nvirsh.*` paths when possible.
 
+When Morpheus runs `nvirsh` as a managed tool, the execution is recorded as a
+workflow run under `<workspace>/runs/<workflow-run-id>/`.
+
 ## sel4-dev launcher
 
 The HyperARM `sel4-dev` workflow is not a typical "boot a Linux kernel with

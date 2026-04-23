@@ -52,15 +52,13 @@ const WORKSPACE_CONTRACT = {
   description: "Describe shared workspace roots and their current presence on disk",
   commands: [
     "workspace create",
-    "workspace show"
+    "workspace show",
+    "workspace clean --deprecated --yes"
   ],
   workspaceStateLayout: [
-    "work/downloads/",
-    "work/sources/",
-    "work/builds/",
-    "work/runs/",
-    "work/cache/",
-    "work/tmp/"
+    "<workspace>/tools/",
+    "<workspace>/runs/",
+    "<workspace>/tmp/"
   ]
 };
 
@@ -74,8 +72,8 @@ const RUNS_CONTRACT = {
     "runs export-html [<run-id>]"
   ],
   defaults: {
-    runRoot: "work/runs",
-    outputRoot: "work/runs-view"
+    runRoot: "<workspace>/runs",
+    outputRoot: "<workspace>/runs-view"
   }
 };
 

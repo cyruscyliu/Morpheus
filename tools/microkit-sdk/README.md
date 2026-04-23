@@ -12,7 +12,7 @@ fetch into the workspace.
 
 ```bash
 microkit-sdk inspect \
-  --path ./hyperarm-workspace/tools/microkit-sdk/sdk \
+  --path <workspace>/tools/microkit-sdk/sdk \
   --json
 ```
 
@@ -33,7 +33,7 @@ Example response shape:
   "details": {
     "artifact": {
       "path": "sdk-dir",
-      "location": "./hyperarm-workspace/tools/microkit-sdk/sdk"
+      "location": "<workspace>/tools/microkit-sdk/sdk"
     }
   }
 }
@@ -53,11 +53,14 @@ microkit-sdk help
 Use Morpheus when the SDK should be a managed dependency for another tool:
 
 ```bash
-morpheus tool build --tool microkit-sdk --mode local --path ./hyperarm-workspace/tools/microkit-sdk/sdk --json
+morpheus tool build --tool microkit-sdk --mode local --path <workspace>/tools/microkit-sdk/sdk --json
 ```
 
 Or have Morpheus build it into the workspace when the configured directory
 does not exist yet:
+
+When Morpheus runs Microkit SDK provisioning, the execution is recorded as a
+workflow run under `<workspace>/runs/<workflow-run-id>/`.
 
 ```bash
 morpheus tool build \

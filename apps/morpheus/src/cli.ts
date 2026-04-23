@@ -7,8 +7,9 @@ const { getContracts } = require("./contracts");
 const { handleManagedRunCommand } = require("./remote");
 const { handleRunsCommand } = require("./runs");
 const { handleToolCommand } = require("./tools");
+const { handleWorkflowCommand } = require("./workflow");
 const { handleWorkspaceCommand } = require("./workspace");
-const { workspacePaths } = require("./paths");
+const { applyConfigDefaults } = require("./config");
 const { writeStdout, writeStdoutLine, writeStderrLine } = require("./io");
 
 function parseArgs(argv) {
@@ -50,8 +51,10 @@ function usage() {
       "Usage:",
       "  node apps/morpheus/dist/cli.js workspace create [--json]",
       "  node apps/morpheus/dist/cli.js workspace show [--json]",
+      "  node apps/morpheus/dist/cli.js workspace clean --deprecated --yes [--json]",
       "  node apps/morpheus/dist/cli.js config check [--json]",
       "  node apps/morpheus/dist/cli.js tool <subcommand> [--json]",
+      "  node apps/morpheus/dist/cli.js workflow <subcommand> [--json]",
       "  node apps/morpheus/dist/cli.js contracts",
       "  node apps/morpheus/dist/cli.js runs list [--json] [--run-root <path>]",
       "  node apps/morpheus/dist/cli.js runs list --managed [--json] [--workspace DIR] [--ssh TARGET]",
@@ -90,7 +93,6 @@ async function main() {
   const argv = process.argv.slice(2);
   const { positionals, flags } = parseArgs(argv);
   const command = positionals[0];
-  const paths = workspacePaths();
 
   if (!command || command === "help" || command === "--help") {
     usage();
@@ -124,14 +126,23 @@ async function main() {
     if (managedSubcommands.has(runsCommand)) {
       return await handleManagedRunCommand(runsCommand, rest);
     }
+    const { flags: resolvedRunDefaults } = applyConfigDefaults(
+      { tool: "runs", workspace: flags.workspace || null },
+      { allowGlobalRemote: false, allowToolDefaults: false }
+    );
+    const workspaceRoot = resolvedRunDefaults.workspace || path.join(process.cwd(), "hyperarm-workspace");
     return handleRunsCommand([runsCommand, ...rest].filter(Boolean), {
-      runRoot: paths.runs,
-      outputRoot: path.join(paths.root, "runs-view")
+      runRoot: path.join(workspaceRoot, "runs"),
+      outputRoot: path.join(workspaceRoot, "runs-view")
     });
   }
 
   if (command === "tool") {
     return await handleToolCommand(argvWithoutCommand(argv, "tool"));
+  }
+
+  if (command === "workflow") {
+    return handleWorkflowCommand(argvWithoutCommand(argv, "workflow"));
   }
 
   throw new Error(`unknown command: ${command}`);

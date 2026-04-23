@@ -57,6 +57,12 @@ If you need to customize libvmm's example Makefiles (for example to tweak QEMU
 invocation flags), keep your patches in the workspace and apply them with
 `--patch-dir`.
 
+This repo also ships an upstreamable patch you can apply via `--patch-dir`:
+
+- `tools/libvmm/patches/0001-add-requirements-for-sdfgen-0.28.patch` adds a
+  `requirements.txt` to the libvmm checkout and improves the `sdfgen` version
+  mismatch error message for the `virtio` example.
+
 Morpheus-managed builds should set `tools.libvmm.patch-dir` in `morpheus.yaml`
 to a workspace-local directory (for example `<workspace>/tools/libvmm/patches`).
 
@@ -72,6 +78,14 @@ libvmm builds typically require host packages such as:
 - `device-tree-compiler`
 
 Install them via your system package manager.
+
+The `virtio` example also relies on python dependencies (not installed by
+Morpheus). Install them inside the libvmm checkout:
+
+```bash
+cd <workspace>/tools/libvmm/builds/<key>/source
+python3 -m pip install -r requirements.txt
+```
 
 ## JSON
 

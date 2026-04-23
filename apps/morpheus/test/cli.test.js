@@ -335,6 +335,32 @@ test("config check rejects non-local-non-remote modes", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("config check accepts global --json", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-check-global-json-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "tools:",
+      "  buildroot:",
+      "    mode: local",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["--json", "config", "check"], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.command, "config check");
+  assert.equal(payload.status, "success");
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
 test("workspace create builds the standard directory layout", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-create-project-"));
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-work-"));
@@ -464,6 +490,38 @@ test("workspace commands resolve remote targets from morpheus.yaml", () => {
   assert.equal(showPayload.local.root, path.join(projectRoot, "workflow-workspace"));
   assert.equal(showPayload.remote.root, "./remote-workflow-workspace");
 
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("workspace show accepts global --json", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workspace-show-test-"));
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      ""
+    ].join("\n")
+  );
+
+  const env = isolatedEnv();
+  const create = run(["--json", "workspace", "create"], { env, cwd: projectRoot });
+  assert.equal(create.status, 0, create.stderr || create.stdout);
+  const createPayload = JSON.parse(create.stdout.trim());
+  const expectedRoot = path.join(projectRoot, "workflow-workspace");
+  assert.equal(createPayload.root, expectedRoot);
+  assert.equal(fs.existsSync(expectedRoot), true);
+
+  const show = run(["--json", "workspace", "show"], { env, cwd: projectRoot });
+  assert.equal(show.status, 0, show.stderr || show.stdout);
+  const showPayload = JSON.parse(show.stdout.trim());
+  assert.equal(showPayload.mode, "local");
+  assert.equal(showPayload.root, expectedRoot);
+  assert.equal(typeof showPayload.directories, "object");
+  assert.equal(typeof showPayload.directories.tools, "object");
+
+  fs.rmSync(env.MORPHEUS_WORK_ROOT, { recursive: true, force: true });
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 

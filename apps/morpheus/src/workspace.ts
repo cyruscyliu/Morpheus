@@ -352,13 +352,14 @@ function printHybridShowHuman(result) {
 }
 
 function handleWorkspaceCommand(argv) {
-  const subcommand = argv[0];
+  const { positionals, flags: parsedFlags } = parseWorkspaceArgs(argv);
+  const subcommand = positionals[0];
   if (!subcommand || subcommand === "help" || subcommand === "--help") {
     writeStdoutLine(workspaceUsage());
     return 0;
   }
 
-  const { flags: rawFlags } = parseWorkspaceArgs(argv.slice(1));
+  const rawFlags = parsedFlags;
   const { flags } = applyConfigDefaults(rawFlags, { allowGlobalRemote: false });
   const sshTarget = flags.ssh ? parseSshTarget(flags.ssh) : null;
   const explicitWorkspace = flags.workspace || null;

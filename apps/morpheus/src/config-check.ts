@@ -74,9 +74,25 @@ function runConfigCheck() {
   };
 }
 
+function parseConfigArgs(argv) {
+  const positionals = [];
+  const flags = {};
+
+  for (const token of argv) {
+    if (!token.startsWith("--")) {
+      positionals.push(token);
+      continue;
+    }
+    flags[token.slice(2)] = true;
+  }
+
+  return { positionals, flags };
+}
+
 function handleConfigCommand(argv) {
-  const subcommand = argv[0];
-  const json = argv.includes("--json");
+  const { positionals, flags } = parseConfigArgs(argv);
+  const subcommand = positionals[0];
+  const json = Boolean(flags.json);
   if (!subcommand || subcommand === "help" || subcommand === "--help") {
     writeStdoutLine(usage());
     return 0;

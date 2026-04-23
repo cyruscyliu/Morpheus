@@ -1551,8 +1551,28 @@ async function runRemoteBuildroot(options) {
     exit_code: result.exitCode,
     summary: result.exitCode === 0 ? "completed managed remote Buildroot run" : "managed remote Buildroot run failed",
     details: { id, tool: BUILDROOT_TOOL, mode: "remote", workspace: options.workspace, run_dir: runDir, manifest, log_file: logFile, output_dir: outputDir },
-    error: result.exitCode === 0 ? undefined : { code: "managed_run_failed", message: result.stderr || "managed remote run failed" }
+    error: result.exitCode === 0
+      ? undefined
+      : { code: "managed_run_failed", message: result.stderr || "managed remote run failed" }
   };
+
+  if (result.exitCode !== 0) {
+    try {
+      const tail = runSsh(
+        options.ssh,
+        `tail -n 200 ${shellQuote(logFile)}`,
+        false
+      );
+      if (tail.exitCode === 0 && tail.stdout) {
+        payload.error.details = {
+          remote_log_file: logFile,
+          log_tail: tail.stdout.trimEnd()
+        };
+      }
+    } catch {
+      // Ignore log-tail retrieval failures to preserve the primary exit status.
+    }
+  }
   const manifestResult = JSON.parse(
     runRequiredSsh(options.ssh, `cat ${shellQuote(manifest)}`, `failed to read remote manifest: ${manifest}`).stdout
   );

@@ -5,7 +5,7 @@ const { spawnSync } = require("child_process");
 const { applyConfigDefaults } = require("./config");
 const { repoRoot } = require("./paths");
 const { writeStdoutLine } = require("./io");
-const { logDebug } = require("./logger");
+const { logDebug, logInfo } = require("./logger");
 const {
   createWorkflowRun,
   createWorkflowStep,
@@ -109,6 +109,27 @@ function parseToolPayload(stdout) {
   }
 }
 
+function tailFile(filePath, maxBytes) {
+  try {
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile()) {
+      return null;
+    }
+    const limit = typeof maxBytes === "number" ? maxBytes : 8192;
+    const start = Math.max(0, stat.size - limit);
+    const fd = fs.openSync(filePath, "r");
+    try {
+      const buffer = Buffer.alloc(stat.size - start);
+      fs.readSync(fd, buffer, 0, buffer.length, start);
+      return buffer.toString("utf8").trimEnd();
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
+}
+
 function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, commandLabel }) {
   const workflow = createWorkflowRun(workspaceRoot, workflowName);
   const createdSteps = [];
@@ -128,6 +149,11 @@ function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, co
     workflow: workflow.workflow,
     workspace: workflow.workspace,
     steps: createdSteps.map((step) => ({ id: step.id, tool: step.tool, name: step.name }))
+  });
+  logInfo("workflow", "created workflow run", {
+    id: workflow.id,
+    workflow: workflow.workflow,
+    steps: createdSteps.map((step) => ({ id: step.id, tool: step.tool }))
   });
 
   updateWorkflowRun(workflow.runDir, (current) => ({
@@ -169,6 +195,12 @@ function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, co
       tool: step.tool,
       argv: args.slice(1)
     });
+    logInfo("workflow", "running workflow step", {
+      workflow: workflow.id,
+      step: step.id,
+      tool: step.tool,
+      log_file: path.relative(process.cwd(), step.logFile),
+    });
     fs.appendFileSync(
       step.logFile,
       `\n[morpheus:workflow] step ${step.id} (${step.tool}) argv=${JSON.stringify(args.slice(1))}\n`,
@@ -202,6 +234,13 @@ function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, co
       status,
       exitCode
     });
+    logInfo("workflow", "completed workflow step", {
+      workflow: workflow.id,
+      step: step.id,
+      tool: step.tool,
+      status,
+      exit_code: exitCode
+    });
     const updatedStep = updateWorkflowStep(step.stepDir, (current) => ({
       ...current,
       status,
@@ -220,6 +259,13 @@ function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, co
 
     if (status !== "success") {
       workflowStatus = "error";
+      logInfo("workflow", "workflow step failed", {
+        workflow: workflow.id,
+        step: step.id,
+        tool: step.tool,
+        log_file: path.relative(process.cwd(), step.logFile),
+        hint: `./bin/morpheus --json workflow logs --id ${workflow.id} --step ${step.id}`
+      });
       break;
     }
   }
@@ -241,7 +287,24 @@ function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, co
       workspace: updatedWorkflow.workspace,
       run_dir: updatedWorkflow.runDir,
       manifest: workflowManifestPath(updatedWorkflow.runDir),
-      steps: updatedWorkflow.steps
+      steps: updatedWorkflow.steps,
+      failed_step: workflowStatus === "success"
+        ? null
+        : (() => {
+          const step = updatedWorkflow.steps.find((entry) => entry.status === "error") || updatedWorkflow.steps.at(-1) || null;
+          if (!step) {
+            return null;
+          }
+          const stepDir = step.stepDir;
+          const logFile = path.join(stepDir, "stdout.log");
+          return {
+            id: step.id,
+            name: step.name,
+            tool: (step.name || "").split(".")[0],
+            log_file: logFile,
+            log_tail: tailFile(logFile, 12000),
+          };
+        })()
     },
     error: workflowStatus === "success"
       ? undefined

@@ -28,6 +28,8 @@ When operating as an agent in this repo:
 4. Use `inspect` or `logs` to re-read prior run state instead of rerunning
    work when possible.
 5. Morpheus records tool executions as workflow runs under `<workspace>/runs/`.
+6. In `--json` mode Morpheus writes progress to stderr so long-running builds
+   still show what step is running.
 
 Optional repo-local config for one local workspace and one remote workspace:
 

@@ -93,3 +93,6 @@ python3 -m pip install -r requirements.txt
 ## JSON
 
 Every command supports `--json`, including help and errors.
+
+When `--json` is used, libvmm writes progress logs to stderr and prints a
+single JSON object on stdout as the last line.

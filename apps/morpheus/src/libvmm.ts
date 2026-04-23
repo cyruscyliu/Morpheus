@@ -80,7 +80,14 @@ function parseJsonResult(result, message) {
     } catch {
       payload = null;
     }
-    throw new Error((payload && payload.summary) || result.stderr || result.stdout || message);
+    const summary = payload && payload.summary ? String(payload.summary) : "";
+    const stderr = result.stderr ? String(result.stderr) : "";
+    const stdout = result.stdout ? String(result.stdout) : "";
+    const stderrTail = stderr.length > 8000 ? stderr.slice(stderr.length - 8000) : stderr;
+    const extra = stderrTail && (!summary || !summary.includes(stderrTail.trim()))
+      ? `\n\n[tool stderr (tail)]\n${stderrTail.trim()}`
+      : "";
+    throw new Error((summary || stderrTail || stdout || message) + extra);
   }
   return JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
 }

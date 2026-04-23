@@ -27,6 +27,27 @@ function emitText(value: string) {
   fs.writeSync(1, `${value}\n`);
 }
 
+function formatFields(fields?: Record<string, unknown> | null) {
+  if (!fields || Object.keys(fields).length === 0) {
+    return '';
+  }
+  return ` ${JSON.stringify(fields)}`;
+}
+
+function relPath(value: string | null | undefined) {
+  if (!value) {
+    return value;
+  }
+  if (!path.isAbsolute(value)) {
+    return value;
+  }
+  return path.relative(process.cwd(), value) || value;
+}
+
+function logInfo(message: string, fields?: Record<string, unknown> | null) {
+  fs.writeSync(2, `[libvmm] ${message}${formatFields(fields)}\n`);
+}
+
 function parseArgv(argv: string[]) {
   const positionals: string[] = [];
   const flags: Record<string, unknown> = {};
@@ -414,6 +435,16 @@ function buildDirectory(flags: Record<string, unknown>) {
   const makeTarget = optionalStringFlag(flags, 'make-target');
   const makeArgs = stringListFlag(flags, 'make-arg');
 
+  logInfo('starting build', {
+    source: relPath(source),
+    git_url: gitUrl,
+    git_ref: gitRef,
+    example,
+    microkit_sdk: relPath(microkitSdk),
+    board,
+    patch_dir: patchDir ? relPath(path.resolve(process.cwd(), patchDir)) : null,
+  });
+
   if (!fileExists(microkitSdk)) {
     throw new CliError('missing_directory', `Missing Microkit SDK directory: ${microkitSdk}`);
   }
@@ -437,16 +468,24 @@ function buildDirectory(flags: Record<string, unknown>) {
     throw new CliError('missing_directory', `Missing patch directory: ${patchDir}`);
   }
 
+  logInfo('ensuring git checkout', { source: relPath(source) });
   const cloned = ensureGitRepo(source, gitUrl);
+  logInfo(cloned.cloned ? 'cloned libvmm repo' : 'reusing libvmm repo', { source: relPath(source) });
+
+  logInfo('checking out git ref', { ref: gitRef });
   checkoutRef(source, gitRef);
+
+  logInfo('updating git submodules', {});
   updateSubmodules(source);
 
   const patchFiles = patchDir ? listPatchFiles(patchDir) : [];
   const fingerprint = patchDir ? patchFingerprint(patchDir, patchFiles) : null;
   const patchLogFile = patchDir ? path.join(source, '.morpheus-patches.log') : null;
   if (patchDir && fingerprint) {
+    logInfo('evaluating patch set', { files: patchFiles.length, fingerprint });
     const state = readPatchState(source);
     if (!state || state.fingerprint !== fingerprint) {
+      logInfo('applying patches', { files: patchFiles.length });
       applyPatches(source, patchDir, patchFiles, patchLogFile as string);
       writePatchState(source, {
         appliedAt: new Date().toISOString(),
@@ -454,9 +493,18 @@ function buildDirectory(flags: Record<string, unknown>) {
         files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
         fingerprint,
       });
+      logInfo('applied patches', { log_file: relPath(patchLogFile as string) });
+    } else {
+      logInfo('patches already applied', { files: patchFiles.length });
     }
   }
 
+  logInfo('building example via make', {
+    example,
+    microkit_sdk: relPath(microkitSdk),
+    microkit_board: board,
+    toolchain_bin_dir: toolchainBinDir ? relPath(toolchainBinDir) : null,
+  });
   const built = buildExample({
     source,
     example,
@@ -469,8 +517,13 @@ function buildDirectory(flags: Record<string, unknown>) {
     makeTarget,
     makeArgs,
   });
+  logInfo('built example', {
+    example_dir: relPath(built.exampleDir),
+    build_dir: built.buildDir ? relPath(built.buildDir) : null,
+  });
 
   const inspected = inspectDirectory({ path: source });
+  logInfo('build complete', { directory: relPath(inspected.details.directory.path) });
   return {
     command: 'build',
     status: 'success',

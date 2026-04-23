@@ -23,7 +23,18 @@ function logDebug(scope, message, fields) {
   fs.writeSync(2, `[morpheus:${scope}] ${message}${formatFields(fields)}\n`);
 }
 
+function logInfo(scope, message, fields) {
+  if (process.env.MORPHEUS_NO_PROGRESS === "1" || process.env.MORPHEUS_NO_PROGRESS === "true") {
+    return;
+  }
+  if (!(process.argv.includes("--json") || isVerboseEnabled())) {
+    return;
+  }
+  fs.writeSync(2, `[morpheus:${scope}] ${message}${formatFields(fields)}\n`);
+}
+
 module.exports = {
   isVerboseEnabled,
-  logDebug
+  logDebug,
+  logInfo,
 };

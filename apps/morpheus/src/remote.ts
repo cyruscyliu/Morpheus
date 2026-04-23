@@ -1614,6 +1614,8 @@ async function runRemoteBuildroot(options) {
     }
     payload.status = "success";
     payload.summary = "completed managed remote Buildroot run (non-zero exit code)";
+    payload.details.non_zero_exit_code = result.exitCode;
+    payload.exit_code = 0;
     delete payload.error;
   }
 

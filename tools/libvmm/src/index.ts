@@ -354,14 +354,6 @@ function buildExample(opts: {
   initrd: string | null;
   qemu: string | null;
   toolchainBinDir: string | null;
-  python: string | null;
-  pythonVenv: {
-    root: string;
-    interpreter: string;
-    sdfgenVersion: string | null;
-    requiredMinor: string | null;
-    installed: boolean;
-  } | null;
   makeTarget: string | null;
   makeArgs: string[];
 }) {
@@ -375,14 +367,11 @@ function buildExample(opts: {
     PATH: opts.toolchainBinDir
       ? `${opts.toolchainBinDir}${path.delimiter}${process.env.PATH || ''}`
       : (process.env.PATH || ''),
-    PYTHONNOUSERSITE: '1',
-    PIP_DISABLE_PIP_VERSION_CHECK: '1',
   };
 
   const args = [
     `MICROKIT_SDK=${opts.microkitSdk}`,
     `MICROKIT_BOARD=${opts.board}`,
-    ...(opts.python ? [`PYTHON=${opts.python}`] : []),
     ...(opts.linux ? [`LINUX=${opts.linux}`] : []),
     ...(opts.initrd ? [`INITRD=${opts.initrd}`] : []),
     ...(opts.qemu ? [`QEMU=${opts.qemu}`] : []),
@@ -407,109 +396,6 @@ function buildExample(opts: {
     buildDir: fs.existsSync(buildDirCandidate) ? buildDirCandidate : null,
     stdout: result.stdout || '',
     stderr: result.stderr || '',
-    python: opts.pythonVenv,
-  };
-}
-
-function pythonFromVenv(venvRoot: string) {
-  return path.join(venvRoot, 'bin', 'python');
-}
-
-function pipInstall(python: string, args: string[], cwd?: string) {
-  return runCommand(python, ['-m', 'pip', ...args], cwd, {
-    timeoutMs: 10 * 60 * 1000,
-    env: {
-      ...process.env,
-      PIP_DISABLE_PIP_VERSION_CHECK: '1',
-      PYTHONNOUSERSITE: '1',
-    },
-  });
-}
-
-function pythonDistVersion(python: string, dist: string) {
-  const result = runCommand(
-    python,
-    [
-      '-c',
-      [
-        'import importlib.metadata as m',
-        'import sys',
-        `dist=${JSON.stringify(dist)}`,
-        'try:',
-        '  print(m.version(dist))',
-        'except Exception:',
-        '  sys.exit(2)',
-      ].join('\n'),
-    ],
-    undefined,
-    { timeoutMs: 30 * 1000, env: { ...process.env, PYTHONNOUSERSITE: '1' } },
-  );
-  if (isSpawnTimeout(result)) {
-    throw new CliError('python_timeout', `Timed out probing ${dist} version`);
-  }
-  if (result.status === 0) {
-    return result.stdout.trim() || null;
-  }
-  return null;
-}
-
-function requiredSdfgenMinor(exampleDir: string) {
-  const meta = path.join(exampleDir, 'meta.py');
-  if (!fs.existsSync(meta)) {
-    return null;
-  }
-  const content = fs.readFileSync(meta, 'utf8');
-  const match = /version\('sdfgen'\)\.split\([^)]+\)\[1\]\s*==\s*\"(?<minor>\d+)\"/m.exec(content);
-  if (match && match.groups && match.groups.minor) {
-    return match.groups.minor;
-  }
-  return null;
-}
-
-function ensureSdfgenForExample(source: string, exampleDir: string) {
-  const requiredMinor = requiredSdfgenMinor(exampleDir);
-  if (!requiredMinor) {
-    return null;
-  }
-
-  const venvRoot = path.join(source, '.morpheus-python');
-  const python = pythonFromVenv(venvRoot);
-  if (!fs.existsSync(python)) {
-    const created = runCommand('python3', ['-m', 'venv', venvRoot], undefined, {
-      timeoutMs: 60 * 1000,
-      env: { ...process.env, PYTHONNOUSERSITE: '1' },
-    });
-    if (isSpawnTimeout(created)) {
-      throw new CliError('venv_timeout', 'Timed out creating python venv');
-    }
-    if (created.status !== 0) {
-      throw new CliError('venv_failed', created.stderr || created.stdout || 'Failed to create python venv');
-    }
-    const pip = pipInstall(python, ['install', '--upgrade', 'pip']);
-    if (pip.status !== 0) {
-      throw new CliError('pip_failed', pip.stderr || pip.stdout || 'Failed to upgrade pip');
-    }
-  }
-
-  const current = pythonDistVersion(python, 'sdfgen');
-  const minor = current ? (current.split('.')[1] || null) : null;
-  if (minor !== requiredMinor) {
-    const want = `0.${requiredMinor}.*`;
-    const installed = pipInstall(python, ['install', `sdfgen==${want}`]);
-    if (installed.status !== 0) {
-      throw new CliError(
-        'sdfgen_install_failed',
-        installed.stderr || installed.stdout || `Failed to install sdfgen==${want}`,
-      );
-    }
-  }
-
-  return {
-    root: venvRoot,
-    interpreter: python,
-    sdfgenVersion: pythonDistVersion(python, 'sdfgen'),
-    requiredMinor,
-    installed: true,
   };
 }
 
@@ -571,10 +457,6 @@ function buildDirectory(flags: Record<string, unknown>) {
     }
   }
 
-  const exampleDir = path.join(source, 'examples', example);
-  const pythonVenv = ensureSdfgenForExample(source, exampleDir);
-  const python = pythonVenv ? pythonVenv.interpreter : null;
-
   const built = buildExample({
     source,
     example,
@@ -584,8 +466,6 @@ function buildDirectory(flags: Record<string, unknown>) {
     initrd,
     qemu,
     toolchainBinDir,
-    python,
-    pythonVenv,
     makeTarget,
     makeArgs,
   });
@@ -633,7 +513,6 @@ function buildDirectory(flags: Record<string, unknown>) {
       build: {
         cwd: built.exampleDir,
       },
-      python: built.python,
     },
   };
 }

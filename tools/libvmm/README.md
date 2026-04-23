@@ -66,6 +66,9 @@ This repo also ships an upstreamable patch you can apply via `--patch-dir`:
 Morpheus-managed builds should set `tools.libvmm.patch-dir` in `morpheus.yaml`
 to a workspace-local directory (for example `<workspace>/tools/libvmm/patches`).
 
+If you want to use the patches shipped in this repo directly, you can also set
+`tools.libvmm.patch-dir` to `tools/libvmm/patches` (repo-relative).
+
 When Morpheus runs libvmm provisioning, the execution is recorded as a workflow
 run under `<workspace>/runs/<workflow-run-id>/`.
 

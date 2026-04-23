@@ -43,7 +43,8 @@ libvmm help
 ## Notes
 
 - Keep patches in a workspace-local directory and configure
-  `tools.libvmm.patch-dir` in `morpheus.yaml`.
+  `tools.libvmm.patch-dir` in `morpheus.yaml` (or point it at
+  `tools/libvmm/patches` to use the repo-shipped patch set).
 - The `virtio` example expects `sdfgen` 0.28.*. This repo ships an upstreamable
   patch at `tools/libvmm/patches/0001-add-requirements-for-sdfgen-0.28.patch`
   that adds `requirements.txt` to the libvmm checkout.

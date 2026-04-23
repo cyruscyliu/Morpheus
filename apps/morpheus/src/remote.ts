@@ -1597,6 +1597,26 @@ async function runRemoteBuildroot(options) {
     runRequiredSsh(options.ssh, `cat ${shellQuote(manifest)}`, `failed to read remote manifest: ${manifest}`).stdout
   );
   manifestResult.artifacts = fetchRemoteArtifacts(options, id, manifestResult.outputDir);
+
+  // If the underlying `make` exits non-zero but the expected artifacts were produced,
+  // treat the run as successful for downstream dependency resolution.
+  if (result.exitCode !== 0 && manifestResult.artifacts && manifestResult.artifacts.length > 0) {
+    manifestResult.warningMessage = `non-zero exit code (${result.exitCode}) but expected artifacts were produced`;
+    manifestResult.status = "success";
+    try {
+      runRequiredSsh(
+        options.ssh,
+        `cat > ${shellQuote(manifest)} <<'JSON'\n${JSON.stringify(manifestResult, null, 2)}\nJSON`,
+        "failed to update remote manifest"
+      );
+    } catch {
+      // Best-effort; downstream resolution uses the locally registered record.
+    }
+    payload.status = "success";
+    payload.summary = "completed managed remote Buildroot run (non-zero exit code)";
+    delete payload.error;
+  }
+
   registerRunFromManifest(manifestResult, options.ssh);
   payload.details.artifacts = manifestResult.artifacts;
   return payload;

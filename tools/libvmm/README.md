@@ -96,3 +96,7 @@ Every command supports `--json`, including help and errors.
 
 When `--json` is used, libvmm writes progress logs to stderr and prints a
 single JSON object on stdout as the last line.
+
+When `--patch-dir` changes (different patch fingerprint), libvmm resets the
+managed git worktree to a clean checkout before applying patches. This makes
+project patch iteration predictable.

@@ -366,6 +366,17 @@ function updateSubmodules(source: string) {
   }
 }
 
+function resetGitWorktree(source: string) {
+  const reset = runCommand('git', ['-C', source, 'reset', '--hard'], undefined, { env: gitEnv() });
+  if (reset.status !== 0) {
+    throw new CliError('git_reset_failed', reset.stderr || reset.stdout || 'Failed to reset libvmm checkout');
+  }
+  const clean = runCommand('git', ['-C', source, 'clean', '-fd'], undefined, { env: gitEnv() });
+  if (clean.status !== 0) {
+    throw new CliError('git_clean_failed', clean.stderr || clean.stdout || 'Failed to clean libvmm checkout');
+  }
+}
+
 function buildExample(opts: {
   source: string;
   example: string;
@@ -496,6 +507,8 @@ function buildDirectory(flags: Record<string, unknown>) {
     logInfo('evaluating patch set', { files: patchFiles.length, fingerprint });
     const state = readPatchState(source);
     if (!state || state.fingerprint !== fingerprint) {
+      logInfo('resetting worktree before patching', {});
+      resetGitWorktree(source);
       logInfo('applying patches', { files: patchFiles.length });
       applyPatches(source, patchDir, patchFiles, patchLogFile as string);
       writePatchState(source, {

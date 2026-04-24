@@ -50,5 +50,7 @@ libvmm help
   that adds `requirements.txt` to the libvmm checkout.
 - When `--json` is used, libvmm prints progress logs to stderr and a single JSON
   object on stdout.
+- When the patch set changes, libvmm resets the managed checkout before
+  applying patches so patch iteration stays consistent.
 - Provisioning runs git non-interactively (so missing credentials should fail
   fast rather than hang).

@@ -48,8 +48,6 @@ libvmm help
 - The `virtio` example expects `sdfgen` 0.28.*. This repo ships an upstreamable
   patch at `tools/libvmm/patches/0001-add-requirements-for-sdfgen-0.28.patch`
   that adds `requirements.txt` to the libvmm checkout.
-- The repo also ships `tools/libvmm/patches/0002-virtio-tune-qemu-invocation.patch`
-  to update the `virtio` QEMU invocation.
 - When `--json` is used, libvmm prints progress logs to stderr and a single JSON
   object on stdout.
 - Provisioning runs git non-interactively (so missing credentials should fail

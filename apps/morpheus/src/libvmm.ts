@@ -130,7 +130,7 @@ function parseRunOptions(flags) {
     linux: flags.linux ? path.resolve(process.cwd(), flags.linux) : resolveLocalPath(baseDir, value.linux),
     initrd: flags.initrd ? path.resolve(process.cwd(), flags.initrd) : resolveLocalPath(baseDir, value.initrd),
     qemu: flags.qemu ? path.resolve(process.cwd(), flags.qemu) : resolveLocalPath(baseDir, value.qemu),
-    makeArgs: flags["make-arg"] || value.makeArgs || [],
+    makeArgs: flags.makeArg || value.makeArgs || [],
     reuseBuildDir: Boolean(flags["reuse-build-dir"] ?? value.reuseBuildDir),
     buildDirKey: flags["build-dir-key"] || value.buildDirKey || "default",
   };

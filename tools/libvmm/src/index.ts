@@ -383,8 +383,19 @@ function buildExample(opts: {
     throw new CliError('missing_example', `Missing libvmm example directory: ${exampleDir}`);
   }
 
+  const envOverrides: Record<string, string> = {};
+  for (const item of opts.makeArgs) {
+    const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(item);
+    if (!match) {
+      continue;
+    }
+    const [, key, value] = match;
+    envOverrides[key] = value;
+  }
+
   const env = {
     ...process.env,
+    ...envOverrides,
     PATH: opts.toolchainBinDir
       ? `${opts.toolchainBinDir}${path.delimiter}${process.env.PATH || ''}`
       : (process.env.PATH || ''),

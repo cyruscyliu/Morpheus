@@ -108,7 +108,7 @@ function localToolWorkspace(workspace, tool) {
 }
 
 function localRunDir(workspace, tool, id) {
-  return path.join(localToolWorkspace(workspace, tool), "runs", id);
+  return path.join(localWorkspaceRoot(workspace), "runs", id);
 }
 
 function resolveRunDirOverride() {
@@ -140,13 +140,16 @@ function resolveRuntimePath(baseDir, inputPath) {
   return resolveLocalPath(baseDir, inputPath);
 }
 
-function runNodeTool(args) {
+function runNodeTool(args, options = {}) {
+  const attach = Boolean(options.attach);
+  const stdio = attach ? "inherit" : ["ignore", "pipe", "pipe"];
   return spawnSync(process.execPath, [
     path.join(repoRoot(), "tools", "nvirsh", "dist", "index.js"),
     ...args
   ], {
     encoding: "utf8",
-    cwd: process.cwd()
+    cwd: process.cwd(),
+    stdio
   });
 }
 
@@ -174,36 +177,7 @@ function loadNvirshConfig() {
 }
 
 function hydrateBuildrootRunRecords(workspace) {
-  const runsRoot = path.join(localWorkspaceRoot(workspace), "tools", "buildroot", "runs");
-  if (!fs.existsSync(runsRoot)) {
-    hydrateWorkflowStepRunRecords(workspace, "buildroot");
-    return;
-  }
-  for (const entry of fs.readdirSync(runsRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-    const manifestPath = path.join(runsRoot, entry.name, "manifest.json");
-    if (!fs.existsSync(manifestPath)) {
-      continue;
-    }
-    const manifest = readJson(manifestPath);
-    registerManagedRun({
-      id: manifest.id,
-      tool: manifest.tool,
-      mode: manifest.mode,
-      workspace: path.resolve(process.cwd(), workspace),
-      ssh: null,
-      status: manifest.status,
-      createdAt: manifest.createdAt,
-      updatedAt: manifest.updatedAt,
-      manifest: manifest.manifest,
-      logFile: manifest.logFile,
-      runDir: manifest.runDir,
-      outputDir: manifest.outputDir,
-      artifacts: manifest.artifacts || []
-    });
-  }
+  hydrateCenteredRunRecords(workspace, "buildroot");
 
   hydrateWorkflowStepRunRecords(workspace, "buildroot");
 }
@@ -213,7 +187,7 @@ function artifactLocation(artifact) {
 }
 
 function localArtifactDir(workspace, tool, id) {
-  return path.join(localToolWorkspace(workspace, tool), "runs", id, "artifacts");
+  return path.join(localRunDir(workspace, tool, id), "artifacts");
 }
 
 function hydrateWorkflowStepRunRecords(workspace, tool) {
@@ -268,6 +242,41 @@ function hydrateWorkflowStepRunRecords(workspace, tool) {
   }
 }
 
+function hydrateCenteredRunRecords(workspace, tool) {
+  const runsRoot = path.join(localWorkspaceRoot(workspace), "runs");
+  if (!fs.existsSync(runsRoot)) {
+    return;
+  }
+  for (const entry of fs.readdirSync(runsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const manifestPath = path.join(runsRoot, entry.name, "manifest.json");
+    if (!fs.existsSync(manifestPath)) {
+      continue;
+    }
+    const manifest = readJson(manifestPath);
+    if (!manifest || manifest.tool !== tool) {
+      continue;
+    }
+    registerManagedRun({
+      id: manifest.id,
+      tool: manifest.tool,
+      mode: manifest.mode,
+      workspace: path.resolve(process.cwd(), workspace),
+      ssh: null,
+      status: manifest.status,
+      createdAt: manifest.createdAt,
+      updatedAt: manifest.updatedAt,
+      manifest: manifest.manifest,
+      logFile: manifest.logFile,
+      runDir: manifest.runDir,
+      outputDir: manifest.outputDir,
+      artifacts: manifest.artifacts || []
+    });
+  }
+}
+
 function normalizeRemotePath(dirPath, relativePath) {
   return path.posix.join(String(dirPath).replace(/\/+$/, ""), String(relativePath).replace(/^\/+/, ""));
 }
@@ -299,36 +308,7 @@ function fetchRemoteArtifact(record, remotePath, localPath) {
 }
 
 function hydrateToolRunRecords(workspace, tool) {
-  const runsRoot = path.join(localWorkspaceRoot(workspace), "tools", tool, "runs");
-  if (!fs.existsSync(runsRoot)) {
-    hydrateWorkflowStepRunRecords(workspace, tool);
-    return;
-  }
-  for (const entry of fs.readdirSync(runsRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-    const manifestPath = path.join(runsRoot, entry.name, "manifest.json");
-    if (!fs.existsSync(manifestPath)) {
-      continue;
-    }
-    const manifest = readJson(manifestPath);
-    registerManagedRun({
-      id: manifest.id,
-      tool: manifest.tool,
-      mode: manifest.mode,
-      workspace: path.resolve(process.cwd(), workspace),
-      ssh: null,
-      status: manifest.status,
-      createdAt: manifest.createdAt,
-      updatedAt: manifest.updatedAt,
-      manifest: manifest.manifest,
-      logFile: manifest.logFile,
-      runDir: manifest.runDir,
-      outputDir: manifest.outputDir,
-      artifacts: manifest.artifacts || []
-    });
-  }
+  hydrateCenteredRunRecords(workspace, tool);
 
   hydrateWorkflowStepRunRecords(workspace, tool);
 }
@@ -435,6 +415,7 @@ function buildManifest(base, runtime) {
     outputDir: base.runDir,
     manifest: base.manifestPath,
     logFile: base.logFile,
+    toolManifest: base.toolManifestPath,
     createdAt: runtime.createdAt || base.createdAt,
     updatedAt: nowIso(),
     artifacts: [
@@ -447,7 +428,7 @@ function buildManifest(base, runtime) {
 }
 
 function writeCanonicalManifest(base) {
-  const current = readJson(base.manifestPath);
+  const current = readJson(base.toolManifestPath);
   const next = buildManifest(base, current);
   writeJson(base.manifestPath, next);
   registerManagedRun({
@@ -500,7 +481,8 @@ function parseRunOptions(flags) {
     id: runId,
     workspace,
     runDir,
-    manifestPath: path.join(runDir, "manifest.json"),
+    toolManifestPath: path.join(runDir, "manifest.json"),
+    manifestPath: path.join(runDir, "managed.json"),
     logFile: path.join(runDir, "stdout.log"),
     target: flags.target || value.target || "sel4",
     name: flags.name || value.name || runId,
@@ -513,6 +495,7 @@ function parseRunOptions(flags) {
       "microkit-sdk"
     ),
     microkitVersion: flags["microkit-version"] || value["microkit-version"] || value.microkitVersion || null,
+    microkitConfig: flags["microkit-config"] || value["microkit-config"] || value.microkitConfig || null,
     toolchain,
     libvmmDir,
     board: flags.board || value.board || "qemu_arm_virt",
@@ -521,6 +504,7 @@ function parseRunOptions(flags) {
       || value["qemu-args"]
       || value.qemuArgs
       || [],
+    attach: Boolean(flags.attach || value.attach),
     kernel,
     initrd,
     dependencies: {
@@ -558,6 +542,9 @@ function prepareArgs(options) {
   if (options.microkitVersion) {
     args.push("--microkit-version", options.microkitVersion);
   }
+  if (options.microkitConfig) {
+    args.push("--microkit-config", options.microkitConfig);
+  }
   if (options.board) {
     args.push("--board", options.board);
   }
@@ -568,6 +555,22 @@ function prepareArgs(options) {
 }
 
 function launchArgs(options) {
+  if (options.attach) {
+    return [
+      "run",
+      "--state-dir",
+      options.runDir,
+      "--name",
+      options.name,
+      "--target",
+      options.target,
+      "--kernel",
+      options.kernel,
+      "--initrd",
+      options.initrd,
+      ...((options.qemuArgs || []).flatMap((value) => ["--qemu-arg", value])),
+    ];
+  }
   const args = [
     "--json",
     "run",
@@ -607,17 +610,29 @@ async function runManagedNvirsh(flags) {
   );
   let manifest = writeCanonicalManifest(options);
 
-  const launch = parseJsonResult(
-    runNodeTool(launchArgs(options)),
-    "failed to launch nvirsh target"
-  );
-  manifest = writeCanonicalManifest(options);
+  let launch = null;
+  if (options.attach) {
+    if (flags.json) {
+      throw new Error("nvirsh --attach cannot be combined with --json");
+    }
+    const result = runNodeTool(launchArgs(options), { attach: true });
+    if (result.status !== 0) {
+      throw new Error(result.stderr || result.stdout || "failed to launch nvirsh target");
+    }
+    manifest = writeCanonicalManifest(options);
+  } else {
+    launch = parseJsonResult(
+      runNodeTool(launchArgs(options)),
+      "failed to launch nvirsh target"
+    );
+    manifest = writeCanonicalManifest(options);
+  }
 
   return {
     command: "run",
     status: "success",
     exit_code: 0,
-    summary: "started managed nvirsh run",
+    summary: options.attach ? "completed attached nvirsh run" : "started managed nvirsh run",
     details: {
       id: options.id,
       tool: TOOL,
@@ -629,7 +644,7 @@ async function runManagedNvirsh(flags) {
       output_dir: options.runDir,
       artifacts: manifest.artifacts,
       prepare: prepare.details ? prepare.details.manifest : null,
-      launch: launch.details ? launch.details.manifest : null
+      launch: launch && launch.details ? launch.details.manifest : null
     }
   };
 }

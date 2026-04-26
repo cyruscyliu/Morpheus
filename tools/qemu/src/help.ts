@@ -11,7 +11,7 @@ export const COMMANDS = [
     name: 'build',
     summary: 'Fetch, unpack, build, and install QEMU',
     usage: [
-      'qemu build --source DIR [--qemu-version VER] [--archive-url URL] --build-dir DIR --install-dir DIR [--target-list NAME ...] [--configure-arg ARG ...]',
+      'qemu build --source DIR [--qemu-version VER] [--archive-url URL] --build-dir DIR --install-dir DIR [--downloads-dir DIR] [--target-list NAME ...] [--configure-arg ARG ...]',
     ],
     flags: [
       { name: '--source DIR', summary: 'Managed QEMU source tree' },
@@ -19,6 +19,7 @@ export const COMMANDS = [
       { name: '--archive-url URL', summary: 'Override archive URL for fetches or tests' },
       { name: '--build-dir DIR', summary: 'Build directory' },
       { name: '--install-dir DIR', summary: 'Install prefix' },
+      { name: '--downloads-dir DIR', summary: 'Directory used to cache fetched archives' },
       { name: '--target-list NAME', summary: 'Repeatable QEMU target to build' },
       { name: '--configure-arg ARG', summary: 'Repeatable configure argument' },
     ],

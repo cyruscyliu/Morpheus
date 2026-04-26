@@ -41,6 +41,14 @@ pnpm dev:docs
 
 Then open `http://127.0.0.1:4173`.
 
+Start the local runs viewer:
+
+```bash
+pnpm dev:runs-viewer
+```
+
+Then open `http://127.0.0.1:4174`.
+
 CLI conventions for repo-local tools are documented in
 `docs/cli-conventions.md`.
 
@@ -170,10 +178,10 @@ tools:
     path: ./hyperarm-workspace/tools/qemu/bin/qemu-system-aarch64
   microkit-sdk:
     mode: local
-    microkit-version: 2.0.1
+    microkit-version: 2.2.0
     reuse-build-dir: true
-    build-dir-key: microkit-sdk-2.0.1
-    # archive-url: file:///tmp/microkit-sdk-2.0.1.tar.gz
+    build-dir-key: microkit-sdk-2.2.0
+    # archive-url: file:///tmp/microkit-sdk-2.2.0.tar.gz
     # microkit-dir: ./deps/microkit
   sel4:
     mode: local
@@ -185,7 +193,7 @@ tools:
     mode: local
     target: sel4
     name: sel4-dev
-    microkit-version: 1.4.1
+    microkit-version: 2.2.0
     toolchain: ./deps/arm-gnu-toolchain
     libvmm-dir: ./deps/libvmm
     sel4-version: 15.0.0

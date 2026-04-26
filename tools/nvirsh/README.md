@@ -57,6 +57,7 @@ nvirsh run \
   --initrd ./out/rootfs.cpio.gz \
   --qemu-arg -machine \
   --qemu-arg virt,virtualization=on,gic-version=3 \
+  --detach \
   --json
 ```
 
@@ -83,6 +84,17 @@ Example response shape:
     }
   }
 }
+```
+
+To attach to the VM console (interactive), omit `--detach` and do not use
+`--json`:
+
+```bash
+nvirsh run \
+  --target sel4 \
+  --state-dir ./.nvirsh/sel4-dev \
+  --kernel ./out/Image \
+  --initrd ./out/rootfs.cpio.gz
 ```
 
 ## Usage

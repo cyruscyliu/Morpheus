@@ -206,6 +206,15 @@ function validateSel4Prerequisites(flags: Record<string, unknown>) {
   const toolchain = resolvePathValue(requireFlag(flags, 'toolchain'));
   const libvmmDir = resolvePathValue(requireFlag(flags, 'libvmm-dir'));
   const microkitVersion = String(flags['microkit-version'] || '');
+  const microkitConfigRaw = String(flags['microkit-config'] || '').trim();
+  const microkitConfig = microkitConfigRaw ? microkitConfigRaw : 'debug';
+  const allowedMicrokitConfigs = new Set(['debug', 'release']);
+  if (!allowedMicrokitConfigs.has(microkitConfig)) {
+    throw new CliError(
+      'invalid_flag',
+      `Unsupported --microkit-config: ${microkitConfig} (expected debug or release)`,
+    );
+  }
 
   const checks = [
     {
@@ -260,6 +269,7 @@ function validateSel4Prerequisites(flags: Record<string, unknown>) {
     qemu,
     microkitSdk,
     microkitVersion: microkitVersion || null,
+    microkitConfig,
     toolchain,
     libvmmDir,
     board: String(flags.board || 'qemu_arm_virt'),
@@ -273,7 +283,8 @@ function preparedManifest(flags: Record<string, unknown>, prerequisites: Record<
   const state = stateDir(flags);
   return {
     schemaVersion: 1,
-    id: instanceName(flags),
+    id: path.basename(state),
+    name: instanceName(flags),
     target: normalizeTarget(flags),
     command: 'prepare',
     status: 'prepared',
@@ -358,7 +369,8 @@ function runCommandForManifest(manifest: Record<string, any>, flags: Record<stri
     throw new CliError('missing_artifact', `Missing initrd artifact: ${initrd}`);
   }
 
-  const isSel4Dev = manifest.target === 'sel4' && String(manifest.id || '') === 'sel4-dev';
+  const manifestName = String(manifest.name || manifest.id || '');
+  const isSel4Dev = manifest.target === 'sel4' && manifestName === 'sel4-dev';
   const runtimeArgs = Array.isArray(flags['qemu-arg']) && (flags['qemu-arg'] as string[]).length > 0
     ? [...(flags['qemu-arg'] as string[])]
     : [...((manifest.prerequisites?.qemuArgs as string[]) || [])];
@@ -410,7 +422,7 @@ function runCommandForManifest(manifest: Record<string, any>, flags: Record<stri
   return manifest;
 }
 
-function runLaunch(flags: Record<string, unknown>) {
+async function runLaunch(flags: Record<string, unknown>): Promise<any> {
   const manifest = readManifestOrThrow(flags);
   if (manifest.target !== 'sel4') {
     throw new CliError('unsupported_target', `Unsupported target: ${manifest.target}`);
@@ -419,26 +431,59 @@ function runLaunch(flags: Record<string, unknown>) {
   const nextManifest = runCommandForManifest(manifest, flags);
   const runnerName = nextManifest.runtime?.runner || 'runner.js';
   const runner = path.resolve(path.dirname(new URL(import.meta.url).pathname), runnerName);
+  const detach = Boolean(flags.detach);
+  if (flags.json && !detach) {
+    throw new CliError('incompatible_flags', 'nvirsh run --json requires --detach');
+  }
+
+  if (detach) {
+    const child = spawn(process.execPath, [runner, manifestPath(flags)], {
+      detached: true,
+      stdio: 'ignore',
+      cwd: stateDir(flags),
+    });
+    child.unref();
+
+    nextManifest.runnerPid = child.pid;
+    writeJson(manifestPath(flags), nextManifest);
+
+    return {
+      command: 'run',
+      status: 'success',
+      exit_code: 0,
+      summary: 'started local target instance',
+      details: {
+        manifest: nextManifest,
+        detach: true,
+      },
+    };
+  }
+
   const child = spawn(process.execPath, [runner, manifestPath(flags)], {
-    detached: true,
-    stdio: 'ignore',
+    detached: false,
+    stdio: 'inherit',
     cwd: stateDir(flags),
-  });
-  child.unref();
-
-  nextManifest.runnerPid = child.pid;
-  writeJson(manifestPath(flags), nextManifest);
-
-  return {
-    command: 'run',
-    status: 'success',
-    exit_code: 0,
-    summary: 'started local target instance',
-    details: {
-      manifest: nextManifest,
-      detach: Boolean(flags.detach),
+    env: {
+      ...process.env,
+      NVIRSH_ATTACH: '1',
     },
-  };
+  });
+
+  return await new Promise<any>((resolve) => {
+    child.on('close', (code, signal) => {
+      const updated = readManifestOrThrow(flags);
+      resolve({
+        command: 'run',
+        status: code === 0 ? 'success' : signal ? 'stopped' : 'error',
+        exit_code: code == null ? 1 : code,
+        summary: 'completed local target instance',
+        details: {
+          manifest: updated,
+          detach: false,
+        },
+      });
+    });
+  });
 }
 
 function runInspect(flags: Record<string, unknown>) {
@@ -596,7 +641,7 @@ async function main(argv: string[]) {
       return 0;
     }
     case 'run': {
-      const result = runLaunch(parsed.flags);
+      const result = await runLaunch(parsed.flags);
       parsed.json ? emitJson(result) : emitText(result.summary);
       return 0;
     }

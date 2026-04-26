@@ -202,6 +202,22 @@ function toolRootFromSource(source: string) {
   return path.resolve(path.dirname(source), '..');
 }
 
+function resolveOptionalPath(flags: Record<string, unknown>, name: string) {
+  const value = String(flags[name] || '').trim();
+  if (!value) {
+    return null;
+  }
+  return path.resolve(process.cwd(), value);
+}
+
+function resolveDownloadsDir(flags: Record<string, unknown>, source: string) {
+  const explicit = resolveOptionalPath(flags, 'downloads-dir');
+  if (explicit) {
+    return explicit;
+  }
+  return path.join(toolRootFromSource(source), 'downloads');
+}
+
 async function buildDirectory(flags: Record<string, unknown>) {
   const source = requirePathFlag(flags, 'source');
   const microkitVersion = optionalStringFlag(flags, 'microkit-version');
@@ -230,8 +246,7 @@ async function buildDirectory(flags: Record<string, unknown>) {
     throw new CliError('missing_source', `Missing Microkit SDK directory: ${source}`);
   }
 
-  const toolRoot = toolRootFromSource(source);
-  const downloadsDir = path.join(toolRoot, 'downloads');
+  const downloadsDir = resolveDownloadsDir(flags, source);
   const archiveName = path.basename(new URL(archiveUrl).pathname);
   const archivePath = path.join(downloadsDir, archiveName);
   const extractRoot = path.join(downloadsDir, '.extract');

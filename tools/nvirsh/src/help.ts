@@ -2,17 +2,29 @@ export const COMMANDS = [
   {
     name: 'doctor',
     summary: 'Validate target prerequisites without writing state',
-    usage: ['nvirsh doctor --target sel4 --qemu PATH --microkit-sdk DIR --toolchain DIR --libvmm-dir DIR'],
+    usage: [
+      'nvirsh doctor --target sel4 --qemu PATH --microkit-sdk DIR --toolchain DIR --libvmm-dir DIR',
+      '             [--microkit-config debug|release]',
+    ],
   },
   {
     name: 'prepare',
     summary: 'Validate and materialize target-local prepared state',
-    usage: ['nvirsh prepare --target sel4 --state-dir DIR --qemu PATH --microkit-sdk DIR --toolchain DIR --libvmm-dir DIR'],
+    usage: [
+      'nvirsh prepare --target sel4 --state-dir DIR --qemu PATH --microkit-sdk DIR --toolchain DIR --libvmm-dir DIR',
+      '              [--microkit-config debug|release]',
+    ],
   },
   {
     name: 'run',
     summary: 'Launch a prepared target from explicit runtime artifacts',
-    usage: ['nvirsh run --target sel4 --state-dir DIR --kernel PATH --initrd PATH [--detach] [--qemu-arg ARG ...]'],
+    usage: [
+      'nvirsh run --target sel4 --state-dir DIR --kernel PATH --initrd PATH [--detach] [--qemu-arg ARG ...]',
+      '',
+      'Notes:',
+      '  - Without --detach, nvirsh runs in the foreground and attaches to the VM console.',
+      '  - --json output requires --detach (otherwise console output is not machine-readable).',
+    ],
   },
   {
     name: 'inspect',

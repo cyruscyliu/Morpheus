@@ -72,6 +72,13 @@ Expected pinned compatibility:
 ./bin/morpheus --json tool build --tool nvirsh
 ```
 
+To attach to the VM console (interactive), omit `--json` and pass `--attach` to
+Morpheus:
+
+```bash
+./bin/morpheus tool build --tool nvirsh --attach
+```
+
 ## Boundary Rules
 
 - Keep `nvirsh` local-only.

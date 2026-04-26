@@ -64,7 +64,7 @@ function parseRunArgs(argv) {
     artifact: [],
     "config-fragment": []
   };
-  const booleanFlags = new Set(["json", "detach", "follow", "verbose", "reuse-build-dir"]);
+  const booleanFlags = new Set(["json", "detach", "follow", "verbose", "reuse-build-dir", "attach"]);
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -114,7 +114,7 @@ function managedRunUsage() {
     "  node apps/morpheus/dist/cli.js tool build --tool buildroot --mode remote --ssh TARGET --workspace DIR (--source DIR | --buildroot-version VER) [--defconfig NAME] [--patch-dir DIR] [--reuse-build-dir] [--build-dir-key KEY] [--detach] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool microkit-sdk --mode local --workspace DIR (--path PATH | --microkit-version VER) [--archive-url URL] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool qemu --mode local --workspace DIR (--path PATH | --qemu-version VER) [--archive-url URL] [--build-dir-key KEY] [--target-list NAME ...] [--configure-arg ARG ...] [--json]",
-    "  node apps/morpheus/dist/cli.js tool build --tool nvirsh --mode local --workspace DIR [--target sel4] [--json]",
+    "  node apps/morpheus/dist/cli.js tool build --tool nvirsh --mode local --workspace DIR [--target sel4] [--attach] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool sel4 --mode local --workspace DIR (--path PATH | --sel4-version VER) [--archive-url URL] [--patch-dir DIR] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool libvmm --mode local --workspace DIR [--source DIR] --board NAME [--example NAME] [--patch-dir DIR] [--linux PATH] [--initrd PATH] [--qemu PATH] [--make-arg KEY=VALUE ...] [--json]",
     "  node apps/morpheus/dist/cli.js runs list --managed [--workspace DIR] [--ssh TARGET] [--json]",
@@ -309,7 +309,7 @@ function localToolWorkspace(workspace, tool) {
 }
 
 function localRunDir(workspace, tool, id) {
-  return path.join(localToolWorkspace(workspace, tool), "runs", id);
+  return path.join(localWorkspaceRoot(workspace), "runs", id);
 }
 
 function localBuildDir(workspace, tool, key) {
@@ -329,7 +329,7 @@ function remoteToolWorkspace(workspace, tool) {
 }
 
 function remoteRunDir(workspace, tool, id) {
-  return path.posix.join(remoteToolWorkspace(workspace, tool), "runs", id);
+  return path.posix.join(workspace, "runs", id);
 }
 
 function remoteBuildDir(workspace, tool, key) {
@@ -783,7 +783,7 @@ function normalizeWorkspaceFilter(record, workspace) {
 }
 
 function localArtifactDir(workspace, tool, id) {
-  return path.join(localToolWorkspace(workspace, tool), "runs", id, "artifacts");
+  return path.join(localRunDir(workspace, tool, id), "artifacts");
 }
 
 function validateAndResolveLocalArtifacts(outputDir, requestedPaths) {
@@ -812,7 +812,8 @@ function filterBuildrootConfigLines(fragmentLines, predicate) {
 function effectiveBuildrootConfigFragment(fragmentLines, options = {}) {
   const {
     globalPatchDir = null,
-    kernelTarballLocation = null
+    kernelTarballLocation = null,
+    kernelConfigFragment = null
   } = options;
 
   const effective = [...(fragmentLines || [])];
@@ -822,6 +823,13 @@ function effectiveBuildrootConfigFragment(fragmentLines, options = {}) {
     next = filterBuildrootConfigLines(next, (line) => /^BR2_LINUX_KERNEL_CUSTOM_/.test(line));
     next.push("BR2_LINUX_KERNEL_CUSTOM_TARBALL=y");
     next.push(`BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION=${JSON.stringify(kernelTarballLocation)}`);
+  }
+
+  if (kernelConfigFragment) {
+    const alreadyConfigured = next.some((line) => /^BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES=/.test(String(line).trim()));
+    if (!alreadyConfigured) {
+      next.push(`BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES=${JSON.stringify(kernelConfigFragment)}`);
+    }
   }
 
   if (globalPatchDir) {
@@ -941,6 +949,17 @@ function ensureKernelHashInPatchDir(patchDir, fragmentLines) {
     tarball,
     hashUrl
   );
+}
+
+function readKernelConfigFragment(patchDir) {
+  if (!patchDir) {
+    return null;
+  }
+  const fragmentPath = path.join(patchDir, "linux", "kernel.fragment");
+  if (!fs.existsSync(fragmentPath)) {
+    return null;
+  }
+  return fs.readFileSync(fragmentPath, "utf8");
 }
 
 function sha256File(filePath) {
@@ -1118,35 +1137,15 @@ function fetchRemoteArtifacts(options, id, outputDir) {
   }
 
   const destination = localArtifactDir(options.localWorkspace, BUILDROOT_TOOL, id);
+  fs.rmSync(destination, { recursive: true, force: true });
   fs.mkdirSync(destination, { recursive: true });
-  const archiveBase64 = runRequiredSsh(
-    options.ssh,
-    `
-python3 - <<'PY'
-import base64
-import io
-import os
-import tarfile
-paths = ${JSON.stringify(options.expectedArtifacts)}
-root = ${JSON.stringify(outputDir)}
-buffer = io.BytesIO()
-with tarfile.open(fileobj=buffer, mode="w") as archive:
-    for relpath in paths:
-        fullpath = os.path.join(root, relpath)
-        if not os.path.exists(fullpath):
-            raise SystemExit(f"missing artifact: {relpath}")
-        archive.add(fullpath, arcname=relpath)
-print(base64.b64encode(buffer.getvalue()).decode("ascii"))
-PY
-`,
-    "failed to fetch configured Buildroot artifacts"
-  ).stdout.trim();
-  const archivePath = path.join(destination, "artifacts.tar");
-  fs.writeFileSync(archivePath, Buffer.from(archiveBase64, "base64"));
-  const extract = runCommand("tar", ["-xf", archivePath, "-C", destination]);
-  fs.rmSync(archivePath, { force: true });
-  if (extract.exitCode !== 0) {
-    throw new Error(extract.stderr || "failed to extract configured Buildroot artifacts");
+
+  const sshCommandPrefix = `${shellQuote(sshBinary())} ${sshArgs(options.ssh).map(shellQuote).join(" ")}`;
+  const remoteTar = `tar -C ${shellQuote(outputDir)} -cf - ${options.expectedArtifacts.map(shellQuote).join(" ")}`;
+  const pipeline = `${sshCommandPrefix} ${shellQuote(sshCommand(remoteTar))} | tar -xf - -C ${shellQuote(destination)}`;
+  const result = runCommand("bash", ["-lc", pipeline]);
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr || "failed to fetch configured Buildroot artifacts");
   }
   return options.expectedArtifacts.map((requestedPath) => ({
     path: requestedPath,
@@ -1195,9 +1194,13 @@ function runLocalBuildroot(options) {
   if (kernelTarballLocation && globalPatchDir) {
     ensurePatchedKernelTarballHashes(globalPatchDir, kernelTarballLocation.replace(/^file:\/\//, ""));
   }
+  const kernelConfigFragment = globalPatchDir
+    ? path.join(globalPatchDir, "linux", "kernel.fragment")
+    : null;
   const configFragment = effectiveBuildrootConfigFragment(options.configFragment, {
     globalPatchDir,
-    kernelTarballLocation
+    kernelTarballLocation,
+    kernelConfigFragment: kernelConfigFragment && fs.existsSync(kernelConfigFragment) ? kernelConfigFragment : null
   });
   const makeArgs = localParallelMakeArgs(options.makeArgs);
 
@@ -1338,14 +1341,19 @@ function buildrootRemoteScript(options, id) {
   const kernelSrcDir = kernelPatchFiles.length > 0
     ? path.posix.join(buildRoot, "kernel-src")
     : null;
+  const kernelConfigFragmentContent = options.kernelConfigFragmentContent || null;
   const defconfigCommand = options.defconfig ? `make O=${shellQuote(outputDir)} ${options.defconfig}` : ":";
   const wantsNoopPostImage = (options.configFragment || []).some((line) => /BR2_ROOTFS_POST_IMAGE_SCRIPT\s*=\s*""/.test(String(line)));
   const noopPostImageScript = wantsNoopPostImage
     ? path.posix.join(buildRoot, "morpheus-post-image.sh")
     : null;
+  const kernelConfigFragment = globalPatchDir
+    ? path.posix.join(globalPatchDir, "linux", "kernel.fragment")
+    : null;
   const configFragment = effectiveBuildrootConfigFragment(options.configFragment, {
     globalPatchDir,
-    kernelTarballLocation: kernelTarball ? `file://${kernelTarball}` : null
+    kernelTarballLocation: kernelTarball ? `file://${kernelTarball}` : null,
+    kernelConfigFragment
   }).map((line) => {
     if (!wantsNoopPostImage) {
       return line;
@@ -1374,6 +1382,12 @@ rm -rf ${shellQuote(globalPatchDir)}
 mkdir -p ${shellQuote(globalPatchDir)}
 cp -a ${shellQuote(path.posix.join(patchDir, "."))} ${shellQuote(globalPatchDir)}
 find ${shellQuote(path.posix.join(globalPatchDir, "linux"))} -type f -name '*.patch' -delete 2>/dev/null || true
+${kernelConfigFragmentContent && kernelConfigFragment
+      ? `mkdir -p ${shellQuote(path.posix.dirname(kernelConfigFragment))}
+cat > ${shellQuote(kernelConfigFragment)} <<'KFRAG'
+${String(kernelConfigFragmentContent).replace(/\r?\n$/, "")}
+KFRAG`
+      : ":"}
 rm -rf ${shellQuote(kernelSrcDir)}
 mkdir -p ${shellQuote(cacheDir)} ${shellQuote(kernelSrcDir)}
 if [ ! -f ${shellQuote(path.posix.join(cacheDir, `linux-${kernelVersion}.tar.xz`))} ]; then
@@ -1475,6 +1489,7 @@ async function runRemoteBuildroot(options) {
   const id = generateRunId(BUILDROOT_TOOL);
   const patchDir = ensureExistingDirectory(options.patchDir, "patch dir");
   ensureKernelHashInPatchDir(patchDir, options.configFragment);
+  const kernelConfigFragmentContent = readKernelConfigFragment(patchDir);
   const kernelPatchFiles = listKernelPatchFiles(patchDir)
     .map((filePath) => path.relative(patchDir, filePath).split(path.sep).join(path.posix.sep));
   const sshCommandPrefix = `${shellQuote(sshBinary())} ${sshArgs(options.ssh).map(shellQuote).join(" ")}`;
@@ -1506,6 +1521,7 @@ async function runRemoteBuildroot(options) {
   const runOptions = {
     ...options,
     kernelPatchFiles,
+    kernelConfigFragmentContent,
     patchDir,
     source: remoteSourceDir || options.source
   };
@@ -1825,23 +1841,19 @@ function hydrateManagedRunsFromWorkspace(flags) {
 }
 
 function hydrateLocalManagedRuns(workspace) {
-  const runsRoot = path.join(path.resolve(process.cwd(), workspace), "tools");
+  const workspaceRoot = path.resolve(process.cwd(), workspace);
+  const runsRoot = path.join(workspaceRoot, "runs");
   if (!fs.existsSync(runsRoot)) {
     return;
   }
-  const manifests = fs.readdirSync(runsRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .flatMap((entry) => {
-      const toolRunsRoot = path.join(runsRoot, entry.name, "runs");
-      if (!fs.existsSync(toolRunsRoot)) {
-        return [];
-      }
-      return fs.readdirSync(toolRunsRoot, { withFileTypes: true })
-        .filter((item) => item.isDirectory())
-        .map((item) => path.join(toolRunsRoot, item.name, "manifest.json"))
-        .filter((filePath) => fs.existsSync(filePath));
-    });
-  for (const manifestPath of manifests) {
+  for (const entry of fs.readdirSync(runsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const manifestPath = path.join(runsRoot, entry.name, "manifest.json");
+    if (!fs.existsSync(manifestPath)) {
+      continue;
+    }
     const manifest = readJson(manifestPath);
     registerRunFromManifest(manifest, null);
   }
@@ -1852,14 +1864,16 @@ function hydrateRemoteManagedRuns(workspace, ssh) {
 python3 - <<'PY'
 import json
 from pathlib import Path
-root = Path(${shellQuote(path.posix.join(workspace, "tools"))})
+root = Path(${shellQuote(workspace)})
 items = []
 if root.exists():
-    for manifest in root.glob("*/runs/*/manifest.json"):
-        try:
-            items.append(json.loads(manifest.read_text()))
-        except Exception:
-            pass
+    runs_root = root / "runs"
+    if runs_root.exists():
+        for manifest in runs_root.glob("*/manifest.json"):
+            try:
+                items.append(json.loads(manifest.read_text()))
+            except Exception:
+                pass
 print(json.dumps(items))
 PY
 `;
@@ -1884,6 +1898,9 @@ function removeManagedRunCommand(flags) {
       "failed to remove remote managed run"
     );
   } else {
+    if (options.tool === "nvirsh") {
+      stopLocalNvirshRun(options);
+    }
     fs.rmSync(localRunDir(options.workspace, options.tool, options.id), {
       recursive: true,
       force: true
@@ -1902,6 +1919,58 @@ function removeManagedRunCommand(flags) {
       ssh: options.ssh ? options.ssh.original : null
     }
   };
+}
+
+function stopLocalNvirshRun(options) {
+  if (!options.record || !options.record.manifest) {
+    return;
+  }
+  const candidatePaths = [];
+  const recordManifestPath = String(options.record.manifest);
+  candidatePaths.push(recordManifestPath);
+  if (options.record.runDir) {
+    candidatePaths.push(path.join(String(options.record.runDir), "manifest.json"));
+  }
+
+  const manifestPath = candidatePaths.find((filePath) => filePath && fs.existsSync(filePath));
+  if (!manifestPath) {
+    return;
+  }
+
+  const manifest = readJson(manifestPath);
+  const pid = Number(manifest.pid || 0);
+  if (!Number.isFinite(pid) || pid <= 0) {
+    return;
+  }
+
+  const ps = runCommand("ps", ["-p", String(pid), "-o", "args="]);
+  if (ps.exitCode !== 0) {
+    return;
+  }
+  const args = String(ps.stdout || "").trim();
+  const runDir = options.record.runDir ? String(options.record.runDir) : null;
+  if (runDir && !args.includes(runDir)) {
+    logDebug("runs", "skip stopping nvirsh pid (unexpected command line)", {
+      id: options.id,
+      pid,
+      args
+    });
+    return;
+  }
+
+  logDebug("runs", "stopping local nvirsh run", { id: options.id, pid });
+  runCommand("pkill", ["-TERM", "-P", String(pid)]);
+  runCommand("kill", ["-TERM", String(pid)]);
+
+  const wait = runCommand("bash", [
+    "-lc",
+    `for i in $(seq 1 30); do if ! kill -0 ${pid} 2>/dev/null; then exit 0; fi; sleep 0.1; done; exit 1`
+  ]);
+  if (wait.exitCode === 0) {
+    return;
+  }
+  runCommand("pkill", ["-KILL", "-P", String(pid)]);
+  runCommand("kill", ["-KILL", String(pid)]);
 }
 
 function runRequiredSsh(target, script, message, streamOutput) {

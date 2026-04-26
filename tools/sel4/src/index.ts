@@ -211,6 +211,14 @@ function resolveOptionalPath(flags: Record<string, unknown>, name: string) {
   return path.resolve(process.cwd(), value);
 }
 
+function resolveDownloadsDir(flags: Record<string, unknown>, source: string) {
+  const explicit = resolveOptionalPath(flags, 'downloads-dir');
+  if (explicit) {
+    return explicit;
+  }
+  return path.join(toolRootFromSource(source), 'downloads');
+}
+
 function listPatchFiles(patchDir: string) {
   const results: string[] = [];
   const stack: string[] = [patchDir];
@@ -426,8 +434,7 @@ async function buildDirectory(flags: Record<string, unknown>) {
     throw new CliError('missing_source', `Missing seL4 source directory: ${source}`);
   }
 
-  const toolRoot = toolRootFromSource(source);
-  const downloadsDir = path.join(toolRoot, 'downloads');
+  const downloadsDir = resolveDownloadsDir(flags, source);
   const archiveName = path.basename(new URL(archiveUrl as string).pathname);
   const archivePath = path.join(downloadsDir, archiveName);
   const extractRoot = path.join(downloadsDir, '.extract');
@@ -474,7 +481,8 @@ async function buildDirectory(flags: Record<string, unknown>) {
     details: {
       source,
       fetched_source: true,
-      archive: archiveUrl ? path.join(toolRootFromSource(source), 'downloads', path.basename(new URL(archiveUrl).pathname)) : null,
+      downloads_dir: downloadsDir,
+      archive: archiveUrl ? archivePath : null,
       archive_url: archiveUrl,
       sel4_version: sel4Version || inspected.details.directory.version,
       directory: inspected.details.directory,

@@ -270,6 +270,14 @@ function applyConfigDefaults(flags, options) {
     if (workspaceEntry) {
       next.localWorkspace = workspaceEntry.root;
       next.workspace = workspaceEntry.root;
+    } else {
+      const raw = String(next.workspace);
+      const looksLikePath = raw.includes("/") || raw.includes("\\") || raw.startsWith(".") || raw.startsWith("~");
+      if (looksLikePath) {
+        const resolved = resolveLocalPath(baseDir, raw);
+        next.localWorkspace = resolved;
+        next.workspace = resolved;
+      }
     }
   } else {
     workspaceEntry = resolveDefaultWorkspace(value, { baseDir });

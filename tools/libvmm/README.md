@@ -32,7 +32,7 @@ Build the `virtio` example (requires a Microkit SDK):
 libvmm build \
   --source <workspace>/tools/libvmm/src/libvmm-main \
   --patch-dir <workspace>/tools/libvmm/patches \
-  --microkit-sdk <workspace>/tools/microkit-sdk/builds/microkit-sdk-2.0.1/sdk \
+  --microkit-sdk <workspace>/tools/microkit-sdk/builds/microkit-sdk-2.2.0/sdk \
   --board qemu_virt_aarch64 \
   --example virtio \
   --linux ./out/Image \
@@ -59,7 +59,7 @@ invocation flags), keep your patches in the workspace and apply them with
 
 This repo also ships an upstreamable patch you can apply via `--patch-dir`:
 
-- `tools/libvmm/patches/0001-add-requirements-for-sdfgen-0.28.patch` adds a
+- `tools/libvmm/patches/0001-add-requirements-for-sdfgen-0.26.patch` adds a
   `requirements.txt` to the libvmm checkout and improves the `sdfgen` version
   mismatch error message for the `virtio` example.
 

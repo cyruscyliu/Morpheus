@@ -12,7 +12,7 @@ fetch into the workspace.
 
 ```bash
 microkit-sdk inspect \
-  --path <workspace>/tools/microkit-sdk/sdk \
+  --path <workspace>/tools/microkit-sdk/builds/default/install \
   --json
 ```
 
@@ -33,7 +33,7 @@ Example response shape:
   "details": {
     "artifact": {
       "path": "sdk-dir",
-      "location": "<workspace>/tools/microkit-sdk/sdk"
+      "location": "<workspace>/tools/microkit-sdk/builds/default/install"
     }
   }
 }
@@ -53,7 +53,11 @@ microkit-sdk help
 Use Morpheus when the SDK should be a managed dependency for another tool:
 
 ```bash
-morpheus tool build --tool microkit-sdk --mode local --path <workspace>/tools/microkit-sdk/sdk --json
+morpheus tool build \
+  --tool microkit-sdk \
+  --mode local \
+  --path <workspace>/tools/microkit-sdk/builds/default/install \
+  --json
 ```
 
 Or have Morpheus build it into the workspace when the configured directory
@@ -66,7 +70,7 @@ workflow run under `<workspace>/runs/<workflow-run-id>/`.
 morpheus tool build \
   --tool microkit-sdk \
   --mode local \
-  --microkit-version 2.0.1 \
+  --microkit-version 2.2.0 \
   --json
 ```
 
@@ -117,16 +121,34 @@ Within that placement mode, Morpheus picks the provisioning strategy:
 
 For incremental workflows, set:
 
-- `tools.microkit-sdk.reuse-build-dir: true`
 - `tools.microkit-sdk.build-dir-key: <name>`
 
-This keeps the managed SDK directory under `tools/microkit-sdk/builds/<key>/`.
+Morpheus keeps the managed SDK directory under `tools/microkit-sdk/builds/<key>/`.
+The installed SDK root is stored at `tools/microkit-sdk/builds/<key>/install/`.
+
+## Patching Microkit sources
+
+When building the SDK from source, Morpheus can also apply local patch files
+to the Microkit source tree before running `build_sdk.py`.
+
+Configure a patch directory in `morpheus.yaml`:
+
+```yaml
+tools:
+  microkit-sdk:
+    patch-dir: ./hyperarm-workspace/tools/microkit-sdk/patches
+```
+
+The directory is expected to contain `*.patch` files that apply with `-p1`
+relative to the Microkit source root. The patch fingerprint is included in the
+SDK reuse cache (`.morpheus-build.json`), so changing a patch forces a rebuild.
 
 ## Reuse and rebuilds
 
 When Morpheus runs a source build, it records a small metadata file in the SDK
 directory (`.morpheus-build.json`) containing a fingerprint of the inputs (Microkit
-version/source, seL4 patch fingerprint, toolchain version, selected boards/configs).
+version/source, Microkit patch fingerprint, seL4 patch fingerprint, toolchain
+version, selected boards/configs).
 
 If the fingerprint matches on the next run, Morpheus reuses the SDK directory
 instead of rebuilding.

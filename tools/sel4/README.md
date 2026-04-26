@@ -15,7 +15,7 @@ run under `<workspace>/runs/<workflow-run-id>/`.
 
 ```bash
 sel4 inspect \
-  --path <workspace>/tools/sel4/src/seL4 \
+  --path <workspace>/tools/sel4/builds/default/source \
   --json
 ```
 
@@ -36,7 +36,7 @@ Example response shape:
   "details": {
     "artifact": {
       "path": "source-dir",
-      "location": "<workspace>/tools/sel4/src/seL4"
+      "location": "<workspace>/tools/sel4/builds/default/source"
     }
   }
 }
@@ -57,7 +57,11 @@ Use Morpheus when the source tree should be a managed dependency for another
 tool:
 
 ```bash
-morpheus tool build --tool sel4 --mode local --path <workspace>/tools/sel4/src/seL4 --json
+morpheus tool build \
+  --tool sel4 \
+  --mode local \
+  --path <workspace>/tools/sel4/builds/default/source \
+  --json
 ```
 
 Or have Morpheus build it into the workspace when the configured directory
@@ -92,6 +96,7 @@ morpheus tool build \
   missing
 - `sel4 build --patch-dir DIR`: directory containing `.patch`/`.diff` files to
   apply after fetching
+- `sel4 build --downloads-dir DIR`: directory used to cache fetched archives
 
 Managed `morpheus tool build --tool sel4` supports placement modes:
 
@@ -105,10 +110,14 @@ Within that placement mode, Morpheus picks the provisioning strategy:
 
 For incremental workflows, set:
 
-- `tools.sel4.reuse-build-dir: true`
 - `tools.sel4.build-dir-key: <name>`
 
 This keeps the managed source directory under `tools/sel4/builds/<key>/`.
+
+Archive downloads are cached under `tools/sel4/downloads/`. When Morpheus
+provisions seL4 into a keyed build directory, it passes
+`--downloads-dir <workspace>/tools/sel4/downloads` so the cache location stays
+stable even when the managed `--source` lives under `tools/sel4/builds/`.
 
 ## JSON
 

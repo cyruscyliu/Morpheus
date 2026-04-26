@@ -11,12 +11,13 @@ export const COMMANDS = [
     name: 'build',
     summary: 'Materialize a managed Microkit SDK directory',
     usage: [
-      'microkit-sdk build --source DIR [--microkit-version VER] [--archive-url URL]',
+      'microkit-sdk build --source DIR [--microkit-version VER] [--archive-url URL] [--downloads-dir DIR]',
     ],
     flags: [
       { name: '--source DIR', summary: 'Managed SDK directory' },
       { name: '--microkit-version VER', summary: 'SDK version to record in metadata' },
       { name: '--archive-url URL', summary: 'Archive URL to fetch when --source is missing' },
+      { name: '--downloads-dir DIR', summary: 'Directory used to cache fetched archives' },
     ],
   },
   {

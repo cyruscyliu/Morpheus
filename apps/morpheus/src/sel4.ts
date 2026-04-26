@@ -31,11 +31,11 @@ function localToolWorkspace(workspace, tool) {
 }
 
 function localRunDir(workspace, tool, id) {
-  return path.join(localToolWorkspace(workspace, tool), "runs", id);
+  return path.join(localWorkspaceRoot(workspace), "runs", id);
 }
 
-function defaultManagedSource(workspace, version) {
-  return path.join(localToolWorkspace(workspace, TOOL), "src", version ? `seL4-${version}` : "seL4");
+function managedSel4SourceDir(workspace, buildDirKey) {
+  return path.join(localToolWorkspace(workspace, TOOL), "builds", buildDirKey, "source");
 }
 
 function localManifestPath(workspace, tool, id) {
@@ -117,14 +117,16 @@ function parseRunOptions(flags) {
     patchDir: flags["patch-dir"]
       ? path.resolve(process.cwd(), flags["patch-dir"])
       : resolveLocalPath(baseDir, value.patchDir),
-    reuseBuildDir: Boolean(flags["reuse-build-dir"] ?? value.reuseBuildDir),
-    buildDirKey: flags["build-dir-key"] || value.buildDirKey || "default",
+    reuseBuildDir: Boolean(flags["reuse-build-dir"] ?? value.reuseBuildDir ?? true),
+    buildDirKey: flags["build-dir-key"] || value.buildDirKey || null,
   };
 
-  if (options.reuseBuildDir) {
-    options.path = path.join(localToolWorkspace(workspace, TOOL), "builds", options.buildDirKey, "source");
-  } else if (!options.path && options.sel4Version) {
-    options.path = defaultManagedSource(workspace, options.sel4Version);
+  if (!options.buildDirKey) {
+    options.buildDirKey = options.sel4Version ? `sel4-${options.sel4Version}` : "default";
+  }
+
+  if (!options.path && options.sel4Version) {
+    options.path = managedSel4SourceDir(workspace, options.buildDirKey);
   }
 
   if (!options.path) {
@@ -168,6 +170,7 @@ function registerManifest(manifest) {
 }
 
 function localManifest(options, runDir, manifestPath, logFile, inspected) {
+  const managedPath = managedSel4SourceDir(options.workspace, options.buildDirKey);
   return {
     schemaVersion: 1,
     id: options.id,
@@ -179,7 +182,7 @@ function localManifest(options, runDir, manifestPath, logFile, inspected) {
     createdAt: nowIso(),
     updatedAt: nowIso(),
     workspace: options.workspace,
-    buildDirKey: options.reuseBuildDir ? options.buildDirKey : null,
+    buildDirKey: options.path === managedPath ? options.buildDirKey : null,
     patchDir: options.patchDir || null,
     runDir,
     outputDir: runDir,
@@ -198,6 +201,7 @@ function localManifest(options, runDir, manifestPath, logFile, inspected) {
 }
 
 function buildManifest(options, runDir, manifestPath, fetched) {
+  const managedPath = managedSel4SourceDir(options.workspace, options.buildDirKey);
   return {
     schemaVersion: 1,
     id: options.id,
@@ -210,7 +214,7 @@ function buildManifest(options, runDir, manifestPath, fetched) {
     updatedAt: nowIso(),
     workspace: options.workspace,
     source: fetched.details.source,
-    buildDirKey: options.reuseBuildDir ? options.buildDirKey : null,
+    buildDirKey: options.path === managedPath ? options.buildDirKey : null,
     sel4Version: options.sel4Version || fetched.details.sel4_version || null,
     archive: fetched.details.archive || null,
     archiveUrl: fetched.details.archive_url || options.archiveUrl || null,
@@ -252,12 +256,15 @@ function runManagedSel4(flags) {
     fs.writeFileSync(logFile, `${inspected.details.directory.version || ""}\n`, "utf8");
     manifest = localManifest(options, runDir, manifestPath, logFile, inspected);
   } else {
+    const downloadsDir = path.join(localToolWorkspace(options.workspace, TOOL), "downloads");
     const fetched = parseJsonResult(
       runTool([
         "--json",
         "build",
         "--source",
         options.path,
+        "--downloads-dir",
+        downloadsDir,
         ...(options.sel4Version ? ["--sel4-version", options.sel4Version] : []),
         ...(options.archiveUrl ? ["--archive-url", options.archiveUrl] : []),
         ...(options.patchDir ? ["--patch-dir", options.patchDir] : [])

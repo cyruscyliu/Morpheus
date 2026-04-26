@@ -33,14 +33,25 @@ async function main(argv: string[]) {
 
   const logFile = manifest.logFile;
   const log = fs.createWriteStream(logFile, { flags: 'a' });
+  const attach = String(process.env.NVIRSH_ATTACH || '') === '1';
   const child = spawn(command[0], command.slice(1), {
     cwd: manifest.stateDir,
     detached: false,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: [attach ? 'inherit' : 'ignore', 'pipe', 'pipe'],
   });
 
-  child.stdout.on('data', (chunk) => log.write(chunk));
-  child.stderr.on('data', (chunk) => log.write(chunk));
+  child.stdout.on('data', (chunk) => {
+    log.write(chunk);
+    if (attach) {
+      process.stdout.write(chunk);
+    }
+  });
+  child.stderr.on('data', (chunk) => {
+    log.write(chunk);
+    if (attach) {
+      process.stderr.write(chunk);
+    }
+  });
 
   updateManifest(manifestPath, (current) => ({
     ...current,

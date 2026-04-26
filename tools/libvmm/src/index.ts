@@ -284,6 +284,72 @@ function detectVersion(dirPath: string) {
   return firstVersionLine(dirPath) || gitVersion(dirPath);
 }
 
+function toolRootFromSource(sourceDir: string) {
+  return path.resolve(sourceDir, '..', '..', '..');
+}
+
+function sha256String(value: string) {
+  return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+function ensurePythonVenv(toolRoot: string) {
+  const venvDir = path.join(toolRoot, 'pyvenv');
+  const python = path.join(venvDir, 'bin', 'python');
+  const pip = path.join(venvDir, 'bin', 'pip');
+  if (!fs.existsSync(python)) {
+    fs.mkdirSync(venvDir, { recursive: true });
+    const created = runCommand('python3', ['-m', 'venv', venvDir], undefined);
+    if (created.status !== 0) {
+      throw new CliError('venv_failed', created.stderr || created.stdout || `Failed to create venv at ${venvDir}`);
+    }
+  }
+  if (!fs.existsSync(pip)) {
+    const ensured = runCommand(python, ['-m', 'pip', '--version'], undefined);
+    if (ensured.status !== 0) {
+      throw new CliError('pip_missing', ensured.stderr || ensured.stdout || `Missing pip in venv at ${venvDir}`);
+    }
+  }
+  return { venvDir, python };
+}
+
+function ensurePythonRequirements(python: string, requirementsPath: string, statePath: string) {
+  if (!fs.existsSync(requirementsPath)) {
+    return { installed: false, fingerprint: null };
+  }
+  const requirements = fs.readFileSync(requirementsPath, 'utf8');
+  const fingerprint = sha256String(requirements);
+
+  let currentFingerprint: string | null = null;
+  if (fs.existsSync(statePath)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+      currentFingerprint = typeof parsed?.fingerprint === 'string' ? parsed.fingerprint : null;
+    } catch {
+      currentFingerprint = null;
+    }
+  }
+
+  if (currentFingerprint === fingerprint) {
+    return { installed: true, fingerprint };
+  }
+
+  const pip = runCommand(python, ['-m', 'pip', 'install', '--upgrade', 'pip'], undefined);
+  if (pip.status !== 0) {
+    throw new CliError('pip_failed', pip.stderr || pip.stdout || 'Failed to upgrade pip');
+  }
+
+  const install = runCommand(python, ['-m', 'pip', 'install', '-r', requirementsPath], undefined);
+  if (install.status !== 0) {
+    throw new CliError(
+      'pip_failed',
+      install.stderr || install.stdout || `Failed to install python deps from ${requirementsPath}`,
+    );
+  }
+
+  fs.writeFileSync(statePath, `${JSON.stringify({ fingerprint, requirements: requirementsPath }, null, 2)}\n`, 'utf8');
+  return { installed: true, fingerprint };
+}
+
 function inspectDirectory(flags: Record<string, unknown>) {
   const inputPath = String(flags.path || '');
   if (!inputPath) {
@@ -523,6 +589,24 @@ function buildDirectory(flags: Record<string, unknown>) {
     }
   }
 
+  const toolRoot = toolRootFromSource(source);
+  const requirementsPath = path.join(source, 'requirements.txt');
+  const { python: venvPython, venvDir } = ensurePythonVenv(toolRoot);
+  const depsStatePath = path.join(venvDir, '.morpheus-requirements.json');
+  const deps = ensurePythonRequirements(venvPython, requirementsPath, depsStatePath);
+  if (deps.installed) {
+    logInfo('ensured python deps', {
+      requirements: relPath(requirementsPath),
+      fingerprint: deps.fingerprint,
+      python: relPath(venvPython),
+    });
+  }
+
+  const hasPythonOverride = makeArgs.some((item) => String(item).startsWith('PYTHON='));
+  const makeArgsWithPython = !hasPythonOverride && deps.installed
+    ? [...makeArgs, `PYTHON=${venvPython}`]
+    : makeArgs;
+
   logInfo('building example via make', {
     example,
     microkit_sdk: relPath(microkitSdk),
@@ -539,7 +623,7 @@ function buildDirectory(flags: Record<string, unknown>) {
     qemu,
     toolchainBinDir,
     makeTarget,
-    makeArgs,
+    makeArgs: makeArgsWithPython,
   });
   logInfo('built example', {
     example_dir: relPath(built.exampleDir),

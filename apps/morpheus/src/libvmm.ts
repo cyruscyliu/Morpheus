@@ -29,7 +29,7 @@ function localToolWorkspace(workspace, tool) {
 }
 
 function localRunDir(workspace, tool, id) {
-  return path.join(localToolWorkspace(workspace, tool), "runs", id);
+  return path.join(localWorkspaceRoot(workspace), "runs", id);
 }
 
 function defaultManagedSource(workspace) {
@@ -222,6 +222,13 @@ function runManagedLibvmm(flags) {
   const qemuArtifact = (qemu.details.manifest.artifacts || []).find((item) => item.path === "qemu-system-aarch64");
   const resolvedQemu = options.qemu || (qemuArtifact ? qemuArtifact.location : null);
 
+  const workspaceRoot = path.resolve(process.cwd(), options.workspace);
+  const venvPython = path.join(workspaceRoot, "tools", TOOL, "pyvenv", "bin", "python");
+  const hasPythonOverride = (options.makeArgs || []).some((arg) => typeof arg === "string" && arg.startsWith("PYTHON="));
+  const makeArgs = (!hasPythonOverride && fs.existsSync(venvPython))
+    ? [...options.makeArgs, `PYTHON=${venvPython}`]
+    : options.makeArgs;
+
   const built = parseJsonResult(
     runTool([
       "--json",
@@ -240,7 +247,7 @@ function runManagedLibvmm(flags) {
       ...(toolchainBinDir ? ["--toolchain-bin-dir", toolchainBinDir] : []),
       ...(options.gitUrl ? ["--git-url", options.gitUrl] : []),
       ...(options.gitRef ? ["--git-ref", options.gitRef] : []),
-      ...options.makeArgs.flatMap((arg) => ["--make-arg", arg]),
+      ...makeArgs.flatMap((arg) => ["--make-arg", arg]),
     ]),
     "failed to build libvmm"
   );

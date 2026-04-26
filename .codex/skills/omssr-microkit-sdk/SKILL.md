@@ -42,6 +42,7 @@ microkit-sdk help
   `tools.microkit-sdk.microkit-version` or `tools.microkit-sdk.microkit-dir`):
   - ensures the Arm GNU aarch64-none-elf toolchain exists (records `toolchain-dir`)
   - ensures the seL4 dependency exists and applies `tools.sel4.patch-dir`
+  - applies `tools.microkit-sdk.patch-dir` to the Microkit source tree when set
   - builds the SDK when missing, otherwise reuses it
 - If only `tools.microkit-sdk.path` is configured (and no build inputs), Morpheus
   records that directory as the managed `sdk-dir` artifact.

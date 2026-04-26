@@ -204,6 +204,22 @@ function toolRootFromSource(source: string) {
   return path.resolve(path.dirname(source), '..');
 }
 
+function resolveOptionalPath(flags: Record<string, unknown>, name: string) {
+  const value = String(flags[name] || '').trim();
+  if (!value) {
+    return null;
+  }
+  return path.resolve(process.cwd(), value);
+}
+
+function resolveDownloadsDir(flags: Record<string, unknown>, source: string) {
+  const explicit = resolveOptionalPath(flags, 'downloads-dir');
+  if (explicit) {
+    return explicit;
+  }
+  return path.join(toolRootFromSource(source), 'downloads');
+}
+
 function archiveNameForVersion(version: string) {
   return `qemu-${version}.tar.xz`;
 }
@@ -252,6 +268,7 @@ async function ensureFetchedSourceTree(
   source: string,
   qemuVersion: string | null,
   archiveUrl: string | null,
+  downloadsDir: string,
 ) {
   if (fs.existsSync(path.join(source, 'configure'))) {
     return {
@@ -266,8 +283,6 @@ async function ensureFetchedSourceTree(
     throw new CliError('missing_source', `Missing QEMU source tree: ${source}`);
   }
 
-  const toolRoot = toolRootFromSource(source);
-  const downloadsDir = path.join(toolRoot, 'downloads');
   const archiveUrlValue = archiveUrl || defaultArchiveUrl(qemuVersion as string);
   const archiveName = qemuVersion
     ? archiveNameForVersion(qemuVersion)
@@ -315,6 +330,7 @@ async function buildQemu(flags: Record<string, unknown>) {
   const installDir = requirePathFlag(flags, 'install-dir');
   const qemuVersion = optionalStringFlag(flags, 'qemu-version');
   const archiveUrl = optionalStringFlag(flags, 'archive-url');
+  const downloadsDir = resolveDownloadsDir(flags, source);
 
   fs.mkdirSync(buildDir, { recursive: true });
   fs.mkdirSync(installDir, { recursive: true });
@@ -322,7 +338,7 @@ async function buildQemu(flags: Record<string, unknown>) {
   const buildStatePath = path.join(buildDir, '.morpheus-build-state.json');
   const targetList = Array.isArray(flags['target-list']) ? flags['target-list'] as string[] : [];
   const configureArgs = Array.isArray(flags['configure-arg']) ? flags['configure-arg'] as string[] : [];
-  const sourceState = await ensureFetchedSourceTree(source, qemuVersion, archiveUrl);
+  const sourceState = await ensureFetchedSourceTree(source, qemuVersion, archiveUrl, downloadsDir);
   const stagedSourceState = stageSourceTree(source, path.join(path.dirname(buildDir), 'source'));
   const nextBuildState = JSON.stringify({
     source,

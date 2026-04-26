@@ -274,6 +274,26 @@ async function handleToolCommand(argv) {
     if (tool === "nvirsh") {
       const dependencies = sortToolDependencies(toolDependencyNamesFromConfig(tool));
       const inheritedArgs = flags.verbose ? ["--verbose"] : [];
+      if (flags.attach) {
+        if (flags.json) {
+          throw new Error("tool build --tool nvirsh --attach cannot be combined with --json");
+        }
+        const steps = [
+          ...dependencies.map((name) => ({ tool: name, name: `${name}.build`, toolArgv: inheritedArgs })),
+        ];
+        const exitCode = runToolBuildWorkflow({
+          steps,
+          workflowName,
+          workspaceRoot,
+          jsonMode: false,
+          commandLabel: `tool ${subcommand}`,
+        });
+        if (exitCode !== 0) {
+          return exitCode;
+        }
+        return await handleManagedRunCommand("run", rest);
+      }
+
       const steps = [
         ...dependencies.map((name) => ({ tool: name, name: `${name}.build`, toolArgv: inheritedArgs })),
         { tool, name: `${tool}.build`, toolArgv }

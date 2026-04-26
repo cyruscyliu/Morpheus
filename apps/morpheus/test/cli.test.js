@@ -728,7 +728,7 @@ test("managed local Buildroot run creates a Morpheus run record", () => {
     env
   });
   assert.equal(remove.status, 0, remove.stderr || remove.stdout);
-  assert.equal(fs.existsSync(path.join(workspaceRoot, "tools", "buildroot", "runs", payload.details.id)), false);
+  assert.equal(fs.existsSync(path.join(workspaceRoot, "runs", payload.details.id)), false);
 
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
@@ -1051,7 +1051,7 @@ test("managed qemu run registers a local executable artifact", () => {
 test("managed microkit-sdk run registers a local sdk artifact", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-microkit-project-"));
   const workspaceRoot = path.join(projectRoot, "workflow-workspace");
-  const sdkPath = path.join(workspaceRoot, "tools", "microkit-sdk", "sdk");
+  const sdkPath = path.join(workspaceRoot, "tools", "microkit-sdk", "builds", "default", "install");
   fs.mkdirSync(sdkPath, { recursive: true });
   fs.writeFileSync(path.join(sdkPath, "VERSION"), "2.0.1\n");
   fs.mkdirSync(path.join(sdkPath, "bin"), { recursive: true });
@@ -1066,7 +1066,7 @@ test("managed microkit-sdk run registers a local sdk artifact", () => {
       "tools:",
       "  microkit-sdk:",
       "    mode: local",
-      "    path: ./workflow-workspace/tools/microkit-sdk/sdk",
+      "    path: ./workflow-workspace/tools/microkit-sdk/builds/default/install",
       "    microkit-version: 2.0.1",
       ""
     ].join("\n")
@@ -1338,16 +1338,16 @@ test("managed nvirsh run resolves buildroot artifacts from morpheus.yaml", () =>
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-nvirsh-project-"));
   const workspaceRoot = path.join(projectRoot, "workflow-workspace");
   const buildrootRunId = "buildroot-20260421-abcdef01";
-  const buildrootRunDir = path.join(workspaceRoot, "tools", "buildroot", "runs", buildrootRunId);
+  const buildrootRunDir = path.join(workspaceRoot, "runs", buildrootRunId);
   const buildrootOutputDir = path.join(buildrootRunDir, "output");
   const kernelPath = path.join(buildrootOutputDir, "images", "Image");
   const initrdPath = path.join(buildrootOutputDir, "images", "rootfs.cpio.gz");
   const depsRoot = path.join(projectRoot, "deps");
   const qemuPath = path.join(workspaceRoot, "tools", "qemu", "bin", "qemu-system-aarch64");
-  const microkitSdk = path.join(workspaceRoot, "tools", "microkit-sdk", "sdk");
+  const microkitSdk = path.join(workspaceRoot, "tools", "microkit-sdk", "builds", "default", "install");
   const toolchain = path.join(depsRoot, "arm-gnu-toolchain");
   const libvmmDir = path.join(depsRoot, "libvmm");
-  const sel4Dir = path.join(workspaceRoot, "tools", "sel4", "src", "seL4");
+  const sel4Dir = path.join(workspaceRoot, "tools", "sel4", "builds", "default", "source");
 
   fs.mkdirSync(path.dirname(kernelPath), { recursive: true });
   fs.writeFileSync(kernelPath, "kernel");
@@ -1413,11 +1413,11 @@ test("managed nvirsh run resolves buildroot artifacts from morpheus.yaml", () =>
       "    path: ./workflow-workspace/tools/qemu/bin/qemu-system-aarch64",
       "  microkit-sdk:",
       "    mode: local",
-      "    path: ./workflow-workspace/tools/microkit-sdk/sdk",
+      "    path: ./workflow-workspace/tools/microkit-sdk/builds/default/install",
       "    microkit-version: 1.4.1",
       "  sel4:",
       "    mode: local",
-      "    path: ./workflow-workspace/tools/sel4/src/seL4",
+      "    path: ./workflow-workspace/tools/sel4/builds/default/source",
       "    sel4-version: 15.0.0",
       "  nvirsh:",
       "    mode: local",
@@ -1498,7 +1498,7 @@ test("managed nvirsh run resolves buildroot artifacts from morpheus.yaml", () =>
   const result = run([
     "--json",
     "tool",
-    "build",
+    "run",
     "--tool",
     "nvirsh"
   ], {
@@ -1665,11 +1665,11 @@ test("managed remote Buildroot run can fetch configured artifacts back locally",
   assert.equal(payload.details.mode, "remote");
   assert.equal(payload.details.artifacts.length, 2);
   assert.equal(
-    fs.existsSync(path.join(projectRoot, "workflow-workspace", "tools", "buildroot", "runs", payload.details.id, "artifacts", "images", "Image")),
+    fs.existsSync(path.join(projectRoot, "workflow-workspace", "runs", payload.details.id, "artifacts", "images", "Image")),
     true
   );
   assert.equal(
-    fs.existsSync(path.join(projectRoot, "workflow-workspace", "tools", "buildroot", "runs", payload.details.id, "artifacts", "images", "rootfs.cpio.gz")),
+    fs.existsSync(path.join(projectRoot, "workflow-workspace", "runs", payload.details.id, "artifacts", "images", "rootfs.cpio.gz")),
     true
   );
 
@@ -1742,8 +1742,6 @@ test("managed remote Buildroot run syncs a Buildroot patch dir into the remote w
   const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
   const remoteManifestPath = path.join(
     remoteRoot,
-    "tools",
-    "buildroot",
     "runs",
     payload.details.id,
     "manifest.json"
@@ -1846,7 +1844,7 @@ test("runs list --managed can discover remote managed runs from workspace state"
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-list-project-"));
   const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-list-root-"));
   const runId = "buildroot-20260420-deadbeef";
-  const runRoot = path.join(remoteRoot, "tools", "buildroot", "runs", runId);
+  const runRoot = path.join(remoteRoot, "runs", runId);
   fs.mkdirSync(runRoot, { recursive: true });
   fs.writeFileSync(
     path.join(runRoot, "manifest.json"),
@@ -1860,10 +1858,10 @@ test("runs list --managed can discover remote managed runs from workspace state"
       createdAt: "2026-04-20T15:00:00.000Z",
       updatedAt: "2026-04-20T15:10:00.000Z",
       workspace: "/remote-workspace",
-      runDir: "/remote-workspace/tools/buildroot/runs/buildroot-20260420-deadbeef",
-      outputDir: "/remote-workspace/tools/buildroot/runs/buildroot-20260420-deadbeef/output",
-      logFile: "/remote-workspace/tools/buildroot/runs/buildroot-20260420-deadbeef/stdout.log",
-      manifest: "/remote-workspace/tools/buildroot/runs/buildroot-20260420-deadbeef/manifest.json",
+      runDir: "/remote-workspace/runs/buildroot-20260420-deadbeef",
+      outputDir: "/remote-workspace/runs/buildroot-20260420-deadbeef/output",
+      logFile: "/remote-workspace/runs/buildroot-20260420-deadbeef/stdout.log",
+      manifest: "/remote-workspace/runs/buildroot-20260420-deadbeef/manifest.json",
       artifacts: []
     }, null, 2)
   );
@@ -1903,7 +1901,7 @@ test("runs inspect reconciles a stale remote running manifest to success", () =>
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-inspect-project-"));
   const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-inspect-root-"));
   const runId = "buildroot-20260420-stale0001";
-  const runRoot = path.join(remoteRoot, "tools", "buildroot", "runs", runId);
+  const runRoot = path.join(remoteRoot, "runs", runId);
   const outputRoot = path.join(runRoot, "output");
   fs.mkdirSync(path.join(outputRoot, "images"), { recursive: true });
   fs.writeFileSync(path.join(outputRoot, "images", "Image"), "kernel");
@@ -1920,10 +1918,10 @@ test("runs inspect reconciles a stale remote running manifest to success", () =>
       createdAt: "2026-04-20T15:00:00.000Z",
       updatedAt: "2026-04-20T15:00:00.000Z",
       workspace: remoteRoot,
-      outputDir: path.join(remoteRoot, "tools", "buildroot", "runs", "buildroot-20260420-stale0001", "output"),
-      runDir: path.join(remoteRoot, "tools", "buildroot", "runs", "buildroot-20260420-stale0001"),
-      logFile: path.join(remoteRoot, "tools", "buildroot", "runs", "buildroot-20260420-stale0001", "stdout.log"),
-      manifest: path.join(remoteRoot, "tools", "buildroot", "runs", "buildroot-20260420-stale0001", "manifest.json"),
+      outputDir: path.join(remoteRoot, "runs", "buildroot-20260420-stale0001", "output"),
+      runDir: path.join(remoteRoot, "runs", "buildroot-20260420-stale0001"),
+      logFile: path.join(remoteRoot, "runs", "buildroot-20260420-stale0001", "stdout.log"),
+      manifest: path.join(remoteRoot, "runs", "buildroot-20260420-stale0001", "manifest.json"),
       expectedArtifacts: ["images/Image", "images/rootfs.cpio.gz"],
       artifacts: []
     }, null, 2)

@@ -60,3 +60,37 @@
 - Use repo-relative paths in examples.
 - Explain multi-environment modes such as local, remote, or container.
 - Keep README structure easy to scan.
+
+## Managed workspace layout
+
+Morpheus-managed workspaces follow a stable on-disk layout under `<workspace>/`.
+
+- `runs/`: centered run directories (preferred).
+  - Contains both tool runs (for example `buildroot-...`) and multi-step
+    workflow runs (for example `wf-...`).
+  - Each run directory is self-contained and includes `manifest.json` and logs.
+- `tools/<tool>/`: per-tool state and artifacts.
+  - `src/`: stable tool inputs (checkouts, extracted sources).
+  - `builds/<key>/`: reusable build outputs.
+    - For source-building tools, prefer `builds/<key>/source/` and
+      `builds/<key>/install/`.
+  - `downloads/`: cached archives fetched by Morpheus-managed tool builds.
+  - `patches/`: workspace-local patch trees applied during provisioning.
+- `tmp/`: transient scratch space for long-running workflows.
+
+Abridged tree:
+
+```text
+<workspace>/
+  runs/<run-id>/
+    manifest.json
+    stdout.log
+  tools/<tool>/
+    downloads/
+    patches/
+    src/
+    builds/<key>/
+      source/
+      install/
+  tmp/
+```

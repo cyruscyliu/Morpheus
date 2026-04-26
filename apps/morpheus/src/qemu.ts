@@ -27,7 +27,7 @@ function localToolWorkspace(workspace, tool) {
 }
 
 function localRunDir(workspace, tool, id) {
-  return path.join(localToolWorkspace(workspace, tool), "runs", id);
+  return path.join(localWorkspaceRoot(workspace), "runs", id);
 }
 
 function localBuildDir(workspace, tool, key) {
@@ -268,6 +268,7 @@ function runManagedQemu(flags) {
     const buildRoot = localBuildDir(options.workspace, TOOL, options.buildDirKey);
     const buildDir = path.join(buildRoot, "build");
     const installDir = path.join(buildRoot, "install");
+    const downloadsDir = path.join(localToolWorkspace(options.workspace, TOOL), "downloads");
     const args = [
       "--json",
       "build",
@@ -275,6 +276,8 @@ function runManagedQemu(flags) {
       options.source,
       ...(options.qemuVersion ? ["--qemu-version", options.qemuVersion] : []),
       ...(options.archiveUrl ? ["--archive-url", options.archiveUrl] : []),
+      "--downloads-dir",
+      downloadsDir,
       "--build-dir",
       buildDir,
       "--install-dir",

@@ -29,20 +29,43 @@ function localToolWorkspace(workspace, tool) {
 }
 
 function localRunDir(workspace, tool, id) {
-  return path.join(localToolWorkspace(workspace, tool), "runs", id);
+  return path.join(localWorkspaceRoot(workspace), "runs", id);
 }
 
-function defaultManagedSource(workspace, version) {
-  return path.join(localToolWorkspace(workspace, TOOL), "sdk", version ? `microkit-sdk-${version}` : "microkit-sdk");
+function managedSdkInstallDir(workspace, buildDirKey) {
+  return path.join(localToolWorkspace(workspace, TOOL), "builds", buildDirKey, "install");
 }
 
-function defaultManagedMicrokitSource(workspace, version) {
-  const suffix = version ? `microkit-${version}` : "microkit";
-  return path.join(localToolWorkspace(workspace, TOOL), "src", suffix);
+function managedMicrokitSourceDir(workspace, buildDirKey) {
+  return path.join(localToolWorkspace(workspace, TOOL), "builds", buildDirKey, "source", "microkit");
 }
 
 function defaultMicrokitArchiveUrl(version) {
   return `https://github.com/seL4/microkit/archive/refs/tags/${version}.tar.gz`;
+}
+
+function parseDottedVersion(value) {
+  if (!value) {
+    return null;
+  }
+  const match = String(value).trim().match(/^(\d+)\.(\d+)\.(\d+)/);
+  if (!match) {
+    return null;
+  }
+  return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]) };
+}
+
+function compareDottedVersions(left, right) {
+  if (!left || !right) {
+    return null;
+  }
+  if (left.major !== right.major) {
+    return left.major - right.major;
+  }
+  if (left.minor !== right.minor) {
+    return left.minor - right.minor;
+  }
+  return left.patch - right.patch;
 }
 
 function looksLikeMicrokitSdk(sdkDir) {
@@ -116,12 +139,14 @@ function loadMicrokitConfig() {
       archiveUrl: item["archive-url"] || item.archiveUrl || null,
       microkitArchiveUrl: item["microkit-archive-url"] || item.microkitArchiveUrl || null,
       microkitDir: item["microkit-dir"] || item.microkitDir || null,
+      patchDir: item["patch-dir"] || item.patchDir || null,
       boards: item.boards || null,
       configs: item.configs || null,
       toolchainDir: item["toolchain-dir"] || item.toolchainDir || null,
       toolchainVersion: item["toolchain-version"] || item.toolchainVersion || null,
       toolchainArchiveUrl: item["toolchain-archive-url"] || item.toolchainArchiveUrl || null,
       toolchainPrefixAarch64: item["toolchain-prefix-aarch64"] || item.toolchainPrefixAarch64 || null,
+      rustVersion: item["rust-version"] || item.rustVersion || null,
     }
   };
 }
@@ -169,6 +194,126 @@ function runCommand(command, args, options = {}) {
   });
 }
 
+function rustupHomes(workspace) {
+  const deps = path.join(localToolWorkspace(workspace, TOOL), "deps");
+  return {
+    depsDir: deps,
+    rustupHome: path.join(deps, "rustup"),
+    cargoHome: path.join(deps, "cargo"),
+    cargoBinDir: path.join(deps, "cargo", "bin"),
+    rustupInit: path.join(deps, "rustup-init.sh"),
+  };
+}
+
+function detectRustcVersion(command, env) {
+  const result = runCommand(command, ["--version"], { env });
+  if (result.status !== 0) {
+    return null;
+  }
+  const line = String(result.stdout || "").trim().split(/\r?\n/)[0] || "";
+  const match = line.match(/rustc\s+(\d+\.\d+\.\d+)/);
+  if (!match) {
+    return null;
+  }
+  return match[1];
+}
+
+function requiredRustVersionFromMicrokitSource(microkitDir) {
+  const cargoToml = path.join(microkitDir, "tool", "microkit", "Cargo.toml");
+  if (!fs.existsSync(cargoToml)) {
+    return null;
+  }
+  const raw = fs.readFileSync(cargoToml, "utf8");
+  const match = raw.match(/^\s*rust-version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"\s*$/m);
+  return match ? match[1] : null;
+}
+
+function ensureRustToolchainForMicrokit({ workspace, microkitDir, rustVersionOverride }) {
+  const required = rustVersionOverride || requiredRustVersionFromMicrokitSource(microkitDir);
+  if (!required) {
+    return { required: null, configured: false, env: {} };
+  }
+
+  const requiredParsed = parseDottedVersion(required);
+
+  const homes = rustupHomes(workspace);
+  fs.mkdirSync(homes.depsDir, { recursive: true });
+  const managedEnv = {
+    ...process.env,
+    RUSTUP_HOME: homes.rustupHome,
+    CARGO_HOME: homes.cargoHome,
+    PATH: `${homes.cargoBinDir}${path.delimiter}${process.env.PATH || ""}`,
+    RUSTUP_TOOLCHAIN: required,
+  };
+
+  const rustupBin = path.join(homes.cargoBinDir, "rustup");
+  const rustcBin = path.join(homes.cargoBinDir, "rustc");
+
+  const hasRustup = fs.existsSync(rustupBin) && fs.existsSync(rustcBin);
+  if (!hasRustup) {
+    if (!fs.existsSync(homes.rustupInit)) {
+      const download = runCommand("curl", ["-fsSL", "https://sh.rustup.rs", "-o", homes.rustupInit], undefined);
+      if (download.status !== 0) {
+        throw new Error(download.stderr || download.stdout || "Failed to download rustup-init");
+      }
+      fs.chmodSync(homes.rustupInit, 0o755);
+    }
+
+    const install = runCommand("sh", [
+      homes.rustupInit,
+      "-y",
+      "--no-modify-path",
+      "--profile",
+      "minimal",
+      "--default-toolchain",
+      required,
+    ], { env: managedEnv });
+    if (install.status !== 0) {
+      throw new Error(install.stderr || install.stdout || `Failed to install rustup toolchain ${required}`);
+    }
+  }
+
+  const managedRustc = fs.existsSync(rustcBin)
+    ? detectRustcVersion(rustcBin, managedEnv)
+    : null;
+  const managedOk = requiredParsed && managedRustc
+    ? compareDottedVersions(parseDottedVersion(managedRustc), requiredParsed) >= 0
+    : false;
+
+  if (!managedOk) {
+    const toolchainInstall = runCommand(rustupBin, ["toolchain", "install", required], { env: managedEnv });
+    if (toolchainInstall.status !== 0) {
+      throw new Error(toolchainInstall.stderr || toolchainInstall.stdout || `Failed to install rustup toolchain ${required}`);
+    }
+  }
+
+  const targets = [];
+  if (process.platform === "linux" && process.arch === "x64") {
+    targets.push("x86_64-unknown-linux-musl");
+  } else if (process.platform === "linux" && process.arch === "arm64") {
+    targets.push("aarch64-unknown-linux-musl");
+  }
+  // Microkit builds board initialisers for bare-metal aarch64.
+  targets.push("aarch64-unknown-none");
+  for (const target of targets) {
+    const addTarget = runCommand(rustupBin, ["target", "add", target, "--toolchain", required], { env: managedEnv });
+    if (addTarget.status !== 0) {
+      throw new Error(addTarget.stderr || addTarget.stdout || `Failed to add rust target ${target} for toolchain ${required}`);
+    }
+  }
+
+  const rustSrc = runCommand(rustupBin, ["component", "add", "rust-src", "--toolchain", required], { env: managedEnv });
+  if (rustSrc.status !== 0) {
+    throw new Error(rustSrc.stderr || rustSrc.stdout || `Failed to add rust-src for toolchain ${required}`);
+  }
+
+  return {
+    required,
+    configured: true,
+    env: managedEnv,
+  };
+}
+
 function removeDirectory(targetPath) {
   fs.rmSync(targetPath, { recursive: true, force: true });
 }
@@ -181,9 +326,9 @@ function extractArchive(archivePath, destination) {
   }
 }
 
-function ensureFetchedMicrokitSourceTree({ workspace, source, microkitVersion, archiveUrl }) {
+function ensureFetchedMicrokitSourceTree({ workspace, source, microkitVersion, archiveUrl, force }) {
   const buildScript = path.join(source, "build_sdk.py");
-  if (fs.existsSync(buildScript)) {
+  if (!force && fs.existsSync(buildScript)) {
     return {
       source,
       fetched: false,
@@ -233,6 +378,62 @@ function ensureFetchedMicrokitSourceTree({ workspace, source, microkitVersion, a
     fetched: true,
     archive: archivePath,
     archive_url: archiveUrlValue,
+  };
+}
+
+function listPatchFiles(patchDir) {
+  if (!patchDir) {
+    return [];
+  }
+  if (!fs.existsSync(patchDir)) {
+    throw new Error(`patch dir does not exist: ${patchDir}`);
+  }
+  return fs.readdirSync(patchDir)
+    .filter((name) => name.endsWith(".patch"))
+    .sort()
+    .map((name) => path.join(patchDir, name));
+}
+
+function patchFingerprint(patchFiles) {
+  if (!patchFiles || patchFiles.length === 0) {
+    return "nopatch";
+  }
+  const hash = crypto.createHash("sha256");
+  for (const filePath of patchFiles) {
+    hash.update(fs.readFileSync(filePath));
+  }
+  return hash.digest("hex");
+}
+
+function applyPatchesToMicrokitSourceTree({ sourceDir, patchDir, logFile }) {
+  const patchFiles = listPatchFiles(patchDir);
+  if (patchFiles.length === 0) {
+    return null;
+  }
+
+  const fingerprint = patchFingerprint(patchFiles);
+  const applied = [];
+  const lines = [];
+  for (const filePath of patchFiles) {
+    const relative = path.relative(patchDir, filePath);
+    lines.push(`>>> ${relative}`);
+    const result = runCommand("patch", ["-d", sourceDir, "-p1", "--forward", "-i", filePath], undefined);
+    lines.push(result.stdout || "");
+    lines.push(result.stderr || "");
+    if (result.status !== 0) {
+      fs.writeFileSync(logFile, `${lines.join("")}\n`, "utf8");
+      throw new Error(`Failed to apply patch ${relative} (see ${logFile})`);
+    }
+    applied.push(relative);
+  }
+
+  fs.writeFileSync(logFile, `${lines.join("")}\n`, "utf8");
+  return {
+    dir: patchDir,
+    files: applied,
+    fingerprint,
+    applied: true,
+    log_file: logFile,
   };
 }
 
@@ -398,6 +599,9 @@ function parseRunOptions(flags) {
     microkitDir: flags["microkit-dir"]
       ? path.resolve(process.cwd(), flags["microkit-dir"])
       : resolveLocalPath(baseDir, value.microkitDir),
+    patchDir: flags["patch-dir"]
+      ? path.resolve(process.cwd(), flags["patch-dir"])
+      : resolveLocalPath(baseDir, value.patchDir),
     boards: flags.boards || value.boards || null,
     configs: flags.configs || value.configs || null,
     toolchainDir: flags["toolchain-dir"]
@@ -406,14 +610,17 @@ function parseRunOptions(flags) {
     toolchainVersion: flags["toolchain-version"] || value.toolchainVersion || null,
     toolchainArchiveUrl: flags["toolchain-archive-url"] || value.toolchainArchiveUrl || null,
     toolchainPrefixAarch64: flags["toolchain-prefix-aarch64"] || value.toolchainPrefixAarch64 || "aarch64-none-elf",
-    reuseBuildDir: Boolean(flags["reuse-build-dir"] ?? value.reuseBuildDir),
-    buildDirKey: flags["build-dir-key"] || value.buildDirKey || "default",
+    rustVersion: flags["rust-version"] || value.rustVersion || null,
+    reuseBuildDir: Boolean(flags["reuse-build-dir"] ?? value.reuseBuildDir ?? true),
+    buildDirKey: flags["build-dir-key"] || value.buildDirKey || null,
   };
 
-  if (options.reuseBuildDir) {
-    options.path = path.join(localToolWorkspace(workspace, TOOL), "builds", options.buildDirKey, "sdk");
-  } else if (!options.path && options.microkitVersion) {
-    options.path = defaultManagedSource(workspace, options.microkitVersion);
+  if (!options.buildDirKey) {
+    options.buildDirKey = options.microkitVersion ? `microkit-sdk-${options.microkitVersion}` : "default";
+  }
+
+  if (!options.path && options.microkitVersion) {
+    options.path = managedSdkInstallDir(workspace, options.buildDirKey);
   }
 
   if (!options.path) {
@@ -423,10 +630,16 @@ function parseRunOptions(flags) {
   const sdkPresent = looksLikeMicrokitSdk(options.path);
   const explicitBuildInputs = Boolean(options.microkitDir || options.microkitArchiveUrl || options.archiveUrl);
 
-  // Treat `reuse-build-dir` as an explicit opt-in to "managed build semantics".
-  // Otherwise, prefer "register an existing SDK directory" when it looks valid.
-  options.buildIntent = Boolean(options.reuseBuildDir || !sdkPresent || explicitBuildInputs);
+  const pathWasProvided = Boolean(flags.path || value.path || value.source);
+  const wantsBuild = Boolean(options.microkitVersion || explicitBuildInputs || options.patchDir);
+
+  // Prefer "register an existing SDK directory" when the user supplied an
+  // explicit path and did not request a build.
+  options.buildIntent = Boolean(wantsBuild || !sdkPresent || !pathWasProvided);
   options.provisioning = options.buildIntent ? "build" : "path";
+  if (options.patchDir) {
+    options.provisioning = "build";
+  }
 
   if (
     options.provisioning === "build" &&
@@ -472,6 +685,7 @@ function registerManifest(manifest) {
 }
 
 function localManifest(options, runDir, manifestPath, logFile, inspected) {
+  const managedPath = managedSdkInstallDir(options.workspace, options.buildDirKey);
   const artifacts = [
     {
       path: "sdk-dir",
@@ -495,7 +709,7 @@ function localManifest(options, runDir, manifestPath, logFile, inspected) {
     createdAt: nowIso(),
     updatedAt: nowIso(),
     workspace: options.workspace,
-    buildDirKey: options.reuseBuildDir ? options.buildDirKey : null,
+    buildDirKey: options.path === managedPath ? options.buildDirKey : null,
     runDir,
     outputDir: runDir,
     logFile,
@@ -508,6 +722,7 @@ function localManifest(options, runDir, manifestPath, logFile, inspected) {
 }
 
 function buildManifest(options, runDir, manifestPath, fetched) {
+  const managedPath = managedSdkInstallDir(options.workspace, options.buildDirKey);
   const artifacts = [
     {
       path: "sdk-dir",
@@ -532,10 +747,12 @@ function buildManifest(options, runDir, manifestPath, fetched) {
     updatedAt: nowIso(),
     workspace: options.workspace,
     source: fetched.details.source,
-    buildDirKey: options.reuseBuildDir ? options.buildDirKey : null,
+    buildDirKey: options.path === managedPath ? options.buildDirKey : null,
     microkitVersion: options.microkitVersion || fetched.details.microkit_version || null,
     archive: fetched.details.archive || null,
     archiveUrl: fetched.details.archive_url || options.archiveUrl || null,
+    patchDir: options.patchDir || null,
+    patches: fetched.details.patches || null,
     runDir,
     outputDir: fetched.details.source,
     logFile: path.join(runDir, "stdout.log"),
@@ -575,9 +792,12 @@ function runManagedMicrokitSdk(flags) {
     const sdkPresent = looksLikeMicrokitSdk(options.path);
     const desiredMicrokitDir =
       options.microkitDir ||
-      ((options.microkitVersion || options.microkitArchiveUrl) ? defaultManagedMicrokitSource(options.workspace, options.microkitVersion) : null);
+      ((options.microkitVersion || options.microkitArchiveUrl)
+        ? managedMicrokitSourceDir(options.workspace, options.buildDirKey)
+        : null);
 
     if (desiredMicrokitDir) {
+      const explicitMicrokitDir = Boolean(options.microkitDir);
       options.toolchainResolved = ensureArmGnuToolchain({
         workspace: options.workspace,
         toolchainDir: options.toolchainDir,
@@ -602,6 +822,7 @@ function runManagedMicrokitSdk(flags) {
         sel4_source: sel4Dir,
         sel4_patches_fingerprint:
           options.sel4Resolved && options.sel4Resolved.patches ? options.sel4Resolved.patches.fingerprint : null,
+        microkit_patches_fingerprint: options.patchDir ? patchFingerprint(listPatchFiles(options.patchDir)) : "nopatch",
         toolchain_version: options.toolchainResolved ? options.toolchainResolved.version : null,
         toolchain_archive_url: options.toolchainResolved ? options.toolchainResolved.archive_url : null,
         toolchain_root: options.toolchainResolved ? options.toolchainResolved.root : null,
@@ -653,8 +874,24 @@ function runManagedMicrokitSdk(flags) {
         source: options.microkitDir,
         microkitVersion: options.microkitVersion,
         archiveUrl: options.microkitArchiveUrl,
+        force: Boolean(options.patchDir && !explicitMicrokitDir && listPatchFiles(options.patchDir).length > 0),
       });
-      sourceBuild = { details: { microkit_source: fetched.source, microkit_archive: fetched.archive, microkit_archive_url: fetched.archive_url } };
+      const patchLogFile = path.join(options.microkitDir, ".morpheus-patches.log");
+      const patches = options.patchDir
+        ? applyPatchesToMicrokitSourceTree({
+          sourceDir: options.microkitDir,
+          patchDir: options.patchDir,
+          logFile: patchLogFile,
+        })
+        : null;
+      sourceBuild = {
+        details: {
+          microkit_source: fetched.source,
+          microkit_archive: fetched.archive,
+          microkit_archive_url: fetched.archive_url,
+          patches,
+        }
+      };
 
       const buildSdkScript = path.join(options.microkitDir, "build_sdk.py");
       if (!fs.existsSync(buildSdkScript)) {
@@ -669,10 +906,42 @@ function runManagedMicrokitSdk(flags) {
         );
       }
       const python = ensurePythonVenvWithDeps(options.workspace);
+      const rust = ensureRustToolchainForMicrokit({
+        workspace: options.workspace,
+        microkitDir: options.microkitDir,
+        rustVersionOverride: options.rustVersion,
+      });
       const env = {
         ...process.env,
-        PATH: `${python.binDir}${path.delimiter}${process.env.PATH || ""}`,
+        ...rust.env,
+        PATH: `${python.binDir}${path.delimiter}${(rust.env && rust.env.PATH) ? rust.env.PATH : (process.env.PATH || "")}`,
       };
+
+      try {
+        const envProbe = runCommand("sh", ["-lc", "command -v cargo; cargo --version; command -v rustc; rustc --version"], { env });
+        fs.writeFileSync(
+          logFile,
+          [
+            "microkit-sdk: preflight",
+            `microkit_dir: ${options.microkitDir}`,
+            `sel4_dir: ${sel4Dir}`,
+            `required_rust: ${rust.required || ""}`,
+            `configured_rustup: ${rust.configured ? "true" : "false"}`,
+            `RUSTUP_HOME: ${env.RUSTUP_HOME || ""}`,
+            `CARGO_HOME: ${env.CARGO_HOME || ""}`,
+            "",
+            "[env probe stdout]",
+            envProbe.stdout || "",
+            "",
+            "[env probe stderr]",
+            envProbe.stderr || "",
+            "",
+          ].join("\n"),
+          "utf8"
+        );
+      } catch {
+        // Best-effort preflight only.
+      }
       sourceBuild = parseJsonResult(
         runBuildSdk([
           "--json",
@@ -724,6 +993,7 @@ function runManagedMicrokitSdk(flags) {
       manifest.buildLog = sourceBuild.details ? sourceBuild.details.build_log : null;
       manifest.buildInputs = buildInputs;
       manifest.sel4 = options.sel4Resolved || null;
+      manifest.patches = sourceBuild.details ? sourceBuild.details.patches : null;
       writeBuildMeta(options.path, {
         schemaVersion: 1,
         createdAt: nowIso(),
@@ -732,12 +1002,15 @@ function runManagedMicrokitSdk(flags) {
         adopted: false,
       });
     } else {
+      const downloadsDir = path.join(localToolWorkspace(options.workspace, TOOL), "downloads");
       const fetched = parseJsonResult(
         runTool([
           "--json",
           "build",
           "--source",
           options.path,
+          "--downloads-dir",
+          downloadsDir,
           ...(options.microkitVersion ? ["--microkit-version", options.microkitVersion] : []),
           ...(options.archiveUrl ? ["--archive-url", options.archiveUrl] : [])
         ]),

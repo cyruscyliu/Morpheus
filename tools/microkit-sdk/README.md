@@ -163,7 +163,7 @@ artifact:
 
 Configure it in `morpheus.yaml` under `tools.microkit-sdk`:
 
-- `toolchain-version`: toolchain version to fetch (default: `12.2.rel1`)
+- `toolchain-version`: toolchain version to fetch (default: `12.3.rel1`)
 - `toolchain-archive-url`: override archive URL
 - `toolchain-dir`: use an existing toolchain instead of fetching
 - `toolchain-prefix-aarch64`: default `aarch64-none-elf`

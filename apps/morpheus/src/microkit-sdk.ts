@@ -103,7 +103,7 @@ function writeBuildMeta(sdkDir, meta) {
 }
 
 function defaultArmGnuToolchainVersion() {
-  return "12.2.rel1";
+  return "12.3.rel1";
 }
 
 function defaultArmGnuToolchainArchiveUrl(version) {

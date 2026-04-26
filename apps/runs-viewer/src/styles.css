@@ -240,6 +240,7 @@ select {
   overflow: auto;
   display: grid;
   gap: 8px;
+  align-content: start;
 }
 
 .list-footer {

@@ -17,18 +17,18 @@ test("Workflow Viewer uses Next.js app routes and shadcn/ui shell", () => {
   assert.match(layoutTsx, /Morpheus Workflow Viewer/);
   assert.match(pageTsx, /WorkflowViewer/);
 
-  assert.match(viewerTsx, /Select a workflow/);
-  assert.match(viewerTsx, /stop/);
-  assert.match(viewerTsx, /remove/);
   assert.match(viewerTsx, /EventSource/);
-  assert.match(viewerTsx, /onKeyDown/);
-  assert.match(viewerTsx, /run-item-select/);
+  assert.match(viewerTsx, /workflow-table/);
+  assert.match(viewerTsx, /loadWorkflowLog/);
+  assert.match(viewerTsx, /Refresh/);
+  assert.match(viewerTsx, /Loading log/);
+  assert.match(viewerTsx, /EventSource/);
 
   assert.match(buttonTsx, /class-variance-authority/);
   assert.match(packageJson, /"next"/);
   assert.match(packageJson, /"react"/);
   assert.match(packageJson, /"tailwindcss"/);
-  assert.match(globalsCss, /\.workflow-workspace/);
-  assert.match(globalsCss, /\.log-pane-header/);
-  assert.match(globalsCss, /220px/);
+  assert.match(globalsCss, /\.workflow-table-shell/);
+  assert.match(globalsCss, /\.workflow-log-shell/);
+  assert.match(globalsCss, /\.workflow-table/);
 });

@@ -560,7 +560,21 @@ function runSingleToolWorkflow({ tool, workflowName, workspaceRoot, toolArgv, js
   });
 }
 
-function handleWorkflowCommand(argv) {
+function followLogFile(logFile) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("tail", ["-n", "+1", "-f", logFile], { stdio: "inherit" });
+    child.on("error", reject);
+    child.on("exit", (code, signal) => {
+      if (signal) {
+        resolve(0);
+        return;
+      }
+      resolve(code || 0);
+    });
+  });
+}
+
+async function handleWorkflowCommand(argv) {
   const { positionals, flags } = parseWorkflowArgs(argv);
   const subcommand = positionals[0];
   if (!subcommand || subcommand === "help" || subcommand === "--help") {
@@ -632,6 +646,12 @@ function handleWorkflowCommand(argv) {
     const logFile = step.logFile || path.join(step.stepDir, "stdout.log");
     if (!fs.existsSync(logFile)) {
       throw new Error(`missing log file: ${path.relative(process.cwd(), logFile)}`);
+    }
+    if (flags.follow) {
+      if (flags.json) {
+        throw new Error("workflow logs does not support --json with --follow");
+      }
+      return await followLogFile(logFile);
     }
     const content = fs.readFileSync(logFile, "utf8");
     if (flags.json) {

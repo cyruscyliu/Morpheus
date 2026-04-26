@@ -55,6 +55,17 @@ async function fetchText(input: string): Promise<string> {
   return await response.text();
 }
 
+async function postJson<T>(input: string): Promise<T> {
+  const response = await fetch(input, {
+    method: "POST",
+    headers: { accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error((await response.text()) || `${response.status} ${response.statusText}`);
+  }
+  return (await response.json()) as T;
+}
+
 function renderWorkflowLogHtml(logText: string): string {
   const lines = logText.replace(/\r\n/g, "\n").split("\n");
   const items = lines
@@ -82,6 +93,40 @@ async function loadWorkflowLog(runId: string): Promise<string> {
   return stepLogs.filter((value): value is string => Boolean(value)).join("\n\n");
 }
 
+async function refreshViewerState(
+  selectedRunId: string | null,
+  setSummaries: (runs: RunSummary[]) => void,
+  setTotalRuns: (total: number) => void,
+  setUpdatedAt: (updatedAt: string) => void,
+  setLogText: (text: string) => void,
+  setLogError: (error: string | null) => void,
+  setLogLoading: (loading: boolean) => void,
+): Promise<void> {
+  const payload = await fetchJson<RunsIndexPayload>("/api/runs");
+  setSummaries(payload.runs);
+  setTotalRuns(payload.totalRuns);
+  setUpdatedAt(payload.updatedAt);
+
+  if (!selectedRunId || !payload.runs.some((run) => run.id === selectedRunId)) {
+    setLogText("");
+    setLogError(null);
+    setLogLoading(false);
+    return;
+  }
+
+  setLogLoading(true);
+  setLogError(null);
+  try {
+    const nextLog = await loadWorkflowLog(selectedRunId);
+    setLogText(nextLog);
+    setLogLoading(false);
+  } catch (error) {
+    setLogText("");
+    setLogError(error instanceof Error ? error.message : "Failed to load workflow log.");
+    setLogLoading(false);
+  }
+}
+
 interface WorkflowViewerProps {
   initialSummaries: RunSummary[];
   initialTotalRuns: number;
@@ -102,6 +147,9 @@ export function WorkflowViewer({
   const [logText, setLogText] = useState<string>("");
   const [logLoading, setLogLoading] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [stopLoadingRunId, setStopLoadingRunId] = useState<string | null>(null);
+  const [removeLoadingRunId, setRemoveLoadingRunId] = useState<string | null>(null);
 
   useEffect(() => {
     setSelectedRunId((current) => normalizeSelectedRunId(summaries, current));
@@ -138,13 +186,79 @@ export function WorkflowViewer({
   }, [selectedRunId]);
 
   async function refreshSummaries(): Promise<void> {
-    const payload = await fetchJson<RunsIndexPayload>("/api/runs");
-    setSummaries(payload.runs);
-    setTotalRuns(payload.totalRuns);
-    setUpdatedAt(payload.updatedAt);
+    await refreshViewerState(
+      selectedRunId,
+      setSummaries,
+      setTotalRuns,
+      setUpdatedAt,
+      setLogText,
+      setLogError,
+      setLogLoading,
+    );
+  }
+
+  async function onStopWorkflow(runId: string): Promise<void> {
+    setActionError(null);
+    setStopLoadingRunId(runId);
+    try {
+      await postJson(`/api/runs/${encodeURIComponent(runId)}/stop`);
+      await refreshViewerState(
+        runId,
+        setSummaries,
+        setTotalRuns,
+        setUpdatedAt,
+        setLogText,
+        setLogError,
+        setLogLoading,
+      );
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Failed to stop workflow.");
+    } finally {
+      setStopLoadingRunId(null);
+    }
+  }
+
+  async function onRemoveWorkflow(runId: string): Promise<void> {
+    setActionError(null);
+    setRemoveLoadingRunId(runId);
+    try {
+      await postJson(`/api/runs/${encodeURIComponent(runId)}/remove`);
+      const nextSelectedRunId = selectedRunId === runId ? null : selectedRunId;
+      setSelectedRunId(nextSelectedRunId);
+      await refreshViewerState(
+        nextSelectedRunId,
+        setSummaries,
+        setTotalRuns,
+        setUpdatedAt,
+        setLogText,
+        setLogError,
+        setLogLoading,
+      );
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Failed to remove workflow.");
+    } finally {
+      setRemoveLoadingRunId(null);
+    }
   }
 
   const renderedLogHtml = useMemo(() => renderWorkflowLogHtml(logText), [logText]);
+  const selectedSummary = summaries.find((summary) => summary.id === selectedRunId) || null;
+
+  useEffect(() => {
+    const events = new EventSource("/api/events");
+    events.addEventListener("runs-changed", () => {
+      void refreshViewerState(
+        selectedRunId,
+        setSummaries,
+        setTotalRuns,
+        setUpdatedAt,
+        setLogText,
+        setLogError,
+        setLogLoading,
+      );
+    });
+    return () => events.close();
+  }, [selectedRunId]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -184,12 +298,13 @@ export function WorkflowViewer({
                     <th>Created</th>
                     <th>Completed</th>
                     <th>Steps</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {summaries.length === 0 ? (
                     <tr>
-                      <td className="workflow-table-empty" colSpan={6}>
+                      <td className="workflow-table-empty" colSpan={7}>
                         No workflows.
                       </td>
                     </tr>
@@ -200,7 +315,14 @@ export function WorkflowViewer({
                         key={summary.id}
                         onClick={() => setSelectedRunId(summary.id)}
                       >
-                        <td className="workflow-table-id">{summary.id}</td>
+                        <td className="workflow-table-id">
+                          <div className="workflow-table-name">
+                            {summary.workflowName || summary.id}
+                          </div>
+                          {summary.workflowName && summary.workflowName !== summary.id ? (
+                            <div className="workflow-table-meta">{summary.id}</div>
+                          ) : null}
+                        </td>
                         <td>
                           <span className={`workflow-status-text is-${summary.status}`}>{summary.status}</span>
                         </td>
@@ -208,6 +330,32 @@ export function WorkflowViewer({
                         <td>{formatTimestamp(summary.createdAt)}</td>
                         <td>{formatTimestamp(summary.completedAt)}</td>
                         <td>{summary.stepCount}</td>
+                        <td>
+                          <div className="workflow-table-actions">
+                            {summary.format === "workflow-first" && summary.status === "running" ? (
+                              <Button
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void onStopWorkflow(summary.id);
+                                }}
+                                size="sm"
+                                variant="outline"
+                              >
+                                {stopLoadingRunId === summary.id ? "Stopping..." : "Stop"}
+                              </Button>
+                            ) : null}
+                            <Button
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void onRemoveWorkflow(summary.id);
+                              }}
+                              size="sm"
+                              variant="outline"
+                            >
+                              {removeLoadingRunId === summary.id ? "Removing..." : "Remove"}
+                            </Button>
+                          </div>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -219,10 +367,13 @@ export function WorkflowViewer({
           <section className="workflow-log-shell">
             <div className="workflow-table-header">
               <h2 className="text-lg font-semibold tracking-tight">
-                {selectedRunId ? `Log · ${selectedRunId}` : "Log"}
+                {selectedSummary
+                  ? `Log · ${selectedSummary.workflowName || selectedSummary.id}`
+                  : "Log"}
               </h2>
             </div>
             <div className="workflow-log-body">
+              {actionError ? <p className="mb-4 text-sm text-destructive">{actionError}</p> : null}
               {!selectedRunId ? (
                 <div className="workflow-empty-state">No workflow selected.</div>
               ) : logLoading ? (

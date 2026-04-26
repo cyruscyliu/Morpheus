@@ -107,8 +107,25 @@ button {
   font-weight: 700;
 }
 
+.workflow-table-name {
+  font-weight: 700;
+}
+
+.workflow-table-meta {
+  margin-top: 2px;
+  font-size: 0.82rem;
+  font-weight: 400;
+  color: rgb(var(--muted-foreground));
+}
+
 .workflow-table-empty {
   color: rgb(var(--muted-foreground));
+}
+
+.workflow-table-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .workflow-status-text {

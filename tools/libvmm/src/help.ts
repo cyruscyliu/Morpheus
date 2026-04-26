@@ -41,6 +41,28 @@ export const COMMANDS: HelpTopic[] = [
     ],
   },
   {
+    name: 'run',
+    summary: 'Launch a libvmm example runtime action',
+    usage: [
+      'libvmm run --contract PATH [--action qemu] --libvmm-dir DIR --microkit-sdk DIR --board NAME --kernel PATH --initrd PATH --qemu PATH [--microkit-config debug|release] [--toolchain-bin-dir DIR] [--run-dir DIR] [--detach] [--json]',
+    ],
+    flags: [
+      '--contract PATH',
+      '--action NAME (default: qemu)',
+      '--libvmm-dir DIR',
+      '--microkit-sdk DIR',
+      '--board NAME',
+      '--kernel PATH',
+      '--initrd PATH',
+      '--qemu PATH',
+      '--microkit-config NAME (default: debug)',
+      '--toolchain-bin-dir DIR (optional; prepended to PATH)',
+      '--run-dir DIR (optional; defaults under the libvmm directory)',
+      '--detach',
+      '--json',
+    ],
+  },
+  {
     name: 'version',
     summary: 'Print libvmm CLI version',
     usage: [

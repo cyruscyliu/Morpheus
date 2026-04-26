@@ -27,7 +27,7 @@ test('help supports json', () => {
   assert.equal(payload.status, 'success');
 });
 
-test('prepare and run manage local sel4 state', async () => {
+test('build and run manage local sel4 state', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nvirsh-test-'));
   const stateDir = path.join(root, 'state');
   const depsDir = path.join(root, 'deps');
@@ -75,7 +75,7 @@ test('prepare and run manage local sel4 state', async () => {
 
   const prepare = run([
     '--json',
-    'prepare',
+    'build',
     '--state-dir',
     stateDir,
     '--name',
@@ -108,6 +108,7 @@ test('prepare and run manage local sel4 state', async () => {
     kernel,
     '--initrd',
     initrd,
+    '--detach',
     '--qemu-arg',
     '-machine',
     '--qemu-arg',

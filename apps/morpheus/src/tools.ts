@@ -302,7 +302,7 @@ async function handleToolCommand(argv) {
 
       const steps = [
         ...dependencies.map((name) => ({ tool: name, name: `${name}.build`, toolArgv: inheritedArgs })),
-        { tool, name: `${tool}.build`, toolArgv }
+        { tool, name: `${tool}.build`, toolArgv: [...toolArgv, "--build-only"] }
       ];
       return runToolBuildWorkflow({
         steps,

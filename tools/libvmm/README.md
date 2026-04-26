@@ -20,6 +20,7 @@ The public command tree is:
 ```text
 libvmm inspect
 libvmm build
+libvmm run
 libvmm version
 libvmm help
 ```
@@ -48,6 +49,38 @@ This command:
   credential prompt does not hang forever)
 - Invokes `make` in `examples/<example>` with `MICROKIT_SDK` and
   `MICROKIT_BOARD` (and optionally `LINUX`, `INITRD`)
+
+It also writes a `runtime-contract.json` file in the libvmm source tree and
+returns a `runtime-contract` artifact in `--json` output. Consumers such as
+`nvirsh` use that contract instead of hard-coding `make qemu`.
+
+## Run
+
+Launch the libvmm-owned runtime action from an emitted runtime contract:
+
+```bash
+libvmm run \
+  --contract <workspace>/tools/libvmm/builds/<key>/source/runtime-contract.json \
+  --action qemu \
+  --libvmm-dir <workspace>/tools/libvmm/builds/<key>/source \
+  --microkit-sdk <workspace>/tools/microkit-sdk/builds/<key>/install \
+  --board qemu_virt_aarch64 \
+  --microkit-config debug \
+  --kernel <workspace>/tools/buildroot/builds/<key>/output/images/Image \
+  --initrd <workspace>/tools/buildroot/builds/<key>/output/images/rootfs.cpio.gz \
+  --qemu <workspace>/tools/qemu/builds/<key>/install/bin/qemu-system-aarch64 \
+  --toolchain-bin-dir <workspace>/tools/microkit-sdk/deps/<toolchain>/bin \
+  --run-dir ./.libvmm-run \
+  --detach \
+  --json
+```
+
+This command:
+
+- Validates the runtime contract and selected action
+- Launches the provider-owned `qemu` action from `examples/virtio`
+- Writes a run manifest and log under the explicit `--run-dir`
+- Returns machine-readable runtime metadata in `--json` mode
 
 ## Patching
 

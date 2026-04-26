@@ -458,6 +458,27 @@ function parseRunOptions(flags) {
     dependencies.libvmm || dependencies["libvmm-dir"] || value["libvmm-dir"] || value.libvmmDir,
     "libvmm-dir"
   );
+  const runtimeProvider = value.runtime && value.runtime.provider ? value.runtime.provider : null;
+  const runtimeAction = flags["runtime-action"]
+    || (value.runtime && value.runtime.action)
+    || "qemu";
+  const runtimeContract = flags["runtime-contract"]
+    ? resolveDependencyArtifact(
+      workspace,
+      toolConfig.baseDir,
+      flags["runtime-contract"],
+      runtimeProvider,
+      "runtime-contract"
+    )
+    : (runtimeProvider
+      ? resolveDependencyArtifact(
+        workspace,
+        toolConfig.baseDir,
+        null,
+        runtimeProvider,
+        "runtime-contract"
+      )
+      : path.join(libvmmDir, "runtime-contract.json"));
 
   return {
     id: runId,
@@ -480,6 +501,8 @@ function parseRunOptions(flags) {
     microkitConfig: flags["microkit-config"] || value["microkit-config"] || value.microkitConfig || null,
     toolchain,
     libvmmDir,
+    runtimeContract,
+    runtimeAction,
     board: flags.board || value.board || "qemu_arm_virt",
     qemuArgs: flags["qemu-arg"]
       || value["qemu-arg"]
@@ -505,7 +528,7 @@ function parseRunOptions(flags) {
 function prepareArgs(options) {
   const args = [
     "--json",
-    "prepare",
+    "build",
     "--state-dir",
     options.runDir,
     "--name",
@@ -520,6 +543,8 @@ function prepareArgs(options) {
     options.toolchain,
     "--libvmm-dir",
     options.libvmmDir,
+    "--runtime-contract",
+    options.runtimeContract,
   ];
   if (options.microkitVersion) {
     args.push("--microkit-version", options.microkitVersion);
@@ -591,6 +616,28 @@ async function runManagedNvirsh(flags) {
     "failed to prepare nvirsh target"
   );
   let manifest = writeCanonicalManifest(options);
+
+  if (flags["build-only"]) {
+    return {
+      command: "run",
+      status: "success",
+      exit_code: 0,
+      summary: "prepared managed nvirsh state",
+      details: {
+        id: options.id,
+        tool: TOOL,
+        mode: "local",
+        workspace: options.workspace,
+        run_dir: options.runDir,
+        manifest,
+        log_file: options.logFile,
+        output_dir: options.runDir,
+        artifacts: manifest.artifacts,
+        prepare: prepare.details ? prepare.details.manifest : null,
+        launch: null
+      }
+    };
+  }
 
   let launch = null;
   if (options.attach) {

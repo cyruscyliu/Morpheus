@@ -8,11 +8,19 @@ export const COMMANDS = [
     ],
   },
   {
-    name: 'prepare',
+    name: 'build',
     summary: 'Validate and materialize target-local prepared state',
     usage: [
+      'nvirsh build --target sel4 --state-dir DIR --qemu PATH --microkit-sdk DIR --toolchain DIR --libvmm-dir DIR',
+      '             [--microkit-config debug|release] [--runtime-contract PATH]',
+    ],
+  },
+  {
+    name: 'prepare',
+    summary: 'Compatibility alias for build',
+    usage: [
       'nvirsh prepare --target sel4 --state-dir DIR --qemu PATH --microkit-sdk DIR --toolchain DIR --libvmm-dir DIR',
-      '              [--microkit-config debug|release]',
+      '              [--microkit-config debug|release] [--runtime-contract PATH]',
     ],
   },
   {

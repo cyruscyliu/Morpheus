@@ -17,6 +17,13 @@ Run a tool through Morpheus (records a workflow run under the workspace):
 ./bin/morpheus --json tool build --tool buildroot --mode local
 ```
 
+Stage and then launch an `nvirsh` runtime through Morpheus:
+
+```bash
+./bin/morpheus --json tool build --tool nvirsh
+./bin/morpheus --json tool run --tool nvirsh
+```
+
 Inspect recorded workflow runs:
 
 ```bash
@@ -51,3 +58,31 @@ The public command tree includes:
 - `tool build|run|list`
 - `workflow run|inspect|logs`
 - `runs list|show|export-html`
+
+## `nvirsh` runtime wiring
+
+When `tools.nvirsh` is configured in `morpheus.yaml`, use `dependencies` for
+artifact producers and `runtime` for the runtime provider contract:
+
+```yaml
+tools:
+  nvirsh:
+    mode: local
+    target: sel4
+    name: sel4-dev
+    runtime:
+      provider:
+        tool: libvmm
+        artifact: runtime-contract
+      action: qemu
+    dependencies:
+      libvmm:
+        tool: libvmm
+        artifact: libvmm-dir
+      kernel:
+        tool: buildroot
+        artifact: images/Image
+      initrd:
+        tool: buildroot
+        artifact: images/rootfs.cpio.gz
+```

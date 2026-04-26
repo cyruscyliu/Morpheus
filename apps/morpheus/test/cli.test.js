@@ -2088,3 +2088,99 @@ test("workspace show supports remote managed workspace lookup", () => {
 
   fs.rmSync(remoteRoot, { recursive: true, force: true });
 });
+
+test("nvirsh managed build reads runtime provider config separately from dependencies", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-nvirsh-runtime-config-"));
+  const workspaceRoot = path.join(projectRoot, "workspace");
+  const depsRoot = path.join(projectRoot, "deps");
+  fs.mkdirSync(workspaceRoot, { recursive: true });
+  fs.mkdirSync(depsRoot, { recursive: true });
+
+  const qemu = path.join(depsRoot, "qemu-system-aarch64");
+  const microkitSdk = path.join(depsRoot, "microkit-sdk");
+  const toolchain = path.join(depsRoot, "arm-toolchain");
+  const libvmmDir = path.join(depsRoot, "libvmm");
+  const runtimeContract = path.join(libvmmDir, "runtime-contract.json");
+  const exampleDir = path.join(libvmmDir, "examples", "virtio");
+
+  fs.writeFileSync(qemu, "#!/usr/bin/env sh\necho qemu\n", { mode: 0o755 });
+  fs.mkdirSync(microkitSdk, { recursive: true });
+  fs.mkdirSync(toolchain, { recursive: true });
+  fs.mkdirSync(exampleDir, { recursive: true });
+  fs.writeFileSync(path.join(microkitSdk, "VERSION"), "1.4.1\n");
+  fs.writeFileSync(path.join(toolchain, "VERSION"), "toolchain\n");
+  fs.writeFileSync(path.join(libvmmDir, "VERSION"), "libvmm-dev\n");
+  fs.writeFileSync(path.join(depsRoot, "Image"), "kernel");
+  fs.writeFileSync(path.join(depsRoot, "rootfs.cpio.gz"), "initrd");
+  fs.writeFileSync(
+    runtimeContract,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      kind: "libvmm-runtime-contract",
+      provider: "libvmm",
+      example: "virtio",
+      exampleDir,
+      defaultAction: "qemu",
+      actions: {
+        qemu: {
+          command: "make",
+          args: ["qemu"],
+          cwd: exampleDir,
+          requiredInputs: ["libvmm-dir", "microkit-sdk", "board", "kernel", "initrd", "qemu"],
+          optionalInputs: ["microkit-config", "toolchain-bin-dir"],
+          outputs: ["manifest", "log-file", "pid"],
+        },
+      },
+    }, null, 2)}\n`
+  );
+
+  writeConfig(projectRoot, [
+    "workspace:",
+    "  root: ./workspace",
+    "tools:",
+    "  nvirsh:",
+    "    mode: local",
+    "    target: sel4",
+    "    name: sel4-dev",
+    "    board: qemu_virt_aarch64",
+    "    microkit-version: 1.4.1",
+    "    runtime:",
+    "      provider:",
+    "        path: ./deps/libvmm/runtime-contract.json",
+    "      action: qemu",
+    "    dependencies:",
+    "      qemu: ./deps/qemu-system-aarch64",
+    "      microkit-sdk: ./deps/microkit-sdk",
+    "      toolchain: ./deps/arm-toolchain",
+    "      libvmm: ./deps/libvmm",
+    "      kernel: ./deps/Image",
+    "      initrd: ./deps/rootfs.cpio.gz",
+    ""
+  ].join("\n"));
+
+  const result = spawnSync(process.execPath, [
+    bin,
+    "--json",
+    "tool",
+    "run",
+    "--tool",
+    "nvirsh",
+    "--workspace",
+    workspaceRoot,
+    "--build-only"
+  ], {
+    encoding: "utf8",
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1",
+    },
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.status, "success");
+  assert.match(payload.summary, /prepared managed nvirsh state/);
+  assert.equal(payload.details.prepare.runtime.provider.contract.endsWith("runtime-contract.json"), true);
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});

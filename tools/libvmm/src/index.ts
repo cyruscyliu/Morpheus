@@ -2,8 +2,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
+import os from 'node:os';
 import { COMMANDS, getHelp, renderHelp } from './help.js';
 
 const VERSION = '0.1.0';
@@ -51,7 +52,7 @@ function logInfo(message: string, fields?: Record<string, unknown> | null) {
 function parseArgv(argv: string[]) {
   const positionals: string[] = [];
   const flags: Record<string, unknown> = {};
-  const booleanFlags = new Set(['json', 'help']);
+  const booleanFlags = new Set(['json', 'help', 'detach']);
   const repeatableFlags = new Set(['make-arg']);
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -420,6 +421,9 @@ function checkoutRef(source: string, gitRef: string) {
 }
 
 function updateSubmodules(source: string) {
+  if (!fs.existsSync(path.join(source, '.gitmodules'))) {
+    return;
+  }
   const submodule = runCommand('git', ['-C', source, 'submodule', 'update', '--init', '--recursive'], undefined, {
     timeoutMs: 10 * 60 * 1000,
     env: gitEnv(),
@@ -506,6 +510,56 @@ function buildExample(opts: {
     stdout: result.stdout || '',
     stderr: result.stderr || '',
   };
+}
+
+function runtimeContractPath(source: string) {
+  return path.join(source, 'runtime-contract.json');
+}
+
+function buildRuntimeContract(opts: {
+  source: string;
+  example: string;
+  board: string;
+}) {
+  const exampleDir = path.join(opts.source, 'examples', opts.example);
+  return {
+    schemaVersion: 1,
+    kind: 'libvmm-runtime-contract',
+    provider: 'libvmm',
+    version: VERSION,
+    example: opts.example,
+    exampleDir,
+    defaultAction: 'qemu',
+    actions: {
+      qemu: {
+        command: 'make',
+        args: ['qemu'],
+        cwd: exampleDir,
+        requiredInputs: ['libvmm-dir', 'microkit-sdk', 'board', 'kernel', 'initrd', 'qemu'],
+        optionalInputs: ['microkit-config', 'toolchain-bin-dir'],
+        outputs: ['manifest', 'log-file', 'pid', 'monitor-sock', 'console-log'],
+      },
+    },
+    defaults: {
+      board: opts.board,
+      microkitConfig: 'debug',
+    },
+  };
+}
+
+function writeRuntimeContract(source: string, contract: unknown) {
+  const filePath = runtimeContractPath(source);
+  fs.writeFileSync(filePath, `${JSON.stringify(contract, null, 2)}\n`, 'utf8');
+  return filePath;
+}
+
+function validateRuntimeContract(contract: any, action: string) {
+  if (!contract || contract.kind !== 'libvmm-runtime-contract') {
+    throw new CliError('invalid_contract', 'Invalid libvmm runtime contract');
+  }
+  if (!contract.actions || !contract.actions[action]) {
+    throw new CliError('invalid_contract', `Runtime contract does not support action: ${action}`);
+  }
 }
 
 function buildDirectory(flags: Record<string, unknown>) {
@@ -630,6 +684,16 @@ function buildDirectory(flags: Record<string, unknown>) {
     build_dir: built.buildDir ? relPath(built.buildDir) : null,
   });
 
+  const runtimeContract = buildRuntimeContract({
+    source,
+    example,
+    board,
+  });
+  const runtimeContractFile = writeRuntimeContract(source, runtimeContract);
+  logInfo('wrote runtime contract', {
+    contract: relPath(runtimeContractFile),
+  });
+
   const inspected = inspectDirectory({ path: source });
   logInfo('build complete', { directory: relPath(inspected.details.directory.path) });
   return {
@@ -661,6 +725,10 @@ function buildDirectory(flags: Record<string, unknown>) {
             location: built.buildDir,
           }]
           : []),
+        {
+          path: 'runtime-contract',
+          location: runtimeContractFile,
+        },
       ],
       patches: patchDir
         ? {
@@ -674,6 +742,130 @@ function buildDirectory(flags: Record<string, unknown>) {
       build: {
         cwd: built.exampleDir,
       },
+    },
+  };
+}
+
+function defaultRunDir(libvmmDir: string) {
+  const stamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+  return path.join(libvmmDir, '.morpheus-runs', `libvmm-run-${stamp}-${Math.random().toString(16).slice(2, 10)}`);
+}
+
+function runAction(flags: Record<string, unknown>) {
+  const contractPath = requirePathFlag(flags, 'contract');
+  const action = optionalStringFlag(flags, 'action') || 'qemu';
+  const libvmmDir = requirePathFlag(flags, 'libvmm-dir');
+  const microkitSdk = requirePathFlag(flags, 'microkit-sdk');
+  const board = optionalStringFlag(flags, 'board');
+  const kernel = requirePathFlag(flags, 'kernel');
+  const initrd = requirePathFlag(flags, 'initrd');
+  const qemu = requirePathFlag(flags, 'qemu');
+  const microkitConfig = optionalStringFlag(flags, 'microkit-config') || 'debug';
+  const toolchainBinDir = optionalStringFlag(flags, 'toolchain-bin-dir');
+  const runDir = flags['run-dir']
+    ? requirePathFlag(flags, 'run-dir')
+    : defaultRunDir(libvmmDir);
+  const detach = Boolean(flags.detach);
+
+  const contract = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
+  validateRuntimeContract(contract, action);
+  if (!board) {
+    throw new CliError('missing_flag', 'Missing required flag: --board');
+  }
+
+  const manifestPath = path.join(runDir, 'manifest.json');
+  const logFile = path.join(runDir, 'stdout.log');
+  const provider = contract.actions[action];
+  const manifest = {
+    schemaVersion: 1,
+    kind: 'libvmm-runtime-run',
+    id: path.basename(runDir),
+    provider: {
+      name: 'libvmm',
+      contract: contractPath,
+      action,
+      example: contract.example,
+      exampleDir: provider.cwd,
+    },
+    status: 'starting',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    runDir,
+    logFile,
+    manifest: manifestPath,
+    inputs: {
+      libvmmDir,
+      microkitSdk,
+      board,
+      microkitConfig,
+      kernel,
+      initrd,
+      qemu,
+      toolchainBinDir,
+    },
+    pid: null,
+    launcherPid: null,
+    runnerPid: null,
+    monitorSock: null,
+    consoleLog: null,
+    exitCode: null,
+    errorMessage: null,
+  };
+  fs.mkdirSync(runDir, { recursive: true });
+  fs.writeFileSync(logFile, '', 'utf8');
+  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+
+  const runner = path.resolve(path.dirname(new URL(import.meta.url).pathname), 'runtime-runner.js');
+  if (detach) {
+    const child = spawn(process.execPath, [runner, manifestPath], {
+      cwd: runDir,
+      detached: true,
+      stdio: 'ignore',
+      env: {
+        ...process.env,
+        LIBVMM_ATTACH: '0',
+      },
+    });
+    child.unref();
+    return {
+      command: 'run',
+      status: 'success',
+      exit_code: 0,
+      summary: 'started libvmm runtime action',
+      details: {
+        action,
+        provider: 'libvmm',
+        run_dir: runDir,
+        manifest: manifestPath,
+        log_file: logFile,
+      },
+    };
+  }
+
+  const result = spawnSync(process.execPath, [runner, manifestPath], {
+    encoding: 'utf8',
+    cwd: runDir,
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      LIBVMM_ATTACH: '1',
+    },
+  });
+  const updated = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  return {
+    command: 'run',
+    status: result.status === 0 ? 'success' : 'error',
+    exit_code: result.status == null ? 1 : result.status,
+    summary: result.status === 0 ? 'completed libvmm runtime action' : 'libvmm runtime action failed',
+    details: {
+      action,
+      provider: 'libvmm',
+      run_dir: runDir,
+      manifest: manifestPath,
+      log_file: logFile,
+      pid: updated.pid,
+      monitor_sock: updated.monitorSock,
+      console_log: updated.consoleLog,
     },
   };
 }
@@ -713,6 +905,15 @@ async function main(argv: string[]) {
         emitJson(result);
       } else {
         emitText(result.details.directory.path);
+      }
+      return 0;
+    }
+    case 'run': {
+      const result = runAction(parsed.flags);
+      if (parsed.json) {
+        emitJson(result);
+      } else {
+        emitText(result.details.manifest);
       }
       return 0;
     }

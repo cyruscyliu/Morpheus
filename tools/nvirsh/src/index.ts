@@ -208,6 +208,7 @@ function validateSel4Prerequisites(flags: Record<string, unknown>) {
   const microkitVersion = String(flags['microkit-version'] || '');
   const microkitConfigRaw = String(flags['microkit-config'] || '').trim();
   const microkitConfig = microkitConfigRaw ? microkitConfigRaw : 'debug';
+  const runtimeContract = resolvePathValue(String(flags['runtime-contract'] || '')) || path.join(libvmmDir, 'runtime-contract.json');
   const allowedMicrokitConfigs = new Set(['debug', 'release']);
   if (!allowedMicrokitConfigs.has(microkitConfig)) {
     throw new CliError(
@@ -272,6 +273,7 @@ function validateSel4Prerequisites(flags: Record<string, unknown>) {
     microkitConfig,
     toolchain,
     libvmmDir,
+    runtimeContract,
     board: String(flags.board || 'qemu_arm_virt'),
     qemuArgs: Array.isArray(flags['qemu-arg']) ? [...(flags['qemu-arg'] as string[])] : [],
     append: String(flags.append || ''),
@@ -281,6 +283,14 @@ function validateSel4Prerequisites(flags: Record<string, unknown>) {
 
 function preparedManifest(flags: Record<string, unknown>, prerequisites: Record<string, unknown>) {
   const state = stateDir(flags);
+  const runtimeContract = String(prerequisites.runtimeContract || '');
+  const provider = runtimeContract && fs.existsSync(runtimeContract)
+    ? {
+      tool: 'libvmm',
+      action: 'qemu',
+      contract: runtimeContract,
+    }
+    : null;
   return {
     schemaVersion: 1,
     id: path.basename(state),
@@ -294,7 +304,17 @@ function preparedManifest(flags: Record<string, unknown>, prerequisites: Record<
     logFile: logPath(flags),
     manifest: manifestPath(flags),
     prerequisites,
-    runtime: null,
+    runtime: {
+      provider,
+      providerRun: null,
+      kernel: null,
+      initrd: null,
+      qemuArgs: [],
+      append: '',
+      command: null,
+      runner: provider ? 'libvmm-run' : null,
+      launcher: provider ? 'libvmm' : null,
+    },
     pid: null,
     exitCode: null,
     errorMessage: null,
@@ -349,7 +369,7 @@ function runPrepare(flags: Record<string, unknown>) {
     fs.writeFileSync(manifest.logFile, '', 'utf8');
   }
   return {
-    command: 'prepare',
+    command: flags.__commandName === 'build' ? 'build' : 'prepare',
     status: 'success',
     exit_code: 0,
     summary: 'prepared local target state',
@@ -369,8 +389,6 @@ function runCommandForManifest(manifest: Record<string, any>, flags: Record<stri
     throw new CliError('missing_artifact', `Missing initrd artifact: ${initrd}`);
   }
 
-  const manifestName = String(manifest.name || manifest.id || '');
-  const isSel4Dev = manifest.target === 'sel4' && manifestName === 'sel4-dev';
   const runtimeArgs = Array.isArray(flags['qemu-arg']) && (flags['qemu-arg'] as string[]).length > 0
     ? [...(flags['qemu-arg'] as string[])]
     : [...((manifest.prerequisites?.qemuArgs as string[]) || [])];
@@ -380,13 +398,40 @@ function runCommandForManifest(manifest: Record<string, any>, flags: Record<stri
   }
 
   const append = String(flags.append || manifest.prerequisites?.append || '');
-  const command = isSel4Dev
-    ? [
+  const provider = manifest.runtime?.provider || null;
+  let command;
+  if (provider && provider.tool === 'libvmm') {
+    const providerRunDir = path.join(stateDir(flags), 'provider-run');
+    command = [
       process.execPath,
-      path.resolve(path.dirname(new URL(import.meta.url).pathname), 'libvmm-runner.js'),
-      manifestPath(flags),
-    ]
-    : [
+      path.resolve(process.cwd(), 'tools', 'libvmm', 'dist', 'index.js'),
+      '--json',
+      'run',
+      '--contract',
+      String(provider.contract),
+      '--action',
+      String(provider.action || 'qemu'),
+      '--run-dir',
+      providerRunDir,
+      '--libvmm-dir',
+      String(manifest.prerequisites.libvmmDir),
+      '--microkit-sdk',
+      String(manifest.prerequisites.microkitSdk),
+      '--board',
+      String(manifest.prerequisites.board),
+      '--microkit-config',
+      String(manifest.prerequisites.microkitConfig || 'debug'),
+      '--kernel',
+      kernel,
+      '--initrd',
+      initrd,
+      '--qemu',
+      String(manifest.prerequisites.qemu),
+      '--toolchain-bin-dir',
+      path.join(String(manifest.prerequisites.toolchain), 'bin'),
+    ];
+  } else {
+    command = [
       String(manifest.prerequisites.qemu),
       '-kernel',
       kernel,
@@ -394,7 +439,6 @@ function runCommandForManifest(manifest: Record<string, any>, flags: Record<stri
       initrd,
       ...runtimeArgs,
     ];
-  if (!isSel4Dev) {
     if (append) {
       command.push('-append', append);
     }
@@ -408,13 +452,14 @@ function runCommandForManifest(manifest: Record<string, any>, flags: Record<stri
   manifest.updatedAt = new Date().toISOString();
   manifest.logFile = logPath(flags);
   manifest.runtime = {
+    ...(manifest.runtime || {}),
     kernel,
     initrd,
     append,
     qemuArgs: runtimeArgs,
     command,
-    runner: isSel4Dev ? 'libvmm-runner.js' : 'runner.js',
-    launcher: isSel4Dev ? 'libvmm-virtio' : null,
+    runner: provider ? 'libvmm-run' : 'runner.js',
+    launcher: provider ? 'libvmm' : null,
   };
   manifest.errorMessage = null;
   manifest.exitCode = null;
@@ -430,12 +475,47 @@ async function runLaunch(flags: Record<string, unknown>): Promise<any> {
 
   const nextManifest = runCommandForManifest(manifest, flags);
   const runnerName = nextManifest.runtime?.runner || 'runner.js';
-  const runner = path.resolve(path.dirname(new URL(import.meta.url).pathname), runnerName);
   const detach = Boolean(flags.detach);
   if (flags.json && !detach) {
     throw new CliError('incompatible_flags', 'nvirsh run --json requires --detach');
   }
 
+  if (runnerName === 'libvmm-run') {
+    const providerArgs = [...(nextManifest.runtime?.command || [])];
+    if (detach) {
+      providerArgs.push('--detach');
+    }
+    const provider = spawnSync(providerArgs[0], providerArgs.slice(1), {
+      encoding: 'utf8',
+      cwd: stateDir(flags),
+      stdio: detach ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+    });
+    if (provider.status !== 0) {
+      throw new CliError('provider_failed', provider.stderr || provider.stdout || 'failed to launch libvmm runtime');
+    }
+    const payload = detach ? JSON.parse((provider.stdout || '').trim().split(/\r?\n/).at(-1) || '{}') : null;
+    const providerManifestPath = payload?.details?.manifest || path.join(stateDir(flags), 'provider-run', 'manifest.json');
+    const providerManifest = fs.existsSync(providerManifestPath) ? readJson(providerManifestPath) : null;
+    nextManifest.status = detach ? 'running' : (providerManifest?.status || 'success');
+    nextManifest.pid = providerManifest?.pid || nextManifest.pid;
+    nextManifest.runtime.providerRun = payload?.details || {
+      manifest: providerManifestPath,
+      log_file: providerManifest?.logFile || path.join(stateDir(flags), 'provider-run', 'stdout.log'),
+    };
+    writeJson(manifestPath(flags), nextManifest);
+    return {
+      command: 'run',
+      status: 'success',
+      exit_code: 0,
+      summary: detach ? 'started local target instance' : 'completed local target instance',
+      details: {
+        manifest: nextManifest,
+        detach,
+      },
+    };
+  }
+
+  const runner = path.resolve(path.dirname(new URL(import.meta.url).pathname), runnerName);
   if (detach) {
     const child = spawn(process.execPath, [runner, manifestPath(flags)], {
       detached: true,
@@ -500,7 +580,11 @@ function runInspect(flags: Record<string, unknown>) {
 }
 
 async function runLogs(flags: Record<string, unknown>) {
-  const filePath = logPath(flags);
+  const manifest = fs.existsSync(manifestPath(flags)) ? readJson(manifestPath(flags)) : null;
+  const providerLogFile = manifest?.runtime?.providerRun?.log_file;
+  const filePath = providerLogFile && fs.existsSync(providerLogFile)
+    ? providerLogFile
+    : logPath(flags);
   if (!fs.existsSync(filePath)) {
     throw new CliError('missing_log', `Missing log file: ${path.relative(process.cwd(), filePath)}`);
   }
@@ -565,6 +649,13 @@ async function runLogs(flags: Record<string, unknown>) {
 
 function runStop(flags: Record<string, unknown>) {
   const manifest = readManifestOrThrow(flags);
+  const providerManifestPath = manifest.runtime?.providerRun?.manifest;
+  if (providerManifestPath && fs.existsSync(providerManifestPath)) {
+    const providerManifest = readJson(providerManifestPath);
+    if (providerManifest.pid && isRunning(providerManifest.pid)) {
+      process.kill(providerManifest.pid, 'SIGTERM');
+    }
+  }
   if (!manifest.pid || !isRunning(manifest.pid)) {
     manifest.status = manifest.status === 'prepared' ? 'prepared' : 'stopped';
     manifest.updatedAt = new Date().toISOString();
@@ -635,7 +726,14 @@ async function main(argv: string[]) {
       parsed.json ? emitJson(result) : emitText(result.summary);
       return 0;
     }
+    case 'build': {
+      parsed.flags.__commandName = 'build';
+      const result = runPrepare(parsed.flags);
+      parsed.json ? emitJson(result) : emitText(result.summary);
+      return 0;
+    }
     case 'prepare': {
+      parsed.flags.__commandName = 'prepare';
       const result = runPrepare(parsed.flags);
       parsed.json ? emitJson(result) : emitText(result.summary);
       return 0;

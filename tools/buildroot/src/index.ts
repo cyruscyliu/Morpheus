@@ -7,7 +7,7 @@ import { runLocalBuild, runInspect, runClean } from './local.js';
 import { parseArgv } from './parser.js';
 import type { CleanOptions, CliContext, InspectOptions, LocalBuildOptions } from './types.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 
 function helpJson(topic?: string) {
   const command = topic ? getHelp(topic) : undefined;

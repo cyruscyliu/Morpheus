@@ -7,7 +7,7 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import { COMMANDS, getHelp, renderHelp } from './help.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 
 class CliError extends Error {
   code: string;

@@ -60,7 +60,7 @@ test('libvmm run launches qemu action from a runtime contract', () => {
       schemaVersion: 1,
       kind: 'libvmm-runtime-contract',
       provider: 'libvmm',
-      version: '0.1.0',
+      version: '0.2.0',
       example: 'virtio',
       exampleDir,
       defaultAction: 'qemu',

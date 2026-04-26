@@ -5,7 +5,7 @@ import process from 'node:process';
 import { spawn, spawnSync } from 'node:child_process';
 import { COMMANDS, getHelp, renderHelp } from './help.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const MICROKIT_SEL4_VERSION = '15.0.0';
 
 class CliError extends Error {

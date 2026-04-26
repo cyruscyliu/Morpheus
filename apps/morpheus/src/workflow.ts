@@ -1,7 +1,7 @@
 // @ts-nocheck
 const fs = require("fs");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { spawn } = require("child_process");
 const { applyConfigDefaults } = require("./config");
 const { repoRoot } = require("./paths");
 const { writeStdoutLine } = require("./io");
@@ -143,6 +143,84 @@ function consumeToolOutput(stdout, stepLogFile) {
   return finalPayload;
 }
 
+function writeStepLogLine(stepLogFile, line) {
+  const text = String(line || "");
+  fs.appendFileSync(stepLogFile, `${text}\n`, "utf8");
+  process.stderr.write(`${text}\n`);
+}
+
+function processToolStdoutLine(rawLine, stepLogFile, state) {
+  const line = String(rawLine || "").trim();
+  if (!line) {
+    return;
+  }
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    writeStepLogLine(stepLogFile, rawLine);
+    return;
+  }
+
+  if (
+    parsed &&
+    parsed.status === "stream" &&
+    parsed.details &&
+    parsed.details.event === "log" &&
+    typeof parsed.details.line === "string"
+  ) {
+    writeStepLogLine(stepLogFile, parsed.details.line);
+    return;
+  }
+
+  state.finalPayload = parsed;
+}
+
+function runWorkflowChild(args, stepLogFile, env) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, args, {
+      cwd: process.cwd(),
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdoutBuffer = "";
+    let stderrText = "";
+    const state = { finalPayload: null };
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+
+    child.stdout.on("data", (chunk) => {
+      stdoutBuffer += chunk;
+      const lines = stdoutBuffer.split(/\r?\n/);
+      stdoutBuffer = lines.pop() || "";
+      for (const rawLine of lines) {
+        processToolStdoutLine(rawLine, stepLogFile, state);
+      }
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderrText += chunk;
+      fs.appendFileSync(stepLogFile, chunk, "utf8");
+      process.stderr.write(chunk);
+    });
+
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (stdoutBuffer.trim()) {
+        processToolStdoutLine(stdoutBuffer, stepLogFile, state);
+      }
+      resolve({
+        status: typeof code === "number" ? code : 1,
+        stderr: stderrText,
+        toolPayload: state.finalPayload,
+      });
+    });
+  });
+}
+
 function tailFile(filePath, maxBytes) {
   try {
     const stat = fs.statSync(filePath);
@@ -171,9 +249,9 @@ function stepArtifactsFromToolPayload(toolPayload) {
   return toolPayload.details.artifacts;
 }
 
-function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, commandLabel }) {
+async function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, commandLabel }) {
   const workflow = createWorkflowRun(workspaceRoot, workflowName);
-  return withLogFile(path.join(workflow.runDir, "progress.jsonl"), () => {
+  return await withLogFile(path.join(workflow.runDir, "progress.jsonl"), async () => {
   const createdSteps = [];
   for (let index = 0; index < steps.length; index += 1) {
     const step = steps[index];
@@ -254,21 +332,17 @@ function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, co
       "utf8"
     );
 
-    const result = spawnSync(process.execPath, args, {
-      encoding: "utf8",
-      cwd: process.cwd(),
-      env: {
+    const result = await runWorkflowChild(
+      args,
+      step.logFile,
+      {
         ...process.env,
         MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1",
         MORPHEUS_RUN_DIR_OVERRIDE: stepToolRunDir(step.stepDir),
         MORPHEUS_EVENT_LOG_FILE: path.join(step.stepDir, "progress.jsonl")
       },
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-
-    fs.appendFileSync(step.logFile, result.stderr || "", "utf8");
-
-    const toolPayload = consumeToolOutput(result.stdout || "", step.logFile);
+    );
+    const toolPayload = result.toolPayload;
     if (toolPayload) {
       writeJson(stepToolResultPath(step.stepDir), toolPayload);
     }

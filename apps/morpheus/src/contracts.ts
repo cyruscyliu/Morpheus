@@ -1,6 +1,6 @@
 // @ts-nocheck
 const path = require("path");
-const { listDeclaredTools } = require("./tools");
+const { listToolDescriptors } = require("./tool-descriptor");
 
 const MORPHEUS_APP_CONTRACT = {
   id: "morpheus-app",
@@ -23,8 +23,7 @@ const MORPHEUS_APP_CONTRACT = {
     "contracts"
   ],
   nonGoals: [
-    "workflow scheduling",
-    "owning tool lifecycles"
+    "owning upstream tool internals"
   ]
 };
 
@@ -97,11 +96,12 @@ function getContracts() {
       runs: RUNS_CONTRACT,
       toolCatalog: {
         ...TOOL_CATALOG_CONTRACT,
-        tools: listDeclaredTools().map((tool) => ({
+        tools: listToolDescriptors().map((tool) => ({
           name: tool.name,
           runtime: tool.runtime,
           descriptorPath: tool.descriptorPath,
-          entry: path.join(tool.installRoot, tool.entry)
+          entry: path.join(tool.installRoot, tool.entry),
+          managed: tool.managed || null
         }))
       }
     }

@@ -215,8 +215,40 @@ function loadAssessments(stepDir) {
     .map((name) => readJson(path.join(stepDir, name)));
 }
 
+function normalizeViewerArtifact(artifact, index) {
+  const record = artifact || {};
+  const resolvedPath = record.location || record.local_location || record.remote_location || record.path || null;
+  const label = record.label || record.id || record.path || `artifact-${index + 1}`;
+  return {
+    id: record.id || `artifact-${index + 1}`,
+    label,
+    role: record.role || "artifact",
+    type: record.type || "path",
+    path: resolvedPath,
+    location: record.location || null,
+    local_location: record.local_location || null,
+    remote_location: record.remote_location || null,
+    sourcePath: record.path || null,
+  };
+}
+
+function fallbackStepArtifacts(step) {
+  if (Array.isArray(step.artifacts) && step.artifacts.length > 0) {
+    return step.artifacts.map(normalizeViewerArtifact);
+  }
+  const toolArtifacts = step.toolResult
+    && step.toolResult.details
+    && Array.isArray(step.toolResult.details.artifacts)
+    ? step.toolResult.details.artifacts
+    : [];
+  return toolArtifacts.map(normalizeViewerArtifact);
+}
+
 function normalizeStep(step, stepDir) {
-  const artifacts = readJsonIfExists(path.join(stepDir, "artifacts.json"), []);
+  const recordedArtifacts = readJsonIfExists(path.join(stepDir, "artifacts.json"), []);
+  const artifacts = recordedArtifacts.length > 0
+    ? recordedArtifacts
+    : fallbackStepArtifacts(step);
   const invocation = readJsonIfExists(path.join(stepDir, "invocation.json"), null);
   const assessments = loadAssessments(stepDir);
 

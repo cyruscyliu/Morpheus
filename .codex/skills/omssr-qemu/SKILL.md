@@ -44,6 +44,8 @@ qemu help
 - Otherwise, `morpheus tool build --tool qemu --mode local` builds and records
   the managed artifact from the canonical managed source path inside the
   workspace (fetching/unpacking as needed).
+- `tools/qemu/tool.json` is the declared managed path contract that Morpheus
+  uses for the workspace-local source, build, install, and artifact layout.
 - The `qemu` CLI owns fetch, unpack, source staging, and build/install for the
   managed build path.
 - `nvirsh` should consume the resolved QEMU artifact, not provision the binary.

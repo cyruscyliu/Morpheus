@@ -30,7 +30,14 @@ function normalizeArtifactsArray(value: any): Array<{ path: string; location: st
         return null;
       }
       const p = typeof entry.path === "string" ? entry.path : "";
-      const loc = typeof entry.location === "string" ? entry.location : "";
+      const loc =
+        typeof entry.location === "string"
+          ? entry.location
+          : typeof entry.local_location === "string"
+            ? entry.local_location
+            : typeof entry.remote_location === "string"
+              ? entry.remote_location
+              : "";
       if (!p || !loc) {
         return null;
       }

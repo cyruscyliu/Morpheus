@@ -6,8 +6,10 @@ const { loadConfig, configDir, resolveLocalPath } = require("./config");
 const { registerManagedRun, registerManagedWorkspace } = require("./managed-state");
 const { resolveManagedRunDir } = require("./run-layout");
 const { repoRoot } = require("./paths");
+const { readManagedToolContract, renderManagedTemplate } = require("./tool-descriptor");
 
 const TOOL = "qemu";
+const MANAGED = readManagedToolContract(TOOL);
 
 function nowIso() {
   return new Date().toISOString();
@@ -19,24 +21,54 @@ function generateRunId() {
   return `${TOOL}-${stamp}-${random}`;
 }
 
-function localWorkspaceRoot(workspace) {
-  return path.resolve(process.cwd(), workspace);
-}
-
-function localToolWorkspace(workspace, tool) {
-  return path.join(localWorkspaceRoot(workspace), "tools", tool);
-}
-
 function localRunDir(workspace, tool, id) {
   return resolveManagedRunDir(workspace, id);
 }
 
-function localBuildDir(workspace, tool, key) {
-  return path.join(localToolWorkspace(workspace, tool), "builds", key);
+function localWorkspaceRoot(workspace) {
+  return path.resolve(process.cwd(), workspace);
+}
+
+function contractLocal() {
+  if (!MANAGED || !MANAGED.local) {
+    throw new Error("missing managed contract for qemu");
+  }
+  return MANAGED.local;
+}
+
+function contractWorkspacePath(workspace, template, values) {
+  return path.join(
+    localWorkspaceRoot(workspace),
+    renderManagedTemplate(template, values)
+  );
 }
 
 function defaultManagedSource(workspace, version) {
-  return path.join(localToolWorkspace(workspace, TOOL), "src", `qemu-${version}`);
+  return contractWorkspacePath(
+    workspace,
+    contractLocal().sourceTemplate,
+    { qemuVersion: version }
+  );
+}
+
+function managedDownloadsDir(workspace) {
+  return path.join(localWorkspaceRoot(workspace), contractLocal().downloadsDir);
+}
+
+function managedBuildDir(workspace, buildDirKey) {
+  return contractWorkspacePath(
+    workspace,
+    contractLocal().buildDirTemplate,
+    { buildDirKey }
+  );
+}
+
+function managedInstallDir(workspace, buildDirKey) {
+  return contractWorkspacePath(
+    workspace,
+    contractLocal().installDirTemplate,
+    { buildDirKey }
+  );
 }
 
 function localManifestPath(workspace, tool, id) {
@@ -117,7 +149,8 @@ function parseRunOptions(flags) {
   }
   const { baseDir, value } = loadQemuConfig();
   const placementMode = flags.mode || value.mode || "local";
-  if (placementMode !== "local") {
+  const managed = readManagedToolContract(TOOL);
+  if (!managed || !Array.isArray(managed.modes) || !managed.modes.includes(placementMode)) {
     throw new Error("qemu supports only --mode local");
   }
 
@@ -181,6 +214,7 @@ function registerManifest(manifest) {
 }
 
 function localExecutableManifest(options, runDir, manifestPath, logFile, inspected) {
+  const artifactPath = contractLocal().artifactPath;
   return {
     schemaVersion: 1,
     id: options.id,
@@ -199,7 +233,7 @@ function localExecutableManifest(options, runDir, manifestPath, logFile, inspect
     executable: inspected.details.executable,
     artifacts: [
       {
-        path: "qemu-system-aarch64",
+        path: artifactPath,
         location: inspected.details.executable.path
       }
     ],
@@ -209,6 +243,7 @@ function localExecutableManifest(options, runDir, manifestPath, logFile, inspect
 }
 
 function buildModeManifest(options, runDir, manifestPath, result) {
+  const artifactPath = contractLocal().artifactPath;
   return {
     schemaVersion: 1,
     id: options.id,
@@ -235,7 +270,7 @@ function buildModeManifest(options, runDir, manifestPath, result) {
     executable: result.details.executable,
     artifacts: [
       {
-        path: "qemu-system-aarch64",
+        path: artifactPath,
         location: result.details.executable.path
       }
     ],
@@ -266,10 +301,9 @@ function runManagedQemu(flags) {
     fs.writeFileSync(logFile, `${inspected.details.executable.version || ""}\n`, "utf8");
     manifest = localExecutableManifest(options, runDir, manifestPath, logFile, inspected);
   } else {
-    const buildRoot = localBuildDir(options.workspace, TOOL, options.buildDirKey);
-    const buildDir = path.join(buildRoot, "build");
-    const installDir = path.join(buildRoot, "install");
-    const downloadsDir = path.join(localToolWorkspace(options.workspace, TOOL), "downloads");
+    const buildDir = managedBuildDir(options.workspace, options.buildDirKey);
+    const installDir = managedInstallDir(options.workspace, options.buildDirKey);
+    const downloadsDir = managedDownloadsDir(options.workspace);
     const args = [
       "--json",
       "build",

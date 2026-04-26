@@ -24,8 +24,10 @@ directly.
 ## Quick start
 
 When using Morpheus-managed dependencies, prefer configuring dependencies in
-`morpheus.yaml` and running `morpheus tool build --tool nvirsh`. Morpheus will
-resolve tool artifacts into concrete `nvirsh build` flags.
+`morpheus.yaml` and using:
+
+- `morpheus tool build --tool nvirsh` to stage dependencies and local state
+- `morpheus tool run --tool nvirsh` to launch the runtime provider
 
 ```bash
 nvirsh build \
@@ -181,7 +183,8 @@ nvirsh inspect --state-dir ./.nvirsh/sel4-dev --json
   concrete local directories
 - `morpheus` resolves producer artifacts, such as Buildroot outputs
 - `morpheus tool build --tool nvirsh` stages the local `nvirsh` state
-- `morpheus tool run --tool nvirsh` launches the configured runtime provider
+- `morpheus tool run --tool nvirsh` builds dependencies, then launches the
+  configured runtime provider
 - `scripts/nvirsh/prepare-sel4-deps.mjs` stages existing local deps into the
   workspace-local paths declared in `morpheus.yaml`
 

@@ -106,6 +106,8 @@ Every command supports `--json`, including help and errors.
   builds
 - `morpheus` owns `local` vs `remote` placement and tool dependency wiring
 - `nvirsh` should consume the resolved executable path, not provision QEMU
+- `tools/qemu/tool.json` declares the managed workspace path contract that
+  Morpheus consumes
 
 ## Smoke test
 

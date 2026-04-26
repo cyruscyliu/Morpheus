@@ -115,7 +115,8 @@ function managedRunUsage() {
     "  node apps/morpheus/dist/cli.js tool build --tool buildroot --mode remote --ssh TARGET --workspace DIR (--source DIR | --buildroot-version VER) [--defconfig NAME] [--patch-dir DIR] [--reuse-build-dir] [--build-dir-key KEY] [--detach] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool microkit-sdk --mode local --workspace DIR [--path PATH] [--archive-url URL] [--microkit-archive-url URL] [--microkit-dir DIR] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool qemu --mode local --workspace DIR (--path PATH | --qemu-version VER) [--archive-url URL] [--build-dir-key KEY] [--target-list NAME ...] [--configure-arg ARG ...] [--json]",
-    "  node apps/morpheus/dist/cli.js tool build --tool nvirsh --mode local --workspace DIR [--target sel4] [--attach] [--json]",
+    "  node apps/morpheus/dist/cli.js tool build --tool nvirsh --mode local --workspace DIR [--target sel4] [--json]",
+    "  node apps/morpheus/dist/cli.js tool run --tool nvirsh --mode local --workspace DIR [--target sel4] [--attach] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool sel4 --mode local --workspace DIR (--path PATH | --sel4-version VER) [--archive-url URL] [--patch-dir DIR] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool libvmm --mode local --workspace DIR [--source DIR] --board NAME [--example NAME] [--patch-dir DIR] [--linux PATH] [--initrd PATH] [--make-arg KEY=VALUE ...] [--json]",
     "  node apps/morpheus/dist/cli.js runs list --managed [--workspace DIR] [--ssh TARGET] [--json]",
@@ -787,6 +788,13 @@ function localArtifactDir(workspace, tool, id) {
   return path.join(localRunDir(workspace, tool, id), "artifacts");
 }
 
+function canonicalLocalBuildrootOutputDir(workspace, buildDirKey) {
+  if (!workspace || !buildDirKey) {
+    return null;
+  }
+  return path.join(localBuildDir(workspace, BUILDROOT_TOOL, buildDirKey), "output");
+}
+
 function validateAndResolveLocalArtifacts(outputDir, requestedPaths) {
   const artifacts = [];
   for (const requestedPath of requestedPaths || []) {
@@ -1137,8 +1145,11 @@ function fetchRemoteArtifacts(options, id, outputDir) {
     }));
   }
 
-  const destination = localArtifactDir(options.localWorkspace, BUILDROOT_TOOL, id);
-  fs.rmSync(destination, { recursive: true, force: true });
+  const canonicalOutputDir = canonicalLocalBuildrootOutputDir(
+    options.localWorkspace,
+    effectiveBuildDirKey(options)
+  );
+  const destination = canonicalOutputDir || localArtifactDir(options.localWorkspace, BUILDROOT_TOOL, id);
   fs.mkdirSync(destination, { recursive: true });
 
   const sshCommandPrefix = `${shellQuote(sshBinary())} ${sshArgs(options.ssh).map(shellQuote).join(" ")}`;

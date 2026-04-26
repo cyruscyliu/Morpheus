@@ -5,51 +5,22 @@ const { repoRoot } = require("./paths");
 const { handleManagedRunCommand } = require("./remote");
 const { runSingleToolWorkflow, runToolBuildWorkflow } = require("./workflow");
 const { applyConfigDefaults, loadConfig } = require("./config");
+const { listToolDescriptors, readToolDescriptor, toolDescriptorPath } = require("./tool-descriptor");
 const { writeStdoutLine } = require("./io");
 const { logInfo } = require("./logger");
 
-function descriptorPath(toolName) {
-  return path.join(repoRoot(), "tools", toolName, "tool.json");
-}
-
-function readJson(filePath) {
-  return JSON.parse(fs.readFileSync(filePath, "utf8"));
-}
-
 function listDeclaredTools() {
-  const toolsRoot = path.join(repoRoot(), "tools");
-  if (!fs.existsSync(toolsRoot)) {
-    return [];
-  }
-
-  return fs
-    .readdirSync(toolsRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => {
-      const filePath = descriptorPath(entry.name);
-      if (!fs.existsSync(filePath)) {
-        return null;
-      }
-
-      const descriptor = readJson(filePath);
-      return {
-        name: descriptor.name || entry.name,
-        runtime: descriptor.runtime,
-        entry: descriptor.entry,
-        descriptorPath: path.relative(repoRoot(), filePath),
-        installRoot: path.relative(repoRoot(), path.dirname(filePath))
-      };
-    })
-    .filter(Boolean)
-    .sort((left, right) => left.name.localeCompare(right.name));
+  return listToolDescriptors().map((descriptor) => ({
+    name: descriptor.name,
+    runtime: descriptor.runtime,
+    entry: descriptor.entry,
+    descriptorPath: descriptor.descriptorPath,
+    installRoot: descriptor.installRoot
+  }));
 }
 
 function requireTool(name) {
-  const definition = listDeclaredTools().find((tool) => tool.name === name);
-  if (!definition) {
-    throw new Error(`unknown tool: ${name}`);
-  }
-  return definition;
+  return readToolDescriptor(name);
 }
 
 function verifyTool(name) {
@@ -133,6 +104,7 @@ function toolUsage() {
   return [
     "Usage:",
     "  node apps/morpheus/dist/cli.js tool build --tool <name> [--json] [...tool flags]",
+    "  node apps/morpheus/dist/cli.js tool run --tool <name> [--json] [...tool flags]",
     "  node apps/morpheus/dist/cli.js tool list [--json] [--verify]"
   ].join("\n");
 }
@@ -250,6 +222,33 @@ async function handleToolCommand(argv) {
   }
 
   if (subcommand === "run") {
+    const { flags } = parseToolArgs(rest);
+    const tool = flags.tool;
+    if (tool === "nvirsh") {
+      const workflowName = `tool-${tool}`;
+      const workspaceRoot = resolveWorkspaceRoot(flags);
+      let toolArgv = [...rest];
+      toolArgv = stripBooleanFlag(toolArgv, "--json");
+      toolArgv = stripFlagPair(toolArgv, "--tool");
+      toolArgv = stripFlagPair(toolArgv, "--workspace");
+
+      const dependencies = sortToolDependencies(toolDependencyNamesFromConfig(tool));
+      const inheritedArgs = flags.verbose ? ["--verbose"] : [];
+      const steps = [
+        ...dependencies.map((name) => ({ tool: name, name: `${name}.build`, toolArgv: inheritedArgs })),
+      ];
+      const exitCode = runToolBuildWorkflow({
+        steps,
+        workflowName,
+        workspaceRoot,
+        jsonMode: false,
+        commandLabel: `tool ${subcommand}`,
+      });
+      if (exitCode !== 0) {
+        return exitCode;
+      }
+      return await handleManagedRunCommand("run", rest);
+    }
     return await handleManagedRunCommand("run", rest);
   }
 
@@ -281,25 +280,8 @@ async function handleToolCommand(argv) {
       const dependencies = sortToolDependencies(toolDependencyNamesFromConfig(tool));
       const inheritedArgs = flags.verbose ? ["--verbose"] : [];
       if (flags.attach) {
-        if (flags.json) {
-          throw new Error("tool build --tool nvirsh --attach cannot be combined with --json");
-        }
-        const steps = [
-          ...dependencies.map((name) => ({ tool: name, name: `${name}.build`, toolArgv: inheritedArgs })),
-        ];
-        const exitCode = runToolBuildWorkflow({
-          steps,
-          workflowName,
-          workspaceRoot,
-          jsonMode: false,
-          commandLabel: `tool ${subcommand}`,
-        });
-        if (exitCode !== 0) {
-          return exitCode;
-        }
-        return await handleManagedRunCommand("run", rest);
+        throw new Error("tool build --tool nvirsh does not launch the runtime; use tool run --tool nvirsh --attach");
       }
-
       const steps = [
         ...dependencies.map((name) => ({ tool: name, name: `${name}.build`, toolArgv: inheritedArgs })),
         { tool, name: `${tool}.build`, toolArgv: [...toolArgv, "--build-only"] }

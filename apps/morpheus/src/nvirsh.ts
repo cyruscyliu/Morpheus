@@ -385,6 +385,78 @@ function resolveDependencyArtifact(workspace, baseDir, explicitPath, spec, label
   throw new Error(`could not resolve ${label} artifact ${spec.artifact} from ${spec.tool}`);
 }
 
+function findManagedToolRecordByArtifact(workspace, tool, artifactPath, artifactLocation) {
+  hydrateToolRunRecords(workspace, tool);
+  const records = listManagedRuns()
+    .filter((record) => record.tool === tool)
+    .filter((record) => record.status === "success")
+    .sort((left, right) => (right.createdAt || right.id).localeCompare(left.createdAt || left.id));
+
+  for (const record of records) {
+    for (const artifact of record.artifacts || []) {
+      if (artifactPath && artifact.path !== artifactPath) {
+        continue;
+      }
+      const resolved = artifactLocationValue(artifact);
+      if (resolved && artifactLocation && path.resolve(resolved) === path.resolve(artifactLocation)) {
+        return record;
+      }
+    }
+
+    if (
+      artifactPath === "libvmm-dir"
+      && record.outputDir
+      && artifactLocation
+      && path.resolve(record.outputDir) === path.resolve(artifactLocation)
+    ) {
+      return record;
+    }
+  }
+
+  return null;
+}
+
+function artifactLocationValue(artifact) {
+  return artifact && (artifact.local_location || artifact.location || artifact.localPath || artifact.path);
+}
+
+function readManagedManifest(record) {
+  if (!record || !record.manifest || !fs.existsSync(record.manifest)) {
+    return null;
+  }
+  try {
+    return readJson(record.manifest);
+  } catch {
+    return null;
+  }
+}
+
+function deriveLibvmmManagedInputs(workspace, libvmmDir, runtimeContract) {
+  const byContract = runtimeContract
+    ? findManagedToolRecordByArtifact(workspace, "libvmm", "runtime-contract", runtimeContract)
+    : null;
+  const byDirectory = libvmmDir
+    ? findManagedToolRecordByArtifact(workspace, "libvmm", "libvmm-dir", libvmmDir)
+    : null;
+  const record = byContract || byDirectory;
+  const manifest = readManagedManifest(record);
+  if (!manifest) {
+    return {
+      microkitSdk: null,
+      toolchain: null
+    };
+  }
+
+  const toolchainArtifact = manifest.toolchain && manifest.toolchain.location
+    ? manifest.toolchain.location
+    : artifactLocationValue((manifest.artifacts || []).find((item) => item.path === "toolchain-dir"));
+
+  return {
+    microkitSdk: manifest.microkitSdk || null,
+    toolchain: toolchainArtifact || null
+  };
+}
+
 function buildManifest(base, runtime) {
   return {
     ...runtime,
@@ -401,10 +473,7 @@ function buildManifest(base, runtime) {
     toolManifest: base.toolManifestPath,
     createdAt: runtime.createdAt || base.createdAt,
     updatedAt: nowIso(),
-    artifacts: [
-      { path: "kernel", location: base.kernel },
-      { path: "initrd", location: base.initrd }
-    ],
+    artifacts: [],
     dependencies: base.dependencies,
     transport: null
   };
@@ -444,13 +513,6 @@ function parseRunOptions(flags) {
   const dependencies = value.dependencies || {};
   const kernel = resolveDependencyArtifact(workspace, toolConfig.baseDir, flags.kernel, dependencies.kernel, "kernel");
   const initrd = resolveDependencyArtifact(workspace, toolConfig.baseDir, flags.initrd, dependencies.initrd, "initrd");
-  const toolchain = resolveDependencyArtifact(
-    workspace,
-    toolConfig.baseDir,
-    flags.toolchain,
-    dependencies.toolchain || value.toolchain,
-    "toolchain"
-  );
   const libvmmDir = resolveDependencyArtifact(
     workspace,
     toolConfig.baseDir,
@@ -479,6 +541,35 @@ function parseRunOptions(flags) {
         "runtime-contract"
       )
       : path.join(libvmmDir, "runtime-contract.json"));
+  const derivedLibvmmInputs = deriveLibvmmManagedInputs(workspace, libvmmDir, runtimeContract);
+  const toolchain = flags.toolchain
+    ? resolveRuntimePath(process.cwd(), flags.toolchain)
+    : (dependencies.toolchain || value.toolchain)
+      ? resolveDependencyArtifact(
+        workspace,
+        toolConfig.baseDir,
+        null,
+        dependencies.toolchain || value.toolchain,
+        "toolchain"
+      )
+      : derivedLibvmmInputs.toolchain;
+  if (!toolchain) {
+    throw new Error("missing toolchain dependency configuration");
+  }
+  const microkitSdk = flags["microkit-sdk"]
+    ? resolveRuntimePath(process.cwd(), flags["microkit-sdk"])
+    : (dependencies["microkit-sdk"] || dependencies.microkitSdk || value["microkit-sdk"] || value.microkitSdk)
+      ? resolveDependencyArtifact(
+        workspace,
+        toolConfig.baseDir,
+        null,
+        dependencies["microkit-sdk"] || dependencies.microkitSdk || value["microkit-sdk"] || value.microkitSdk,
+        "microkit-sdk"
+      )
+      : derivedLibvmmInputs.microkitSdk;
+  if (!microkitSdk) {
+    throw new Error("missing microkit-sdk dependency configuration");
+  }
 
   return {
     id: runId,
@@ -490,13 +581,7 @@ function parseRunOptions(flags) {
     target: flags.target || value.target || "sel4",
     name: flags.name || value.name || runId,
     qemu: resolveDependencyArtifact(workspace, toolConfig.baseDir, flags.qemu, dependencies.qemu || value.qemu, "qemu"),
-    microkitSdk: resolveDependencyArtifact(
-      workspace,
-      toolConfig.baseDir,
-      flags["microkit-sdk"],
-      dependencies["microkit-sdk"] || dependencies.microkitSdk || value["microkit-sdk"] || value.microkitSdk,
-      "microkit-sdk"
-    ),
+    microkitSdk,
     microkitVersion: flags["microkit-version"] || value["microkit-version"] || value.microkitVersion || null,
     microkitConfig: flags["microkit-config"] || value["microkit-config"] || value.microkitConfig || null,
     toolchain,

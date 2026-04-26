@@ -131,9 +131,12 @@ async function main(argv: string[]) {
     LIBVMM_CONSOLE_LOG: consoleLog,
     LIBVMM_MONITOR_SOCK: monitorSock,
     ...(python ? { PYTHON: python } : {}),
-    PATH: toolchainBinDir
-      ? `${toolchainBinDir}${path.delimiter}${process.env.PATH || ''}`
-      : (process.env.PATH || ''),
+    PATH: [
+      ...(toolchainBinDir ? [toolchainBinDir] : []),
+      '/usr/sbin',
+      '/sbin',
+      process.env.PATH || '',
+    ].filter(Boolean).join(path.delimiter),
   };
 
   const args = [

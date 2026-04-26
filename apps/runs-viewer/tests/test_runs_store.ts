@@ -146,3 +146,52 @@ test("workflow-first step artifacts fall back to tool result details", () => {
   assert.equal(detail.steps[0]?.artifactCount, 2);
   assert.equal(detail.steps[0]?.artifacts?.length, 2);
 });
+
+test("workflow-first step artifacts accept local and remote locations", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-store-"));
+  const runRoot = path.join(workspaceRoot, "runs");
+
+  const workflowId = "wf-remote-artifacts";
+  const workflowDir = path.join(runRoot, workflowId);
+  writeJson(path.join(workflowDir, "workflow.json"), {
+    id: workflowId,
+    status: "success",
+    createdAt: "2026-04-24T11:00:00.000Z",
+    updatedAt: "2026-04-24T11:00:01.000Z",
+    steps: [
+      {
+        id: "01-step",
+        name: "step",
+        status: "success",
+        stepDir: path.join(workflowDir, "steps", "01-step"),
+      },
+    ],
+  });
+
+  writeJson(path.join(workflowDir, "steps", "01-step", "step.json"), {
+    id: "01-step",
+    name: "step",
+    status: "success",
+    artifacts: [
+      {
+        path: "images/Image",
+        remote_location: "/remote/output/images/Image",
+        local_location: "/local/output/images/Image",
+      },
+      {
+        path: "images/rootfs.cpio.gz",
+        remote_location: "/remote/output/images/rootfs.cpio.gz",
+      },
+    ],
+  });
+  writeText(path.join(workflowDir, "steps", "01-step", "stdout.log"), "ok\n");
+
+  const detail = loadRunDetail(runRoot, workflowId);
+  assert.ok(detail);
+  assert.equal(detail.steps.length, 1);
+  assert.equal(detail.steps[0]?.artifactCount, 2);
+  assert.deepEqual(detail.steps[0]?.artifacts, [
+    { path: "images/Image", location: "/local/output/images/Image" },
+    { path: "images/rootfs.cpio.gz", location: "/remote/output/images/rootfs.cpio.gz" },
+  ]);
+});

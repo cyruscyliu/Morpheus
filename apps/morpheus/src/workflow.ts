@@ -164,6 +164,13 @@ function tailFile(filePath, maxBytes) {
   }
 }
 
+function stepArtifactsFromToolPayload(toolPayload) {
+  if (!toolPayload || !toolPayload.details || !Array.isArray(toolPayload.details.artifacts)) {
+    return [];
+  }
+  return toolPayload.details.artifacts;
+}
+
 function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, commandLabel }) {
   const workflow = createWorkflowRun(workspaceRoot, workflowName);
   return withLogFile(path.join(workflow.runDir, "progress.jsonl"), () => {
@@ -287,6 +294,7 @@ function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, co
     const updatedStep = updateWorkflowStep(step.stepDir, (current) => ({
       ...current,
       status,
+      artifacts: stepArtifactsFromToolPayload(toolPayload),
       toolResult: toolPayload,
       exitCode
     }));

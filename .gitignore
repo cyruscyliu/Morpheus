@@ -5,6 +5,7 @@ coverage/
 *.tsbuildinfo
 apps/docs/dist/
 apps/docs/.tsbuild/
+apps/runs-viewer/.tsbuild/
 __pycache__/
 *.pyc
 .pytest_cache/

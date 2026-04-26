@@ -1,5 +1,16 @@
 {
   "name": "qemu",
   "runtime": "node",
-  "entry": "dist/index.js"
+  "entry": "dist/index.js",
+  "managed": {
+    "schemaVersion": 1,
+    "modes": ["local"],
+    "local": {
+      "artifactPath": "qemu-system-aarch64",
+      "sourceTemplate": "tools/qemu/src/qemu-{qemuVersion}",
+      "downloadsDir": "tools/qemu/downloads",
+      "buildDirTemplate": "tools/qemu/builds/{buildDirKey}/build",
+      "installDirTemplate": "tools/qemu/builds/{buildDirKey}/install"
+    }
+  }
 }

@@ -72,11 +72,19 @@ Expected pinned compatibility:
 ./bin/morpheus --json tool build --tool nvirsh
 ```
 
+That stages dependencies and prepares `nvirsh` state only.
+
+To launch the runtime provider in detached mode:
+
+```bash
+./bin/morpheus --json tool run --tool nvirsh
+```
+
 To attach to the VM console (interactive), omit `--json` and pass `--attach` to
 Morpheus:
 
 ```bash
-./bin/morpheus tool build --tool nvirsh --attach
+./bin/morpheus tool run --tool nvirsh --attach
 ```
 
 ## Boundary Rules

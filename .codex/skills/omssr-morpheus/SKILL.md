@@ -177,9 +177,10 @@ Use these commands by intent:
 - `workspace create`: create the standard local workspace layout.
 - `workspace show`: inspect workspace roots and their current presence.
 - `tool build`: start a managed tool run in local or remote mode.
-- `tool build --tool nvirsh`: build configured producer-tool dependencies (for
-  example Buildroot) and then launch local `nvirsh` from resolved artifact
-  paths.
+- `tool build --tool nvirsh`: build configured producer-tool dependencies and
+  prepare local `nvirsh` state only.
+- `tool run --tool nvirsh`: build configured producer-tool dependencies and
+  then launch local `nvirsh` from resolved artifact paths.
 - `tool build --tool microkit-sdk`: register or build a managed Microkit SDK
   directory for downstream consumers.
 - `tool build --tool qemu`: register a local QEMU executable as a managed

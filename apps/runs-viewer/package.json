@@ -1,0 +1,20 @@
+{
+  "name": "@morpheus/runs-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite --host 127.0.0.1 --port 4174",
+    "lint": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "test": "pnpm exec tsc -p tsconfig.json && node --test .tsbuild/tests/*.js"
+  },
+  "dependencies": {
+    "chokidar": "^4.0.3",
+    "yaml": "^2.8.3"
+  },
+  "devDependencies": {
+    "vite": "^7.1.3"
+  }
+}
+

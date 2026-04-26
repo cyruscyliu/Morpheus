@@ -135,7 +135,6 @@ function loadMicrokitConfig() {
     baseDir: configDir(config.path),
     value: {
       ...item,
-      microkitVersion: item["microkit-version"] || item.microkitVersion || item.version || null,
       archiveUrl: item["archive-url"] || item.archiveUrl || null,
       microkitArchiveUrl: item["microkit-archive-url"] || item.microkitArchiveUrl || null,
       microkitDir: item["microkit-dir"] || item.microkitDir || null,
@@ -585,6 +584,7 @@ function parseRunOptions(flags) {
   if (placementMode !== "local") {
     throw new Error("microkit-sdk supports only --mode local");
   }
+  const configuredBuildDirKey = flags["build-dir-key"] || value.buildDirKey || null;
 
   const options = {
     id: generateRunId(),
@@ -593,7 +593,7 @@ function parseRunOptions(flags) {
     path: flags.path
       ? path.resolve(process.cwd(), flags.path)
       : resolveLocalPath(baseDir, value.path || value.source),
-    microkitVersion: flags["microkit-version"] || value.microkitVersion || null,
+    microkitVersion: flags["microkit-version"] || null,
     archiveUrl: flags["archive-url"] || value.archiveUrl || null,
     microkitArchiveUrl: flags["microkit-archive-url"] || value.microkitArchiveUrl || null,
     microkitDir: flags["microkit-dir"]
@@ -612,19 +612,26 @@ function parseRunOptions(flags) {
     toolchainPrefixAarch64: flags["toolchain-prefix-aarch64"] || value.toolchainPrefixAarch64 || "aarch64-none-elf",
     rustVersion: flags["rust-version"] || value.rustVersion || null,
     reuseBuildDir: Boolean(flags["reuse-build-dir"] ?? value.reuseBuildDir ?? true),
-    buildDirKey: flags["build-dir-key"] || value.buildDirKey || null,
+    buildDirKey: configuredBuildDirKey,
   };
 
   if (!options.buildDirKey) {
     options.buildDirKey = options.microkitVersion ? `microkit-sdk-${options.microkitVersion}` : "default";
   }
 
-  if (!options.path && options.microkitVersion) {
+  if (
+    !options.path &&
+    (options.microkitVersion
+      || options.archiveUrl
+      || options.microkitArchiveUrl
+      || options.microkitDir
+      || configuredBuildDirKey)
+  ) {
     options.path = managedSdkInstallDir(workspace, options.buildDirKey);
   }
 
   if (!options.path) {
-    throw new Error("microkit-sdk requires tools.microkit-sdk.path or tools.microkit-sdk.microkit-version in morpheus.yaml");
+    throw new Error("microkit-sdk requires tools.microkit-sdk.path or a managed build input in morpheus.yaml");
   }
 
   const sdkPresent = looksLikeMicrokitSdk(options.path);
@@ -652,7 +659,6 @@ function parseRunOptions(flags) {
       [
         "microkit-sdk build requires a source input.",
         "Provide one of:",
-        "- tools.microkit-sdk.microkit-version: infer a default Microkit source archive URL and build the SDK, or",
         "- tools.microkit-sdk.microkit-archive-url: archive URL for the Microkit source tree, or",
         "- tools.microkit-sdk.microkit-dir: a local Microkit checkout containing build_sdk.py, or",
         "- tools.microkit-sdk.archive-url: an archive URL for a prebuilt SDK directory, or",
@@ -1011,7 +1017,6 @@ function runManagedMicrokitSdk(flags) {
           options.path,
           "--downloads-dir",
           downloadsDir,
-          ...(options.microkitVersion ? ["--microkit-version", options.microkitVersion] : []),
           ...(options.archiveUrl ? ["--archive-url", options.archiveUrl] : [])
         ]),
         "failed to build Microkit SDK directory"

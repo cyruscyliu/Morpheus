@@ -37,8 +37,6 @@ libvmm build \
   --example virtio \
   --linux ./out/Image \
   --initrd ./out/rootfs.cpio.gz \
-  --qemu <workspace>/tools/qemu/bin/qemu-system-aarch64 \
-  --make-target qemu \
   --json
 ```
 
@@ -48,8 +46,8 @@ This command:
 - Runs `git submodule update --init --recursive`
 - Treats git operations as non-interactive and applies timeouts (so a missing
   credential prompt does not hang forever)
-- Invokes `make` in `examples/<example>` with `MICROKIT_SDK` and `MICROKIT_BOARD`
-  (and optionally `LINUX`, `INITRD`, `QEMU`)
+- Invokes `make` in `examples/<example>` with `MICROKIT_SDK` and
+  `MICROKIT_BOARD` (and optionally `LINUX`, `INITRD`)
 
 ## Patching
 

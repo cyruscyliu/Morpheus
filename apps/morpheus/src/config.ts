@@ -361,7 +361,7 @@ function applyConfigDefaults(flags, options) {
     next["microkit-sdk"] = resolveLocalPath(baseDir, toolEntry.microkitSdk);
   }
 
-  if (toolEntry && toolEntry.microkitVersion && !next["microkit-version"]) {
+  if (toolEntry && next.tool !== "microkit-sdk" && toolEntry.microkitVersion && !next["microkit-version"]) {
     next["microkit-version"] = toolEntry.microkitVersion;
   }
 

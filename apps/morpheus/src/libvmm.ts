@@ -6,7 +6,6 @@ const { loadConfig, configDir, resolveLocalPath } = require("./config");
 const { registerManagedRun, registerManagedWorkspace } = require("./managed-state");
 const { repoRoot } = require("./paths");
 const { runManagedMicrokitSdk } = require("./microkit-sdk");
-const { runManagedQemu } = require("./qemu");
 
 const TOOL = "libvmm";
 
@@ -64,7 +63,6 @@ function loadLibvmmConfig() {
       board: item.board || null,
       linux: item.linux || null,
       initrd: item.initrd || null,
-      qemu: item.qemu || null,
       makeArgs: item["make-args"] || item.makeArgs || null,
       reuseBuildDir: item["reuse-build-dir"] ?? item.reuseBuildDir ?? null,
       buildDirKey: item["build-dir-key"] || item.buildDirKey || null,
@@ -129,7 +127,6 @@ function parseRunOptions(flags) {
       : resolveLocalPath(baseDir, value.patchDir),
     linux: flags.linux ? path.resolve(process.cwd(), flags.linux) : resolveLocalPath(baseDir, value.linux),
     initrd: flags.initrd ? path.resolve(process.cwd(), flags.initrd) : resolveLocalPath(baseDir, value.initrd),
-    qemu: flags.qemu ? path.resolve(process.cwd(), flags.qemu) : resolveLocalPath(baseDir, value.qemu),
     makeArgs: flags.makeArg || value.makeArgs || [],
     reuseBuildDir: Boolean(flags["reuse-build-dir"] ?? value.reuseBuildDir),
     buildDirKey: flags["build-dir-key"] || value.buildDirKey || "default",
@@ -218,10 +215,6 @@ function runManagedLibvmm(flags) {
     ? path.join(toolchainArtifact.location, "bin")
     : null;
 
-  const qemu = runManagedQemu({ workspace: options.workspace, mode: "local" });
-  const qemuArtifact = (qemu.details.manifest.artifacts || []).find((item) => item.path === "qemu-system-aarch64");
-  const resolvedQemu = options.qemu || (qemuArtifact ? qemuArtifact.location : null);
-
   const workspaceRoot = path.resolve(process.cwd(), options.workspace);
   const venvPython = path.join(workspaceRoot, "tools", TOOL, "pyvenv", "bin", "python");
   const hasPythonOverride = (options.makeArgs || []).some((arg) => typeof arg === "string" && arg.startsWith("PYTHON="));
@@ -243,7 +236,6 @@ function runManagedLibvmm(flags) {
       ...(options.patchDir ? ["--patch-dir", options.patchDir] : []),
       ...(options.linux ? ["--linux", options.linux] : []),
       ...(options.initrd ? ["--initrd", options.initrd] : []),
-      ...(resolvedQemu ? ["--qemu", resolvedQemu] : []),
       ...(toolchainBinDir ? ["--toolchain-bin-dir", toolchainBinDir] : []),
       ...(options.gitUrl ? ["--git-url", options.gitUrl] : []),
       ...(options.gitRef ? ["--git-ref", options.gitRef] : []),

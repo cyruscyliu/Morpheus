@@ -70,7 +70,7 @@ workflow run under `<workspace>/runs/<workflow-run-id>/`.
 morpheus tool build \
   --tool microkit-sdk \
   --mode local \
-  --microkit-version 2.2.0 \
+  --microkit-archive-url https://github.com/seL4/microkit/archive/refs/tags/2.2.0.tar.gz \
   --json
 ```
 
@@ -109,8 +109,9 @@ Managed `morpheus tool build --tool microkit-sdk` supports placement modes:
 
 Within that placement mode, Morpheus picks the provisioning strategy:
 
-- If you configured build inputs (for example `tools.microkit-sdk.microkit-version`
-  or `tools.microkit-sdk.microkit-dir`), Morpheus treats `tool build` as a
+- If you configured build inputs (for example
+  `tools.microkit-sdk.microkit-archive-url` or `tools.microkit-sdk.microkit-dir`),
+  Morpheus treats `tool build` as a
   build-oriented workflow:
   - ensures the Arm GNU toolchain is available (and records `toolchain-dir`)
   - ensures the seL4 source dependency is available (and applies `tools.sel4.patch-dir`)

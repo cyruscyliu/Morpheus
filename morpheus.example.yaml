@@ -48,7 +48,6 @@ tools:
       - qemu-system-aarch64
   microkit-sdk:
     mode: local
-    microkit-version: 2.2.0
     reuse-build-dir: true
     build-dir-key: microkit-sdk-2.2.0
     # archive-url: file:///tmp/microkit-sdk-2.2.0.tar.gz

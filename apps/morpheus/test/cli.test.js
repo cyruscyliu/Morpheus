@@ -1067,7 +1067,6 @@ test("managed microkit-sdk run registers a local sdk artifact", () => {
       "  microkit-sdk:",
       "    mode: local",
       "    path: ./workflow-workspace/tools/microkit-sdk/builds/default/install",
-      "    microkit-version: 2.0.1",
       ""
     ].join("\n")
   );

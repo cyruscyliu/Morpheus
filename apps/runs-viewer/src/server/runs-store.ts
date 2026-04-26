@@ -96,6 +96,50 @@ function readJsonIfExists<T>(filePath: string, fallback: T): T {
   return readJson(filePath) as T;
 }
 
+function readTextIfExists(filePath: string): string {
+  if (!fs.existsSync(filePath)) {
+    return "";
+  }
+  return fs.readFileSync(filePath, "utf8");
+}
+
+function uniquePaths(values: string[]): string[] {
+  return [...new Set(values.filter((value) => Boolean(value)))];
+}
+
+function workflowStepLogPaths(runDir: string, stepId: string): string[] {
+  const recordPath = path.join(runDir, "workflow.json");
+  if (!fs.existsSync(recordPath)) {
+    return [];
+  }
+  const record = readJson(recordPath);
+  const steps = Array.isArray(record.steps) ? record.steps : [];
+  const match = steps.find((entry: any) => String(entry.id || "") === stepId) || null;
+  const resolvedStepDir =
+    match && typeof match.stepDir === "string" ? match.stepDir : path.join(runDir, "steps", stepId);
+  const manifest = readJsonIfExists<any>(path.join(resolvedStepDir, "step.json"), null as any);
+  const paths = [
+    manifest && typeof manifest.logFile === "string" ? manifest.logFile : path.join(resolvedStepDir, "stdout.log"),
+  ];
+
+  const managedRunManifest = readJsonIfExists<any>(path.join(resolvedStepDir, "run", "manifest.json"), null as any);
+  if (managedRunManifest && typeof managedRunManifest.logFile === "string") {
+    paths.push(managedRunManifest.logFile);
+  }
+  const providerLog =
+    managedRunManifest &&
+    managedRunManifest.runtime &&
+    managedRunManifest.runtime.providerRun &&
+    typeof managedRunManifest.runtime.providerRun.log_file === "string"
+      ? managedRunManifest.runtime.providerRun.log_file
+      : "";
+  if (providerLog) {
+    paths.push(providerLog);
+  }
+
+  return uniquePaths(paths);
+}
+
 function safeParseInt(value: string | null | undefined, fallback: number): number {
   const parsed = Number.parseInt(String(value ?? ""), 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
@@ -334,24 +378,18 @@ export function loadStepLogText(runRoot: string, runId: string, stepId: string):
   }
 
   if (kind === "workflow-first") {
-    const recordPath = path.join(runDir, "workflow.json");
-    if (!fs.existsSync(recordPath)) {
+    const parts = workflowStepLogPaths(runDir, stepId)
+      .map((logFile) => ({ logFile, text: readTextIfExists(logFile).trimEnd() }))
+      .filter((entry) => entry.text);
+    if (parts.length === 0) {
       return null;
     }
-    const record = readJson(recordPath);
-    const steps = Array.isArray(record.steps) ? record.steps : [];
-    const match = steps.find((entry: any) => String(entry.id || "") === stepId) || null;
-    const resolvedStepDir =
-      match && typeof match.stepDir === "string" ? match.stepDir : path.join(runDir, "steps", stepId);
-    const manifest = readJsonIfExists<any>(path.join(resolvedStepDir, "step.json"), null as any);
-    const logFile =
-      manifest && typeof manifest.logFile === "string"
-        ? manifest.logFile
-        : path.join(resolvedStepDir, "stdout.log");
-    if (!fs.existsSync(logFile)) {
-      return null;
+    if (parts.length === 1) {
+      return parts[0]?.text || null;
     }
-    return fs.readFileSync(logFile, "utf8");
+    return parts
+      .map((entry) => [`=== ${path.basename(entry.logFile)} ===`, entry.text].join("\n"))
+      .join("\n\n");
   }
 
   if (kind === "legacy") {
@@ -368,4 +406,34 @@ export function loadStepLogText(runRoot: string, runId: string, stepId: string):
   }
 
   return null;
+}
+
+export function loadRunLogText(runRoot: string, runId: string): string | null {
+  if (!isSafeId(runId)) {
+    return null;
+  }
+
+  const detail = loadRunDetail(runRoot, runId);
+  if (!detail) {
+    return null;
+  }
+
+  const sections: string[] = [];
+  const runDir = path.join(runRoot, runId);
+  const progressLog = readTextIfExists(path.join(runDir, "progress.jsonl")).trim();
+  if (progressLog) {
+    sections.push(["=== workflow.progress ===", progressLog].join("\n"));
+  }
+
+  for (const step of detail.steps) {
+    const stepLog = loadStepLogText(runRoot, runId, step.id);
+    if (!stepLog || !stepLog.trim()) {
+      continue;
+    }
+    sections.push(
+      [`=== ${step.name || step.id} (${step.status}) ===`, stepLog.trimEnd()].join("\n"),
+    );
+  }
+
+  return sections.join("\n\n");
 }

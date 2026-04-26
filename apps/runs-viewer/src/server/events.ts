@@ -37,7 +37,7 @@ function ensureWatcher(): EventState {
     for (const client of state.clients) {
       client.write("runs-changed", { updatedAt: new Date().toISOString() });
     }
-  }, 250);
+  }, 75);
   const watcher = chokidar.watch(runRoot, {
     ignoreInitial: true,
     depth: 5,

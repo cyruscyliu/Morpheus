@@ -1,7 +1,7 @@
 // @ts-nocheck
 const fs = require("fs");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { spawn } = require("child_process");
 const { loadConfig, configDir, resolveLocalPath } = require("./config");
 const { registerManagedRun, registerManagedWorkspace } = require("./managed-state");
 const { resolveManagedRunDir } = require("./run-layout");
@@ -108,26 +108,131 @@ function loadQemuConfig() {
   };
 }
 
-function parseJsonResult(result, message) {
-  if (result.status !== 0) {
-    let payload = null;
-    try {
-      payload = result.stdout ? JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1)) : null;
-    } catch {
-      payload = null;
-    }
-    throw new Error((payload && payload.summary) || result.stderr || result.stdout || message);
+function parseToolPayload(result, message) {
+  const payload = result && result.toolPayload ? result.toolPayload : null;
+  if (result.status !== 0 || !payload || payload.status === "error") {
+    throw new Error((payload && payload.summary) || result.stderr || message);
   }
-  return JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+  return payload;
 }
 
-function runQemuTool(args) {
-  return spawnSync(process.execPath, [
-    path.join(repoRoot(), "tools", "qemu", "dist", "index.js"),
-    ...args
-  ], {
-    encoding: "utf8",
-    cwd: process.cwd()
+async function runQemuTool(args, options = {}) {
+  return await new Promise((resolve, reject) => {
+    const logFile = options.logFile || null;
+    if (logFile) {
+      fs.mkdirSync(path.dirname(logFile), { recursive: true });
+      if (!fs.existsSync(logFile)) {
+        fs.writeFileSync(logFile, "", "utf8");
+      }
+    }
+
+    const child = spawn(process.execPath, [
+      path.join(repoRoot(), "tools", "qemu", "dist", "index.js"),
+      ...args,
+    ], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdoutBuffer = "";
+    let stderrText = "";
+    let finalPayload = null;
+
+    const appendLogLine = (line) => {
+      if (!logFile || typeof line !== "string") {
+        return;
+      }
+      fs.appendFileSync(logFile, `${line}\n`, "utf8");
+    };
+
+    const appendLogChunk = (chunk) => {
+      if (!logFile || !chunk) {
+        return;
+      }
+      fs.appendFileSync(logFile, chunk, "utf8");
+    };
+
+    const handleStdoutLine = (rawLine) => {
+      const line = String(rawLine || "");
+      const trimmed = line.trim();
+      if (!trimmed) {
+        return;
+      }
+
+      let parsed = null;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        appendLogLine(line);
+        if (!options.jsonMode) {
+          process.stderr.write(`${line}\n`);
+        }
+        return;
+      }
+
+      if (
+        parsed
+        && parsed.status === "stream"
+        && parsed.details
+        && parsed.details.event === "log"
+      ) {
+        if (typeof parsed.details.chunk === "string") {
+          appendLogChunk(parsed.details.chunk);
+          if (options.jsonMode) {
+            fs.writeSync(1, `${JSON.stringify(parsed)}\n`);
+          } else {
+            process.stderr.write(parsed.details.chunk);
+          }
+          return;
+        }
+        if (typeof parsed.details.line === "string") {
+          appendLogLine(parsed.details.line);
+          if (options.jsonMode) {
+            fs.writeSync(1, `${JSON.stringify(parsed)}\n`);
+          } else {
+            process.stderr.write(`${parsed.details.line}\n`);
+          }
+          return;
+        }
+      }
+
+      finalPayload = parsed;
+    };
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+
+    child.stdout.on("data", (chunk) => {
+      stdoutBuffer += chunk;
+      const lines = stdoutBuffer.split(/\r?\n/);
+      stdoutBuffer = lines.pop() || "";
+      for (const line of lines) {
+        handleStdoutLine(line);
+      }
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderrText += chunk;
+      if (logFile) {
+        fs.appendFileSync(logFile, chunk, "utf8");
+      }
+      if (!options.jsonMode) {
+        process.stderr.write(chunk);
+      }
+    });
+
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (stdoutBuffer.trim()) {
+        handleStdoutLine(stdoutBuffer);
+      }
+      resolve({
+        status: typeof code === "number" ? code : 1,
+        stderr: stderrText,
+        toolPayload: finalPayload,
+      });
+    });
   });
 }
 
@@ -242,7 +347,7 @@ function localExecutableManifest(options, runDir, manifestPath, logFile, inspect
   };
 }
 
-function buildModeManifest(options, runDir, manifestPath, result) {
+function buildModeManifest(options, runDir, manifestPath, logFile, result) {
   const artifactPath = contractLocal().artifactPath;
   return {
     schemaVersion: 1,
@@ -265,7 +370,8 @@ function buildModeManifest(options, runDir, manifestPath, result) {
     installDir: result.details.install_dir,
     runDir,
     outputDir: result.details.install_dir,
-    logFile: result.details.log_file,
+    logFile,
+    sourceLogFile: result.details.log_file || null,
     manifest: manifestPath,
     executable: result.details.executable,
     artifacts: [
@@ -281,7 +387,7 @@ function buildModeManifest(options, runDir, manifestPath, result) {
   };
 }
 
-function runManagedQemu(flags) {
+async function runManagedQemu(flags) {
   const options = parseRunOptions(flags);
   registerManagedWorkspace({
     mode: "local",
@@ -294,8 +400,11 @@ function runManagedQemu(flags) {
 
   let manifest;
   if (options.provisioning === "path") {
-    const inspected = parseJsonResult(
-      runQemuTool(["--json", "inspect", "--path", options.executable]),
+    const inspected = parseToolPayload(
+      await runQemuTool(["--json", "inspect", "--path", options.executable], {
+        logFile,
+        jsonMode: Boolean(flags.json),
+      }),
       "failed to inspect QEMU executable"
     );
     fs.writeFileSync(logFile, `${inspected.details.executable.version || ""}\n`, "utf8");
@@ -320,11 +429,14 @@ function runManagedQemu(flags) {
       ...(options.targetList || []).flatMap((item) => ["--target-list", item]),
       ...(options.configureArgs || []).flatMap((item) => ["--configure-arg", item])
     ];
-    const built = parseJsonResult(
-      runQemuTool(args),
+    const built = parseToolPayload(
+      await runQemuTool(args, {
+        logFile,
+        jsonMode: Boolean(flags.json),
+      }),
       "failed to build QEMU executable"
     );
-    manifest = buildModeManifest(options, runDir, manifestPath, built);
+    manifest = buildModeManifest(options, runDir, manifestPath, logFile, built);
   }
 
   writeJson(manifestPath, manifest);

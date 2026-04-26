@@ -252,11 +252,43 @@ async function handleToolCommand(argv) {
   }
 
   if (subcommand === "run") {
+    if (rest.includes("--help") || rest.includes("help")) {
+      return await handleManagedRunCommand("run", ["--help"]);
+    }
+    if (process.env.MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP === "1") {
+      return await handleManagedRunCommand("run", rest);
+    }
     const { flags } = parseToolArgs(rest);
     const tool = flags.tool;
+    if (!tool) {
+      throw new Error("tool run requires --tool <name>");
+    }
+    logInfo("tool", "received tool run request", {
+      tool,
+      json: Boolean(flags.json),
+      workspace: flags.workspace || null,
+      attach: Boolean(flags.attach),
+    });
+    const workflowName = `tool-${tool}`;
+    const workspaceRoot = resolveWorkspaceRoot(flags);
+    let toolArgv = [...rest];
+    toolArgv = stripBooleanFlag(toolArgv, "--json");
+    toolArgv = stripFlagPair(toolArgv, "--tool");
+    toolArgv = stripFlagPair(toolArgv, "--workspace");
+
     if (tool === "nvirsh") {
       try {
-        return await handleManagedRunCommand("run", rest);
+        return await runSingleToolWorkflow({
+          tool,
+          workflowName,
+          workspaceRoot,
+          toolArgv,
+          jsonMode: Boolean(flags.json),
+          commandLabel: "tool run",
+          category: "run",
+          toolCommand: "run",
+          attach: Boolean(flags.attach),
+        });
       } catch (error) {
         if (!isRecoverableNvirshDependencyError(error)) {
           throw error;
@@ -265,10 +297,30 @@ async function handleToolCommand(argv) {
         if (exitCode !== 0) {
           return exitCode;
         }
-        return await handleManagedRunCommand("run", rest);
+        return await runSingleToolWorkflow({
+          tool,
+          workflowName,
+          workspaceRoot,
+          toolArgv,
+          jsonMode: Boolean(flags.json),
+          commandLabel: "tool run",
+          category: "run",
+          toolCommand: "run",
+          attach: Boolean(flags.attach),
+        });
       }
     }
-    return await handleManagedRunCommand("run", rest);
+    return await runSingleToolWorkflow({
+      tool,
+      workflowName,
+      workspaceRoot,
+      toolArgv,
+      jsonMode: Boolean(flags.json),
+      commandLabel: "tool run",
+      category: "run",
+      toolCommand: "run",
+      attach: Boolean(flags.attach),
+    });
   }
 
   if (subcommand === "build") {

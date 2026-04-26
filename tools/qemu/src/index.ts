@@ -5,7 +5,7 @@ import process from 'node:process';
 import path from 'node:path';
 import http from 'node:http';
 import https from 'node:https';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { COMMANDS, getHelp, renderHelp } from './help.js';
@@ -29,6 +29,15 @@ function emitJson(value: unknown) {
 
 function emitText(value: string) {
   fs.writeSync(1, `${value}\n`);
+}
+
+function emitJsonEvent(command: string, event: string, details: Record<string, unknown>) {
+  emitJson({
+    command,
+    status: 'stream',
+    exit_code: 0,
+    details: { event, ...details },
+  });
 }
 
 function parseArgv(argv: string[]) {
@@ -157,6 +166,48 @@ function runCommand(command: string, args: string[], cwd?: string) {
     encoding: 'utf8',
     cwd,
     stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+async function runCommandStreaming(
+  command: string,
+  args: string[],
+  options: {
+    cwd?: string;
+    onStdoutChunk?: (chunk: string) => void;
+    onStderrChunk?: (chunk: string) => void;
+  } = {},
+) {
+  return await new Promise<{ status: number; stdout: string; stderr: string }>((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+
+    child.stdout.on('data', (chunk: string) => {
+      stdout += chunk;
+      options.onStdoutChunk?.(chunk);
+    });
+
+    child.stderr.on('data', (chunk: string) => {
+      stderr += chunk;
+      options.onStderrChunk?.(chunk);
+    });
+
+    child.on('error', reject);
+    child.on('close', (code) => {
+      resolve({
+        status: code ?? 1,
+        stdout,
+        stderr,
+      });
+    });
   });
 }
 
@@ -324,7 +375,35 @@ function appendLog(logFile: string, result: { stdout?: string; stderr?: string }
   fs.appendFileSync(logFile, result.stderr || '', 'utf8');
 }
 
-async function buildQemu(flags: Record<string, unknown>) {
+function createBuildLogStreamer(command: string, jsonMode: boolean, logFile: string) {
+  const writeChunk = (stream: 'stdout' | 'stderr', chunk: string) => {
+    fs.mkdirSync(path.dirname(logFile), { recursive: true });
+    fs.appendFileSync(logFile, chunk, 'utf8');
+
+    if (jsonMode) {
+      emitJsonEvent('build', 'log', { command, stream, chunk });
+      return;
+    }
+
+    if (stream === 'stdout') {
+      process.stdout.write(chunk);
+    } else {
+      process.stderr.write(chunk);
+    }
+  };
+
+  return {
+    writeStdout(chunk: string) {
+      writeChunk('stdout', chunk);
+    },
+    writeStderr(chunk: string) {
+      writeChunk('stderr', chunk);
+    },
+    flush() {},
+  };
+}
+
+async function buildQemu(flags: Record<string, unknown>, jsonMode: boolean) {
   const source = requirePathFlag(flags, 'source');
   const buildDir = requirePathFlag(flags, 'build-dir');
   const installDir = requirePathFlag(flags, 'install-dir');
@@ -355,29 +434,44 @@ async function buildQemu(flags: Record<string, unknown>) {
     fs.writeFileSync(buildStatePath, nextBuildState, 'utf8');
   }
   const configureScript = ensureSourceTree(stagedSourceState.path);
+  const configureStream = createBuildLogStreamer('configure', jsonMode, logFile);
 
-  const configure = runCommand(
+  const configure = await runCommandStreaming(
     configureScript,
     [
       `--prefix=${installDir}`,
       ...(targetList.length > 0 ? [`--target-list=${targetList.join(',')}`] : []),
       ...configureArgs,
     ],
-    buildDir,
+    {
+      cwd: buildDir,
+      onStdoutChunk: (chunk) => configureStream.writeStdout(chunk),
+      onStderrChunk: (chunk) => configureStream.writeStderr(chunk),
+    },
   );
-  appendLog(logFile, configure);
+  configureStream.flush();
   if (configure.status !== 0) {
     throw new CliError('configure_failed', configure.stderr || configure.stdout || 'QEMU configure failed');
   }
 
-  const make = runCommand('make', [`-j${detectParallelism()}`], buildDir);
-  appendLog(logFile, make);
+  const makeStream = createBuildLogStreamer('make', jsonMode, logFile);
+  const make = await runCommandStreaming('make', [`-j${detectParallelism()}`], {
+    cwd: buildDir,
+    onStdoutChunk: (chunk) => makeStream.writeStdout(chunk),
+    onStderrChunk: (chunk) => makeStream.writeStderr(chunk),
+  });
+  makeStream.flush();
   if (make.status !== 0) {
     throw new CliError('build_failed', make.stderr || make.stdout || 'QEMU build failed');
   }
 
-  const install = runCommand('make', ['install'], buildDir);
-  appendLog(logFile, install);
+  const installStream = createBuildLogStreamer('install', jsonMode, logFile);
+  const install = await runCommandStreaming('make', ['install'], {
+    cwd: buildDir,
+    onStdoutChunk: (chunk) => installStream.writeStdout(chunk),
+    onStderrChunk: (chunk) => installStream.writeStderr(chunk),
+  });
+  installStream.flush();
   if (install.status !== 0) {
     throw new CliError('install_failed', install.stderr || install.stdout || 'QEMU install failed');
   }
@@ -437,7 +531,7 @@ async function main(argv: string[]) {
       return 0;
     }
     case 'build': {
-      const result = await buildQemu(parsed.flags);
+      const result = await buildQemu(parsed.flags, parsed.json);
       if (parsed.json) {
         emitJson(result);
       } else {

@@ -19,6 +19,10 @@
 - Prefer explicit flags and arguments over hidden state.
 - Use stable field names and predictable exit codes.
 - Keep output deterministic for scripts and agents.
+- Stream logs by default for long-running commands and workflows.
+- Prefer incremental stdout/stderr forwarding over buffered output.
+- Write streaming run logs under `<workspace>/runs/` so shell and web viewers can
+  observe updates in real time.
 - Keep tool semantics thin; wrap upstream tools cleanly.
 - Require explicit user intent for ambiguous or destructive actions.
 - Prefer persistent metadata for long-running or remote workflows.

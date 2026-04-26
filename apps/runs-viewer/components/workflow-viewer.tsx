@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import type { RunDetail, RunSummary, RunsIndexPayload } from "@/src/types";
+import type { RunSummary, RunsIndexPayload } from "@/src/types";
 
 function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -31,6 +31,15 @@ function normalizeSelectedRunId(
     return selectedRunId;
   }
   return runs[0]?.id ?? null;
+}
+
+function nextSelectedRunIdAfterRemoval(runs: RunSummary[], runId: string): string | null {
+  const index = runs.findIndex((run) => run.id === runId);
+  if (index === -1) {
+    return normalizeSelectedRunId(runs, null);
+  }
+  const nextRun = runs[index + 1] || runs[index - 1] || null;
+  return nextRun ? nextRun.id : null;
 }
 
 async function fetchJson<T>(input: string): Promise<T> {
@@ -79,18 +88,7 @@ function renderWorkflowLogHtml(logText: string): string {
 }
 
 async function loadWorkflowLog(runId: string): Promise<string> {
-  const detail = await fetchJson<RunDetail>(`/api/runs/${encodeURIComponent(runId)}`);
-  const stepLogs = await Promise.all(
-    detail.steps.map(async (step) => {
-      if (!step.logUrl) {
-        return null;
-      }
-      const text = await fetchText(step.logUrl);
-      const title = step.name || step.id;
-      return [`=== ${title} (${step.status}) ===`, text.trimEnd()].join("\n");
-    }),
-  );
-  return stepLogs.filter((value): value is string => Boolean(value)).join("\n\n");
+  return await fetchText(`/api/runs/${encodeURIComponent(runId)}/log`);
 }
 
 async function refreshViewerState(
@@ -150,6 +148,7 @@ export function WorkflowViewer({
   const [actionError, setActionError] = useState<string | null>(null);
   const [stopLoadingRunId, setStopLoadingRunId] = useState<string | null>(null);
   const [removeLoadingRunId, setRemoveLoadingRunId] = useState<string | null>(null);
+  const logBodyRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setSelectedRunId((current) => normalizeSelectedRunId(summaries, current));
@@ -219,11 +218,19 @@ export function WorkflowViewer({
   }
 
   async function onRemoveWorkflow(runId: string): Promise<void> {
+    const summary = summaries.find((entry) => entry.id === runId) || null;
+    const label = summary?.workflowName || runId;
+    if (!window.confirm(`Remove workflow ${label}?`)) {
+      return;
+    }
     setActionError(null);
     setRemoveLoadingRunId(runId);
     try {
       await postJson(`/api/runs/${encodeURIComponent(runId)}/remove`);
-      const nextSelectedRunId = selectedRunId === runId ? null : selectedRunId;
+      const nextSelectedRunId =
+        selectedRunId === runId
+          ? nextSelectedRunIdAfterRemoval(summaries, runId)
+          : selectedRunId;
       setSelectedRunId(nextSelectedRunId);
       await refreshViewerState(
         nextSelectedRunId,
@@ -245,6 +252,14 @@ export function WorkflowViewer({
   const selectedSummary = summaries.find((summary) => summary.id === selectedRunId) || null;
 
   useEffect(() => {
+    const logBody = logBodyRef.current;
+    if (!logBody) {
+      return;
+    }
+    logBody.scrollTop = logBody.scrollHeight;
+  }, [logText, logLoading]);
+
+  useEffect(() => {
     const events = new EventSource("/api/events");
     events.addEventListener("runs-changed", () => {
       void refreshViewerState(
@@ -264,12 +279,12 @@ export function WorkflowViewer({
     <div className="min-h-screen bg-background text-foreground">
       <div className="flex min-h-screen flex-col">
         <header className="border-b border-border bg-card/80 backdrop-blur">
-          <div className="flex w-full items-center justify-between gap-4 px-4 py-3">
-            <div className="flex items-baseline gap-3">
+          <div className="flex w-full items-center justify-between gap-[6px] px-[6px] py-[6px]">
+            <div className="flex items-baseline gap-[6px]">
               <strong>Morpheus</strong>
               <span className="text-sm text-muted-foreground">Workflow Viewer</span>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-[6px]">
               <div className="text-sm text-muted-foreground">
                 <span>
                   {summaries.length} / {totalRuns}
@@ -286,13 +301,14 @@ export function WorkflowViewer({
           </div>
         </header>
 
-        <main className="flex flex-1 flex-col gap-4 px-4 py-4">
+        <main className="flex min-h-0 flex-1 flex-col gap-[6px] overflow-hidden px-[6px] py-[6px]">
           <section className="workflow-table-shell">
             <div className="workflow-table-scroll">
               <table className="workflow-table">
                 <thead>
                   <tr>
                     <th>Workflow</th>
+                    <th>ID</th>
                     <th>Status</th>
                     <th>Type</th>
                     <th>Created</th>
@@ -304,7 +320,7 @@ export function WorkflowViewer({
                 <tbody>
                   {summaries.length === 0 ? (
                     <tr>
-                      <td className="workflow-table-empty" colSpan={7}>
+                      <td className="workflow-table-empty" colSpan={8}>
                         No workflows.
                       </td>
                     </tr>
@@ -316,13 +332,9 @@ export function WorkflowViewer({
                         onClick={() => setSelectedRunId(summary.id)}
                       >
                         <td className="workflow-table-id">
-                          <div className="workflow-table-name">
-                            {summary.workflowName || summary.id}
-                          </div>
-                          {summary.workflowName && summary.workflowName !== summary.id ? (
-                            <div className="workflow-table-meta">{summary.id}</div>
-                          ) : null}
+                          <div className="workflow-table-name">{summary.workflowName || summary.id}</div>
                         </td>
+                        <td className="workflow-table-meta-cell">{summary.id}</td>
                         <td>
                           <span className={`workflow-status-text is-${summary.status}`}>{summary.status}</span>
                         </td>
@@ -345,6 +357,7 @@ export function WorkflowViewer({
                               </Button>
                             ) : null}
                             <Button
+                              disabled={removeLoadingRunId != null || stopLoadingRunId != null}
                               onClick={(event) => {
                                 event.stopPropagation();
                                 void onRemoveWorkflow(summary.id);
@@ -365,14 +378,14 @@ export function WorkflowViewer({
           </section>
 
           <section className="workflow-log-shell">
-            <div className="workflow-table-header">
+            <div className="workflow-table-header workflow-log-header">
               <h2 className="text-lg font-semibold tracking-tight">
                 {selectedSummary
                   ? `Log · ${selectedSummary.workflowName || selectedSummary.id}`
                   : "Log"}
               </h2>
             </div>
-            <div className="workflow-log-body">
+            <div className="workflow-log-body" ref={logBodyRef}>
               {actionError ? <p className="mb-4 text-sm text-destructive">{actionError}</p> : null}
               {!selectedRunId ? (
                 <div className="workflow-empty-state">No workflow selected.</div>

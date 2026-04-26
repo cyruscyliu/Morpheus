@@ -26,6 +26,7 @@ html,
 body {
   margin: 0;
   min-height: 100%;
+  overflow: hidden;
 }
 
 body {
@@ -42,14 +43,19 @@ button {
 .workflow-table-shell,
 .workflow-log-shell {
   border: 1px solid rgb(var(--border));
-  border-radius: 16px;
+  border-radius: 6px;
   background: rgb(var(--card) / 0.92);
   overflow: hidden;
+}
+
+.workflow-table-shell {
+  flex: 0 0 auto;
 }
 
 .workflow-log-shell {
   flex: 1 1 auto;
   min-height: 0;
+  height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -59,11 +65,17 @@ button {
   align-items: center;
   justify-content: space-between;
   min-height: 60px;
-  padding: 0 16px;
+  padding: 0 6px;
   border-bottom: 1px solid rgb(var(--border) / 0.8);
 }
 
+.workflow-log-header {
+  min-height: 32px;
+  padding: 0 3px;
+}
+
 .workflow-table-scroll {
+  max-height: 285px;
   overflow: auto;
 }
 
@@ -75,7 +87,7 @@ button {
 
 .workflow-table th,
 .workflow-table td {
-  padding: 14px 16px;
+  padding: 6px;
   border-bottom: 1px solid rgb(var(--border) / 0.65);
   text-align: left;
   vertical-align: middle;
@@ -111,8 +123,8 @@ button {
   font-weight: 700;
 }
 
-.workflow-table-meta {
-  margin-top: 2px;
+.workflow-table-meta,
+.workflow-table-meta-cell {
   font-size: 0.82rem;
   font-weight: 400;
   color: rgb(var(--muted-foreground));
@@ -125,7 +137,7 @@ button {
 .workflow-table-actions {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .workflow-status-text {
@@ -149,8 +161,24 @@ button {
 .workflow-log-body {
   flex: 1 1 auto;
   min-height: 0;
-  padding: 16px;
-  overflow: auto;
+  padding: 6px;
+  overflow-y: scroll;
+  overflow-x: auto;
+  scrollbar-gutter: stable;
+}
+
+.workflow-log-body::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.workflow-log-body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgb(var(--input) / 0.9);
+}
+
+.workflow-log-body::-webkit-scrollbar-track {
+  background: rgb(var(--muted) / 0.55);
 }
 
 .workflow-empty-state {
@@ -257,13 +285,13 @@ button {
 @media (max-width: 1200px) {
   .workflow-table th,
   .workflow-table td {
-    padding: 12px;
+    padding: 6px;
   }
 }
 
 @media (max-width: 980px) {
   .workflow-table-header {
     min-height: 56px;
-    padding: 0 12px;
+    padding: 0 6px;
   }
 }

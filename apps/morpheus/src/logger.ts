@@ -51,10 +51,10 @@ function withLogFile(filePath, callback) {
 }
 
 function logDebug(scope, message, fields) {
-  appendJsonl("debug", scope, message, fields);
   if (!isVerboseEnabled()) {
     return;
   }
+  appendJsonl("debug", scope, message, fields);
   fs.writeSync(2, `[morpheus:${scope}] ${message}${formatFields(fields)}\n`);
 }
 

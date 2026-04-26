@@ -59,6 +59,17 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
+function readJsonIfExists(filePath, fallback = null) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return fallback;
+  }
+  return readJson(filePath);
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
 function stepToolResultPath(stepDir) {
   return path.join(stepDir, "tool-result.json");
 }
@@ -203,10 +214,16 @@ function consumeToolOutput(stdout, stepLogFile) {
       parsed &&
       parsed.status === "stream" &&
       parsed.details &&
-      parsed.details.event === "log" &&
-      typeof parsed.details.line === "string"
+      parsed.details.event === "log"
     ) {
-      fs.appendFileSync(stepLogFile, `${parsed.details.line}\n`, "utf8");
+      if (typeof parsed.details.chunk === "string") {
+        fs.appendFileSync(stepLogFile, parsed.details.chunk, "utf8");
+        continue;
+      }
+      if (typeof parsed.details.line === "string") {
+        fs.appendFileSync(stepLogFile, `${parsed.details.line}\n`, "utf8");
+        continue;
+      }
       continue;
     }
 
@@ -240,25 +257,50 @@ function processToolStdoutLine(rawLine, stepLogFile, state) {
     parsed &&
     parsed.status === "stream" &&
     parsed.details &&
-    parsed.details.event === "log" &&
-    typeof parsed.details.line === "string"
+    parsed.details.event === "log"
   ) {
-    writeStepLogLine(stepLogFile, parsed.details.line);
-    return;
+    if (typeof parsed.details.chunk === "string") {
+      fs.appendFileSync(stepLogFile, parsed.details.chunk, "utf8");
+      process.stderr.write(parsed.details.chunk);
+      return;
+    }
+    if (typeof parsed.details.line === "string") {
+      writeStepLogLine(stepLogFile, parsed.details.line);
+      return;
+    }
   }
 
   state.finalPayload = parsed;
 }
 
-function runWorkflowChild(args, stepLogFile, env, onSpawn) {
+function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, args, {
-      cwd: process.cwd(),
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const attach = Boolean(options.attach);
+    const child = attach
+      ? spawn(process.execPath, args, {
+          cwd: process.cwd(),
+          env,
+          stdio: "inherit",
+        })
+      : spawn(process.execPath, args, {
+          cwd: process.cwd(),
+          env,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
     if (typeof onSpawn === "function") {
       onSpawn(child.pid);
+    }
+
+    if (attach) {
+      child.on("error", reject);
+      child.on("close", (code) => {
+        resolve({
+          status: typeof code === "number" ? code : 1,
+          stderr: "",
+          toolPayload: null,
+        });
+      });
+      return;
     }
 
     let stdoutBuffer = "";
@@ -325,7 +367,101 @@ function stepArtifactsFromToolPayload(toolPayload) {
   return toolPayload.details.artifacts;
 }
 
-async function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, commandLabel, category = "build" }) {
+function attachedWorkflowStepPayload(step, toolCommand, result) {
+  const managedManifestPath = path.join(stepToolRunDir(step.stepDir), "manifest.json");
+  const managedManifest = readJsonIfExists(managedManifestPath, null);
+  const providerManifestPath = managedManifest
+    && managedManifest.runtime
+    && managedManifest.runtime.providerRun
+    && typeof managedManifest.runtime.providerRun.manifest === "string"
+      ? managedManifest.runtime.providerRun.manifest
+      : null;
+  const providerManifest = readJsonIfExists(providerManifestPath, null);
+
+  if (!managedManifest) {
+    const fallbackStatus = result.status === 0 ? "success" : "stopped";
+    return {
+      command: `tool ${toolCommand}`,
+      status: fallbackStatus,
+      exit_code: result.status == null ? 1 : result.status,
+      summary: fallbackStatus === "success"
+        ? "completed attached workflow step"
+        : "attached workflow step exited before managed run metadata was written",
+      details: {
+        tool: step.tool,
+        attach: true,
+      },
+    };
+  }
+
+  const managedStatus = String(providerManifest?.status || managedManifest.status || "").trim().toLowerCase();
+  const payloadStatus = managedStatus === "starting" || managedStatus === "prepared"
+    ? "running"
+    : (managedStatus || (result.status === 0 ? "success" : "error"));
+  const payloadExitCode = typeof providerManifest?.exitCode === "number"
+    ? providerManifest.exitCode
+    : typeof managedManifest.exitCode === "number"
+      ? managedManifest.exitCode
+      : (result.status == null ? 0 : result.status);
+  const logFile = providerManifest?.logFile
+    || managedManifest?.runtime?.providerRun?.log_file
+    || managedManifest?.logFile
+    || step.logFile;
+  const summary = payloadStatus === "running"
+    ? `started attached ${step.tool} run`
+    : payloadStatus === "success"
+      ? `completed attached ${step.tool} run`
+      : payloadStatus === "stopped"
+        ? `stopped attached ${step.tool} run`
+        : (managedManifest.errorMessage || providerManifest?.errorMessage || String(result.stderr || "").trim() || "workflow step failed");
+
+  return {
+    command: `tool ${toolCommand}`,
+    status: payloadStatus,
+    exit_code: payloadExitCode,
+    summary,
+    details: {
+      id: managedManifest.id || null,
+      tool: step.tool,
+      attach: true,
+      run_dir: managedManifest.runDir || stepToolRunDir(step.stepDir),
+      manifest: managedManifestPath,
+      log_file: logFile,
+      managed_status: managedManifest.status || null,
+      provider_run: managedManifest.runtime && managedManifest.runtime.providerRun
+        ? managedManifest.runtime.providerRun
+        : null,
+      artifacts: Array.isArray(managedManifest.artifacts) ? managedManifest.artifacts : [],
+    },
+  };
+}
+
+function workflowStepStatusFromResult(result, toolPayload, attach) {
+  if (attach && toolPayload) {
+    if (toolPayload.status === "running") {
+      return "success";
+    }
+    if (toolPayload.status === "stopped") {
+      return "stopped";
+    }
+    if (toolPayload.status === "success") {
+      return "success";
+    }
+    if (toolPayload.status === "error") {
+      return "error";
+    }
+  }
+  return result.status === 0 ? "success" : "error";
+}
+
+async function runToolWorkflow({
+  steps,
+  workflowName,
+  workspaceRoot,
+  jsonMode,
+  commandLabel,
+  category = "build",
+}) {
   const workflow = createWorkflowRun(workspaceRoot, workflowName, { category });
   return await withLogFile(path.join(workflow.runDir, "progress.jsonl"), async () => {
   updateWorkflowRun(workflow.runDir, (current) => ({
@@ -343,7 +479,9 @@ async function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMo
     id: created.id,
     tool: created.tool,
     name: created.name,
-    toolArgv: steps[index] && steps[index].toolArgv ? steps[index].toolArgv : []
+    toolArgv: steps[index] && steps[index].toolArgv ? steps[index].toolArgv : [],
+    toolCommand: steps[index] && steps[index].toolCommand ? steps[index].toolCommand : "build",
+    attach: Boolean(steps[index] && steps[index].attach),
   }));
 
   logDebug("workflow", "created workflow run", {
@@ -385,24 +523,30 @@ async function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMo
 
     const spec = stepSpecs.find((candidate) => candidate.id === step.id) || null;
     const toolArgv = spec ? spec.toolArgv : [];
+    const toolCommand = spec ? spec.toolCommand : "build";
+    const attach = spec ? spec.attach : false;
 
     const args = [
       cliEntrypoint(),
-      "--json",
       "tool",
-      "build",
+      toolCommand,
       "--tool",
       step.tool,
       "--workspace",
       workspaceRoot,
       ...toolArgv
     ];
+    if (!attach) {
+      args.splice(1, 0, "--json");
+    }
 
     logDebug("workflow", "running workflow step", {
       workflow: workflow.id,
       step: step.id,
       tool: step.tool,
-      argv: args.slice(1)
+      argv: args.slice(1),
+      command: toolCommand,
+      attach,
     });
     logInfo("workflow", "running workflow step", {
       workflow: workflow.id,
@@ -411,6 +555,8 @@ async function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMo
       argv: args.slice(1),
       log_file: path.relative(process.cwd(), step.logFile),
       run_dir: path.relative(process.cwd(), stepToolRunDir(step.stepDir)),
+      command: toolCommand,
+      attach,
     });
     fs.appendFileSync(
       step.logFile,
@@ -434,15 +580,20 @@ async function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMo
           currentChildPid: childPid || null,
         }));
       },
+      { attach },
     );
-    const toolPayload = result.toolPayload;
+    const toolPayload = attach
+      ? attachedWorkflowStepPayload(step, toolCommand, result)
+      : result.toolPayload;
     if (toolPayload) {
       writeJson(stepToolResultPath(step.stepDir), toolPayload);
     }
     lastToolPayload = toolPayload;
     lastStderr = String(result.stderr || "");
-    const status = result.status === 0 ? "success" : "error";
-    exitCode = result.status == null ? 1 : result.status;
+    const status = workflowStepStatusFromResult(result, toolPayload, attach);
+    exitCode = toolPayload && typeof toolPayload.exit_code === "number"
+      ? toolPayload.exit_code
+      : (result.status == null ? 1 : result.status);
 
     logDebug("workflow", "completed workflow step", {
       workflow: workflow.id,
@@ -476,6 +627,18 @@ async function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMo
       )
     }));
 
+    if (status === "stopped") {
+      workflowStatus = "stopped";
+      logInfo("workflow", "workflow step stopped", {
+        workflow: workflow.id,
+        step: step.id,
+        tool: step.tool,
+        log_file: path.relative(process.cwd(), step.logFile),
+        hint: `./bin/morpheus --json workflow logs --id ${workflow.id} --step ${step.id}`
+      });
+      break;
+    }
+
     if (status !== "success") {
       workflowStatus = "error";
       logInfo("workflow", "workflow step failed", {
@@ -497,7 +660,11 @@ async function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMo
     runnerPid: null,
     steps: current.steps
   }));
-  logInfo("workflow", workflowStatus === "success" ? "completed workflow run" : "workflow run failed", {
+  logInfo("workflow", workflowStatus === "success"
+    ? "completed workflow run"
+    : workflowStatus === "stopped"
+      ? "workflow run stopped"
+      : "workflow run failed", {
     id: updatedWorkflow.id,
     workflow: updatedWorkflow.workflow,
     status: workflowStatus,
@@ -508,7 +675,11 @@ async function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMo
     command: commandLabel || "workflow run",
     status: workflowStatus,
     exit_code: workflowStatus === "success" ? 0 : exitCode || 1,
-    summary: workflowStatus === "success" ? "completed workflow run" : "workflow run failed",
+    summary: workflowStatus === "success"
+      ? "completed workflow run"
+      : workflowStatus === "stopped"
+        ? "workflow run stopped"
+        : "workflow run failed",
     details: {
       id: updatedWorkflow.id,
       workflow: updatedWorkflow.workflow,
@@ -534,7 +705,7 @@ async function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMo
           };
         })()
     },
-    error: workflowStatus === "success"
+    error: workflowStatus === "success" || workflowStatus === "stopped"
       ? undefined
       : { code: "workflow_failed", message: (lastToolPayload && lastToolPayload.summary) || lastStderr || "workflow step failed" }
   };
@@ -549,14 +720,28 @@ async function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMo
   });
 }
 
-function runSingleToolWorkflow({ tool, workflowName, workspaceRoot, toolArgv, jsonMode, commandLabel }) {
-  return runToolBuildWorkflow({
-    steps: [{ tool, name: `${tool}.build`, toolArgv }],
+async function runToolBuildWorkflow(options) {
+  return await runToolWorkflow(options);
+}
+
+function runSingleToolWorkflow({
+  tool,
+  workflowName,
+  workspaceRoot,
+  toolArgv,
+  jsonMode,
+  commandLabel,
+  category = "build",
+  toolCommand = "build",
+  attach = false,
+}) {
+  return runToolWorkflow({
+    steps: [{ tool, name: `${tool}.${toolCommand}`, toolArgv, toolCommand, attach }],
     workflowName,
     workspaceRoot,
     jsonMode,
     commandLabel,
-    category: "build",
+    category,
   });
 }
 
@@ -593,8 +778,8 @@ async function handleWorkflowCommand(argv) {
       .filter((token) => token !== "--workflow").filter((token) => token !== workflowName)
       .filter((token) => token !== "--json").filter((token) => token !== "--workspace").filter((token) => token !== workspaceRoot);
 
-    return runToolBuildWorkflow({
-      steps: [{ tool, name: `${tool}.run`, toolArgv }],
+    return runToolWorkflow({
+      steps: [{ tool, name: `${tool}.run`, toolArgv, toolCommand: "run" }],
       workflowName,
       workspaceRoot,
       jsonMode: Boolean(flags.json),

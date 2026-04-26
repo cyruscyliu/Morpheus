@@ -122,7 +122,9 @@ function updateWorkflowRun(runDir, mutator) {
     category: next.category,
     status: next.status,
     createdAt: next.createdAt,
-    completedAt: next.status === "success" || next.status === "error" ? next.updatedAt : null,
+    completedAt: next.status === "success" || next.status === "error" || next.status === "stopped"
+      ? next.updatedAt
+      : null,
     summary: { workflow: next.workflow, category: next.category }
   });
   return next;

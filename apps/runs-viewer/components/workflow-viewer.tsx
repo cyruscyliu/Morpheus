@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import type { RunSummary, RunsIndexPayload } from "@/src/types";
+import type { RunDetail, RunSummary, RunsIndexPayload } from "@/src/types";
 
 function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -91,6 +91,10 @@ async function loadWorkflowLog(runId: string): Promise<string> {
   return await fetchText(`/api/runs/${encodeURIComponent(runId)}/log`);
 }
 
+async function loadWorkflowDetail(runId: string): Promise<RunDetail> {
+  return await fetchJson<RunDetail>(`/api/runs/${encodeURIComponent(runId)}`);
+}
+
 async function refreshViewerState(
   selectedRunId: string | null,
   setSummaries: (runs: RunSummary[]) => void,
@@ -145,9 +149,12 @@ export function WorkflowViewer({
   const [logText, setLogText] = useState<string>("");
   const [logLoading, setLogLoading] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
+  const [runDetail, setRunDetail] = useState<RunDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [stopLoadingRunId, setStopLoadingRunId] = useState<string | null>(null);
   const [removeLoadingRunId, setRemoveLoadingRunId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"log" | "artifacts">("log");
   const logBodyRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -158,11 +165,14 @@ export function WorkflowViewer({
     if (!selectedRunId) {
       setLogText("");
       setLogError(null);
+      setRunDetail(null);
+      setDetailLoading(false);
       return;
     }
     let cancelled = false;
     setLogLoading(true);
     setLogError(null);
+    setDetailLoading(true);
     void loadWorkflowLog(selectedRunId)
       .then((nextLog) => {
         if (cancelled) {
@@ -178,6 +188,21 @@ export function WorkflowViewer({
         setLogText("");
         setLogError(error instanceof Error ? error.message : "Failed to load workflow log.");
         setLogLoading(false);
+      });
+    void loadWorkflowDetail(selectedRunId)
+      .then((detail) => {
+        if (cancelled) {
+          return;
+        }
+        setRunDetail(detail);
+        setDetailLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        setRunDetail(null);
+        setDetailLoading(false);
       });
     return () => {
       cancelled = true;
@@ -250,6 +275,20 @@ export function WorkflowViewer({
 
   const renderedLogHtml = useMemo(() => renderWorkflowLogHtml(logText), [logText]);
   const selectedSummary = summaries.find((summary) => summary.id === selectedRunId) || null;
+  const artifacts = useMemo(() => {
+    const items: Array<{ stepId: string; stepName: string; path: string; location: string }> = [];
+    for (const step of runDetail?.steps || []) {
+      for (const artifact of step.artifacts || []) {
+        items.push({
+          stepId: step.id,
+          stepName: step.name || step.id,
+          path: artifact.path,
+          location: artifact.location,
+        });
+      }
+    }
+    return items;
+  }, [runDetail]);
 
   useEffect(() => {
     const logBody = logBodyRef.current;
@@ -271,6 +310,18 @@ export function WorkflowViewer({
         setLogError,
         setLogLoading,
       );
+      if (selectedRunId) {
+        setDetailLoading(true);
+        void loadWorkflowDetail(selectedRunId)
+          .then((detail) => {
+            setRunDetail(detail);
+            setDetailLoading(false);
+          })
+          .catch(() => {
+            setRunDetail(null);
+            setDetailLoading(false);
+          });
+      }
     });
     return () => events.close();
   }, [selectedRunId]);
@@ -379,17 +430,35 @@ export function WorkflowViewer({
 
           <section className="workflow-log-shell">
             <div className="workflow-table-header workflow-log-header">
-              <h2 className="text-lg font-semibold tracking-tight">
-                {selectedSummary
-                  ? `Log · ${selectedSummary.workflowName || selectedSummary.id}`
-                  : "Log"}
-              </h2>
+              <div className="workflow-pane-title-row">
+                <h2 className="text-lg font-semibold tracking-tight">
+                  {selectedSummary
+                    ? `${selectedSummary.workflowName || selectedSummary.id}`
+                    : "Workflow"}
+                </h2>
+                <div className="workflow-pane-tabs">
+                  <Button
+                    onClick={() => setActiveTab("log")}
+                    size="sm"
+                    variant={activeTab === "log" ? "default" : "outline"}
+                  >
+                    Log
+                  </Button>
+                  <Button
+                    onClick={() => setActiveTab("artifacts")}
+                    size="sm"
+                    variant={activeTab === "artifacts" ? "default" : "outline"}
+                  >
+                    Artifacts
+                  </Button>
+                </div>
+              </div>
             </div>
             <div className="workflow-log-body" ref={logBodyRef}>
               {actionError ? <p className="mb-4 text-sm text-destructive">{actionError}</p> : null}
               {!selectedRunId ? (
                 <div className="workflow-empty-state">No workflow selected.</div>
-              ) : logLoading ? (
+              ) : activeTab === "log" ? logLoading ? (
                 <div className="workflow-empty-state">Loading log…</div>
               ) : logError ? (
                 <p className="text-sm text-destructive">{logError}</p>
@@ -397,6 +466,22 @@ export function WorkflowViewer({
                 <div className="workflow-empty-state">No log available.</div>
               ) : (
                 <div dangerouslySetInnerHTML={{ __html: renderedLogHtml }} />
+              ) : detailLoading ? (
+                <div className="workflow-empty-state">Loading artifacts…</div>
+              ) : artifacts.length === 0 ? (
+                <div className="workflow-empty-state">No artifacts available.</div>
+              ) : (
+                <div className="workflow-artifacts-list">
+                  {artifacts.map((artifact) => (
+                    <div className="workflow-artifact-row" key={`${artifact.stepId}:${artifact.path}:${artifact.location}`}>
+                      <div className="workflow-artifact-meta">
+                        <strong>{artifact.path}</strong>
+                        <span>{artifact.stepName}</span>
+                      </div>
+                      <code>{artifact.location}</code>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </section>

@@ -15,6 +15,8 @@ const { runManagedNvirsh } = require("./nvirsh");
 const { runManagedQemu } = require("./qemu");
 const { runManagedSel4 } = require("./sel4");
 const { runManagedLibvmm } = require("./libvmm");
+const { runManagedLlBic } = require("./llbic");
+const { runManagedLlCg } = require("./llcg");
 const { findManagedManifestFiles, resolveManagedRunDir } = require("./run-layout");
 const { applyConfigDefaults, resolveLocalPath } = require("./config");
 const { logDebug } = require("./logger");
@@ -26,6 +28,8 @@ const QEMU_TOOL = "qemu";
 const NVIRSH_TOOL = "nvirsh";
 const SEL4_TOOL = "sel4";
 const LIBVMM_TOOL = "libvmm";
+const LLBIC_TOOL = "llbic";
+const LLCG_TOOL = "llcg";
 const MANAGED_TOOL_ADAPTERS = {
   [BUILDROOT_TOOL]: {
     name: BUILDROOT_TOOL,
@@ -50,22 +54,35 @@ const MANAGED_TOOL_ADAPTERS = {
   [LIBVMM_TOOL]: {
     name: LIBVMM_TOOL,
     modes: ["local"]
+  },
+  [LLBIC_TOOL]: {
+    name: LLBIC_TOOL,
+    modes: ["local"]
+  },
+  [LLCG_TOOL]: {
+    name: LLCG_TOOL,
+    modes: ["local"]
   }
 };
 
 function parseRunArgs(argv) {
   const flags = {};
+  const positionals = [];
   const repeatable = {
     env: [],
     "make-arg": [],
     "qemu-arg": [],
     "configure-arg": [],
     "target-list": [],
+    filter: [],
+    file: [],
+    kconfig: [],
+    "rust-target": [],
     path: [],
     artifact: [],
     "config-fragment": []
   };
-  const booleanFlags = new Set(["json", "detach", "follow", "verbose", "reuse-build-dir", "attach"]);
+  const booleanFlags = new Set(["json", "detach", "follow", "verbose", "reuse-build-dir", "attach", "out-of-tree", "outtree", "intree", "rust"]);
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -74,6 +91,7 @@ function parseRunArgs(argv) {
       break;
     }
     if (!token.startsWith("--")) {
+      positionals.push(token);
       continue;
     }
 
@@ -103,7 +121,12 @@ function parseRunArgs(argv) {
     "qemu-arg": repeatable["qemu-arg"],
     "configure-arg": repeatable["configure-arg"],
     "target-list": repeatable["target-list"],
+    filter: repeatable.filter,
+    file: repeatable.file,
+    kconfig: repeatable.kconfig,
+    "rust-target": repeatable["rust-target"],
     paths: repeatable.path,
+    positionals,
     forwarded: flags.forwarded || []
   };
 }
@@ -119,6 +142,8 @@ function managedRunUsage() {
     "  node apps/morpheus/dist/cli.js tool run --tool nvirsh --mode local --workspace DIR [--target sel4] [--attach] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool sel4 --mode local --workspace DIR (--path PATH | --sel4-version VER) [--archive-url URL] [--patch-dir DIR] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool libvmm --mode local --workspace DIR [--source DIR] --board NAME [--example NAME] [--patch-dir DIR] [--linux PATH] [--initrd PATH] [--make-arg KEY=VALUE ...] [--json]",
+    "  node apps/morpheus/dist/cli.js tool build --tool llbic --mode local --workspace DIR <version> [--arch ARCH] [--out-of-tree] [--json]",
+    "  node apps/morpheus/dist/cli.js tool run --tool llcg --mode local --workspace DIR run|genmutator ... [--json]",
     "  node apps/morpheus/dist/cli.js runs list --managed [--workspace DIR] [--ssh TARGET] [--json]",
     "  node apps/morpheus/dist/cli.js runs inspect --id RUN_ID [--json]",
     "  node apps/morpheus/dist/cli.js runs logs --id RUN_ID [--follow] [--json]",
@@ -1668,6 +1693,12 @@ async function runManagedRun(flags) {
   }
   if (adapter.name === LIBVMM_TOOL) {
     return runManagedLibvmm(flags);
+  }
+  if (adapter.name === LLBIC_TOOL) {
+    return await runManagedLlBic(flags, "build");
+  }
+  if (adapter.name === LLCG_TOOL) {
+    return await runManagedLlCg(flags, "run");
   }
   const options = parseBuildrootRunOptions(flags);
   if (options.mode === "local") {

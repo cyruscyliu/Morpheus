@@ -325,10 +325,10 @@ async function handleToolCommand(argv) {
 
   if (subcommand === "build") {
     if (rest.includes("--help") || rest.includes("help")) {
-      return await handleManagedRunCommand("run", ["--help"]);
+      return await handleManagedRunCommand("build", ["--help"]);
     }
     if (process.env.MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP === "1") {
-      return await handleManagedRunCommand("run", rest);
+      return await handleManagedRunCommand("build", rest);
     }
     const { flags } = parseToolArgs(rest);
     const tool = flags.tool;

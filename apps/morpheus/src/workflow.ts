@@ -2,7 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
-const { applyConfigDefaults } = require("./config");
+const { applyConfigDefaults, loadConfig } = require("./config");
 const { repoRoot } = require("./paths");
 const { writeStdoutLine } = require("./io");
 const { logDebug, logInfo, withLogFile } = require("./logger");
@@ -44,6 +44,7 @@ function workflowUsage() {
   return [
     "Usage:",
     "  node apps/morpheus/dist/cli.js workflow run --tool <name> [--workflow NAME] [--json] [...tool flags]",
+    "  node apps/morpheus/dist/cli.js workflow run --name WORKFLOW_NAME [--json]",
     "  node apps/morpheus/dist/cli.js workflow inspect --id WORKFLOW_RUN_ID [--json]",
     "  node apps/morpheus/dist/cli.js workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow] [--json]",
     "  node apps/morpheus/dist/cli.js workflow stop --id WORKFLOW_RUN_ID [--json]"
@@ -90,6 +91,72 @@ function resolveWorkspaceRoot(flags) {
     throw new Error("workflow requires --workspace DIR or workspace.root in morpheus.yaml");
   }
   return resolved.workspace;
+}
+
+function getByPath(value, dottedPath) {
+  const parts = String(dottedPath || "").split(".").filter(Boolean);
+  let current = value;
+  for (const part of parts) {
+    if (!current || typeof current !== "object" || !Object.prototype.hasOwnProperty.call(current, part)) {
+      return undefined;
+    }
+    current = current[part];
+  }
+  return current;
+}
+
+function resolveConfiguredWorkflow(name) {
+  const config = loadConfig(process.cwd());
+  const workflows = config && config.value && config.value.workflows ? config.value.workflows : {};
+  const workflow = workflows && workflows[name] ? workflows[name] : null;
+  if (!workflow) {
+    throw new Error(`unknown configured workflow: ${name}`);
+  }
+  if (!Array.isArray(workflow.steps) || workflow.steps.length === 0) {
+    throw new Error(`configured workflow has no steps: ${name}`);
+  }
+  return {
+    name,
+    category: workflow.category || "run",
+    steps: workflow.steps,
+  };
+}
+
+function resolveWorkflowStringTemplate(value, context) {
+  return String(value).replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_match, expression) => {
+    const expr = String(expression || "").trim();
+    if (expr === "workspace.root") {
+      return String(context.workspaceRoot);
+    }
+    if (!expr.startsWith("steps.")) {
+      throw new Error(`unsupported workflow template: ${expr}`);
+    }
+    const pathExpr = expr.slice("steps.".length);
+    const dot = pathExpr.indexOf(".");
+    if (dot <= 0) {
+      throw new Error(`invalid workflow step template: ${expr}`);
+    }
+    const stepId = pathExpr.slice(0, dot);
+    const stepPath = pathExpr.slice(dot + 1);
+    const stepValue = context.stepResults[stepId];
+    const resolved = getByPath(stepValue, stepPath);
+    if (resolved == null) {
+      throw new Error(`workflow template resolved empty value: ${expr}`);
+    }
+    return String(resolved);
+  });
+}
+
+function resolveConfiguredStepArgs(step, context) {
+  const items = Array.isArray(step.args)
+    ? step.args
+    : (Array.isArray(step.toolArgv) ? step.toolArgv : []);
+  return items.map((item) => {
+    if (typeof item !== "string") {
+      return String(item);
+    }
+    return resolveWorkflowStringTemplate(item, context);
+  });
 }
 
 function listWorkflowSteps(runDir) {
@@ -473,7 +540,12 @@ async function runToolWorkflow({
   const createdSteps = [];
   for (let index = 0; index < steps.length; index += 1) {
     const step = steps[index];
-    createdSteps.push(createWorkflowStep(workflow.runDir, index + 1, step.name || `${step.tool}.build`, { tool: step.tool }));
+    createdSteps.push(createWorkflowStep(
+      workflow.runDir,
+      index + 1,
+      step.name || `${step.tool}.build`,
+      { tool: step.tool, id: step.id || null },
+    ));
   }
   const stepSpecs = createdSteps.map((created, index) => ({
     id: created.id,
@@ -511,6 +583,7 @@ async function runToolWorkflow({
   let exitCode = 0;
   let lastToolPayload = null;
   let lastStderr = "";
+  const stepResults = {};
   for (const step of createdSteps) {
     updateWorkflowRun(workflow.runDir, (current) => ({
       ...current,
@@ -522,7 +595,9 @@ async function runToolWorkflow({
     updateWorkflowStep(step.stepDir, (current) => ({ ...current, status: "running" }));
 
     const spec = stepSpecs.find((candidate) => candidate.id === step.id) || null;
-    const toolArgv = spec ? spec.toolArgv : [];
+    const toolArgv = spec
+      ? resolveConfiguredStepArgs(spec, { workspaceRoot, stepResults })
+      : [];
     const toolCommand = spec ? spec.toolCommand : "build";
     const attach = spec ? spec.attach : false;
 
@@ -590,6 +665,7 @@ async function runToolWorkflow({
     }
     lastToolPayload = toolPayload;
     lastStderr = String(result.stderr || "");
+    stepResults[step.id] = toolPayload || null;
     const status = workflowStepStatusFromResult(result, toolPayload, attach);
     exitCode = toolPayload && typeof toolPayload.exit_code === "number"
       ? toolPayload.exit_code
@@ -768,9 +844,29 @@ async function handleWorkflowCommand(argv) {
   }
 
   if (subcommand === "run") {
+    if (flags.name) {
+      const configured = resolveConfiguredWorkflow(String(flags.name));
+      const workspaceRoot = resolveWorkspaceRoot(flags);
+      return await runToolWorkflow({
+        steps: configured.steps.map((step, index) => ({
+          id: step.id || step.name || `step-${index + 1}`,
+          tool: step.tool,
+          name: step.name || `${step.tool}.${step.command || "run"}`,
+          toolArgv: Array.isArray(step.args) ? step.args : [],
+          toolCommand: step.command || "run",
+          attach: Boolean(step.attach),
+        })),
+        workflowName: String(flags.name),
+        workspaceRoot,
+        jsonMode: Boolean(flags.json),
+        category: configured.category || "run",
+        commandLabel: "workflow run",
+      });
+    }
+
     const tool = flags.tool;
     if (!tool) {
-      throw new Error("workflow run requires --tool <name>");
+      throw new Error("workflow run requires --tool <name> or --name WORKFLOW_NAME");
     }
     const workflowName = flags.workflow || `tool-${tool}`;
     const workspaceRoot = resolveWorkspaceRoot(flags);

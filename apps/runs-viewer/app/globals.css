@@ -74,6 +74,20 @@ button {
   padding: 0 3px;
 }
 
+.workflow-pane-title-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.workflow-pane-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .workflow-table-scroll {
   max-height: 285px;
   overflow: auto;
@@ -183,6 +197,40 @@ button {
 
 .workflow-empty-state {
   color: rgb(var(--muted-foreground));
+}
+
+.workflow-artifacts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workflow-artifact-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid rgb(var(--border) / 0.75);
+  border-radius: 6px;
+  padding: 6px;
+  background: rgb(var(--muted) / 0.45);
+}
+
+.workflow-artifact-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.workflow-artifact-meta span {
+  font-size: 0.82rem;
+  color: rgb(var(--muted-foreground));
+}
+
+.workflow-artifact-row code {
+  overflow-x: auto;
+  white-space: pre;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.82rem;
 }
 
 .log-viewer {

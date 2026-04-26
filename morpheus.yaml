@@ -1,0 +1,303 @@
+workspace:
+  root: ./hyperarm-workspace
+
+remote:
+  ssh: debian@mcc96e5308801.dyn.epfl.ch
+  workspace:
+    root: /home/debian/hyperarm-workspace
+
+tools:
+  buildroot:
+    mode: remote
+    buildroot-version: 2025.02.12
+    reuse-build-dir: true
+    build-dir-key: arm64-dev
+    patch-dir: ./hyperarm-workspace/tools/buildroot/patches
+    defconfig: qemu_aarch64_virt_defconfig
+    make-args:
+      - -j$(nproc)
+    config-fragment:
+      - BR2_LINUX_KERNEL=y
+      - BR2_LINUX_KERNEL_CUSTOM_VERSION=y
+      - BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.16"
+      - BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
+      - BR2_TARGET_GENERIC_GETTY=y
+      - BR2_TARGET_GENERIC_GETTY_PORT="console"
+      - BR2_TARGET_ROOTFS_CPIO=y
+      - BR2_TARGET_ROOTFS_CPIO_GZIP=y
+      - BR2_ROOTFS_POST_IMAGE_SCRIPT=""
+      - BR2_ROOTFS_POST_SCRIPT_ARGS=""
+      - BR2_PACKAGE_PCIUTILS=y
+      - BR2_PACKAGE_DROPBEAR=y
+      - BR2_TARGET_GENERIC_ROOT_PASSWD="root"
+    artifacts:
+      - images/Image
+      - images/rootfs.cpio.gz
+  qemu:
+    mode: local
+    qemu-version: 8.2.7
+    reuse-build-dir: true
+    build-dir-key: qemu-8.2.7-aarch64-softmmu
+    target-list:
+      - aarch64-softmmu
+    artifacts:
+      - qemu-system-aarch64
+  microkit-sdk:
+    mode: local
+    reuse-build-dir: true
+    build-dir-key: microkit-sdk-2.1.0
+    microkit-archive-url: https://github.com/seL4/microkit/archive/119044f9573674342cedb9694142cce7b832d2ff.tar.gz
+    toolchain-version: 12.3.rel1
+    patch-dir: ./hyperarm-workspace/tools/microkit-sdk/patches
+    boards: qemu_virt_aarch64
+    configs: debug,release
+    artifacts:
+      - sdk-dir
+      - toolchain-dir
+  llbic:
+    mode: local
+    arch: x86_64
+    out-of-tree: true
+    sources: ./hyperarm-workspace/tools/llbic/src
+    output: ./hyperarm-workspace/tools/llbic/builds
+  llcg:
+    mode: local
+    clang: 18
+  libvmm:
+    mode: local
+    reuse-build-dir: true
+    build-dir-key: libvmm-2fd1d64d
+    git-ref: 2fd1d64d7805ad1647af6e2a832e4671d0d40297
+    board: qemu_virt_aarch64
+    example: virtio
+    patch-dir: ./hyperarm-workspace/tools/libvmm/patches
+    dependencies:
+      microkit-sdk:
+        tool: microkit-sdk
+        artifact: sdk-dir
+      toolchain:
+        tool: microkit-sdk
+        artifact: toolchain-dir
+    artifacts:
+      - libvmm-dir
+      - example-dir
+      - example-build-dir
+      - runtime-contract
+  sel4:
+    mode: local
+    sel4-version: c0fc32450fb5e8460083b89a84d067249b109cfc
+    reuse-build-dir: true
+    build-dir-key: sel4-c0fc3245
+    archive-url: https://github.com/seL4/seL4/archive/c0fc32450fb5e8460083b89a84d067249b109cfc.tar.gz
+    patch-dir: ./hyperarm-workspace/tools/sel4/patches/fuzz-sel4
+    artifacts:
+      - source-dir
+  nvirsh:
+    mode: local
+    target: sel4
+    name: sel4-dev
+    board: qemu_virt_aarch64
+    microkit-config: debug
+    runtime:
+      provider:
+        tool: libvmm
+        artifact: runtime-contract
+      action: qemu
+    dependencies:
+      qemu:
+        tool: qemu
+        artifact: qemu-system-aarch64
+      libvmm:
+        tool: libvmm
+        artifact: libvmm-dir
+      kernel:
+        tool: buildroot
+        artifact: images/Image
+      initrd:
+        tool: buildroot
+        artifact: images/rootfs.cpio.gz
+
+workflows:
+  kernel-callgraphs:
+    category: run
+    steps:
+      - id: llbic_6_18_16
+        tool: llbic
+        command: build
+        args: ["6.18.16"]
+      - id: net_mutator_6_18_16
+        tool: llcg
+        command: run
+        args:
+          - genmutator
+          - interfaces
+          - --source-dir
+          - "{{steps.llbic_6_18_16.details.source_dir}}"
+          - --interfaces
+          - networking
+      - id: block_mutator_6_18_16
+        tool: llcg
+        command: run
+        args:
+          - genmutator
+          - files
+          - --source-dir
+          - "{{steps.llbic_6_18_16.details.source_dir}}"
+          - --scope-name
+          - block
+          - --file
+          - block/blk-core.c
+          - --file
+          - block/blk-mq.c
+          - --file
+          - block/bio.c
+          - --file
+          - block/elevator.c
+          - --file
+          - block/blk-settings.c
+      - id: net_cg_6_18_16
+        tool: llcg
+        command: run
+        args:
+          - run
+          - --llbic-json
+          - "{{steps.llbic_6_18_16.details.manifest}}"
+          - --all-bc-list
+          - "{{steps.llbic_6_18_16.details.bitcode_list}}"
+          - --filter
+          - "{{steps.net_mutator_6_18_16.details.manifest}}"
+          - --scope-name
+          - networking-6.18.16
+      - id: block_cg_6_18_16
+        tool: llcg
+        command: run
+        args:
+          - run
+          - --llbic-json
+          - "{{steps.llbic_6_18_16.details.manifest}}"
+          - --all-bc-list
+          - "{{steps.llbic_6_18_16.details.bitcode_list}}"
+          - --filter
+          - "{{steps.block_mutator_6_18_16.details.manifest}}"
+          - --scope-name
+          - block-6.18.16
+      - id: llbic_6_19_6
+        tool: llbic
+        command: build
+        args: ["6.19.6"]
+      - id: net_mutator_6_19_6
+        tool: llcg
+        command: run
+        args:
+          - genmutator
+          - interfaces
+          - --source-dir
+          - "{{steps.llbic_6_19_6.details.source_dir}}"
+          - --interfaces
+          - networking
+      - id: block_mutator_6_19_6
+        tool: llcg
+        command: run
+        args:
+          - genmutator
+          - files
+          - --source-dir
+          - "{{steps.llbic_6_19_6.details.source_dir}}"
+          - --scope-name
+          - block
+          - --file
+          - block/blk-core.c
+          - --file
+          - block/blk-mq.c
+          - --file
+          - block/bio.c
+          - --file
+          - block/elevator.c
+          - --file
+          - block/blk-settings.c
+      - id: net_cg_6_19_6
+        tool: llcg
+        command: run
+        args:
+          - run
+          - --llbic-json
+          - "{{steps.llbic_6_19_6.details.manifest}}"
+          - --all-bc-list
+          - "{{steps.llbic_6_19_6.details.bitcode_list}}"
+          - --filter
+          - "{{steps.net_mutator_6_19_6.details.manifest}}"
+          - --scope-name
+          - networking-6.19.6
+      - id: block_cg_6_19_6
+        tool: llcg
+        command: run
+        args:
+          - run
+          - --llbic-json
+          - "{{steps.llbic_6_19_6.details.manifest}}"
+          - --all-bc-list
+          - "{{steps.llbic_6_19_6.details.bitcode_list}}"
+          - --filter
+          - "{{steps.block_mutator_6_19_6.details.manifest}}"
+          - --scope-name
+          - block-6.19.6
+      - id: llbic_7_0_rc3
+        tool: llbic
+        command: build
+        args: ["7.0-rc3"]
+      - id: net_mutator_7_0_rc3
+        tool: llcg
+        command: run
+        args:
+          - genmutator
+          - interfaces
+          - --source-dir
+          - "{{steps.llbic_7_0_rc3.details.source_dir}}"
+          - --interfaces
+          - networking
+      - id: block_mutator_7_0_rc3
+        tool: llcg
+        command: run
+        args:
+          - genmutator
+          - files
+          - --source-dir
+          - "{{steps.llbic_7_0_rc3.details.source_dir}}"
+          - --scope-name
+          - block
+          - --file
+          - block/blk-core.c
+          - --file
+          - block/blk-mq.c
+          - --file
+          - block/bio.c
+          - --file
+          - block/elevator.c
+          - --file
+          - block/blk-settings.c
+      - id: net_cg_7_0_rc3
+        tool: llcg
+        command: run
+        args:
+          - run
+          - --llbic-json
+          - "{{steps.llbic_7_0_rc3.details.manifest}}"
+          - --all-bc-list
+          - "{{steps.llbic_7_0_rc3.details.bitcode_list}}"
+          - --filter
+          - "{{steps.net_mutator_7_0_rc3.details.manifest}}"
+          - --scope-name
+          - networking-7.0-rc3
+      - id: block_cg_7_0_rc3
+        tool: llcg
+        command: run
+        args:
+          - run
+          - --llbic-json
+          - "{{steps.llbic_7_0_rc3.details.manifest}}"
+          - --all-bc-list
+          - "{{steps.llbic_7_0_rc3.details.bitcode_list}}"
+          - --filter
+          - "{{steps.block_mutator_7_0_rc3.details.manifest}}"
+          - --scope-name
+          - block-7.0-rc3

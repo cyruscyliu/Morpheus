@@ -20,6 +20,30 @@ interface LoadOptions {
   includeLogs?: boolean;
 }
 
+function normalizeWorkflowCategory(value: unknown): "build" | "run" | "unknown" {
+  const category = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (category === "build" || category === "run") {
+    return category;
+  }
+  return "unknown";
+}
+
+function legacyCategoryFromRecord(record: any): "build" | "run" | "unknown" {
+  const explicit = normalizeWorkflowCategory(record?.category);
+  if (explicit !== "unknown") {
+    return explicit;
+  }
+  const summaryCategory = normalizeWorkflowCategory(record?.summary?.category);
+  if (summaryCategory !== "unknown") {
+    return summaryCategory;
+  }
+  const kind = normalizeWorkflowCategory(record?.kind);
+  if (kind !== "unknown") {
+    return kind;
+  }
+  return "unknown";
+}
+
 function normalizeArtifactsArray(value: any): Array<{ path: string; location: string }> {
   if (!Array.isArray(value)) {
     return [];
@@ -108,6 +132,9 @@ function summarizeWorkflowFirst(runDir: string): RunSummary | null {
   return {
     id: String(record.id || path.basename(runDir)),
     kind: "workflow",
+    format: "workflow-first",
+    category: normalizeWorkflowCategory(record.category),
+    workflowName: typeof record.workflow === "string" ? record.workflow : null,
     status: String(record.status || "unknown"),
     createdAt: record.createdAt || null,
     completedAt: record.status === "success" || record.status === "error" ? record.updatedAt || null : null,
@@ -126,6 +153,9 @@ function summarizeLegacy(runDir: string): RunSummary | null {
   return {
     id: String(record.id || path.basename(runDir)),
     kind: String(record.kind || "run"),
+    format: "legacy",
+    category: legacyCategoryFromRecord(record),
+    workflowName: typeof record.summary?.workflow === "string" ? record.summary.workflow : null,
     status: String(record.status || "unknown"),
     createdAt: record.createdAt || null,
     completedAt: record.completedAt || null,
@@ -209,6 +239,9 @@ function loadWorkflowFirstDetail(runRoot: string, runId: string, options: LoadOp
   return {
     id: String(record.id || runId),
     kind: "workflow",
+    format: "workflow-first",
+    category: normalizeWorkflowCategory(record.category),
+    workflowName: typeof record.workflow === "string" ? record.workflow : null,
     status: String(record.status || "unknown"),
     createdAt: record.createdAt || null,
     completedAt: record.status === "success" || record.status === "error" ? record.updatedAt || null : null,
@@ -257,6 +290,9 @@ function loadLegacyDetail(runRoot: string, runId: string, options: LoadOptions):
   return {
     id: String(record.id || runId),
     kind: String(record.kind || "run"),
+    format: "legacy",
+    category: legacyCategoryFromRecord(record),
+    workflowName: typeof record.summary?.workflow === "string" ? record.summary.workflow : null,
     status: String(record.status || "unknown"),
     createdAt: record.createdAt || null,
     completedAt: record.completedAt || null,

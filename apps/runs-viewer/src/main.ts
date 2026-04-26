@@ -19,6 +19,10 @@ interface ViewState {
   logWrap: boolean;
   logBeautify: boolean;
   logJsonl: boolean;
+  stopLoading: boolean;
+  stopError: string | null;
+  removeLoadingRunId: string | null;
+  removeError: string | null;
 }
 
 function requiredElement<T extends Element>(selector: string): T {
@@ -38,6 +42,7 @@ type PaneRatios = [number, number];
 const PANE_RESIZER_PX = 12;
 const PANE_GAP_PX = 12;
 const PANE_MIN_PX = 260;
+const RUNS_PANE_COLLAPSED_WIDTH_PX = 56;
 const PANE_RATIOS_STORAGE_KEY = "morpheus:runs-viewer:paneRatios:v2";
 const RUNS_PANE_COLLAPSED_STORAGE_KEY = "morpheus:runs-viewer:runsPaneCollapsed:v1";
 const NARROW_MEDIA_QUERY = "(max-width: 980px)";
@@ -45,6 +50,35 @@ const NARROW_MEDIA_QUERY = "(max-width: 980px)";
 function statusClass(status: string): string {
   const value = status || "unknown";
   return `status-${value}`;
+}
+
+function categoryClass(category: string): string {
+  const value = category || "unknown";
+  return `category-${value}`;
+}
+
+function workflowCategoryLabel(category: string): string {
+  if (category === "build" || category === "run") {
+    return category;
+  }
+  return "unknown";
+}
+
+function renderWorkflowCategoryBadge(category: string): string {
+  const label = workflowCategoryLabel(category);
+  if (label === "unknown") {
+    return "";
+  }
+  return `<span class="category-pill ${categoryClass(label)}">${escapeHtml(label)}</span>`;
+}
+
+function renderWorkflowStatusIndicator(status: string): string {
+  const normalized = status || "unknown";
+  return [
+    `<span class="workflow-status-indicator ${statusClass(normalized)}"`,
+    ` title="${escapeHtml(normalized)}"`,
+    ` aria-label="${escapeHtml(normalized)} status"></span>`,
+  ].join("");
 }
 
 function escapeHtml(value: string): string {
@@ -337,7 +371,10 @@ function clamp(value: number, min: number, max: number): number {
 function availablePaneWidthPx(workspace: HTMLElement): number {
   const listPane = optionalElement<HTMLElement>(".list-pane");
   const measuredRunsWidth = listPane ? Math.round(listPane.getBoundingClientRect().width) : 0;
-  const runsWidth = measuredRunsWidth > 0 ? measuredRunsWidth : 420;
+  const fallbackWidth = workspace.classList.contains("runs-pane-collapsed")
+    ? RUNS_PANE_COLLAPSED_WIDTH_PX
+    : 420;
+  const runsWidth = measuredRunsWidth > 0 ? measuredRunsWidth : fallbackWidth;
   return Math.max(0, workspace.clientWidth - runsWidth - PANE_GAP_PX - PANE_RESIZER_PX);
 }
 
@@ -348,7 +385,7 @@ function applyPaneRatios(workspace: HTMLElement, ratios: PaneRatios): void {
   }
   if (workspace.classList.contains("runs-pane-collapsed")) {
     const [currentDetailWidth] = currentPaneWidthsPx(workspace);
-    const available = workspace.clientWidth - PANE_RESIZER_PX;
+    const available = workspace.clientWidth - RUNS_PANE_COLLAPSED_WIDTH_PX - PANE_GAP_PX - PANE_RESIZER_PX;
     if (available <= 0) {
       return;
     }
@@ -356,7 +393,7 @@ function applyPaneRatios(workspace: HTMLElement, ratios: PaneRatios): void {
     const preferredDetailWidth = currentDetailWidth > 0 ? currentDetailWidth : Math.round(normalizePaneRatios(ratios)[0] * available);
     const wDetail = clamp(Math.round(preferredDetailWidth), effectiveMin, available - effectiveMin);
     const wLog = Math.max(effectiveMin, available - wDetail);
-    workspace.style.gridTemplateColumns = `0 0 ${wDetail}px ${PANE_RESIZER_PX}px ${wLog}px`;
+    workspace.style.gridTemplateColumns = `${RUNS_PANE_COLLAPSED_WIDTH_PX}px ${PANE_GAP_PX}px ${wDetail}px ${PANE_RESIZER_PX}px ${wLog}px`;
     return;
   }
   const available = availablePaneWidthPx(workspace);
@@ -401,7 +438,6 @@ function installPaneResizers(): void {
   const workspace = requiredElement<HTMLElement>(".workspace-main");
   const rightResizer = optionalElement<HTMLElement>("[data-resizer=\"right\"]");
   const toggleRunsPane = optionalElement<HTMLButtonElement>("#toggle-runs-pane");
-  const floatingToggleRunsPane = optionalElement<HTMLButtonElement>("#toggle-runs-pane-floating");
   if (!rightResizer) {
     return;
   }
@@ -412,12 +448,12 @@ function installPaneResizers(): void {
     const collapsed = runsPaneCollapsed && !isNarrowViewport();
     workspace.classList.toggle("runs-pane-collapsed", collapsed);
     if (toggleRunsPane) {
-      toggleRunsPane.textContent = runsPaneCollapsed ? "Expand" : "Collapse";
+      toggleRunsPane.textContent = runsPaneCollapsed ? ">>" : "<<";
       toggleRunsPane.setAttribute("aria-expanded", runsPaneCollapsed ? "false" : "true");
-    }
-    if (floatingToggleRunsPane) {
-      floatingToggleRunsPane.hidden = !collapsed;
-      floatingToggleRunsPane.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      toggleRunsPane.setAttribute(
+        "aria-label",
+        runsPaneCollapsed ? "Expand workflows pane" : "Collapse workflows pane",
+      );
     }
     applyPaneRatios(workspace, ratios);
   };
@@ -429,7 +465,6 @@ function installPaneResizers(): void {
   };
 
   toggleRunsPane?.addEventListener("click", toggleCollapsedState);
-  floatingToggleRunsPane?.addEventListener("click", toggleCollapsedState);
 
   applyPaneRatios(workspace, ratios);
   syncRunsPane();
@@ -630,13 +665,6 @@ function formatTimestamp(value: string | null | undefined): string {
   }
 }
 
-function matchesFilter(summary: RunSummary, state: ViewState): boolean {
-  if (state.statusFilter && summary.status !== state.statusFilter) {
-    return false;
-  }
-  return true;
-}
-
 async function fetchJson<T>(path: string): Promise<T> {
   const response = await fetch(path, { headers: { accept: "application/json" } });
   if (!response.ok) {
@@ -653,6 +681,24 @@ async function fetchText(path: string): Promise<string> {
   return await response.text();
 }
 
+async function postJson<T>(path: string): Promise<T> {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error((await response.text()) || `${response.status} ${response.statusText}`);
+  }
+  return (await response.json()) as T;
+}
+
+function matchesFilter(summary: RunSummary, state: ViewState): boolean {
+  if (state.statusFilter && summary.status !== state.statusFilter) {
+    return false;
+  }
+  return true;
+}
+
 function renderRunList(state: ViewState): void {
   const list = requiredElement<HTMLElement>("#runs-list");
   const emptyState = requiredElement<HTMLElement>("#empty-state");
@@ -661,22 +707,22 @@ function renderRunList(state: ViewState): void {
 
   const loaded = state.summaries.length;
   const total = state.totalRuns || loaded;
-  summaryLabel.textContent =
-    loaded < total
-      ? `${filtered.length} shown · ${loaded} of ${total} loaded`
-      : `${filtered.length} shown · ${loaded} loaded`;
+  summaryLabel.textContent = `${filtered.length} / ${total}`;
   emptyState.hidden = filtered.length > 0;
 
   list.innerHTML = filtered
     .map((summary) => {
       const selected = summary.id === state.selectedRunId ? " selected" : "";
+      const removeDisabled = state.removeLoadingRunId != null ? " disabled" : "";
+      const removeLabel = state.removeLoadingRunId === summary.id ? "..." : "x";
       return [
         `<article class="run-item${selected}" data-run-id="${summary.id}">`,
-        `<div class="run-item-title"><span>${summary.id}</span>`,
-        `<span class="status-pill ${statusClass(summary.status)}">${summary.status}</span></div>`,
-        `<div class="run-item-meta">`,
-        `<div>created ${formatTimestamp(summary.createdAt)}</div>`,
-        `<div>steps ${summary.stepCount}</div>`,
+        `<div class="workflow-item-head">`,
+        `<div class="workflow-item-id" title="${escapeHtml(summary.id)}">${escapeHtml(summary.id)}</div>`,
+        `<div class="workflow-item-actions">`,
+        `${renderWorkflowStatusIndicator(summary.status)}`,
+        `<button type="button" class="workflow-remove-button" data-action="remove-workflow" data-run-id="${summary.id}" title="Remove workflow" aria-label="Remove workflow ${escapeHtml(summary.id)}"${removeDisabled}>${removeLabel}</button>`,
+        `</div>`,
         `</div>`,
         `</article>`,
       ].join("");
@@ -690,13 +736,15 @@ function renderRunDetail(state: ViewState): void {
   const run = state.runDetail;
 
   if (!run) {
-    pathLabel.textContent = "Select a run";
+    pathLabel.textContent = "Select a workflow";
     pathLabel.removeAttribute("title");
-    container.innerHTML = `<p class="empty-state">Select a run to inspect steps and logs.</p>`;
+    container.innerHTML = `<p class="empty-state">Select a workflow to inspect steps and logs.</p>`;
     return;
   }
 
-  pathLabel.textContent = `${run.id} · ${run.status}`;
+  const category = workflowCategoryLabel(run.category);
+  const canStop = run.format === "workflow-first" && run.status === "running";
+  pathLabel.textContent = `${run.id} · ${category} · ${run.status}`;
   if (run.runDir) {
     pathLabel.title = run.runDir;
   } else {
@@ -747,6 +795,25 @@ function renderRunDetail(state: ViewState): void {
     .join("");
 
   container.innerHTML = [
+    `<section class="workflow-overview">`,
+    `<div class="workflow-overview-header">`,
+    `${renderWorkflowCategoryBadge(category)}`,
+    `<span class="status-pill ${statusClass(run.status)}">${escapeHtml(run.status)}</span>`,
+    canStop
+      ? `<button type="button" class="button small" data-action="stop-workflow"${state.stopLoading ? " disabled" : ""}>${state.stopLoading ? "Stopping..." : "Stop"}</button>`
+      : ``,
+    `</div>`,
+    state.stopError ? `<p class="empty-state">${escapeHtml(state.stopError)}</p>` : ``,
+    state.removeError ? `<p class="empty-state">${escapeHtml(state.removeError)}</p>` : ``,
+    `<div class="workflow-overview-grid">`,
+    `<div><span class="meta-label">Workflow</span><span>${escapeHtml(run.id)}</span></div>`,
+    `<div><span class="meta-label">Created</span><span>${escapeHtml(formatTimestamp(run.createdAt))}</span></div>`,
+    `<div><span class="meta-label">Completed</span><span>${escapeHtml(formatTimestamp(run.completedAt))}</span></div>`,
+    `<div><span class="meta-label">Change</span><span>${escapeHtml(formatText(run.changeName))}</span></div>`,
+    `<div><span class="meta-label">Steps</span><span>${escapeHtml(String(run.stepCount))}</span></div>`,
+    `<div class="workflow-overview-path"><span class="meta-label">Path</span><span title="${escapeHtml(run.runDir || "")}">${escapeHtml(formatText(run.runDir))}</span></div>`,
+    `</div>`,
+    `</section>`,
     `<div class="steps">${steps || `<p class="empty-state">No steps recorded.</p>`}</div>`,
   ].join("");
 }
@@ -835,6 +902,8 @@ async function refreshSelectedRun(state: ViewState): Promise<void> {
     state.logText = null;
     state.logError = null;
     state.logLoading = false;
+    state.stopError = null;
+    state.stopLoading = false;
     renderRunDetail(state);
     renderLogPane(state);
     return;
@@ -842,6 +911,7 @@ async function refreshSelectedRun(state: ViewState): Promise<void> {
   try {
     const detail = await fetchJson<RunDetail>(`/api/runs/${encodeURIComponent(state.selectedRunId)}`);
     state.runDetail = detail;
+    state.stopError = null;
     renderRunDetail(state);
     renderLogPane(state);
   } catch (error) {
@@ -850,6 +920,8 @@ async function refreshSelectedRun(state: ViewState): Promise<void> {
     state.logText = null;
     state.logError = null;
     state.logLoading = false;
+    state.stopError = null;
+    state.stopLoading = false;
     renderRunDetail(state);
     renderLogPane(state);
     console.error(error);
@@ -902,6 +974,58 @@ async function loadStepLog(state: ViewState, stepId: string): Promise<void> {
   }
 }
 
+async function stopWorkflow(state: ViewState): Promise<void> {
+  if (!state.selectedRunId || !state.runDetail) {
+    return;
+  }
+  state.stopLoading = true;
+  state.stopError = null;
+  renderRunDetail(state);
+  try {
+    await postJson(`/api/runs/${encodeURIComponent(state.selectedRunId)}/stop`);
+    state.stopLoading = false;
+    await refreshSummaries(state);
+    await refreshSelectedRun(state);
+  } catch (error) {
+    state.stopLoading = false;
+    state.stopError = error instanceof Error ? error.message.trim() : "Failed to stop workflow.";
+    renderRunDetail(state);
+  }
+}
+
+async function removeWorkflow(state: ViewState, runId: string): Promise<void> {
+  if (!runId || state.removeLoadingRunId) {
+    return;
+  }
+  state.removeLoadingRunId = runId;
+  state.removeError = null;
+  renderRunList(state);
+  if (state.selectedRunId === runId) {
+    renderRunDetail(state);
+  }
+  try {
+    await postJson(`/api/runs/${encodeURIComponent(runId)}/remove`);
+    if (state.selectedRunId === runId) {
+      state.selectedRunId = null;
+      state.selectedStepId = null;
+      state.runDetail = null;
+      state.logText = null;
+      state.logError = null;
+      state.logLoading = false;
+      window.location.hash = "";
+    }
+    await refreshSummaries(state);
+    await refreshSelectedRun(state);
+  } catch (error) {
+    state.removeError = error instanceof Error ? error.message.trim() : "Failed to remove workflow.";
+  } finally {
+    state.removeLoadingRunId = null;
+    renderRunList(state);
+    renderRunDetail(state);
+    renderLogPane(state);
+  }
+}
+
 export async function bootstrap(): Promise<void> {
   installPaneResizers();
 
@@ -922,6 +1046,10 @@ export async function bootstrap(): Promise<void> {
     logWrap: false,
     logBeautify: true,
     logJsonl: true,
+    stopLoading: false,
+    stopError: null,
+    removeLoadingRunId: null,
+    removeError: null,
   };
 
   requiredElement<HTMLButtonElement>("#refresh-button").addEventListener("click", () => {
@@ -936,6 +1064,11 @@ export async function bootstrap(): Promise<void> {
   requiredElement<HTMLElement>("#runs-list").addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) {
+      return;
+    }
+    const removeButton = target.closest<HTMLElement>("[data-action=\"remove-workflow\"]");
+    if (removeButton?.dataset.runId) {
+      void removeWorkflow(state, removeButton.dataset.runId);
       return;
     }
     const item = target.closest<HTMLElement>("[data-run-id]");
@@ -955,6 +1088,10 @@ export async function bootstrap(): Promise<void> {
   requiredElement<HTMLElement>("#run-detail").addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) {
+      return;
+    }
+    if (target.closest("[data-action=\"stop-workflow\"]")) {
+      void stopWorkflow(state);
       return;
     }
     const button = target.closest<HTMLElement>("[data-action=\"view-log\"]");

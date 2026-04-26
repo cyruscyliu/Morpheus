@@ -1,6 +1,9 @@
 export interface RunSummary {
   id: string;
   kind: string;
+  format: "legacy" | "workflow-first";
+  category: "build" | "run" | "unknown";
+  workflowName: string | null;
   status: string;
   createdAt: string | null;
   completedAt: string | null;

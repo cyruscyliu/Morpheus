@@ -607,6 +607,67 @@ test("workflow commands are available through Morpheus", () => {
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(result.stdout, /workflow run/);
   assert.match(result.stdout, /workflow inspect/);
+  assert.match(result.stdout, /workflow stop/);
+});
+
+test("workflow stop marks a running workflow as stopped", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stop-"));
+  const runId = "wf-stop-test";
+  const runDir = path.join(workspaceRoot, "runs", runId);
+  const stepDir = path.join(runDir, "steps", "01-build");
+  const sleeper = spawnSync("bash", ["-lc", "sleep 30 & echo $!"], { encoding: "utf8" });
+  const childPid = Number(String(sleeper.stdout || "").trim());
+
+  fs.mkdirSync(stepDir, { recursive: true });
+  fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
+  fs.writeFileSync(path.join(stepDir, "step.json"), `${JSON.stringify({
+    id: "01-build",
+    name: "build",
+    status: "running",
+    stepDir,
+    logFile: path.join(stepDir, "stdout.log"),
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
+    id: runId,
+    workflow: "tool-buildroot",
+    category: "build",
+    status: "running",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    updatedAt: "2026-04-26T12:00:00.000Z",
+    workspace: workspaceRoot,
+    runDir,
+    currentStepId: "01-build",
+    currentChildPid: childPid,
+    runnerPid: null,
+    steps: [{ id: "01-build", name: "build", stepDir, status: "running" }],
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
+    id: runId,
+    kind: "workflow",
+    category: "build",
+    status: "running",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    completedAt: null,
+    summary: { workflow: "tool-buildroot", category: "build" },
+  }, null, 2)}\n`);
+
+  const result = run(["--json", "workflow", "stop", "--id", runId, "--workspace", workspaceRoot], {
+    cwd: workspaceRoot,
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.status, "success");
+  assert.equal(payload.summary, "stopped workflow run");
+
+  const workflow = JSON.parse(fs.readFileSync(path.join(runDir, "workflow.json"), "utf8"));
+  const step = JSON.parse(fs.readFileSync(path.join(stepDir, "step.json"), "utf8"));
+  assert.equal(workflow.status, "stopped");
+  assert.equal(step.status, "stopped");
+
+  const alive = spawnSync("bash", ["-lc", `kill -0 ${childPid} 2>/dev/null`], { encoding: "utf8" });
+  assert.notEqual(alive.status, 0);
+
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 
 test("managed run help is available through Morpheus", () => {

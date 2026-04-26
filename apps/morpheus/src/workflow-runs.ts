@@ -5,6 +5,14 @@ const path = require("path");
 const WORKFLOW_SCHEMA_VERSION = 1;
 const STEP_SCHEMA_VERSION = 1;
 
+function normalizeWorkflowCategory(value, fallback = "build") {
+  const category = String(value || "").trim().toLowerCase();
+  if (category === "build" || category === "run") {
+    return category;
+  }
+  return fallback;
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -72,12 +80,14 @@ function createWorkflowRun(workspaceRoot, workflowName, options = {}) {
   const id = options.id || generateWorkflowRunId();
   const runDir = workflowRunDir(workspaceRoot, id);
   const createdAt = nowIso();
+  const category = normalizeWorkflowCategory(options.category, "build");
   fs.mkdirSync(path.join(runDir, "steps"), { recursive: true });
 
   const record = {
     schemaVersion: WORKFLOW_SCHEMA_VERSION,
     id,
     workflow: workflowName || "workflow",
+    category,
     status: "created",
     createdAt,
     updatedAt: createdAt,
@@ -90,10 +100,11 @@ function createWorkflowRun(workspaceRoot, workflowName, options = {}) {
   writeJson(legacyRunRecordPath(runDir), {
     id,
     kind: "workflow",
+    category: record.category,
     status: record.status,
     createdAt: record.createdAt,
     completedAt: null,
-    summary: { workflow: record.workflow }
+    summary: { workflow: record.workflow, category: record.category }
   });
   return record;
 }
@@ -102,15 +113,17 @@ function updateWorkflowRun(runDir, mutator) {
   const manifestPath = workflowManifestPath(runDir);
   const current = readJson(manifestPath);
   const next = mutator({ ...current });
+  next.category = normalizeWorkflowCategory(next.category, normalizeWorkflowCategory(current.category, "build"));
   next.updatedAt = nowIso();
   writeJson(manifestPath, next);
   writeJson(legacyRunRecordPath(runDir), {
     id: next.id,
     kind: "workflow",
+    category: next.category,
     status: next.status,
     createdAt: next.createdAt,
     completedAt: next.status === "success" || next.status === "error" ? next.updatedAt : null,
-    summary: { workflow: next.workflow }
+    summary: { workflow: next.workflow, category: next.category }
   });
   return next;
 }

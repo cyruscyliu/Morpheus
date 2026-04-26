@@ -240,6 +240,7 @@ async function runNvirshDependencyWorkflow(rest, flags) {
     workspaceRoot,
     jsonMode: false,
     commandLabel: "tool run",
+    category: "build",
   });
 }
 
@@ -310,6 +311,7 @@ async function handleToolCommand(argv) {
         workspaceRoot,
         jsonMode: Boolean(flags.json),
         commandLabel: `tool ${subcommand}`,
+        category: "build",
       });
     }
 

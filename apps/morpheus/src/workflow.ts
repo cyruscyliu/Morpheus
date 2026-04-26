@@ -1,7 +1,7 @@
 // @ts-nocheck
 const fs = require("fs");
 const path = require("path");
-const { spawn } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 const { applyConfigDefaults } = require("./config");
 const { repoRoot } = require("./paths");
 const { writeStdoutLine } = require("./io");
@@ -45,7 +45,8 @@ function workflowUsage() {
     "Usage:",
     "  node apps/morpheus/dist/cli.js workflow run --tool <name> [--workflow NAME] [--json] [...tool flags]",
     "  node apps/morpheus/dist/cli.js workflow inspect --id WORKFLOW_RUN_ID [--json]",
-    "  node apps/morpheus/dist/cli.js workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow] [--json]"
+    "  node apps/morpheus/dist/cli.js workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow] [--json]",
+    "  node apps/morpheus/dist/cli.js workflow stop --id WORKFLOW_RUN_ID [--json]"
   ].join("\n");
 }
 
@@ -103,6 +104,78 @@ function findWorkflowRun(workspaceRoot, id) {
     throw new Error(`workflow run not found: ${id}`);
   }
   return { runDir, manifestPath };
+}
+
+function stopPid(pid) {
+  if (!pid || pid <= 0) {
+    return;
+  }
+  spawnSync("pkill", ["-TERM", "-P", String(pid)], { stdio: "ignore" });
+  spawnSync("kill", ["-TERM", String(pid)], { stdio: "ignore" });
+  const waited = spawnSync(
+    "bash",
+    ["-lc", `for i in $(seq 1 30); do if ! kill -0 ${pid} 2>/dev/null; then exit 0; fi; sleep 0.1; done; exit 1`],
+    { stdio: "ignore" },
+  );
+  if (waited.status === 0) {
+    return;
+  }
+  spawnSync("pkill", ["-KILL", "-P", String(pid)], { stdio: "ignore" });
+  spawnSync("kill", ["-KILL", String(pid)], { stdio: "ignore" });
+}
+
+function stopWorkflowRun(workspaceRoot, id) {
+  const found = findWorkflowRun(workspaceRoot, id);
+  const workflow = readJson(found.manifestPath);
+  const steps = listWorkflowSteps(found.runDir);
+  const currentChildPid = Number(workflow.currentChildPid || 0);
+  const runnerPid = Number(workflow.runnerPid || 0);
+
+  if (currentChildPid > 0) {
+    stopPid(currentChildPid);
+  }
+  if (runnerPid > 0 && runnerPid !== process.pid) {
+    stopPid(runnerPid);
+  }
+
+  for (const step of steps) {
+    if (step && (step.status === "created" || step.status === "running")) {
+      updateWorkflowStep(step.stepDir, (current) => ({
+        ...current,
+        status: "stopped",
+        exitCode: current.exitCode == null ? 130 : current.exitCode,
+      }));
+    }
+  }
+
+  const updatedWorkflow = updateWorkflowRun(found.runDir, (current) => ({
+    ...current,
+    status: "stopped",
+    currentStepId: null,
+    currentChildPid: null,
+    runnerPid: null,
+    steps: Array.isArray(current.steps)
+      ? current.steps.map((entry) => (
+          entry.status === "created" || entry.status === "running"
+            ? { ...entry, status: "stopped" }
+            : entry
+        ))
+      : [],
+  }));
+
+  return {
+    command: "workflow stop",
+    status: "success",
+    exit_code: 0,
+    summary: "stopped workflow run",
+    details: {
+      id: updatedWorkflow.id,
+      workflow: updatedWorkflow.workflow,
+      run_dir: updatedWorkflow.runDir,
+      stopped_child_pid: currentChildPid > 0 ? currentChildPid : null,
+      stopped_runner_pid: runnerPid > 0 ? runnerPid : null,
+    },
+  };
 }
 
 function consumeToolOutput(stdout, stepLogFile) {
@@ -177,13 +250,16 @@ function processToolStdoutLine(rawLine, stepLogFile, state) {
   state.finalPayload = parsed;
 }
 
-function runWorkflowChild(args, stepLogFile, env) {
+function runWorkflowChild(args, stepLogFile, env, onSpawn) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, {
       cwd: process.cwd(),
       env,
       stdio: ["ignore", "pipe", "pipe"],
     });
+    if (typeof onSpawn === "function") {
+      onSpawn(child.pid);
+    }
 
     let stdoutBuffer = "";
     let stderrText = "";
@@ -249,9 +325,15 @@ function stepArtifactsFromToolPayload(toolPayload) {
   return toolPayload.details.artifacts;
 }
 
-async function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, commandLabel }) {
-  const workflow = createWorkflowRun(workspaceRoot, workflowName);
+async function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, commandLabel, category = "build" }) {
+  const workflow = createWorkflowRun(workspaceRoot, workflowName, { category });
   return await withLogFile(path.join(workflow.runDir, "progress.jsonl"), async () => {
+  updateWorkflowRun(workflow.runDir, (current) => ({
+    ...current,
+    runnerPid: process.pid,
+    currentChildPid: null,
+    currentStepId: null,
+  }));
   const createdSteps = [];
   for (let index = 0; index < steps.length; index += 1) {
     const step = steps[index];
@@ -282,6 +364,8 @@ async function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMo
   updateWorkflowRun(workflow.runDir, (current) => ({
     ...current,
     status: "running",
+    currentStepId: null,
+    currentChildPid: null,
     steps: createdSteps.map((step) => ({ id: step.id, name: step.name, stepDir: step.stepDir, status: "created" }))
   }));
 
@@ -293,6 +377,8 @@ async function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMo
     updateWorkflowRun(workflow.runDir, (current) => ({
       ...current,
       status: "running",
+      currentStepId: step.id,
+      currentChildPid: null,
       steps: current.steps.map((entry) => entry.id === step.id ? { ...entry, status: "running" } : entry)
     }));
     updateWorkflowStep(step.stepDir, (current) => ({ ...current, status: "running" }));
@@ -341,6 +427,13 @@ async function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMo
         MORPHEUS_RUN_DIR_OVERRIDE: stepToolRunDir(step.stepDir),
         MORPHEUS_EVENT_LOG_FILE: path.join(step.stepDir, "progress.jsonl")
       },
+      (childPid) => {
+        updateWorkflowRun(workflow.runDir, (current) => ({
+          ...current,
+          currentStepId: step.id,
+          currentChildPid: childPid || null,
+        }));
+      },
     );
     const toolPayload = result.toolPayload;
     if (toolPayload) {
@@ -376,6 +469,7 @@ async function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMo
     updateWorkflowRun(workflow.runDir, (current) => ({
       ...current,
       status: "running",
+      currentChildPid: null,
       steps: current.steps.map((entry) => entry.id === updatedStep.id
         ? { ...entry, status: updatedStep.status }
         : entry
@@ -398,6 +492,9 @@ async function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMo
   const updatedWorkflow = updateWorkflowRun(workflow.runDir, (current) => ({
     ...current,
     status: workflowStatus,
+    currentStepId: null,
+    currentChildPid: null,
+    runnerPid: null,
     steps: current.steps
   }));
   logInfo("workflow", workflowStatus === "success" ? "completed workflow run" : "workflow run failed", {
@@ -458,7 +555,8 @@ function runSingleToolWorkflow({ tool, workflowName, workspaceRoot, toolArgv, js
     workflowName,
     workspaceRoot,
     jsonMode,
-    commandLabel
+    commandLabel,
+    category: "build",
   });
 }
 
@@ -481,7 +579,14 @@ function handleWorkflowCommand(argv) {
       .filter((token) => token !== "--workflow").filter((token) => token !== workflowName)
       .filter((token) => token !== "--json").filter((token) => token !== "--workspace").filter((token) => token !== workspaceRoot);
 
-    return runSingleToolWorkflow({ tool, workflowName, workspaceRoot, toolArgv, jsonMode: Boolean(flags.json) });
+    return runToolBuildWorkflow({
+      steps: [{ tool, name: `${tool}.run`, toolArgv }],
+      workflowName,
+      workspaceRoot,
+      jsonMode: Boolean(flags.json),
+      category: "run",
+      commandLabel: "workflow run",
+    });
   }
 
   if (subcommand === "inspect") {
@@ -543,11 +648,27 @@ function handleWorkflowCommand(argv) {
     return 0;
   }
 
+  if (subcommand === "stop") {
+    const id = flags.id;
+    if (!id) {
+      throw new Error("workflow stop requires --id WORKFLOW_RUN_ID");
+    }
+    const workspaceRoot = resolveWorkspaceRoot(flags);
+    const payload = stopWorkflowRun(workspaceRoot, id);
+    if (flags.json) {
+      writeStdoutLine(JSON.stringify(payload));
+    } else {
+      writeStdoutLine(`${payload.summary}: ${payload.details.id}`);
+    }
+    return 0;
+  }
+
   throw new Error(`unknown workflow subcommand: ${subcommand}`);
 }
 
 module.exports = {
   handleWorkflowCommand,
   runSingleToolWorkflow,
-  runToolBuildWorkflow
+  runToolBuildWorkflow,
+  stopWorkflowRun
 };

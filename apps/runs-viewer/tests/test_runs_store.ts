@@ -30,6 +30,7 @@ test("listRunSummaries includes legacy and workflow-first runs", () => {
   writeJson(path.join(legacyDir, "run.json"), {
     id: legacyId,
     kind: "run",
+    category: "run",
     status: "success",
     createdAt: "2026-04-23T10:00:00.000Z",
     completedAt: "2026-04-23T10:00:01.000Z",
@@ -52,6 +53,7 @@ test("listRunSummaries includes legacy and workflow-first runs", () => {
   writeJson(path.join(workflowDir, "workflow.json"), {
     id: workflowId,
     workflow: "tool-buildroot",
+    category: "build",
     status: "running",
     createdAt: "2026-04-23T11:00:00.000Z",
     updatedAt: "2026-04-23T11:00:02.000Z",
@@ -74,7 +76,11 @@ test("listRunSummaries includes legacy and workflow-first runs", () => {
   const summaries = listRunSummaries(runRoot);
   assert.equal(summaries.length, 2);
   assert.equal(summaries[0]?.id, workflowId);
+  assert.equal(summaries[0]?.format, "workflow-first");
+  assert.equal(summaries[0]?.category, "build");
   assert.equal(summaries[1]?.id, legacyId);
+  assert.equal(summaries[1]?.format, "legacy");
+  assert.equal(summaries[1]?.category, "run");
 
   const result = listRunSummariesWithTotal(runRoot, { limit: "1" });
   assert.equal(result.total, 2);
@@ -87,7 +93,13 @@ test("loadRunDetail returns steps and log url", () => {
 
   const legacyId = "legacy-1";
   const legacyDir = path.join(runRoot, legacyId);
-  writeJson(path.join(legacyDir, "run.json"), { id: legacyId, kind: "run", status: "success", createdAt: "t" });
+  writeJson(path.join(legacyDir, "run.json"), {
+    id: legacyId,
+    kind: "run",
+    category: "run",
+    status: "success",
+    createdAt: "t",
+  });
   writeJson(path.join(legacyDir, "index.json"), {
     stepCount: 1,
     steps: [{ id: "step-001-build", name: "build", status: "success", dir: "steps/step-001-build" }],
@@ -98,6 +110,8 @@ test("loadRunDetail returns steps and log url", () => {
 
   const detail = loadRunDetail(runRoot, legacyId);
   assert.ok(detail);
+  assert.equal(detail.category, "run");
+  assert.equal(detail.format, "legacy");
   assert.equal(detail.steps.length, 1);
   assert.equal(detail.steps[0]?.logUrl, "/api/runs/legacy-1/steps/step-001-build/log");
   assert.equal(loadStepLogText(runRoot, legacyId, "step-001-build"), "hello\n");
@@ -111,6 +125,7 @@ test("workflow-first step artifacts fall back to tool result details", () => {
   const workflowDir = path.join(runRoot, workflowId);
   writeJson(path.join(workflowDir, "workflow.json"), {
     id: workflowId,
+    category: "build",
     status: "success",
     createdAt: "2026-04-24T11:00:00.000Z",
     updatedAt: "2026-04-24T11:00:01.000Z",
@@ -142,6 +157,7 @@ test("workflow-first step artifacts fall back to tool result details", () => {
 
   const detail = loadRunDetail(runRoot, workflowId);
   assert.ok(detail);
+  assert.equal(detail.category, "build");
   assert.equal(detail.steps.length, 1);
   assert.equal(detail.steps[0]?.artifactCount, 2);
   assert.equal(detail.steps[0]?.artifacts?.length, 2);
@@ -155,6 +171,7 @@ test("workflow-first step artifacts accept local and remote locations", () => {
   const workflowDir = path.join(runRoot, workflowId);
   writeJson(path.join(workflowDir, "workflow.json"), {
     id: workflowId,
+    category: "build",
     status: "success",
     createdAt: "2026-04-24T11:00:00.000Z",
     updatedAt: "2026-04-24T11:00:01.000Z",
@@ -188,10 +205,31 @@ test("workflow-first step artifacts accept local and remote locations", () => {
 
   const detail = loadRunDetail(runRoot, workflowId);
   assert.ok(detail);
+  assert.equal(detail.category, "build");
   assert.equal(detail.steps.length, 1);
   assert.equal(detail.steps[0]?.artifactCount, 2);
   assert.deepEqual(detail.steps[0]?.artifacts, [
     { path: "images/Image", location: "/local/output/images/Image" },
     { path: "images/rootfs.cpio.gz", location: "/remote/output/images/rootfs.cpio.gz" },
   ]);
+});
+
+test("legacy records fall back to summary category when explicit category is absent", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-store-"));
+  const runRoot = path.join(workspaceRoot, "runs");
+  const legacyId = "legacy-summary-category";
+  const legacyDir = path.join(runRoot, legacyId);
+
+  writeJson(path.join(legacyDir, "run.json"), {
+    id: legacyId,
+    kind: "workflow",
+    status: "success",
+    createdAt: "2026-04-25T12:00:00.000Z",
+    summary: { workflow: "tool-buildroot", category: "build" },
+  });
+  writeJson(path.join(legacyDir, "index.json"), { stepCount: 0, steps: [] });
+
+  const summaries = listRunSummaries(runRoot);
+  assert.equal(summaries[0]?.category, "build");
+  assert.equal(summaries[0]?.workflowName, "tool-buildroot");
 });

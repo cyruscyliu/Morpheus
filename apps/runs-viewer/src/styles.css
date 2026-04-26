@@ -13,7 +13,7 @@
   --running: #9a6b10;
   --pane-resizer: 12px;
   --pane-gap: 12px;
-  --runs-pane-width: clamp(420px, 30vw, 640px);
+  --runs-pane-width: max-content;
 }
 
 * {
@@ -115,7 +115,7 @@ pre {
 }
 
 .workspace-main.runs-pane-collapsed {
-  grid-template-columns: 0 0 1fr var(--pane-resizer) 1fr;
+  grid-template-columns: 56px var(--pane-gap) 1fr var(--pane-resizer) 1fr;
 }
 
 .pane-spacer {
@@ -269,22 +269,6 @@ select {
   align-content: start;
 }
 
-.workspace-main.runs-pane-collapsed .list-pane {
-  display: none;
-}
-
-.workspace-main.runs-pane-collapsed .pane-spacer {
-  display: none;
-}
-
-.floating-toggle {
-  position: absolute;
-  top: 18px;
-  left: 18px;
-  z-index: 5;
-  box-shadow: 0 8px 20px rgba(77, 57, 33, 0.12);
-}
-
 .list-footer {
   padding: 10px 12px 12px;
   border-top: 1px solid rgba(216, 202, 182, 0.8);
@@ -319,6 +303,82 @@ select {
   font-weight: 700;
 }
 
+.workflow-item-id {
+  font-weight: 700;
+  font-size: 0.94rem;
+  white-space: nowrap;
+}
+
+.workflow-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.workflow-item-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.workflow-remove-button {
+  border: 0;
+  padding: 0;
+  min-width: 14px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+}
+
+.workflow-remove-button:hover {
+  color: var(--failure);
+}
+
+.workflow-remove-button:disabled {
+  cursor: wait;
+  color: var(--muted);
+}
+
+.workflow-item-name {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1px solid rgba(186, 167, 143, 0.9);
+}
+
+.category-build {
+  color: #6e4613;
+  background: rgba(154, 107, 16, 0.12);
+}
+
+.category-run {
+  color: var(--accent);
+  background: rgba(22, 93, 82, 0.12);
+}
+
+.category-unknown {
+  color: var(--muted);
+  background: rgba(110, 95, 77, 0.12);
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -346,9 +406,44 @@ select {
   color: var(--running);
 }
 
+.status-stopped {
+  background: rgba(110, 95, 77, 0.14);
+  color: var(--muted);
+}
+
 .status-unknown {
   background: rgba(110, 95, 77, 0.14);
   color: var(--muted);
+}
+
+.workflow-status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+  border: 1px solid rgba(34, 29, 23, 0.08);
+  flex: 0 0 auto;
+}
+
+.workflow-status-indicator.status-success {
+  background: var(--success);
+}
+
+.workflow-status-indicator.status-running {
+  background: var(--running);
+}
+
+.workflow-status-indicator.status-stopped {
+  background: var(--muted);
+}
+
+.workflow-status-indicator.status-failure,
+.workflow-status-indicator.status-error {
+  background: var(--failure);
+}
+
+.workflow-status-indicator.status-unknown {
+  background: var(--muted);
 }
 
 .run-item-meta {
@@ -358,6 +453,87 @@ select {
   gap: 4px 10px;
   color: var(--muted);
   font-size: 0.88rem;
+}
+
+.workspace-main.runs-pane-collapsed .pane-header {
+  align-items: center;
+}
+
+.workspace-main.runs-pane-collapsed .list-pane .pane-subtitle,
+.workspace-main.runs-pane-collapsed .list-pane .pane-title,
+.workspace-main.runs-pane-collapsed .list-pane .filters,
+.workspace-main.runs-pane-collapsed .list-pane .workflow-item-name,
+.workspace-main.runs-pane-collapsed .list-pane .run-item-meta,
+.workspace-main.runs-pane-collapsed .list-pane .category-pill,
+.workspace-main.runs-pane-collapsed .list-pane .workflow-item-id,
+.workspace-main.runs-pane-collapsed .list-pane .workflow-remove-button {
+  display: none;
+}
+
+.workspace-main.runs-pane-collapsed .list-pane .pane-header {
+  justify-content: center;
+  gap: 12px;
+}
+
+.workspace-main.runs-pane-collapsed .list-pane .pane-actions {
+  width: 100%;
+  justify-content: center;
+}
+
+.workspace-main.runs-pane-collapsed .run-item {
+  padding: 8px 6px;
+}
+
+.workspace-main.runs-pane-collapsed .run-item-title,
+.workspace-main.runs-pane-collapsed .workflow-item-head {
+  justify-content: center;
+  text-align: center;
+}
+
+.workspace-main.runs-pane-collapsed .workflow-item-head {
+  margin-top: 0;
+}
+
+.workspace-main.runs-pane-collapsed .category-pill,
+.workspace-main.runs-pane-collapsed .status-pill {
+  padding: 3px 8px;
+  font-size: 0.68rem;
+}
+
+.workflow-overview {
+  padding: 12px;
+  border: 1px solid rgba(216, 202, 182, 0.9);
+  border-radius: 12px;
+  background: rgba(248, 241, 231, 0.85);
+  margin-bottom: 10px;
+}
+
+.workflow-overview-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.workflow-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+}
+
+.workflow-overview-grid > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.workflow-overview-path {
+  grid-column: 1 / -1;
+}
+
+.workflow-overview-path span:last-child {
+  overflow-wrap: anywhere;
 }
 
 .empty-state {

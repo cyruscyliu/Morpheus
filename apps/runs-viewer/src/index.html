@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Morpheus Runs Viewer</title>
+    <title>Morpheus Workflow Viewer</title>
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
@@ -11,7 +11,7 @@
       <header class="topbar">
         <div class="topbar-title">
           <strong>Morpheus</strong>
-          <span class="topbar-subtitle">Runs Viewer</span>
+          <span class="topbar-subtitle">Workflow Viewer</span>
         </div>
         <div class="topbar-actions">
           <div class="topbar-updated">
@@ -23,22 +23,10 @@
       </header>
 
       <main class="workspace-main">
-        <button
-          id="toggle-runs-pane-floating"
-          type="button"
-          class="button small floating-toggle"
-          aria-expanded="true"
-          aria-controls="runs-list"
-          hidden
-        >
-          Show runs
-        </button>
-
         <section class="pane list-pane">
           <div class="pane-header">
             <div>
-              <div class="pane-title">Runs</div>
-              <p id="runs-summary" class="pane-subtitle"></p>
+              <div id="runs-summary" class="pane-title">0 / 0</div>
             </div>
             <div class="pane-actions">
               <button
@@ -48,36 +36,34 @@
                 aria-expanded="true"
                 aria-controls="runs-list"
               >
-                Collapse
+                <<
               </button>
             </div>
             <div class="filters">
               <label class="field inline">
-                <span class="field-label">Status</span>
                 <select id="status-filter" aria-label="Status filter">
                   <option value="">All</option>
                   <option value="success">success</option>
                   <option value="failure">failure</option>
                   <option value="error">error</option>
                   <option value="running">running</option>
-                  <option value="unknown">unknown</option>
                 </select>
               </label>
             </div>
           </div>
           <div id="runs-list" class="entry-list" aria-live="polite"></div>
-          <p id="empty-state" class="empty-state" hidden>No runs match.</p>
+          <p id="empty-state" class="empty-state" hidden>No workflows match.</p>
         </section>
 
         <div class="pane-spacer" aria-hidden="true"></div>
 
         <section class="pane detail-pane">
           <div class="pane-header">
-            <div class="pane-title">Run</div>
-            <div id="run-path" class="pane-path">Select a run</div>
+            <div class="pane-title">Workflow</div>
+            <div id="run-path" class="pane-path">Select a workflow</div>
           </div>
           <div id="run-detail" class="detail-scroll">
-            <p class="empty-state">Select a run to inspect steps and logs.</p>
+            <p class="empty-state">Select a workflow to inspect steps and logs.</p>
           </div>
         </section>
 
@@ -92,7 +78,7 @@
 
         <section class="pane log-pane">
           <div class="pane-header">
-            <div class="pane-title">Log</div>
+            <div class="pane-title">Step Log</div>
             <div id="log-path" class="pane-path">Select a step</div>
             <div class="log-actions">
               <button id="log-jsonl" type="button" class="button small" aria-pressed="true">Events</button>

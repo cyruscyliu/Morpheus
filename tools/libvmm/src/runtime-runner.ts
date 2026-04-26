@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 
 function readJson(filePath: string) {
@@ -150,6 +150,28 @@ async function main(argv: string[]) {
   ];
 
   const log = fs.createWriteStream(logFile, { flags: 'a' });
+  const cleanResult = spawnSync('make', [...args.slice(0, -1), 'clean'], {
+    cwd: exampleDir,
+    env,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (cleanResult.stdout) {
+    log.write(cleanResult.stdout);
+    if (attach) {
+      process.stdout.write(cleanResult.stdout);
+    }
+  }
+  if (cleanResult.stderr) {
+    log.write(cleanResult.stderr);
+    if (attach) {
+      process.stderr.write(cleanResult.stderr);
+    }
+  }
+  if (cleanResult.status !== 0) {
+    log.end();
+    throw new Error(cleanResult.stderr || cleanResult.stdout || 'libvmm make clean failed');
+  }
   const child = spawn('make', args, {
     cwd: exampleDir,
     detached: false,

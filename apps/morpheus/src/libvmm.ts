@@ -5,6 +5,7 @@ const { spawnSync } = require("child_process");
 const { loadConfig, configDir, resolveLocalPath } = require("./config");
 const { registerManagedRun, registerManagedWorkspace } = require("./managed-state");
 const { resolveManagedRunDir, withNestedRunRoot } = require("./run-layout");
+const { logInfo, withLogFile } = require("./logger");
 const { repoRoot } = require("./paths");
 const { runManagedMicrokitSdk } = require("./microkit-sdk");
 
@@ -197,79 +198,100 @@ function buildManifest(options, runDir, manifestPath, built, toolchain) {
 
 function runManagedLibvmm(flags) {
   const options = parseRunOptions(flags);
-  registerManagedWorkspace({
-    mode: "local",
-    root: path.resolve(process.cwd(), options.workspace)
-  });
   const runDir = localRunDir(options.workspace, TOOL, options.id);
-  const manifestPath = localManifestPath(options.workspace, TOOL, options.id);
-  const logFile = localLogPath(options.workspace, TOOL, options.id);
-  fs.mkdirSync(runDir, { recursive: true });
-
-  const microkit = withNestedRunRoot(runDir, () =>
-    runManagedMicrokitSdk({ workspace: options.workspace, mode: "local" })
-  );
-  const sdkArtifact = (microkit.details.manifest.artifacts || []).find((item) => item.path === "sdk-dir");
-  if (!sdkArtifact || !sdkArtifact.location) {
-    throw new Error("libvmm could not resolve Microkit SDK artifact sdk-dir");
-  }
-  const toolchainArtifact = (microkit.details.manifest.artifacts || []).find((item) => item.path === "toolchain-dir");
-  const toolchainBinDir = toolchainArtifact && toolchainArtifact.location
-    ? path.join(toolchainArtifact.location, "bin")
-    : null;
-
-  const workspaceRoot = path.resolve(process.cwd(), options.workspace);
-  const venvPython = path.join(workspaceRoot, "tools", TOOL, "pyvenv", "bin", "python");
-  const hasPythonOverride = (options.makeArgs || []).some((arg) => typeof arg === "string" && arg.startsWith("PYTHON="));
-  const makeArgs = (!hasPythonOverride && fs.existsSync(venvPython))
-    ? [...options.makeArgs, `PYTHON=${venvPython}`]
-    : options.makeArgs;
-
-  const built = parseJsonResult(
-    runTool([
-      "--json",
-      "build",
-      "--source",
-      options.source,
-      "--microkit-sdk",
-      sdkArtifact.location,
-      "--board",
-      options.board,
-      ...(options.example ? ["--example", options.example] : []),
-      ...(options.patchDir ? ["--patch-dir", options.patchDir] : []),
-      ...(options.linux ? ["--linux", options.linux] : []),
-      ...(options.initrd ? ["--initrd", options.initrd] : []),
-      ...(toolchainBinDir ? ["--toolchain-bin-dir", toolchainBinDir] : []),
-      ...(options.gitUrl ? ["--git-url", options.gitUrl] : []),
-      ...(options.gitRef ? ["--git-ref", options.gitRef] : []),
-      ...makeArgs.flatMap((arg) => ["--make-arg", arg]),
-    ]),
-    "failed to build libvmm"
-  );
-
-  fs.writeFileSync(logFile, `${built.details && built.details.directory ? built.details.directory.path : ""}\n`, "utf8");
-  const manifest = buildManifest(options, runDir, manifestPath, built, toolchainArtifact || null);
-  writeJson(manifestPath, manifest);
-  registerManifest(manifest);
-
-  return {
-    command: "run",
-    status: "success",
-    exit_code: 0,
-    summary: "built and registered managed libvmm directory",
-    details: {
-      id: manifest.id,
-      tool: TOOL,
-      mode: manifest.mode,
-      provisioning: manifest.provisioning,
+  return withLogFile(path.join(runDir, "progress.jsonl"), () => {
+    registerManagedWorkspace({
+      mode: "local",
+      root: path.resolve(process.cwd(), options.workspace)
+    });
+    const manifestPath = localManifestPath(options.workspace, TOOL, options.id);
+    const logFile = localLogPath(options.workspace, TOOL, options.id);
+    fs.mkdirSync(runDir, { recursive: true });
+    logInfo("libvmm", "starting managed libvmm run", {
+      id: options.id,
       workspace: options.workspace,
-      run_dir: runDir,
-      manifest,
-      log_file: logFile,
-      output_dir: manifest.outputDir,
-      artifacts: manifest.artifacts
+      run_dir: path.relative(process.cwd(), runDir),
+      source: path.relative(process.cwd(), options.source),
+      example: options.example,
+      board: options.board,
+    });
+
+    logInfo("libvmm", "resolving microkit-sdk dependency", { run_id: options.id });
+    const microkit = withNestedRunRoot(runDir, () =>
+      runManagedMicrokitSdk({ workspace: options.workspace, mode: "local" })
+    );
+    const sdkArtifact = (microkit.details.manifest.artifacts || []).find((item) => item.path === "sdk-dir");
+    if (!sdkArtifact || !sdkArtifact.location) {
+      throw new Error("libvmm could not resolve Microkit SDK artifact sdk-dir");
     }
-  };
+    const toolchainArtifact = (microkit.details.manifest.artifacts || []).find((item) => item.path === "toolchain-dir");
+    const toolchainBinDir = toolchainArtifact && toolchainArtifact.location
+      ? path.join(toolchainArtifact.location, "bin")
+      : null;
+
+    const workspaceRoot = path.resolve(process.cwd(), options.workspace);
+    const venvPython = path.join(workspaceRoot, "tools", TOOL, "pyvenv", "bin", "python");
+    const hasPythonOverride = (options.makeArgs || []).some((arg) => typeof arg === "string" && arg.startsWith("PYTHON="));
+    const makeArgs = (!hasPythonOverride && fs.existsSync(venvPython))
+      ? [...options.makeArgs, `PYTHON=${venvPython}`]
+      : options.makeArgs;
+
+    logInfo("libvmm", "invoking libvmm build tool", {
+      run_id: options.id,
+      microkit_sdk: sdkArtifact.location,
+      toolchain_bin_dir: toolchainBinDir,
+    });
+    const built = parseJsonResult(
+      runTool([
+        "--json",
+        "build",
+        "--source",
+        options.source,
+        "--microkit-sdk",
+        sdkArtifact.location,
+        "--board",
+        options.board,
+        ...(options.example ? ["--example", options.example] : []),
+        ...(options.patchDir ? ["--patch-dir", options.patchDir] : []),
+        ...(options.linux ? ["--linux", options.linux] : []),
+        ...(options.initrd ? ["--initrd", options.initrd] : []),
+        ...(toolchainBinDir ? ["--toolchain-bin-dir", toolchainBinDir] : []),
+        ...(options.gitUrl ? ["--git-url", options.gitUrl] : []),
+        ...(options.gitRef ? ["--git-ref", options.gitRef] : []),
+        ...makeArgs.flatMap((arg) => ["--make-arg", arg]),
+      ]),
+      "failed to build libvmm"
+    );
+
+    fs.writeFileSync(logFile, `${built.details && built.details.directory ? built.details.directory.path : ""}\n`, "utf8");
+    const manifest = buildManifest(options, runDir, manifestPath, built, toolchainArtifact || null);
+    writeJson(manifestPath, manifest);
+    registerManifest(manifest);
+    logInfo("libvmm", "completed managed libvmm run", {
+      id: manifest.id,
+      manifest: path.relative(process.cwd(), manifestPath),
+      artifact_count: (manifest.artifacts || []).length,
+    });
+
+    return {
+      command: "run",
+      status: "success",
+      exit_code: 0,
+      summary: "built and registered managed libvmm directory",
+      details: {
+        id: manifest.id,
+        tool: TOOL,
+        mode: manifest.mode,
+        provisioning: manifest.provisioning,
+        workspace: options.workspace,
+        run_dir: runDir,
+        manifest,
+        log_file: logFile,
+        output_dir: manifest.outputDir,
+        artifacts: manifest.artifacts
+      }
+    };
+  });
 }
 
 module.exports = {

@@ -111,13 +111,20 @@ pre {
   gap: 0;
   padding: 12px;
   min-height: 0;
+  position: relative;
+}
+
+.workspace-main.runs-pane-collapsed {
+  grid-template-columns: 0 0 1fr var(--pane-resizer) 1fr;
 }
 
 .pane-spacer {
+  grid-column: 2;
   user-select: none;
 }
 
 .pane-resizer {
+  grid-column: 4;
   cursor: col-resize;
   position: relative;
   user-select: none;
@@ -153,6 +160,18 @@ pre {
   min-height: 0;
 }
 
+.list-pane {
+  grid-column: 1;
+}
+
+.detail-pane {
+  grid-column: 3;
+}
+
+.log-pane {
+  grid-column: 5;
+}
+
 .pane-header {
   padding: 12px 12px 10px;
   border-bottom: 1px solid rgba(216, 202, 182, 0.8);
@@ -160,6 +179,13 @@ pre {
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pane-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .log-actions {
@@ -241,6 +267,22 @@ select {
   display: grid;
   gap: 8px;
   align-content: start;
+}
+
+.workspace-main.runs-pane-collapsed .list-pane {
+  display: none;
+}
+
+.workspace-main.runs-pane-collapsed .pane-spacer {
+  display: none;
+}
+
+.floating-toggle {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  z-index: 5;
+  box-shadow: 0 8px 20px rgba(77, 57, 33, 0.12);
 }
 
 .list-footer {

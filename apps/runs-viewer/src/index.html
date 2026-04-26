@@ -23,11 +23,33 @@
       </header>
 
       <main class="workspace-main">
+        <button
+          id="toggle-runs-pane-floating"
+          type="button"
+          class="button small floating-toggle"
+          aria-expanded="true"
+          aria-controls="runs-list"
+          hidden
+        >
+          Show runs
+        </button>
+
         <section class="pane list-pane">
           <div class="pane-header">
             <div>
               <div class="pane-title">Runs</div>
               <p id="runs-summary" class="pane-subtitle"></p>
+            </div>
+            <div class="pane-actions">
+              <button
+                id="toggle-runs-pane"
+                type="button"
+                class="button small"
+                aria-expanded="true"
+                aria-controls="runs-list"
+              >
+                Collapse
+              </button>
             </div>
             <div class="filters">
               <label class="field inline">
@@ -74,7 +96,6 @@
             <div id="log-path" class="pane-path">Select a step</div>
             <div class="log-actions">
               <button id="log-jsonl" type="button" class="button small" aria-pressed="true">Events</button>
-              <button id="log-messages" type="button" class="button small" aria-pressed="false">Messages</button>
               <button id="log-beautify" type="button" class="button small" aria-pressed="true">Beautify</button>
               <button id="log-wrap" type="button" class="button small">Wrap</button>
               <button id="log-copy" type="button" class="button small">Copy</button>

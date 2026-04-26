@@ -5,7 +5,7 @@ const { spawnSync } = require("child_process");
 const { applyConfigDefaults } = require("./config");
 const { repoRoot } = require("./paths");
 const { writeStdoutLine } = require("./io");
-const { logDebug, logInfo } = require("./logger");
+const { logDebug, logInfo, withLogFile } = require("./logger");
 const {
   createWorkflowRun,
   createWorkflowStep,
@@ -58,6 +58,10 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
+function stepToolResultPath(stepDir) {
+  return path.join(stepDir, "tool-result.json");
+}
+
 function cliEntrypoint() {
   return path.join(repoRoot(), "apps", "morpheus", "dist", "cli.js");
 }
@@ -103,8 +107,11 @@ function findWorkflowRun(workspaceRoot, id) {
 
 function parseToolPayload(stdout) {
   try {
-    const lines = String(stdout || "").trim().split(/\r?\n/).filter(Boolean);
-    return lines.length > 0 ? JSON.parse(lines[lines.length - 1]) : null;
+    const raw = String(stdout || "").trim();
+    if (!raw) {
+      return null;
+    }
+    return JSON.parse(raw);
   } catch {
     return null;
   }
@@ -133,6 +140,7 @@ function tailFile(filePath, maxBytes) {
 
 function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, commandLabel }) {
   const workflow = createWorkflowRun(workspaceRoot, workflowName);
+  return withLogFile(path.join(workflow.runDir, "progress.jsonl"), () => {
   const createdSteps = [];
   for (let index = 0; index < steps.length; index += 1) {
     const step = steps[index];
@@ -154,6 +162,9 @@ function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, co
   logInfo("workflow", "created workflow run", {
     id: workflow.id,
     workflow: workflow.workflow,
+    workspace: workflow.workspace,
+    run_dir: path.relative(process.cwd(), workflow.runDir),
+    step_count: createdSteps.length,
     steps: createdSteps.map((step) => ({ id: step.id, tool: step.tool }))
   });
 
@@ -200,7 +211,9 @@ function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, co
       workflow: workflow.id,
       step: step.id,
       tool: step.tool,
+      argv: args.slice(1),
       log_file: path.relative(process.cwd(), step.logFile),
+      run_dir: path.relative(process.cwd(), stepToolRunDir(step.stepDir)),
     });
     fs.appendFileSync(
       step.logFile,
@@ -214,15 +227,20 @@ function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, co
       env: {
         ...process.env,
         MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1",
-        MORPHEUS_RUN_DIR_OVERRIDE: stepToolRunDir(step.stepDir)
+        MORPHEUS_RUN_DIR_OVERRIDE: stepToolRunDir(step.stepDir),
+        MORPHEUS_EVENT_LOG_FILE: path.join(step.stepDir, "progress.jsonl")
       },
       stdio: ["ignore", "pipe", "pipe"]
     });
 
-    fs.appendFileSync(step.logFile, result.stdout || "", "utf8");
     fs.appendFileSync(step.logFile, result.stderr || "", "utf8");
 
     const toolPayload = parseToolPayload(result.stdout || "");
+    if (toolPayload) {
+      writeJson(stepToolResultPath(step.stepDir), toolPayload);
+    } else if (result.stdout) {
+      fs.appendFileSync(step.logFile, result.stdout || "", "utf8");
+    }
     lastToolPayload = toolPayload;
     lastStderr = String(result.stderr || "");
     const status = result.status === 0 ? "success" : "error";
@@ -276,6 +294,12 @@ function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, co
     status: workflowStatus,
     steps: current.steps
   }));
+  logInfo("workflow", workflowStatus === "success" ? "completed workflow run" : "workflow run failed", {
+    id: updatedWorkflow.id,
+    workflow: updatedWorkflow.workflow,
+    status: workflowStatus,
+    run_dir: path.relative(process.cwd(), updatedWorkflow.runDir),
+  });
 
   const payload = {
     command: commandLabel || "workflow run",
@@ -319,6 +343,7 @@ function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, co
   }
 
   return payload.exit_code || 0;
+  });
 }
 
 function runSingleToolWorkflow({ tool, workflowName, workspaceRoot, toolArgv, jsonMode, commandLabel }) {

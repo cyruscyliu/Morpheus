@@ -6,6 +6,7 @@ const { handleManagedRunCommand } = require("./remote");
 const { runSingleToolWorkflow, runToolBuildWorkflow } = require("./workflow");
 const { applyConfigDefaults, loadConfig } = require("./config");
 const { writeStdoutLine } = require("./io");
+const { logInfo } = require("./logger");
 
 function descriptorPath(toolName) {
   return path.join(repoRoot(), "tools", toolName, "tool.json");
@@ -264,6 +265,11 @@ async function handleToolCommand(argv) {
     if (!tool) {
       throw new Error("tool build requires --tool <name>");
     }
+    logInfo("tool", "received tool build request", {
+      tool,
+      json: Boolean(flags.json),
+      workspace: flags.workspace || null,
+    });
     const workflowName = `tool-${tool}`;
     const workspaceRoot = resolveWorkspaceRoot(flags);
     let toolArgv = [...rest];

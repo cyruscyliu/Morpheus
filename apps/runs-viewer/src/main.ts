@@ -19,7 +19,6 @@ interface ViewState {
   logWrap: boolean;
   logBeautify: boolean;
   logJsonl: boolean;
-  logMessagesOnly: boolean;
 }
 
 function requiredElement<T extends Element>(selector: string): T {
@@ -40,6 +39,7 @@ const PANE_RESIZER_PX = 12;
 const PANE_GAP_PX = 12;
 const PANE_MIN_PX = 260;
 const PANE_RATIOS_STORAGE_KEY = "morpheus:runs-viewer:paneRatios:v2";
+const RUNS_PANE_COLLAPSED_STORAGE_KEY = "morpheus:runs-viewer:runsPaneCollapsed:v1";
 const NARROW_MEDIA_QUERY = "(max-width: 980px)";
 
 function statusClass(status: string): string {
@@ -217,9 +217,6 @@ function renderJsonlLine(payload: StructuredPayload, beautify: boolean): string 
   const badges = jsonlBadges(value);
 
   let summaryText = summary ? summary : "";
-  if (!summaryText && Array.isArray(value)) {
-    summaryText = `argv (${value.length} args)`;
-  }
   if (!summaryText) {
     summaryText = "JSON";
   }
@@ -248,22 +245,6 @@ function renderJsonlLine(payload: StructuredPayload, beautify: boolean): string 
   ].join("");
 }
 
-function isMessageLikePayload(value: unknown): boolean {
-  if (!isPlainObject(value)) {
-    return false;
-  }
-  if (typeof value.summary === "string" && value.summary.trim()) {
-    return true;
-  }
-  if (typeof value.message === "string" && value.message.trim()) {
-    return true;
-  }
-  if (typeof value.event === "string" && value.event.trim()) {
-    return true;
-  }
-  return false;
-}
-
 function isFailureLikePayload(value: unknown): boolean {
   const status = jsonlStatus(value);
   if (!status) {
@@ -273,10 +254,7 @@ function isFailureLikePayload(value: unknown): boolean {
   return lowered === "error" || lowered === "failure" || lowered === "failed";
 }
 
-function shouldHideStructuredPayload(payload: StructuredPayload, messagesOnly: boolean): boolean {
-  if (!messagesOnly) {
-    return false;
-  }
+function shouldHideStructuredPayload(payload: StructuredPayload): boolean {
   const { prefix, value } = payload;
   if (Array.isArray(value)) {
     return true;
@@ -287,10 +265,7 @@ function shouldHideStructuredPayload(payload: StructuredPayload, messagesOnly: b
   if (isFailureLikePayload(value)) {
     return false;
   }
-  if (isMessageLikePayload(value)) {
-    return false;
-  }
-  return true;
+  return false;
 }
 
 function defaultPaneRatios(): PaneRatios {
@@ -331,6 +306,22 @@ function savePaneRatios(ratios: PaneRatios): void {
   }
 }
 
+function loadRunsPaneCollapsed(): boolean {
+  try {
+    return localStorage.getItem(RUNS_PANE_COLLAPSED_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveRunsPaneCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(RUNS_PANE_COLLAPSED_STORAGE_KEY, collapsed ? "1" : "0");
+  } catch {
+    // ignore
+  }
+}
+
 function isNarrowViewport(): boolean {
   try {
     return window.matchMedia(NARROW_MEDIA_QUERY).matches;
@@ -353,6 +344,19 @@ function availablePaneWidthPx(workspace: HTMLElement): number {
 function applyPaneRatios(workspace: HTMLElement, ratios: PaneRatios): void {
   if (isNarrowViewport()) {
     workspace.style.gridTemplateColumns = "";
+    return;
+  }
+  if (workspace.classList.contains("runs-pane-collapsed")) {
+    const [currentDetailWidth] = currentPaneWidthsPx(workspace);
+    const available = workspace.clientWidth - PANE_RESIZER_PX;
+    if (available <= 0) {
+      return;
+    }
+    const effectiveMin = available < 2 * PANE_MIN_PX ? Math.floor(available / 2) : PANE_MIN_PX;
+    const preferredDetailWidth = currentDetailWidth > 0 ? currentDetailWidth : Math.round(normalizePaneRatios(ratios)[0] * available);
+    const wDetail = clamp(Math.round(preferredDetailWidth), effectiveMin, available - effectiveMin);
+    const wLog = Math.max(effectiveMin, available - wDetail);
+    workspace.style.gridTemplateColumns = `0 0 ${wDetail}px ${PANE_RESIZER_PX}px ${wLog}px`;
     return;
   }
   const available = availablePaneWidthPx(workspace);
@@ -396,14 +400,41 @@ function adjustedPair(sum: number, a: number, delta: number, min: number): [numb
 function installPaneResizers(): void {
   const workspace = requiredElement<HTMLElement>(".workspace-main");
   const rightResizer = optionalElement<HTMLElement>("[data-resizer=\"right\"]");
+  const toggleRunsPane = optionalElement<HTMLButtonElement>("#toggle-runs-pane");
+  const floatingToggleRunsPane = optionalElement<HTMLButtonElement>("#toggle-runs-pane-floating");
   if (!rightResizer) {
     return;
   }
 
   let ratios = loadPaneRatios();
-  applyPaneRatios(workspace, ratios);
+  let runsPaneCollapsed = loadRunsPaneCollapsed();
+  const syncRunsPane = () => {
+    const collapsed = runsPaneCollapsed && !isNarrowViewport();
+    workspace.classList.toggle("runs-pane-collapsed", collapsed);
+    if (toggleRunsPane) {
+      toggleRunsPane.textContent = runsPaneCollapsed ? "Expand" : "Collapse";
+      toggleRunsPane.setAttribute("aria-expanded", runsPaneCollapsed ? "false" : "true");
+    }
+    if (floatingToggleRunsPane) {
+      floatingToggleRunsPane.hidden = !collapsed;
+      floatingToggleRunsPane.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    }
+    applyPaneRatios(workspace, ratios);
+  };
 
-  const handleResize = () => applyPaneRatios(workspace, ratios);
+  const toggleCollapsedState = () => {
+    runsPaneCollapsed = !runsPaneCollapsed;
+    saveRunsPaneCollapsed(runsPaneCollapsed);
+    syncRunsPane();
+  };
+
+  toggleRunsPane?.addEventListener("click", toggleCollapsedState);
+  floatingToggleRunsPane?.addEventListener("click", toggleCollapsedState);
+
+  applyPaneRatios(workspace, ratios);
+  syncRunsPane();
+
+  const handleResize = () => syncRunsPane();
   window.addEventListener("resize", handleResize, { passive: true });
 
   const startDrag = (resizer: HTMLElement, event: PointerEvent) => {
@@ -517,7 +548,6 @@ function renderLogHtml(
   wrap: boolean,
   beautify: boolean,
   jsonl: boolean,
-  messagesOnly: boolean,
 ): string {
   const maxLines = 5000;
   const lines = logText.replace(/\r\n/g, "\n").split("\n");
@@ -540,7 +570,7 @@ function renderLogHtml(
       const lineNumber = start + index + 1;
       const payload = jsonl ? extractStructuredPayload(line) : null;
       if (payload !== null) {
-        if (shouldHideStructuredPayload(payload, messagesOnly)) {
+        if (shouldHideStructuredPayload(payload)) {
           return "";
         }
         return `<li class="log-line"><span class="log-ln">${lineNumber}</span><span class="log-lc">${renderJsonlLine(
@@ -725,13 +755,11 @@ function renderLogPane(state: ViewState): void {
   const container = requiredElement<HTMLElement>("#log-detail");
   const pathLabel = requiredElement<HTMLElement>("#log-path");
   const jsonlButton = requiredElement<HTMLButtonElement>("#log-jsonl");
-  const messagesButton = requiredElement<HTMLButtonElement>("#log-messages");
   const beautifyButton = requiredElement<HTMLButtonElement>("#log-beautify");
   const wrapButton = requiredElement<HTMLButtonElement>("#log-wrap");
   const copyButton = requiredElement<HTMLButtonElement>("#log-copy");
 
   jsonlButton.setAttribute("aria-pressed", state.logJsonl ? "true" : "false");
-  messagesButton.setAttribute("aria-pressed", state.logMessagesOnly ? "true" : "false");
   beautifyButton.setAttribute("aria-pressed", state.logBeautify ? "true" : "false");
   wrapButton.setAttribute("aria-pressed", state.logWrap ? "true" : "false");
   copyButton.disabled = !state.logText;
@@ -770,7 +798,6 @@ function renderLogPane(state: ViewState): void {
     state.logWrap,
     state.logBeautify,
     state.logJsonl,
-    state.logMessagesOnly,
   );
 }
 
@@ -895,7 +922,6 @@ export async function bootstrap(): Promise<void> {
     logWrap: false,
     logBeautify: true,
     logJsonl: true,
-    logMessagesOnly: false,
   };
 
   requiredElement<HTMLButtonElement>("#refresh-button").addEventListener("click", () => {
@@ -940,11 +966,6 @@ export async function bootstrap(): Promise<void> {
 
   requiredElement<HTMLButtonElement>("#log-jsonl").addEventListener("click", () => {
     state.logJsonl = !state.logJsonl;
-    renderLogPane(state);
-  });
-
-  requiredElement<HTMLButtonElement>("#log-messages").addEventListener("click", () => {
-    state.logMessagesOnly = !state.logMessagesOnly;
     renderLogPane(state);
   });
 

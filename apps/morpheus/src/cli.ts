@@ -88,6 +88,21 @@ function extractSubcommand(argv) {
   return { subcommand: null, rest: [...argv] };
 }
 
+function resolveWorkspaceRoot(flags) {
+  const { flags: resolvedRunDefaults } = applyConfigDefaults(
+    { tool: "runs", workspace: flags.workspace || null },
+    { allowGlobalRemote: false, allowToolDefaults: false }
+  );
+  return resolvedRunDefaults.workspace || path.join(process.cwd(), "hyperarm-workspace");
+}
+
+function looksLikeWorkflowRun(workspaceRoot, runId) {
+  if (!runId || runId.startsWith("wf-") === false) {
+    return false;
+  }
+  return require("fs").existsSync(path.join(workspaceRoot, "runs", runId, "workflow.json"));
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const { positionals, flags } = parseArgs(argv);
@@ -116,20 +131,21 @@ async function main() {
     const { subcommand: runsCommand, rest } = extractSubcommand(runsArgv);
     const managedAlias = runsCommand === "list" && rest.includes("--managed");
     const managedSubcommands = new Set(["inspect", "logs", "fetch", "remove"]);
+    const workspaceRoot = resolveWorkspaceRoot(flags);
+    const runIdFlagIndex = rest.indexOf("--id");
+    const runId = runIdFlagIndex >= 0 ? rest[runIdFlagIndex + 1] : null;
     if (managedAlias) {
       return await handleManagedRunCommand(
         "list",
         rest.filter((token) => token !== "--managed")
       );
     }
+    if ((runsCommand === "inspect" || runsCommand === "logs") && looksLikeWorkflowRun(workspaceRoot, runId)) {
+      return handleWorkflowCommand([runsCommand, ...rest]);
+    }
     if (managedSubcommands.has(runsCommand)) {
       return await handleManagedRunCommand(runsCommand, rest);
     }
-    const { flags: resolvedRunDefaults } = applyConfigDefaults(
-      { tool: "runs", workspace: flags.workspace || null },
-      { allowGlobalRemote: false, allowToolDefaults: false }
-    );
-    const workspaceRoot = resolvedRunDefaults.workspace || path.join(process.cwd(), "hyperarm-workspace");
     return handleRunsCommand([runsCommand, ...rest].filter(Boolean), {
       runRoot: path.join(workspaceRoot, "runs"),
       outputRoot: path.join(workspaceRoot, "runs-view")

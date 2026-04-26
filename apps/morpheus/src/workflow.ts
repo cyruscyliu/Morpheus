@@ -105,16 +105,42 @@ function findWorkflowRun(workspaceRoot, id) {
   return { runDir, manifestPath };
 }
 
-function parseToolPayload(stdout) {
-  try {
-    const raw = String(stdout || "").trim();
-    if (!raw) {
-      return null;
-    }
-    return JSON.parse(raw);
-  } catch {
+function consumeToolOutput(stdout, stepLogFile) {
+  const text = String(stdout || "");
+  if (!text.trim()) {
     return null;
   }
+
+  let finalPayload = null;
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+
+    let parsed = null;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      fs.appendFileSync(stepLogFile, `${rawLine}\n`, "utf8");
+      continue;
+    }
+
+    if (
+      parsed &&
+      parsed.status === "stream" &&
+      parsed.details &&
+      parsed.details.event === "log" &&
+      typeof parsed.details.line === "string"
+    ) {
+      fs.appendFileSync(stepLogFile, `${parsed.details.line}\n`, "utf8");
+      continue;
+    }
+
+    finalPayload = parsed;
+  }
+
+  return finalPayload;
 }
 
 function tailFile(filePath, maxBytes) {
@@ -235,11 +261,9 @@ function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, co
 
     fs.appendFileSync(step.logFile, result.stderr || "", "utf8");
 
-    const toolPayload = parseToolPayload(result.stdout || "");
+    const toolPayload = consumeToolOutput(result.stdout || "", step.logFile);
     if (toolPayload) {
       writeJson(stepToolResultPath(step.stepDir), toolPayload);
-    } else if (result.stdout) {
-      fs.appendFileSync(step.logFile, result.stdout || "", "utf8");
     }
     lastToolPayload = toolPayload;
     lastStderr = String(result.stderr || "");

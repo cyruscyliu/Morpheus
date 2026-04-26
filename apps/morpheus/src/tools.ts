@@ -214,6 +214,35 @@ function stripBooleanFlag(argv, flagName) {
   return argv.filter((token) => token !== flagName);
 }
 
+function isRecoverableNvirshDependencyError(error) {
+  const message = error && error.message ? String(error.message) : "";
+  return (
+    /could not resolve .* artifact .* from /.test(message)
+    || /missing .* dependency configuration/.test(message)
+    || /unsupported .* dependency configuration/.test(message)
+  );
+}
+
+async function runNvirshDependencyWorkflow(rest, flags) {
+  const workflowName = `tool-${flags.tool}`;
+  const workspaceRoot = resolveWorkspaceRoot(flags);
+  let toolArgv = [...rest];
+  toolArgv = stripBooleanFlag(toolArgv, "--json");
+  toolArgv = stripFlagPair(toolArgv, "--tool");
+  toolArgv = stripFlagPair(toolArgv, "--workspace");
+
+  const dependencies = sortToolDependencies(toolDependencyNamesFromConfig(flags.tool));
+  const inheritedArgs = flags.verbose ? ["--verbose"] : [];
+  const steps = dependencies.map((name) => ({ tool: name, name: `${name}.build`, toolArgv: inheritedArgs }));
+  return await runToolBuildWorkflow({
+    steps,
+    workflowName,
+    workspaceRoot,
+    jsonMode: false,
+    commandLabel: "tool run",
+  });
+}
+
 async function handleToolCommand(argv) {
   const { subcommand, rest } = extractToolSubcommand(argv);
   if (!subcommand || subcommand === "help" || subcommand === "--help") {
@@ -225,29 +254,18 @@ async function handleToolCommand(argv) {
     const { flags } = parseToolArgs(rest);
     const tool = flags.tool;
     if (tool === "nvirsh") {
-      const workflowName = `tool-${tool}`;
-      const workspaceRoot = resolveWorkspaceRoot(flags);
-      let toolArgv = [...rest];
-      toolArgv = stripBooleanFlag(toolArgv, "--json");
-      toolArgv = stripFlagPair(toolArgv, "--tool");
-      toolArgv = stripFlagPair(toolArgv, "--workspace");
-
-      const dependencies = sortToolDependencies(toolDependencyNamesFromConfig(tool));
-      const inheritedArgs = flags.verbose ? ["--verbose"] : [];
-      const steps = [
-        ...dependencies.map((name) => ({ tool: name, name: `${name}.build`, toolArgv: inheritedArgs })),
-      ];
-      const exitCode = runToolBuildWorkflow({
-        steps,
-        workflowName,
-        workspaceRoot,
-        jsonMode: false,
-        commandLabel: `tool ${subcommand}`,
-      });
-      if (exitCode !== 0) {
-        return exitCode;
+      try {
+        return await handleManagedRunCommand("run", rest);
+      } catch (error) {
+        if (!isRecoverableNvirshDependencyError(error)) {
+          throw error;
+        }
+        const exitCode = await runNvirshDependencyWorkflow(rest, flags);
+        if (exitCode !== 0) {
+          return exitCode;
+        }
+        return await handleManagedRunCommand("run", rest);
       }
-      return await handleManagedRunCommand("run", rest);
     }
     return await handleManagedRunCommand("run", rest);
   }
@@ -286,7 +304,7 @@ async function handleToolCommand(argv) {
         ...dependencies.map((name) => ({ tool: name, name: `${name}.build`, toolArgv: inheritedArgs })),
         { tool, name: `${tool}.build`, toolArgv: [...toolArgv, "--build-only"] }
       ];
-      return runToolBuildWorkflow({
+      return await runToolBuildWorkflow({
         steps,
         workflowName,
         workspaceRoot,

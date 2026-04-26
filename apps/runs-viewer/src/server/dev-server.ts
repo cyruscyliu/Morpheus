@@ -5,10 +5,10 @@ import path from "node:path";
 
 import chokidar from "chokidar";
 
-import { findRunRoot } from "./run-root.js";
-import { debounce } from "./debounce.js";
-import { loadRunDetail, loadStepLogText, listRunSummariesWithTotal } from "./runs-store.js";
-import { isSafeId } from "./validate.js";
+import { findRunRoot } from "./run-root";
+import { debounce } from "./debounce";
+import { loadRunDetail, loadStepLogText, listRunSummariesWithTotal } from "./runs-store";
+import { isSafeId } from "./validate";
 
 export interface RunsViewerServer {
   middleware: (req: IncomingMessage, res: ServerResponse, next: () => void) => void;

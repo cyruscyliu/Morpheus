@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import type { RunDetail, RunSummary, RunStepSummary } from "../types.js";
-import { isSafeId } from "./validate.js";
+import type { RunDetail, RunSummary, RunStepSummary } from "../types";
+import { isSafeId } from "./validate";
 
 interface ListOptions {
   limit?: string | null;

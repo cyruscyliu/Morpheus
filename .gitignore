@@ -6,6 +6,7 @@ coverage/
 apps/docs/dist/
 apps/docs/.tsbuild/
 apps/runs-viewer/.tsbuild/
+apps/runs-viewer/.next/
 __pycache__/
 *.pyc
 .pytest_cache/

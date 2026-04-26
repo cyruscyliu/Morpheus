@@ -1,0 +1,252 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 247 243 234;
+  --foreground: 34 29 23;
+  --card: 251 246 238;
+  --card-foreground: 34 29 23;
+  --border: 216 202 182;
+  --input: 186 167 143;
+  --primary: 22 93 82;
+  --primary-foreground: 251 246 238;
+  --muted: 248 241 231;
+  --muted-foreground: 110 95 77;
+  --accent: 22 93 82;
+  --accent-foreground: 251 246 238;
+  --destructive: 177 58 45;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  background:
+    radial-gradient(circle at top left, rgb(var(--card)) 0, transparent 28%),
+    linear-gradient(180deg, rgb(var(--background)) 0%, rgb(239 232 218) 100%);
+}
+
+button {
+  font: inherit;
+}
+
+.workflow-table-shell,
+.workflow-log-shell {
+  border: 1px solid rgb(var(--border));
+  border-radius: 16px;
+  background: rgb(var(--card) / 0.92);
+  overflow: hidden;
+}
+
+.workflow-log-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.workflow-table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 60px;
+  padding: 0 16px;
+  border-bottom: 1px solid rgb(var(--border) / 0.8);
+}
+
+.workflow-table-scroll {
+  overflow: auto;
+}
+
+.workflow-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+.workflow-table th,
+.workflow-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgb(var(--border) / 0.65);
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.workflow-table th {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgb(var(--muted-foreground));
+  background: rgb(var(--muted) / 0.7);
+}
+
+.workflow-table tbody tr {
+  cursor: pointer;
+}
+
+.workflow-table tbody tr:hover {
+  background: rgb(var(--muted) / 0.55);
+}
+
+.workflow-table tbody tr.is-selected {
+  background: rgb(var(--primary) / 0.08);
+}
+
+.workflow-table-id {
+  font-weight: 700;
+}
+
+.workflow-table-empty {
+  color: rgb(var(--muted-foreground));
+}
+
+.workflow-status-text {
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.workflow-status-text.is-success {
+  color: #1f7a4d;
+}
+
+.workflow-status-text.is-running {
+  color: #9a6b10;
+}
+
+.workflow-status-text.is-failure,
+.workflow-status-text.is-error {
+  color: rgb(var(--destructive));
+}
+
+.workflow-log-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 16px;
+  overflow: auto;
+}
+
+.workflow-empty-state {
+  color: rgb(var(--muted-foreground));
+}
+
+.log-viewer {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.88rem;
+}
+
+.log-viewer.wrap .log-lc {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-lines {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.log-line {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.log-ln {
+  color: rgb(var(--muted-foreground));
+  text-align: right;
+  user-select: none;
+}
+
+.log-lc {
+  white-space: pre;
+}
+
+.tok-error,
+.tok-json-key {
+  color: #b13a2d;
+}
+
+.tok-warn,
+.tok-json-num {
+  color: #9a6b10;
+}
+
+.tok-dim,
+.tok-json-null {
+  color: rgb(var(--muted-foreground));
+}
+
+.tok-json-str,
+.tok-json-bool {
+  color: #165d52;
+}
+
+.jsonl-line {
+  border: 1px solid rgb(var(--input) / 0.7);
+  border-radius: 10px;
+  margin-bottom: 6px;
+  background: rgb(var(--muted) / 0.65);
+}
+
+.jsonl-line summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+.jsonl-line summary::-webkit-details-marker {
+  display: none;
+}
+
+.jsonl-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.jsonl-badge {
+  border-radius: 999px;
+  border: 1px solid rgb(var(--input) / 0.8);
+  padding: 2px 8px;
+  font-size: 0.72rem;
+}
+
+.jsonl-pre {
+  margin: 0;
+  padding: 0 10px 10px;
+  overflow: auto;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 1200px) {
+  .workflow-table th,
+  .workflow-table td {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 980px) {
+  .workflow-table-header {
+    min-height: 56px;
+    padding: 0 12px;
+  }
+}

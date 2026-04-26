@@ -8,6 +8,7 @@ const {
   registerManagedRun,
   registerManagedWorkspace
 } = require("./managed-state");
+const { findManagedManifestFiles, resolveManagedRunDir } = require("./run-layout");
 const { repoRoot } = require("./paths");
 
 const TOOL = "nvirsh";
@@ -108,12 +109,7 @@ function localToolWorkspace(workspace, tool) {
 }
 
 function localRunDir(workspace, tool, id) {
-  return path.join(localWorkspaceRoot(workspace), "runs", id);
-}
-
-function resolveRunDirOverride() {
-  const override = process.env.MORPHEUS_RUN_DIR_OVERRIDE;
-  return override ? path.resolve(process.cwd(), override) : null;
+  return resolveManagedRunDir(workspace, id);
 }
 
 function localManifestPath(workspace, tool, id) {
@@ -196,49 +192,36 @@ function hydrateWorkflowStepRunRecords(workspace, tool) {
     return;
   }
 
-  for (const runEntry of fs.readdirSync(runsRoot, { withFileTypes: true })) {
-    if (!runEntry.isDirectory()) {
+  for (const manifestPath of findManagedManifestFiles(runsRoot)) {
+    if (!manifestPath.includes(`${path.sep}steps${path.sep}`)) {
       continue;
     }
-    const stepsRoot = path.join(runsRoot, runEntry.name, "steps");
-    if (!fs.existsSync(stepsRoot)) {
+    let manifest;
+    try {
+      manifest = readJson(manifestPath);
+    } catch {
       continue;
     }
-    for (const stepEntry of fs.readdirSync(stepsRoot, { withFileTypes: true })) {
-      if (!stepEntry.isDirectory()) {
-        continue;
-      }
-      const manifestPath = path.join(stepsRoot, stepEntry.name, "manifest.json");
-      if (!fs.existsSync(manifestPath)) {
-        continue;
-      }
-      let manifest;
-      try {
-        manifest = readJson(manifestPath);
-      } catch {
-        continue;
-      }
-      if (!manifest || manifest.tool !== tool) {
-        continue;
-      }
-      registerManagedRun({
-        id: manifest.id,
-        tool: manifest.tool,
-        mode: manifest.mode,
-        workspace: path.resolve(process.cwd(), workspace),
-        ssh: manifest.transport && manifest.transport.type === "ssh" && manifest.transport.target
-          ? manifest.transport.target.original
-          : null,
-        status: manifest.status,
-        createdAt: manifest.createdAt,
-        updatedAt: manifest.updatedAt,
-        manifest: manifest.manifest,
-        logFile: manifest.logFile,
-        runDir: manifest.runDir,
-        outputDir: manifest.outputDir,
-        artifacts: manifest.artifacts || []
-      });
+    if (!manifest || manifest.tool !== tool) {
+      continue;
     }
+    registerManagedRun({
+      id: manifest.id,
+      tool: manifest.tool,
+      mode: manifest.mode,
+      workspace: path.resolve(process.cwd(), workspace),
+      ssh: manifest.transport && manifest.transport.type === "ssh" && manifest.transport.target
+        ? manifest.transport.target.original
+        : null,
+      status: manifest.status,
+      createdAt: manifest.createdAt,
+      updatedAt: manifest.updatedAt,
+      manifest: manifest.manifest,
+      logFile: manifest.logFile,
+      runDir: manifest.runDir,
+      outputDir: manifest.outputDir,
+      artifacts: manifest.artifacts || []
+    });
   }
 }
 
@@ -457,8 +440,7 @@ function parseRunOptions(flags) {
     throw new Error("run requires --workspace DIR or a workspace root in morpheus.yaml");
   }
   const runId = generateRunId();
-  const overriddenRunDir = resolveRunDirOverride();
-  const runDir = overriddenRunDir || localRunDir(workspace, TOOL, runId);
+  const runDir = localRunDir(workspace, TOOL, runId);
   const dependencies = value.dependencies || {};
   const kernel = resolveDependencyArtifact(workspace, toolConfig.baseDir, flags.kernel, dependencies.kernel, "kernel");
   const initrd = resolveDependencyArtifact(workspace, toolConfig.baseDir, flags.initrd, dependencies.initrd, "initrd");

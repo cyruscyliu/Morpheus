@@ -15,6 +15,7 @@ const { runManagedNvirsh } = require("./nvirsh");
 const { runManagedQemu } = require("./qemu");
 const { runManagedSel4 } = require("./sel4");
 const { runManagedLibvmm } = require("./libvmm");
+const { findManagedManifestFiles, resolveManagedRunDir } = require("./run-layout");
 const { applyConfigDefaults, resolveLocalPath } = require("./config");
 const { logDebug } = require("./logger");
 const { writeStdout, writeStdoutLine } = require("./io");
@@ -309,7 +310,7 @@ function localToolWorkspace(workspace, tool) {
 }
 
 function localRunDir(workspace, tool, id) {
-  return path.join(localWorkspaceRoot(workspace), "runs", id);
+  return resolveManagedRunDir(workspace, id);
 }
 
 function localBuildDir(workspace, tool, key) {
@@ -1671,7 +1672,9 @@ async function inspectManagedRun(flags) {
   }
   const manifestPath = options.ssh
     ? remoteManifestPath(options.workspace, options.tool, options.id)
-    : localManifestPath(options.workspace, options.tool, options.id);
+    : (options.record && options.record.manifest
+      ? String(options.record.manifest)
+      : localManifestPath(options.workspace, options.tool, options.id));
   const manifest = options.ssh
     ? reconcileRemoteManifest(
       JSON.parse(runRequiredSsh(options.ssh, `cat ${shellQuote(manifestPath)}`, `failed to read remote manifest: ${manifestPath}`).stdout),
@@ -1703,7 +1706,9 @@ async function logsManagedRun(flags) {
   }
   const logFile = options.ssh
     ? remoteLogPath(options.workspace, options.tool, options.id)
-    : localLogPath(options.workspace, options.tool, options.id);
+    : (options.record && options.record.logFile
+      ? String(options.record.logFile)
+      : localLogPath(options.workspace, options.tool, options.id));
   let output = "";
   if (options.ssh) {
     const command = options.follow ? `tail -n +1 -f ${shellQuote(logFile)}` : `cat ${shellQuote(logFile)}`;
@@ -1767,7 +1772,9 @@ function fetchManagedRun(flags) {
     const pipeline = `${shellQuote(sshBinary())} ${sshArgs(options.ssh).map(shellQuote).join(" ")} ${shellQuote(sshCommand(remoteScript))} | tar -xf - -C ${shellQuote(destination)}`;
     runRequiredShell(pipeline, "failed to fetch remote paths");
   } else {
-    const localBase = localRunDir(options.workspace, options.tool, options.id);
+    const localBase = options.record && options.record.runDir
+      ? String(options.record.runDir)
+      : localRunDir(options.workspace, options.tool, options.id);
     const localPaths = paths.map((entry) => path.resolve(localBase, entry));
     const pipeline = `tar -cf - ${localPaths.map(shellQuote).join(" ")} | tar -xf - -C ${shellQuote(destination)}`;
     runRequiredShell(pipeline, "failed to fetch local paths");
@@ -1846,14 +1853,7 @@ function hydrateLocalManagedRuns(workspace) {
   if (!fs.existsSync(runsRoot)) {
     return;
   }
-  for (const entry of fs.readdirSync(runsRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-    const manifestPath = path.join(runsRoot, entry.name, "manifest.json");
-    if (!fs.existsSync(manifestPath)) {
-      continue;
-    }
+  for (const manifestPath of findManagedManifestFiles(runsRoot)) {
     const manifest = readJson(manifestPath);
     registerRunFromManifest(manifest, null);
   }
@@ -1869,7 +1869,7 @@ items = []
 if root.exists():
     runs_root = root / "runs"
     if runs_root.exists():
-        for manifest in runs_root.glob("*/manifest.json"):
+        for manifest in runs_root.rglob("manifest.json"):
             try:
                 items.append(json.loads(manifest.read_text()))
             except Exception:
@@ -1901,7 +1901,10 @@ function removeManagedRunCommand(flags) {
     if (options.tool === "nvirsh") {
       stopLocalNvirshRun(options);
     }
-    fs.rmSync(localRunDir(options.workspace, options.tool, options.id), {
+    const runDir = options.record && options.record.runDir
+      ? String(options.record.runDir)
+      : localRunDir(options.workspace, options.tool, options.id);
+    fs.rmSync(runDir, {
       recursive: true,
       force: true
     });

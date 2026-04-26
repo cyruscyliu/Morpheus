@@ -55,6 +55,10 @@ function stepArtifactsDir(stepDir) {
   return path.join(stepDir, "artifacts");
 }
 
+function stepToolRunDir(stepDir) {
+  return path.join(stepDir, "run");
+}
+
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
@@ -129,6 +133,7 @@ function createWorkflowStep(runDir, index, name, options = {}) {
     createdAt,
     updatedAt: createdAt,
     stepDir: dir,
+    toolRunDir: stepToolRunDir(dir),
     logFile: stepLogPath(dir),
     artifactsDir: stepArtifactsDir(dir),
     tool: options.tool || null,
@@ -158,6 +163,7 @@ module.exports = {
   sanitizeStepName,
   legacyRunRecordPath,
   stepArtifactsDir,
+  stepToolRunDir,
   stepDir,
   stepLogPath,
   stepManifestPath,

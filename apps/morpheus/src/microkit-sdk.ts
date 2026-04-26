@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const { spawnSync } = require("child_process");
 const { loadConfig, configDir, resolveLocalPath } = require("./config");
 const { registerManagedRun, registerManagedWorkspace } = require("./managed-state");
+const { resolveManagedRunDir, withNestedRunRoot } = require("./run-layout");
 const { repoRoot } = require("./paths");
 const { runManagedSel4 } = require("./sel4");
 
@@ -29,7 +30,7 @@ function localToolWorkspace(workspace, tool) {
 }
 
 function localRunDir(workspace, tool, id) {
-  return path.join(localWorkspaceRoot(workspace), "runs", id);
+  return resolveManagedRunDir(workspace, id);
 }
 
 function managedSdkInstallDir(workspace, buildDirKey) {
@@ -810,7 +811,9 @@ function runManagedMicrokitSdk(flags) {
         toolchainVersion: options.toolchainVersion,
         toolchainArchiveUrl: options.toolchainArchiveUrl,
       });
-      const sel4 = runManagedSel4({ workspace: options.workspace, mode: "local" });
+      const sel4 = withNestedRunRoot(runDir, () =>
+        runManagedSel4({ workspace: options.workspace, mode: "local" })
+      );
       options.sel4Resolved = {
         run_id: sel4.details.id,
         source_dir: sel4.details.manifest.directory.path,

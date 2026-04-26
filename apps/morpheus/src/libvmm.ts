@@ -4,6 +4,7 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 const { loadConfig, configDir, resolveLocalPath } = require("./config");
 const { registerManagedRun, registerManagedWorkspace } = require("./managed-state");
+const { resolveManagedRunDir, withNestedRunRoot } = require("./run-layout");
 const { repoRoot } = require("./paths");
 const { runManagedMicrokitSdk } = require("./microkit-sdk");
 
@@ -28,7 +29,7 @@ function localToolWorkspace(workspace, tool) {
 }
 
 function localRunDir(workspace, tool, id) {
-  return path.join(localWorkspaceRoot(workspace), "runs", id);
+  return resolveManagedRunDir(workspace, id);
 }
 
 function defaultManagedSource(workspace) {
@@ -205,7 +206,9 @@ function runManagedLibvmm(flags) {
   const logFile = localLogPath(options.workspace, TOOL, options.id);
   fs.mkdirSync(runDir, { recursive: true });
 
-  const microkit = runManagedMicrokitSdk({ workspace: options.workspace, mode: "local" });
+  const microkit = withNestedRunRoot(runDir, () =>
+    runManagedMicrokitSdk({ workspace: options.workspace, mode: "local" })
+  );
   const sdkArtifact = (microkit.details.manifest.artifacts || []).find((item) => item.path === "sdk-dir");
   if (!sdkArtifact || !sdkArtifact.location) {
     throw new Error("libvmm could not resolve Microkit SDK artifact sdk-dir");

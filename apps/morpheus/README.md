@@ -29,6 +29,12 @@ Inspect recorded workflow runs:
 Morpheus records executions as workflow runs under:
 
 - `<workspace>/runs/<workflow-run-id>/`
+- `<workspace>/runs/<workflow-run-id>/steps/<step-id>/run/`
+
+When a managed tool run provisions other managed tool dependencies, those child
+runs are nested under the parent tool run:
+
+- `<workspace>/runs/<workflow-run-id>/steps/<step-id>/run/runs/<tool-run-id>/`
 
 Tool caches remain reusable under:
 

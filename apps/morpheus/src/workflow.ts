@@ -13,6 +13,7 @@ const {
   updateWorkflowStep,
   workflowManifestPath,
   workflowRunsRoot,
+  stepToolRunDir,
 } = require("./workflow-runs");
 
 function parseWorkflowArgs(argv) {
@@ -213,7 +214,7 @@ function runToolBuildWorkflow({ steps, workflowName, workspaceRoot, jsonMode, co
       env: {
         ...process.env,
         MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1",
-        MORPHEUS_RUN_DIR_OVERRIDE: step.stepDir
+        MORPHEUS_RUN_DIR_OVERRIDE: stepToolRunDir(step.stepDir)
       },
       stdio: ["ignore", "pipe", "pipe"]
     });

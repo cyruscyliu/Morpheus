@@ -645,6 +645,8 @@ test("tool build creates a single-step workflow run", () => {
   assert.equal(fs.existsSync(path.join(runDir, "workflow.json")), true);
   assert.equal(fs.existsSync(path.join(runDir, "run.json")), true);
   assert.equal(fs.existsSync(path.join(runDir, "steps")), true);
+  const [stepName] = fs.readdirSync(path.join(runDir, "steps")).sort();
+  assert.equal(fs.existsSync(path.join(runDir, "steps", stepName, "run", "manifest.json")), true);
 
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
   fs.rmSync(env.MORPHEUS_WORK_ROOT, { recursive: true, force: true });

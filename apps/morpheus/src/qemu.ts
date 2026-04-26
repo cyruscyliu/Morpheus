@@ -4,6 +4,7 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 const { loadConfig, configDir, resolveLocalPath } = require("./config");
 const { registerManagedRun, registerManagedWorkspace } = require("./managed-state");
+const { resolveManagedRunDir } = require("./run-layout");
 const { repoRoot } = require("./paths");
 
 const TOOL = "qemu";
@@ -27,7 +28,7 @@ function localToolWorkspace(workspace, tool) {
 }
 
 function localRunDir(workspace, tool, id) {
-  return path.join(localWorkspaceRoot(workspace), "runs", id);
+  return resolveManagedRunDir(workspace, id);
 }
 
 function localBuildDir(workspace, tool, key) {

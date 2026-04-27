@@ -12,7 +12,7 @@ tools:
     buildroot-version: 2025.02.12
     reuse-build-dir: true
     build-dir-key: arm64-dev
-    patch-dir: ./hyperarm-workspace/tools/buildroot/patches
+    patch-dir: tools/buildroot/patches
     defconfig: qemu_aarch64_virt_defconfig
     make-args:
       - -j$(nproc)
@@ -48,7 +48,7 @@ tools:
     build-dir-key: microkit-sdk-2.1.0
     microkit-archive-url: https://github.com/seL4/microkit/archive/119044f9573674342cedb9694142cce7b832d2ff.tar.gz
     toolchain-version: 12.3.rel1
-    patch-dir: ./hyperarm-workspace/tools/microkit-sdk/patches
+    patch-dir: tools/microkit-sdk/patches
     boards: qemu_virt_aarch64
     configs: debug,release
     artifacts:
@@ -59,8 +59,9 @@ tools:
     arch: arm64
     clang: 15
     out-of-tree: true
-    sources: ./hyperarm-workspace/tools/llbic/src
-    output: ./hyperarm-workspace/tools/llbic/builds
+    sources: tools/llbic/src
+    output: tools/llbic/builds
+    conf: tools/llbic/sources.conf
   llcg:
     mode: remote
     arch: arm64
@@ -72,7 +73,7 @@ tools:
     git-ref: 2fd1d64d7805ad1647af6e2a832e4671d0d40297
     board: qemu_virt_aarch64
     example: virtio
-    patch-dir: ./hyperarm-workspace/tools/libvmm/patches
+    patch-dir: tools/libvmm/patches
     dependencies:
       microkit-sdk:
         tool: microkit-sdk
@@ -91,7 +92,7 @@ tools:
     reuse-build-dir: true
     build-dir-key: sel4-c0fc3245
     archive-url: https://github.com/seL4/seL4/archive/c0fc32450fb5e8460083b89a84d067249b109cfc.tar.gz
-    patch-dir: ./hyperarm-workspace/tools/sel4/patches/fuzz-sel4
+    patch-dir: tools/sel4/patches/fuzz-sel4
     artifacts:
       - source-dir
   nvirsh:

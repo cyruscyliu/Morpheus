@@ -2148,23 +2148,6 @@ function emitRemoteLogLines(command, id, jsonMode, lines) {
   }
 }
 
-function remoteLlBicPaths(workspace) {
-  const toolRoot = remoteToolWorkspace(workspace, LLBIC_TOOL);
-  return {
-    sourcesRoot: path.posix.join(toolRoot, "src"),
-    buildsRoot: path.posix.join(toolRoot, "builds"),
-    confPath: path.posix.join(toolRoot, "sources.conf"),
-    toolDir: remoteManagedToolDir(workspace, LLBIC_TOOL),
-  };
-}
-
-function remoteLlCgPaths(workspace, runDir) {
-  return {
-    outputDir: path.posix.join(runDir, "output"),
-    toolDir: remoteManagedToolDir(workspace, LLCG_TOOL),
-  };
-}
-
 function baseRemoteManagedManifest(options) {
   return {
     schemaVersion: 1,
@@ -2271,7 +2254,7 @@ async function runManagedRemoteLlBic(flags, argvCommand = "build") {
   const runDir = remoteRunDir(workspace, LLBIC_TOOL, id);
   const manifestPath = remoteManifestPath(workspace, LLBIC_TOOL, id);
   const logFile = remoteLogPath(workspace, LLBIC_TOOL, id);
-  const paths = remoteLlBicPaths(workspace);
+  const toolDir = remoteManagedToolDir(workspace, LLBIC_TOOL);
   registerManagedWorkspace({ mode: "remote", root: workspace, ssh: ssh.original });
   registerRemoteRunRecord({
     id,
@@ -2283,7 +2266,7 @@ async function runManagedRemoteLlBic(flags, argvCommand = "build") {
     manifest: manifestPath,
     logFile,
     runDir,
-    outputDir: paths.buildsRoot,
+    outputDir: parsed.buildsRoot,
     artifacts: [],
   }, ssh);
 
@@ -2299,20 +2282,20 @@ async function runManagedRemoteLlBic(flags, argvCommand = "build") {
     runDir,
     manifestPath,
     logFile,
-    outputDir: paths.buildsRoot,
-    remoteToolDir: paths.toolDir,
+    outputDir: parsed.buildsRoot,
+    remoteToolDir: toolDir,
     localToolDir: toolRepoDir(LLBIC_TOOL),
-    program: path.posix.join(paths.toolDir, "llbic"),
+    program: path.posix.join(toolDir, "llbic"),
     env: {
       ...Object.fromEntries(Object.entries(process.env).filter(([key]) =>
         key.startsWith("LLBIC_") || key === "PATH" || key === "HOME" || key === "USER",
       )),
-      LLBIC_SOURCES: paths.sourcesRoot,
-      LLBIC_OUTPUT: paths.buildsRoot,
-      LLBIC_CONF: paths.confPath,
+      LLBIC_SOURCES: parsed.sourcesRoot,
+      LLBIC_OUTPUT: parsed.buildsRoot,
+      LLBIC_CONF: parsed.confPath,
     },
     artifactResolver(payload) {
-      return buildArtifacts(payload, paths.toolDir).map((artifact) => ({
+      return buildArtifacts(payload, toolDir).map((artifact) => ({
         path: artifact.path,
         location: artifact.location,
       }));
@@ -2327,7 +2310,7 @@ async function runManagedRemoteLlBic(flags, argvCommand = "build") {
         manifest: artifacts.find((item) => item.path === "llbic-json")?.location || null,
         managed_manifest: manifestPath,
         log_file: logFile,
-        output_dir: artifacts.find((item) => item.path === "output-dir")?.location || paths.buildsRoot,
+        output_dir: artifacts.find((item) => item.path === "output-dir")?.location || parsed.buildsRoot,
         source_dir: artifacts.find((item) => item.path === "source-dir")?.location || null,
         bitcode_list: artifacts.find((item) => item.path === "bitcode-files")?.location || null,
         artifacts,
@@ -2345,7 +2328,8 @@ async function runManagedRemoteLlCg(flags, argvCommand = "run") {
   const runDir = remoteRunDir(workspace, LLCG_TOOL, id);
   const manifestPath = remoteManifestPath(workspace, LLCG_TOOL, id);
   const logFile = remoteLogPath(workspace, LLCG_TOOL, id);
-  const paths = remoteLlCgPaths(workspace, runDir);
+  const toolDir = remoteManagedToolDir(workspace, LLCG_TOOL);
+  const outputDir = parsed.outputDir;
   const args = [];
   for (let index = 0; index < parsed.args.length; index += 1) {
     const token = parsed.args[index];
@@ -2356,7 +2340,7 @@ async function runManagedRemoteLlCg(flags, argvCommand = "run") {
     args.push(token);
   }
   if (parsed.subcommand === "run" || parsed.subcommand === "genmutator") {
-    args.push("--output", paths.outputDir);
+    args.push("--output", outputDir);
   }
   registerManagedWorkspace({ mode: "remote", root: workspace, ssh: ssh.original });
   registerRemoteRunRecord({
@@ -2369,7 +2353,7 @@ async function runManagedRemoteLlCg(flags, argvCommand = "run") {
     manifest: manifestPath,
     logFile,
     runDir,
-    outputDir: paths.outputDir,
+    outputDir,
     artifacts: [],
   }, ssh);
 
@@ -2385,10 +2369,10 @@ async function runManagedRemoteLlCg(flags, argvCommand = "run") {
     runDir,
     manifestPath,
     logFile,
-    outputDir: paths.outputDir,
-    remoteToolDir: paths.toolDir,
+    outputDir,
+    remoteToolDir: toolDir,
     localToolDir: toolRepoDir(LLCG_TOOL),
-    program: path.posix.join(paths.toolDir, "bin", "llcg"),
+    program: path.posix.join(toolDir, "bin", "llcg"),
     env: Object.fromEntries(Object.entries(process.env).filter(([key]) =>
       key === "PATH" || key === "HOME" || key === "USER" || key.startsWith("KERNEL_CALLGRAPH_"),
     )),
@@ -2408,7 +2392,7 @@ async function runManagedRemoteLlCg(flags, argvCommand = "run") {
         manifest: artifacts.find((item) => item.path === "manifest")?.location || null,
         managed_manifest: manifestPath,
         log_file: logFile,
-        output_dir: artifacts.find((item) => item.path === "output-dir")?.location || paths.outputDir,
+        output_dir: artifacts.find((item) => item.path === "output-dir")?.location || outputDir,
         artifacts,
         payload,
       };

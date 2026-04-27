@@ -4,6 +4,20 @@ const { loadConfig } = require("./config");
 const { writeStdoutLine } = require("./io");
 
 const ALLOWED_TOOL_MODES = ["local", "remote"];
+const TOOL_PATH_KEYS = new Set([
+  "patch-dir",
+  "source",
+  "sources",
+  "output",
+  "conf",
+  "path",
+  "executable",
+  "toolchain",
+  "microkit-dir",
+  "sel4-dir",
+  "libvmm-dir",
+  "toolchain-dir",
+]);
 
 function usage() {
   return [
@@ -14,6 +28,20 @@ function usage() {
 
 function printJson(value) {
   writeStdoutLine(JSON.stringify(value, null, 2));
+}
+
+function isWorkspaceRelativePath(value) {
+  const text = String(value || "");
+  if (!text) {
+    return false;
+  }
+  if (text.startsWith("~")) {
+    return false;
+  }
+  if (/^[a-zA-Z]:[\\/]/.test(text)) {
+    return false;
+  }
+  return !path.isAbsolute(text);
 }
 
 function checkToolModes(value) {
@@ -41,6 +69,39 @@ function checkToolModes(value) {
   return issues;
 }
 
+function checkToolPaths(value) {
+  const issues = [];
+  const tools = value.tools || {};
+  for (const [toolName, toolConfig] of Object.entries(tools)) {
+    if (!toolConfig || typeof toolConfig !== "object") {
+      continue;
+    }
+    for (const [key, raw] of Object.entries(toolConfig)) {
+      if (raw == null) {
+        continue;
+      }
+      if (typeof raw !== "string") {
+        continue;
+      }
+      if (String(key).toLowerCase().endsWith("-url") || String(key).toLowerCase().includes("url")) {
+        continue;
+      }
+      const pathKey = TOOL_PATH_KEYS.has(key) || String(key).endsWith("-dir");
+      if (!pathKey) {
+        continue;
+      }
+      if (!isWorkspaceRelativePath(raw)) {
+        issues.push({
+          level: "error",
+          path: `tools.${toolName}.${key}`,
+          message: "tool path values must be workspace-relative (no absolute paths or ~)"
+        });
+      }
+    }
+  }
+  return issues;
+}
+
 function formatText(result) {
   if (result.issues.length === 0) {
     return `ok: ${result.summary}`;
@@ -56,7 +117,8 @@ function runConfigCheck() {
     throw new Error("could not find morpheus.yaml");
   }
   const issues = [
-    ...checkToolModes(config.value || {})
+    ...checkToolModes(config.value || {}),
+    ...checkToolPaths(config.value || {}),
   ];
   return {
     command: "config check",

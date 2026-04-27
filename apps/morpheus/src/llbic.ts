@@ -1,7 +1,6 @@
 // @ts-nocheck
 const fs = require("fs");
 const path = require("path");
-const { loadConfig, configDir, resolveLocalPath } = require("./config");
 const { registerManagedRun, registerManagedWorkspace } = require("./managed-state");
 const { resolveManagedRunDir } = require("./run-layout");
 const { repoRoot } = require("./paths");
@@ -51,21 +50,49 @@ function resolvePortablePath(value, rootDir) {
   return path.resolve(rootDir, text);
 }
 
-function loadLlBicConfig() {
-  const config = loadConfig(process.cwd());
-  const value = config.value || {};
-  const item = value.tools && value.tools.llbic ? value.tools.llbic : {};
-  return {
-    baseDir: configDir(config.path),
-    value: item,
-  };
+function requireWorkspaceRelative(value, label) {
+  const text = String(value || "");
+  if (!text) {
+    throw new Error(`empty ${label} value`);
+  }
+  if (text.startsWith("~")) {
+    throw new Error(`${label} must be workspace-relative (no ~)`);
+  }
+  if (/^[a-zA-Z]:[\\/]/.test(text)) {
+    throw new Error(`${label} must be workspace-relative (no Windows absolute paths)`);
+  }
+  if (path.isAbsolute(text)) {
+    throw new Error(`${label} must be workspace-relative (no absolute paths)`);
+  }
+  return text;
+}
+
+function resolveWorkspacePath(workspace, configured, fallbackRelative, label) {
+  const relative = configured == null || configured === ""
+    ? fallbackRelative
+    : requireWorkspaceRelative(configured, label);
+  return path.join(workspace, relative);
 }
 
 function payloadResolvedPath(payload, key, rootDir) {
-  const pathViews = payload && payload.paths ? payload.paths : {};
+  const details = payload && payload.details && typeof payload.details === "object"
+    ? payload.details
+    : payload;
+  const pathViews = details && details.paths ? details.paths : (payload && payload.paths ? payload.paths : {});
   const pathView = pathViews && pathViews[key] ? pathViews[key] : null;
   if (pathView && typeof pathView === "object") {
     return pathView.resolved_path || pathView.runtime_path || pathView.portable || null;
+  }
+  const artifactViews = details && details.artifacts
+    ? details.artifacts
+    : (payload && payload.artifacts ? payload.artifacts : {});
+  const artifactKeyMap = {
+    bitcode_list_file: "bitcode_list",
+  };
+  const artifactKey = artifactKeyMap[key] || key;
+  const artifactView = artifactViews && artifactViews[artifactKey] ? artifactViews[artifactKey] : null;
+  if (artifactView && typeof artifactView === "object") {
+    return artifactView.resolved_path || artifactView.runtime_path || artifactView.path || null;
   }
   const fieldMap = {
     source_dir: "source_dir",
@@ -74,7 +101,7 @@ function payloadResolvedPath(payload, key, rootDir) {
     kernel_build_log: "kernel_build_log",
   };
   const field = fieldMap[key];
-  return resolvePortablePath(field ? payload[field] : null, rootDir);
+  return resolvePortablePath(field ? details[field] : null, rootDir);
 }
 
 function parseManagedLlBicOptions(flags, argvCommand) {
@@ -82,8 +109,7 @@ function parseManagedLlBicOptions(flags, argvCommand) {
   if (!workspace) {
     throw new Error("llbic requires --workspace DIR or workspace.root in morpheus.yaml");
   }
-  const { baseDir, value } = loadLlBicConfig();
-  const mode = flags.mode || value.mode || "local";
+  const mode = flags.mode || "local";
 
   const positionals = Array.isArray(flags.positionals) ? [...flags.positionals] : [];
   const supportedSubcommands = new Set(["build", "compile", "inspect", "clean"]);
@@ -95,12 +121,27 @@ function parseManagedLlBicOptions(flags, argvCommand) {
   }
 
   if (!supportedSubcommands.has(subcommand)) {
-    throw new Error(`unsupported llbic subcommand for Morpheus: ${subcommand}`);
+      throw new Error(`unsupported llbic subcommand for Morpheus: ${subcommand}`);
   }
 
-  const buildsRoot = resolveLocalPath(baseDir, value.output || path.join(workspace, "tools", "llbic", "builds"));
-  const sourcesRoot = resolveLocalPath(baseDir, value.sources || path.join(workspace, "tools", "llbic", "src"));
-  const confPath = resolveLocalPath(baseDir, value.conf || path.join(workspace, "tools", "llbic", "sources.conf"));
+  const buildsRoot = resolveWorkspacePath(
+    workspace,
+    flags.output,
+    path.join("tools", "llbic", "builds"),
+    "tools.llbic.output"
+  );
+  const sourcesRoot = resolveWorkspacePath(
+    workspace,
+    flags.sources,
+    path.join("tools", "llbic", "src"),
+    "tools.llbic.sources"
+  );
+  const confPath = resolveWorkspacePath(
+    workspace,
+    flags.conf,
+    path.join("tools", "llbic", "sources.conf"),
+    "tools.llbic.conf"
+  );
 
   const args = [subcommand, ...positionals];
   if (!args.includes("--json")) {
@@ -111,7 +152,7 @@ function parseManagedLlBicOptions(flags, argvCommand) {
     && !args.includes("--outtree")
     && !args.includes("--out-of-tree")
     && !args.includes("--intree")
-    && (value["out-of-tree"] !== false && value.outOfTree !== false)
+    && (flags["out-of-tree"] !== false && flags.outOfTree !== false)
   ) {
     args.push("--out-of-tree");
   }
@@ -124,11 +165,11 @@ function parseManagedLlBicOptions(flags, argvCommand) {
   if ((subcommand === "build" || subcommand === "compile") && flags.intree && !args.includes("--intree")) {
     args.push("--intree");
   }
-  if ((subcommand === "build" || subcommand === "compile") && (flags.arch || value.arch) && !args.includes("--arch") && !args.includes("-a")) {
-    args.push("--arch", String(flags.arch || value.arch));
+  if ((subcommand === "build" || subcommand === "compile") && flags.arch && !args.includes("--arch") && !args.includes("-a")) {
+    args.push("--arch", String(flags.arch));
   }
-  if ((subcommand === "build" || subcommand === "compile") && (flags.clang || value.clang) && !args.includes("--clang")) {
-    args.push("--clang", String(flags.clang || value.clang));
+  if ((subcommand === "build" || subcommand === "compile") && flags.clang && !args.includes("--clang")) {
+    args.push("--clang", String(flags.clang));
   }
   if ((subcommand === "build" || subcommand === "compile") && flags.verbose && !args.includes("--verbose") && !args.includes("-V")) {
     args.push("--verbose");
@@ -142,7 +183,7 @@ function parseManagedLlBicOptions(flags, argvCommand) {
   if ((subcommand === "build" || subcommand === "compile") && flags.output && !args.includes("--output") && !args.includes("-o")) {
     args.push("--output", String(flags.output));
   }
-  for (const fragment of [].concat(flags.kconfig || []).concat(value.kconfig || [])) {
+  for (const fragment of [].concat(flags.kconfig || [])) {
     args.push("--kconfig", String(fragment));
   }
   for (const file of [].concat(flags.file || [])) {
@@ -151,7 +192,7 @@ function parseManagedLlBicOptions(flags, argvCommand) {
   for (const target of [].concat(flags["rust-target"] || [])) {
     args.push("--rust-target", String(target));
   }
-  if ((flags.rust || value.rust) && !args.includes("--rust")) {
+  if (flags.rust && !args.includes("--rust")) {
     args.push("--rust");
   }
 

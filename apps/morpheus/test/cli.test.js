@@ -13,6 +13,7 @@ const {
   ensurePatchedKernelTarballHashes,
   effectiveBuildDirKey
 } = require("../dist/remote.js");
+const { applyConfigDefaults } = require("../dist/config.js");
 
 const appRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(appRoot, "..", "..");
@@ -42,7 +43,8 @@ function isolatedEnv(extra = {}) {
 }
 
 function makeFakeSshEnv(remoteRoot) {
-  const fakeBin = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-fake-ssh-"));
+  const fakeBin = path.join(remoteRoot, "fake-ssh-bin");
+  fs.mkdirSync(fakeBin, { recursive: true });
   const sshPath = path.join(fakeBin, "ssh");
   fs.writeFileSync(
     sshPath,
@@ -360,6 +362,80 @@ test("config check accepts global --json", () => {
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.command, "config check");
   assert.equal(payload.status, "success");
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("config check rejects absolute tool-internal paths", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-check-paths-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "tools:",
+      "  llbic:",
+      "    mode: local",
+      "    sources: /tmp/llbic-src",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["config", "check", "--json"], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 1, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "error");
+  assert.equal(payload.details.issues[0].path, "tools.llbic.sources");
+  assert.match(payload.details.issues[0].message, /workspace-relative/);
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("applyConfigDefaults uses tools.<tool> non-reserved keys as defaults", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-defaults-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "tools:",
+      "  llbic:",
+      "    mode: remote",
+      "    arch: arm64",
+      "    clang: 15",
+      "    out-of-tree: true",
+      "    sources: tools/llbic/src",
+      "    output: tools/llbic/builds",
+      "    conf: tools/llbic/sources.conf",
+      "    dependencies:",
+      "      qemu:",
+      "        tool: qemu",
+      "        artifact: qemu-system-aarch64",
+      ""
+    ].join("\n")
+  );
+
+  const before = process.cwd();
+  process.chdir(projectRoot);
+  try {
+    const resolved = applyConfigDefaults(
+      { tool: "llbic", workspace: null },
+      { allowGlobalRemote: false, allowToolDefaults: true }
+    );
+    assert.equal(resolved.flags.mode, "remote");
+    assert.equal(resolved.flags.arch, "arm64");
+    assert.equal(String(resolved.flags.clang), "15");
+    assert.equal(resolved.flags["out-of-tree"], true);
+    assert.equal(resolved.flags.sources, "tools/llbic/src");
+    assert.equal(resolved.flags.output, "tools/llbic/builds");
+    assert.equal(resolved.flags.conf, "tools/llbic/sources.conf");
+    assert.equal(Object.prototype.hasOwnProperty.call(resolved.flags, "dependencies"), false);
+  } finally {
+    process.chdir(before);
+  }
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
@@ -784,11 +860,8 @@ test("managed remote llbic inspect writes a Morpheus run record", () => {
   const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
   assert.equal(payload.status, "success");
   assert.equal(payload.details.mode, "remote");
-  assert.equal(payload.details.payload.details.manifest.includes("linux-6.18.16-arm64-clang15"), true);
-  assert.equal(
-    Boolean(payload.details.payload?.artifacts?.kernel_build_log?.exists),
-    true
-  );
+  assert.equal(payload.details.manifest.includes("linux-6.18.16-arm64-clang15"), true);
+  assert.equal(payload.details.artifacts.some((artifact) => artifact.path === "kernel-build-log"), true);
 
   const managedManifestPath = payload.details.managed_manifest.replace("/remote-workspace", remoteRoot);
   assert.equal(fs.existsSync(managedManifestPath), true);
@@ -796,7 +869,8 @@ test("managed remote llbic inspect writes a Morpheus run record", () => {
   assert.equal(managedManifest.tool, "llbic");
   assert.equal(managedManifest.mode, "remote");
   assert.equal(managedManifest.status, "success");
-  assert.deepEqual(managedManifest.artifacts, []);
+  assert.equal(Array.isArray(managedManifest.artifacts), true);
+  assert.equal(managedManifest.artifacts.some((artifact) => artifact.path === "kernel-build-log"), true);
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
   fs.rmSync(remoteRoot, { recursive: true, force: true });

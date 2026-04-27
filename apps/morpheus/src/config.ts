@@ -4,6 +4,20 @@ const path = require("path");
 const yaml = require("yaml");
 const { logDebug } = require("./logger");
 
+const RESERVED_MANAGED_TOOL_CONFIG_KEYS = new Set([
+  "mode",
+  "remote",
+  "reuse-build-dir",
+  "build-dir-key",
+  "patch-dir",
+  "artifacts",
+  "dependencies",
+]);
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function findConfigPath(startDir) {
   let current = path.resolve(startDir || process.cwd());
   while (true) {
@@ -227,6 +241,22 @@ function resolveToolName(configValue, name) {
   };
 }
 
+function applyToolConfigDefaults(next, toolEntry) {
+  const raw = toolEntry && toolEntry.raw;
+  if (!isPlainObject(raw)) {
+    return;
+  }
+  for (const [key, value] of Object.entries(raw)) {
+    if (RESERVED_MANAGED_TOOL_CONFIG_KEYS.has(key)) {
+      continue;
+    }
+    if (Object.prototype.hasOwnProperty.call(next, key)) {
+      continue;
+    }
+    next[key] = value;
+  }
+}
+
 function applyRemoteReference(configValue, next, remoteName) {
   if (next.ssh) {
     return;
@@ -405,6 +435,10 @@ function applyConfigDefaults(flags, options) {
     next["config-fragment"] = [...toolEntry.configFragment];
   }
 
+  if (toolEntry) {
+    applyToolConfigDefaults(next, toolEntry);
+  }
+
   if (!toolDisallowsRemote) {
     applyRemoteReference(value, next, next.remote);
   }
@@ -447,5 +481,6 @@ module.exports = {
   configDir,
   findConfigPath,
   loadConfig,
+  RESERVED_MANAGED_TOOL_CONFIG_KEYS,
   resolveLocalPath
 };

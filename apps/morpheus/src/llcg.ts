@@ -1,7 +1,6 @@
 // @ts-nocheck
 const fs = require("fs");
 const path = require("path");
-const { loadConfig, configDir, resolveLocalPath } = require("./config");
 const { registerManagedRun, registerManagedWorkspace } = require("./managed-state");
 const { resolveManagedRunDir } = require("./run-layout");
 const { repoRoot } = require("./paths");
@@ -36,14 +35,28 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function loadLlCgConfig() {
-  const config = loadConfig(process.cwd());
-  const value = config.value || {};
-  const item = value.tools && value.tools.llcg ? value.tools.llcg : {};
-  return {
-    baseDir: configDir(config.path),
-    value: item,
-  };
+function requireWorkspaceRelative(value, label) {
+  const text = String(value || "");
+  if (!text) {
+    throw new Error(`empty ${label} value`);
+  }
+  if (text.startsWith("~")) {
+    throw new Error(`${label} must be workspace-relative (no ~)`);
+  }
+  if (/^[a-zA-Z]:[\\/]/.test(text)) {
+    throw new Error(`${label} must be workspace-relative (no Windows absolute paths)`);
+  }
+  if (path.isAbsolute(text)) {
+    throw new Error(`${label} must be workspace-relative (no absolute paths)`);
+  }
+  return text;
+}
+
+function resolveWorkspacePath(workspace, configured, fallbackRelative, label) {
+  const relative = configured == null || configured === ""
+    ? fallbackRelative
+    : requireWorkspaceRelative(configured, label);
+  return path.join(workspace, relative);
 }
 
 function resolvePayloadArtifacts(payload) {
@@ -95,8 +108,7 @@ function parseManagedLlCgOptions(flags) {
   if (!workspace) {
     throw new Error("llcg requires --workspace DIR or workspace.root in morpheus.yaml");
   }
-  const { baseDir, value } = loadLlCgConfig();
-  const mode = flags.mode || value.mode || "local";
+  const mode = flags.mode || "local";
 
   const positionals = Array.isArray(flags.positionals) ? [...flags.positionals] : [];
   const subcommand = positionals.shift() || "run";
@@ -106,7 +118,9 @@ function parseManagedLlCgOptions(flags) {
 
   const runId = generateRunId();
   const runDir = localRunDir(workspace, runId);
-  const outputDir = resolveLocalPath(baseDir, value.output || path.join(runDir, "output"));
+  const outputDir = flags.output
+    ? resolveWorkspacePath(workspace, flags.output, null, "tools.llcg.output")
+    : path.join(runDir, "output");
   const args = [subcommand, ...positionals];
   if (!args.includes("--json")) {
     args.push("--json");
@@ -114,11 +128,11 @@ function parseManagedLlCgOptions(flags) {
   if ((subcommand === "run" || subcommand === "genmutator") && !args.includes("--output") && !args.includes("-o")) {
     args.push("--output", outputDir);
   }
-  if (subcommand === "run" && (flags.clang || value.clang) && !args.includes("--clang")) {
-    args.push("--clang", String(flags.clang || value.clang));
+  if (subcommand === "run" && flags.clang && !args.includes("--clang")) {
+    args.push("--clang", String(flags.clang));
   }
-  if (subcommand === "genmutator" && (flags.arch || value.arch) && !args.includes("--arch")) {
-    args.push("--arch", String(flags.arch || value.arch));
+  if (subcommand === "genmutator" && flags.arch && !args.includes("--arch")) {
+    args.push("--arch", String(flags.arch));
   }
   if (flags["source-dir"]) {
     args.push("--source-dir", String(flags["source-dir"]));

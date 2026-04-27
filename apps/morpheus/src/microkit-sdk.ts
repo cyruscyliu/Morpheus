@@ -640,7 +640,12 @@ function parseRunOptions(flags) {
   const explicitBuildInputs = Boolean(options.microkitDir || options.microkitArchiveUrl || options.archiveUrl);
 
   const pathWasProvided = Boolean(flags.path || value.path || value.source);
-  const wantsBuild = Boolean(options.microkitVersion || explicitBuildInputs || options.patchDir);
+  const wantsBuild = Boolean(
+    explicitBuildInputs
+    || options.patchDir
+    || (!pathWasProvided && options.microkitVersion)
+    || (!sdkPresent && options.microkitVersion)
+  );
 
   // Prefer "register an existing SDK directory" when the user supplied an
   // explicit path and did not request a build.

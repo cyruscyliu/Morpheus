@@ -458,6 +458,10 @@ function deriveLibvmmManagedInputs(workspace, libvmmDir, runtimeContract) {
 }
 
 function buildManifest(base, runtime) {
+  const dependencyArtifacts = [
+    base.kernel ? { path: "kernel", location: base.kernel } : null,
+    base.initrd ? { path: "initrd", location: base.initrd } : null,
+  ].filter(Boolean);
   return {
     ...runtime,
     schemaVersion: 1,
@@ -473,7 +477,7 @@ function buildManifest(base, runtime) {
     toolManifest: base.toolManifestPath,
     createdAt: runtime.createdAt || base.createdAt,
     updatedAt: nowIso(),
-    artifacts: [],
+    artifacts: dependencyArtifacts,
     dependencies: base.dependencies,
     transport: null
   };

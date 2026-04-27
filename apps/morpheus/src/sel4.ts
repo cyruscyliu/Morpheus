@@ -36,7 +36,7 @@ function localRunDir(workspace, tool, id) {
 }
 
 function managedSel4SourceDir(workspace, buildDirKey) {
-  return path.join(localToolWorkspace(workspace, TOOL), "builds", buildDirKey, "source");
+  return path.join(localToolWorkspace(workspace, TOOL), "src", buildDirKey);
 }
 
 function localManifestPath(workspace, tool, id) {
@@ -123,7 +123,7 @@ function parseRunOptions(flags) {
   };
 
   if (!options.buildDirKey) {
-    options.buildDirKey = options.sel4Version ? `sel4-${options.sel4Version}` : "default";
+    options.buildDirKey = options.sel4Version ? `seL4-${options.sel4Version}` : "default";
   }
 
   if (!options.path && options.sel4Version) {

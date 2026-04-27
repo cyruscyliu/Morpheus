@@ -43,8 +43,8 @@ function emitJsonEvent(command: string, event: string, details: Record<string, u
 function parseArgv(argv: string[]) {
   const positionals: string[] = [];
   const flags: Record<string, unknown> = {};
-  const booleanFlags = new Set(['json', 'help']);
-  const repeatableFlags = new Set(['target-list', 'configure-arg']);
+  const booleanFlags = new Set(['json', 'help', 'detach']);
+  const repeatableFlags = new Set(['target-list', 'configure-arg', 'qemu-arg']);
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -375,6 +375,11 @@ function appendLog(logFile: string, result: { stdout?: string; stderr?: string }
   fs.appendFileSync(logFile, result.stderr || '', 'utf8');
 }
 
+function writeRunManifest(runDir: string, value: unknown) {
+  fs.mkdirSync(runDir, { recursive: true });
+  fs.writeFileSync(path.join(runDir, 'manifest.json'), `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
 function createBuildLogStreamer(command: string, jsonMode: boolean, logFile: string) {
   const writeChunk = (stream: 'stdout' | 'stderr', chunk: string) => {
     fs.mkdirSync(path.dirname(logFile), { recursive: true });
@@ -501,6 +506,127 @@ async function buildQemu(flags: Record<string, unknown>, jsonMode: boolean) {
   };
 }
 
+function qemuRunArgs(
+  kernel: string,
+  initrd: string,
+  append: string,
+  qemuArgs: string[],
+) {
+  return [
+    '-machine',
+    'virt,virtualization=on,gic-version=3',
+    '-cpu',
+    'cortex-a57',
+    '-m',
+    '1024',
+    '-nographic',
+    '-kernel',
+    kernel,
+    '-initrd',
+    initrd,
+    '-append',
+    append,
+    ...qemuArgs,
+  ];
+}
+
+async function runQemu(flags: Record<string, unknown>, jsonMode: boolean) {
+  if (jsonMode && !flags.detach) {
+    throw new CliError('incompatible_flags', 'qemu run --json requires --detach');
+  }
+
+  const inspected = inspectExecutable(flags);
+  const kernel = requirePathFlag(flags, 'kernel');
+  const initrd = requirePathFlag(flags, 'initrd');
+  const runDir = optionalPathFlag(flags, 'run-dir') || path.resolve(process.cwd(), '.qemu-run');
+  const append = optionalStringFlag(flags, 'append') || 'console=ttyAMA0';
+  const qemuArgs = Array.isArray(flags['qemu-arg']) ? flags['qemu-arg'] as string[] : [];
+  const detached = Boolean(flags.detach);
+  const logFile = path.join(runDir, 'stdout.log');
+  const args = qemuRunArgs(kernel, initrd, append, qemuArgs);
+
+  fs.mkdirSync(runDir, { recursive: true });
+  fs.writeFileSync(logFile, '', 'utf8');
+
+  if (!detached) {
+    const child = spawn(inspected.details.executable.path, args, {
+      cwd: runDir,
+      stdio: 'inherit',
+    });
+    const exitCode = await new Promise<number>((resolve, reject) => {
+      child.on('error', reject);
+      child.on('close', (code) => resolve(code ?? 1));
+    });
+    const status = exitCode === 0 ? 'success' : 'error';
+    const manifest = {
+      schemaVersion: 1,
+      tool: 'qemu',
+      command: 'run',
+      status,
+      executable: inspected.details.executable.path,
+      kernel,
+      initrd,
+      append,
+      qemu_args: qemuArgs,
+      run_dir: runDir,
+      log_file: logFile,
+      pid: null,
+      detached: false,
+      exitCode,
+    };
+    writeRunManifest(runDir, manifest);
+    return {
+      command: 'run',
+      status,
+      exit_code: exitCode,
+      summary: status === 'success' ? 'completed local QEMU run' : 'local QEMU run failed',
+      details: {
+        manifest,
+        run_dir: runDir,
+        log_file: logFile,
+      },
+    };
+  }
+
+  const logFd = fs.openSync(logFile, 'a');
+  const child = spawn(inspected.details.executable.path, args, {
+    cwd: runDir,
+    detached: true,
+    stdio: ['ignore', logFd, logFd],
+  });
+  child.unref();
+  fs.closeSync(logFd);
+
+  const manifest = {
+    schemaVersion: 1,
+    tool: 'qemu',
+    command: 'run',
+    status: 'running',
+    executable: inspected.details.executable.path,
+    kernel,
+    initrd,
+    append,
+    qemu_args: qemuArgs,
+    run_dir: runDir,
+    log_file: logFile,
+    pid: child.pid || null,
+    detached: true,
+    exitCode: 0,
+  };
+  writeRunManifest(runDir, manifest);
+  return {
+    command: 'run',
+    status: 'success',
+    exit_code: 0,
+    summary: 'started local QEMU run',
+    details: {
+      manifest,
+      run_dir: runDir,
+      log_file: logFile,
+    },
+  };
+}
+
 async function main(argv: string[]) {
   const parsed = parseArgv(argv);
   if (parsed.help) {
@@ -536,6 +662,15 @@ async function main(argv: string[]) {
         emitJson(result);
       } else {
         emitText(result.details.executable.path);
+      }
+      return 0;
+    }
+    case 'run': {
+      const result = await runQemu(parsed.flags, parsed.json);
+      if (parsed.json) {
+        emitJson(result);
+      } else {
+        emitText(result.summary);
       }
       return 0;
     }

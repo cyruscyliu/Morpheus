@@ -142,6 +142,7 @@ function managedRunUsage() {
     "  node apps/morpheus/dist/cli.js tool build --tool buildroot --mode remote --ssh TARGET --workspace DIR (--source DIR | --buildroot-version VER) [--defconfig NAME] [--patch-dir DIR] [--reuse-build-dir] [--build-dir-key KEY] [--detach] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool microkit-sdk --mode local|remote --workspace DIR [--path PATH] [--archive-url URL] [--microkit-archive-url URL] [--microkit-dir DIR] [--ssh TARGET] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool qemu --mode local|remote --workspace DIR (--path PATH | --qemu-version VER) [--archive-url URL] [--build-dir-key KEY] [--target-list NAME ...] [--configure-arg ARG ...] [--ssh TARGET] [--json]",
+    "  node apps/morpheus/dist/cli.js tool run --tool qemu --mode local --workspace DIR [--path PATH] --kernel PATH --initrd PATH [--run-dir DIR] [--append TEXT] [--qemu-arg ARG ...] [--detach] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool nvirsh --mode local|remote --workspace DIR [--target sel4] [--ssh TARGET] [--json]",
     "  node apps/morpheus/dist/cli.js tool run --tool nvirsh --mode local|remote --workspace DIR [--target sel4] [--attach] [--ssh TARGET] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool sel4 --mode local|remote --workspace DIR (--path PATH | --sel4-version VER) [--archive-url URL] [--patch-dir DIR] [--ssh TARGET] [--json]",
@@ -1131,6 +1132,37 @@ function walkFiles(rootDir) {
   return entries.sort();
 }
 
+function fileTreeFingerprint(rootDir) {
+  if (!rootDir || !fs.existsSync(rootDir)) {
+    return null;
+  }
+  const hash = crypto.createHash("sha256");
+  for (const filePath of walkFiles(rootDir)) {
+    const relative = path.relative(rootDir, filePath).split(path.sep).join(path.posix.sep);
+    hash.update(relative);
+    hash.update("\0");
+    hash.update(fs.readFileSync(filePath));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
+function buildrootInputState(options, extras = {}) {
+  return {
+    buildrootVersion: options.buildrootVersion || null,
+    source: options.source || null,
+    defconfig: options.defconfig || null,
+    configFragment: [...(options.configFragment || [])],
+    expectedArtifacts: [...(options.expectedArtifacts || [])],
+    makeArgs: [...(options.makeArgs || [])],
+    forwarded: [...(options.forwarded || [])],
+    patchDirFingerprint: extras.patchDirFingerprint || null,
+    kernelPatchFiles: [...(extras.kernelPatchFiles || [])],
+    kernelPatchFingerprint: extras.kernelPatchFingerprint || null,
+    kernelConfigFragmentContent: extras.kernelConfigFragmentContent || null,
+  };
+}
+
 function listKernelPatchFiles(patchDir) {
   if (!patchDir) {
     return [];
@@ -1263,6 +1295,8 @@ function runLocalBuildroot(options) {
   const patchDir = ensureExistingDirectory(options.patchDir, "patch dir");
   ensureKernelHashInPatchDir(patchDir, options.configFragment);
   const kernelPatchFiles = listKernelPatchFiles(patchDir);
+  const patchDirFingerprint = fileTreeFingerprint(patchDir);
+  const kernelPatchTag = kernelPatchFingerprint(patchDir, kernelPatchFiles);
   const globalPatchDir = patchDir && kernelPatchFiles.length > 0
     ? path.join(buildRoot, "patches-global")
     : patchDir;
@@ -1288,12 +1322,20 @@ function runLocalBuildroot(options) {
   const kernelConfigFragment = globalPatchDir
     ? path.join(globalPatchDir, "linux", "kernel.fragment")
     : null;
+  const kernelConfigFragmentContent = readKernelConfigFragment(patchDir);
   const configFragment = effectiveBuildrootConfigFragment(options.configFragment, {
     globalPatchDir,
     kernelTarballLocation,
     kernelConfigFragment: kernelConfigFragment && fs.existsSync(kernelConfigFragment) ? kernelConfigFragment : null
   });
   const makeArgs = localParallelMakeArgs(options.makeArgs);
+  const buildStatePath = path.join(buildRoot, ".morpheus-build-state.json");
+  const nextInputState = buildrootInputState(options, {
+    patchDirFingerprint,
+    kernelPatchFiles,
+    kernelPatchFingerprint: kernelPatchTag,
+    kernelConfigFragmentContent,
+  });
 
   const base = {
     id,
@@ -1321,6 +1363,33 @@ function runLocalBuildroot(options) {
     transport: { type: "local" }
   };
   writeJson(manifest, buildCanonicalManifest(base));
+
+  const currentInputState = fs.existsSync(buildStatePath)
+    ? readJsonIfExists(buildStatePath, null)
+    : null;
+  if (
+    currentInputState
+    && JSON.stringify(currentInputState) === JSON.stringify(nextInputState)
+  ) {
+    const artifacts = validateAndResolveLocalArtifacts(outputDir, options.expectedArtifacts);
+    const finalManifest = buildCanonicalManifest({
+      ...base,
+      status: "success",
+      updatedAt: nowIso(),
+      artifacts,
+      exitCode: 0,
+      warningMessage: "reused existing Buildroot build outputs"
+    });
+    writeJson(manifest, finalManifest);
+    registerRunFromManifest(finalManifest, null);
+    return {
+      command: "run",
+      status: "success",
+      exit_code: 0,
+      summary: "reused managed Buildroot build outputs",
+      details: { id, tool: BUILDROOT_TOOL, mode: "local", workspace: options.workspace, run_dir: runDir, manifest, log_file: logFile, output_dir: outputDir, artifacts },
+    };
+  }
 
   let exitCode = 0;
   let errorMessage;
@@ -1381,6 +1450,9 @@ function runLocalBuildroot(options) {
     errorMessage
   });
   writeJson(manifest, finalManifest);
+  if (exitCode === 0) {
+    writeJson(buildStatePath, nextInputState);
+  }
   registerRunFromManifest(finalManifest, null);
 
   return {
@@ -1414,6 +1486,7 @@ function buildrootRemoteScript(options, id) {
   const outputDir = path.posix.join(buildRoot, "output");
   const manifest = path.posix.join(runDir, "manifest.json");
   const logFile = path.posix.join(runDir, "stdout.log");
+  const buildStatePath = path.posix.join(buildRoot, ".morpheus-build-state.json");
   const createdAt = nowIso();
   const makeArgs = remoteParallelMakeArgs(options.makeArgs);
   const kernelPatchFiles = options.kernelPatchFiles || [];
@@ -1433,6 +1506,12 @@ function buildrootRemoteScript(options, id) {
     ? path.posix.join(buildRoot, "kernel-src")
     : null;
   const kernelConfigFragmentContent = options.kernelConfigFragmentContent || null;
+  const nextInputState = buildrootInputState(options, {
+    patchDirFingerprint: options.patchDirFingerprint || null,
+    kernelPatchFiles,
+    kernelPatchFingerprint: kernelPatchTag,
+    kernelConfigFragmentContent,
+  });
   const defconfigCommand = options.defconfig ? `make O=${shellQuote(outputDir)} ${options.defconfig}` : ":";
   const wantsNoopPostImage = (options.configFragment || []).some((line) => /BR2_ROOTFS_POST_IMAGE_SCRIPT\s*=\s*""/.test(String(line)));
   const noopPostImageScript = wantsNoopPostImage
@@ -1534,6 +1613,30 @@ mkdir -p ${shellQuote(cacheDir)} ${shellQuote(srcRoot)} ${shellQuote(runDir)} ${
 cat > ${shellQuote(manifest)} <<'JSON'
 ${JSON.stringify(initialManifest, null, 2)}
 JSON
+cat > ${shellQuote(path.posix.join(runDir, "next-build-state.json"))} <<'JSON'
+${JSON.stringify(nextInputState, null, 2)}
+JSON
+python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+manifest_path = Path(${shellQuote(manifest)})
+state_path = Path(${shellQuote(buildStatePath)})
+next_state_path = Path(${shellQuote(path.posix.join(runDir, "next-build-state.json"))})
+output_dir = Path(${shellQuote(outputDir)})
+manifest = json.loads(manifest_path.read_text())
+next_state = json.loads(next_state_path.read_text())
+artifacts = manifest.get("expectedArtifacts") or []
+if state_path.exists():
+    current_state = json.loads(state_path.read_text())
+    if current_state == next_state and all((output_dir / relpath).exists() for relpath in artifacts):
+        manifest["status"] = "success"
+        manifest["exitCode"] = 0
+        manifest["updatedAt"] = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+        manifest["warningMessage"] = "reused existing Buildroot build outputs"
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\\n")
+        raise SystemExit(42)
+PY
 set +e
 {
   set -e
@@ -1572,6 +1675,9 @@ if data['status'] == 'error':
     data['errorMessage'] = 'remote Buildroot run failed'
 file.write_text(json.dumps(data, indent=2) + '\\n')
 PY
+if [ "\${exit_code}" -eq 0 ]; then
+  cp ${shellQuote(path.posix.join(runDir, "next-build-state.json"))} ${shellQuote(buildStatePath)}
+fi
 exit "\${exit_code}"
 `;
 }
@@ -1583,6 +1689,7 @@ async function runRemoteBuildroot(options) {
   const kernelConfigFragmentContent = readKernelConfigFragment(patchDir);
   const kernelPatchFiles = listKernelPatchFiles(patchDir)
     .map((filePath) => path.relative(patchDir, filePath).split(path.sep).join(path.posix.sep));
+  const patchDirFingerprint = fileTreeFingerprint(patchDir);
   const sshCommandPrefix = `${shellQuote(sshBinary())} ${sshArgs(options.ssh).map(shellQuote).join(" ")}`;
   const remoteSourceDir = options.source
     ? path.posix.join(remoteToolWorkspace(options.workspace, BUILDROOT_TOOL), "src", `${id}-source`)
@@ -1612,6 +1719,7 @@ async function runRemoteBuildroot(options) {
   const runOptions = {
     ...options,
     kernelPatchFiles,
+    patchDirFingerprint,
     kernelConfigFragmentContent,
     patchDir,
     source: remoteSourceDir || options.source
@@ -1672,18 +1780,7 @@ async function runRemoteBuildroot(options) {
   if (result.error) {
     throw new Error(result.error.message || "failed to execute managed remote run");
   }
-  const payload = {
-    command: "run",
-    status: result.exitCode === 0 ? "success" : "error",
-    exit_code: result.exitCode,
-    summary: result.exitCode === 0 ? "completed managed remote Buildroot run" : "managed remote Buildroot run failed",
-    details: { id, tool: BUILDROOT_TOOL, mode: "remote", workspace: options.workspace, run_dir: runDir, manifest, log_file: logFile, output_dir: outputDir },
-    error: result.exitCode === 0
-      ? undefined
-      : { code: "managed_run_failed", message: result.stderr || "managed remote run failed" }
-  };
-
-  if (result.exitCode !== 0) {
+  if (result.exitCode !== 0 && result.exitCode !== 42) {
     try {
       const tail = runSsh(
         options.ssh,
@@ -1705,26 +1802,27 @@ async function runRemoteBuildroot(options) {
   );
   manifestResult.artifacts = fetchRemoteArtifacts(options, id, manifestResult.outputDir);
 
-  // If the underlying `make` exits non-zero but the expected artifacts were produced,
-  // treat the run as successful for downstream dependency resolution.
-  if (result.exitCode !== 0 && manifestResult.artifacts && manifestResult.artifacts.length > 0) {
-    manifestResult.warningMessage = `non-zero exit code (${result.exitCode}) but expected artifacts were produced`;
-    manifestResult.status = "success";
-    try {
-      runRequiredSsh(
-        options.ssh,
-        `cat > ${shellQuote(manifest)} <<'JSON'\n${JSON.stringify(manifestResult, null, 2)}\nJSON`,
-        "failed to update remote manifest"
-      );
-    } catch {
-      // Best-effort; downstream resolution uses the locally registered record.
-    }
-    payload.status = "success";
-    payload.summary = "completed managed remote Buildroot run (non-zero exit code)";
-    payload.details.non_zero_exit_code = result.exitCode;
-    payload.exit_code = 0;
-    delete payload.error;
-  }
+  const manifestExitCode = typeof manifestResult.exitCode === "number"
+    ? manifestResult.exitCode
+    : null;
+  const manifestStatus = String(manifestResult.status || "").trim().toLowerCase();
+  const normalizedExitCode = result.exitCode === 42
+    ? 0
+    : (manifestExitCode === 0 && manifestStatus === "success")
+      ? 0
+      : result.exitCode;
+  const payload = {
+    command: "run",
+    status: normalizedExitCode === 0 ? "success" : "error",
+    exit_code: normalizedExitCode,
+    summary: result.exitCode === 42
+      ? "reused managed remote Buildroot build outputs"
+      : (normalizedExitCode === 0 ? "completed managed remote Buildroot run" : "managed remote Buildroot run failed"),
+    details: { id, tool: BUILDROOT_TOOL, mode: "remote", workspace: options.workspace, run_dir: runDir, manifest, log_file: logFile, output_dir: outputDir },
+    error: normalizedExitCode === 0
+      ? undefined
+      : { code: "managed_run_failed", message: result.stderr || "managed remote run failed" }
+  };
 
   registerRunFromManifest(manifestResult, options.ssh);
   payload.details.artifacts = manifestResult.artifacts;
@@ -1743,7 +1841,7 @@ async function runManagedRun(flags, argvCommand = "run") {
     if (flags.mode === "remote") {
       return await runManagedRemoteQemu(flags, argvCommand);
     }
-    return runManagedQemu(flags);
+    return runManagedQemu({ ...flags, __command: argvCommand });
   }
   if (adapter.name === NVIRSH_TOOL) {
     if (flags.mode === "remote") {
@@ -3212,6 +3310,9 @@ function resolveManagedQemuRemoteOptions(flags) {
 }
 
 async function runManagedRemoteQemu(flags, argvCommand = "build") {
+  if (argvCommand === "run") {
+    throw new Error("qemu remote runtime is not supported; use --mode local for qemu run");
+  }
   const options = resolveManagedQemuRemoteOptions(flags);
   const ssh = parseSshTarget(requireFlag(flags, "ssh", "remote mode requires --ssh TARGET"));
   const id = options.id;

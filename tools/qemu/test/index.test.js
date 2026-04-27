@@ -16,6 +16,17 @@ function run(args, options = {}) {
   });
 }
 
+async function waitForFile(filePath, timeoutMs = 2000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (fs.existsSync(filePath)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`timed out waiting for ${filePath}`);
+}
+
 test('help supports json', () => {
   const result = run(['--json', '--help']);
   assert.equal(result.status, 0);
@@ -161,6 +172,76 @@ test('build can fetch and unpack a QEMU release archive', () => {
   assert.equal(payload.details.fetched_source, true);
   assert.equal(fs.existsSync(path.join(source, 'configure')), true);
   assert.equal(fs.existsSync(path.join(installDir, 'bin', 'qemu-system-aarch64')), true);
+
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('run launches a detached local QEMU process and writes a manifest', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qemu-tool-run-'));
+  const executable = path.join(root, 'qemu-system-aarch64');
+  const kernel = path.join(root, 'Image');
+  const initrd = path.join(root, 'rootfs.cpio.gz');
+  const runDir = path.join(root, 'run');
+  const launchArgs = path.join(runDir, 'launched.args');
+  fs.writeFileSync(
+    executable,
+    [
+      '#!/usr/bin/env sh',
+      'set -eu',
+      'if [ "${1:-}" = "--version" ]; then',
+      '  echo "qemu stub 1.0"',
+      '  exit 0',
+      'fi',
+      'sleep 0.1',
+      'printf "%s\\n" "$@" > launched.args',
+      'exit 0',
+      '',
+    ].join('\n'),
+    { mode: 0o755 },
+  );
+  fs.writeFileSync(kernel, 'kernel');
+  fs.writeFileSync(initrd, 'initrd');
+
+  const result = run([
+    '--json',
+    'run',
+    '--path',
+    executable,
+    '--kernel',
+    kernel,
+    '--initrd',
+    initrd,
+    '--run-dir',
+    runDir,
+    '--append',
+    'console=ttyAMA0 root=/dev/ram0',
+    '--qemu-arg',
+    '-smp',
+    '--qemu-arg',
+    '2',
+    '--detach',
+  ]);
+  assert.equal(result.status, 0, result.stdout || result.stderr);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.status, 'success');
+  assert.equal(payload.command, 'run');
+  assert.equal(payload.details.run_dir, runDir);
+
+  await waitForFile(path.join(runDir, 'manifest.json'));
+  await waitForFile(launchArgs);
+
+  const manifest = JSON.parse(fs.readFileSync(path.join(runDir, 'manifest.json'), 'utf8'));
+  assert.equal(manifest.tool, 'qemu');
+  assert.equal(manifest.command, 'run');
+  assert.equal(manifest.detached, true);
+  assert.equal(manifest.kernel, kernel);
+  assert.equal(manifest.initrd, initrd);
+
+  const launched = fs.readFileSync(launchArgs, 'utf8');
+  assert.match(launched, /-kernel/);
+  assert.match(launched, /-initrd/);
+  assert.match(launched, /console=ttyAMA0 root=\/dev\/ram0/);
+  assert.match(launched, /-smp/);
 
   fs.rmSync(root, { recursive: true, force: true });
 });

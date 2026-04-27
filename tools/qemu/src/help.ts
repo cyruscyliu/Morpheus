@@ -25,6 +25,22 @@ export const COMMANDS = [
     ],
   },
   {
+    name: 'run',
+    summary: 'Launch a kernel and initrd with a local QEMU executable',
+    usage: [
+      'qemu run --path PATH --kernel PATH --initrd PATH [--run-dir DIR] [--append TEXT] [--qemu-arg ARG ...] [--detach]',
+    ],
+    flags: [
+      { name: '--path PATH', summary: 'Path to a QEMU executable' },
+      { name: '--kernel PATH', summary: 'Kernel image to boot' },
+      { name: '--initrd PATH', summary: 'Initrd image to boot' },
+      { name: '--run-dir DIR', summary: 'Directory for runtime manifest and logs' },
+      { name: '--append TEXT', summary: 'Kernel command line' },
+      { name: '--qemu-arg ARG', summary: 'Repeatable extra QEMU argument' },
+      { name: '--detach', summary: 'Start QEMU in the background' },
+    ],
+  },
+  {
     name: 'version',
     summary: 'Print qemu tool CLI version',
     usage: ['qemu version'],

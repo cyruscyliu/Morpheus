@@ -437,11 +437,26 @@ function stepArtifactsFromToolPayload(toolPayload) {
 function stepArtifactViewMap(toolPayload) {
   const artifacts = stepArtifactsFromToolPayload(toolPayload);
   const views = {};
+  const aliases = new Set();
   for (const artifact of artifacts) {
     if (!artifact || typeof artifact !== "object" || typeof artifact.path !== "string") {
       continue;
     }
-    views[artifact.path] = artifact;
+    const artifactPath = artifact.path;
+    const basename = path.basename(artifactPath);
+    const sanitizedBasename = basename.replace(/[^A-Za-z0-9_-]+/g, "-");
+    const sanitizedPath = artifactPath.replace(/[^A-Za-z0-9_-]+/g, "-");
+    aliases.clear();
+    aliases.add(artifactPath);
+    aliases.add(basename);
+    aliases.add(sanitizedBasename);
+    aliases.add(sanitizedPath);
+    for (const alias of aliases) {
+      if (!alias || Object.prototype.hasOwnProperty.call(views, alias)) {
+        continue;
+      }
+      views[alias] = artifact;
+    }
   }
   return views;
 }

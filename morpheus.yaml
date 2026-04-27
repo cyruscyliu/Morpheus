@@ -153,6 +153,36 @@ tools:
         artifact: images/rootfs.cpio.gz
 
 workflows:
+  local-buildroot-qemu-runtime:
+    category: run
+    steps:
+      - id: buildroot_remote
+        tool: buildroot
+        command: build
+        args:
+          - --mode
+          - remote
+      - id: qemu_local
+        tool: qemu
+        command: build
+        args:
+          - --mode
+          - local
+          - --path
+          - "{{workspace.root}}/tools/qemu/builds/qemu-8.2.7-aarch64-softmmu/install/bin/qemu-system-aarch64"
+      - id: qemu_runtime_local
+        tool: qemu
+        command: run
+        args:
+          - --mode
+          - local
+          - --path
+          - "{{steps.qemu_local.artifacts.qemu-system-aarch64.location}}"
+          - --kernel
+          - "{{steps.buildroot_remote.artifacts.Image.local_location}}"
+          - --initrd
+          - "{{steps.buildroot_remote.artifacts.rootfs-cpio-gz.local_location}}"
+          - --detach
   hyperarm-kernel-callgraphs:
     category: run
     steps:

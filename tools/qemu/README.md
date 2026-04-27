@@ -1,12 +1,12 @@
 # qemu
 
-Inspect, fetch, unpack, build, and register QEMU with one stable CLI.
+Inspect, fetch, unpack, build, run, and register QEMU with one stable CLI.
 
 `qemu` is a small local tool that treats the QEMU binary as a first-class
-artifact. It does not own guest lifecycle behavior. Consumer tools such as
-`nvirsh` can depend on its resolved executable path through Morpheus, whether
-that executable comes from an existing local install or from a managed QEMU
-release fetch, unpack, and build flow.
+artifact. It can also launch a direct kernel-plus-initrd runtime when that is
+the intended workflow. Morpheus can depend on the resolved executable path or
+invoke the runtime directly, whether the executable comes from an existing
+local install or from a managed QEMU release fetch, unpack, and build flow.
 
 ## Quick start
 
@@ -46,6 +46,7 @@ The public command tree is:
 ```text
 qemu inspect
 qemu build
+qemu run
 qemu version
 qemu help
 ```
@@ -70,6 +71,25 @@ morpheus tool build \
   --json
 ```
 
+Run a kernel and initrd directly with QEMU:
+
+```bash
+qemu run \
+  --path <workspace>/tools/qemu/builds/qemu-8.2.7-aarch64-softmmu/install/bin/qemu-system-aarch64 \
+  --kernel <workspace>/tools/buildroot/builds/arm64-dev/output/images/Image \
+  --initrd <workspace>/tools/buildroot/builds/arm64-dev/output/images/rootfs.cpio.gz \
+  --run-dir <workspace>/runs/qemu-dev \
+  --detach \
+  --json
+```
+
+That command:
+
+- Validates the local QEMU executable
+- Starts a local AArch64 `virt` machine
+- Writes runtime metadata to `<run-dir>/manifest.json`
+- Streams runtime output into `<run-dir>/stdout.log`
+
 When Morpheus runs QEMU provisioning, the execution is recorded as a workflow
 run under `<workspace>/runs/<workflow-run-id>/`.
 
@@ -84,6 +104,11 @@ run under `<workspace>/runs/<workflow-run-id>/`.
 - `qemu build --target-list NAME`: repeatable target list such as
   `aarch64-softmmu`
 - `qemu build --configure-arg ARG`: repeatable extra configure argument
+- `qemu run --path PATH --kernel PATH --initrd PATH`: launch a local runtime
+- `qemu run --run-dir DIR`: write runtime manifest and logs under `DIR`
+- `qemu run --append TEXT`: override the kernel command line
+- `qemu run --qemu-arg ARG`: repeatable extra QEMU argument
+- `qemu run --detach`: start in the background
 
 Managed `morpheus tool build --tool qemu` supports placement modes:
 
@@ -100,6 +125,8 @@ Within that placement mode, Morpheus picks the provisioning strategy:
 - if `tools.qemu.path` exists, register it as the `qemu-system-aarch64` artifact
 - otherwise, run `qemu build` to fetch/unpack/build/install into the workspace
   and register the resulting executable
+- `morpheus tool run --tool qemu` uses the same managed executable resolution
+  and then launches `qemu run`
 
 ## JSON
 
@@ -110,6 +137,7 @@ Every command supports `--json`, including help and errors.
 - `qemu` owns local executable inspection
 - `qemu` owns fetch, unpack, source staging, and build/install for managed
   builds
+- `qemu` owns direct local runtime launch for kernel-plus-initrd boots
 - `morpheus` owns `local` vs `remote` placement and tool dependency wiring
 - remote build outputs live under `tools/qemu/{src,downloads,builds}/` in the
   managed remote workspace

@@ -84,6 +84,10 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
+function readJson(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+}
+
 function loadQemuConfig() {
   const config = loadConfig(process.cwd());
   const value = config.value || {};
@@ -247,7 +251,7 @@ function preferredRepeatableFlag(flags, key, fallback) {
   return flags[key] || [...fallback];
 }
 
-function parseRunOptions(flags) {
+function parseRunOptions(flags, command = "run") {
   const workspace = flags.workspace;
   if (!workspace) {
     throw new Error("run requires --workspace DIR or a workspace root in morpheus.yaml");
@@ -258,6 +262,7 @@ function parseRunOptions(flags) {
   const options = {
     id: generateRunId(),
     workspace,
+    command,
     mode: placementMode,
     executable: flags.path
       ? path.resolve(process.cwd(), flags.path)
@@ -269,8 +274,16 @@ function parseRunOptions(flags) {
       : resolveLocalPath(baseDir, value.source),
     configureArgs: preferredRepeatableFlag(flags, "configure-arg", value.configureArgs || []),
     targetList: preferredRepeatableFlag(flags, "target-list", value.targetList || []),
-    buildDirKey: buildKeyFromFlags(flags)
+    buildDirKey: buildKeyFromFlags(flags),
+    kernel: flags.kernel ? path.resolve(process.cwd(), flags.kernel) : null,
+    initrd: flags.initrd ? path.resolve(process.cwd(), flags.initrd) : null,
+    runDir: flags["run-dir"] ? path.resolve(process.cwd(), flags["run-dir"]) : null,
+    qemuArgs: Array.isArray(flags["qemu-arg"]) ? [...flags["qemu-arg"]] : [],
+    append: flags.append ? String(flags.append) : "",
+    detach: Boolean(flags.detach),
   };
+
+  options.runtimeRequested = command === "run";
 
   if (!options.source && options.qemuVersion) {
     options.source = defaultManagedSource(workspace, options.qemuVersion);
@@ -322,7 +335,7 @@ function localExecutableManifest(options, runDir, manifestPath, logFile, inspect
     tool: TOOL,
     mode: "local",
     provisioning: "path",
-    command: "run",
+    command: options.command,
     status: "success",
     createdAt: nowIso(),
     updatedAt: nowIso(),
@@ -351,7 +364,7 @@ function buildModeManifest(options, runDir, manifestPath, logFile, result) {
     tool: TOOL,
     mode: "local",
     provisioning: "build",
-    command: "run",
+    command: options.command,
     status: "success",
     createdAt: nowIso(),
     updatedAt: nowIso(),
@@ -384,7 +397,7 @@ function buildModeManifest(options, runDir, manifestPath, logFile, result) {
 }
 
 async function runManagedQemu(flags) {
-  const options = parseRunOptions(flags);
+  const options = parseRunOptions(flags, flags.__command || "run");
   registerManagedWorkspace({
     mode: "local",
     root: path.resolve(process.cwd(), options.workspace)
@@ -435,11 +448,68 @@ async function runManagedQemu(flags) {
     manifest = buildModeManifest(options, runDir, manifestPath, logFile, built);
   }
 
+  if (options.runtimeRequested) {
+    if (!options.kernel || !options.initrd) {
+      throw new Error("qemu run requires --kernel PATH and --initrd PATH");
+    }
+    const executablePath = manifest.artifacts[0] && manifest.artifacts[0].location
+      ? manifest.artifacts[0].location
+      : options.executable;
+    const runtimeRunDir = options.runDir || path.join(runDir, "runtime");
+    const runtime = parseToolPayload(
+      await runQemuTool([
+        "--json",
+        "run",
+        "--path",
+        executablePath,
+        "--kernel",
+        options.kernel,
+        "--initrd",
+        options.initrd,
+        "--run-dir",
+        runtimeRunDir,
+        ...(options.append ? ["--append", options.append] : []),
+        ...(options.detach ? ["--detach"] : []),
+        ...(options.qemuArgs || []).flatMap((item) => ["--qemu-arg", item]),
+      ], {
+        logFile,
+        jsonMode: Boolean(flags.json),
+      }),
+      "failed to start local QEMU runtime"
+    );
+    writeJson(manifestPath, {
+      ...manifest,
+      command: "run",
+      runtime: runtime.details && runtime.details.manifest ? runtime.details.manifest : runtime.details || null,
+      updatedAt: nowIso(),
+    });
+    registerManifest(readJson(manifestPath));
+    return {
+      command: "run",
+      status: runtime.status || "success",
+      exit_code: runtime.exit_code || 0,
+      summary: runtime.summary || "started managed qemu runtime",
+      details: {
+        id: manifest.id,
+        tool: TOOL,
+        mode: manifest.mode,
+        provisioning: manifest.provisioning,
+        workspace: options.workspace,
+        run_dir: runDir,
+        manifest: readJson(manifestPath),
+        log_file: logFile,
+        output_dir: manifest.outputDir,
+        runtime: runtime.details || null,
+        artifacts: manifest.artifacts,
+      }
+    };
+  }
+
   writeJson(manifestPath, manifest);
   registerManifest(manifest);
 
   return {
-    command: "run",
+    command: options.command,
     status: "success",
     exit_code: 0,
     summary: options.provisioning === "path"

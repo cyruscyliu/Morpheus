@@ -434,6 +434,28 @@ function stepArtifactsFromToolPayload(toolPayload) {
   return toolPayload.details.artifacts;
 }
 
+function stepArtifactViewMap(toolPayload) {
+  const artifacts = stepArtifactsFromToolPayload(toolPayload);
+  const views = {};
+  for (const artifact of artifacts) {
+    if (!artifact || typeof artifact !== "object" || typeof artifact.path !== "string") {
+      continue;
+    }
+    views[artifact.path] = artifact;
+  }
+  return views;
+}
+
+function stepTemplatePayload(toolPayload) {
+  if (!toolPayload || typeof toolPayload !== "object") {
+    return toolPayload || null;
+  }
+  return {
+    ...toolPayload,
+    artifacts: stepArtifactViewMap(toolPayload),
+  };
+}
+
 function attachedWorkflowStepPayload(step, toolCommand, result) {
   const managedManifestPath = path.join(stepToolRunDir(step.stepDir), "manifest.json");
   const managedManifest = readJsonIfExists(managedManifestPath, null);
@@ -665,7 +687,7 @@ async function runToolWorkflow({
     }
     lastToolPayload = toolPayload;
     lastStderr = String(result.stderr || "");
-    stepResults[step.id] = toolPayload || null;
+    stepResults[step.id] = stepTemplatePayload(toolPayload);
     const status = workflowStepStatusFromResult(result, toolPayload, attach);
     exitCode = toolPayload && typeof toolPayload.exit_code === "number"
       ? toolPayload.exit_code

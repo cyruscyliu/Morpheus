@@ -789,6 +789,90 @@ test("tool build creates a single-step workflow run", () => {
   fs.rmSync(env.MORPHEUS_WORK_ROOT, { recursive: true, force: true });
 });
 
+test("workflow run resolves prior step artifacts in configured workflows", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-configured-"));
+  const workspaceRoot = path.join(projectRoot, "workflow-workspace");
+  const fixtureRoot = path.join(projectRoot, "fixtures", "linux-6.18.16-arm64-clang15");
+  const sourceDir = path.join(projectRoot, "fixtures", "linux-6.18.16");
+  const bitcodeListPath = path.join(fixtureRoot, "bitcode_files.txt");
+  const kernelBuildLogPath = path.join(fixtureRoot, "kernel-build.log");
+  const llbicManifestPath = path.join(fixtureRoot, "llbic.json");
+  const env = isolatedEnv();
+
+  fs.mkdirSync(fixtureRoot, { recursive: true });
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.writeFileSync(bitcodeListPath, "kernel/sched/core.bc\n");
+  fs.writeFileSync(path.join(fixtureRoot, "llbic.log"), "llbic inspect fixture\n");
+  fs.writeFileSync(kernelBuildLogPath, "kernel build fixture\n");
+  fs.writeFileSync(
+    llbicManifestPath,
+    JSON.stringify({
+      kernel_version: "6.18.16",
+      kernel_name: "linux-6.18.16",
+      arch: "arm64",
+      build_layout: "out-of-tree",
+      bitcode_list_file: bitcodeListPath,
+      source_dir: sourceDir,
+      output_dir: fixtureRoot,
+      kernel_build_log: kernelBuildLogPath,
+      status: "success"
+    })
+  );
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "workflows:",
+      "  llbic-artifact-resolution:",
+      "    category: run",
+      "    steps:",
+      "      - id: inspect_a",
+      "        tool: llbic",
+      "        command: build",
+      `        args: ["inspect", "${llbicManifestPath}"]`,
+      "      - id: inspect_b",
+      "        tool: llbic",
+      "        command: build",
+      "        args:",
+      "          - inspect",
+      "          - \"{{steps.inspect_a.artifacts.llbic-json.location}}\"",
+      ""
+    ].join("\n")
+  );
+
+  const result = run([
+    "--json",
+    "workflow",
+    "run",
+    "--name",
+    "llbic-artifact-resolution"
+  ], {
+    cwd: projectRoot,
+    env
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.steps.length, 2);
+
+  const inspectBResultPath = path.join(
+    workspaceRoot,
+    "runs",
+    payload.details.id,
+    "steps",
+    "inspect_b",
+    "tool-result.json"
+  );
+  const inspectBResult = JSON.parse(fs.readFileSync(inspectBResultPath, "utf8"));
+  assert.equal(inspectBResult.details.manifest, llbicManifestPath);
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+  fs.rmSync(env.MORPHEUS_WORK_ROOT, { recursive: true, force: true });
+});
+
 test("managed run validates required mode in JSON mode", () => {
   const result = run(["--json", "tool", "build", "--tool", "buildroot"], {
     cwd: os.tmpdir(),
@@ -879,8 +963,11 @@ test("managed remote llbic inspect writes a Morpheus run record", () => {
 test("managed remote llcg genmutator writes outputs under the remote run directory", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-llcg-project-"));
   const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-llcg-root-"));
+  const localWorkspace = path.join(projectRoot, "workflow-workspace");
+  const localStepRunDir = path.join(localWorkspace, "runs", "wf-test", "steps", "01-llcg-run", "run");
   const kernelRoot = path.join(remoteRoot, "kernel-src");
   fs.mkdirSync(path.join(kernelRoot, "drivers", "net"), { recursive: true });
+  fs.mkdirSync(localStepRunDir, { recursive: true });
   fs.writeFileSync(
     path.join(kernelRoot, "Makefile"),
     [
@@ -892,11 +979,24 @@ test("managed remote llcg genmutator writes outputs under the remote run directo
     ].join("\n")
   );
   fs.writeFileSync(path.join(kernelRoot, "drivers", "net", "demo.c"), "int demo(void) { return 0; }\n");
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "remote:",
+      "  ssh: builder@example.com:2222",
+      "  workspace:",
+      "    root: /remote-workspace",
+      ""
+    ].join("\n")
+  );
 
   const env = {
     ...process.env,
     ...makeFakeSshEnv(remoteRoot),
     MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1",
+    MORPHEUS_RUN_DIR_OVERRIDE: localStepRunDir,
     MORPHEUS_STATE_ROOT: path.join(projectRoot, ".state")
   };
 
@@ -908,10 +1008,8 @@ test("managed remote llcg genmutator writes outputs under the remote run directo
     "llcg",
     "--mode",
     "remote",
-    "--ssh",
-    "builder@example.com:2222",
     "--workspace",
-    "/remote-workspace",
+    "workspace",
     "genmutator",
     "files",
     "--source-dir",
@@ -931,7 +1029,8 @@ test("managed remote llcg genmutator writes outputs under the remote run directo
   const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
   assert.equal(payload.status, "success");
   assert.equal(payload.details.mode, "remote");
-  assert.match(payload.details.output_dir, /\/runs\/llcg-/);
+  assert.equal(payload.details.run_dir, "/remote-workspace/runs/wf-test/steps/01-llcg-run/run");
+  assert.equal(payload.details.output_dir, "/remote-workspace/runs/wf-test/steps/01-llcg-run/run/output");
   assert.equal(
     payload.details.payload.artifacts.some((artifact) => artifact.key === "mutator_manifest"),
     true

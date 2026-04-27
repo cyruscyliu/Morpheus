@@ -56,12 +56,20 @@ tools:
       - toolchain-dir
   llbic:
     mode: remote
+    reuse-build-dir: true
     arch: arm64
     clang: 15
     out-of-tree: true
     sources: tools/llbic/src
     output: tools/llbic/builds
     conf: tools/llbic/sources.conf
+    artifacts:
+      - source-dir
+      - output-dir
+      - llbic-json
+      - bitcode-files
+      - llbic-log
+      - kernel-build-log
   llcg:
     mode: remote
     arch: arm64
@@ -135,7 +143,7 @@ workflows:
           - genmutator
           - interfaces
           - --source-dir
-          - "{{steps.llbic_6_18_16.details.source_dir}}"
+          - "{{steps.llbic_6_18_16.artifacts.source-dir.location}}"
           - --interfaces
           - networking
       - id: storage_mutator_6_18_16
@@ -145,7 +153,7 @@ workflows:
           - genmutator
           - interfaces
           - --source-dir
-          - "{{steps.llbic_6_18_16.details.source_dir}}"
+          - "{{steps.llbic_6_18_16.artifacts.source-dir.location}}"
           - --interfaces
           - storage
       - id: net_cg_6_18_16
@@ -154,11 +162,11 @@ workflows:
         args:
           - run
           - --llbic-json
-          - "{{steps.llbic_6_18_16.details.manifest}}"
+          - "{{steps.llbic_6_18_16.artifacts.llbic-json.location}}"
           - --all-bc-list
-          - "{{steps.llbic_6_18_16.details.bitcode_list}}"
+          - "{{steps.llbic_6_18_16.artifacts.bitcode-files.location}}"
           - --filter
-          - "{{steps.net_mutator_6_18_16.details.manifest}}"
+          - "{{steps.net_mutator_6_18_16.artifacts.manifest.location}}"
           - --scope-name
           - networking-6.18.16
       - id: storage_cg_6_18_16
@@ -167,11 +175,11 @@ workflows:
         args:
           - run
           - --llbic-json
-          - "{{steps.llbic_6_18_16.details.manifest}}"
+          - "{{steps.llbic_6_18_16.artifacts.llbic-json.location}}"
           - --all-bc-list
-          - "{{steps.llbic_6_18_16.details.bitcode_list}}"
+          - "{{steps.llbic_6_18_16.artifacts.bitcode-files.location}}"
           - --filter
-          - "{{steps.storage_mutator_6_18_16.details.manifest}}"
+          - "{{steps.storage_mutator_6_18_16.artifacts.manifest.location}}"
           - --scope-name
           - storage-6.18.16
       - id: llbic_6_19_6
@@ -185,7 +193,7 @@ workflows:
           - genmutator
           - interfaces
           - --source-dir
-          - "{{steps.llbic_6_19_6.details.source_dir}}"
+          - "{{steps.llbic_6_19_6.artifacts.source-dir.location}}"
           - --interfaces
           - networking
       - id: storage_mutator_6_19_6
@@ -195,7 +203,7 @@ workflows:
           - genmutator
           - interfaces
           - --source-dir
-          - "{{steps.llbic_6_19_6.details.source_dir}}"
+          - "{{steps.llbic_6_19_6.artifacts.source-dir.location}}"
           - --interfaces
           - storage
       - id: net_cg_6_19_6
@@ -204,11 +212,11 @@ workflows:
         args:
           - run
           - --llbic-json
-          - "{{steps.llbic_6_19_6.details.manifest}}"
+          - "{{steps.llbic_6_19_6.artifacts.llbic-json.location}}"
           - --all-bc-list
-          - "{{steps.llbic_6_19_6.details.bitcode_list}}"
+          - "{{steps.llbic_6_19_6.artifacts.bitcode-files.location}}"
           - --filter
-          - "{{steps.net_mutator_6_19_6.details.manifest}}"
+          - "{{steps.net_mutator_6_19_6.artifacts.manifest.location}}"
           - --scope-name
           - networking-6.19.6
       - id: storage_cg_6_19_6
@@ -217,11 +225,11 @@ workflows:
         args:
           - run
           - --llbic-json
-          - "{{steps.llbic_6_19_6.details.manifest}}"
+          - "{{steps.llbic_6_19_6.artifacts.llbic-json.location}}"
           - --all-bc-list
-          - "{{steps.llbic_6_19_6.details.bitcode_list}}"
+          - "{{steps.llbic_6_19_6.artifacts.bitcode-files.location}}"
           - --filter
-          - "{{steps.storage_mutator_6_19_6.details.manifest}}"
+          - "{{steps.storage_mutator_6_19_6.artifacts.manifest.location}}"
           - --scope-name
           - storage-6.19.6
       - id: llbic_7_0_rc3
@@ -235,7 +243,7 @@ workflows:
           - genmutator
           - interfaces
           - --source-dir
-          - "{{steps.llbic_7_0_rc3.details.source_dir}}"
+          - "{{steps.llbic_7_0_rc3.artifacts.source-dir.location}}"
           - --interfaces
           - networking
       - id: storage_mutator_7_0_rc3
@@ -245,7 +253,7 @@ workflows:
           - genmutator
           - interfaces
           - --source-dir
-          - "{{steps.llbic_7_0_rc3.details.source_dir}}"
+          - "{{steps.llbic_7_0_rc3.artifacts.source-dir.location}}"
           - --interfaces
           - storage
       - id: net_cg_7_0_rc3
@@ -254,11 +262,11 @@ workflows:
         args:
           - run
           - --llbic-json
-          - "{{steps.llbic_7_0_rc3.details.manifest}}"
+          - "{{steps.llbic_7_0_rc3.artifacts.llbic-json.location}}"
           - --all-bc-list
-          - "{{steps.llbic_7_0_rc3.details.bitcode_list}}"
+          - "{{steps.llbic_7_0_rc3.artifacts.bitcode-files.location}}"
           - --filter
-          - "{{steps.net_mutator_7_0_rc3.details.manifest}}"
+          - "{{steps.net_mutator_7_0_rc3.artifacts.manifest.location}}"
           - --scope-name
           - networking-7.0-rc3
       - id: storage_cg_7_0_rc3
@@ -267,10 +275,10 @@ workflows:
         args:
           - run
           - --llbic-json
-          - "{{steps.llbic_7_0_rc3.details.manifest}}"
+          - "{{steps.llbic_7_0_rc3.artifacts.llbic-json.location}}"
           - --all-bc-list
-          - "{{steps.llbic_7_0_rc3.details.bitcode_list}}"
+          - "{{steps.llbic_7_0_rc3.artifacts.bitcode-files.location}}"
           - --filter
-          - "{{steps.storage_mutator_7_0_rc3.details.manifest}}"
+          - "{{steps.storage_mutator_7_0_rc3.artifacts.manifest.location}}"
           - --scope-name
           - storage-7.0-rc3

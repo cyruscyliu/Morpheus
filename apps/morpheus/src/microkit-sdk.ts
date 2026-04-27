@@ -1100,5 +1100,6 @@ function finalizeRun(options, manifest, runDir, manifestPath, logFile) {
 }
 
 module.exports = {
+  parseRunOptions,
   runManagedMicrokitSdk
 };

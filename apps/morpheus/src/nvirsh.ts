@@ -768,5 +768,6 @@ async function runManagedNvirsh(flags) {
 }
 
 module.exports = {
+  parseRunOptions,
   runManagedNvirsh
 };

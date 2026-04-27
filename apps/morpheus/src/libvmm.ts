@@ -295,5 +295,6 @@ function runManagedLibvmm(flags) {
 }
 
 module.exports = {
+  parseRunOptions,
   runManagedLibvmm
 };

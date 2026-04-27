@@ -4,7 +4,7 @@
   "entry": "dist/index.js",
   "managed": {
     "schemaVersion": 1,
-    "modes": ["local"],
+    "modes": ["local", "remote"],
     "local": {
       "artifactPath": "qemu-system-aarch64",
       "sourceTemplate": "tools/qemu/src/qemu-{qemuVersion}",

@@ -68,6 +68,20 @@ function resolveLocalPath(baseDir, inputPath) {
   return path.resolve(baseDir, value);
 }
 
+function resolveManagedToolPath(baseDir, workspaceRoot, toolName, inputPath) {
+  if (!inputPath) {
+    return inputPath;
+  }
+  const value = String(inputPath);
+  if (value.startsWith("~") || path.isAbsolute(value)) {
+    return value;
+  }
+  if (workspaceRoot && value.startsWith(`tools/${toolName}/`)) {
+    return path.resolve(workspaceRoot, value);
+  }
+  return resolveLocalPath(baseDir, value);
+}
+
 function resolveRemoteName(configValue, name) {
   if (!name && configValue.remote && configValue.remote.ssh) {
     return {
@@ -292,7 +306,7 @@ function applyConfigDefaults(flags, options) {
   const next = { ...flags };
   const allowGlobalRemote = Boolean(options && options.allowGlobalRemote);
   const allowToolDefaults = Boolean(options && options.allowToolDefaults);
-  const toolDisallowsRemote = ["microkit-sdk", "qemu", "nvirsh", "sel4", "libvmm"].includes(next.tool);
+  const toolDisallowsRemote = false;
 
   let workspaceEntry = null;
   if (next.workspace) {
@@ -327,15 +341,15 @@ function applyConfigDefaults(flags, options) {
   }
 
   if (toolEntry && toolEntry.source && !next.source) {
-    next.source = resolveLocalPath(baseDir, toolEntry.source);
+    next.source = resolveManagedToolPath(baseDir, next.localWorkspace, next.tool, toolEntry.source);
   }
 
   if (toolEntry && toolEntry.path && !next.path) {
-    next.path = resolveLocalPath(baseDir, toolEntry.path);
+    next.path = resolveManagedToolPath(baseDir, next.localWorkspace, next.tool, toolEntry.path);
   }
 
   if (toolEntry && toolEntry.executable && !next.path) {
-    next.path = resolveLocalPath(baseDir, toolEntry.executable);
+    next.path = resolveManagedToolPath(baseDir, next.localWorkspace, next.tool, toolEntry.executable);
   }
 
   if (toolEntry && toolEntry.targetList && !next["target-list"]) {
@@ -347,7 +361,7 @@ function applyConfigDefaults(flags, options) {
   }
 
   if (toolEntry && toolEntry.patchDir && !next["patch-dir"]) {
-    next["patch-dir"] = resolveLocalPath(baseDir, toolEntry.patchDir);
+    next["patch-dir"] = resolveManagedToolPath(baseDir, next.localWorkspace, next.tool, toolEntry.patchDir);
   }
 
   if (toolEntry && toolEntry.reuseBuildDir !== null

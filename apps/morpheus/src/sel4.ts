@@ -302,5 +302,6 @@ function runManagedSel4(flags) {
 }
 
 module.exports = {
+  parseRunOptions,
   runManagedSel4
 };

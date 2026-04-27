@@ -11,10 +11,11 @@ Use this skill when you need to work with the repo-local `qemu` tool.
 
 ## Purpose
 
-`qemu` is a minimal local CLI for executable inspection and managed builds.
+`qemu` is a minimal CLI for executable inspection and managed builds.
 It validates the binary, reads `--version`, and exposes a stable artifact
 record that Morpheus can pass to dependent tools such as `nvirsh`.
-Morpheus manages execution placement around that contract: today `local` only.
+Morpheus manages execution placement around that contract for both `local` and
+`remote` runs.
 Managed build mode can fetch a QEMU release tarball, unpack it into the
 canonical managed source path from `morpheus.yaml`, stage the build copy, and
 build/install the executable itself.
@@ -41,9 +42,15 @@ qemu help
 - `qemu` owns local executable inspection.
 - `morpheus tool build --tool qemu --mode local` records an existing executable
   as a managed artifact when `tools.qemu.path` exists.
-- Otherwise, `morpheus tool build --tool qemu --mode local` builds and records
-  the managed artifact from the canonical managed source path inside the
-  workspace (fetching/unpacking as needed).
+- `morpheus tool build --tool qemu --mode remote` runs the same provisioning
+  flow in the remote managed workspace and records the resulting remote
+  artifact path.
+- That remote path now requires a remote Morpheus runtime, either from
+  `morpheus` on `PATH`, a mirrored repo checkout with `bin/morpheus`, or an
+  explicit `MORPHEUS_REMOTE_BIN` override.
+- Otherwise, `morpheus tool build --tool qemu` builds and records the managed
+  artifact from the canonical managed source path inside the chosen workspace
+  (fetching/unpacking as needed).
 - `tools/qemu/tool.json` is the declared managed path contract that Morpheus
   uses for the workspace-local source, build, install, and artifact layout.
 - The `qemu` CLI owns fetch, unpack, source staging, and build/install for the

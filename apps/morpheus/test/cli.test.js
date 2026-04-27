@@ -42,10 +42,17 @@ function isolatedEnv(extra = {}) {
   };
 }
 
-function makeFakeSshEnv(remoteRoot) {
+function makeFakeSshEnv(remoteRoot, options = {}) {
   const fakeBin = path.join(remoteRoot, "fake-ssh-bin");
   fs.mkdirSync(fakeBin, { recursive: true });
   const sshPath = path.join(fakeBin, "ssh");
+  if (options.badMorpheusOnPath) {
+    fs.writeFileSync(
+      path.join(fakeBin, "morpheus"),
+      "#!/usr/bin/env sh\necho 'unexpected PATH morpheus' >&2\nexit 23\n",
+      { mode: 0o755 }
+    );
+  }
   fs.writeFileSync(
     sshPath,
     `#!/usr/bin/env python3
@@ -180,6 +187,12 @@ EOF
   return {
     PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`
   };
+}
+
+function makeRepoTempDir(prefix) {
+  const parent = path.join(repoRoot, ".test-tmp");
+  fs.mkdirSync(parent, { recursive: true });
+  return fs.mkdtempSync(path.join(parent, `${prefix}-`));
 }
 
 test("kernel patch helpers keep linux hashes but move linux patches out of global patching", () => {
@@ -1392,6 +1405,37 @@ test("tool config can provide buildroot defaults and expected artifacts", () => 
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("tool config resolves managed buildroot patch-dir relative to workspace root", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-workspace-paths-project-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "tools:",
+      "  buildroot:",
+      "    mode: remote",
+      "    patch-dir: tools/buildroot/patches",
+      ""
+    ].join("\n")
+  );
+
+  const previousCwd = process.cwd();
+  process.chdir(projectRoot);
+  const { applyConfigDefaults } = require(path.join(appRoot, "dist", "config.js"));
+  const resolved = applyConfigDefaults({
+    tool: "buildroot"
+  }, { allowGlobalRemote: true, allowToolDefaults: true });
+  process.chdir(previousCwd);
+
+  assert.equal(
+    resolved.flags["patch-dir"],
+    path.join(projectRoot, "workflow-workspace", "tools", "buildroot", "patches")
+  );
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
 test("tool config can provide nvirsh defaults", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-nvirsh-config-project-"));
   writeConfig(
@@ -1470,6 +1514,45 @@ test("tool config can provide qemu defaults", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("tool config can make qemu run remotely", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-qemu-remote-config-project-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "remote:",
+      "  ssh: builder@example.com:2222",
+      "  workspace:",
+      "    root: /remote-workspace",
+      "tools:",
+      "  qemu:",
+      "    mode: remote",
+      "    qemu-version: 8.2.7",
+      ""
+    ].join("\n")
+  );
+
+  const previousCwd = process.cwd();
+  process.chdir(projectRoot);
+  const { applyConfigDefaults } = require(path.join(appRoot, "dist", "config.js"));
+  const resolved = applyConfigDefaults({
+    tool: "qemu"
+  }, {
+    allowGlobalRemote: true,
+    allowToolDefaults: true
+  });
+  process.chdir(previousCwd);
+
+  assert.equal(resolved.flags.mode, "remote");
+  assert.equal(resolved.flags.workspace, "/remote-workspace");
+  assert.equal(resolved.flags.ssh, "builder@example.com:2222");
+  assert.equal(resolved.flags.remote, "remote");
+  assert.equal(resolved.flags.remoteTarget, "remote");
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
 test("managed qemu run registers a local executable artifact", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-qemu-project-"));
   const workspaceRoot = path.join(projectRoot, "workflow-workspace");
@@ -1522,6 +1605,123 @@ test("managed qemu run registers a local executable artifact", () => {
   assert.equal(payload.details.manifest.artifacts[0].path, "qemu-system-aarch64");
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("managed qemu run can build an executable remotely", () => {
+  const projectRoot = makeRepoTempDir("morpheus-qemu-remote-build-project");
+  const remoteRoot = makeRepoTempDir("morpheus-qemu-remote-build-root");
+  const workspaceRoot = path.join(projectRoot, "workflow-workspace");
+  const sourceRoot = path.join(workspaceRoot, "tools", "qemu", "src", "qemu");
+  fs.mkdirSync(sourceRoot, { recursive: true });
+  fs.writeFileSync(
+    path.join(sourceRoot, "configure"),
+    [
+      "#!/usr/bin/env sh",
+      "set -eu",
+      "prefix=''",
+      "for arg in \"$@\"; do",
+      "  case \"$arg\" in",
+      "    --prefix=*) prefix=\"${arg#--prefix=}\" ;;",
+      "  esac",
+      "done",
+      "cat > Makefile <<EOF",
+      "all:",
+      "\t@mkdir -p build-out",
+      "\t@printf '%s\\n' '#!/usr/bin/env sh' 'if [ \"$$1\" = \"--version\" ]; then echo \"qemu remote 1.0\"; exit 0; fi' 'exit 0' > build-out/qemu-system-aarch64",
+      "\t@chmod +x build-out/qemu-system-aarch64",
+      "install:",
+      "\t@mkdir -p ${prefix}/bin",
+      "\t@cp build-out/qemu-system-aarch64 ${prefix}/bin/qemu-system-aarch64",
+      "EOF",
+      ""
+    ].join("\n"),
+    { mode: 0o755 }
+  );
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "remote:",
+      "  ssh: builder@example.com:2222",
+      "  workspace:",
+      "    root: /remote-workspace",
+      "tools:",
+      "  qemu:",
+      "    mode: remote",
+      "    sync-morpheus: true",
+      "    source: ./workflow-workspace/tools/qemu/src/qemu",
+      "    build-dir-key: aarch64-softmmu",
+      "    target-list:",
+      "      - aarch64-softmmu",
+      ""
+    ].join("\n")
+  );
+
+  const result = run([
+    "--json",
+    "tool",
+    "run",
+    "--tool",
+    "qemu"
+  ], {
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      ...makeFakeSshEnv(remoteRoot, { badMorpheusOnPath: true }),
+      MORPHEUS_STATE_ROOT: path.join(projectRoot, ".state")
+    }
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.mode, "remote");
+  assert.equal(payload.details.provisioning, "build");
+  assert.equal(payload.details.output_dir, "/remote-workspace/tools/qemu/builds/aarch64-softmmu/install");
+  assert.equal(
+    payload.details.artifacts[0].remote_location,
+    "/remote-workspace/tools/qemu/builds/aarch64-softmmu/install/bin/qemu-system-aarch64"
+  );
+  assert.equal(
+    fs.existsSync(path.join(remoteRoot, "tools", "qemu", "builds", "aarch64-softmmu", "install", "bin", "qemu-system-aarch64")),
+    true
+  );
+  assert.equal(
+    fs.existsSync(path.join(remoteRoot, "tools", "qemu", "src", "qemu", "configure")),
+    true
+  );
+  assert.equal(
+    fs.existsSync(path.join(remoteRoot, ".morpheus", "runtime", "current", "bin", "morpheus")),
+    true
+  );
+  assert.equal(
+    fs.existsSync(path.join(remoteRoot, "tools", "qemu", "_managed_tool")),
+    false
+  );
+  assert.equal(
+    fs.existsSync(path.join(remoteRoot, "tmp", "managed-tools", "qemu")),
+    false
+  );
+
+  const managedManifestPath = payload.details.managed_manifest.replace("/remote-workspace", remoteRoot);
+  assert.equal(fs.existsSync(managedManifestPath), true);
+  const managedLogPath = payload.details.log_file.replace("/remote-workspace", remoteRoot);
+  assert.equal(fs.existsSync(managedLogPath), true);
+  assert.equal(fs.readFileSync(managedLogPath, "utf8").includes('"status":"stream"'), false);
+  const managedManifest = JSON.parse(fs.readFileSync(managedManifestPath, "utf8"));
+  assert.equal(managedManifest.tool, "qemu");
+  assert.equal(managedManifest.mode, "remote");
+  assert.equal(managedManifest.status, "success");
+  assert.equal(managedManifest.artifacts[0].path, "qemu-system-aarch64");
+  assert.equal(
+    managedManifest.artifacts[0].remote_location,
+    path.join(remoteRoot, "tools", "qemu", "builds", "aarch64-softmmu", "install", "bin", "qemu-system-aarch64")
+  );
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+  fs.rmSync(remoteRoot, { recursive: true, force: true });
 });
 
 test("managed microkit-sdk run registers a local sdk artifact", () => {

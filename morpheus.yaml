@@ -9,6 +9,7 @@ remote:
 tools:
   buildroot:
     mode: remote
+    sync-morpheus: true
     buildroot-version: 2025.02.12
     reuse-build-dir: true
     build-dir-key: arm64-dev
@@ -34,7 +35,8 @@ tools:
       - images/Image
       - images/rootfs.cpio.gz
   qemu:
-    mode: local
+    mode: remote
+    sync-morpheus: true
     qemu-version: 8.2.7
     reuse-build-dir: true
     build-dir-key: qemu-8.2.7-aarch64-softmmu
@@ -56,6 +58,7 @@ tools:
       - toolchain-dir
   llbic:
     mode: remote
+    sync-morpheus: true
     reuse-build-dir: true
     arch: arm64
     clang: 15

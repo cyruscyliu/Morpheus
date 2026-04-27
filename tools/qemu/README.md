@@ -63,7 +63,7 @@ path does not exist yet:
 ```bash
 morpheus tool build \
   --tool qemu \
-  --mode local \
+  --mode remote \
   --qemu-version 8.2.7 \
   --build-dir-key qemu-8.2.7-aarch64-softmmu \
   --target-list aarch64-softmmu \
@@ -87,7 +87,13 @@ run under `<workspace>/runs/<workflow-run-id>/`.
 
 Managed `morpheus tool build --tool qemu` supports placement modes:
 
-- `mode: local`: execute QEMU locally (no remote runner today)
+- `mode: local`: execute QEMU locally
+- `mode: remote`: execute QEMU provisioning in the remote managed workspace
+  through a remote `morpheus` executable
+
+For `mode: remote`, the remote host must expose `morpheus` on `PATH`, or a
+repo checkout with `bin/morpheus`, or an explicit `MORPHEUS_REMOTE_BIN`
+override.
 
 Within that placement mode, Morpheus picks the provisioning strategy:
 
@@ -105,6 +111,10 @@ Every command supports `--json`, including help and errors.
 - `qemu` owns fetch, unpack, source staging, and build/install for managed
   builds
 - `morpheus` owns `local` vs `remote` placement and tool dependency wiring
+- remote build outputs live under `tools/qemu/{src,downloads,builds}/` in the
+  managed remote workspace
+- remote execution reuses a remote Morpheus runtime instead of syncing the
+  tool bundle into the workspace
 - `nvirsh` should consume the resolved executable path, not provision QEMU
 - `tools/qemu/tool.json` declares the managed workspace path contract that
   Morpheus consumes

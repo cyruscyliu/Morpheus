@@ -254,10 +254,6 @@ function parseRunOptions(flags) {
   }
   const { baseDir, value } = loadQemuConfig();
   const placementMode = flags.mode || value.mode || "local";
-  const managed = readManagedToolContract(TOOL);
-  if (!managed || !Array.isArray(managed.modes) || !managed.modes.includes(placementMode)) {
-    throw new Error("qemu supports only --mode local");
-  }
 
   const options = {
     id: generateRunId(),

@@ -11,18 +11,19 @@ const {
   removeManagedRun,
   listManagedRuns
 } = require("./managed-state");
-const { runManagedMicrokitSdk } = require("./microkit-sdk");
-const { runManagedNvirsh } = require("./nvirsh");
+const { parseRunOptions: parseManagedMicrokitSdkOptions, runManagedMicrokitSdk } = require("./microkit-sdk");
 const { runManagedQemu } = require("./qemu");
-const { runManagedSel4 } = require("./sel4");
-const { runManagedLibvmm } = require("./libvmm");
+const { parseRunOptions: parseManagedNvirshOptions, runManagedNvirsh } = require("./nvirsh");
+const { parseRunOptions: parseManagedSel4Options, runManagedSel4 } = require("./sel4");
+const { parseRunOptions: parseManagedLibvmmOptions, runManagedLibvmm } = require("./libvmm");
 const { buildArtifacts, parseManagedLlBicOptions, runManagedLlBic } = require("./llbic");
 const { parseManagedLlCgOptions, resolvePayloadArtifacts, runManagedLlCg } = require("./llcg");
 const { findManagedManifestFiles, resolveManagedRunDir } = require("./run-layout");
-const { applyConfigDefaults, resolveLocalPath } = require("./config");
+const { applyConfigDefaults, configDir, loadConfig, resolveLocalPath } = require("./config");
 const { logDebug } = require("./logger");
 const { writeStdout, writeStdoutLine } = require("./io");
 const { repoRoot } = require("./paths");
+const { readManagedToolContract, renderManagedTemplate } = require("./tool-descriptor");
 
 const BUILDROOT_TOOL = "buildroot";
 const MICROKIT_SDK_TOOL = "microkit-sdk";
@@ -39,23 +40,23 @@ const MANAGED_TOOL_ADAPTERS = {
   },
   [MICROKIT_SDK_TOOL]: {
     name: MICROKIT_SDK_TOOL,
-    modes: ["local"]
+    modes: ["local", "remote"]
   },
   [QEMU_TOOL]: {
     name: QEMU_TOOL,
-    modes: ["local"]
+    modes: ["local", "remote"]
   },
   [NVIRSH_TOOL]: {
     name: NVIRSH_TOOL,
-    modes: ["local"]
+    modes: ["local", "remote"]
   },
   [SEL4_TOOL]: {
     name: SEL4_TOOL,
-    modes: ["local"]
+    modes: ["local", "remote"]
   },
   [LIBVMM_TOOL]: {
     name: LIBVMM_TOOL,
-    modes: ["local"]
+    modes: ["local", "remote"]
   },
   [LLBIC_TOOL]: {
     name: LLBIC_TOOL,
@@ -128,6 +129,7 @@ function parseRunArgs(argv) {
     kconfig: repeatable.kconfig,
     "rust-target": repeatable["rust-target"],
     paths: repeatable.path,
+    path: repeatable.path.length > 0 ? repeatable.path[repeatable.path.length - 1] : flags.path,
     positionals,
     forwarded: flags.forwarded || []
   };
@@ -138,12 +140,12 @@ function managedRunUsage() {
     "Usage:",
     "  node apps/morpheus/dist/cli.js tool build --tool buildroot --mode local --workspace DIR (--source DIR | --buildroot-version VER) [--defconfig NAME] [--patch-dir DIR] [--reuse-build-dir] [--build-dir-key KEY] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool buildroot --mode remote --ssh TARGET --workspace DIR (--source DIR | --buildroot-version VER) [--defconfig NAME] [--patch-dir DIR] [--reuse-build-dir] [--build-dir-key KEY] [--detach] [--json]",
-    "  node apps/morpheus/dist/cli.js tool build --tool microkit-sdk --mode local --workspace DIR [--path PATH] [--archive-url URL] [--microkit-archive-url URL] [--microkit-dir DIR] [--json]",
-    "  node apps/morpheus/dist/cli.js tool build --tool qemu --mode local --workspace DIR (--path PATH | --qemu-version VER) [--archive-url URL] [--build-dir-key KEY] [--target-list NAME ...] [--configure-arg ARG ...] [--json]",
-    "  node apps/morpheus/dist/cli.js tool build --tool nvirsh --mode local --workspace DIR [--target sel4] [--json]",
-    "  node apps/morpheus/dist/cli.js tool run --tool nvirsh --mode local --workspace DIR [--target sel4] [--attach] [--json]",
-    "  node apps/morpheus/dist/cli.js tool build --tool sel4 --mode local --workspace DIR (--path PATH | --sel4-version VER) [--archive-url URL] [--patch-dir DIR] [--json]",
-    "  node apps/morpheus/dist/cli.js tool build --tool libvmm --mode local --workspace DIR [--source DIR] --board NAME [--example NAME] [--patch-dir DIR] [--linux PATH] [--initrd PATH] [--make-arg KEY=VALUE ...] [--json]",
+    "  node apps/morpheus/dist/cli.js tool build --tool microkit-sdk --mode local|remote --workspace DIR [--path PATH] [--archive-url URL] [--microkit-archive-url URL] [--microkit-dir DIR] [--ssh TARGET] [--json]",
+    "  node apps/morpheus/dist/cli.js tool build --tool qemu --mode local|remote --workspace DIR (--path PATH | --qemu-version VER) [--archive-url URL] [--build-dir-key KEY] [--target-list NAME ...] [--configure-arg ARG ...] [--ssh TARGET] [--json]",
+    "  node apps/morpheus/dist/cli.js tool build --tool nvirsh --mode local|remote --workspace DIR [--target sel4] [--ssh TARGET] [--json]",
+    "  node apps/morpheus/dist/cli.js tool run --tool nvirsh --mode local|remote --workspace DIR [--target sel4] [--attach] [--ssh TARGET] [--json]",
+    "  node apps/morpheus/dist/cli.js tool build --tool sel4 --mode local|remote --workspace DIR (--path PATH | --sel4-version VER) [--archive-url URL] [--patch-dir DIR] [--ssh TARGET] [--json]",
+    "  node apps/morpheus/dist/cli.js tool build --tool libvmm --mode local|remote --workspace DIR [--source DIR] --board NAME [--example NAME] [--patch-dir DIR] [--linux PATH] [--initrd PATH] [--make-arg KEY=VALUE ...] [--ssh TARGET] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool llbic --mode local|remote --workspace DIR <version|subcommand ...> [--arch ARCH] [--out-of-tree] [--ssh TARGET] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool llcg --mode local|remote --workspace DIR run|genmutator|inspect ... [--reuse-build-dir] [--build-dir-key KEY] [--ssh TARGET] [--json]",
     "  node apps/morpheus/dist/cli.js runs list --managed [--workspace DIR] [--ssh TARGET] [--json]",
@@ -1732,18 +1734,33 @@ async function runRemoteBuildroot(options) {
 async function runManagedRun(flags, argvCommand = "run") {
   const adapter = requireManagedTool(flags, "run");
   if (adapter.name === MICROKIT_SDK_TOOL) {
+    if (flags.mode === "remote") {
+      return await runManagedRemoteMicrokitSdk(flags, argvCommand);
+    }
     return runManagedMicrokitSdk(flags);
   }
   if (adapter.name === QEMU_TOOL) {
+    if (flags.mode === "remote") {
+      return await runManagedRemoteQemu(flags, argvCommand);
+    }
     return runManagedQemu(flags);
   }
   if (adapter.name === NVIRSH_TOOL) {
+    if (flags.mode === "remote") {
+      return await runManagedRemoteNvirsh(flags, argvCommand);
+    }
     return await runManagedNvirsh(flags);
   }
   if (adapter.name === SEL4_TOOL) {
+    if (flags.mode === "remote") {
+      return await runManagedRemoteSel4(flags, argvCommand);
+    }
     return runManagedSel4(flags);
   }
   if (adapter.name === LIBVMM_TOOL) {
+    if (flags.mode === "remote") {
+      return await runManagedRemoteLibvmm(flags, argvCommand);
+    }
     return runManagedLibvmm(flags);
   }
   if (adapter.name === LLBIC_TOOL) {
@@ -2095,12 +2112,111 @@ function runRequiredShell(command, message) {
   return result;
 }
 
-function toolRepoDir(tool) {
-  return path.join(repoRoot(), "tools", tool);
+function remoteRepoRoot() {
+  const configured = process.env.MORPHEUS_REMOTE_REPO_ROOT || repoRoot();
+  return toPosixPath(path.resolve(configured));
 }
 
-function remoteManagedToolDir(workspace, tool) {
-  return path.posix.join(remoteToolWorkspace(workspace, tool), "_managed_tool");
+function remoteMorpheusRuntimeRoot(workspace) {
+  return path.posix.join(workspace, ".morpheus", "runtime", "current");
+}
+
+function stageLocalMorpheusRuntime() {
+  const sourceRoot = path.resolve(repoRoot());
+  const stagingParent = path.join(sourceRoot, ".morpheus-sync");
+  fs.mkdirSync(stagingParent, { recursive: true });
+  const stageRoot = fs.mkdtempSync(path.join(stagingParent, "runtime-"));
+  const entries = [
+    "apps/morpheus",
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "tsconfig.base.json",
+  ];
+
+  for (const relativePath of entries) {
+    const sourcePath = path.join(sourceRoot, relativePath);
+    if (!fs.existsSync(sourcePath)) {
+      continue;
+    }
+    const destinationPath = path.join(stageRoot, relativePath);
+    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+    fs.cpSync(sourcePath, destinationPath, {
+      recursive: true,
+      filter(entryPath) {
+        const base = path.basename(entryPath);
+        return base !== ".git" && base !== "node_modules";
+      }
+    });
+  }
+
+  const toolsRoot = path.join(sourceRoot, "tools");
+  if (fs.existsSync(toolsRoot)) {
+    for (const toolName of fs.readdirSync(toolsRoot)) {
+      const toolRoot = path.join(toolsRoot, toolName);
+      const descriptorPath = path.join(toolRoot, "tool.json");
+      if (!fs.existsSync(descriptorPath) || !fs.statSync(toolRoot).isDirectory()) {
+        continue;
+      }
+      const destinationRoot = path.join(stageRoot, "tools", toolName);
+      fs.mkdirSync(path.dirname(destinationRoot), { recursive: true });
+      fs.cpSync(toolRoot, destinationRoot, {
+        recursive: true,
+        filter(entryPath) {
+          const relative = path.relative(toolRoot, entryPath);
+          if (!relative) {
+            return true;
+          }
+          const segments = relative.split(path.sep);
+          return !segments.some((segment) => (
+            segment === ".git"
+            || segment === "node_modules"
+            || segment === "downloads"
+            || segment === "builds"
+            || segment === "out"
+            || segment === "test"
+            || segment === "src"
+            || segment === "docs"
+          ));
+        }
+      });
+    }
+  }
+
+  return stageRoot;
+}
+
+function prepareRemoteMorpheusRuntime(workspace, ssh) {
+  const runtimeRoot = remoteMorpheusRuntimeRoot(workspace);
+  const localStage = stageLocalMorpheusRuntime();
+  try {
+    syncLocalDirectoryToRemote(localStage, runtimeRoot, ssh, "morpheus runtime");
+  } finally {
+    fs.rmSync(localStage, { recursive: true, force: true });
+  }
+
+  const script = [
+    "set -euo pipefail",
+    `cd ${shellQuote(runtimeRoot)}`,
+    "if MORPHEUS_PNPM_BIN=\"$(type -P pnpm 2>/dev/null)\" && [ -n \"$MORPHEUS_PNPM_BIN\" ]; then",
+    "  \"$MORPHEUS_PNPM_BIN\" install --no-frozen-lockfile",
+    "elif MORPHEUS_COREPACK_BIN=\"$(type -P corepack 2>/dev/null)\" && [ -n \"$MORPHEUS_COREPACK_BIN\" ]; then",
+    "  \"$MORPHEUS_COREPACK_BIN\" pnpm install --no-frozen-lockfile",
+    "else",
+    "  echo 'failed to locate pnpm or corepack on remote host' >&2",
+    "  exit 1",
+    "fi",
+    "./node_modules/.bin/tsc -p apps/morpheus/tsconfig.json",
+    "mkdir -p bin",
+    "cat > bin/morpheus <<'EOF'",
+    "#!/usr/bin/env sh",
+    "set -eu",
+    "exec node \"$(dirname \"$0\")/../apps/morpheus/dist/cli.js\" \"$@\"",
+    "EOF",
+    "chmod +x bin/morpheus",
+  ].join("\n");
+  runRequiredSsh(ssh, script, "failed to prepare remote morpheus runtime");
+  return runtimeRoot;
 }
 
 function syncLocalDirectoryToRemote(localDir, remoteDir, ssh, label) {
@@ -2108,11 +2224,15 @@ function syncLocalDirectoryToRemote(localDir, remoteDir, ssh, label) {
   const parent = path.dirname(sourceRoot);
   const base = path.basename(sourceRoot);
   const destinationParent = path.posix.dirname(remoteDir);
+  const extractedDir = path.posix.join(destinationParent, base);
+  const finalizeMove = extractedDir === remoteDir
+    ? "true"
+    : `mv ${shellQuote(extractedDir)} ${shellQuote(remoteDir)}`;
   const remoteScript = [
     `rm -rf ${shellQuote(remoteDir)}`,
     `mkdir -p ${shellQuote(destinationParent)}`,
     `tar -xf - -C ${shellQuote(destinationParent)}`,
-    `mv ${shellQuote(path.posix.join(destinationParent, base))} ${shellQuote(remoteDir)}`,
+    finalizeMove,
   ].join(" && ");
   const run = (noSystemConfig) => {
     const pipeline = `tar -C ${shellQuote(parent)} -cf - ${shellQuote(base)} | ${shellQuote(sshBinary())} ${sshArgs(ssh, { noSystemConfig }).map(shellQuote).join(" ")} ${shellQuote(sshCommand(remoteScript))}`;
@@ -2197,6 +2317,59 @@ function emitRemoteLogLines(command, id, jsonMode, lines) {
   }
 }
 
+function emitRemoteLogChunk(command, id, jsonMode, chunk) {
+  if (!chunk) {
+    return;
+  }
+  if (jsonMode) {
+    emitJson({
+      command,
+      status: "stream",
+      exit_code: 0,
+      details: { event: "log", id, mode: "remote", chunk }
+    });
+    return;
+  }
+  writeStdout(chunk);
+}
+
+function tryParseJsonLine(rawLine) {
+  const line = String(rawLine || "").trim();
+  if (!line) {
+    return null;
+  }
+  try {
+    return JSON.parse(line);
+  } catch {
+    return null;
+  }
+}
+
+function forwardRemoteManagedOutput(rawLine, options, state) {
+  const parsed = tryParseJsonLine(rawLine);
+  if (!parsed) {
+    emitRemoteLogLines(options.commandLabel, options.id, options.json, [rawLine]);
+    return;
+  }
+
+  if (
+    parsed.status === "stream"
+    && parsed.details
+    && parsed.details.event === "log"
+  ) {
+    if (typeof parsed.details.chunk === "string") {
+      emitRemoteLogChunk(options.commandLabel, options.id, options.json, parsed.details.chunk);
+      return;
+    }
+    if (typeof parsed.details.line === "string") {
+      emitRemoteLogLines(options.commandLabel, options.id, options.json, [parsed.details.line]);
+      return;
+    }
+  }
+
+  state.finalPayload = parsed;
+}
+
 function baseRemoteManagedManifest(options) {
   return {
     schemaVersion: 1,
@@ -2228,41 +2401,221 @@ function writeRemoteJsonFile(ssh, filePath, value, message) {
   );
 }
 
-async function executeRemoteManagedToolRun(options) {
-  syncLocalDirectoryToRemote(options.localToolDir, options.remoteToolDir, options.ssh, `${options.tool} tool directory`);
-  writeRemoteJsonFile(options.ssh, options.manifestPath, baseRemoteManagedManifest(options), `failed to write remote ${options.tool} manifest`);
+function remoteConfigPath(runDir) {
+  return path.posix.join(runDir, "remote-config", "morpheus.yaml");
+}
 
-  const envLines = Object.entries(options.env || {}).map(([key, value]) => `export ${key}=${shellQuote(value)}`);
-  const commandLine = `${shellQuote(options.program)} ${options.args.map((value) => shellQuote(value)).join(" ")}`.trim();
+function buildRemoteToolConfig(workspace, tools) {
+  return {
+    workspace: { root: workspace },
+    tools,
+  };
+}
+
+function mapRemoteManagedArtifacts(payload) {
+  const details = payload && payload.details && typeof payload.details === "object"
+    ? payload.details
+    : {};
+  const artifacts = Array.isArray(details.artifacts)
+    ? details.artifacts
+    : (details.manifest && Array.isArray(details.manifest.artifacts) ? details.manifest.artifacts : []);
+  return artifacts
+    .map((artifact) => {
+      if (!artifact || !artifact.path) {
+        return null;
+      }
+      const location = artifact.location || artifact.local_location || artifact.remote_location || null;
+      if (!location) {
+        return null;
+      }
+      return {
+        path: artifact.path,
+        remote_location: location,
+      };
+    })
+    .filter(Boolean);
+}
+
+function syncRemoteInputFile(localPath, remotePath, ssh, label) {
+  const source = path.resolve(process.cwd(), localPath);
+  const mode = fs.statSync(source).mode & 0o777;
+  const remoteScript = [
+    `mkdir -p ${shellQuote(path.posix.dirname(remotePath))}`,
+    `cat > ${shellQuote(remotePath)}`,
+    `chmod ${mode.toString(8)} ${shellQuote(remotePath)}`,
+  ].join(" && ");
+  const run = (noSystemConfig) => {
+    const pipeline = `cat ${shellQuote(source)} | ${shellQuote(sshBinary())} ${sshArgs(ssh, { noSystemConfig }).map(shellQuote).join(" ")} ${shellQuote(sshCommand(remoteScript))}`;
+    return runShell(pipeline);
+  };
+
+  let result = run(false);
+  if (result.exitCode !== 0 && wantsSshNoConfigRetry(result)) {
+    result = run(true);
+  }
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr || `failed to sync remote ${label}`);
+  }
+}
+
+function maybeRemotePath(workspace, localWorkspace, localPath) {
+  if (!localPath) {
+    return null;
+  }
+  return remoteWorkspacePath(workspace, localWorkspace, localPath);
+}
+
+function remoteWorkspaceRelativePath(workspace, targetPath) {
+  if (!targetPath) {
+    return null;
+  }
+  const relative = path.posix.relative(workspace, targetPath);
+  if (!relative || relative.startsWith("..")) {
+    return targetPath;
+  }
+  return relative;
+}
+
+function syncRemoteInputPath(localPath, remotePath, ssh, label) {
+  if (!localPath || !remotePath || !fs.existsSync(localPath)) {
+    return;
+  }
+  const stat = fs.statSync(localPath);
+  if (stat.isDirectory()) {
+    syncLocalDirectoryToRemote(localPath, remotePath, ssh, label);
+    return;
+  }
+  syncRemoteInputFile(localPath, remotePath, ssh, label);
+}
+
+function remoteSel4ToolConfig(localOptions, workspace, localWorkspace) {
+  return {
+    mode: "local",
+    path: maybeRemotePath(workspace, localWorkspace, localOptions.path),
+    "sel4-version": localOptions.sel4Version || null,
+    "archive-url": localOptions.archiveUrl || null,
+    "patch-dir": maybeRemotePath(workspace, localWorkspace, localOptions.patchDir),
+    "reuse-build-dir": Boolean(localOptions.reuseBuildDir),
+    "build-dir-key": localOptions.buildDirKey || null,
+  };
+}
+
+function remoteMicrokitToolConfig(localOptions, workspace, localWorkspace) {
+  return {
+    mode: "local",
+    path: maybeRemotePath(workspace, localWorkspace, localOptions.path),
+    "microkit-version": localOptions.microkitVersion || null,
+    "archive-url": localOptions.archiveUrl || null,
+    "microkit-archive-url": localOptions.microkitArchiveUrl || null,
+    "microkit-dir": maybeRemotePath(workspace, localWorkspace, localOptions.microkitDir),
+    "patch-dir": maybeRemotePath(workspace, localWorkspace, localOptions.patchDir),
+    boards: localOptions.boards || null,
+    configs: localOptions.configs || null,
+    "toolchain-dir": maybeRemotePath(workspace, localWorkspace, localOptions.toolchainDir),
+    "toolchain-version": localOptions.toolchainVersion || null,
+    "toolchain-archive-url": localOptions.toolchainArchiveUrl || null,
+    "toolchain-prefix-aarch64": localOptions.toolchainPrefixAarch64 || null,
+    "rust-version": localOptions.rustVersion || null,
+    "reuse-build-dir": Boolean(localOptions.reuseBuildDir),
+    "build-dir-key": localOptions.buildDirKey || null,
+  };
+}
+
+function remoteLibvmmToolConfig(localOptions, workspace, localWorkspace) {
+  return {
+    mode: "local",
+    source: maybeRemotePath(workspace, localWorkspace, localOptions.source),
+    "git-url": localOptions.gitUrl || null,
+    "git-ref": localOptions.gitRef || null,
+    example: localOptions.example || null,
+    board: localOptions.board || null,
+    "patch-dir": maybeRemotePath(workspace, localWorkspace, localOptions.patchDir),
+    linux: maybeRemotePath(workspace, localWorkspace, localOptions.linux),
+    initrd: maybeRemotePath(workspace, localWorkspace, localOptions.initrd),
+    "make-args": localOptions.makeArgs || [],
+    "reuse-build-dir": Boolean(localOptions.reuseBuildDir),
+    "build-dir-key": localOptions.buildDirKey || null,
+  };
+}
+
+async function executeRemoteManagedToolRun(options) {
+  writeRemoteJsonFile(options.ssh, options.manifestPath, baseRemoteManagedManifest(options), `failed to write remote ${options.tool} manifest`);
+  if (options.remoteConfig && options.remoteConfigPath) {
+    writeRemoteJsonFile(
+      options.ssh,
+      options.remoteConfigPath,
+      options.remoteConfig,
+      `failed to write remote ${options.tool} config`
+    );
+  }
+
+  const preparedRemoteRepoRoot = options.syncMorpheus
+    ? prepareRemoteMorpheusRuntime(options.workspace, options.ssh)
+    : options.remoteRepoRoot;
+  const envLines = Object.entries({
+    MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1",
+    ...(options.env || {})
+  }).map(([key, value]) => `export ${key}=${shellQuote(value)}`);
+  const commandLine = `"$MORPHEUS_REMOTE_CMD" ${options.args.map((value) => shellQuote(value)).join(" ")}`.trim();
   const script = [
     "set -e",
+    `remote_repo_root=${shellQuote(preparedRemoteRepoRoot)}`,
+    'if [ -x "${remote_repo_root}/bin/morpheus" ]; then',
+    '  MORPHEUS_REMOTE_CMD="${remote_repo_root}/bin/morpheus"',
+    'elif [ -n "${MORPHEUS_REMOTE_BIN:-}" ]; then',
+    '  MORPHEUS_REMOTE_CMD="$MORPHEUS_REMOTE_BIN"',
+    "elif command -v morpheus >/dev/null 2>&1; then",
+    '  MORPHEUS_REMOTE_CMD="$(command -v morpheus)"',
+    "else",
+    '  echo "failed to locate remote morpheus executable" >&2',
+    "  exit 1",
+    "fi",
+    ...(options.remoteConfigPath ? [`cd ${shellQuote(path.posix.dirname(options.remoteConfigPath))}`] : []),
     `mkdir -p ${shellQuote(options.runDir)}`,
     `: > ${shellQuote(options.logFile)}`,
     "stdout_capture=$(mktemp)",
     "trap 'rm -f \"$stdout_capture\"' EXIT",
     ...envLines,
     "set +e",
-    `(${commandLine}) > >(tee -a ${shellQuote(options.logFile)} \"$stdout_capture\") 2> >(tee -a ${shellQuote(options.logFile)} >&2)`,
+    `(${commandLine}) > >(tee \"$stdout_capture\") 2> >(tee -a ${shellQuote(options.logFile)} >&2)`,
     "exit_code=$?",
     "exit \"${exit_code}\"",
   ].join("\n");
 
+  const state = { finalPayload: null };
   const streamResult = await runSshStreaming(options.ssh, script, {
     collectStdout: true,
     onStdoutLine(line) {
-      emitRemoteLogLines(options.commandLabel, options.id, options.json, [line]);
+      forwardRemoteManagedOutput(line, options, state);
     },
     onStderrLine(line) {
-      emitRemoteLogLines(options.commandLabel, options.id, options.json, [line]);
+      forwardRemoteManagedOutput(line, options, state);
     },
   });
   if (streamResult.error) {
     throw new Error(streamResult.error.message || `failed to execute managed remote ${options.tool} run`);
   }
 
-  const payload = parseLastJsonLine(streamResult.stdout || "");
+  const payload = state.finalPayload || parseLastJsonLine(streamResult.stdout || "");
   if (!payload || typeof payload !== "object") {
     throw new Error(streamResult.stderr || streamResult.stdout || `${options.tool} did not return a JSON payload`);
+  }
+
+  const sourceLogFile = payload
+    && payload.details
+    && typeof payload.details.log_file === "string"
+    ? payload.details.log_file
+    : null;
+  if (sourceLogFile && sourceLogFile !== options.logFile) {
+    try {
+      runRequiredSsh(
+        options.ssh,
+        `mkdir -p ${shellQuote(path.posix.dirname(options.logFile))} && cp ${shellQuote(sourceLogFile)} ${shellQuote(options.logFile)}`,
+        `failed to copy remote ${options.tool} log`
+      );
+    } catch {
+      // Preserve the primary run result if the log copy fails.
+    }
   }
 
   const artifacts = options.artifactResolver(payload, options);
@@ -2295,6 +2648,394 @@ async function executeRemoteManagedToolRun(options) {
   };
 }
 
+async function runManagedRemoteMicrokitSdk(flags, argvCommand = "build") {
+  const localOptions = parseManagedMicrokitSdkOptions({ ...flags, mode: "local" });
+  const workspace = localOptions.workspace;
+  const localWorkspace = flags.localWorkspace || workspace;
+  const ssh = parseSshTarget(requireFlag(flags, "ssh", "remote mode requires --ssh TARGET"));
+  const id = localOptions.id;
+  const runDir = remoteRunDir(workspace, MICROKIT_SDK_TOOL, id, localWorkspace);
+  const manifestPath = path.posix.join(runDir, "manifest.json");
+  const logFile = path.posix.join(runDir, "stdout.log");
+  const outputDir = maybeRemotePath(workspace, localWorkspace, localOptions.path) || runDir;
+  const remoteConfig = buildRemoteToolConfig(workspace, {
+    [SEL4_TOOL]: remoteSel4ToolConfig(parseManagedSel4Options({ workspace: localWorkspace, mode: "local" }), workspace, localWorkspace),
+    [MICROKIT_SDK_TOOL]: remoteMicrokitToolConfig(localOptions, workspace, localWorkspace),
+  });
+  const configPath = remoteConfigPath(runDir);
+
+  registerManagedWorkspace({ mode: "remote", root: workspace, ssh: ssh.original });
+  registerRemoteRunRecord({
+    id,
+    tool: MICROKIT_SDK_TOOL,
+    workspace,
+    status: "running",
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    manifest: manifestPath,
+    logFile,
+    runDir,
+    outputDir,
+    artifacts: [],
+  }, ssh);
+
+  syncRemoteInputPath(localOptions.path, maybeRemotePath(workspace, localWorkspace, localOptions.path), ssh, "microkit-sdk directory");
+  syncRemoteInputPath(localOptions.microkitDir, maybeRemotePath(workspace, localWorkspace, localOptions.microkitDir), ssh, "microkit source directory");
+  syncRemoteInputPath(localOptions.patchDir, maybeRemotePath(workspace, localWorkspace, localOptions.patchDir), ssh, "microkit patch directory");
+  syncRemoteInputPath(localOptions.toolchainDir, maybeRemotePath(workspace, localWorkspace, localOptions.toolchainDir), ssh, "microkit toolchain directory");
+  const sel4Options = parseManagedSel4Options({ workspace: localWorkspace, mode: "local" });
+  syncRemoteInputPath(sel4Options.path, maybeRemotePath(workspace, localWorkspace, sel4Options.path), ssh, "sel4 source directory");
+  syncRemoteInputPath(sel4Options.patchDir, maybeRemotePath(workspace, localWorkspace, sel4Options.patchDir), ssh, "sel4 patch directory");
+
+  return await executeRemoteManagedToolRun({
+    id,
+    tool: MICROKIT_SDK_TOOL,
+    workspace,
+    ssh,
+    json: Boolean(flags.json),
+    subcommand: localOptions.provisioning === "path" ? "inspect" : "build",
+    commandLabel: argvCommand,
+    runDir,
+    manifestPath,
+    logFile,
+    outputDir,
+    remoteRepoRoot: remoteRepoRoot(),
+    syncMorpheus: Boolean(flags["sync-morpheus"]),
+    remoteConfig,
+    remoteConfigPath: configPath,
+    args: [
+      "tool",
+      "build",
+      "--tool",
+      MICROKIT_SDK_TOOL,
+      "--mode",
+      "local",
+      "--workspace",
+      workspace,
+      "--json",
+    ],
+    env: {
+      PATH: process.env.PATH || "",
+      HOME: process.env.HOME || "",
+      USER: process.env.USER || "",
+    },
+    artifactResolver(payload) {
+      return mapRemoteManagedArtifacts(payload);
+    },
+    resultDetails(payload, artifacts) {
+      return {
+        id,
+        tool: MICROKIT_SDK_TOOL,
+        mode: "remote",
+        workspace,
+        run_dir: runDir,
+        managed_manifest: manifestPath,
+        log_file: logFile,
+        output_dir: outputDir,
+        artifacts,
+        payload,
+      };
+    },
+  });
+}
+
+async function runManagedRemoteSel4(flags, argvCommand = "build") {
+  const localOptions = parseManagedSel4Options({ ...flags, mode: "local" });
+  const workspace = localOptions.workspace;
+  const localWorkspace = flags.localWorkspace || workspace;
+  const ssh = parseSshTarget(requireFlag(flags, "ssh", "remote mode requires --ssh TARGET"));
+  const id = localOptions.id;
+  const runDir = remoteRunDir(workspace, SEL4_TOOL, id, localWorkspace);
+  const manifestPath = path.posix.join(runDir, "manifest.json");
+  const logFile = path.posix.join(runDir, "stdout.log");
+  const outputDir = maybeRemotePath(workspace, localWorkspace, localOptions.path) || runDir;
+  const remoteConfig = buildRemoteToolConfig(workspace, {
+    [SEL4_TOOL]: remoteSel4ToolConfig(localOptions, workspace, localWorkspace),
+  });
+  const configPath = remoteConfigPath(runDir);
+
+  registerManagedWorkspace({ mode: "remote", root: workspace, ssh: ssh.original });
+  registerRemoteRunRecord({
+    id,
+    tool: SEL4_TOOL,
+    workspace,
+    status: "running",
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    manifest: manifestPath,
+    logFile,
+    runDir,
+    outputDir,
+    artifacts: [],
+  }, ssh);
+
+  syncRemoteInputPath(localOptions.path, maybeRemotePath(workspace, localWorkspace, localOptions.path), ssh, "sel4 source directory");
+  syncRemoteInputPath(localOptions.patchDir, maybeRemotePath(workspace, localWorkspace, localOptions.patchDir), ssh, "sel4 patch directory");
+
+  return await executeRemoteManagedToolRun({
+    id,
+    tool: SEL4_TOOL,
+    workspace,
+    ssh,
+    json: Boolean(flags.json),
+    subcommand: localOptions.provisioning === "path" ? "inspect" : "build",
+    commandLabel: argvCommand,
+    runDir,
+    manifestPath,
+    logFile,
+    outputDir,
+    remoteRepoRoot: remoteRepoRoot(),
+    syncMorpheus: Boolean(flags["sync-morpheus"]),
+    remoteConfig,
+    remoteConfigPath: configPath,
+    args: [
+      "tool",
+      "build",
+      "--tool",
+      SEL4_TOOL,
+      "--mode",
+      "local",
+      "--workspace",
+      workspace,
+      "--json",
+    ],
+    env: {
+      PATH: process.env.PATH || "",
+      HOME: process.env.HOME || "",
+      USER: process.env.USER || "",
+    },
+    artifactResolver(payload) {
+      return mapRemoteManagedArtifacts(payload);
+    },
+    resultDetails(payload, artifacts) {
+      return {
+        id,
+        tool: SEL4_TOOL,
+        mode: "remote",
+        workspace,
+        run_dir: runDir,
+        managed_manifest: manifestPath,
+        log_file: logFile,
+        output_dir: outputDir,
+        artifacts,
+        payload,
+      };
+    },
+  });
+}
+
+async function runManagedRemoteLibvmm(flags, argvCommand = "build") {
+  const localOptions = parseManagedLibvmmOptions({ ...flags, mode: "local" });
+  const sel4Options = parseManagedSel4Options({ workspace: localOptions.workspace, mode: "local" });
+  const microkitOptions = parseManagedMicrokitSdkOptions({ workspace: localOptions.workspace, mode: "local" });
+  const workspace = localOptions.workspace;
+  const localWorkspace = flags.localWorkspace || workspace;
+  const ssh = parseSshTarget(requireFlag(flags, "ssh", "remote mode requires --ssh TARGET"));
+  const id = localOptions.id;
+  const runDir = remoteRunDir(workspace, LIBVMM_TOOL, id, localWorkspace);
+  const manifestPath = path.posix.join(runDir, "manifest.json");
+  const logFile = path.posix.join(runDir, "stdout.log");
+  const outputDir = maybeRemotePath(workspace, localWorkspace, localOptions.source) || runDir;
+  const remoteConfig = buildRemoteToolConfig(workspace, {
+    [SEL4_TOOL]: remoteSel4ToolConfig(sel4Options, workspace, localWorkspace),
+    [MICROKIT_SDK_TOOL]: remoteMicrokitToolConfig(microkitOptions, workspace, localWorkspace),
+    [LIBVMM_TOOL]: remoteLibvmmToolConfig(localOptions, workspace, localWorkspace),
+  });
+  const configPath = remoteConfigPath(runDir);
+
+  registerManagedWorkspace({ mode: "remote", root: workspace, ssh: ssh.original });
+  registerRemoteRunRecord({
+    id,
+    tool: LIBVMM_TOOL,
+    workspace,
+    status: "running",
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    manifest: manifestPath,
+    logFile,
+    runDir,
+    outputDir,
+    artifacts: [],
+  }, ssh);
+
+  syncRemoteInputPath(localOptions.source, maybeRemotePath(workspace, localWorkspace, localOptions.source), ssh, "libvmm source directory");
+  syncRemoteInputPath(localOptions.patchDir, maybeRemotePath(workspace, localWorkspace, localOptions.patchDir), ssh, "libvmm patch directory");
+  syncRemoteInputPath(localOptions.linux, maybeRemotePath(workspace, localWorkspace, localOptions.linux), ssh, "libvmm linux image");
+  syncRemoteInputPath(localOptions.initrd, maybeRemotePath(workspace, localWorkspace, localOptions.initrd), ssh, "libvmm initrd");
+  syncRemoteInputPath(microkitOptions.path, maybeRemotePath(workspace, localWorkspace, microkitOptions.path), ssh, "microkit-sdk directory");
+  syncRemoteInputPath(microkitOptions.microkitDir, maybeRemotePath(workspace, localWorkspace, microkitOptions.microkitDir), ssh, "microkit source directory");
+  syncRemoteInputPath(microkitOptions.patchDir, maybeRemotePath(workspace, localWorkspace, microkitOptions.patchDir), ssh, "microkit patch directory");
+  syncRemoteInputPath(microkitOptions.toolchainDir, maybeRemotePath(workspace, localWorkspace, microkitOptions.toolchainDir), ssh, "microkit toolchain directory");
+  syncRemoteInputPath(sel4Options.path, maybeRemotePath(workspace, localWorkspace, sel4Options.path), ssh, "sel4 source directory");
+  syncRemoteInputPath(sel4Options.patchDir, maybeRemotePath(workspace, localWorkspace, sel4Options.patchDir), ssh, "sel4 patch directory");
+
+  return await executeRemoteManagedToolRun({
+    id,
+    tool: LIBVMM_TOOL,
+    workspace,
+    ssh,
+    json: Boolean(flags.json),
+    subcommand: "build",
+    commandLabel: argvCommand,
+    runDir,
+    manifestPath,
+    logFile,
+    outputDir,
+    remoteRepoRoot: remoteRepoRoot(),
+    syncMorpheus: Boolean(flags["sync-morpheus"]),
+    remoteConfig,
+    remoteConfigPath: configPath,
+    args: [
+      "tool",
+      "build",
+      "--tool",
+      LIBVMM_TOOL,
+      "--mode",
+      "local",
+      "--workspace",
+      workspace,
+      "--json",
+    ],
+    env: {
+      PATH: process.env.PATH || "",
+      HOME: process.env.HOME || "",
+      USER: process.env.USER || "",
+    },
+    artifactResolver(payload) {
+      return mapRemoteManagedArtifacts(payload);
+    },
+    resultDetails(payload, artifacts) {
+      return {
+        id,
+        tool: LIBVMM_TOOL,
+        mode: "remote",
+        workspace,
+        run_dir: runDir,
+        managed_manifest: manifestPath,
+        log_file: logFile,
+        output_dir: outputDir,
+        artifacts,
+        payload,
+      };
+    },
+  });
+}
+
+async function runManagedRemoteNvirsh(flags, argvCommand = "run") {
+  if (flags.attach) {
+    throw new Error("nvirsh remote mode does not support --attach");
+  }
+  const localOptions = parseManagedNvirshOptions({ ...flags, mode: "local" });
+  const workspace = localOptions.workspace;
+  const localWorkspace = flags.localWorkspace || workspace;
+  const ssh = parseSshTarget(requireFlag(flags, "ssh", "remote mode requires --ssh TARGET"));
+  const id = localOptions.id;
+  const runDir = remoteRunDir(workspace, NVIRSH_TOOL, id, localWorkspace);
+  const manifestPath = path.posix.join(runDir, "manifest.json");
+  const logFile = path.posix.join(runDir, "stdout.log");
+  const outputDir = runDir;
+
+  registerManagedWorkspace({ mode: "remote", root: workspace, ssh: ssh.original });
+  registerRemoteRunRecord({
+    id,
+    tool: NVIRSH_TOOL,
+    workspace,
+    status: "running",
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    manifest: manifestPath,
+    logFile,
+    runDir,
+    outputDir,
+    artifacts: [],
+  }, ssh);
+
+  const pathKeys = [
+    ["qemu", localOptions.qemu],
+    ["microkit-sdk", localOptions.microkitSdk],
+    ["toolchain", localOptions.toolchain],
+    ["libvmm-dir", localOptions.libvmmDir],
+    ["runtime-contract", localOptions.runtimeContract],
+    ["kernel", localOptions.kernel],
+    ["initrd", localOptions.initrd],
+  ];
+  for (const [label, value] of pathKeys) {
+    syncRemoteInputPath(value, maybeRemotePath(workspace, localWorkspace, value), ssh, `${NVIRSH_TOOL} ${label}`);
+  }
+
+  return await executeRemoteManagedToolRun({
+    id,
+    tool: NVIRSH_TOOL,
+    workspace,
+    ssh,
+    json: Boolean(flags.json),
+    subcommand: argvCommand,
+    commandLabel: argvCommand,
+    runDir,
+    manifestPath,
+    logFile,
+    outputDir,
+    remoteRepoRoot: remoteRepoRoot(),
+    syncMorpheus: Boolean(flags["sync-morpheus"]),
+    args: [
+      "tool",
+      argvCommand === "build" ? "build" : "run",
+      "--tool",
+      NVIRSH_TOOL,
+      "--mode",
+      "local",
+      "--workspace",
+      workspace,
+      "--target",
+      localOptions.target,
+      "--name",
+      localOptions.name,
+      "--qemu",
+      maybeRemotePath(workspace, localWorkspace, localOptions.qemu),
+      "--microkit-sdk",
+      maybeRemotePath(workspace, localWorkspace, localOptions.microkitSdk),
+      "--toolchain",
+      maybeRemotePath(workspace, localWorkspace, localOptions.toolchain),
+      "--libvmm-dir",
+      maybeRemotePath(workspace, localWorkspace, localOptions.libvmmDir),
+      "--runtime-contract",
+      maybeRemotePath(workspace, localWorkspace, localOptions.runtimeContract),
+      "--kernel",
+      maybeRemotePath(workspace, localWorkspace, localOptions.kernel),
+      "--initrd",
+      maybeRemotePath(workspace, localWorkspace, localOptions.initrd),
+      ...(localOptions.microkitVersion ? ["--microkit-version", localOptions.microkitVersion] : []),
+      ...(localOptions.microkitConfig ? ["--microkit-config", localOptions.microkitConfig] : []),
+      ...(localOptions.board ? ["--board", localOptions.board] : []),
+      ...(argvCommand === "build" ? ["--build-only"] : []),
+      ...(localOptions.qemuArgs || []).flatMap((value) => ["--qemu-arg", value]),
+      "--json",
+    ],
+    env: {
+      PATH: process.env.PATH || "",
+      HOME: process.env.HOME || "",
+      USER: process.env.USER || "",
+    },
+    artifactResolver(payload) {
+      return mapRemoteManagedArtifacts(payload);
+    },
+    resultDetails(payload, artifacts) {
+      return {
+        id,
+        tool: NVIRSH_TOOL,
+        mode: "remote",
+        workspace,
+        run_dir: runDir,
+        managed_manifest: manifestPath,
+        log_file: logFile,
+        output_dir: outputDir,
+        artifacts,
+        payload,
+      };
+    },
+  });
+}
+
 async function runManagedRemoteLlBic(flags, argvCommand = "build") {
   const parsed = parseManagedLlBicOptions(flags, argvCommand);
   const workspace = parsed.workspace;
@@ -2304,10 +3045,12 @@ async function runManagedRemoteLlBic(flags, argvCommand = "build") {
   const runDir = remoteRunDir(workspace, LLBIC_TOOL, id, flags.localWorkspace);
   const manifestPath = path.posix.join(runDir, "manifest.json");
   const logFile = path.posix.join(runDir, "stdout.log");
-  const toolDir = remoteManagedToolDir(workspace, LLBIC_TOOL);
   const remoteSourcesRoot = remoteWorkspacePath(workspace, localWorkspace, parsed.sourcesRoot);
   const remoteBuildsRoot = remoteWorkspacePath(workspace, localWorkspace, parsed.buildsRoot);
   const remoteConfPath = remoteWorkspacePath(workspace, localWorkspace, parsed.confPath);
+  const remoteSourcesArg = remoteWorkspaceRelativePath(workspace, remoteSourcesRoot);
+  const remoteBuildsArg = remoteWorkspaceRelativePath(workspace, remoteBuildsRoot);
+  const remoteConfArg = remoteWorkspaceRelativePath(workspace, remoteConfPath);
   registerManagedWorkspace({ mode: "remote", root: workspace, ssh: ssh.original });
   registerRemoteRunRecord({
     id,
@@ -2331,24 +3074,36 @@ async function runManagedRemoteLlBic(flags, argvCommand = "build") {
     json: Boolean(flags.json),
     subcommand: parsed.subcommand,
     commandLabel: argvCommand,
-    args: parsed.args,
     runDir,
     manifestPath,
     logFile,
     outputDir: remoteBuildsRoot,
-    remoteToolDir: toolDir,
-    localToolDir: toolRepoDir(LLBIC_TOOL),
-    program: path.posix.join(toolDir, "llbic"),
+    remoteRepoRoot: remoteRepoRoot(),
+    syncMorpheus: Boolean(flags["sync-morpheus"]),
+    args: [
+      "tool",
+      "build",
+      "--tool",
+      LLBIC_TOOL,
+      "--mode",
+      "local",
+      "--workspace",
+      workspace,
+      "--sources",
+      remoteSourcesArg,
+      "--output",
+      remoteBuildsArg,
+      "--conf",
+      remoteConfArg,
+      ...parsed.args,
+    ],
     env: {
-      ...Object.fromEntries(Object.entries(process.env).filter(([key]) =>
-        key.startsWith("LLBIC_") || key === "PATH" || key === "HOME" || key === "USER",
-      )),
-      LLBIC_SOURCES: remoteSourcesRoot,
-      LLBIC_OUTPUT: remoteBuildsRoot,
-      LLBIC_CONF: remoteConfPath,
+      PATH: process.env.PATH || "",
+      HOME: process.env.HOME || "",
+      USER: process.env.USER || "",
     },
     artifactResolver(payload) {
-      return buildArtifacts(payload, toolDir).map((artifact) => ({
+      return buildArtifacts(payload, remoteBuildsRoot).map((artifact) => ({
         path: artifact.path,
         location: artifact.location,
       }));
@@ -2373,6 +3128,217 @@ async function runManagedRemoteLlBic(flags, argvCommand = "build") {
   });
 }
 
+function loadQemuRemoteConfig() {
+  const config = loadConfig(process.cwd());
+  const value = config.value || {};
+  const item = value.tools && value.tools.qemu ? value.tools.qemu : {};
+  return {
+    baseDir: configDir(config.path),
+    value: {
+      ...item,
+      qemuVersion: item["qemu-version"] || item.qemuVersion || null,
+      archiveUrl: item["archive-url"] || item.archiveUrl || null,
+      buildDirKey: item["build-dir-key"] || item.buildDirKey || null,
+      targetList: Array.isArray(item["target-list"])
+        ? [...item["target-list"]]
+        : Array.isArray(item.targetList)
+          ? [...item.targetList]
+          : [],
+      configureArgs: Array.isArray(item["configure-arg"])
+        ? [...item["configure-arg"]]
+        : Array.isArray(item["configure-args"])
+          ? [...item["configure-args"]]
+          : Array.isArray(item.configureArgs)
+            ? [...item.configureArgs]
+            : [],
+    }
+  };
+}
+
+function preferredRepeatableRemoteFlag(flags, key, fallback) {
+  if (Array.isArray(flags[key])) {
+    return flags[key].length > 0 ? [...flags[key]] : [...fallback];
+  }
+  return flags[key] || [...fallback];
+}
+
+function resolveManagedQemuRemoteOptions(flags) {
+  const workspace = flags.workspace;
+  if (!workspace) {
+    throw new Error("run requires --workspace DIR or a workspace root in morpheus.yaml");
+  }
+
+  const { baseDir, value } = loadQemuRemoteConfig();
+  const managed = readManagedToolContract(QEMU_TOOL);
+  if (!managed || !managed.local) {
+    throw new Error("missing managed contract for qemu");
+  }
+
+  const buildDirKey = flags["build-dir-key"] || value.buildDirKey || "default";
+  const localWorkspace = flags.localWorkspace || null;
+  const executable = flags.path
+    ? path.resolve(process.cwd(), flags.path)
+    : resolveLocalPath(baseDir, value.path || value.executable);
+  const qemuVersion = flags["qemu-version"] || value.qemuVersion || null;
+  let source = flags.source
+    ? path.resolve(process.cwd(), flags.source)
+    : resolveLocalPath(baseDir, value.source);
+  if (!source && qemuVersion && localWorkspace) {
+    source = path.join(
+      localWorkspace,
+      renderManagedTemplate(managed.local.sourceTemplate, { qemuVersion })
+    );
+  }
+
+  const provisioning = executable ? "path" : "build";
+  if (provisioning === "build" && !qemuVersion && !flags["archive-url"] && !value.archiveUrl && !source) {
+    throw new Error("qemu build requires tools.qemu.qemu-version, tools.qemu.archive-url, or tools.qemu.source");
+  }
+
+  return {
+    id: generateRunId(QEMU_TOOL),
+    workspace,
+    localWorkspace,
+    provisioning,
+    executable,
+    source,
+    qemuVersion,
+    archiveUrl: flags["archive-url"] || value.archiveUrl || null,
+    buildDirKey,
+    targetList: preferredRepeatableRemoteFlag(flags, "target-list", value.targetList || []),
+    configureArgs: preferredRepeatableRemoteFlag(flags, "configure-arg", value.configureArgs || []),
+    contract: managed.local,
+  };
+}
+
+async function runManagedRemoteQemu(flags, argvCommand = "build") {
+  const options = resolveManagedQemuRemoteOptions(flags);
+  const ssh = parseSshTarget(requireFlag(flags, "ssh", "remote mode requires --ssh TARGET"));
+  const id = options.id;
+  const runDir = remoteRunDir(options.workspace, QEMU_TOOL, id, options.localWorkspace);
+  const manifestPath = path.posix.join(runDir, "manifest.json");
+  const logFile = path.posix.join(runDir, "stdout.log");
+  const remoteSource = options.source
+    ? remoteWorkspacePath(options.workspace, options.localWorkspace, options.source)
+    : (options.qemuVersion
+      ? path.posix.join(
+        options.workspace,
+        renderManagedTemplate(options.contract.sourceTemplate, { qemuVersion: options.qemuVersion })
+      )
+      : null);
+  const remoteBuildDir = path.posix.join(
+    options.workspace,
+    renderManagedTemplate(options.contract.buildDirTemplate, { buildDirKey: options.buildDirKey })
+  );
+  const remoteInstallDir = path.posix.join(
+    options.workspace,
+    renderManagedTemplate(options.contract.installDirTemplate, { buildDirKey: options.buildDirKey })
+  );
+  const remoteExecutable = options.executable
+    ? remoteWorkspacePath(options.workspace, options.localWorkspace, options.executable)
+    : path.posix.join(remoteInstallDir, "bin", options.contract.artifactPath);
+  const outputDir = options.provisioning === "path"
+    ? path.posix.dirname(remoteExecutable)
+    : remoteInstallDir;
+
+  registerManagedWorkspace({ mode: "remote", root: options.workspace, ssh: ssh.original });
+  registerRemoteRunRecord({
+    id,
+    tool: QEMU_TOOL,
+    workspace: options.workspace,
+    status: "running",
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    manifest: manifestPath,
+    logFile,
+    runDir,
+    outputDir,
+    artifacts: [],
+  }, ssh);
+
+  if (options.provisioning === "path" && options.executable && fs.existsSync(options.executable)) {
+    syncLocalDirectoryToRemote(
+      path.dirname(options.executable),
+      path.posix.dirname(remoteExecutable),
+      ssh,
+      "qemu executable directory",
+    );
+  }
+  if (options.provisioning === "build" && options.source && fs.existsSync(options.source)) {
+    syncLocalDirectoryToRemote(options.source, remoteSource, ssh, "qemu source directory");
+  }
+
+  return await executeRemoteManagedToolRun({
+    id,
+    tool: QEMU_TOOL,
+    workspace: options.workspace,
+    ssh,
+    json: Boolean(flags.json),
+    subcommand: options.provisioning === "path" ? "inspect" : "build",
+    commandLabel: argvCommand,
+    runDir,
+    manifestPath,
+    logFile,
+    outputDir,
+    remoteRepoRoot: remoteRepoRoot(),
+    syncMorpheus: Boolean(flags["sync-morpheus"]),
+    args: [
+      "tool",
+      "build",
+      "--tool",
+      QEMU_TOOL,
+      "--mode",
+      "local",
+      "--workspace",
+      options.workspace,
+      ...(options.provisioning === "path"
+        ? ["--path", remoteExecutable]
+        : [
+            "--source",
+            remoteSource,
+            ...(options.qemuVersion ? ["--qemu-version", options.qemuVersion] : []),
+            ...(options.archiveUrl ? ["--archive-url", options.archiveUrl] : []),
+            "--build-dir-key",
+            options.buildDirKey,
+            ...(options.targetList || []).flatMap((item) => ["--target-list", item]),
+            ...(options.configureArgs || []).flatMap((item) => ["--configure-arg", item]),
+          ]),
+      "--json",
+    ],
+    env: {
+      PATH: process.env.PATH || "",
+      HOME: process.env.HOME || "",
+      USER: process.env.USER || "",
+    },
+    artifactResolver(payload) {
+      return [
+        {
+          path: options.contract.artifactPath,
+          remote_location: remoteExecutable,
+        }
+      ];
+    },
+    resultDetails(payload, artifacts, current) {
+      return {
+        id: current.id,
+        tool: QEMU_TOOL,
+        mode: "remote",
+        provisioning: options.provisioning,
+        workspace: options.workspace,
+        run_dir: runDir,
+        managed_manifest: manifestPath,
+        log_file: logFile,
+        output_dir: outputDir,
+        source: remoteSource,
+        build_dir: options.provisioning === "build" ? remoteBuildDir : null,
+        install_dir: options.provisioning === "build" ? remoteInstallDir : null,
+        artifacts,
+        payload,
+      };
+    },
+  });
+}
+
 async function runManagedRemoteLlCg(flags, argvCommand = "build") {
   const parsed = parseManagedLlCgOptions(flags);
   const workspace = parsed.workspace;
@@ -2381,21 +3347,32 @@ async function runManagedRemoteLlCg(flags, argvCommand = "build") {
   const runDir = remoteRunDir(workspace, LLCG_TOOL, id, flags.localWorkspace);
   const manifestPath = path.posix.join(runDir, "manifest.json");
   const logFile = path.posix.join(runDir, "stdout.log");
-  const toolDir = remoteManagedToolDir(workspace, LLCG_TOOL);
   const outputDir = (flags.output || parsed.reuseBuildDir)
     ? remoteWorkspacePath(workspace, flags.localWorkspace, parsed.outputDir)
     : path.posix.join(runDir, "output");
+  const pathFlags = new Set([
+    "--output",
+    "-o",
+    "--source-dir",
+    "--llbic-json",
+    "--all-bc-list",
+    "--bitcode-list",
+    "--filter",
+    "--file",
+  ]);
   const args = [];
   for (let index = 0; index < parsed.args.length; index += 1) {
     const token = parsed.args[index];
-    if (token === "--output" || token === "-o") {
-      index += 1;
-      continue;
-    }
     args.push(token);
-  }
-  if (parsed.subcommand === "run" || parsed.subcommand === "genmutator") {
-    args.push("--output", outputDir);
+    if (pathFlags.has(token) && index + 1 < parsed.args.length) {
+      index += 1;
+      const remoteValue = remoteWorkspacePath(workspace, flags.localWorkspace, parsed.args[index]);
+      if (token === "--output" || token === "-o") {
+        args.push(remoteWorkspaceRelativePath(workspace, remoteValue));
+        continue;
+      }
+      args.push(remoteValue);
+    }
   }
   registerManagedWorkspace({ mode: "remote", root: workspace, ssh: ssh.original });
   registerRemoteRunRecord({
@@ -2420,14 +3397,24 @@ async function runManagedRemoteLlCg(flags, argvCommand = "build") {
     json: Boolean(flags.json),
     subcommand: parsed.subcommand,
     commandLabel: argvCommand,
-    args,
     runDir,
     manifestPath,
     logFile,
     outputDir,
-    remoteToolDir: toolDir,
-    localToolDir: toolRepoDir(LLCG_TOOL),
-    program: path.posix.join(toolDir, "bin", "llcg"),
+    remoteRepoRoot: remoteRepoRoot(),
+    syncMorpheus: Boolean(flags["sync-morpheus"]),
+    args: [
+      "tool",
+      "build",
+      "--tool",
+      LLCG_TOOL,
+      "--mode",
+      "local",
+      "--workspace",
+      workspace,
+      ...(parsed.reuseBuildDir ? ["--reuse-build-dir", "--build-dir-key", parsed.buildDirKey] : []),
+      ...args,
+    ],
     env: Object.fromEntries(Object.entries(process.env).filter(([key]) =>
       key === "PATH" || key === "HOME" || key === "USER" || key.startsWith("KERNEL_CALLGRAPH_"),
     )),

@@ -55,14 +55,16 @@ tools:
       - sdk-dir
       - toolchain-dir
   llbic:
-    mode: local
-    arch: x86_64
+    mode: remote
+    arch: arm64
+    clang: 15
     out-of-tree: true
     sources: ./hyperarm-workspace/tools/llbic/src
     output: ./hyperarm-workspace/tools/llbic/builds
   llcg:
-    mode: local
-    clang: 18
+    mode: remote
+    arch: arm64
+    clang: 15
   libvmm:
     mode: local
     reuse-build-dir: true

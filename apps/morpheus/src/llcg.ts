@@ -90,16 +90,13 @@ function registerManifest(manifest) {
   });
 }
 
-function parseLlCgOptions(flags) {
+function parseManagedLlCgOptions(flags) {
   const workspace = flags.workspace;
   if (!workspace) {
     throw new Error("llcg requires --workspace DIR or workspace.root in morpheus.yaml");
   }
   const { baseDir, value } = loadLlCgConfig();
   const mode = flags.mode || value.mode || "local";
-  if (mode !== "local") {
-    throw new Error("llcg supports only --mode local");
-  }
 
   const positionals = Array.isArray(flags.positionals) ? [...flags.positionals] : [];
   const subcommand = positionals.shift() || "run";
@@ -161,7 +158,10 @@ function parseLlCgOptions(flags) {
 }
 
 async function runManagedLlCg(flags, argvCommand = "run") {
-  const options = parseLlCgOptions(flags);
+  const options = parseManagedLlCgOptions(flags);
+  if (options.mode !== "local") {
+    throw new Error("llcg supports only --mode local");
+  }
   registerManagedWorkspace({
     mode: "local",
     root: path.resolve(process.cwd(), options.workspace),
@@ -244,5 +244,7 @@ async function runManagedLlCg(flags, argvCommand = "run") {
 }
 
 module.exports = {
+  parseManagedLlCgOptions,
+  resolvePayloadArtifacts,
   runManagedLlCg,
 };

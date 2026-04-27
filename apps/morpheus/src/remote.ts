@@ -6,6 +6,7 @@ const path = require("path");
 const { spawn, spawnSync } = require("child_process");
 const {
   registerManagedRun,
+  registerManagedWorkspace,
   readManagedRun,
   removeManagedRun,
   listManagedRuns
@@ -15,12 +16,13 @@ const { runManagedNvirsh } = require("./nvirsh");
 const { runManagedQemu } = require("./qemu");
 const { runManagedSel4 } = require("./sel4");
 const { runManagedLibvmm } = require("./libvmm");
-const { runManagedLlBic } = require("./llbic");
-const { runManagedLlCg } = require("./llcg");
+const { buildArtifacts, parseManagedLlBicOptions, runManagedLlBic } = require("./llbic");
+const { parseManagedLlCgOptions, resolvePayloadArtifacts, runManagedLlCg } = require("./llcg");
 const { findManagedManifestFiles, resolveManagedRunDir } = require("./run-layout");
 const { applyConfigDefaults, resolveLocalPath } = require("./config");
 const { logDebug } = require("./logger");
 const { writeStdout, writeStdoutLine } = require("./io");
+const { repoRoot } = require("./paths");
 
 const BUILDROOT_TOOL = "buildroot";
 const MICROKIT_SDK_TOOL = "microkit-sdk";
@@ -57,11 +59,11 @@ const MANAGED_TOOL_ADAPTERS = {
   },
   [LLBIC_TOOL]: {
     name: LLBIC_TOOL,
-    modes: ["local"]
+    modes: ["local", "remote"]
   },
   [LLCG_TOOL]: {
     name: LLCG_TOOL,
-    modes: ["local"]
+    modes: ["local", "remote"]
   }
 };
 
@@ -142,8 +144,8 @@ function managedRunUsage() {
     "  node apps/morpheus/dist/cli.js tool run --tool nvirsh --mode local --workspace DIR [--target sel4] [--attach] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool sel4 --mode local --workspace DIR (--path PATH | --sel4-version VER) [--archive-url URL] [--patch-dir DIR] [--json]",
     "  node apps/morpheus/dist/cli.js tool build --tool libvmm --mode local --workspace DIR [--source DIR] --board NAME [--example NAME] [--patch-dir DIR] [--linux PATH] [--initrd PATH] [--make-arg KEY=VALUE ...] [--json]",
-    "  node apps/morpheus/dist/cli.js tool build --tool llbic --mode local --workspace DIR <version> [--arch ARCH] [--out-of-tree] [--json]",
-    "  node apps/morpheus/dist/cli.js tool run --tool llcg --mode local --workspace DIR run|genmutator ... [--json]",
+    "  node apps/morpheus/dist/cli.js tool build --tool llbic --mode local|remote --workspace DIR <version|subcommand ...> [--arch ARCH] [--out-of-tree] [--ssh TARGET] [--json]",
+    "  node apps/morpheus/dist/cli.js tool run --tool llcg --mode local|remote --workspace DIR run|genmutator|inspect ... [--ssh TARGET] [--json]",
     "  node apps/morpheus/dist/cli.js runs list --managed [--workspace DIR] [--ssh TARGET] [--json]",
     "  node apps/morpheus/dist/cli.js runs inspect --id RUN_ID [--json]",
     "  node apps/morpheus/dist/cli.js runs logs --id RUN_ID [--follow] [--json]",
@@ -413,6 +415,7 @@ function runSshStreaming(target, script, handlers) {
     let stdout = "";
     let stderr = "";
     let stdoutRemainder = "";
+    let stderrRemainder = "";
 
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
@@ -433,6 +436,14 @@ function runSshStreaming(target, script, handlers) {
 
     child.stderr.on("data", (chunk) => {
       stderr += chunk;
+      stderrRemainder += chunk;
+      const lines = stderrRemainder.split(/\r?\n/);
+      stderrRemainder = lines.pop() || "";
+      for (const line of lines) {
+        if (handlers && handlers.onStderrLine) {
+          handlers.onStderrLine(line);
+        }
+      }
       if (handlers && handlers.onStderr) {
         handlers.onStderr(chunk);
       }
@@ -454,6 +465,11 @@ function runSshStreaming(target, script, handlers) {
         }
         if (handlers && handlers.onStdoutLine) {
           handlers.onStdoutLine(stdoutRemainder);
+        }
+      }
+      if (stderrRemainder) {
+        if (handlers && handlers.onStderrLine) {
+          handlers.onStderrLine(stderrRemainder);
         }
       }
       resolve({
@@ -535,7 +551,11 @@ function resolveManagedTool(tool) {
 }
 
 function requireManagedTool(flags, command) {
-  const tool = requireFlag(flags, "tool", `${command} requires --tool buildroot|microkit-sdk|qemu|nvirsh|sel4|libvmm`);
+  const tool = requireFlag(
+    flags,
+    "tool",
+    `${command} requires --tool buildroot|microkit-sdk|qemu|nvirsh|sel4|libvmm|llbic|llcg`
+  );
   return resolveManagedTool(tool);
 }
 
@@ -1695,9 +1715,15 @@ async function runManagedRun(flags) {
     return runManagedLibvmm(flags);
   }
   if (adapter.name === LLBIC_TOOL) {
+    if (flags.mode === "remote") {
+      return await runManagedRemoteLlBic(flags, "build");
+    }
     return await runManagedLlBic(flags, "build");
   }
   if (adapter.name === LLCG_TOOL) {
+    if (flags.mode === "remote") {
+      return await runManagedRemoteLlCg(flags, "run");
+    }
     return await runManagedLlCg(flags, "run");
   }
   const options = parseBuildrootRunOptions(flags);
@@ -2034,6 +2060,362 @@ function runRequiredShell(command, message) {
   return result;
 }
 
+function toolRepoDir(tool) {
+  return path.join(repoRoot(), "tools", tool);
+}
+
+function remoteManagedToolDir(workspace, tool) {
+  return path.posix.join(remoteToolWorkspace(workspace, tool), "_managed_tool");
+}
+
+function syncLocalDirectoryToRemote(localDir, remoteDir, ssh, label) {
+  const sourceRoot = path.resolve(process.cwd(), localDir);
+  const parent = path.dirname(sourceRoot);
+  const base = path.basename(sourceRoot);
+  const destinationParent = path.posix.dirname(remoteDir);
+  const remoteScript = [
+    `rm -rf ${shellQuote(remoteDir)}`,
+    `mkdir -p ${shellQuote(destinationParent)}`,
+    `tar -xf - -C ${shellQuote(destinationParent)}`,
+    `mv ${shellQuote(path.posix.join(destinationParent, base))} ${shellQuote(remoteDir)}`,
+  ].join(" && ");
+  const pipeline = `tar -C ${shellQuote(parent)} -cf - ${shellQuote(base)} | ${shellQuote(sshBinary())} ${sshArgs(ssh).map(shellQuote).join(" ")} ${shellQuote(sshCommand(remoteScript))}`;
+  runRequiredShell(pipeline, `failed to sync remote ${label}`);
+}
+
+function normalizeManagedStatus(payloadStatus, exitCode) {
+  const value = String(payloadStatus || "").trim().toLowerCase();
+  if (value === "success" || value === "ok") {
+    return "success";
+  }
+  if (value === "running" || value === "submitted") {
+    return value;
+  }
+  if (value === "error" || value === "failed" || value === "fail") {
+    return "error";
+  }
+  return exitCode === 0 ? "success" : "error";
+}
+
+function parseLastJsonLine(text) {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // Fall through to line-oriented recovery.
+  }
+
+  const lines = String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    try {
+      return JSON.parse(lines[index]);
+    } catch {
+      continue;
+    }
+  }
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (!lines[index].startsWith("{")) {
+      continue;
+    }
+    try {
+      return JSON.parse(lines.slice(index).join("\n"));
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function emitRemoteLogLines(command, id, jsonMode, lines) {
+  for (const line of lines) {
+    if (!line) {
+      continue;
+    }
+    if (jsonMode) {
+      emitJson({
+        command,
+        status: "stream",
+        exit_code: 0,
+        details: { event: "log", id, mode: "remote", line }
+      });
+    } else {
+      emitText(line);
+    }
+  }
+}
+
+function remoteLlBicPaths(workspace) {
+  const toolRoot = remoteToolWorkspace(workspace, LLBIC_TOOL);
+  return {
+    sourcesRoot: path.posix.join(toolRoot, "src"),
+    buildsRoot: path.posix.join(toolRoot, "builds"),
+    confPath: path.posix.join(toolRoot, "sources.conf"),
+    toolDir: remoteManagedToolDir(workspace, LLBIC_TOOL),
+  };
+}
+
+function remoteLlCgPaths(workspace, runDir) {
+  return {
+    outputDir: path.posix.join(runDir, "output"),
+    toolDir: remoteManagedToolDir(workspace, LLCG_TOOL),
+  };
+}
+
+function baseRemoteManagedManifest(options) {
+  return {
+    schemaVersion: 1,
+    id: options.id,
+    tool: options.tool,
+    mode: "remote",
+    command: options.subcommand,
+    status: "running",
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    workspace: options.workspace,
+    runDir: options.runDir,
+    outputDir: options.outputDir,
+    logFile: options.logFile,
+    manifest: options.manifestPath,
+    artifacts: [],
+    transport: {
+      ssh: options.ssh.original,
+    },
+    exitCode: null,
+  };
+}
+
+function writeRemoteJsonFile(ssh, filePath, value, message) {
+  runRequiredSsh(
+    ssh,
+    `mkdir -p ${shellQuote(path.posix.dirname(filePath))} && cat > ${shellQuote(filePath)} <<'JSON'\n${JSON.stringify(value, null, 2)}\nJSON`,
+    message,
+  );
+}
+
+async function executeRemoteManagedToolRun(options) {
+  syncLocalDirectoryToRemote(options.localToolDir, options.remoteToolDir, options.ssh, `${options.tool} tool directory`);
+  writeRemoteJsonFile(options.ssh, options.manifestPath, baseRemoteManagedManifest(options), `failed to write remote ${options.tool} manifest`);
+
+  const envLines = Object.entries(options.env || {}).map(([key, value]) => `export ${key}=${shellQuote(value)}`);
+  const commandLine = `${shellQuote(options.program)} ${options.args.map((value) => shellQuote(value)).join(" ")}`.trim();
+  const script = [
+    "set -e",
+    `mkdir -p ${shellQuote(options.runDir)}`,
+    `: > ${shellQuote(options.logFile)}`,
+    "stdout_capture=$(mktemp)",
+    "trap 'rm -f \"$stdout_capture\"' EXIT",
+    ...envLines,
+    "set +e",
+    `(${commandLine}) > >(tee -a ${shellQuote(options.logFile)} \"$stdout_capture\") 2> >(tee -a ${shellQuote(options.logFile)} >&2)`,
+    "exit_code=$?",
+    "exit \"${exit_code}\"",
+  ].join("\n");
+
+  const streamResult = await runSshStreaming(options.ssh, script, {
+    collectStdout: true,
+    onStdoutLine(line) {
+      emitRemoteLogLines(options.commandLabel, options.id, options.json, [line]);
+    },
+    onStderrLine(line) {
+      emitRemoteLogLines(options.commandLabel, options.id, options.json, [line]);
+    },
+  });
+  if (streamResult.error) {
+    throw new Error(streamResult.error.message || `failed to execute managed remote ${options.tool} run`);
+  }
+
+  const payload = parseLastJsonLine(streamResult.stdout || "");
+  if (!payload || typeof payload !== "object") {
+    throw new Error(streamResult.stderr || streamResult.stdout || `${options.tool} did not return a JSON payload`);
+  }
+
+  const artifacts = options.artifactResolver(payload, options);
+  const manifest = {
+    ...baseRemoteManagedManifest(options),
+    status: normalizeManagedStatus(payload.status, streamResult.exitCode),
+    updatedAt: nowIso(),
+    artifacts,
+    details: payload,
+    exitCode: typeof payload.exit_code === "number" ? payload.exit_code : streamResult.exitCode,
+    errorMessage: streamResult.exitCode === 0
+      ? null
+      : (payload.summary || streamResult.stderr || `managed remote ${options.tool} run failed`),
+  };
+  if (!manifest.errorMessage) {
+    delete manifest.errorMessage;
+  }
+  writeRemoteJsonFile(options.ssh, options.manifestPath, manifest, `failed to update remote ${options.tool} manifest`);
+  registerRunFromManifest(manifest, options.ssh);
+
+  return {
+    command: options.commandLabel,
+    status: manifest.status,
+    exit_code: manifest.status === "success" ? 0 : manifest.exitCode,
+    summary: payload.summary || `${options.subcommand} managed remote ${options.tool} run`,
+    details: options.resultDetails(payload, artifacts, options),
+    error: manifest.status === "success"
+      ? undefined
+      : { code: "managed_run_failed", message: manifest.errorMessage || `managed remote ${options.tool} run failed` },
+  };
+}
+
+async function runManagedRemoteLlBic(flags, argvCommand = "build") {
+  const parsed = parseManagedLlBicOptions(flags, argvCommand);
+  const workspace = parsed.workspace;
+  const ssh = parseSshTarget(requireFlag(flags, "ssh", "remote mode requires --ssh TARGET"));
+  const id = parsed.id;
+  const runDir = remoteRunDir(workspace, LLBIC_TOOL, id);
+  const manifestPath = remoteManifestPath(workspace, LLBIC_TOOL, id);
+  const logFile = remoteLogPath(workspace, LLBIC_TOOL, id);
+  const paths = remoteLlBicPaths(workspace);
+  registerManagedWorkspace({ mode: "remote", root: workspace, ssh: ssh.original });
+  registerRemoteRunRecord({
+    id,
+    tool: LLBIC_TOOL,
+    workspace,
+    status: "running",
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    manifest: manifestPath,
+    logFile,
+    runDir,
+    outputDir: paths.buildsRoot,
+    artifacts: [],
+  }, ssh);
+
+  return await executeRemoteManagedToolRun({
+    id,
+    tool: LLBIC_TOOL,
+    workspace,
+    ssh,
+    json: Boolean(flags.json),
+    subcommand: parsed.subcommand,
+    commandLabel: argvCommand,
+    args: parsed.args,
+    runDir,
+    manifestPath,
+    logFile,
+    outputDir: paths.buildsRoot,
+    remoteToolDir: paths.toolDir,
+    localToolDir: toolRepoDir(LLBIC_TOOL),
+    program: path.posix.join(paths.toolDir, "llbic"),
+    env: {
+      ...Object.fromEntries(Object.entries(process.env).filter(([key]) =>
+        key.startsWith("LLBIC_") || key === "PATH" || key === "HOME" || key === "USER",
+      )),
+      LLBIC_SOURCES: paths.sourcesRoot,
+      LLBIC_OUTPUT: paths.buildsRoot,
+      LLBIC_CONF: paths.confPath,
+    },
+    artifactResolver(payload) {
+      return buildArtifacts(payload, paths.toolDir).map((artifact) => ({
+        path: artifact.path,
+        location: artifact.location,
+      }));
+    },
+    resultDetails(payload, artifacts, current) {
+      return {
+        id: current.id,
+        tool: LLBIC_TOOL,
+        mode: "remote",
+        workspace,
+        run_dir: runDir,
+        manifest: artifacts.find((item) => item.path === "llbic-json")?.location || null,
+        managed_manifest: manifestPath,
+        log_file: logFile,
+        output_dir: artifacts.find((item) => item.path === "output-dir")?.location || paths.buildsRoot,
+        source_dir: artifacts.find((item) => item.path === "source-dir")?.location || null,
+        bitcode_list: artifacts.find((item) => item.path === "bitcode-files")?.location || null,
+        artifacts,
+        payload,
+      };
+    },
+  });
+}
+
+async function runManagedRemoteLlCg(flags, argvCommand = "run") {
+  const parsed = parseManagedLlCgOptions(flags);
+  const workspace = parsed.workspace;
+  const ssh = parseSshTarget(requireFlag(flags, "ssh", "remote mode requires --ssh TARGET"));
+  const id = parsed.id;
+  const runDir = remoteRunDir(workspace, LLCG_TOOL, id);
+  const manifestPath = remoteManifestPath(workspace, LLCG_TOOL, id);
+  const logFile = remoteLogPath(workspace, LLCG_TOOL, id);
+  const paths = remoteLlCgPaths(workspace, runDir);
+  const args = [];
+  for (let index = 0; index < parsed.args.length; index += 1) {
+    const token = parsed.args[index];
+    if (token === "--output" || token === "-o") {
+      index += 1;
+      continue;
+    }
+    args.push(token);
+  }
+  if (parsed.subcommand === "run" || parsed.subcommand === "genmutator") {
+    args.push("--output", paths.outputDir);
+  }
+  registerManagedWorkspace({ mode: "remote", root: workspace, ssh: ssh.original });
+  registerRemoteRunRecord({
+    id,
+    tool: LLCG_TOOL,
+    workspace,
+    status: "running",
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    manifest: manifestPath,
+    logFile,
+    runDir,
+    outputDir: paths.outputDir,
+    artifacts: [],
+  }, ssh);
+
+  return await executeRemoteManagedToolRun({
+    id,
+    tool: LLCG_TOOL,
+    workspace,
+    ssh,
+    json: Boolean(flags.json),
+    subcommand: parsed.subcommand,
+    commandLabel: argvCommand,
+    args,
+    runDir,
+    manifestPath,
+    logFile,
+    outputDir: paths.outputDir,
+    remoteToolDir: paths.toolDir,
+    localToolDir: toolRepoDir(LLCG_TOOL),
+    program: path.posix.join(paths.toolDir, "bin", "llcg"),
+    env: Object.fromEntries(Object.entries(process.env).filter(([key]) =>
+      key === "PATH" || key === "HOME" || key === "USER" || key.startsWith("KERNEL_CALLGRAPH_"),
+    )),
+    artifactResolver(payload) {
+      return resolvePayloadArtifacts(payload).map((artifact) => ({
+        path: artifact.path,
+        location: artifact.location,
+      }));
+    },
+    resultDetails(payload, artifacts, current) {
+      return {
+        id: current.id,
+        tool: LLCG_TOOL,
+        mode: "remote",
+        workspace,
+        run_dir: runDir,
+        manifest: artifacts.find((item) => item.path === "manifest")?.location || null,
+        managed_manifest: manifestPath,
+        log_file: logFile,
+        output_dir: artifacts.find((item) => item.path === "output-dir")?.location || paths.outputDir,
+        artifacts,
+        payload,
+      };
+    },
+  });
+}
+
 function readRemoteManagedManifest(options) {
   if (!options.record || !options.record.manifest || !options.ssh) {
     return null;
@@ -2085,8 +2467,8 @@ async function handleManagedRunCommand(command, argv) {
 
   const parsedFlags = parseRunArgs(argv);
   const { flags } = applyConfigDefaults(parsedFlags, {
-    allowGlobalRemote: command === "run" && parsedFlags.mode !== "local",
-    allowToolDefaults: command === "run"
+    allowGlobalRemote: (command === "run" || command === "build") && parsedFlags.mode !== "local",
+    allowToolDefaults: command === "run" || command === "build"
   });
   const existingRunCommand = ["inspect", "logs", "fetch", "remove"].includes(command);
   if (existingRunCommand) {
@@ -2115,7 +2497,7 @@ async function handleManagedRunCommand(command, argv) {
     return 0;
   }
   let result;
-  if (command === "run") {
+  if (command === "run" || command === "build") {
     result = await runManagedRun(flags);
   } else if (command === "list") {
     result = listManagedRunRecords(flags);

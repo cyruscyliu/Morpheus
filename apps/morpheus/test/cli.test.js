@@ -724,6 +724,161 @@ test("managed run validates required mode in JSON mode", () => {
   assert.match(payload.summary, /run requires --mode local\|remote/);
 });
 
+test("managed remote llbic inspect writes a Morpheus run record", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-llbic-project-"));
+  const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-llbic-root-"));
+  const outputDir = path.join(remoteRoot, "fixtures", "linux-6.18.16-arm64-clang15");
+  const sourceDir = path.join(remoteRoot, "src", "linux-6.18.16");
+  const configPath = path.join(outputDir, ".config");
+  const bitcodeListPath = path.join(outputDir, "bitcode_files.txt");
+  const kernelBuildLogPath = path.join(outputDir, "kernel-build.log");
+  fs.mkdirSync(outputDir, { recursive: true });
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.writeFileSync(configPath, "CONFIG_TEST=y\n");
+  fs.writeFileSync(bitcodeListPath, "kernel/sched/core.bc\n");
+  fs.writeFileSync(path.join(outputDir, "llbic.log"), "llbic inspect fixture\n");
+  fs.writeFileSync(kernelBuildLogPath, "kernel build fixture\n");
+  fs.writeFileSync(
+    path.join(outputDir, "llbic.json"),
+    JSON.stringify({
+      kernel_version: "6.18.16",
+      kernel_name: "linux-6.18.16",
+      arch: "arm64",
+      build_layout: "out-of-tree",
+      config_path: configPath,
+      bitcode_list_file: bitcodeListPath,
+      source_dir: sourceDir,
+      output_dir: outputDir,
+      kernel_build_log: kernelBuildLogPath,
+      status: "success"
+    })
+  );
+
+  const env = {
+    ...process.env,
+    ...makeFakeSshEnv(remoteRoot),
+    MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1",
+    MORPHEUS_STATE_ROOT: path.join(projectRoot, ".state")
+  };
+
+  const result = run([
+    "--json",
+    "tool",
+    "build",
+    "--tool",
+    "llbic",
+    "--mode",
+    "remote",
+    "--ssh",
+    "builder@example.com:2222",
+    "--workspace",
+    "/remote-workspace",
+    "inspect",
+    "/remote-workspace/fixtures/linux-6.18.16-arm64-clang15/llbic.json"
+  ], {
+    cwd: projectRoot,
+    env
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.mode, "remote");
+  assert.equal(payload.details.payload.details.manifest.includes("linux-6.18.16-arm64-clang15"), true);
+  assert.equal(
+    Boolean(payload.details.payload?.artifacts?.kernel_build_log?.exists),
+    true
+  );
+
+  const managedManifestPath = payload.details.managed_manifest.replace("/remote-workspace", remoteRoot);
+  assert.equal(fs.existsSync(managedManifestPath), true);
+  const managedManifest = JSON.parse(fs.readFileSync(managedManifestPath, "utf8"));
+  assert.equal(managedManifest.tool, "llbic");
+  assert.equal(managedManifest.mode, "remote");
+  assert.equal(managedManifest.status, "success");
+  assert.deepEqual(managedManifest.artifacts, []);
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+  fs.rmSync(remoteRoot, { recursive: true, force: true });
+});
+
+test("managed remote llcg genmutator writes outputs under the remote run directory", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-llcg-project-"));
+  const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-llcg-root-"));
+  const kernelRoot = path.join(remoteRoot, "kernel-src");
+  fs.mkdirSync(path.join(kernelRoot, "drivers", "net"), { recursive: true });
+  fs.writeFileSync(
+    path.join(kernelRoot, "Makefile"),
+    [
+      "VERSION = 6",
+      "PATCHLEVEL = 18",
+      "SUBLEVEL = 16",
+      "EXTRAVERSION =",
+      ""
+    ].join("\n")
+  );
+  fs.writeFileSync(path.join(kernelRoot, "drivers", "net", "demo.c"), "int demo(void) { return 0; }\n");
+
+  const env = {
+    ...process.env,
+    ...makeFakeSshEnv(remoteRoot),
+    MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1",
+    MORPHEUS_STATE_ROOT: path.join(projectRoot, ".state")
+  };
+
+  const result = run([
+    "--json",
+    "tool",
+    "run",
+    "--tool",
+    "llcg",
+    "--mode",
+    "remote",
+    "--ssh",
+    "builder@example.com:2222",
+    "--workspace",
+    "/remote-workspace",
+    "genmutator",
+    "files",
+    "--source-dir",
+    "/remote-workspace/kernel-src",
+    "--file",
+    "drivers/net/demo.c",
+    "--scope-name",
+    "net-demo",
+    "--arch",
+    "arm64"
+  ], {
+    cwd: projectRoot,
+    env
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.mode, "remote");
+  assert.match(payload.details.output_dir, /\/runs\/llcg-/);
+  assert.equal(
+    payload.details.payload.artifacts.some((artifact) => artifact.key === "mutator_manifest"),
+    true
+  );
+
+  const managedManifestPath = payload.details.managed_manifest.replace("/remote-workspace", remoteRoot);
+  assert.equal(fs.existsSync(managedManifestPath), true);
+  const managedManifest = JSON.parse(fs.readFileSync(managedManifestPath, "utf8"));
+  assert.equal(managedManifest.tool, "llcg");
+  assert.equal(managedManifest.mode, "remote");
+  assert.equal(managedManifest.status, "success");
+
+  const outputDir = payload.details.output_dir.replace("/remote-workspace", remoteRoot);
+  const entries = fs.readdirSync(outputDir).sort();
+  assert.equal(entries.some((name) => name.endsWith(".json")), true);
+  assert.equal(entries.some((name) => name.endsWith(".txt")), true);
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+  fs.rmSync(remoteRoot, { recursive: true, force: true });
+});
+
 test("inspect validates managed run flags in JSON mode", () => {
   const result = run(["--json", "runs", "inspect"]);
   assert.equal(result.status, 1);

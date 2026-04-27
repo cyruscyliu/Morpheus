@@ -61,16 +61,29 @@ function loadLlBicConfig() {
   };
 }
 
-function parseLlBicOptions(flags, argvCommand) {
+function payloadResolvedPath(payload, key, rootDir) {
+  const pathViews = payload && payload.paths ? payload.paths : {};
+  const pathView = pathViews && pathViews[key] ? pathViews[key] : null;
+  if (pathView && typeof pathView === "object") {
+    return pathView.resolved_path || pathView.runtime_path || pathView.portable || null;
+  }
+  const fieldMap = {
+    source_dir: "source_dir",
+    output_dir: "output_dir",
+    bitcode_list_file: "bitcode_list_file",
+    kernel_build_log: "kernel_build_log",
+  };
+  const field = fieldMap[key];
+  return resolvePortablePath(field ? payload[field] : null, rootDir);
+}
+
+function parseManagedLlBicOptions(flags, argvCommand) {
   const workspace = flags.workspace;
   if (!workspace) {
     throw new Error("llbic requires --workspace DIR or workspace.root in morpheus.yaml");
   }
   const { baseDir, value } = loadLlBicConfig();
   const mode = flags.mode || value.mode || "local";
-  if (mode !== "local") {
-    throw new Error("llbic supports only --mode local");
-  }
 
   const positionals = Array.isArray(flags.positionals) ? [...flags.positionals] : [];
   const supportedSubcommands = new Set(["build", "compile", "inspect", "clean"]);
@@ -156,11 +169,11 @@ function parseLlBicOptions(flags, argvCommand) {
 }
 
 function buildArtifacts(payload, rootDir) {
-  const outputDir = resolvePortablePath(payload.output_dir, rootDir);
-  const sourceDir = resolvePortablePath(payload.source_dir, rootDir);
-  const bitcodeList = resolvePortablePath(payload.bitcode_list_file, rootDir);
+  const outputDir = payloadResolvedPath(payload, "output_dir", rootDir);
+  const sourceDir = payloadResolvedPath(payload, "source_dir", rootDir);
+  const bitcodeList = payloadResolvedPath(payload, "bitcode_list_file", rootDir);
   const llbicLog = outputDir ? path.join(outputDir, "llbic.log") : null;
-  const kernelBuildLog = resolvePortablePath(payload.kernel_build_log, rootDir);
+  const kernelBuildLog = payloadResolvedPath(payload, "kernel_build_log", rootDir);
   const manifest = outputDir ? path.join(outputDir, "llbic.json") : null;
 
   return [
@@ -192,7 +205,10 @@ function registerManifest(manifest) {
 }
 
 async function runManagedLlBic(flags, argvCommand = "build") {
-  const options = parseLlBicOptions(flags, argvCommand);
+  const options = parseManagedLlBicOptions(flags, argvCommand);
+  if (options.mode !== "local") {
+    throw new Error("llbic supports only --mode local");
+  }
   registerManagedWorkspace({
     mode: "local",
     root: path.resolve(process.cwd(), options.workspace),
@@ -282,5 +298,7 @@ async function runManagedLlBic(flags, argvCommand = "build") {
 }
 
 module.exports = {
+  buildArtifacts,
+  parseManagedLlBicOptions,
   runManagedLlBic,
 };

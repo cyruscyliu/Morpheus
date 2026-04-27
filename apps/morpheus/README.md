@@ -49,6 +49,11 @@ Tool caches remain reusable under:
 - `<workspace>/tools/<tool>/builds/`
 - `<workspace>/tools/<tool>/cache/`
 
+When Morpheus runs in remote mode with synced repo sources, the remote runtime
+rebuilds all repo-local CLI wrappers from `tool.json` metadata. This keeps
+`morpheus`, `llbic`, `llcg`, and other managed tool launchers consistent
+without hardcoding per-tool wrapper scripts.
+
 ## Usage
 
 The public command tree includes:

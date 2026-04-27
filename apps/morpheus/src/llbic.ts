@@ -68,10 +68,17 @@ function requireWorkspaceRelative(value, label) {
 }
 
 function resolveWorkspacePath(workspace, configured, fallbackRelative, label) {
-  const relative = configured == null || configured === ""
-    ? fallbackRelative
-    : requireWorkspaceRelative(configured, label);
-  return path.join(workspace, relative);
+  if (configured == null || configured === "") {
+    return path.join(workspace, fallbackRelative);
+  }
+  const text = String(configured);
+  if (text.startsWith("~")) {
+    throw new Error(`${label} must not use ~`);
+  }
+  if (path.isAbsolute(text)) {
+    return text;
+  }
+  return path.join(workspace, requireWorkspaceRelative(text, label));
 }
 
 function payloadResolvedPath(payload, key, rootDir) {
@@ -181,7 +188,7 @@ function parseManagedLlBicOptions(flags, argvCommand) {
     args.push("--defconfig", String(flags.defconfig));
   }
   if ((subcommand === "build" || subcommand === "compile") && flags.output && !args.includes("--output") && !args.includes("-o")) {
-    args.push("--output", String(flags.output));
+    args.push("--output", String(buildsRoot));
   }
   for (const fragment of [].concat(flags.kconfig || [])) {
     args.push("--kconfig", String(fragment));

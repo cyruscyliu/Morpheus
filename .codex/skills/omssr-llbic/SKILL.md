@@ -32,6 +32,9 @@ When operating as an agent in this repo:
 3. Use `inspect` to re-read a finished build instead of rebuilding it.
 4. Expect matching successful `build` or `compile` requests to reuse the
    recorded `llbic.json` output instead of recompiling.
+5. For Morpheus-managed runs, confirm the wrapper forwards the resolved
+   workspace output path to `./llbic`; otherwise reuse can silently break by
+   building under the synced runtime tree instead of the managed workspace.
 
 Typical flow:
 

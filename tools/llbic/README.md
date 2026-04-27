@@ -63,6 +63,10 @@ and `paths` blocks when you need the local container or host resolution.
 Matching successful builds are also reused automatically by `build`, so
 re-running the same request returns the recorded manifest instead of
 recompiling the kernel.
+When `llbic` is launched through Morpheus, the managed wrapper must forward the
+resolved workspace output path to `./llbic` so remote synced runtimes reuse the
+workspace build state instead of creating a second build tree under the synced
+runtime checkout.
 
 Example response shape (abridged):
 

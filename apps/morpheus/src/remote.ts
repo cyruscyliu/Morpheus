@@ -2229,6 +2229,7 @@ function stageLocalMorpheusRuntime() {
     "package.json",
     "pnpm-lock.yaml",
     "pnpm-workspace.yaml",
+    "scripts/install-bin.mjs",
     "tsconfig.base.json",
   ];
 
@@ -2305,13 +2306,7 @@ function prepareRemoteMorpheusRuntime(workspace, ssh) {
     "  exit 1",
     "fi",
     "./node_modules/.bin/tsc -p apps/morpheus/tsconfig.json",
-    "mkdir -p bin",
-    "cat > bin/morpheus <<'EOF'",
-    "#!/usr/bin/env sh",
-    "set -eu",
-    "exec node \"$(dirname \"$0\")/../apps/morpheus/dist/cli.js\" \"$@\"",
-    "EOF",
-    "chmod +x bin/morpheus",
+    "node scripts/install-bin.mjs",
   ].join("\n");
   runRequiredSsh(ssh, script, "failed to prepare remote morpheus runtime");
   return runtimeRoot;
@@ -3146,9 +3141,6 @@ async function runManagedRemoteLlBic(flags, argvCommand = "build") {
   const remoteSourcesRoot = remoteWorkspacePath(workspace, localWorkspace, parsed.sourcesRoot);
   const remoteBuildsRoot = remoteWorkspacePath(workspace, localWorkspace, parsed.buildsRoot);
   const remoteConfPath = remoteWorkspacePath(workspace, localWorkspace, parsed.confPath);
-  const remoteSourcesArg = remoteWorkspaceRelativePath(workspace, remoteSourcesRoot);
-  const remoteBuildsArg = remoteWorkspaceRelativePath(workspace, remoteBuildsRoot);
-  const remoteConfArg = remoteWorkspaceRelativePath(workspace, remoteConfPath);
   registerManagedWorkspace({ mode: "remote", root: workspace, ssh: ssh.original });
   registerRemoteRunRecord({
     id,
@@ -3188,11 +3180,11 @@ async function runManagedRemoteLlBic(flags, argvCommand = "build") {
       "--workspace",
       workspace,
       "--sources",
-      remoteSourcesArg,
+      remoteSourcesRoot,
       "--output",
-      remoteBuildsArg,
+      remoteBuildsRoot,
       "--conf",
-      remoteConfArg,
+      remoteConfPath,
       ...parsed.args,
     ],
     env: {

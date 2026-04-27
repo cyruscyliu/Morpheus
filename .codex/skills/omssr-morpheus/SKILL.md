@@ -30,6 +30,9 @@ When operating as an agent in this repo:
 5. Morpheus records tool executions as workflow runs under `<workspace>/runs/`.
 6. In `--json` mode Morpheus writes progress to stderr so long-running builds
    still show what step is running.
+7. In synced remote mode, Morpheus rebuilds repo-local `bin/*` wrappers from
+   repo `tool.json` files, so remote runs can invoke tool CLIs such as
+   `morpheus`, `llbic`, and `llcg` through the same launcher surface.
 
 Optional repo-local config for one local workspace and one remote workspace:
 

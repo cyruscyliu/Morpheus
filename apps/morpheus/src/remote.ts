@@ -357,7 +357,22 @@ function remoteToolWorkspace(workspace, tool) {
   return path.posix.join(workspace, "tools", tool);
 }
 
-function remoteRunDir(workspace, tool, id) {
+function toPosixPath(value) {
+  return String(value).split(path.sep).join(path.posix.sep);
+}
+
+function remoteRunDir(workspace, tool, id, localWorkspace) {
+  const explicitRunDir = process.env.MORPHEUS_RUN_DIR_OVERRIDE;
+  if (explicitRunDir && localWorkspace) {
+    const relative = path.relative(
+      path.resolve(process.cwd(), localWorkspace),
+      path.resolve(process.cwd(), explicitRunDir)
+    );
+    if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
+      return path.posix.join(workspace, toPosixPath(relative));
+    }
+  }
+
   return path.posix.join(workspace, "runs", id);
 }
 
@@ -365,12 +380,12 @@ function remoteBuildDir(workspace, tool, key) {
   return path.posix.join(remoteToolWorkspace(workspace, tool), "builds", key);
 }
 
-function remoteManifestPath(workspace, tool, id) {
-  return path.posix.join(remoteRunDir(workspace, tool, id), "manifest.json");
+function remoteManifestPath(workspace, tool, id, localWorkspace) {
+  return path.posix.join(remoteRunDir(workspace, tool, id, localWorkspace), "manifest.json");
 }
 
-function remoteLogPath(workspace, tool, id) {
-  return path.posix.join(remoteRunDir(workspace, tool, id), "stdout.log");
+function remoteLogPath(workspace, tool, id, localWorkspace) {
+  return path.posix.join(remoteRunDir(workspace, tool, id, localWorkspace), "stdout.log");
 }
 
 function wantsSshNoConfigRetry(result) {
@@ -1366,7 +1381,7 @@ function buildrootRemoteScript(options, id) {
   const patchDir = options.patchDir
     ? path.posix.join(toolRoot, "patches", id)
     : null;
-  const runDir = remoteRunDir(options.workspace, BUILDROOT_TOOL, id);
+  const runDir = remoteRunDir(options.workspace, BUILDROOT_TOOL, id, options.localWorkspace);
   const buildDirKey = effectiveBuildDirKey(options);
   const buildRoot = buildDirKey
     ? remoteBuildDir(options.workspace, BUILDROOT_TOOL, buildDirKey)
@@ -1378,8 +1393,8 @@ function buildrootRemoteScript(options, id) {
     ? path.posix.join(srcRoot, `${id}-source`)
     : path.posix.join(srcRoot, `buildroot-${options.buildrootVersion}`);
   const outputDir = path.posix.join(buildRoot, "output");
-  const manifest = remoteManifestPath(options.workspace, BUILDROOT_TOOL, id);
-  const logFile = remoteLogPath(options.workspace, BUILDROOT_TOOL, id);
+  const manifest = path.posix.join(runDir, "manifest.json");
+  const logFile = path.posix.join(runDir, "stdout.log");
   const createdAt = nowIso();
   const makeArgs = remoteParallelMakeArgs(options.makeArgs);
   const kernelPatchFiles = options.kernelPatchFiles || [];
@@ -1583,9 +1598,9 @@ async function runRemoteBuildroot(options) {
     source: remoteSourceDir || options.source
   };
   const script = buildrootRemoteScript(runOptions, id);
-  const manifest = remoteManifestPath(options.workspace, BUILDROOT_TOOL, id);
-  const runDir = remoteRunDir(options.workspace, BUILDROOT_TOOL, id);
-  const logFile = remoteLogPath(options.workspace, BUILDROOT_TOOL, id);
+  const runDir = remoteRunDir(options.workspace, BUILDROOT_TOOL, id, options.localWorkspace);
+  const manifest = path.posix.join(runDir, "manifest.json");
+  const logFile = path.posix.join(runDir, "stdout.log");
   const buildDirKey = effectiveBuildDirKey(options);
   const buildRoot = buildDirKey
     ? remoteBuildDir(options.workspace, BUILDROOT_TOOL, buildDirKey)
@@ -2265,9 +2280,9 @@ async function runManagedRemoteLlBic(flags, argvCommand = "build") {
   const workspace = parsed.workspace;
   const ssh = parseSshTarget(requireFlag(flags, "ssh", "remote mode requires --ssh TARGET"));
   const id = parsed.id;
-  const runDir = remoteRunDir(workspace, LLBIC_TOOL, id);
-  const manifestPath = remoteManifestPath(workspace, LLBIC_TOOL, id);
-  const logFile = remoteLogPath(workspace, LLBIC_TOOL, id);
+  const runDir = remoteRunDir(workspace, LLBIC_TOOL, id, flags.localWorkspace);
+  const manifestPath = path.posix.join(runDir, "manifest.json");
+  const logFile = path.posix.join(runDir, "stdout.log");
   const toolDir = remoteManagedToolDir(workspace, LLBIC_TOOL);
   registerManagedWorkspace({ mode: "remote", root: workspace, ssh: ssh.original });
   registerRemoteRunRecord({
@@ -2339,11 +2354,11 @@ async function runManagedRemoteLlCg(flags, argvCommand = "run") {
   const workspace = parsed.workspace;
   const ssh = parseSshTarget(requireFlag(flags, "ssh", "remote mode requires --ssh TARGET"));
   const id = parsed.id;
-  const runDir = remoteRunDir(workspace, LLCG_TOOL, id);
-  const manifestPath = remoteManifestPath(workspace, LLCG_TOOL, id);
-  const logFile = remoteLogPath(workspace, LLCG_TOOL, id);
+  const runDir = remoteRunDir(workspace, LLCG_TOOL, id, flags.localWorkspace);
+  const manifestPath = path.posix.join(runDir, "manifest.json");
+  const logFile = path.posix.join(runDir, "stdout.log");
   const toolDir = remoteManagedToolDir(workspace, LLCG_TOOL);
-  const outputDir = parsed.outputDir;
+  const outputDir = flags.output ? parsed.outputDir : path.posix.join(runDir, "output");
   const args = [];
   for (let index = 0; index < parsed.args.length; index += 1) {
     const token = parsed.args[index];

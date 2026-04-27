@@ -316,6 +316,9 @@ The `build` manifest includes these top-level fields:
 Treat the portable scalar path fields such as `source_dir`, `output_dir`,
 `bitcode_root`, `kernel_build_log`, and `bitcode_list_file` as the stable
 artifact identities.
+`llbic` resolves those portable fields through its runtime root before scanning
+or writing artifacts, so finalization is independent of the caller's current
+working directory.
 
 Note: `kernel/time/timeconst.bc` in the Linux source tree is an input for the `bc`
 calculator (used to generate `include/generated/timeconst.h`), not LLVM bitcode.

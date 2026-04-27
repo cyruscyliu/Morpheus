@@ -266,6 +266,61 @@ button {
   white-space: pre;
 }
 
+.log-seg {
+  color: inherit;
+}
+
+.log-seg.is-bold {
+  font-weight: 700;
+}
+
+.log-seg.is-dim {
+  opacity: 0.72;
+}
+
+.log-seg.fg-black {
+  color: #2b2119;
+}
+
+.log-seg.fg-red,
+.log-seg.fg-bright-red {
+  color: #b13a2d;
+}
+
+.log-seg.fg-green,
+.log-seg.fg-bright-green {
+  color: #1f7a4d;
+}
+
+.log-seg.fg-yellow,
+.log-seg.fg-bright-yellow {
+  color: #9a6b10;
+}
+
+.log-seg.fg-blue,
+.log-seg.fg-bright-blue {
+  color: #2f5f97;
+}
+
+.log-seg.fg-magenta,
+.log-seg.fg-bright-magenta {
+  color: #8a4b8f;
+}
+
+.log-seg.fg-cyan,
+.log-seg.fg-bright-cyan {
+  color: #176e7c;
+}
+
+.log-seg.fg-white,
+.log-seg.fg-bright-white {
+  color: #f7f1e8;
+}
+
+.log-seg.fg-bright-black {
+  color: #6e5f4d;
+}
+
 .tok-error,
 .tok-json-key {
   color: #b13a2d;

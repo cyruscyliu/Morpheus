@@ -1494,6 +1494,16 @@ _write_build_json_file() {
   _emit_result_json "${status}" "${exit_code}" "${error_step}" "${error_msg}" "$@" > "${json_file}"
 }
 
+_finalize_build_exit_code() {
+  local rc="$1"
+  local bitcode_count="$2"
+  if [[ "${rc}" -eq 0 && "${bitcode_count}" -eq 0 ]]; then
+    echo 1
+    return 0
+  fi
+  echo "${rc}"
+}
+
 _finalize_build_artifacts() {
   local rc="$1"
   [[ "${LLBIC_CTX_ACTIVE}" -eq 1 ]] || return 0
@@ -1503,6 +1513,7 @@ _finalize_build_artifacts() {
   [[ -n "${bc_output}" && -d "${bc_output}" ]] || return 0
 
   local bitcode_root="${LLBIC_CTX_BITCODE_ROOT}"
+  [[ -n "${bitcode_root}" ]] && bitcode_root="$(_resolve_portable_path_locally "${bitcode_root}")"
   local strategy="${LLBIC_CTX_STRATEGY}"
   local -a scoped_targets=("${LLBIC_CTX_MAKE_TARGETS[@]}")
   if [[ -z "${bitcode_root}" || -z "${strategy}" || ! -d "${bitcode_root}" ]]; then
@@ -1517,9 +1528,15 @@ _finalize_build_artifacts() {
   else
     _collect_bitcode_files "${bitcode_root}" "${strategy}"
   fi
-  [[ -n "${LLBIC_CTX_BC_LIST_FILE}" ]] && _write_bitcode_list_file "${LLBIC_CTX_BC_LIST_FILE}"
+  if [[ -n "${LLBIC_CTX_BC_LIST_FILE}" ]]; then
+    _write_bitcode_list_file "$(_resolve_portable_path_locally "${LLBIC_CTX_BC_LIST_FILE}")"
+  fi
   if [[ "${LLBIC_CTX_SCOPE:-full}" == "full" ]]; then
-    _collect_kernel_images "${LLBIC_CTX_KERNEL_SRC}" "${LLBIC_CTX_KBUILD_DIR}"
+    local kernel_src="${LLBIC_CTX_KERNEL_SRC}"
+    local kbuild_dir="${LLBIC_CTX_KBUILD_DIR}"
+    [[ -n "${kernel_src}" ]] && kernel_src="$(_resolve_portable_path_locally "${kernel_src}")"
+    [[ -n "${kbuild_dir}" ]] && kbuild_dir="$(_resolve_portable_path_locally "${kbuild_dir}")"
+    _collect_kernel_images "${kernel_src}" "${kbuild_dir}"
     # llbic does not force-link vmlinux.bc by default; only report it if the
     # build produced one in the output directory.
     [[ -f "${bc_output}/vmlinux.bc" ]] && LAST_VMLINUX_BC="${bc_output}/vmlinux.bc" || LAST_VMLINUX_BC=""
@@ -1533,6 +1550,8 @@ _finalize_build_artifacts() {
   if [[ "${rc}" -eq 0 && ${#LAST_BITCODE_FILES[@]} -gt 0 ]]; then
     status="success"
   fi
+  local final_rc
+  final_rc="$(_finalize_build_exit_code "${rc}" "${#LAST_BITCODE_FILES[@]}")"
 
   local err_step=""
   local err_msg=""
@@ -1545,7 +1564,7 @@ _finalize_build_artifacts() {
     _write_build_json_file \
       "${LLBIC_CTX_JSON_FILE}" \
       "${status}" \
-      "${rc}" \
+      "${final_rc}" \
       "${err_step}" \
       "${err_msg}" \
       "${LLBIC_CTX_KERNEL_VER}" \
@@ -1557,6 +1576,16 @@ _finalize_build_artifacts() {
   if [[ "${JSON_OUTPUT}" -eq 1 && -n "${LLBIC_CTX_JSON_FILE}" && -f "${LLBIC_CTX_JSON_FILE}" ]]; then
     cat "${LLBIC_CTX_JSON_FILE}"
   fi
+
+  return "${final_rc}"
+}
+
+_finalize_build_artifacts_on_exit() {
+  local rc="$1"
+  local final_rc=0
+  _finalize_build_artifacts "${rc}" || final_rc="$?"
+  trap - EXIT
+  exit "${final_rc}"
 }
 
 _download_file() {
@@ -1783,7 +1812,7 @@ cmd_build() {
   done
 
   # Always emit llbic.json, even on failures (non-zero exit).
-  trap '_finalize_build_artifacts "$?"' EXIT
+  trap '_finalize_build_artifacts_on_exit "$?"' EXIT
 
   _log_step "build.start kernel=${kernel_name} source_url=${url} output_dir=${bc_output}"
 

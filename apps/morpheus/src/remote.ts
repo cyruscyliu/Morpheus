@@ -2079,8 +2079,22 @@ function syncLocalDirectoryToRemote(localDir, remoteDir, ssh, label) {
     `tar -xf - -C ${shellQuote(destinationParent)}`,
     `mv ${shellQuote(path.posix.join(destinationParent, base))} ${shellQuote(remoteDir)}`,
   ].join(" && ");
-  const pipeline = `tar -C ${shellQuote(parent)} -cf - ${shellQuote(base)} | ${shellQuote(sshBinary())} ${sshArgs(ssh).map(shellQuote).join(" ")} ${shellQuote(sshCommand(remoteScript))}`;
-  runRequiredShell(pipeline, `failed to sync remote ${label}`);
+  const run = (noSystemConfig) => {
+    const pipeline = `tar -C ${shellQuote(parent)} -cf - ${shellQuote(base)} | ${shellQuote(sshBinary())} ${sshArgs(ssh, { noSystemConfig }).map(shellQuote).join(" ")} ${shellQuote(sshCommand(remoteScript))}`;
+    return runShell(pipeline);
+  };
+
+  let result = run(false);
+  if (result.exitCode !== 0 && wantsSshNoConfigRetry(result)) {
+    logDebug("remote", "retrying directory sync with -F /dev/null", {
+      ssh: ssh.original,
+      label,
+    });
+    result = run(true);
+  }
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr || `failed to sync remote ${label}`);
+  }
 }
 
 function normalizeManagedStatus(payloadStatus, exitCode) {

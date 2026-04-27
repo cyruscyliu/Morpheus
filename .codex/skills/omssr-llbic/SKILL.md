@@ -169,7 +169,10 @@ The key files are:
 
 Treat portable scalar paths in `llbic.json` such as `source_dir`, `output_dir`,
 `bitcode_root`, and `bitcode_list_file` as the stable artifact identities.
-`runtime` and `paths` are environment-dependent resolution helpers. The build
+`runtime` and `paths` are environment-dependent resolution helpers. llbic
+resolves portable fields through the runtime root before scanning or writing
+final artifacts, so finalization should not depend on the caller's current
+working directory. The build
 manifest also records `requested_clang`, which is important for distinguishing
 support rows when the same kernel and arch are tested under different requested
 toolchains, including failed host runs where the requested Clang is missing.

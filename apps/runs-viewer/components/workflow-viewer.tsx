@@ -9,6 +9,102 @@ function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
+interface AnsiState {
+  bold: boolean;
+  dim: boolean;
+  fg: string | null;
+}
+
+function ansiStateClassNames(state: AnsiState): string {
+  const classes = ["log-seg"];
+  if (state.bold) {
+    classes.push("is-bold");
+  }
+  if (state.dim) {
+    classes.push("is-dim");
+  }
+  if (state.fg) {
+    classes.push(`fg-${state.fg}`);
+  }
+  return classes.join(" ");
+}
+
+function renderAnsiHtml(value: string): string {
+  const ansiPattern = /\u001b\[([0-9;]*)m/g;
+  const initialState: AnsiState = { bold: false, dim: false, fg: null };
+  let state = { ...initialState };
+  let cursor = 0;
+  let html = "";
+
+  const pushText = (text: string) => {
+    if (!text) {
+      return;
+    }
+    html += `<span class="${ansiStateClassNames(state)}">${escapeHtml(text)}</span>`;
+  };
+
+  const applyCode = (code: number) => {
+    if (code === 0) {
+      state = { ...initialState };
+      return;
+    }
+    if (code === 1) {
+      state.bold = true;
+      return;
+    }
+    if (code === 2) {
+      state.dim = true;
+      return;
+    }
+    if (code === 22) {
+      state.bold = false;
+      state.dim = false;
+      return;
+    }
+    if (code === 39) {
+      state.fg = null;
+      return;
+    }
+    const foregroundMap: Record<number, string> = {
+      30: "black",
+      31: "red",
+      32: "green",
+      33: "yellow",
+      34: "blue",
+      35: "magenta",
+      36: "cyan",
+      37: "white",
+      90: "bright-black",
+      91: "bright-red",
+      92: "bright-green",
+      93: "bright-yellow",
+      94: "bright-blue",
+      95: "bright-magenta",
+      96: "bright-cyan",
+      97: "bright-white",
+    };
+    const mapped = foregroundMap[code];
+    if (mapped) {
+      state.fg = mapped;
+    }
+  };
+
+  let match: RegExpExecArray | null;
+  while ((match = ansiPattern.exec(value)) !== null) {
+    pushText(value.slice(cursor, match.index));
+    const codes = (match[1] || "0")
+      .split(";")
+      .map((item) => Number(item))
+      .filter((item) => Number.isFinite(item));
+    for (const code of codes) {
+      applyCode(code);
+    }
+    cursor = match.index + match[0].length;
+  }
+  pushText(value.slice(cursor));
+  return html;
+}
+
 function formatTimestamp(value: string | null | undefined): string {
   if (!value) {
     return "-";
@@ -81,7 +177,7 @@ function renderWorkflowLogHtml(logText: string): string {
     .filter((line, index, values) => !(index === values.length - 1 && line === ""))
     .map((line, index) => {
       const lineNumber = index + 1;
-      return `<li class="log-line"><span class="log-ln">${lineNumber}</span><span class="log-lc">${escapeHtml(line)}</span></li>`;
+      return `<li class="log-line"><span class="log-ln">${lineNumber}</span><span class="log-lc">${renderAnsiHtml(line)}</span></li>`;
     })
     .join("");
   return `<div class="log-viewer"><ul class="log-lines">${items}</ul></div>`;
@@ -95,38 +191,15 @@ async function loadWorkflowDetail(runId: string): Promise<RunDetail> {
   return await fetchJson<RunDetail>(`/api/runs/${encodeURIComponent(runId)}`);
 }
 
-async function refreshViewerState(
-  selectedRunId: string | null,
+async function refreshRunsIndex(
   setSummaries: (runs: RunSummary[]) => void,
   setTotalRuns: (total: number) => void,
   setUpdatedAt: (updatedAt: string) => void,
-  setLogText: (text: string) => void,
-  setLogError: (error: string | null) => void,
-  setLogLoading: (loading: boolean) => void,
 ): Promise<void> {
   const payload = await fetchJson<RunsIndexPayload>("/api/runs");
   setSummaries(payload.runs);
   setTotalRuns(payload.totalRuns);
   setUpdatedAt(payload.updatedAt);
-
-  if (!selectedRunId || !payload.runs.some((run) => run.id === selectedRunId)) {
-    setLogText("");
-    setLogError(null);
-    setLogLoading(false);
-    return;
-  }
-
-  setLogLoading(true);
-  setLogError(null);
-  try {
-    const nextLog = await loadWorkflowLog(selectedRunId);
-    setLogText(nextLog);
-    setLogLoading(false);
-  } catch (error) {
-    setLogText("");
-    setLogError(error instanceof Error ? error.message : "Failed to load workflow log.");
-    setLogLoading(false);
-  }
 }
 
 interface WorkflowViewerProps {
@@ -156,6 +229,60 @@ export function WorkflowViewer({
   const [removeLoadingRunId, setRemoveLoadingRunId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"log" | "artifacts">("log");
   const logBodyRef = useRef<HTMLDivElement | null>(null);
+  const logRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const detailRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  async function refreshWorkflowLog(
+    runId: string,
+    options: { background?: boolean } = {},
+  ): Promise<void> {
+    if (!options.background) {
+      setLogLoading(true);
+    }
+    setLogError(null);
+    try {
+      const nextLog = await loadWorkflowLog(runId);
+      setLogText(nextLog);
+    } catch (error) {
+      setLogError(error instanceof Error ? error.message : "Failed to load workflow log.");
+    } finally {
+      if (!options.background) {
+        setLogLoading(false);
+      }
+    }
+  }
+
+  async function refreshRunDetail(runId: string): Promise<void> {
+    setDetailLoading(true);
+    try {
+      const detail = await loadWorkflowDetail(runId);
+      setRunDetail(detail);
+    } catch {
+      setRunDetail(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  function scheduleLogRefresh(runId: string, delayMs: number): void {
+    if (logRefreshTimerRef.current) {
+      clearTimeout(logRefreshTimerRef.current);
+    }
+    logRefreshTimerRef.current = setTimeout(() => {
+      logRefreshTimerRef.current = null;
+      void refreshWorkflowLog(runId, { background: true });
+    }, delayMs);
+  }
+
+  function scheduleDetailRefresh(runId: string, delayMs: number): void {
+    if (detailRefreshTimerRef.current) {
+      clearTimeout(detailRefreshTimerRef.current);
+    }
+    detailRefreshTimerRef.current = setTimeout(() => {
+      detailRefreshTimerRef.current = null;
+      void refreshRunDetail(runId);
+    }, delayMs);
+  }
 
   useEffect(() => {
     setSelectedRunId((current) => normalizeSelectedRunId(summaries, current));
@@ -165,13 +292,15 @@ export function WorkflowViewer({
     if (!selectedRunId) {
       setLogText("");
       setLogError(null);
+      setLogLoading(false);
       setRunDetail(null);
       setDetailLoading(false);
       return;
     }
     let cancelled = false;
-    setLogLoading(true);
+    setLogText("");
     setLogError(null);
+    setLogLoading(true);
     setDetailLoading(true);
     void loadWorkflowLog(selectedRunId)
       .then((nextLog) => {
@@ -185,7 +314,6 @@ export function WorkflowViewer({
         if (cancelled) {
           return;
         }
-        setLogText("");
         setLogError(error instanceof Error ? error.message : "Failed to load workflow log.");
         setLogLoading(false);
       });
@@ -210,15 +338,13 @@ export function WorkflowViewer({
   }, [selectedRunId]);
 
   async function refreshSummaries(): Promise<void> {
-    await refreshViewerState(
-      selectedRunId,
-      setSummaries,
-      setTotalRuns,
-      setUpdatedAt,
-      setLogText,
-      setLogError,
-      setLogLoading,
-    );
+    await refreshRunsIndex(setSummaries, setTotalRuns, setUpdatedAt);
+    if (selectedRunId && activeTab === "log") {
+      await refreshWorkflowLog(selectedRunId);
+    }
+    if (selectedRunId && activeTab === "artifacts") {
+      await refreshRunDetail(selectedRunId);
+    }
   }
 
   async function onStopWorkflow(runId: string): Promise<void> {
@@ -226,15 +352,12 @@ export function WorkflowViewer({
     setStopLoadingRunId(runId);
     try {
       await postJson(`/api/runs/${encodeURIComponent(runId)}/stop`);
-      await refreshViewerState(
-        runId,
-        setSummaries,
-        setTotalRuns,
-        setUpdatedAt,
-        setLogText,
-        setLogError,
-        setLogLoading,
-      );
+      await refreshRunsIndex(setSummaries, setTotalRuns, setUpdatedAt);
+      if (activeTab === "log") {
+        await refreshWorkflowLog(runId);
+      } else {
+        await refreshRunDetail(runId);
+      }
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Failed to stop workflow.");
     } finally {
@@ -257,15 +380,12 @@ export function WorkflowViewer({
           ? nextSelectedRunIdAfterRemoval(summaries, runId)
           : selectedRunId;
       setSelectedRunId(nextSelectedRunId);
-      await refreshViewerState(
-        nextSelectedRunId,
-        setSummaries,
-        setTotalRuns,
-        setUpdatedAt,
-        setLogText,
-        setLogError,
-        setLogLoading,
-      );
+      await refreshRunsIndex(setSummaries, setTotalRuns, setUpdatedAt);
+      if (!nextSelectedRunId) {
+        setLogText("");
+        setLogError(null);
+        setRunDetail(null);
+      }
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Failed to remove workflow.");
     } finally {
@@ -301,30 +421,27 @@ export function WorkflowViewer({
   useEffect(() => {
     const events = new EventSource("/api/events");
     events.addEventListener("runs-changed", () => {
-      void refreshViewerState(
-        selectedRunId,
-        setSummaries,
-        setTotalRuns,
-        setUpdatedAt,
-        setLogText,
-        setLogError,
-        setLogLoading,
-      );
+      void refreshRunsIndex(setSummaries, setTotalRuns, setUpdatedAt);
       if (selectedRunId) {
-        setDetailLoading(true);
-        void loadWorkflowDetail(selectedRunId)
-          .then((detail) => {
-            setRunDetail(detail);
-            setDetailLoading(false);
-          })
-          .catch(() => {
-            setRunDetail(null);
-            setDetailLoading(false);
-          });
+        if (activeTab === "log") {
+          scheduleLogRefresh(selectedRunId, 1000);
+        } else {
+          scheduleDetailRefresh(selectedRunId, 250);
+        }
       }
     });
-    return () => events.close();
-  }, [selectedRunId]);
+    return () => {
+      events.close();
+      if (logRefreshTimerRef.current) {
+        clearTimeout(logRefreshTimerRef.current);
+        logRefreshTimerRef.current = null;
+      }
+      if (detailRefreshTimerRef.current) {
+        clearTimeout(detailRefreshTimerRef.current);
+        detailRefreshTimerRef.current = null;
+      }
+    };
+  }, [activeTab, selectedRunId]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -458,14 +575,17 @@ export function WorkflowViewer({
               {actionError ? <p className="mb-4 text-sm text-destructive">{actionError}</p> : null}
               {!selectedRunId ? (
                 <div className="workflow-empty-state">No workflow selected.</div>
-              ) : activeTab === "log" ? logLoading ? (
+              ) : activeTab === "log" ? !logText && logLoading ? (
                 <div className="workflow-empty-state">Loading log…</div>
-              ) : logError ? (
-                <p className="text-sm text-destructive">{logError}</p>
-              ) : !logText ? (
-                <div className="workflow-empty-state">No log available.</div>
               ) : (
-                <div dangerouslySetInnerHTML={{ __html: renderedLogHtml }} />
+                <>
+                  {logError ? <p className="mb-4 text-sm text-destructive">{logError}</p> : null}
+                  {!logText ? (
+                    <div className="workflow-empty-state">No log available.</div>
+                  ) : (
+                    <div dangerouslySetInnerHTML={{ __html: renderedLogHtml }} />
+                  )}
+                </>
               ) : detailLoading ? (
                 <div className="workflow-empty-state">Loading artifacts…</div>
               ) : artifacts.length === 0 ? (

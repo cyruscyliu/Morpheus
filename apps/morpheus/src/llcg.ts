@@ -22,6 +22,14 @@ function localRunDir(workspace, id) {
   return resolveManagedRunDir(workspace, id);
 }
 
+function localWorkspaceRoot(workspace) {
+  return path.resolve(process.cwd(), workspace);
+}
+
+function localToolWorkspace(workspace, tool) {
+  return path.join(localWorkspaceRoot(workspace), "tools", tool);
+}
+
 function localManifestPath(workspace, id) {
   return path.join(localRunDir(workspace, id), "manifest.json");
 }
@@ -62,21 +70,41 @@ function resolveWorkspacePath(workspace, configured, fallbackRelative, label) {
 function resolvePayloadArtifacts(payload) {
   const details = payload && payload.details ? payload.details : {};
   const pathViews = payload && payload.paths ? payload.paths : {};
-  const existsMap = payload && payload.artifacts ? payload.artifacts : {};
+  const payloadArtifacts = payload && payload.artifacts ? payload.artifacts : {};
   const result = [];
 
-  for (const [key, exists] of Object.entries(existsMap)) {
-    if (!exists) {
-      continue;
+  if (Array.isArray(payloadArtifacts)) {
+    for (const artifact of payloadArtifacts) {
+      if (!artifact || typeof artifact !== "object") {
+        continue;
+      }
+      const key = artifact.key || artifact.path;
+      const pathView = key ? pathViews[key] : null;
+      const resolved = artifact.resolved_path
+        || artifact.runtime_path
+        || artifact.path
+        || (pathView && typeof pathView === "object"
+          ? (pathView.resolved_path || pathView.runtime_path || pathView.portable || null)
+          : null);
+      if (!key || !resolved) {
+        continue;
+      }
+      result.push({ path: key, location: resolved });
     }
-    const pathView = pathViews[key];
-    const resolved = pathView && typeof pathView === "object"
-      ? (pathView.resolved_path || pathView.runtime_path || pathView.portable || null)
-      : null;
-    if (!resolved) {
-      continue;
+  } else {
+    for (const [key, exists] of Object.entries(payloadArtifacts)) {
+      if (!exists) {
+        continue;
+      }
+      const pathView = pathViews[key];
+      const resolved = pathView && typeof pathView === "object"
+        ? (pathView.resolved_path || pathView.runtime_path || pathView.portable || null)
+        : null;
+      if (!resolved) {
+        continue;
+      }
+      result.push({ path: key, location: resolved });
     }
-    result.push({ path: key, location: resolved });
   }
 
   if (details.output) {
@@ -103,6 +131,22 @@ function registerManifest(manifest) {
   });
 }
 
+function parseJsonPayload(output) {
+  const text = String(output || "").trim();
+  if (!text) {
+    return null;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    try {
+      return JSON.parse(text.split(/\r?\n/).at(-1) || "null");
+    } catch {
+      return null;
+    }
+  }
+}
+
 function parseManagedLlCgOptions(flags) {
   const workspace = flags.workspace;
   if (!workspace) {
@@ -118,9 +162,17 @@ function parseManagedLlCgOptions(flags) {
 
   const runId = generateRunId();
   const runDir = localRunDir(workspace, runId);
-  const outputDir = flags.output
+  const reuseBuildDir = Boolean(flags["reuse-build-dir"]);
+  const buildDirKey = flags["build-dir-key"] || "default";
+  if (flags["build-dir-key"] && !reuseBuildDir) {
+    throw new Error("llcg cannot use --build-dir-key KEY without --reuse-build-dir");
+  }
+  const configuredOutput = flags.output
     ? resolveWorkspacePath(workspace, flags.output, null, "tools.llcg.output")
-    : path.join(runDir, "output");
+    : null;
+  const outputDir = reuseBuildDir
+    ? path.join(configuredOutput || path.join(workspace, "tools", TOOL, "builds"), buildDirKey, "output")
+    : (configuredOutput || path.join(runDir, "output"));
   const args = [subcommand, ...positionals];
   if (!args.includes("--json")) {
     args.push("--json");
@@ -168,10 +220,12 @@ function parseManagedLlCgOptions(flags) {
     subcommand,
     args,
     outputDir,
+    reuseBuildDir,
+    buildDirKey,
   };
 }
 
-async function runManagedLlCg(flags, argvCommand = "run") {
+async function runManagedLlCg(flags, argvCommand = "build") {
   const options = parseManagedLlCgOptions(flags);
   if (options.mode !== "local") {
     throw new Error("llcg supports only --mode local");
@@ -197,12 +251,7 @@ async function runManagedLlCg(flags, argvCommand = "run") {
     eventCommand: argvCommand,
   });
 
-  let payload = null;
-  try {
-    payload = JSON.parse(String(result.stdout || "").trim().split(/\r?\n/).at(-1) || "null");
-  } catch {
-    payload = null;
-  }
+  const payload = parseJsonPayload(result.stdout);
   if (!payload || typeof payload !== "object") {
     throw new Error(result.stderr || result.stdout || "llcg did not return a JSON payload");
   }
@@ -220,6 +269,7 @@ async function runManagedLlCg(flags, argvCommand = "run") {
     createdAt: nowIso(),
     updatedAt: nowIso(),
     workspace: options.workspace,
+    buildDirKey: options.reuseBuildDir ? options.buildDirKey : null,
     runDir,
     outputDir: outputArtifact ? outputArtifact.location : options.outputDir,
     logFile,

@@ -245,6 +245,22 @@ function registerManifest(manifest) {
   });
 }
 
+function parseJsonPayload(output) {
+  const text = String(output || "").trim();
+  if (!text) {
+    return null;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    try {
+      return JSON.parse(text.split(/\r?\n/).at(-1) || "null");
+    } catch {
+      return null;
+    }
+  }
+}
+
 async function runManagedLlBic(flags, argvCommand = "build") {
   const options = parseManagedLlBicOptions(flags, argvCommand);
   if (options.mode !== "local") {
@@ -276,12 +292,7 @@ async function runManagedLlBic(flags, argvCommand = "build") {
     eventCommand: argvCommand,
   });
 
-  let payload = null;
-  try {
-    payload = JSON.parse(String(result.stdout || "").trim().split(/\r?\n/).at(-1) || "null");
-  } catch {
-    payload = null;
-  }
+  const payload = parseJsonPayload(result.stdout);
   if (!payload || typeof payload !== "object") {
     throw new Error(result.stderr || result.stdout || "llbic did not return a JSON payload");
   }

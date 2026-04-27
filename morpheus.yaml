@@ -71,9 +71,30 @@ tools:
       - llbic-log
       - kernel-build-log
   llcg:
-    mode: remote
+    mode: local
     arch: arm64
     clang: 15
+    reuse-build-dir: true
+    build-dir-key: arm64-clang15
+    output: tools/llcg/builds
+    artifacts:
+      - output-dir
+      - manifest
+      - mutator_manifest
+      - source_dir
+      - source_list
+      - groups_file
+      - llbic_json
+      - all_bc_list
+      - bitcode_list
+      - kallgraph_text
+      - cg_dot
+      - cg_collapsed_dot
+      - cg_svg
+      - cg_pdf
+      - cg_collapsed_svg
+      - cg_collapsed_pdf
+      - log_file
   libvmm:
     mode: local
     reuse-build-dir: true
@@ -138,7 +159,7 @@ workflows:
         args: ["6.18.16"]
       - id: net_mutator_6_18_16
         tool: llcg
-        command: run
+        command: build
         args:
           - genmutator
           - interfaces
@@ -148,7 +169,7 @@ workflows:
           - networking
       - id: storage_mutator_6_18_16
         tool: llcg
-        command: run
+        command: build
         args:
           - genmutator
           - interfaces
@@ -158,7 +179,7 @@ workflows:
           - storage
       - id: net_cg_6_18_16
         tool: llcg
-        command: run
+        command: build
         args:
           - run
           - --llbic-json
@@ -171,7 +192,7 @@ workflows:
           - networking-6.18.16
       - id: storage_cg_6_18_16
         tool: llcg
-        command: run
+        command: build
         args:
           - run
           - --llbic-json
@@ -188,7 +209,7 @@ workflows:
         args: ["6.19.6"]
       - id: net_mutator_6_19_6
         tool: llcg
-        command: run
+        command: build
         args:
           - genmutator
           - interfaces
@@ -198,7 +219,7 @@ workflows:
           - networking
       - id: storage_mutator_6_19_6
         tool: llcg
-        command: run
+        command: build
         args:
           - genmutator
           - interfaces
@@ -208,7 +229,7 @@ workflows:
           - storage
       - id: net_cg_6_19_6
         tool: llcg
-        command: run
+        command: build
         args:
           - run
           - --llbic-json
@@ -221,7 +242,7 @@ workflows:
           - networking-6.19.6
       - id: storage_cg_6_19_6
         tool: llcg
-        command: run
+        command: build
         args:
           - run
           - --llbic-json
@@ -238,7 +259,7 @@ workflows:
         args: ["7.0-rc3"]
       - id: net_mutator_7_0_rc3
         tool: llcg
-        command: run
+        command: build
         args:
           - genmutator
           - interfaces
@@ -248,7 +269,7 @@ workflows:
           - networking
       - id: storage_mutator_7_0_rc3
         tool: llcg
-        command: run
+        command: build
         args:
           - genmutator
           - interfaces
@@ -258,7 +279,7 @@ workflows:
           - storage
       - id: net_cg_7_0_rc3
         tool: llcg
-        command: run
+        command: build
         args:
           - run
           - --llbic-json
@@ -271,7 +292,7 @@ workflows:
           - networking-7.0-rc3
       - id: storage_cg_7_0_rc3
         tool: llcg
-        command: run
+        command: build
         args:
           - run
           - --llbic-json

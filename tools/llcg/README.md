@@ -61,6 +61,17 @@ Inspect the resulting run manifest to confirm the test run and artifacts:
 ./bin/llcg inspect ./out/llcg-manifest.json --json
 ```
 
+For Morpheus-managed usage, treat `llcg` as a build-style tool so its
+intermediate and final outputs can live in a stable build directory:
+
+```bash
+./bin/morpheus tool build --tool llcg --mode local --workspace ./hyperarm-workspace \
+  run --clang 15 --llbic-json ./tools/llbic/builds/linux-6.18.16-arm64-clang15/llbic.json \
+  --all-bc-list ./tools/llbic/builds/linux-6.18.16-arm64-clang15/bitcode_files.txt \
+  --filter ./tools/llcg/builds/arm64-clang15/output/networking-mutator-6.18.16-arm64.json \
+  --reuse-build-dir --build-dir-key arm64-clang15 --json
+```
+
 ## Usage
 
 The public command tree is:
@@ -71,6 +82,9 @@ llcg genmutator files
 llcg run
 llcg inspect <manifest.json>
 ```
+
+When invoked through Morpheus, use `tool build --tool llcg ...` rather than
+`tool run --tool llcg ...`.
 
 To run `llcg` inside Docker, invoke it explicitly with `llbase`:
 

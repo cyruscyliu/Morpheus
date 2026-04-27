@@ -35,6 +35,10 @@
   same change.
 - When inspecting Morpheus-managed tool runs (especially remote runs), use the
   Morpheus `tool` subcommands instead of direct remote shell access.
+- In this workspace, do not invoke `tools/llbic/llbic` directly for real runs.
+  Use Morpheus-managed `tool build --tool llbic ...` so `morpheus.yaml`
+  controls the execution mode. If a local check is needed, keep it to
+  non-compiling fixture or parsing validation, or an explicitly scoped build.
 - For source-managing tools such as Buildroot and QEMU, prefer stable managed
   source paths under `<workspace>/tools/<tool>/src/`.
 - For those tools, keep reusable builds under

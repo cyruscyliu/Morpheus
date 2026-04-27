@@ -1208,6 +1208,75 @@ _json_array() {
   printf ']'
 }
 
+_json_file_string_field() {
+  local json_file="$1"
+  local key="$2"
+  sed -n "s/.*\"${key}\":\"\\([^\"]*\\)\".*/\\1/p" "${json_file}" | head -1
+}
+
+_json_file_nullable_string_field() {
+  local json_file="$1"
+  local key="$2"
+  if grep -q "\"${key}\":null" "${json_file}" 2>/dev/null; then
+    echo ""
+    return 0
+  fi
+  _json_file_string_field "${json_file}" "${key}"
+}
+
+_json_file_number_field() {
+  local json_file="$1"
+  local key="$2"
+  sed -n "s/.*\"${key}\":\\([0-9][0-9]*\\).*/\\1/p" "${json_file}" | head -1
+}
+
+_json_file_array_field() {
+  local json_file="$1"
+  local key="$2"
+  local next_key="$3"
+  sed -n "s/.*\"${key}\":\\(\\[[^]]*\\]\\),\"${next_key}\":.*/\\1/p" "${json_file}" | head -1
+}
+
+_existing_build_is_reusable() {
+  local json_file="$1"
+  local kernel_ver="$2"
+  local kernel_name="$3"
+  local bc_output="$4"
+  local arch="$5"
+  local cross_compile="$6"
+  local defconfig_target="$7"
+  local build_layout="$8"
+  local rust_enabled="$9"
+  local requested_clang="${10}"
+  local scope="${11}"
+  local requested_files_json="${12}"
+  local requested_rust_targets_json="${13}"
+  local make_targets_json="${14}"
+  local kconfig_fragments_json="${15}"
+
+  [[ -f "${json_file}" ]] || return 1
+  [[ "$(_json_file_string_field "${json_file}" "status")" == "success" ]] || return 1
+  [[ "$(_json_file_string_field "${json_file}" "kernel_version")" == "${kernel_ver}" ]] || return 1
+  [[ "$(_json_file_string_field "${json_file}" "kernel_name")" == "${kernel_name}" ]] || return 1
+  [[ "$(_json_file_string_field "${json_file}" "arch")" == "${arch}" ]] || return 1
+  [[ "$(_json_file_nullable_string_field "${json_file}" "cross_compile")" == "${cross_compile}" ]] || return 1
+  [[ "$(_json_file_string_field "${json_file}" "defconfig")" == "${defconfig_target}" ]] || return 1
+  [[ "$(_json_file_string_field "${json_file}" "build_layout")" == "${build_layout}" ]] || return 1
+  [[ "$(_json_file_number_field "${json_file}" "rust_enabled")" == "${rust_enabled}" ]] || return 1
+  [[ "$(_json_file_string_field "${json_file}" "scope")" == "${scope}" ]] || return 1
+  [[ "$(_json_file_string_field "${json_file}" "requested_clang")" == "${requested_clang}" ]] || return 1
+
+  local bitcode_count="$(_json_file_number_field "${json_file}" "bitcode_count")"
+  [[ -n "${bitcode_count}" && "${bitcode_count}" -gt 0 ]] || return 1
+
+  local bitcode_list_file="$(_json_file_nullable_string_field "${json_file}" "bitcode_list_file")"
+  [[ -n "${bitcode_list_file}" ]] || return 1
+  local resolved_bitcode_list_file="$(_resolve_portable_path_locally "${bitcode_list_file}")"
+  [[ -s "${resolved_bitcode_list_file}" ]] || return 1
+
+  return 0
+}
+
 _collect_bitcode_files() {
   local search_root="$1"
   local kind="$2"
@@ -1458,12 +1527,6 @@ _emit_result_json() {
   printf ','
   _emit_path_view_json_field "bitcode_list_file" "${LLBIC_CTX_BC_LIST_FILE:+$(_resolve_portable_path_locally "${LLBIC_CTX_BC_LIST_FILE}")}"
   printf '},'
-  printf '"bitcode_files":'
-  _json_path_array LAST_BITCODE_FILES
-  printf ','
-  printf '"bitcode_files_rel":'
-  _json_array LAST_BITCODE_FILES_REL
-  printf ','
   printf '"bitcode_count":%s,' "${#LAST_BITCODE_FILES[@]}"
   if [[ -n "${LAST_VMLINUX_BC}" ]]; then
     printf '"vmlinux_bc":"%s",' "$(_json_escape "${LAST_VMLINUX_BC}")"
@@ -1763,7 +1826,7 @@ cmd_build() {
 
   mkdir -p -- "${SOURCES_DIR}"
   mkdir -p -- "${bc_output}"
-  : > "${LOG_FILE}"
+  touch "${LOG_FILE}"
 
   # Populate build context for failure reporting.
   LLBIC_CTX_ACTIVE=1
@@ -1811,10 +1874,48 @@ cmd_build() {
     fi
   done
 
+  local requested_files_json=""
+  local requested_rust_targets_json=""
+  local make_targets_json=""
+  local kconfig_fragments_json=""
+  requested_files_json="$(_json_array LLBIC_CTX_REQUESTED_FILES)"
+  requested_rust_targets_json="$(_json_array LLBIC_CTX_REQUESTED_RUST_TARGETS)"
+  make_targets_json="$(_json_array LLBIC_CTX_MAKE_TARGETS)"
+  kconfig_fragments_json="$(_json_array LLBIC_CTX_KCONFIG_FRAGMENTS)"
+
   # Always emit llbic.json, even on failures (non-zero exit).
   trap '_finalize_build_artifacts_on_exit "$?"' EXIT
 
+  if _existing_build_is_reusable \
+    "${LLBIC_CTX_JSON_FILE}" \
+    "${kernel_ver}" \
+    "${kernel_name}" \
+    "${bc_output}" \
+    "${arch}" \
+    "${cross_compile}" \
+    "${defconfig_target}" \
+    "${build_layout}" \
+    "${rust_enabled}" \
+    "${clang_version}" \
+    "${LLBIC_CTX_SCOPE}" \
+    "${requested_files_json}" \
+    "${requested_rust_targets_json}" \
+    "${make_targets_json}" \
+    "${kconfig_fragments_json}"; then
+    _log_step "build.reuse output_dir=${bc_output} manifest=${LLBIC_CTX_JSON_FILE}"
+    info "Reusing existing build: ${bc_output}"
+    trap - EXIT
+    if [[ "${JSON_OUTPUT}" -eq 1 ]]; then
+      cat "${LLBIC_CTX_JSON_FILE}"
+    else
+      cmd_inspect "${bc_output}"
+    fi
+    return 0
+  fi
+
+  : > "${LOG_FILE}"
   _log_step "build.start kernel=${kernel_name} source_url=${url} output_dir=${bc_output}"
+
 
   LLBIC_CTX_PHASE="preflight"
   local clang

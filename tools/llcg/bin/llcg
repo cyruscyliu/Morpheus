@@ -91,10 +91,14 @@ def path_view(path: Path, base_dir: Path) -> dict:
 
 
 def artifact_entry(key: str, path: Path, base_dir: Path) -> dict:
+    resolved = path.resolve()
+    portable = stable_path(resolved, base_dir)
     return {
         "key": key,
-        "path": stable_path(path, base_dir),
-        "exists": path.exists(),
+        "path": portable,
+        "runtime_path": portable,
+        "resolved_path": str(resolved),
+        "exists": resolved.exists(),
     }
 
 

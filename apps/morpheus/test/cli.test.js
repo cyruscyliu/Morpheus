@@ -960,7 +960,91 @@ test("managed remote llbic inspect writes a Morpheus run record", () => {
   fs.rmSync(remoteRoot, { recursive: true, force: true });
 });
 
-test("managed remote llcg genmutator writes outputs under the remote run directory", () => {
+test("managed local llcg build can reuse a persistent build directory", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-llcg-build-reuse-"));
+  const kernelRoot = path.join(workspaceRoot, "kernel-src");
+  const env = isolatedEnv({ MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1" });
+
+  fs.mkdirSync(path.join(kernelRoot, "drivers", "net"), { recursive: true });
+  fs.writeFileSync(
+    path.join(kernelRoot, "Makefile"),
+    [
+      "VERSION = 6",
+      "PATCHLEVEL = 18",
+      "SUBLEVEL = 16",
+      "EXTRAVERSION =",
+      ""
+    ].join("\n")
+  );
+  fs.writeFileSync(path.join(kernelRoot, "drivers", "net", "demo.c"), "int demo(void) { return 0; }\n");
+
+  const result = run([
+    "--json",
+    "tool",
+    "build",
+    "--tool",
+    "llcg",
+    "--mode",
+    "local",
+    "--workspace",
+    workspaceRoot,
+    "genmutator",
+    "files",
+    "--source-dir",
+    kernelRoot,
+    "--file",
+    "drivers/net/demo.c",
+    "--scope-name",
+    "net-demo",
+    "--arch",
+    "arm64",
+    "--reuse-build-dir",
+    "--build-dir-key",
+    "net-demo"
+  ], {
+    cwd: workspaceRoot,
+    env
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.mode, "local");
+  assert.equal(
+    payload.details.output_dir,
+    path.join(workspaceRoot, "tools", "llcg", "builds", "net-demo", "output")
+  );
+  assert.equal(payload.details.artifacts.some((artifact) => artifact.path === "mutator_manifest"), true);
+
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  fs.rmSync(env.MORPHEUS_WORK_ROOT, { recursive: true, force: true });
+});
+
+test("managed llcg rejects tool run in JSON mode", () => {
+  const result = run([
+    "--json",
+    "tool",
+    "run",
+    "--tool",
+    "llcg",
+    "--mode",
+    "local",
+    "--workspace",
+    os.tmpdir(),
+    "inspect",
+    "./out/llcg-manifest.json"
+  ], {
+    cwd: os.tmpdir(),
+    env: isolatedEnv({ MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1" })
+  });
+
+  assert.equal(result.status, 1);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.status, "error");
+  assert.match(payload.summary, /use tool build --tool llcg/);
+});
+
+test("managed remote llcg build writes outputs under the remote run directory", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-llcg-project-"));
   const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-llcg-root-"));
   const localWorkspace = path.join(projectRoot, "workflow-workspace");
@@ -1003,7 +1087,7 @@ test("managed remote llcg genmutator writes outputs under the remote run directo
   const result = run([
     "--json",
     "tool",
-    "run",
+    "build",
     "--tool",
     "llcg",
     "--mode",
@@ -1031,6 +1115,7 @@ test("managed remote llcg genmutator writes outputs under the remote run directo
   assert.equal(payload.details.mode, "remote");
   assert.equal(payload.details.run_dir, "/remote-workspace/runs/wf-test/steps/01-llcg-run/run");
   assert.equal(payload.details.output_dir, "/remote-workspace/runs/wf-test/steps/01-llcg-run/run/output");
+  assert.equal(payload.details.artifacts.some((artifact) => artifact.path === "mutator_manifest"), true);
   assert.equal(
     payload.details.payload.artifacts.some((artifact) => artifact.key === "mutator_manifest"),
     true

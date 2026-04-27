@@ -30,6 +30,8 @@ When operating as an agent in this repo:
 1. Run `./llbic --help` to discover the current command surface.
 2. Prefer `--json` when a command result will be consumed programmatically.
 3. Use `inspect` to re-read a finished build instead of rebuilding it.
+4. Expect matching successful `build` or `compile` requests to reuse the
+   recorded `llbic.json` output instead of recompiling.
 
 Typical flow:
 
@@ -172,7 +174,9 @@ Treat portable scalar paths in `llbic.json` such as `source_dir`, `output_dir`,
 `runtime` and `paths` are environment-dependent resolution helpers. llbic
 resolves portable fields through the runtime root before scanning or writing
 final artifacts, so finalization should not depend on the caller's current
-working directory. The build
+working directory. The default JSON payload is intentionally compact: it
+records `bitcode_count` and `bitcode_list_file` instead of embedding the full
+bitcode file list inline. The build
 manifest also records `requested_clang`, which is important for distinguishing
 support rows when the same kernel and arch are tested under different requested
 toolchains, including failed host runs where the requested Clang is missing.

@@ -60,6 +60,9 @@ you want to verify the recorded kernel version, architecture, artifact paths,
 and bitcode summary from `out/linux-6.18.16-x86_64-clang18/llbic.json`. Stable path fields are
 workspace-relative, even when `./llbic` runs inside Docker. Use the `runtime`
 and `paths` blocks when you need the local container or host resolution.
+Matching successful builds are also reused automatically by `build`, so
+re-running the same request returns the recorded manifest instead of
+recompiling the kernel.
 
 Example response shape (abridged):
 
@@ -111,12 +114,6 @@ Example response shape (abridged):
       "resolved_path": "<host-specific>"
     }
   },
-  "bitcode_files": [
-    "out/linux-6.18.16-x86_64-clang18/kbuild-x86_64-clang18/kernel/sched/core.bc"
-  ],
-  "bitcode_files_rel": [
-    "kernel/sched/core.bc"
-  ],
   "bitcode_count": 1,
   "vmlinux_bc": null,
   "kernel_images": [
@@ -184,7 +181,8 @@ Use `extract` when archives already exist locally and you want unpacked source t
 Use `compile` when the extracted `linux-*` tree already exists and you do not
 want to re-download or re-extract. `compile` reuses the same build pipeline and
 artifact contract as `build`; it just requires the source tree to already be
-present:
+present. Like `build`, it reuses a matching successful output manifest instead
+of recompiling:
 
 ```bash
 ./llbic compile linux-6.18.16 --json

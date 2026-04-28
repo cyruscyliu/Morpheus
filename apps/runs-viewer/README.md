@@ -27,6 +27,9 @@ The server binds to `127.0.0.1:4174`.
 
 ## UI notes
 
-- The left pane stays workflow-first and can collapse to a dot rail.
-- The workflow and log panes remain side-by-side with a draggable split.
+- The top bar keeps refresh and workflow summary controls visible.
+- The middle workspace keeps workflow history on the left and the selected
+  workflow graph on the right.
+- The bottom panel provides `Overview`, `Log`, and `Artifacts` tabs for
+  workflow-scoped and step-scoped inspection.
 - The UI uses a small `shadcn/ui`-style component base on top of Tailwind.

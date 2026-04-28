@@ -38,11 +38,12 @@ test("listRunSummaries includes legacy and workflow-first runs", () => {
   });
   writeJson(path.join(legacyDir, "index.json"), {
     stepCount: 1,
-    steps: [{ id: "step-001-build", name: "build", status: "success", dir: "steps/step-001-build" }],
+    steps: [{ id: "step-001-build", name: "build", kind: "tool", status: "success", dir: "steps/step-001-build" }],
   });
   writeJson(path.join(legacyDir, "steps", "step-001-build", "step.json"), {
     id: "step-001-build",
     name: "build",
+    kind: "tool",
     status: "success",
   });
   writeJson(path.join(legacyDir, "steps", "step-001-build", "artifacts.json"), []);
@@ -61,6 +62,7 @@ test("listRunSummaries includes legacy and workflow-first runs", () => {
       {
         id: "01-build",
         name: "build",
+        kind: "tool",
         status: "running",
         stepDir: path.join(workflowDir, "steps", "01-build"),
       },
@@ -69,6 +71,7 @@ test("listRunSummaries includes legacy and workflow-first runs", () => {
   writeJson(path.join(workflowDir, "steps", "01-build", "step.json"), {
     id: "01-build",
     name: "build",
+    kind: "tool",
     status: "running",
   });
   writeText(path.join(workflowDir, "steps", "01-build", "stdout.log"), "workflow log\n");
@@ -87,7 +90,7 @@ test("listRunSummaries includes legacy and workflow-first runs", () => {
   assert.equal(result.runs.length, 1);
 });
 
-test("loadRunDetail returns steps and log url", () => {
+test("loadRunDetail returns steps, kinds, and graph metadata", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-store-"));
   const runRoot = path.join(workspaceRoot, "runs");
 
@@ -102,9 +105,9 @@ test("loadRunDetail returns steps and log url", () => {
   });
   writeJson(path.join(legacyDir, "index.json"), {
     stepCount: 1,
-    steps: [{ id: "step-001-build", name: "build", status: "success", dir: "steps/step-001-build" }],
+    steps: [{ id: "step-001-build", name: "build", kind: "tool", status: "success", dir: "steps/step-001-build" }],
   });
-  writeJson(path.join(legacyDir, "steps", "step-001-build", "step.json"), { id: "step-001-build", status: "success" });
+  writeJson(path.join(legacyDir, "steps", "step-001-build", "step.json"), { id: "step-001-build", kind: "tool", status: "success" });
   writeJson(path.join(legacyDir, "steps", "step-001-build", "artifacts.json"), []);
   writeText(path.join(legacyDir, "steps", "step-001-build", "logs", "stdout.log"), "hello\n");
 
@@ -113,7 +116,10 @@ test("loadRunDetail returns steps and log url", () => {
   assert.equal(detail.category, "run");
   assert.equal(detail.format, "legacy");
   assert.equal(detail.steps.length, 1);
+  assert.equal(detail.steps[0]?.kind, "tool");
   assert.equal(detail.steps[0]?.logUrl, "/api/runs/legacy-1/steps/step-001-build/log");
+  assert.equal(detail.graph.nodes.length, 1);
+  assert.equal(detail.graph.edges.length, 0);
   assert.equal(loadStepLogText(runRoot, legacyId, "step-001-build"), "hello\n");
 });
 
@@ -133,6 +139,7 @@ test("workflow-first step artifacts fall back to tool result details", () => {
       {
         id: "01-step",
         name: "step",
+        kind: "analysis",
         status: "success",
         stepDir: path.join(workflowDir, "steps", "01-step"),
       },
@@ -142,6 +149,7 @@ test("workflow-first step artifacts fall back to tool result details", () => {
   writeJson(path.join(workflowDir, "steps", "01-step", "step.json"), {
     id: "01-step",
     name: "step",
+    kind: "analysis",
     status: "success",
     artifacts: [],
     toolResult: {
@@ -159,6 +167,7 @@ test("workflow-first step artifacts fall back to tool result details", () => {
   assert.ok(detail);
   assert.equal(detail.category, "build");
   assert.equal(detail.steps.length, 1);
+  assert.equal(detail.steps[0]?.kind, "analysis");
   assert.equal(detail.steps[0]?.artifactCount, 2);
   assert.equal(detail.steps[0]?.artifacts?.length, 2);
 });
@@ -179,6 +188,7 @@ test("workflow-first step artifacts accept local and remote locations", () => {
       {
         id: "01-step",
         name: "step",
+        kind: "tool",
         status: "success",
         stepDir: path.join(workflowDir, "steps", "01-step"),
       },
@@ -188,6 +198,7 @@ test("workflow-first step artifacts accept local and remote locations", () => {
   writeJson(path.join(workflowDir, "steps", "01-step", "step.json"), {
     id: "01-step",
     name: "step",
+    kind: "tool",
     status: "success",
     artifacts: [
       {
@@ -232,4 +243,67 @@ test("legacy records fall back to summary category when explicit category is abs
   const summaries = listRunSummaries(runRoot);
   assert.equal(summaries[0]?.category, "build");
   assert.equal(summaries[0]?.workflowName, "tool-buildroot");
+});
+
+test("workflow graph uses explicit relations and ordered fallback edges", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-store-"));
+  const runRoot = path.join(workspaceRoot, "runs");
+
+  const workflowId = "wf-relations";
+  const workflowDir = path.join(runRoot, workflowId);
+  writeJson(path.join(workflowDir, "workflow.json"), {
+    id: workflowId,
+    workflow: "callgraph",
+    category: "build",
+    status: "success",
+    createdAt: "2026-04-26T10:00:00.000Z",
+    updatedAt: "2026-04-26T10:01:00.000Z",
+    steps: [
+      { id: "01-prepare", name: "prepare", kind: "tool", status: "success", stepDir: path.join(workflowDir, "steps", "01-prepare") },
+      { id: "02-build", name: "build", kind: "tool", status: "success", stepDir: path.join(workflowDir, "steps", "02-build") },
+    ],
+  });
+  writeJson(path.join(workflowDir, "steps", "01-prepare", "step.json"), { id: "01-prepare", name: "prepare", kind: "tool", status: "success" });
+  writeJson(path.join(workflowDir, "steps", "02-build", "step.json"), { id: "02-build", name: "build", kind: "tool", status: "success" });
+  writeText(path.join(workflowDir, "steps", "01-prepare", "stdout.log"), "prepare\n");
+  writeText(path.join(workflowDir, "steps", "02-build", "stdout.log"), "build\n");
+  writeText(path.join(workflowDir, "relations.jsonl"), `${JSON.stringify({ kind: "artifact", from: "01-prepare", to: "02-build", artifactPath: "artifacts/input.json" })}\n`);
+
+  const detail = loadRunDetail(runRoot, workflowId);
+  assert.ok(detail);
+  assert.equal(detail.graph.nodes.length, 2);
+  assert.equal(detail.graph.edges.length, 2);
+  assert.deepEqual(detail.graph.edges.map((edge) => edge.kind), ["sequence", "artifact"]);
+  assert.equal(detail.graph.edges[0]?.inferred, true);
+  assert.equal(detail.graph.edges[1]?.artifactPath, "artifacts/input.json");
+  assert.equal(detail.graph.edges[1]?.inferred, false);
+});
+
+test("workflow-first steps with empty logs do not advertise log URLs", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-store-"));
+  const runRoot = path.join(workspaceRoot, "runs");
+
+  const workflowId = "wf-empty-step-log";
+  const workflowDir = path.join(runRoot, workflowId);
+  writeJson(path.join(workflowDir, "workflow.json"), {
+    id: workflowId,
+    workflow: "callgraph",
+    category: "build",
+    status: "error",
+    createdAt: "2026-04-26T10:00:00.000Z",
+    updatedAt: "2026-04-26T10:01:00.000Z",
+    steps: [
+      { id: "01-has-log", name: "prepare", kind: "tool", status: "success", stepDir: path.join(workflowDir, "steps", "01-has-log") },
+      { id: "02-empty-log", name: "build", kind: "tool", status: "created", stepDir: path.join(workflowDir, "steps", "02-empty-log") },
+    ],
+  });
+  writeJson(path.join(workflowDir, "steps", "01-has-log", "step.json"), { id: "01-has-log", name: "prepare", kind: "tool", status: "success" });
+  writeJson(path.join(workflowDir, "steps", "02-empty-log", "step.json"), { id: "02-empty-log", name: "build", kind: "tool", status: "created" });
+  writeText(path.join(workflowDir, "steps", "01-has-log", "stdout.log"), "prepare\n");
+  writeText(path.join(workflowDir, "steps", "02-empty-log", "stdout.log"), "");
+
+  const detail = loadRunDetail(runRoot, workflowId);
+  assert.ok(detail);
+  assert.equal(detail.steps[0]?.logUrl, `/api/runs/${workflowId}/steps/01-has-log/log`);
+  assert.equal(detail.steps[1]?.logUrl, null);
 });

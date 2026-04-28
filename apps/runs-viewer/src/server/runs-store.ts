@@ -1,7 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import type { RunDetail, RunSummary, RunStepSummary } from "../types";
+import type {
+  RunArtifactRef,
+  RunDetail,
+  RunGraphEdge,
+  RunGraphNode,
+  RunStepSummary,
+  RunSummary,
+} from "../types";
 import { isSafeId } from "./validate";
 
 interface ListOptions {
@@ -18,6 +25,13 @@ export interface ListRunsResult {
 
 interface LoadOptions {
   includeLogs?: boolean;
+}
+
+interface RunRelationRecord {
+  kind?: string;
+  from?: string;
+  to?: string;
+  artifactPath?: string;
 }
 
 function normalizeWorkflowCategory(value: unknown): "build" | "run" | "unknown" {
@@ -44,7 +58,7 @@ function legacyCategoryFromRecord(record: any): "build" | "run" | "unknown" {
   return "unknown";
 }
 
-function normalizeArtifactsArray(value: any): Array<{ path: string; location: string }> {
+function normalizeArtifactsArray(value: any): RunArtifactRef[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -67,14 +81,14 @@ function normalizeArtifactsArray(value: any): Array<{ path: string; location: st
       }
       return { path: p, location: loc };
     })
-    .filter((entry): entry is { path: string; location: string } => entry !== null);
+    .filter((entry): entry is RunArtifactRef => entry !== null);
 }
 
-function toolResultArtifacts(record: any): Array<{ path: string; location: string }> {
+function toolResultArtifacts(record: any): RunArtifactRef[] {
   return normalizeArtifactsArray(record?.toolResult?.details?.artifacts);
 }
 
-function artifactsFromFile(filePath: string): Array<{ path: string; location: string }> {
+function artifactsFromFile(filePath: string): RunArtifactRef[] {
   if (!fs.existsSync(filePath)) {
     return [];
   }
@@ -96,11 +110,41 @@ function readJsonIfExists<T>(filePath: string, fallback: T): T {
   return readJson(filePath) as T;
 }
 
+function readJsonLinesIfExists(filePath: string): any[] {
+  if (!fs.existsSync(filePath)) {
+    return [];
+  }
+  return fs
+    .readFileSync(filePath, "utf8")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter((entry) => entry !== null);
+}
+
 function readTextIfExists(filePath: string): string {
   if (!fs.existsSync(filePath)) {
     return "";
   }
   return fs.readFileSync(filePath, "utf8");
+}
+
+function fileHasLogContent(filePath: string): boolean {
+  if (!fs.existsSync(filePath)) {
+    return false;
+  }
+  try {
+    return fs.readFileSync(filePath, "utf8").trimEnd().length > 0;
+  } catch {
+    return false;
+  }
 }
 
 function uniquePaths(values: string[]): string[] {
@@ -119,7 +163,9 @@ function workflowStepLogPaths(runDir: string, stepId: string): string[] {
     match && typeof match.stepDir === "string" ? match.stepDir : path.join(runDir, "steps", stepId);
   const manifest = readJsonIfExists<any>(path.join(resolvedStepDir, "step.json"), null as any);
   const paths = [
-    manifest && typeof manifest.logFile === "string" ? manifest.logFile : path.join(resolvedStepDir, "stdout.log"),
+    manifest && typeof manifest.logFile === "string"
+      ? manifest.logFile
+      : path.join(resolvedStepDir, "stdout.log"),
   ];
 
   const managedRunManifest = readJsonIfExists<any>(path.join(resolvedStepDir, "run", "manifest.json"), null as any);
@@ -212,6 +258,79 @@ function createdKey(summary: RunSummary): string {
   return summary.createdAt || summary.id;
 }
 
+function normalizeStepKind(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function normalizeStepSummary(entry: any, manifest: any, runId: string, stepId: string, logExists: boolean, artifacts: RunArtifactRef[]): RunStepSummary {
+  return {
+    id: stepId,
+    name: manifest?.name || entry?.name || null,
+    kind: normalizeStepKind(manifest?.kind, entry?.kind),
+    status: String(manifest?.status || entry?.status || "unknown"),
+    startedAt: manifest?.startedAt || entry?.startedAt || null,
+    endedAt: manifest?.endedAt || entry?.endedAt || null,
+    logUrl: logExists ? stepLogUrl(runId, stepId) : null,
+    artifactCount: artifacts.length,
+    artifacts,
+  };
+}
+
+function buildGraph(steps: RunStepSummary[], relations: RunRelationRecord[]): { nodes: RunGraphNode[]; edges: RunGraphEdge[] } {
+  const nodes: RunGraphNode[] = steps.map((step) => ({
+    id: step.id,
+    name: step.name,
+    kind: step.kind,
+    status: step.status,
+    artifactCount: step.artifactCount || 0,
+  }));
+
+  const stepIds = new Set(steps.map((step) => step.id));
+  const edges: RunGraphEdge[] = [];
+
+  for (let index = 0; index < steps.length - 1; index += 1) {
+    const source = steps[index];
+    const target = steps[index + 1];
+    if (!source || !target) {
+      continue;
+    }
+    edges.push({
+      id: `sequence:${source.id}:${target.id}`,
+      source: source.id,
+      target: target.id,
+      kind: "sequence",
+      label: null,
+      artifactPath: null,
+      inferred: true,
+    });
+  }
+
+  for (const relation of relations) {
+    const source = typeof relation?.from === "string" ? relation.from : "";
+    const target = typeof relation?.to === "string" ? relation.to : "";
+    if (!stepIds.has(source) || !stepIds.has(target)) {
+      continue;
+    }
+    const kind = relation.kind === "sequence" ? "sequence" : "artifact";
+    edges.push({
+      id: `relation:${kind}:${source}:${target}:${relation.artifactPath || relation.kind || "edge"}`,
+      source,
+      target,
+      kind,
+      label: relation.kind || null,
+      artifactPath: relation.artifactPath || null,
+      inferred: false,
+    });
+  }
+
+  return { nodes, edges };
+}
+
 export function listRunSummaries(runRoot: string, options: ListOptions = {}): RunSummary[] {
   return listRunSummariesWithTotal(runRoot, options).runs;
 }
@@ -254,28 +373,20 @@ function loadWorkflowFirstDetail(runRoot: string, runId: string, options: LoadOp
   }
   const record = readJson(recordPath);
   const stepEntries = Array.isArray(record.steps) ? record.steps : [];
+  const relations = readJsonLinesIfExists(path.join(runDir, "relations.jsonl")) as RunRelationRecord[];
 
   const steps: RunStepSummary[] = stepEntries.map((entry: any) => {
     const stepId = String(entry.id || "");
     const stepDir = typeof entry.stepDir === "string" ? entry.stepDir : path.join(runDir, "steps", stepId);
     const manifest = readJsonIfExists<any>(path.join(stepDir, "step.json"), null as any);
-    const logFile = manifest && typeof manifest.logFile === "string" ? manifest.logFile : path.join(stepDir, "stdout.log");
-    const exists = fs.existsSync(logFile);
+    const exists = workflowStepLogPaths(runDir, stepId).some((logFile) => fileHasLogContent(logFile));
 
     const manifestArtifacts = normalizeArtifactsArray(manifest?.artifacts);
     const artifacts = manifestArtifacts.length > 0 ? manifestArtifacts : toolResultArtifacts(manifest);
 
-    const summary: any = {
-      id: stepId,
-      name: manifest?.name || entry.name || null,
-      status: String(manifest?.status || entry.status || "unknown"),
-      logUrl: exists ? stepLogUrl(runId, stepId) : null,
-      artifactCount: artifacts.length ? artifacts.length : 0,
-      artifacts,
-    };
-
+    const summary: any = normalizeStepSummary(entry, manifest, runId, stepId, exists, artifacts);
     if (options.includeLogs && exists) {
-      summary.logText = fs.readFileSync(logFile, "utf8");
+      summary.logText = loadStepLogText(runRoot, runId, stepId);
     }
     return summary as RunStepSummary;
   });
@@ -292,6 +403,7 @@ function loadWorkflowFirstDetail(runRoot: string, runId: string, options: LoadOp
     changeName: null,
     stepCount: steps.length,
     runDir,
+    graph: buildGraph(steps, relations),
     steps,
   };
 }
@@ -306,6 +418,7 @@ function loadLegacyDetail(runRoot: string, runId: string, options: LoadOptions):
   const record = readJson(recordPath);
   const index = readJsonIfExists<any>(path.join(runDir, "index.json"), { steps: [] } as any);
   const stepsIndex = Array.isArray(index.steps) ? index.steps : [];
+  const relations = readJsonLinesIfExists(path.join(runDir, "relations.jsonl")) as RunRelationRecord[];
 
   const steps: RunStepSummary[] = stepsIndex.map((entry: any) => {
     const stepId = String(entry.id || "");
@@ -315,16 +428,9 @@ function loadLegacyDetail(runRoot: string, runId: string, options: LoadOptions):
 
     const logsDir = path.join(stepDir, "logs");
     const stdoutLog = path.join(logsDir, "stdout.log");
-    const exists = fs.existsSync(stdoutLog);
+    const exists = fileHasLogContent(stdoutLog);
 
-    const summary: any = {
-      id: stepId,
-      name: stepRecord?.name || entry.name || null,
-      status: String(stepRecord?.status || entry.status || "unknown"),
-      logUrl: exists ? stepLogUrl(runId, stepId) : null,
-      artifactCount: artifacts.length ? artifacts.length : 0,
-      artifacts,
-    };
+    const summary: any = normalizeStepSummary(entry, stepRecord, runId, stepId, exists, artifacts);
     if (options.includeLogs && exists) {
       summary.logText = fs.readFileSync(stdoutLog, "utf8");
     }
@@ -343,6 +449,7 @@ function loadLegacyDetail(runRoot: string, runId: string, options: LoadOptions):
     changeName: record.changeName || null,
     stepCount: steps.length,
     runDir,
+    graph: buildGraph(steps, relations),
     steps,
   };
 }

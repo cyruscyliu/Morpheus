@@ -3,7 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import type { RunDetail, RunSummary, RunsIndexPayload } from "@/src/types";
+import type {
+  RunDetail,
+  RunGraphEdge,
+  RunGraphNode,
+  RunStepSummary,
+  RunSummary,
+  RunsIndexPayload,
+} from "@/src/types";
 
 function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -13,6 +20,27 @@ interface AnsiState {
   bold: boolean;
   dim: boolean;
   fg: string | null;
+}
+
+interface PositionedGraphNode extends RunGraphNode {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  centerX: number;
+  centerY: number;
+}
+
+interface GraphLayout {
+  width: number;
+  height: number;
+  nodes: PositionedGraphNode[];
+  nodeMap: Map<string, PositionedGraphNode>;
+}
+
+interface GraphRow {
+  items: RunGraphNode[];
+  width: number;
 }
 
 function ansiStateClassNames(state: AnsiState): string {
@@ -30,7 +58,7 @@ function ansiStateClassNames(state: AnsiState): string {
 }
 
 function renderAnsiHtml(value: string): string {
-  const ansiPattern = /\u001b\[([0-9;]*)m/g;
+  const ansiPattern = /\[([0-9;]*)m/g;
   const initialState: AnsiState = { bold: false, dim: false, fg: null };
   let state = { ...initialState };
   let cursor = 0;
@@ -138,6 +166,199 @@ function nextSelectedRunIdAfterRemoval(runs: RunSummary[], runId: string): strin
   return nextRun ? nextRun.id : null;
 }
 
+function stepDisplayName(step: RunStepSummary | RunGraphNode): string {
+  return step.name || step.id;
+}
+
+function formatGraphEdge(edge: RunGraphEdge): string {
+  if (edge.artifactPath) {
+    return edge.artifactPath;
+  }
+  if (edge.label) {
+    return edge.label;
+  }
+  return edge.kind === "artifact" ? "artifact" : "sequence";
+}
+
+function nextStepInspectionTab(
+  step: RunStepSummary | null,
+  currentTab: "overview" | "log" | "artifacts",
+): "overview" | "log" | "artifacts" {
+  const hasLog = Boolean(step?.logUrl);
+  const hasArtifacts = (step?.artifacts?.length || 0) > 0;
+
+  if (hasLog) {
+    return "log";
+  }
+  if (currentTab === "artifacts" && hasArtifacts) {
+    return "artifacts";
+  }
+  if (hasArtifacts) {
+    return "artifacts";
+  }
+  return "overview";
+}
+
+const inspectionTabs = ["overview", "log", "artifacts"] as const;
+
+type InspectionTab = (typeof inspectionTabs)[number];
+
+function buildGraphLayout(
+  nodes: RunGraphNode[],
+  edges: RunGraphEdge[],
+  viewportWidth: number,
+): GraphLayout | null {
+  if (nodes.length === 0) {
+    return null;
+  }
+
+  const nodeWidth = 220;
+  const nodeHeight = 88;
+  const colGap = 92;
+  const rowGap = 28;
+  const wrapRowGap = 56;
+  const paddingX = 32;
+  const paddingY = 24;
+
+  const layerMap = new Map<string, number>();
+  for (const node of nodes) {
+    layerMap.set(node.id, 0);
+  }
+
+  for (let pass = 0; pass < nodes.length; pass += 1) {
+    let changed = false;
+    for (const edge of edges) {
+      const sourceLayer = layerMap.get(edge.source);
+      const targetLayer = layerMap.get(edge.target);
+      if (sourceLayer == null || targetLayer == null) {
+        continue;
+      }
+      const nextLayer = sourceLayer + 1;
+      if (nextLayer > targetLayer) {
+        layerMap.set(edge.target, nextLayer);
+        changed = true;
+      }
+    }
+    if (!changed) {
+      break;
+    }
+  }
+
+  const grouped = new Map<number, RunGraphNode[]>();
+  for (const node of nodes) {
+    const layer = layerMap.get(node.id) || 0;
+    const items = grouped.get(layer) || [];
+    items.push(node);
+    grouped.set(layer, items);
+  }
+
+  const layerEntries = [...grouped.entries()].sort((left, right) => left[0] - right[0]);
+  const shouldWrap =
+    viewportWidth > 0 &&
+    nodes.length > 4 &&
+    layerEntries.length === nodes.length &&
+    layerEntries.every(([, items]) => items.length === 1);
+
+  const positioned: PositionedGraphNode[] = [];
+
+  if (shouldWrap) {
+    const orderedNodes = layerEntries.flatMap(([, items]) => items);
+    const usableWidth = Math.max(viewportWidth - paddingX * 2, nodeWidth);
+    const maxColumns = Math.max(1, Math.floor((usableWidth + colGap) / (nodeWidth + colGap)));
+    const rows: GraphRow[] = [];
+
+    for (let index = 0; index < orderedNodes.length; index += maxColumns) {
+      const items = orderedNodes.slice(index, index + maxColumns);
+      const width = items.length * nodeWidth + Math.max(items.length - 1, 0) * colGap;
+      rows.push({ items, width });
+    }
+
+    const contentWidth = Math.max(...rows.map((row) => row.width), nodeWidth);
+    rows.forEach((row, rowIndex) => {
+      const startX = paddingX + (contentWidth - row.width) / 2;
+      const y = paddingY + rowIndex * (nodeHeight + wrapRowGap);
+      row.items.forEach((node, itemIndex) => {
+        const visualIndex = rowIndex % 2 === 0 ? itemIndex : row.items.length - 1 - itemIndex;
+        const x = startX + visualIndex * (nodeWidth + colGap);
+        positioned.push({
+          ...node,
+          x,
+          y,
+          width: nodeWidth,
+          height: nodeHeight,
+          centerX: x + nodeWidth / 2,
+          centerY: y + nodeHeight / 2,
+        });
+      });
+    });
+
+    const nodeMap = new Map(positioned.map((node) => [node.id, node]));
+    const width = paddingX * 2 + contentWidth;
+    const height = paddingY * 2 + rows.length * nodeHeight + Math.max(rows.length - 1, 0) * wrapRowGap;
+    return { width, height, nodes: positioned, nodeMap };
+  }
+
+  const maxRows = Math.max(...layerEntries.map(([, items]) => items.length), 1);
+  const contentHeight = maxRows * nodeHeight + Math.max(maxRows - 1, 0) * rowGap;
+
+  for (const [layer, items] of layerEntries) {
+    const layerHeight = items.length * nodeHeight + Math.max(items.length - 1, 0) * rowGap;
+    const startY = paddingY + (contentHeight - layerHeight) / 2;
+    items.forEach((node, index) => {
+      const x = paddingX + layer * (nodeWidth + colGap);
+      const y = startY + index * (nodeHeight + rowGap);
+      positioned.push({
+        ...node,
+        x,
+        y,
+        width: nodeWidth,
+        height: nodeHeight,
+        centerX: x + nodeWidth / 2,
+        centerY: y + nodeHeight / 2,
+      });
+    });
+  }
+
+  const nodeMap = new Map(positioned.map((node) => [node.id, node]));
+  const maxLayer = Math.max(...layerEntries.map(([layer]) => layer), 0);
+  const width = paddingX * 2 + (maxLayer + 1) * nodeWidth + maxLayer * colGap;
+  const height = paddingY * 2 + contentHeight;
+
+  return { width, height, nodes: positioned, nodeMap };
+}
+
+function edgePath(source: PositionedGraphNode, target: PositionedGraphNode): string {
+  const horizontalGap = Math.abs(target.centerX - source.centerX);
+  const verticalGap = Math.abs(target.centerY - source.centerY);
+
+  if (verticalGap < 12) {
+    const leftToRight = target.centerX >= source.centerX;
+    const startX = leftToRight ? source.x + source.width : source.x;
+    const endX = leftToRight ? target.x : target.x + target.width;
+    const startY = source.centerY;
+    const endY = target.centerY;
+    const direction = leftToRight ? 1 : -1;
+    const delta = Math.max(horizontalGap / 2, 40);
+    return `M ${startX} ${startY} C ${startX + delta * direction} ${startY}, ${endX - delta * direction} ${endY}, ${endX} ${endY}`;
+  }
+
+  const topToBottom = target.centerY >= source.centerY;
+  const startX = source.centerX;
+  const startY = topToBottom ? source.y + source.height : source.y;
+  const endX = target.centerX;
+  const endY = topToBottom ? target.y : target.y + target.height;
+  const direction = topToBottom ? 1 : -1;
+  const delta = Math.max(verticalGap / 2, 40);
+  return `M ${startX} ${startY} C ${startX} ${startY + delta * direction}, ${endX} ${endY - delta * direction}, ${endX} ${endY}`;
+}
+
+function edgeLabelPosition(source: PositionedGraphNode, target: PositionedGraphNode): { x: number; y: number } {
+  return {
+    x: (source.centerX + target.centerX) / 2,
+    y: (source.centerY + target.centerY) / 2 - 8,
+  };
+}
+
 async function fetchJson<T>(input: string): Promise<T> {
   const response = await fetch(input, {
     cache: "no-store",
@@ -187,6 +408,10 @@ async function loadWorkflowLog(runId: string): Promise<string> {
   return await fetchText(`/api/runs/${encodeURIComponent(runId)}/log`);
 }
 
+async function loadStepLog(runId: string, stepId: string): Promise<string> {
+  return await fetchText(`/api/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/log`);
+}
+
 async function loadWorkflowDetail(runId: string): Promise<RunDetail> {
   return await fetchJson<RunDetail>(`/api/runs/${encodeURIComponent(runId)}`);
 }
@@ -219,6 +444,8 @@ export function WorkflowViewer({
   const [selectedRunId, setSelectedRunId] = useState<string | null>(() =>
     normalizeSelectedRunId(initialSummaries, null),
   );
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<InspectionTab>("overview");
   const [logText, setLogText] = useState<string>("");
   const [logLoading, setLogLoading] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
@@ -227,26 +454,90 @@ export function WorkflowViewer({
   const [actionError, setActionError] = useState<string | null>(null);
   const [stopLoadingRunId, setStopLoadingRunId] = useState<string | null>(null);
   const [removeLoadingRunId, setRemoveLoadingRunId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"log" | "artifacts">("log");
+  const [graphViewportWidth, setGraphViewportWidth] = useState(0);
   const logBodyRef = useRef<HTMLDivElement | null>(null);
+  const graphBodyRef = useRef<HTMLDivElement | null>(null);
+  const tabRefs = useRef<Record<InspectionTab, HTMLButtonElement | null>>({
+    overview: null,
+    log: null,
+    artifacts: null,
+  });
   const logRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const detailRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const logRequestIdRef = useRef(0);
 
-  async function refreshWorkflowLog(
+  const selectedSummary = summaries.find((summary) => summary.id === selectedRunId) || null;
+  const selectedStep = runDetail?.steps.find((step) => step.id === selectedStepId) || null;
+
+  function focusTab(tab: InspectionTab): void {
+    tabRefs.current[tab]?.focus();
+  }
+
+  function onTabKeyDown(event: React.KeyboardEvent<HTMLButtonElement>, tab: InspectionTab): void {
+    const currentIndex = inspectionTabs.indexOf(tab);
+    if (currentIndex === -1) {
+      return;
+    }
+
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      const nextTab = inspectionTabs[(currentIndex + 1) % inspectionTabs.length] || tab;
+      setActiveTab(nextTab);
+      focusTab(nextTab);
+      return;
+    }
+
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      const nextTab = inspectionTabs[(currentIndex - 1 + inspectionTabs.length) % inspectionTabs.length] || tab;
+      setActiveTab(nextTab);
+      focusTab(nextTab);
+      return;
+    }
+
+    if (event.key === "Home") {
+      event.preventDefault();
+      const nextTab = inspectionTabs[0] || tab;
+      setActiveTab(nextTab);
+      focusTab(nextTab);
+      return;
+    }
+
+    if (event.key === "End") {
+      event.preventDefault();
+      const nextTab = inspectionTabs[inspectionTabs.length - 1] || tab;
+      setActiveTab(nextTab);
+      focusTab(nextTab);
+    }
+  }
+
+  async function refreshActiveLog(
     runId: string,
+    stepId: string | null,
     options: { background?: boolean } = {},
   ): Promise<void> {
+    const requestId = logRequestIdRef.current + 1;
+    logRequestIdRef.current = requestId;
     if (!options.background) {
       setLogLoading(true);
+      setLogText("");
     }
     setLogError(null);
     try {
-      const nextLog = await loadWorkflowLog(runId);
+      const nextLog = stepId ? await loadStepLog(runId, stepId) : await loadWorkflowLog(runId);
+      if (requestId !== logRequestIdRef.current) {
+        return;
+      }
       setLogText(nextLog);
     } catch (error) {
-      setLogError(error instanceof Error ? error.message : "Failed to load workflow log.");
+      if (requestId !== logRequestIdRef.current) {
+        return;
+      }
+      setLogText("");
+      const message = error instanceof Error ? error.message : "Failed to load log.";
+      setLogError(/^404\b/.test(message) ? null : message);
     } finally {
-      if (!options.background) {
+      if (!options.background && requestId === logRequestIdRef.current) {
         setLogLoading(false);
       }
     }
@@ -264,13 +555,13 @@ export function WorkflowViewer({
     }
   }
 
-  function scheduleLogRefresh(runId: string, delayMs: number): void {
+  function scheduleLogRefresh(runId: string, stepId: string | null, delayMs: number): void {
     if (logRefreshTimerRef.current) {
       clearTimeout(logRefreshTimerRef.current);
     }
     logRefreshTimerRef.current = setTimeout(() => {
       logRefreshTimerRef.current = null;
-      void refreshWorkflowLog(runId, { background: true });
+      void refreshActiveLog(runId, stepId, { background: true });
     }, delayMs);
   }
 
@@ -289,6 +580,11 @@ export function WorkflowViewer({
   }, [summaries]);
 
   useEffect(() => {
+    setSelectedStepId(null);
+    setActiveTab("overview");
+  }, [selectedRunId]);
+
+  useEffect(() => {
     if (!selectedRunId) {
       setLogText("");
       setLogError(null);
@@ -300,23 +596,9 @@ export function WorkflowViewer({
     let cancelled = false;
     setLogText("");
     setLogError(null);
-    setLogLoading(true);
+    setRunDetail(null);
+    setLogLoading(activeTab === "log");
     setDetailLoading(true);
-    void loadWorkflowLog(selectedRunId)
-      .then((nextLog) => {
-        if (cancelled) {
-          return;
-        }
-        setLogText(nextLog);
-        setLogLoading(false);
-      })
-      .catch((error) => {
-        if (cancelled) {
-          return;
-        }
-        setLogError(error instanceof Error ? error.message : "Failed to load workflow log.");
-        setLogLoading(false);
-      });
     void loadWorkflowDetail(selectedRunId)
       .then((detail) => {
         if (cancelled) {
@@ -332,18 +614,50 @@ export function WorkflowViewer({
         setRunDetail(null);
         setDetailLoading(false);
       });
+    if (activeTab === "log") {
+      void refreshActiveLog(selectedRunId, selectedStepId);
+    }
     return () => {
       cancelled = true;
     };
   }, [selectedRunId]);
 
+  useEffect(() => {
+    logRequestIdRef.current += 1;
+    if (!selectedRunId) {
+      setLogText("");
+      setLogError(null);
+      setLogLoading(false);
+      return;
+    }
+    if (activeTab !== "log") {
+      setLogText("");
+      setLogError(null);
+      setLogLoading(false);
+      return;
+    }
+    void refreshActiveLog(selectedRunId, selectedStepId);
+  }, [activeTab, selectedRunId, selectedStepId]);
+
+  useEffect(() => {
+    if (!runDetail || !selectedStepId) {
+      return;
+    }
+    if (runDetail.steps.some((step) => step.id === selectedStepId)) {
+      return;
+    }
+    setSelectedStepId(null);
+    setActiveTab("overview");
+  }, [runDetail, selectedStepId]);
+
   async function refreshSummaries(): Promise<void> {
     await refreshRunsIndex(setSummaries, setTotalRuns, setUpdatedAt);
-    if (selectedRunId && activeTab === "log") {
-      await refreshWorkflowLog(selectedRunId);
+    if (!selectedRunId) {
+      return;
     }
-    if (selectedRunId && activeTab === "artifacts") {
-      await refreshRunDetail(selectedRunId);
+    await refreshRunDetail(selectedRunId);
+    if (activeTab === "log") {
+      await refreshActiveLog(selectedRunId, selectedStepId);
     }
   }
 
@@ -353,10 +667,9 @@ export function WorkflowViewer({
     try {
       await postJson(`/api/runs/${encodeURIComponent(runId)}/stop`);
       await refreshRunsIndex(setSummaries, setTotalRuns, setUpdatedAt);
+      await refreshRunDetail(runId);
       if (activeTab === "log") {
-        await refreshWorkflowLog(runId);
-      } else {
-        await refreshRunDetail(runId);
+        await refreshActiveLog(runId, selectedRunId === runId ? selectedStepId : null);
       }
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Failed to stop workflow.");
@@ -380,6 +693,7 @@ export function WorkflowViewer({
           ? nextSelectedRunIdAfterRemoval(summaries, runId)
           : selectedRunId;
       setSelectedRunId(nextSelectedRunId);
+      setSelectedStepId(null);
       await refreshRunsIndex(setSummaries, setTotalRuns, setUpdatedAt);
       if (!nextSelectedRunId) {
         setLogText("");
@@ -394,21 +708,38 @@ export function WorkflowViewer({
   }
 
   const renderedLogHtml = useMemo(() => renderWorkflowLogHtml(logText), [logText]);
-  const selectedSummary = summaries.find((summary) => summary.id === selectedRunId) || null;
   const artifacts = useMemo(() => {
-    const items: Array<{ stepId: string; stepName: string; path: string; location: string }> = [];
-    for (const step of runDetail?.steps || []) {
-      for (const artifact of step.artifacts || []) {
-        items.push({
-          stepId: step.id,
-          stepName: step.name || step.id,
-          path: artifact.path,
-          location: artifact.location,
-        });
+    if (!selectedStepId) {
+      const items: Array<{ stepId: string; stepName: string; path: string; location: string }> = [];
+      for (const step of runDetail?.steps || []) {
+        for (const artifact of step.artifacts || []) {
+          items.push({
+            stepId: step.id,
+            stepName: stepDisplayName(step),
+            path: artifact.path,
+            location: artifact.location,
+          });
+        }
       }
+      return items;
     }
-    return items;
-  }, [runDetail]);
+    if (!selectedStep) {
+      return [];
+    }
+    return (selectedStep.artifacts || []).map((artifact) => ({
+      stepId: selectedStep.id,
+      stepName: stepDisplayName(selectedStep),
+      path: artifact.path,
+      location: artifact.location,
+    }));
+  }, [runDetail, selectedStep, selectedStepId]);
+
+  const graphNodes = runDetail?.graph.nodes || [];
+  const graphEdges = runDetail?.graph.edges || [];
+  const graphLayout = useMemo(
+    () => buildGraphLayout(graphNodes, graphEdges, graphViewportWidth),
+    [graphEdges, graphNodes, graphViewportWidth],
+  );
 
   useEffect(() => {
     const logBody = logBodyRef.current;
@@ -419,14 +750,36 @@ export function WorkflowViewer({
   }, [logText, logLoading]);
 
   useEffect(() => {
+    const graphBody = graphBodyRef.current;
+    if (!graphBody) {
+      return;
+    }
+
+    const updateWidth = () => {
+      setGraphViewportWidth(graphBody.clientWidth);
+    };
+
+    updateWidth();
+    const resizeObserver = new ResizeObserver(() => {
+      updateWidth();
+    });
+    resizeObserver.observe(graphBody);
+    window.addEventListener("resize", updateWidth);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateWidth);
+    };
+  }, []);
+
+  useEffect(() => {
     const events = new EventSource("/api/events");
     events.addEventListener("runs-changed", () => {
       void refreshRunsIndex(setSummaries, setTotalRuns, setUpdatedAt);
       if (selectedRunId) {
+        scheduleDetailRefresh(selectedRunId, 250);
         if (activeTab === "log") {
-          scheduleLogRefresh(selectedRunId, 1000);
-        } else {
-          scheduleDetailRefresh(selectedRunId, 250);
+          scheduleLogRefresh(selectedRunId, selectedStepId, 1000);
         }
       }
     });
@@ -441,165 +794,356 @@ export function WorkflowViewer({
         detailRefreshTimerRef.current = null;
       }
     };
-  }, [activeTab, selectedRunId]);
+  }, [activeTab, selectedRunId, selectedStepId]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <div className="flex min-h-screen flex-col">
-        <header className="border-b border-border bg-card/80 backdrop-blur">
-          <div className="flex w-full items-center justify-between gap-[6px] px-[6px] py-[6px]">
-            <div className="flex items-baseline gap-[6px]">
-              <strong>Morpheus</strong>
-              <span className="text-sm text-muted-foreground">Workflow Viewer</span>
+      <div className="workflow-viewer-shell">
+        <header className="workflow-topbar">
+          <div className="workflow-topbar-title">
+            <strong>Morpheus</strong>
+            <span className="text-sm text-muted-foreground">Workflow Viewer</span>
+          </div>
+          <div className="workflow-topbar-summary">
+            <div className="workflow-topbar-chip">
+              <span>{summaries.length}</span>
+              <span className="text-muted-foreground">/ {totalRuns}</span>
             </div>
-            <div className="flex items-center gap-[6px]">
-              <div className="text-sm text-muted-foreground">
-                <span>
-                  {summaries.length} / {totalRuns}
-                </span>
-              </div>
-              <div className="text-sm text-muted-foreground">
-                <span className="mr-1 uppercase tracking-[0.06em]">Updated</span>
-                <span>{updatedAt ? formatTimestamp(updatedAt) : "-"}</span>
-              </div>
-              <Button onClick={() => void refreshSummaries()} variant="outline">
-                Refresh
-              </Button>
+            <div className="workflow-topbar-chip">
+              <span className="workflow-topbar-label">Updated</span>
+              <span>{updatedAt ? formatTimestamp(updatedAt) : "-"}</span>
             </div>
+            <Button onClick={() => void refreshSummaries()} variant="outline">
+              Refresh
+            </Button>
           </div>
         </header>
 
-        <main className="flex min-h-0 flex-1 flex-col gap-[6px] overflow-hidden px-[6px] py-[6px]">
-          <section className="workflow-table-shell">
-            <div className="workflow-table-scroll">
-              <table className="workflow-table">
-                <thead>
-                  <tr>
-                    <th>Workflow</th>
-                    <th>ID</th>
-                    <th>Status</th>
-                    <th>Type</th>
-                    <th>Created</th>
-                    <th>Completed</th>
-                    <th>Steps</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {summaries.length === 0 ? (
-                    <tr>
-                      <td className="workflow-table-empty" colSpan={8}>
-                        No workflows.
-                      </td>
-                    </tr>
-                  ) : (
-                    summaries.map((summary) => (
-                      <tr
-                        className={selectedRunId === summary.id ? "is-selected" : undefined}
-                        key={summary.id}
-                        onClick={() => setSelectedRunId(summary.id)}
-                      >
-                        <td className="workflow-table-id">
-                          <div className="workflow-table-name">{summary.workflowName || summary.id}</div>
-                        </td>
-                        <td className="workflow-table-meta-cell">{summary.id}</td>
-                        <td>
-                          <span className={`workflow-status-text is-${summary.status}`}>{summary.status}</span>
-                        </td>
-                        <td>{summary.category}</td>
-                        <td>{formatTimestamp(summary.createdAt)}</td>
-                        <td>{formatTimestamp(summary.completedAt)}</td>
-                        <td>{summary.stepCount}</td>
-                        <td>
-                          <div className="workflow-table-actions">
-                            {summary.format === "workflow-first" && summary.status === "running" ? (
-                              <Button
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void onStopWorkflow(summary.id);
-                                }}
-                                size="sm"
-                                variant="outline"
-                              >
-                                {stopLoadingRunId === summary.id ? "Stopping..." : "Stop"}
-                              </Button>
-                            ) : null}
-                            <Button
-                              disabled={removeLoadingRunId != null || stopLoadingRunId != null}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void onRemoveWorkflow(summary.id);
-                              }}
-                              size="sm"
-                              variant="outline"
-                            >
-                              {removeLoadingRunId === summary.id ? "Removing..." : "Remove"}
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="workflow-log-shell">
-            <div className="workflow-table-header workflow-log-header">
-              <div className="workflow-pane-title-row">
-                <h2 className="text-lg font-semibold tracking-tight">
-                  {selectedSummary
-                    ? `${selectedSummary.workflowName || selectedSummary.id}`
-                    : "Workflow"}
-                </h2>
-                <div className="workflow-pane-tabs">
-                  <Button
-                    onClick={() => setActiveTab("log")}
-                    size="sm"
-                    variant={activeTab === "log" ? "default" : "outline"}
-                  >
-                    Log
-                  </Button>
-                  <Button
-                    onClick={() => setActiveTab("artifacts")}
-                    size="sm"
-                    variant={activeTab === "artifacts" ? "default" : "outline"}
-                  >
-                    Artifacts
-                  </Button>
+        <main className="workflow-main-layout">
+          <section className="workflow-middle-shell">
+            <aside className="workflow-list-shell">
+              <div className="workflow-pane-header">
+                <div>
+                  <h2 className="workflow-pane-title">Workflows</h2>
                 </div>
               </div>
+              <div className="workflow-list-body">
+                {summaries.length === 0 ? (
+                  <div className="workflow-empty-state">No workflows.</div>
+                ) : (
+                  summaries.map((summary) => {
+                    const isSelected = selectedRunId === summary.id;
+                    return (
+                      <button
+                        className={`workflow-list-item${isSelected ? " is-selected" : ""}`}
+                        key={summary.id}
+                        onClick={() => setSelectedRunId(summary.id)}
+                        type="button"
+                      >
+                        <div className="workflow-list-item-top">
+                          <strong>{summary.workflowName || summary.id}</strong>
+                          <span
+                            aria-label={summary.status}
+                            className={`workflow-status-dot is-${summary.status}`}
+                            role="img"
+                            title={summary.status}
+                          />
+                        </div>
+                        <div className="workflow-list-item-subtle">{formatTimestamp(summary.createdAt)}</div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </aside>
+
+            <section className="workflow-graph-shell">
+              <div className="workflow-pane-header">
+                <div>
+                  <h2 className="workflow-pane-title">
+                    {selectedSummary ? `${selectedSummary.workflowName || selectedSummary.id}` : "Workflow graph"}
+                  </h2>
+                  {selectedStep ? <p className="workflow-pane-caption">Inspecting {stepDisplayName(selectedStep)}</p> : null}
+                </div>
+                <div className="workflow-pane-actions">
+                  {selectedStep ? (
+                    <Button
+                      onClick={() => {
+                        setSelectedStepId(null);
+                        setActiveTab("overview");
+                      }}
+                      size="sm"
+                      variant="ghost"
+                    >
+                      Workflow overview
+                    </Button>
+                  ) : null}
+                  {selectedSummary?.format === "workflow-first" && selectedSummary.status === "running" ? (
+                    <Button
+                      onClick={() => void onStopWorkflow(selectedSummary.id)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      {stopLoadingRunId === selectedSummary.id ? "Stopping..." : "Stop"}
+                    </Button>
+                  ) : null}
+                  {selectedSummary ? (
+                    <Button
+                      disabled={removeLoadingRunId != null || stopLoadingRunId != null}
+                      onClick={() => void onRemoveWorkflow(selectedSummary.id)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      {removeLoadingRunId === selectedSummary.id ? "Removing..." : "Remove"}
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+              <div className="workflow-graph-body" ref={graphBodyRef}>
+                {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
+                {!selectedRunId ? (
+                  <div className="workflow-empty-state">No workflow selected.</div>
+                ) : detailLoading && !runDetail ? (
+                  <div className="workflow-empty-state">Loading workflow…</div>
+                ) : !runDetail ? (
+                  <div className="workflow-empty-state">No workflow detail available.</div>
+                ) : !graphLayout ? (
+                  <div className="workflow-empty-state">No graph nodes available.</div>
+                ) : (
+                  <div className="workflow-graph-scroll">
+                    <div
+                      className="workflow-graph-canvas"
+                      style={{ height: `${graphLayout.height}px`, width: `${graphLayout.width}px` }}
+                    >
+                      <svg
+                        className="workflow-graph-svg"
+                        height={graphLayout.height}
+                        viewBox={`0 0 ${graphLayout.width} ${graphLayout.height}`}
+                        width={graphLayout.width}
+                      >
+                        <defs>
+                          <marker
+                            id="workflow-arrow-sequence"
+                            markerHeight="8"
+                            markerWidth="8"
+                            orient="auto-start-reverse"
+                            refX="7"
+                            refY="4"
+                          >
+                            <path d="M0,0 L8,4 L0,8 z" fill="#6e5f4d" />
+                          </marker>
+                          <marker
+                            id="workflow-arrow-artifact"
+                            markerHeight="8"
+                            markerWidth="8"
+                            orient="auto-start-reverse"
+                            refX="7"
+                            refY="4"
+                          >
+                            <path d="M0,0 L8,4 L0,8 z" fill="#165d52" />
+                          </marker>
+                        </defs>
+                        {graphEdges.map((edge) => {
+                          const source = graphLayout.nodeMap.get(edge.source);
+                          const target = graphLayout.nodeMap.get(edge.target);
+                          if (!source || !target) {
+                            return null;
+                          }
+                          const labelPosition = edgeLabelPosition(source, target);
+                          return (
+                            <g key={edge.id}>
+                              <path
+                                className={`workflow-graph-path is-${edge.kind}${edge.inferred ? " is-inferred" : ""}`}
+                                d={edgePath(source, target)}
+                                markerEnd={`url(#workflow-arrow-${edge.kind})`}
+                              />
+                              <text
+                                className="workflow-graph-path-label"
+                                textAnchor="middle"
+                                x={labelPosition.x}
+                                y={labelPosition.y}
+                              >
+                                {formatGraphEdge(edge)}
+                              </text>
+                            </g>
+                          );
+                        })}
+                      </svg>
+                      {graphLayout.nodes.map((node) => {
+                        const isSelected = selectedStepId === node.id;
+                        return (
+                          <button
+                            className={`workflow-graph-node is-${node.status}${isSelected ? " is-selected" : ""}`}
+                            key={node.id}
+                            onClick={() => {
+                              const selectedNodeStep = runDetail?.steps.find((step) => step.id === node.id) || null;
+                              setSelectedStepId(node.id);
+                              setActiveTab(nextStepInspectionTab(selectedNodeStep, activeTab));
+                            }}
+                            style={{
+                              height: `${node.height}px`,
+                              left: `${node.x}px`,
+                              top: `${node.y}px`,
+                              width: `${node.width}px`,
+                            }}
+                            type="button"
+                          >
+                            <div className="workflow-graph-node-top">
+                              <strong>{stepDisplayName(node)}</strong>
+                              <span className={`workflow-status-text is-${node.status}`}>{node.status}</span>
+                            </div>
+                            <div className="workflow-graph-node-meta">
+                              <span>{node.kind || "step"}</span>
+                              <span>{node.artifactCount} artifacts</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          </section>
+
+          <section className="workflow-bottom-shell">
+            <div className="workflow-pane-header workflow-bottom-header">
+              <div aria-label="Inspection tabs" className="workflow-pane-tabs" role="tablist">
+                <button
+                  aria-controls="inspection-panel"
+                  aria-selected={activeTab === "overview"}
+                  className={`workflow-tab${activeTab === "overview" ? " is-active" : ""}`}
+                  id="inspection-tab-overview"
+                  onClick={() => setActiveTab("overview")}
+                  onKeyDown={(event) => onTabKeyDown(event, "overview")}
+                  ref={(node) => {
+                    tabRefs.current.overview = node;
+                  }}
+                  role="tab"
+                  tabIndex={activeTab === "overview" ? 0 : -1}
+                  type="button"
+                >
+                  Overview
+                </button>
+                <button
+                  aria-controls="inspection-panel"
+                  aria-selected={activeTab === "log"}
+                  className={`workflow-tab${activeTab === "log" ? " is-active" : ""}`}
+                  id="inspection-tab-log"
+                  onClick={() => setActiveTab("log")}
+                  onKeyDown={(event) => onTabKeyDown(event, "log")}
+                  ref={(node) => {
+                    tabRefs.current.log = node;
+                  }}
+                  role="tab"
+                  tabIndex={activeTab === "log" ? 0 : -1}
+                  type="button"
+                >
+                  Log
+                </button>
+                <button
+                  aria-controls="inspection-panel"
+                  aria-selected={activeTab === "artifacts"}
+                  className={`workflow-tab${activeTab === "artifacts" ? " is-active" : ""}`}
+                  id="inspection-tab-artifacts"
+                  onClick={() => setActiveTab("artifacts")}
+                  onKeyDown={(event) => onTabKeyDown(event, "artifacts")}
+                  ref={(node) => {
+                    tabRefs.current.artifacts = node;
+                  }}
+                  role="tab"
+                  tabIndex={activeTab === "artifacts" ? 0 : -1}
+                  type="button"
+                >
+                  Artifacts
+                </button>
+              </div>
             </div>
-            <div className="workflow-log-body" ref={logBodyRef}>
+            <div
+              aria-labelledby={`inspection-tab-${activeTab}`}
+              className="workflow-bottom-body"
+              id="inspection-panel"
+              ref={activeTab === "log" ? logBodyRef : null}
+              role="tabpanel"
+            >
               {actionError ? <p className="mb-4 text-sm text-destructive">{actionError}</p> : null}
               {!selectedRunId ? (
                 <div className="workflow-empty-state">No workflow selected.</div>
-              ) : activeTab === "log" ? !logText && logLoading ? (
-                <div className="workflow-empty-state">Loading log…</div>
-              ) : (
-                <>
-                  {logError ? <p className="mb-4 text-sm text-destructive">{logError}</p> : null}
-                  {!logText ? (
-                    <div className="workflow-empty-state">No log available.</div>
-                  ) : (
-                    <div dangerouslySetInnerHTML={{ __html: renderedLogHtml }} />
-                  )}
-                </>
-              ) : detailLoading ? (
+              ) : activeTab === "overview" ? (
+                detailLoading && !runDetail ? (
+                  <div className="workflow-empty-state">Loading overview…</div>
+                ) : !runDetail ? (
+                  <div className="workflow-empty-state">No overview available.</div>
+                ) : (
+                  <div className="workflow-overview-grid">
+                    <div className="workflow-overview-card">
+                      <span className="workflow-overview-label">Workflow</span>
+                      <strong>{selectedSummary?.workflowName || selectedSummary?.id || "-"}</strong>
+                    </div>
+                    <div className="workflow-overview-card">
+                      <span className="workflow-overview-label">Scope</span>
+                      <strong>{selectedStep ? stepDisplayName(selectedStep) : "Workflow"}</strong>
+                    </div>
+                    <div className="workflow-overview-card">
+                      <span className="workflow-overview-label">Status</span>
+                      <strong className={`workflow-status-text is-${selectedStep?.status || selectedSummary?.status || "unknown"}`}>
+                        {selectedStep?.status || selectedSummary?.status || "unknown"}
+                      </strong>
+                    </div>
+                    <div className="workflow-overview-card">
+                      <span className="workflow-overview-label">Category</span>
+                      <strong>{selectedSummary?.category || "-"}</strong>
+                    </div>
+                    <div className="workflow-overview-card">
+                      <span className="workflow-overview-label">Created</span>
+                      <strong>{formatTimestamp(selectedSummary?.createdAt)}</strong>
+                    </div>
+                    <div className="workflow-overview-card">
+                      <span className="workflow-overview-label">Completed</span>
+                      <strong>{formatTimestamp(selectedSummary?.completedAt)}</strong>
+                    </div>
+                    <div className="workflow-overview-card is-wide">
+                      <span className="workflow-overview-label">Run directory</span>
+                      <code>{runDetail.runDir || "-"}</code>
+                    </div>
+                    <div className="workflow-overview-card is-wide">
+                      <span className="workflow-overview-label">Selection</span>
+                      <div className="workflow-overview-list">
+                        {(selectedStep ? [selectedStep] : runDetail.steps).map((step) => (
+                          <div className="workflow-overview-list-item" key={step.id}>
+                            <strong>{stepDisplayName(step)}</strong>
+                            <span>{step.kind || "step"}</span>
+                            <span className={`workflow-status-text is-${step.status}`}>{step.status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )
+              ) : activeTab === "log" ? (
+                !logText && logLoading ? (
+                  <div className="workflow-empty-state">Loading log…</div>
+                ) : (
+                  <>
+                    {logError ? <p className="mb-4 text-sm text-destructive">{logError}</p> : null}
+                    {!logText ? (
+                      <div className="workflow-empty-state">No log available.</div>
+                    ) : (
+                      <div dangerouslySetInnerHTML={{ __html: renderedLogHtml }} />
+                    )}
+                  </>
+                )
+              ) : detailLoading && !runDetail ? (
                 <div className="workflow-empty-state">Loading artifacts…</div>
               ) : artifacts.length === 0 ? (
                 <div className="workflow-empty-state">No artifacts available.</div>
               ) : (
                 <div className="workflow-artifacts-list">
                   {artifacts.map((artifact) => (
-                    <div className="workflow-artifact-row" key={`${artifact.stepId}:${artifact.path}:${artifact.location}`}>
-                      <div className="workflow-artifact-meta">
-                        <strong>{artifact.path}</strong>
-                        <span>{artifact.stepName}</span>
-                      </div>
-                      <code>{artifact.location}</code>
-                    </div>
+                    <ArtifactRow
+                      artifact={artifact}
+                      key={`${artifact.stepId}:${artifact.path}:${artifact.location}`}
+                    />
                   ))}
                 </div>
               )}
@@ -607,6 +1151,22 @@ export function WorkflowViewer({
           </section>
         </main>
       </div>
+    </div>
+  );
+}
+
+function ArtifactRow({
+  artifact,
+}: {
+  artifact: { stepId: string; stepName: string; path: string; location: string };
+}) {
+  return (
+    <div className="workflow-artifact-row">
+      <div className="workflow-artifact-meta">
+        <strong>{artifact.path}</strong>
+        <span>{artifact.stepName}</span>
+      </div>
+      <code>{artifact.location}</code>
     </div>
   );
 }

@@ -10,27 +10,9 @@ tools:
   buildroot:
     mode: remote
     sync-morpheus: true
-    buildroot-version: 2025.02.12
     reuse-build-dir: true
     build-dir-key: arm64-dev
     patch-dir: tools/buildroot/patches
-    defconfig: qemu_aarch64_virt_defconfig
-    make-args:
-      - -j$(nproc)
-    config-fragment:
-      - BR2_LINUX_KERNEL=y
-      - BR2_LINUX_KERNEL_CUSTOM_VERSION=y
-      - BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.16"
-      - BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
-      - BR2_TARGET_GENERIC_GETTY=y
-      - BR2_TARGET_GENERIC_GETTY_PORT="console"
-      - BR2_TARGET_ROOTFS_CPIO=y
-      - BR2_TARGET_ROOTFS_CPIO_GZIP=y
-      - BR2_ROOTFS_POST_IMAGE_SCRIPT=""
-      - BR2_ROOTFS_POST_SCRIPT_ARGS=""
-      - BR2_PACKAGE_PCIUTILS=y
-      - BR2_PACKAGE_DROPBEAR=y
-      - BR2_TARGET_GENERIC_ROOT_PASSWD="root"
     artifacts:
       - images/Image
       - images/rootfs.cpio.gz
@@ -40,6 +22,7 @@ tools:
     qemu-version: 8.2.7
     reuse-build-dir: true
     build-dir-key: qemu-8.2.7-aarch64-softmmu
+    patch-dir: tools/qemu/patches
     target-list:
       - aarch64-softmmu
     artifacts:
@@ -154,6 +137,45 @@ tools:
         artifact: images/rootfs.cpio.gz
 
 workflows:
+  build-buildroot:
+    category: build
+    steps:
+      - id: buildroot
+        tool: buildroot
+        command: build
+        args:
+          - --buildroot-version
+          - 2025.02.12
+          - --defconfig
+          - qemu_aarch64_virt_defconfig
+          - --make-arg
+          - -j$(nproc)
+          - --config-fragment
+          - BR2_LINUX_KERNEL=y
+          - --config-fragment
+          - BR2_LINUX_KERNEL_CUSTOM_VERSION=y
+          - --config-fragment
+          - BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.16"
+          - --config-fragment
+          - BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
+          - --config-fragment
+          - BR2_TARGET_GENERIC_GETTY=y
+          - --config-fragment
+          - BR2_TARGET_GENERIC_GETTY_PORT="console"
+          - --config-fragment
+          - BR2_TARGET_ROOTFS_CPIO=y
+          - --config-fragment
+          - BR2_TARGET_ROOTFS_CPIO_GZIP=y
+          - --config-fragment
+          - BR2_ROOTFS_POST_IMAGE_SCRIPT=""
+          - --config-fragment
+          - BR2_ROOTFS_POST_SCRIPT_ARGS=""
+          - --config-fragment
+          - BR2_PACKAGE_PCIUTILS=y
+          - --config-fragment
+          - BR2_PACKAGE_DROPBEAR=y
+          - --config-fragment
+          - BR2_TARGET_GENERIC_ROOT_PASSWD="root"
   local-buildroot-qemu-runtime:
     category: run
     steps:

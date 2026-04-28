@@ -60,7 +60,7 @@ tools:
     mode: remote
     reuse-build-dir: true
     build-dir-key: arm64-dev
-    patch-dir: ./workflow-workspace/tools/buildroot/patches
+    patch-dir: tools/buildroot/patches
     config-fragment:
       - BR2_LINUX_KERNEL=y
       - BR2_LINUX_KERNEL_CUSTOM_VERSION=y
@@ -202,6 +202,10 @@ Use these commands by intent:
 Treat `--workspace` as a shared high-level workspace root.
 Morpheus owns the managed workspace lifecycle.
 Tools do not own managed workspaces directly.
+Treat `patch-dir` as a Morpheus workspace-relative parameter.
+Resolve it under `<workspace>/`, not under the repo root.
+For example, `patch-dir: tools/qemu/patches` maps to
+`<workspace>/tools/qemu/patches`.
 Keep Buildroot patch trees inside the managed workspace when possible, for
 example under `tools/buildroot/patches/linux/`.
 Use `reuse-build-dir: true` when you want a persistent Buildroot `O=` tree

@@ -52,7 +52,7 @@ function usage() {
       "  node apps/morpheus/dist/cli.js workspace create [--json]",
       "  node apps/morpheus/dist/cli.js workspace show [--json]",
       "  node apps/morpheus/dist/cli.js config check [--json]",
-      "  node apps/morpheus/dist/cli.js tool <subcommand> [--json]",
+      "  node apps/morpheus/dist/cli.js tool list [--json] [--verify]",
       "  node apps/morpheus/dist/cli.js workflow <subcommand> [--json]",
       "  node apps/morpheus/dist/cli.js contracts",
       "  node apps/morpheus/dist/cli.js runs list [--json] [--run-root <path>]",

@@ -2,12 +2,9 @@
 const fs = require("fs");
 const path = require("path");
 const { repoRoot } = require("./paths");
-const { handleManagedRunCommand } = require("./remote");
-const { runSingleToolWorkflow, runToolBuildWorkflow } = require("./workflow");
-const { applyConfigDefaults, loadConfig } = require("./config");
+const { loadConfig } = require("./config");
 const { listToolDescriptors, readToolDescriptor, toolDescriptorPath } = require("./tool-descriptor");
 const { writeStdoutLine } = require("./io");
-const { logInfo } = require("./logger");
 
 function listDeclaredTools() {
   return listToolDescriptors().map((descriptor) => ({
@@ -103,8 +100,6 @@ function extractToolSubcommand(argv) {
 function toolUsage() {
   return [
     "Usage:",
-    "  node apps/morpheus/dist/cli.js tool build --tool <name> [--json] [...tool flags]",
-    "  node apps/morpheus/dist/cli.js tool run --tool <name> [--json] [...tool flags]",
     "  node apps/morpheus/dist/cli.js tool list [--json] [--verify]"
   ].join("\n");
 }
@@ -130,120 +125,6 @@ function printMaybeJson(value, flags) {
   }
 }
 
-function resolveWorkspaceRoot(flags) {
-  const { flags: resolved } = applyConfigDefaults(
-    {
-      tool: "workflow",
-      workspace: flags.workspace || null,
-    },
-    { allowGlobalRemote: false, allowToolDefaults: false }
-  );
-  if (!resolved.workspace) {
-    throw new Error("tool build requires --workspace DIR or workspace.root in morpheus.yaml");
-  }
-  return resolved.workspace;
-}
-
-function toolDependencyNamesFromConfig(tool) {
-  const config = loadConfig(process.cwd());
-  const value = (config && config.value) || {};
-  const tools = value.tools || {};
-  const toolConfig = tools[tool] || {};
-  const dependencies = toolConfig.dependencies || {};
-
-  const result = new Set();
-  const visit = (node) => {
-    if (!node) {
-      return;
-    }
-    if (Array.isArray(node)) {
-      for (const item of node) {
-        visit(item);
-      }
-      return;
-    }
-    if (typeof node !== "object") {
-      return;
-    }
-    if (node.tool && node.artifact) {
-      result.add(String(node.tool));
-    }
-    for (const value of Object.values(node)) {
-      visit(value);
-    }
-  };
-
-  visit(dependencies);
-  result.delete(tool);
-  return [...result];
-}
-
-function sortToolDependencies(tools) {
-  const priority = new Map([
-    ["buildroot", 0],
-    ["qemu", 1],
-    ["microkit-sdk", 2],
-    ["sel4", 3],
-    ["libvmm", 4],
-    ["nvirsh", 5]
-  ]);
-  return [...tools].sort((left, right) => {
-    const leftRank = priority.has(left) ? priority.get(left) : 100;
-    const rightRank = priority.has(right) ? priority.get(right) : 100;
-    if (leftRank !== rightRank) {
-      return leftRank - rightRank;
-    }
-    return left.localeCompare(right);
-  });
-}
-
-function stripFlagPair(argv, flagName) {
-  const next = [];
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (token === flagName) {
-      index += 1;
-      continue;
-    }
-    next.push(token);
-  }
-  return next;
-}
-
-function stripBooleanFlag(argv, flagName) {
-  return argv.filter((token) => token !== flagName);
-}
-
-function isRecoverableNvirshDependencyError(error) {
-  const message = error && error.message ? String(error.message) : "";
-  return (
-    /could not resolve .* artifact .* from /.test(message)
-    || /missing .* dependency configuration/.test(message)
-    || /unsupported .* dependency configuration/.test(message)
-  );
-}
-
-async function runNvirshDependencyWorkflow(rest, flags) {
-  const workflowName = `tool-${flags.tool}`;
-  const workspaceRoot = resolveWorkspaceRoot(flags);
-  let toolArgv = [...rest];
-  toolArgv = stripBooleanFlag(toolArgv, "--json");
-  toolArgv = stripFlagPair(toolArgv, "--tool");
-  toolArgv = stripFlagPair(toolArgv, "--workspace");
-
-  const dependencies = sortToolDependencies(toolDependencyNamesFromConfig(flags.tool));
-  const inheritedArgs = flags.verbose ? ["--verbose"] : [];
-  const steps = dependencies.map((name) => ({ tool: name, name: `${name}.build`, toolArgv: inheritedArgs }));
-  return await runToolBuildWorkflow({
-    steps,
-    workflowName,
-    workspaceRoot,
-    jsonMode: false,
-    commandLabel: "tool run",
-    category: "build",
-  });
-}
-
 async function handleToolCommand(argv) {
   const { subcommand, rest } = extractToolSubcommand(argv);
   if (!subcommand || subcommand === "help" || subcommand === "--help") {
@@ -251,130 +132,8 @@ async function handleToolCommand(argv) {
     return 0;
   }
 
-  if (subcommand === "run") {
-    if (rest.includes("--help") || rest.includes("help")) {
-      return await handleManagedRunCommand("run", ["--help"]);
-    }
-    if (process.env.MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP === "1") {
-      return await handleManagedRunCommand("run", rest);
-    }
-    const { flags } = parseToolArgs(rest);
-    const tool = flags.tool;
-    if (!tool) {
-      throw new Error("tool run requires --tool <name>");
-    }
-    logInfo("tool", "received tool run request", {
-      tool,
-      json: Boolean(flags.json),
-      workspace: flags.workspace || null,
-      attach: Boolean(flags.attach),
-    });
-    const workflowName = `tool-${tool}`;
-    const workspaceRoot = resolveWorkspaceRoot(flags);
-    let toolArgv = [...rest];
-    toolArgv = stripBooleanFlag(toolArgv, "--json");
-    toolArgv = stripFlagPair(toolArgv, "--tool");
-    toolArgv = stripFlagPair(toolArgv, "--workspace");
-
-    if (tool === "nvirsh") {
-      try {
-        return await runSingleToolWorkflow({
-          tool,
-          workflowName,
-          workspaceRoot,
-          toolArgv,
-          jsonMode: Boolean(flags.json),
-          commandLabel: "tool run",
-          category: "run",
-          toolCommand: "run",
-          attach: Boolean(flags.attach),
-        });
-      } catch (error) {
-        if (!isRecoverableNvirshDependencyError(error)) {
-          throw error;
-        }
-        const exitCode = await runNvirshDependencyWorkflow(rest, flags);
-        if (exitCode !== 0) {
-          return exitCode;
-        }
-        return await runSingleToolWorkflow({
-          tool,
-          workflowName,
-          workspaceRoot,
-          toolArgv,
-          jsonMode: Boolean(flags.json),
-          commandLabel: "tool run",
-          category: "run",
-          toolCommand: "run",
-          attach: Boolean(flags.attach),
-        });
-      }
-    }
-    return await runSingleToolWorkflow({
-      tool,
-      workflowName,
-      workspaceRoot,
-      toolArgv,
-      jsonMode: Boolean(flags.json),
-      commandLabel: "tool run",
-      category: "run",
-      toolCommand: "run",
-      attach: Boolean(flags.attach),
-    });
-  }
-
-  if (subcommand === "build") {
-    if (rest.includes("--help") || rest.includes("help")) {
-      return await handleManagedRunCommand("build", ["--help"]);
-    }
-    if (process.env.MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP === "1") {
-      return await handleManagedRunCommand("build", rest);
-    }
-    const { flags } = parseToolArgs(rest);
-    const tool = flags.tool;
-    if (!tool) {
-      throw new Error("tool build requires --tool <name>");
-    }
-    logInfo("tool", "received tool build request", {
-      tool,
-      json: Boolean(flags.json),
-      workspace: flags.workspace || null,
-    });
-    const workflowName = `tool-${tool}`;
-    const workspaceRoot = resolveWorkspaceRoot(flags);
-    let toolArgv = [...rest];
-    toolArgv = stripBooleanFlag(toolArgv, "--json");
-    toolArgv = stripFlagPair(toolArgv, "--tool");
-    toolArgv = stripFlagPair(toolArgv, "--workspace");
-
-    if (tool === "nvirsh") {
-      const dependencies = sortToolDependencies(toolDependencyNamesFromConfig(tool));
-      const inheritedArgs = flags.verbose ? ["--verbose"] : [];
-      if (flags.attach) {
-        throw new Error("tool build --tool nvirsh does not launch the runtime; use tool run --tool nvirsh --attach");
-      }
-      const steps = [
-        ...dependencies.map((name) => ({ tool: name, name: `${name}.build`, toolArgv: inheritedArgs })),
-        { tool, name: `${tool}.build`, toolArgv: [...toolArgv, "--build-only"] }
-      ];
-      return await runToolBuildWorkflow({
-        steps,
-        workflowName,
-        workspaceRoot,
-        jsonMode: Boolean(flags.json),
-        commandLabel: `tool ${subcommand}`,
-        category: "build",
-      });
-    }
-
-    return runSingleToolWorkflow({
-      tool,
-      workflowName,
-      workspaceRoot,
-      toolArgv,
-      jsonMode: Boolean(flags.json),
-      commandLabel: `tool ${subcommand}`,
-    });
+  if (subcommand === "run" || subcommand === "build") {
+    throw new Error(`tool ${subcommand} was removed; start from a configured workflow with 'morpheus workflow run --name <workflow>'`);
   }
 
   const { positionals, flags } = parseToolArgs(rest);

@@ -97,9 +97,17 @@ function payloadResolvedPath(payload, key, rootDir) {
     bitcode_list_file: "bitcode_list",
   };
   const artifactKey = artifactKeyMap[key] || key;
-  const artifactView = artifactViews && artifactViews[artifactKey] ? artifactViews[artifactKey] : null;
+  const artifactView = Array.isArray(artifactViews)
+    ? artifactViews.find((item) => item && (item.key === artifactKey || item.path === artifactKey)) || null
+    : (artifactViews && artifactViews[artifactKey] ? artifactViews[artifactKey] : null);
   if (artifactView && typeof artifactView === "object") {
-    return artifactView.resolved_path || artifactView.runtime_path || artifactView.path || null;
+    return artifactView.resolved_path
+      || artifactView.runtime_path
+      || artifactView.location
+      || artifactView.local_location
+      || artifactView.remote_location
+      || artifactView.path
+      || null;
   }
   const fieldMap = {
     source_dir: "source_dir",
@@ -108,7 +116,17 @@ function payloadResolvedPath(payload, key, rootDir) {
     kernel_build_log: "kernel_build_log",
   };
   const field = fieldMap[key];
-  return resolvePortablePath(field ? details[field] : null, rootDir);
+  const directValue = resolvePortablePath(field ? details[field] : null, rootDir);
+  if (directValue) {
+    return directValue;
+  }
+  const nestedPayload = details && details.payload && typeof details.payload === "object"
+    ? details.payload
+    : null;
+  if (nestedPayload && nestedPayload !== payload) {
+    return payloadResolvedPath(nestedPayload, key, rootDir);
+  }
+  return null;
 }
 
 function parseManagedLlBicOptions(flags, argvCommand) {

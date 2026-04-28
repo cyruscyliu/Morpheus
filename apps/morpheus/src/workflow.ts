@@ -621,7 +621,10 @@ async function runToolWorkflow({
   let lastToolPayload = null;
   let lastStderr = "";
   const stepResults = {};
+  let activeStep = null;
+  try {
   for (const step of createdSteps) {
+    activeStep = step;
     updateWorkflowRun(workflow.runDir, (current) => ({
       ...current,
       status: "running",
@@ -762,6 +765,39 @@ async function runToolWorkflow({
         hint: `./bin/morpheus --json workflow logs --id ${workflow.id} --step ${step.id}`
       });
       break;
+    }
+  }
+  } catch (error) {
+    workflowStatus = "error";
+    exitCode = exitCode || 1;
+    lastStderr = error instanceof Error ? (error.stack || error.message) : String(error);
+    if (activeStep) {
+      updateWorkflowStep(activeStep.stepDir, (current) => ({
+        ...current,
+        status: "error",
+        exitCode,
+      }));
+      fs.appendFileSync(
+        activeStep.logFile,
+        `\n[morpheus:workflow] ${lastStderr}\n`,
+        "utf8",
+      );
+      updateWorkflowRun(workflow.runDir, (current) => ({
+        ...current,
+        status: "error",
+        currentChildPid: null,
+        steps: current.steps.map((entry) => entry.id === activeStep.id
+          ? { ...entry, status: "error" }
+          : entry
+        )
+      }));
+      logInfo("workflow", "workflow step failed before tool execution", {
+        workflow: workflow.id,
+        step: activeStep.id,
+        tool: activeStep.tool,
+        log_file: path.relative(process.cwd(), activeStep.logFile),
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

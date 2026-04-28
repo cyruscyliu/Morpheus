@@ -70,7 +70,9 @@ function resolveWorkspacePath(workspace, configured, fallbackRelative, label) {
 function resolvePayloadArtifacts(payload) {
   const details = payload && payload.details ? payload.details : {};
   const pathViews = payload && payload.paths ? payload.paths : {};
-  const payloadArtifacts = payload && payload.artifacts ? payload.artifacts : {};
+  const payloadArtifacts = payload && payload.artifacts
+    ? payload.artifacts
+    : (details && details.artifacts ? details.artifacts : {});
   const result = [];
 
   if (Array.isArray(payloadArtifacts)) {
@@ -82,6 +84,9 @@ function resolvePayloadArtifacts(payload) {
       const pathView = key ? pathViews[key] : null;
       const resolved = artifact.resolved_path
         || artifact.runtime_path
+        || artifact.location
+        || artifact.local_location
+        || artifact.remote_location
         || artifact.path
         || (pathView && typeof pathView === "object"
           ? (pathView.resolved_path || pathView.runtime_path || pathView.portable || null)
@@ -109,6 +114,9 @@ function resolvePayloadArtifacts(payload) {
 
   if (details.output) {
     result.push({ path: "output-dir", location: String(details.output) });
+  }
+  if (result.length === 0 && details && details.payload && typeof details.payload === "object") {
+    return resolvePayloadArtifacts(details.payload);
   }
   return result;
 }

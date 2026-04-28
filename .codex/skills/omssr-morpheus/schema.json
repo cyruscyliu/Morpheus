@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "kind": "morpheus-skill-schema",
+  "description": "Static Morpheus CLI and tool contract schema for agents.",
+  "morpheusApp": {
+    "commands": [
+      "workspace create",
+      "workspace show",
+      "config check",
+      "fetch --tool <name>",
+      "patch --tool <name>",
+      "build --tool <name>",
+      "inspect --tool <name>",
+      "logs --tool <name>",
+      "run --tool <name>",
+      "tool list",
+      "workflow run",
+      "workflow inspect",
+      "workflow logs"
+    ],
+    "jsonEnvelope": {
+      "command": "string",
+      "status": "success|error|stream|submitted",
+      "exit_code": 0,
+      "summary": "string",
+      "details": {}
+    },
+    "errorEnvelope": {
+      "command": "string",
+      "status": "error",
+      "exit_code": 1,
+      "summary": "string",
+      "error": {
+        "code": "string",
+        "message": "string"
+      }
+    }
+  },
+  "workspace": {
+    "layout": [
+      "<workspace>/tools/",
+      "<workspace>/runs/",
+      "<workspace>/tmp/"
+    ]
+  },
+  "toolCatalog": {
+    "commands": [
+      "tool list"
+    ],
+    "tools": [
+      {
+        "name": "buildroot",
+        "runtime": "node",
+        "cli-contract": "fetch,patch,build,inspect,logs",
+        "descriptorPath": "tools/buildroot/tool.json",
+        "entry": "tools/buildroot/dist/index.js"
+      },
+      {
+        "name": "libvmm",
+        "runtime": "node",
+        "cli-contract": "fetch,patch,build,run,inspect,logs",
+        "descriptorPath": "tools/libvmm/tool.json",
+        "entry": "tools/libvmm/dist/index.js"
+      },
+      {
+        "name": "llbic",
+        "runtime": "exec",
+        "cli-contract": "run,inspect,logs",
+        "descriptorPath": "tools/llbic/tool.json",
+        "entry": "tools/llbic/llbic"
+      },
+      {
+        "name": "llcg",
+        "runtime": "exec",
+        "cli-contract": "run,inspect,logs",
+        "descriptorPath": "tools/llcg/tool.json",
+        "entry": "tools/llcg/bin/llcg"
+      },
+      {
+        "name": "microkit-sdk",
+        "runtime": "node",
+        "cli-contract": "fetch,patch,build,inspect,logs",
+        "descriptorPath": "tools/microkit-sdk/tool.json",
+        "entry": "tools/microkit-sdk/dist/index.js"
+      },
+      {
+        "name": "nvirsh",
+        "runtime": "node",
+        "cli-contract": "build,run,inspect,logs",
+        "descriptorPath": "tools/nvirsh/tool.json",
+        "entry": "tools/nvirsh/dist/index.js"
+      },
+      {
+        "name": "qemu",
+        "runtime": "node",
+        "cli-contract": "fetch,patch,build,run,inspect,logs",
+        "descriptorPath": "tools/qemu/tool.json",
+        "entry": "tools/qemu/dist/index.js"
+      },
+      {
+        "name": "sel4",
+        "runtime": "node",
+        "cli-contract": "fetch,patch,build,inspect,logs",
+        "descriptorPath": "tools/sel4/tool.json",
+        "entry": "tools/sel4/dist/index.js"
+      }
+    ]
+  }
+}

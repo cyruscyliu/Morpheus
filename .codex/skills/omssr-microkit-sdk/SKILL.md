@@ -11,9 +11,9 @@ Use this skill when you need to work with the repo-local `microkit-sdk` tool.
 
 ## Purpose
 
-`microkit-sdk` is a minimal local CLI for SDK directory inspection and managed
-builds. It validates the SDK directory, detects local version metadata when
-available, and exposes a stable artifact record that Morpheus can pass to
+`microkit-sdk` is a minimal local CLI for SDK directory inspection, fetch, and
+managed builds. It validates the SDK directory, detects local version metadata
+when available, and exposes a stable artifact record that Morpheus can pass to
 dependent tools such as `nvirsh`.
 
 ## First Steps
@@ -28,7 +28,10 @@ The public command tree is:
 
 ```text
 microkit-sdk inspect
+microkit-sdk fetch
+microkit-sdk patch
 microkit-sdk build
+microkit-sdk logs
 microkit-sdk version
 microkit-sdk help
 ```
@@ -37,15 +40,11 @@ microkit-sdk help
 
 - `microkit-sdk` owns local SDK inspection.
 - `microkit-sdk` owns archive fetch and unpack for managed SDK directories.
-- `morpheus tool build --tool microkit-sdk --mode local` behaves like a build
-  workflow when any build inputs are configured (for example
-  `tools.microkit-sdk.microkit-version` or `tools.microkit-sdk.microkit-dir`):
-  - ensures the Arm GNU aarch64-none-elf toolchain exists (records `toolchain-dir`)
-  - ensures the seL4 dependency exists and applies `tools.sel4.patch-dir`
-  - applies `tools.microkit-sdk.patch-dir` to the Microkit source tree when set
-  - builds the SDK when missing, otherwise reuses it
-- If only `tools.microkit-sdk.path` is configured (and no build inputs), Morpheus
-  records that directory as the managed `sdk-dir` artifact.
-- Source builds may also require an aarch64 bare-metal toolchain; Morpheus can
-  fetch and register this as an additional `toolchain-dir` artifact.
-- `nvirsh` should consume the resolved SDK artifact, not provision it.
+- `microkit-sdk` owns explicit patch application for managed SDK directories.
+- Use `build-version` as the common selector when the tool needs to fetch the
+  SDK source.
+- Morpheus owns workspace directory selection and passes those paths to the
+  tool CLI.
+- Managed execution should start from Morpheus workflows.
+- Morpheus owns dependency resolution and workspace policy.
+- The tool CLI should receive explicit resolved paths and flags.

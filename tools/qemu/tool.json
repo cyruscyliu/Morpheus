@@ -1,16 +1,59 @@
 {
   "name": "qemu",
   "runtime": "node",
+  "cli-contract": "fetch,patch,build,run,inspect,logs",
   "entry": "dist/index.js",
+  "config": {
+    "fields": {
+      "mode": { "aliases": ["mode"] },
+      "remote": { "aliases": ["remote"] },
+      "source": { "aliases": ["source"], "path": true },
+      "path": { "aliases": ["path", "executable"], "path": true },
+      "patch-dir": { "aliases": ["patch-dir", "patchDir"], "path": true },
+      "reuse-build-dir": { "aliases": ["reuse-build-dir", "reuseBuildDir"], "boolean": true },
+      "build-dir-key": { "aliases": ["build-dir-key", "buildDirKey"] },
+      "build-version": { "aliases": ["build-version", "buildVersion", "qemu-version", "qemuVersion"] },
+      "archive-url": { "aliases": ["archive-url", "archiveUrl"] },
+      "target-list": { "aliases": ["target-list", "targetList"], "repeatable": true },
+      "configure-arg": { "aliases": ["configure-arg", "configure-args", "configureArgs"], "repeatable": true },
+      "qemu-arg": { "aliases": ["qemu-arg", "qemu-args", "qemuArgs"], "repeatable": true },
+      "append": { "aliases": ["append"] },
+      "artifacts": { "aliases": ["artifacts"], "repeatable": true }
+    }
+  },
   "managed": {
     "schemaVersion": 1,
     "modes": ["local", "remote"],
     "local": {
       "artifactPath": "qemu-system-aarch64",
-      "sourceTemplate": "tools/qemu/src/qemu-{qemuVersion}",
+      "sourceTemplate": "tools/qemu/src/qemu-{buildVersion}",
       "downloadsDir": "tools/qemu/downloads",
       "buildDirTemplate": "tools/qemu/builds/{buildDirKey}/build",
-      "installDirTemplate": "tools/qemu/builds/{buildDirKey}/install"
+      "installDirTemplate": "tools/qemu/builds/{buildDirKey}/install",
+      "artifacts": {
+        "source-dir": {
+          "pathTemplate": "tools/qemu/src/qemu-{buildVersion}"
+        },
+        "qemu-system-aarch64": {
+          "pathTemplate": "tools/qemu/builds/{buildDirKey}/install/bin/qemu-system-aarch64"
+        }
+      },
+      "commands": {
+        "fetch": {
+          "pathFlags": {
+            "source": "tools/qemu/src/qemu-{buildVersion}",
+            "downloads-dir": "tools/qemu/downloads"
+          }
+        },
+        "build": {
+          "pathFlags": {
+            "source": "tools/qemu/src/qemu-{buildVersion}",
+            "downloads-dir": "tools/qemu/downloads",
+            "build-dir": "tools/qemu/builds/{buildDirKey}/build",
+            "install-dir": "tools/qemu/builds/{buildDirKey}/install"
+          }
+        }
+      }
     }
   }
 }

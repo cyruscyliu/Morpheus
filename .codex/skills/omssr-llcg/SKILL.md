@@ -12,9 +12,8 @@ Use this skill when you need to generate Linux kernel callgraphs with the
 with reusable mutators, and inspect the resulting run manifest and graph
 artifacts.
 
-When the task goes through Morpheus-managed tooling, treat `llcg` as a build
-tool. Use `tool build --tool llcg ...`, not `tool run --tool llcg ...`, so the
-workspace can reuse a stable build directory and keep intermediate outputs.
+When the task goes through Morpheus-managed tooling, treat `llcg` as a `run`
+tool. Use `morpheus run --tool llcg ...` or workflow steps with `command: run`.
 
 ## What The Tool Does
 

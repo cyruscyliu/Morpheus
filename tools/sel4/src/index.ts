@@ -89,6 +89,10 @@ function optionalStringFlag(flags: Record<string, unknown>, name: string) {
   return value || null;
 }
 
+function buildVersionFlag(flags: Record<string, unknown>) {
+  return optionalStringFlag(flags, 'build-version') || optionalStringFlag(flags, 'sel4-version');
+}
+
 function fileExists(filePath: string | null | undefined) {
   return Boolean(filePath && fs.existsSync(filePath));
 }
@@ -275,6 +279,16 @@ function writePatchState(source: string, state: unknown) {
   fs.writeFileSync(patchStatePath(source), `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 }
 
+function toolLogPath(source: string) {
+  return path.join(source, '.morpheus-tool.log');
+}
+
+function appendToolLog(source: string, message: string) {
+  const logFile = toolLogPath(source);
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
+  fs.appendFileSync(logFile, `${message}\n`, 'utf8');
+}
+
 function applyPatches(source: string, patchDir: string, patchFiles: string[], logFile: string) {
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
   fs.writeFileSync(logFile, '', 'utf8');
@@ -333,7 +347,7 @@ async function buildDirectory(flags: Record<string, unknown>) {
     throw new CliError('unsupported_flag', 'sel4 build no longer supports --git-url/--git-ref; use --archive-url or provide an existing --source directory');
   }
   const source = requirePathFlag(flags, 'source');
-  const sel4Version = optionalStringFlag(flags, 'sel4-version');
+  const sel4Version = buildVersionFlag(flags);
   const archiveUrl = optionalStringFlag(flags, 'archive-url');
   const patchDir = resolveOptionalPath(flags, 'patch-dir');
   const patchFiles = patchDir ? listPatchFiles(patchDir) : [];
@@ -380,6 +394,7 @@ async function buildDirectory(flags: Record<string, unknown>) {
         fingerprint,
       });
       const inspected = inspectDirectory({ path: source });
+      appendToolLog(source, 'build reused existing source directory');
       return {
         command: 'build',
         status: 'success',
@@ -471,6 +486,7 @@ async function buildDirectory(flags: Record<string, unknown>) {
   if (sel4Version && !firstVersionLine(source)) {
     fs.writeFileSync(path.join(source, '.morpheus-version'), `${sel4Version}\n`, 'utf8');
   }
+  appendToolLog(source, `build archive=${archivePath}`);
   const inspected = inspectDirectory({ path: source });
 
   return {
@@ -496,6 +512,99 @@ async function buildDirectory(flags: Record<string, unknown>) {
           log_file: patchLogFile,
         }
         : null,
+    },
+  };
+}
+
+async function fetchDirectory(flags: Record<string, unknown>) {
+  const nextFlags = { ...flags };
+  delete nextFlags['patch-dir'];
+  const result = await buildDirectory(nextFlags);
+  return {
+    ...result,
+    command: 'fetch',
+    summary: result.details.fetched_source
+      ? 'fetched managed seL4 source directory'
+      : 'reused managed seL4 source directory',
+  };
+}
+
+async function patchDirectory(flags: Record<string, unknown>) {
+  const source = requirePathFlag(flags, 'source');
+  const patchDir = requirePathFlag(flags, 'patch-dir');
+  if (!fileExists(source)) {
+    throw new CliError('missing_source', `Missing seL4 source directory: ${source}`);
+  }
+  if (!fileExists(patchDir)) {
+    throw new CliError('missing_directory', `Missing patch directory: ${patchDir}`);
+  }
+  const patchFiles = listPatchFiles(patchDir);
+  const fingerprint = patchFingerprint(patchDir, patchFiles);
+  const patchLogFile = path.join(source, '.morpheus-patches.log');
+  const state = readPatchState(source);
+  if (state && state.fingerprint === fingerprint) {
+    return {
+      command: 'patch',
+      status: 'success',
+      exit_code: 0,
+      summary: 'reused patched managed seL4 source directory',
+      details: {
+        source,
+        patches: {
+          dir: patchDir,
+          files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
+          fingerprint,
+          applied: true,
+          log_file: patchLogFile,
+        },
+      },
+    };
+  }
+  applyPatches(source, patchDir, patchFiles, patchLogFile);
+  appendToolLog(source, `patch patch_dir=${patchDir} patch_log=${patchLogFile}`);
+  writePatchState(source, {
+    appliedAt: new Date().toISOString(),
+    dir: patchDir,
+    files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
+    fingerprint,
+  });
+  return {
+    command: 'patch',
+    status: 'success',
+    exit_code: 0,
+    summary: 'patched managed seL4 source directory',
+    details: {
+      source,
+      patches: {
+        dir: patchDir,
+        files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
+        fingerprint,
+        applied: true,
+        log_file: patchLogFile,
+      },
+    },
+  };
+}
+
+function readLogs(flags: Record<string, unknown>) {
+  const source = resolveOptionalPath(flags, 'source') || resolveOptionalPath(flags, 'path');
+  if (!source) {
+    throw new CliError('missing_flag', 'sel4 logs requires --source DIR or --path DIR');
+  }
+  const logFile = fs.existsSync(toolLogPath(source))
+    ? toolLogPath(source)
+    : path.join(source, '.morpheus-patches.log');
+  if (!fs.existsSync(logFile)) {
+    throw new CliError('missing_log', `Missing seL4 log file: ${logFile}`);
+  }
+  return {
+    command: 'logs',
+    status: 'success',
+    exit_code: 0,
+    summary: 'read local seL4 log',
+    details: {
+      log_file: logFile,
+      text: fs.readFileSync(logFile, 'utf8'),
     },
   };
 }
@@ -535,6 +644,33 @@ async function main(argv: string[]) {
         emitJson(result);
       } else {
         emitText(result.details.directory.path);
+      }
+      return 0;
+    }
+    case 'fetch': {
+      const result = await fetchDirectory(parsed.flags);
+      if (parsed.json) {
+        emitJson(result);
+      } else {
+        emitText(result.details.directory.path);
+      }
+      return 0;
+    }
+    case 'patch': {
+      const result = await patchDirectory(parsed.flags);
+      if (parsed.json) {
+        emitJson(result);
+      } else {
+        emitText(result.details.source);
+      }
+      return 0;
+    }
+    case 'logs': {
+      const result = readLogs(parsed.flags);
+      if (parsed.json) {
+        emitJson(result);
+      } else {
+        emitText(result.details.text);
       }
       return 0;
     }

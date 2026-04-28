@@ -1,5 +1,43 @@
 {
   "name": "microkit-sdk",
   "runtime": "node",
-  "entry": "dist/index.js"
+  "cli-contract": "fetch,patch,build,inspect,logs",
+  "entry": "dist/index.js",
+  "config": {
+    "fields": {
+      "mode": { "aliases": ["mode"] },
+      "path": { "aliases": ["path", "source"], "path": true },
+      "build-version": { "aliases": ["build-version", "buildVersion", "microkit-version", "microkitVersion"] },
+      "archive-url": { "aliases": ["archive-url", "archiveUrl"] },
+      "microkit-archive-url": { "aliases": ["microkit-archive-url", "microkitArchiveUrl"] },
+      "microkit-dir": { "aliases": ["microkit-dir", "microkitDir"], "path": true },
+      "patch-dir": { "aliases": ["patch-dir", "patchDir"], "path": true },
+      "boards": { "aliases": ["boards"] },
+      "configs": { "aliases": ["configs"] },
+      "toolchain-dir": { "aliases": ["toolchain-dir", "toolchainDir"], "path": true },
+      "toolchain-version": { "aliases": ["toolchain-version", "toolchainVersion"] },
+      "toolchain-archive-url": { "aliases": ["toolchain-archive-url", "toolchainArchiveUrl"] },
+      "toolchain-prefix-aarch64": { "aliases": ["toolchain-prefix-aarch64", "toolchainPrefixAarch64"] },
+      "rust-version": { "aliases": ["rust-version", "rustVersion"] },
+      "reuse-build-dir": { "aliases": ["reuse-build-dir", "reuseBuildDir"], "boolean": true },
+      "build-dir-key": { "aliases": ["build-dir-key", "buildDirKey"] },
+      "artifacts": { "aliases": ["artifacts"], "repeatable": true }
+    }
+  },
+  "managed": {
+    "schemaVersion": 1,
+    "modes": ["local"],
+    "local": {
+      "sourceTemplate": "tools/microkit-sdk/builds/{buildDirKey}/install",
+      "downloadsDir": "tools/microkit-sdk/downloads",
+      "artifacts": {
+        "sdk-dir": {
+          "pathTemplate": "tools/microkit-sdk/builds/{buildDirKey}/install"
+        },
+        "toolchain-dir": {
+          "pathTemplate": "tools/microkit-sdk/deps/arm-gnu-toolchain-{toolchainVersion}"
+        }
+      }
+    }
+  }
 }

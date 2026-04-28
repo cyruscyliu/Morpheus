@@ -1638,6 +1638,43 @@ def command_inspect(args) -> int:
     return print_result(inspected, args.json)
 
 
+def command_logs(args) -> int:
+    manifest_path = Path(args.target).resolve()
+    payload = read_json(manifest_path)
+    details = payload.get("details", {}) if isinstance(payload, dict) else {}
+    paths = payload.get("paths", {}) if isinstance(payload, dict) else {}
+    artifacts = payload.get("artifacts", {}) if isinstance(payload, dict) else {}
+
+    log_file = (
+        details.get("log_file")
+        or details.get("logFile")
+        or (paths.get("log_file", {}) if isinstance(paths.get("log_file"), dict) else {}).get("resolved_path")
+        or (artifacts.get("log_file", {}) if isinstance(artifacts.get("log_file"), dict) else {}).get("resolved_path")
+    )
+    if not log_file and details.get("output"):
+        candidate = Path(details["output"]).resolve() / "llcg.log"
+        if candidate.exists():
+            log_file = str(candidate)
+    if not log_file:
+        raise ValueError(f"{manifest_path} does not describe a stable llcg log file")
+
+    log_path = Path(log_file).resolve()
+    if not log_path.exists():
+        raise ValueError(f"log file not found: {log_path}")
+
+    payload = {
+        "command": "logs",
+        "status": "success",
+        "exit_code": 0,
+        "summary": "read llcg log",
+        "details": {
+            "log_file": str(log_path),
+            "text": log_path.read_text(),
+        },
+    }
+    return print_result(payload, args.json)
+
+
 def add_common_runtime_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--output", "-o", default=str(DEFAULT_OUT_DIR))
     parser.add_argument("--clang", required=True)
@@ -1688,6 +1725,10 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_parser.add_argument("target")
     inspect_parser.add_argument("--json", action="store_true")
     inspect_parser.set_defaults(handler=command_inspect)
+    logs_parser = subparsers.add_parser("logs", help="Read the stable llcg log from an existing manifest JSON.")
+    logs_parser.add_argument("target")
+    logs_parser.add_argument("--json", action="store_true")
+    logs_parser.set_defaults(handler=command_logs)
     return parser
 
 

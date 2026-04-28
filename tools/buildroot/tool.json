@@ -1,5 +1,59 @@
 {
   "name": "buildroot",
   "runtime": "node",
-  "entry": "dist/index.js"
+  "cli-contract": "fetch,patch,build,inspect,logs",
+  "entry": "dist/index.js",
+  "config": {
+    "fields": {
+      "mode": { "aliases": ["mode"] },
+      "remote": { "aliases": ["remote"] },
+      "source": { "aliases": ["source"], "path": true },
+      "patch-dir": { "aliases": ["patch-dir", "patchDir"], "path": true },
+      "reuse-build-dir": { "aliases": ["reuse-build-dir", "reuseBuildDir"], "boolean": true },
+      "build-dir-key": { "aliases": ["build-dir-key", "buildDirKey"] },
+      "build-version": { "aliases": ["build-version", "buildVersion", "buildroot-version", "buildrootVersion"] },
+      "archive-url": { "aliases": ["archive-url", "archiveUrl"] },
+      "defconfig": { "aliases": ["defconfig"] },
+      "config-fragment": { "aliases": ["config-fragment", "configFragment"], "repeatable": true },
+      "artifacts": { "aliases": ["artifacts"], "repeatable": true }
+    }
+  },
+  "managed": {
+    "schemaVersion": 1,
+    "modes": ["local", "remote"],
+    "local": {
+      "sourceTemplate": "tools/buildroot/src/buildroot-{buildVersion}",
+      "outputDirTemplate": "tools/buildroot/builds/{buildDirKey}/output",
+      "downloadsDir": "tools/buildroot/downloads",
+      "artifacts": {
+        "source-dir": {
+          "pathTemplate": "tools/buildroot/src/buildroot-{buildVersion}"
+        },
+        "images/Image": {
+          "pathTemplate": "tools/buildroot/builds/{buildDirKey}/output/images/Image"
+        },
+        "images/rootfs.cpio.gz": {
+          "pathTemplate": "tools/buildroot/builds/{buildDirKey}/output/images/rootfs.cpio.gz"
+        }
+      },
+      "fetchFlags": ["archive-url", "downloads-dir"],
+      "commands": {
+        "fetch": {
+          "pathFlags": {
+            "source": "tools/buildroot/src/buildroot-{buildVersion}",
+            "downloads-dir": "tools/buildroot/downloads"
+          }
+        },
+        "build": {
+          "pathFlags": {
+            "source": "tools/buildroot/src/buildroot-{buildVersion}",
+            "build-dir": "tools/buildroot/builds/{buildDirKey}/output"
+          },
+          "flagAliases": {
+            "build-dir": "output"
+          }
+        }
+      }
+    }
+  }
 }

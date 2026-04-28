@@ -7,6 +7,10 @@ build one of its examples given an existing Microkit SDK. It treats the
 checkout root as a first-class artifact so Morpheus-managed workflows can
 depend on it.
 
+When Morpheus manages `libvmm`, use `tools.libvmm.build-version` in
+`morpheus.yaml` as the common version selector. Morpheus maps that selector to
+the libvmm tool's `--git-ref` input.
+
 ## Quick start
 
 ```bash
@@ -96,6 +100,9 @@ This repo also ships an upstreamable patch you can apply via `--patch-dir`:
 
 Morpheus-managed builds should set `tools.libvmm.patch-dir` in `morpheus.yaml`
 to a workspace-local directory (for example `<workspace>/tools/libvmm/patches`).
+
+Morpheus-managed builds should also prefer `tools.libvmm.build-version` over
+tool-specific `git-ref` naming in `morpheus.yaml`.
 
 If you want to use the patches shipped in this repo directly, you can also set
 `tools.libvmm.patch-dir` to `tools/libvmm/patches` (repo-relative).

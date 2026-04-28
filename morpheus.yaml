@@ -4,22 +4,42 @@ workspace:
 remote:
   ssh: debian@mcc96e5308801.dyn.epfl.ch
   workspace:
-    root: /home/debian/hyperarm-workspace
+    root: /home/debian/hyperarm-workspace2
 
 tools:
   buildroot:
     mode: remote
     sync-morpheus: true
+    cli-contract: fetch,patch,build
+    build-version: 2025.02.12
     reuse-build-dir: true
     build-dir-key: arm64-dev
     patch-dir: tools/buildroot/patches
+    defconfig: qemu_aarch64_virt_defconfig
+    make-args:
+      - -j$(nproc)
+    config-fragment:
+      - BR2_LINUX_KERNEL=y
+      - BR2_LINUX_KERNEL_CUSTOM_VERSION=y
+      - BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.16"
+      - BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
+      - BR2_TARGET_GENERIC_GETTY=y
+      - BR2_TARGET_GENERIC_GETTY_PORT="console"
+      - BR2_TARGET_ROOTFS_CPIO=y
+      - BR2_TARGET_ROOTFS_CPIO_GZIP=y
+      - BR2_ROOTFS_POST_IMAGE_SCRIPT=""
+      - BR2_ROOTFS_POST_SCRIPT_ARGS=""
+      - BR2_PACKAGE_PCIUTILS=y
+      - BR2_PACKAGE_DROPBEAR=y
+      - BR2_TARGET_GENERIC_ROOT_PASSWD="root"
     artifacts:
       - images/Image
       - images/rootfs.cpio.gz
   qemu:
     mode: remote
     sync-morpheus: true
-    qemu-version: 8.2.7
+    cli-contract: fetch,patch,build,run
+    build-version: 8.2.7
     reuse-build-dir: true
     build-dir-key: qemu-8.2.7-aarch64-softmmu
     patch-dir: tools/qemu/patches
@@ -29,6 +49,7 @@ tools:
       - qemu-system-aarch64
   microkit-sdk:
     mode: local
+    cli-contract: fetch,patch,build
     reuse-build-dir: true
     build-dir-key: microkit-sdk-2.1.0
     microkit-archive-url: https://github.com/seL4/microkit/archive/119044f9573674342cedb9694142cce7b832d2ff.tar.gz
@@ -42,7 +63,7 @@ tools:
   llbic:
     mode: remote
     sync-morpheus: true
-    reuse-build-dir: true
+    cli-contract: run
     arch: arm64
     clang: 15
     out-of-tree: true
@@ -59,6 +80,7 @@ tools:
   llcg:
     mode: local
     sync-morpheus: true
+    cli-contract: run
     arch: arm64
     clang: 15
     reuse-build-dir: true
@@ -84,6 +106,7 @@ tools:
       - log_file
   libvmm:
     mode: local
+    cli-contract: fetch,patch,build,run
     reuse-build-dir: true
     build-dir-key: libvmm-2fd1d64d
     git-ref: 2fd1d64d7805ad1647af6e2a832e4671d0d40297
@@ -94,7 +117,7 @@ tools:
       microkit-sdk:
         tool: microkit-sdk
         artifact: sdk-dir
-      toolchain:
+      toolchain-bin-dir:
         tool: microkit-sdk
         artifact: toolchain-dir
     artifacts:
@@ -104,7 +127,8 @@ tools:
       - runtime-contract
   sel4:
     mode: local
-    sel4-version: c0fc32450fb5e8460083b89a84d067249b109cfc
+    cli-contract: fetch,patch,build
+    build-version: c0fc32450fb5e8460083b89a84d067249b109cfc
     reuse-build-dir: true
     build-dir-key: sel4-c0fc3245
     archive-url: https://github.com/seL4/seL4/archive/c0fc32450fb5e8460083b89a84d067249b109cfc.tar.gz
@@ -113,6 +137,7 @@ tools:
       - source-dir
   nvirsh:
     mode: local
+    cli-contract: run
     target: sel4
     name: sel4-dev
     board: qemu_virt_aarch64
@@ -126,7 +151,7 @@ tools:
       qemu:
         tool: qemu
         artifact: qemu-system-aarch64
-      libvmm:
+      libvmm-dir:
         tool: libvmm
         artifact: libvmm-dir
       kernel:
@@ -140,42 +165,23 @@ workflows:
   build-buildroot:
     category: build
     steps:
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/buildroot/patches"
       - id: buildroot
         tool: buildroot
         command: build
         args:
-          - --buildroot-version
-          - 2025.02.12
-          - --defconfig
-          - qemu_aarch64_virt_defconfig
-          - --make-arg
-          - -j$(nproc)
-          - --config-fragment
-          - BR2_LINUX_KERNEL=y
-          - --config-fragment
-          - BR2_LINUX_KERNEL_CUSTOM_VERSION=y
-          - --config-fragment
-          - BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.16"
-          - --config-fragment
-          - BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
-          - --config-fragment
-          - BR2_TARGET_GENERIC_GETTY=y
-          - --config-fragment
-          - BR2_TARGET_GENERIC_GETTY_PORT="console"
-          - --config-fragment
-          - BR2_TARGET_ROOTFS_CPIO=y
-          - --config-fragment
-          - BR2_TARGET_ROOTFS_CPIO_GZIP=y
-          - --config-fragment
-          - BR2_ROOTFS_POST_IMAGE_SCRIPT=""
-          - --config-fragment
-          - BR2_ROOTFS_POST_SCRIPT_ARGS=""
-          - --config-fragment
-          - BR2_PACKAGE_PCIUTILS=y
-          - --config-fragment
-          - BR2_PACKAGE_DROPBEAR=y
-          - --config-fragment
-          - BR2_TARGET_GENERIC_ROOT_PASSWD="root"
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
   local-buildroot-qemu-runtime:
     category: run
     steps:

@@ -19,89 +19,30 @@
 - Prefer explicit flags and arguments over hidden state.
 - Use stable field names and predictable exit codes.
 - Keep output deterministic for scripts and agents.
-- Stream logs by default for long-running commands and workflows.
-- Prefer incremental stdout/stderr forwarding over buffered output.
-- Write streaming run logs under `<workspace>/runs/` so shell and web viewers can
-  observe updates in real time.
-- Keep tool semantics thin; wrap upstream tools cleanly.
-- Treat remote mode as a transport: keep tool behavior local-shaped, run the
-  same managed tool command remotely, and avoid provider-specific tool
-  semantics.
+- Keep tool semantics thin and testable.
+- Treat remote mode as transport, not as a separate tool contract.
 - Require explicit user intent for ambiguous or destructive actions.
-- Prefer persistent metadata for long-running or remote workflows.
-- Keep implementations small, testable, and easy to extend.
-- When adding a new CLI package or tool, update the relevant `pnpm` workspace,
-  build, lint, test, and smoke commands as needed.
+- When adding a new CLI package or tool, update the relevant build, lint,
+  test, and smoke commands.
 - When adding a repo-local tool wrapper, declare it in `tools/<tool>/tool.json`
   so `install:bin` can discover it automatically.
 - When updating a tool, update its skill and `tools/<tool>/README.md` in the
   same change.
-- When inspecting Morpheus-managed tool runs (especially remote runs), use the
-  Morpheus `tool` subcommands instead of direct remote shell access.
-- In this workspace, do not invoke `tools/llbic/llbic` directly for real runs.
-  Use Morpheus-managed `tool build --tool llbic ...` so `morpheus.yaml`
-  controls the execution mode. If a local check is needed, keep it to
-  non-compiling fixture or parsing validation, or an explicitly scoped build.
-- For source-managing tools such as Buildroot and QEMU, prefer stable managed
-  source paths under `<workspace>/tools/<tool>/src/`.
-- For those tools, keep reusable builds under
-  `<workspace>/tools/<tool>/builds/`.
-- Store workflow and tool execution records under `<workspace>/runs/`.
-- Deprecate `<workspace>/{builds,cache,downloads,sources}` at the workspace
-  root; keep caches under `<workspace>/tools/<tool>/...`.
-- Treat external source trees as transient sync inputs when needed, not as the
-  canonical paths stored in `morpheus.yaml`.
 
 ## `tools/` README Principles
 
 - Write `tools/<name>/README.md` for both humans and agents.
 - Start with a short one-line summary under the title.
-- Add badges near the top when they help communicate status or metadata.
-- Add a short positioning paragraph after the summary.
 - Include a `Quick start` section near the top.
 - Show one canonical command for the main workflow.
-- Explain what that command does in a short bullet list.
-- Show the expected output layout when files are produced.
 - Include at least one `--json` example when supported.
-- Show an abridged machine-readable response shape when relevant.
 - Add a `Usage` section with the public command tree.
 - Document commands by user intent, not only by flags.
-- Add a `Flags` section when options are non-trivial.
 - Include realistic examples for common and advanced paths.
 - Use repo-relative paths in examples.
-- Explain multi-environment modes such as local, remote, or container.
 - Keep README structure easy to scan.
 
-## Managed workspace layout
+## Workspace Rule
 
-Morpheus-managed workspaces follow a stable on-disk layout under `<workspace>/`.
-
-- `runs/`: centered run directories (preferred).
-  - Contains both tool runs (for example `buildroot-...`) and multi-step
-    workflow runs (for example `wf-...`).
-  - Each run directory is self-contained and includes `manifest.json` and logs.
-- `tools/<tool>/`: per-tool state and artifacts.
-  - `src/`: stable tool inputs (checkouts, extracted sources).
-  - `builds/<key>/`: reusable build outputs.
-    - For source-building tools, prefer `builds/<key>/source/` and
-      `builds/<key>/install/`.
-  - `downloads/`: cached archives fetched by Morpheus-managed tool builds.
-  - `patches/`: workspace-local patch trees applied during provisioning.
-- `tmp/`: transient scratch space for long-running workflows.
-
-Abridged tree:
-
-```text
-<workspace>/
-  runs/<run-id>/
-    manifest.json
-    stdout.log
-  tools/<tool>/
-    downloads/
-    patches/
-    src/
-    builds/<key>/
-      source/
-      install/
-  tmp/
-```
+- Treat `<workspace>/tools/`, `<workspace>/runs/`, and `<workspace>/tmp/` as
+  the stable Morpheus-managed layout.

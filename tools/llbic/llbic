@@ -2875,6 +2875,52 @@ cmd_inspect() {
   fi
 }
 
+cmd_logs() {
+  local target=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --help|-h) cmd_help logs; exit 0 ;;
+      *)
+        [[ -z "${target}" ]] || die "logs accepts a single target path"
+        target="$1"
+        ;;
+    esac
+    shift
+  done
+
+  [[ -n "${target}" ]] || die "logs requires an output directory or llbic.json path"
+
+  local output_dir=""
+  local json_file=""
+  if [[ -d "${target}" ]]; then
+    output_dir="$(cd "${target}" && pwd)"
+    json_file="${output_dir}/llbic.json"
+  else
+    json_file="$(cd "$(dirname "${target}")" && pwd)/$(basename "${target}")"
+    [[ -f "${json_file}" ]] || die "logs target not found: ${target}"
+    if [[ "$(basename "${json_file}")" != "llbic.json" ]]; then
+      die "logs expects an output directory or llbic.json path"
+    fi
+    output_dir="$(dirname "${json_file}")"
+  fi
+
+  local log_file="${output_dir}/llbic.log"
+  [[ -f "${log_file}" ]] || die "llbic.log not found under: ${output_dir}"
+
+  if [[ "${JSON_OUTPUT:-0}" -eq 1 ]]; then
+    printf '{"command":"logs","status":"success","exit_code":0,'
+    printf '"summary":"read llbic log",'
+    printf '"details":{"log_file":"%s","text":' "$(json_escape "${log_file}")"
+    python3 - <<'PY' "${log_file}"
+import json, pathlib, sys
+sys.stdout.write(json.dumps(pathlib.Path(sys.argv[1]).read_text()))
+PY
+    printf '}}\n'
+  else
+    cat "${log_file}"
+  fi
+}
+
 # ============================================================
 # help
 # ============================================================
@@ -2976,6 +3022,16 @@ ${BOLD}Reports:${NC}
 EOF
       return 0
       ;;
+    logs)
+      cat <<EOF
+${BOLD}llbic logs${NC} — print the stable llbic log for an output directory
+
+${BOLD}Usage:${NC}
+  llbic logs <output-dir|llbic.json> [--json]
+
+EOF
+      return 0
+      ;;
     clean)
       cat <<EOF
 ${BOLD}llbic clean${NC} — remove generated sources or build outputs
@@ -2992,22 +3048,27 @@ EOF
 ${BOLD}llbic${NC} — Compile Linux kernels to LLVM bitcode
 
 ${BOLD}Usage:${NC}
+  llbic run <version> [options]
   llbic build <version> [options]
   llbic download [VERSION|URL ...] [--json]
   llbic extract [--json]
   llbic compile [KERNEL_NAME] [options]
   llbic inspect <output-dir|llbic.json> [--json]
+  llbic logs <output-dir|llbic.json> [--json]
   llbic clean [build|sources|all] [--json]
 
 ${BOLD}Commands:${NC}
+  run       alias of build for managed execution
   build     download, extract, compile, and emit llbic.json
   download  fetch kernel source archives only
   extract   unpack downloaded archives only
   compile   compile extracted linux-* trees only
   inspect   summarize existing llbic build state without rerunning
+  logs      print the stable llbic log for an existing build
   clean     remove generated build or source artifacts
 
 ${BOLD}Examples:${NC}
+  llbic run 6.18.16                   # managed alias of build
   llbic build 6.18.16                 # canonical build command
   llbic build 6.19.7 --rust --out-of-tree --json
   llbic build 6.18.16 --file kernel/sched/core.c --json
@@ -3017,6 +3078,7 @@ ${BOLD}Examples:${NC}
   llbic compile linux-6.18.16 --json  # compile extracted source tree
   llbic inspect out/linux-6.18.16-x86_64-clang18
   llbic inspect out/linux-6.18.16-x86_64-clang18/llbic.json --json
+  llbic logs out/linux-6.18.16-x86_64-clang18
 
 ${BOLD}Canonical build options:${NC}
   --outtree, --out-of-tree            Build with O=<out dir> (recommended)
@@ -3065,11 +3127,13 @@ main() {
   case "${cmd}" in
     version|--version|-v) echo "llbic ${VERSION}" ;;
     help|--help|-h)       cmd_help "${1:-main}" ;;
+    run)                  cmd_build "$@" ;;
     build)                cmd_build "$@" ;;
     download)             cmd_download "$@" ;;
     extract)              cmd_extract "$@" ;;
     compile)              cmd_compile "$@" ;;
     inspect)              cmd_inspect "$@" ;;
+    logs)                 cmd_logs "$@" ;;
     clean)                cmd_clean "$@" ;;
     list)                 cmd_list "$@" ;;
     -*)

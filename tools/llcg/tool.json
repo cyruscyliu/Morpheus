@@ -1,5 +1,6 @@
 {
   "name": "llcg",
   "runtime": "exec",
+  "cli-contract": "run,inspect,logs",
   "entry": "bin/llcg"
 }

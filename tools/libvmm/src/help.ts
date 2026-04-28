@@ -18,10 +18,36 @@ export const COMMANDS: HelpTopic[] = [
     ],
   },
   {
+    name: 'fetch',
+    summary: 'Fetch or update a managed libvmm source directory',
+    usage: [
+      'libvmm fetch --source DIR [--git-url URL] [--build-version REF] [--git-ref REF] [--json]',
+    ],
+    flags: [
+      '--source DIR',
+      '--git-url URL (default: https://github.com/au-ts/libvmm)',
+      '--build-version REF (alias of --git-ref)',
+      '--git-ref REF (default: main)',
+      '--json',
+    ],
+  },
+  {
+    name: 'patch',
+    summary: 'Apply a patch tree to a managed libvmm source directory',
+    usage: [
+      'libvmm patch --source DIR --patch-dir DIR [--json]',
+    ],
+    flags: [
+      '--source DIR',
+      '--patch-dir DIR',
+      '--json',
+    ],
+  },
+  {
     name: 'build',
     summary: 'Fetch/update libvmm source and build an example',
     usage: [
-      'libvmm build --source DIR --microkit-sdk DIR --board NAME [--example NAME] [--patch-dir DIR] [--linux PATH] [--initrd PATH] [--qemu PATH] [--toolchain-bin-dir DIR] [--git-url URL] [--git-ref REF] [--make-target TARGET] [--make-arg ARG ...] [--json]',
+      'libvmm build --source DIR --microkit-sdk DIR --board NAME [--example NAME] [--patch-dir DIR] [--linux PATH] [--initrd PATH] [--qemu PATH] [--toolchain-bin-dir DIR] [--git-url URL] [--build-version REF] [--git-ref REF] [--make-target TARGET] [--make-arg ARG ...] [--json]',
     ],
     flags: [
       '--source DIR',
@@ -34,6 +60,7 @@ export const COMMANDS: HelpTopic[] = [
       '--qemu PATH (optional; passed as QEMU=... to make)',
       '--toolchain-bin-dir DIR (optional; prepended to PATH)',
       '--git-url URL (default: https://github.com/au-ts/libvmm)',
+      '--build-version REF (alias of --git-ref)',
       '--git-ref REF (default: main)',
       '--make-target TARGET (default: empty; uses Makefile default)',
       '--make-arg ARG (repeatable)',
@@ -59,6 +86,19 @@ export const COMMANDS: HelpTopic[] = [
       '--toolchain-bin-dir DIR (optional; prepended to PATH)',
       '--run-dir DIR (optional; defaults under the libvmm directory)',
       '--detach',
+      '--json',
+    ],
+  },
+  {
+    name: 'logs',
+    summary: 'Read stable local libvmm logs',
+    usage: [
+      'libvmm logs --source DIR [--json]',
+      'libvmm logs --run-dir DIR [--json]',
+    ],
+    flags: [
+      '--source DIR',
+      '--run-dir DIR',
       '--json',
     ],
   },

@@ -69,7 +69,7 @@ Expected pinned compatibility:
 ```bash
 ./bin/morpheus workspace create
 
-./bin/morpheus --json tool build --tool nvirsh
+./bin/morpheus build --tool nvirsh --json
 ```
 
 That stages dependencies and prepares `nvirsh` state only.
@@ -77,14 +77,14 @@ That stages dependencies and prepares `nvirsh` state only.
 To launch the runtime provider in detached mode:
 
 ```bash
-./bin/morpheus --json tool run --tool nvirsh
+./bin/morpheus run --tool nvirsh --json -- [tool run flags]
 ```
 
 To attach to the VM console (interactive), omit `--json` and pass `--attach` to
 Morpheus:
 
 ```bash
-./bin/morpheus tool run --tool nvirsh --attach
+./bin/morpheus run --tool nvirsh -- --attach
 ```
 
 ## Boundary Rules
@@ -94,4 +94,5 @@ Morpheus:
 - Pass explicit runtime artifact paths to `nvirsh`.
 - Prefer managed Morpheus tool dependencies for `qemu`, `microkit-sdk`, and
   `sel4` when those artifacts are already registered.
-- Prefer Morpheus `tool` subcommands when the workflow depends on other tools.
+- Prefer Morpheus top-level wrappers or workflows when dependency resolution
+  matters.

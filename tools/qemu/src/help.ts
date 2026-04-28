@@ -8,14 +8,38 @@ export const COMMANDS = [
     ],
   },
   {
-    name: 'build',
-    summary: 'Fetch, unpack, build, and install QEMU',
+    name: 'fetch',
+    summary: 'Fetch and unpack managed QEMU source',
     usage: [
-      'qemu build --source DIR [--qemu-version VER] [--archive-url URL] --build-dir DIR --install-dir DIR [--downloads-dir DIR] [--target-list NAME ...] [--configure-arg ARG ...]',
+      'qemu fetch --source DIR [--build-version VER] [--archive-url URL] [--downloads-dir DIR]',
     ],
     flags: [
       { name: '--source DIR', summary: 'Managed QEMU source tree' },
-      { name: '--qemu-version VER', summary: 'QEMU version to fetch when --source is missing' },
+      { name: '--build-version VER', summary: 'QEMU version to fetch when --source is missing' },
+      { name: '--archive-url URL', summary: 'Override archive URL for fetches or tests' },
+      { name: '--downloads-dir DIR', summary: 'Directory used to cache fetched archives' },
+    ],
+  },
+  {
+    name: 'patch',
+    summary: 'Apply a patch tree to managed QEMU source',
+    usage: [
+      'qemu patch --source DIR --patch-dir DIR',
+    ],
+    flags: [
+      { name: '--source DIR', summary: 'Managed QEMU source tree' },
+      { name: '--patch-dir DIR', summary: 'Directory containing patches to apply' },
+    ],
+  },
+  {
+    name: 'build',
+    summary: 'Fetch, unpack, build, and install QEMU',
+    usage: [
+      'qemu build --source DIR [--build-version VER] [--archive-url URL] --build-dir DIR --install-dir DIR [--downloads-dir DIR] [--target-list NAME ...] [--configure-arg ARG ...]',
+    ],
+    flags: [
+      { name: '--source DIR', summary: 'Managed QEMU source tree' },
+      { name: '--build-version VER', summary: 'QEMU version to fetch when --source is missing' },
       { name: '--archive-url URL', summary: 'Override archive URL for fetches or tests' },
       { name: '--build-dir DIR', summary: 'Build directory' },
       { name: '--install-dir DIR', summary: 'Install prefix' },
@@ -38,6 +62,16 @@ export const COMMANDS = [
       { name: '--append TEXT', summary: 'Kernel command line' },
       { name: '--qemu-arg ARG', summary: 'Repeatable extra QEMU argument' },
       { name: '--detach', summary: 'Start QEMU in the background' },
+    ],
+  },
+  {
+    name: 'logs',
+    summary: 'Read stable local QEMU logs',
+    usage: ['qemu logs --build-dir DIR', 'qemu logs --run-dir DIR', 'qemu logs --source DIR'],
+    flags: [
+      { name: '--build-dir DIR', summary: 'Build directory containing build.log' },
+      { name: '--run-dir DIR', summary: 'Run directory containing stdout.log' },
+      { name: '--source DIR', summary: 'Source directory containing stable tool logs' },
     ],
   },
   {

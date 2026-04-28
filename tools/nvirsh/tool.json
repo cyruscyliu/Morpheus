@@ -1,5 +1,55 @@
 {
   "name": "nvirsh",
   "runtime": "node",
-  "entry": "dist/index.js"
+  "cli-contract": "build,run,inspect,logs",
+  "entry": "dist/index.js",
+  "config": {
+    "fields": {
+      "mode": { "aliases": ["mode"] },
+      "path": { "aliases": ["path"], "path": true },
+      "state-dir": { "aliases": ["state-dir", "stateDir"], "path": true },
+      "target": { "aliases": ["target"] },
+      "name": { "aliases": ["name"] },
+      "board": { "aliases": ["board"] },
+      "qemu": { "aliases": ["qemu"], "path": true },
+      "microkit-sdk": { "aliases": ["microkit-sdk", "microkitSdk"], "path": true },
+      "microkit-version": { "aliases": ["microkit-version", "microkitVersion"] },
+      "microkit-config": { "aliases": ["microkit-config", "microkitConfig"] },
+      "toolchain": { "aliases": ["toolchain"], "path": true },
+      "libvmm-dir": { "aliases": ["libvmm-dir", "libvmmDir"], "path": true },
+      "runtime-contract": { "aliases": ["runtime-contract", "runtimeContract"], "path": true },
+      "runtime-action": { "aliases": ["runtime-action", "runtimeAction"] },
+      "kernel": { "aliases": ["kernel"], "path": true },
+      "initrd": { "aliases": ["initrd"], "path": true },
+      "qemu-arg": { "aliases": ["qemu-arg", "qemu-args", "qemuArgs"], "repeatable": true },
+      "attach": { "aliases": ["attach"], "boolean": true },
+      "dependencies": { "aliases": ["dependencies"] }
+    }
+  },
+  "inputs": {
+    "build": {
+      "dependencies": {
+        "qemu": { "flag": "qemu" },
+        "microkit-sdk": { "flag": "microkit-sdk" },
+        "toolchain-bin-dir": { "flag": "toolchain" },
+        "libvmm-dir": { "flag": "libvmm-dir" }
+      },
+      "config": {
+        "runtime.provider": { "flag": "runtime-contract" }
+      }
+    },
+    "run": {
+      "dependencies": {
+        "qemu": { "flag": "qemu" },
+        "microkit-sdk": { "flag": "microkit-sdk" },
+        "toolchain-bin-dir": { "flag": "toolchain" },
+        "libvmm-dir": { "flag": "libvmm-dir" },
+        "kernel": { "flag": "kernel" },
+        "initrd": { "flag": "initrd" }
+      },
+      "config": {
+        "runtime.provider": { "flag": "runtime-contract" }
+      }
+    }
+  }
 }

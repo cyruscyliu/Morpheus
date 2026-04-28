@@ -4,6 +4,7 @@ import path from 'node:path';
 import process from 'node:process';
 import http from 'node:http';
 import https from 'node:https';
+import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
@@ -86,6 +87,10 @@ function requirePathFlag(flags: Record<string, unknown>, name: string) {
 function optionalStringFlag(flags: Record<string, unknown>, name: string) {
   const value = String(flags[name] || '').trim();
   return value || null;
+}
+
+function buildVersionFlag(flags: Record<string, unknown>) {
+  return optionalStringFlag(flags, 'build-version') || optionalStringFlag(flags, 'microkit-version');
 }
 
 function fileExists(filePath: string | null | undefined) {
@@ -198,6 +203,91 @@ function extractArchive(archivePath: string, destination: string) {
   }
 }
 
+function listPatchFiles(patchDir: string) {
+  const results: string[] = [];
+  const stack: string[] = [patchDir];
+
+  while (stack.length > 0) {
+    const current = stack.pop() as string;
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      if (entry.name.startsWith('.')) {
+        continue;
+      }
+      const nextPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(nextPath);
+        continue;
+      }
+      if (entry.isFile() && (entry.name.endsWith('.patch') || entry.name.endsWith('.diff'))) {
+        results.push(nextPath);
+      }
+    }
+  }
+
+  results.sort((a, b) => a.localeCompare(b));
+  return results;
+}
+
+function patchFingerprint(patchDir: string, patchFiles: string[]) {
+  const hash = crypto.createHash('sha256');
+  for (const filePath of patchFiles) {
+    hash.update(path.relative(patchDir, filePath));
+    hash.update('\0');
+    hash.update(fs.readFileSync(filePath));
+    hash.update('\0');
+  }
+  return hash.digest('hex');
+}
+
+function patchStatePath(source: string) {
+  return path.join(source, '.morpheus-patches.json');
+}
+
+function readPatchState(source: string) {
+  const statePath = patchStatePath(source);
+  if (!fs.existsSync(statePath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function writePatchState(source: string, state: unknown) {
+  fs.writeFileSync(patchStatePath(source), `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+}
+
+function toolLogPath(source: string) {
+  return path.join(source, '.morpheus-tool.log');
+}
+
+function appendToolLog(source: string, message: string) {
+  const logFile = toolLogPath(source);
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
+  fs.appendFileSync(logFile, `${message}\n`, 'utf8');
+}
+
+function applyPatches(source: string, patchDir: string, patchFiles: string[], logFile: string) {
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
+  fs.writeFileSync(logFile, '', 'utf8');
+  for (const patchFile of patchFiles) {
+    fs.appendFileSync(logFile, `>>> ${path.relative(patchDir, patchFile)}\n`, 'utf8');
+    const result = runCommand('patch', ['-d', source, '-p1', '-N', '-i', patchFile], undefined);
+    fs.appendFileSync(logFile, result.stdout || '', 'utf8');
+    fs.appendFileSync(logFile, result.stderr || '', 'utf8');
+    if (result.status !== 0) {
+      const combined = `${result.stdout || ''}\n${result.stderr || ''}`;
+      if (combined.includes('Reversed (or previously applied) patch detected!') && !combined.includes('FAILED')) {
+        fs.appendFileSync(logFile, 'already applied; skipping\n', 'utf8');
+        continue;
+      }
+      throw new CliError('patch_failed', `Failed to apply patch ${path.relative(patchDir, patchFile)} (see ${logFile})`);
+    }
+  }
+}
+
 function toolRootFromSource(source: string) {
   return path.resolve(path.dirname(source), '..');
 }
@@ -220,11 +310,12 @@ function resolveDownloadsDir(flags: Record<string, unknown>, source: string) {
 
 async function buildDirectory(flags: Record<string, unknown>) {
   const source = requirePathFlag(flags, 'source');
-  const microkitVersion = optionalStringFlag(flags, 'microkit-version');
+  const microkitVersion = buildVersionFlag(flags);
   const archiveUrl = optionalStringFlag(flags, 'archive-url');
 
   if (fileExists(source)) {
     const inspected = inspectDirectory({ path: source });
+    appendToolLog(source, 'build reused existing sdk directory');
     return {
       command: 'build',
       status: 'success',
@@ -270,6 +361,7 @@ async function buildDirectory(flags: Record<string, unknown>) {
   if (microkitVersion && !firstVersionLine(source)) {
     fs.writeFileSync(path.join(source, '.morpheus-version'), `${microkitVersion}\n`, 'utf8');
   }
+  appendToolLog(source, `build archive=${archivePath}`);
   const inspected = inspectDirectory({ path: source });
 
   return {
@@ -285,6 +377,97 @@ async function buildDirectory(flags: Record<string, unknown>) {
       microkit_version: microkitVersion || inspected.details.directory.version,
       directory: inspected.details.directory,
       artifact: inspected.details.artifact,
+    },
+  };
+}
+
+async function fetchDirectory(flags: Record<string, unknown>) {
+  const result = await buildDirectory(flags);
+  return {
+    ...result,
+    command: 'fetch',
+    summary: result.details.fetched_source
+      ? 'fetched managed Microkit SDK directory'
+      : 'reused managed Microkit SDK directory',
+  };
+}
+
+async function patchDirectory(flags: Record<string, unknown>) {
+  const source = requirePathFlag(flags, 'source');
+  const patchDir = requirePathFlag(flags, 'patch-dir');
+  if (!fileExists(source)) {
+    throw new CliError('missing_source', `Missing Microkit SDK directory: ${source}`);
+  }
+  if (!fileExists(patchDir)) {
+    throw new CliError('missing_directory', `Missing patch directory: ${patchDir}`);
+  }
+  const patchFiles = listPatchFiles(patchDir);
+  const fingerprint = patchFingerprint(patchDir, patchFiles);
+  const patchLogFile = path.join(source, '.morpheus-patches.log');
+  const state = readPatchState(source);
+  if (state && state.fingerprint === fingerprint) {
+    return {
+      command: 'patch',
+      status: 'success',
+      exit_code: 0,
+      summary: 'reused patched managed Microkit SDK directory',
+      details: {
+        source,
+        patches: {
+          dir: patchDir,
+          files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
+          fingerprint,
+          applied: true,
+          log_file: patchLogFile,
+        },
+      },
+    };
+  }
+  applyPatches(source, patchDir, patchFiles, patchLogFile);
+  appendToolLog(source, `patch patch_dir=${patchDir} patch_log=${patchLogFile}`);
+  writePatchState(source, {
+    appliedAt: new Date().toISOString(),
+    dir: patchDir,
+    files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
+    fingerprint,
+  });
+  return {
+    command: 'patch',
+    status: 'success',
+    exit_code: 0,
+    summary: 'patched managed Microkit SDK directory',
+    details: {
+      source,
+      patches: {
+        dir: patchDir,
+        files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
+        fingerprint,
+        applied: true,
+        log_file: patchLogFile,
+      },
+    },
+  };
+}
+
+function readLogs(flags: Record<string, unknown>) {
+  const source = resolveOptionalPath(flags, 'source') || resolveOptionalPath(flags, 'path');
+  if (!source) {
+    throw new CliError('missing_flag', 'microkit-sdk logs requires --source DIR or --path DIR');
+  }
+  const logFile = fs.existsSync(toolLogPath(source))
+    ? toolLogPath(source)
+    : path.join(source, '.morpheus-patches.log');
+  if (!fs.existsSync(logFile)) {
+    throw new CliError('missing_log', `Missing Microkit SDK log file: ${logFile}`);
+  }
+  return {
+    command: 'logs',
+    status: 'success',
+    exit_code: 0,
+    summary: 'read local Microkit SDK log',
+    details: {
+      log_file: logFile,
+      text: fs.readFileSync(logFile, 'utf8'),
     },
   };
 }
@@ -324,6 +507,33 @@ async function main(argv: string[]) {
         emitJson(result);
       } else {
         emitText(result.details.directory.path);
+      }
+      return 0;
+    }
+    case 'fetch': {
+      const result = await fetchDirectory(parsed.flags);
+      if (parsed.json) {
+        emitJson(result);
+      } else {
+        emitText(result.details.directory.path);
+      }
+      return 0;
+    }
+    case 'patch': {
+      const result = await patchDirectory(parsed.flags);
+      if (parsed.json) {
+        emitJson(result);
+      } else {
+        emitText(result.details.source);
+      }
+      return 0;
+    }
+    case 'logs': {
+      const result = readLogs(parsed.flags);
+      if (parsed.json) {
+        emitJson(result);
+      } else {
+        emitText(result.details.text);
       }
       return 0;
     }

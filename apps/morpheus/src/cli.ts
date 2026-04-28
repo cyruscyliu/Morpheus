@@ -2,15 +2,17 @@
 // @ts-nocheck
 
 const path = require("path");
-const { handleConfigCommand } = require("./config-check");
-const { getContracts } = require("./contracts");
-const { handleManagedRunCommand } = require("./remote");
-const { handleRunsCommand } = require("./runs");
-const { handleToolCommand } = require("./tools");
-const { handleWorkflowCommand } = require("./workflow");
-const { handleWorkspaceCommand } = require("./workspace");
-const { applyConfigDefaults } = require("./config");
-const { writeStdout, writeStdoutLine, writeStderrLine } = require("./io");
+const { handleConfigCommand } = require("./commands/config-check");
+const { handleBuildCommand } = require("./commands/build");
+const { handleFetchCommand } = require("./commands/fetch");
+const { handleInspectCommand } = require("./commands/inspect");
+const { handleLogsCommand } = require("./commands/logs");
+const { handlePatchCommand } = require("./commands/patch");
+const { handleRunCommand } = require("./commands/run");
+const { handleToolCommand } = require("./commands/tools");
+const { handleWorkflowCommand } = require("./commands/workflow");
+const { handleWorkspaceCommand } = require("./commands/workspace");
+const { writeStdout, writeStdoutLine, writeStderrLine } = require("./core/io");
 
 function parseArgs(argv) {
   const positionals = [];
@@ -52,17 +54,14 @@ function usage() {
       "  node apps/morpheus/dist/cli.js workspace create [--json]",
       "  node apps/morpheus/dist/cli.js workspace show [--json]",
       "  node apps/morpheus/dist/cli.js config check [--json]",
-      "  node apps/morpheus/dist/cli.js tool list [--json] [--verify]",
-      "  node apps/morpheus/dist/cli.js workflow <subcommand> [--json]",
-      "  node apps/morpheus/dist/cli.js contracts",
-      "  node apps/morpheus/dist/cli.js runs list [--json] [--run-root <path>]",
-      "  node apps/morpheus/dist/cli.js runs list --managed [--json] [--workspace DIR] [--ssh TARGET]",
-      "  node apps/morpheus/dist/cli.js runs inspect --id RUN_ID [--json]",
-      "  node apps/morpheus/dist/cli.js runs logs --id RUN_ID [--follow] [--json]",
-      "  node apps/morpheus/dist/cli.js runs fetch --id RUN_ID --dest DIR --path RUN_PATH [--path RUN_GLOB ...] [--json]",
-      "  node apps/morpheus/dist/cli.js runs remove --id RUN_ID [--json]",
-      "  node apps/morpheus/dist/cli.js runs show <run-id> [--json] [--run-root <path>]",
-      "  node apps/morpheus/dist/cli.js runs export-html [<run-id>] [--out <path>] [--run-root <path>]"
+      "  node apps/morpheus/dist/cli.js fetch --tool <name> [--json]",
+      "  node apps/morpheus/dist/cli.js patch --tool <name> [--json]",
+      "  node apps/morpheus/dist/cli.js build --tool <name> [--json]",
+      "  node apps/morpheus/dist/cli.js inspect --tool <name> [--json] [tool inspect flags]",
+      "  node apps/morpheus/dist/cli.js logs --tool <name> [--json] [tool logs flags]",
+      "  node apps/morpheus/dist/cli.js run --tool <name> [--json] [tool run flags]",
+      "  node apps/morpheus/dist/cli.js tool list [--json]",
+      "  node apps/morpheus/dist/cli.js workflow <subcommand> [--json]"
     ].join("\n") + "\n"
   );
 }
@@ -75,46 +74,13 @@ function argvWithoutCommand(argv, command) {
   return [...argv.slice(0, index), ...argv.slice(index + 1)];
 }
 
-function extractSubcommand(argv) {
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (!token.startsWith("--")) {
-      return {
-        subcommand: token,
-        rest: [...argv.slice(0, index), ...argv.slice(index + 1)]
-      };
-    }
-  }
-  return { subcommand: null, rest: [...argv] };
-}
-
-function resolveWorkspaceRoot(flags) {
-  const { flags: resolvedRunDefaults } = applyConfigDefaults(
-    { tool: "runs", workspace: flags.workspace || null },
-    { allowGlobalRemote: false, allowToolDefaults: false }
-  );
-  return resolvedRunDefaults.workspace || path.join(process.cwd(), "hyperarm-workspace");
-}
-
-function looksLikeWorkflowRun(workspaceRoot, runId) {
-  if (!runId || runId.startsWith("wf-") === false) {
-    return false;
-  }
-  return require("fs").existsSync(path.join(workspaceRoot, "runs", runId, "workflow.json"));
-}
-
 async function main() {
   const argv = process.argv.slice(2);
-  const { positionals, flags } = parseArgs(argv);
+  const { positionals } = parseArgs(argv);
   const command = positionals[0];
 
   if (!command || command === "help" || command === "--help") {
     usage();
-    return 0;
-  }
-
-  if (command === "contracts") {
-    printJson(getContracts());
     return 0;
   }
 
@@ -126,30 +92,28 @@ async function main() {
     return handleConfigCommand(argvWithoutCommand(argv, "config"));
   }
 
-  if (command === "runs") {
-    const runsArgv = argvWithoutCommand(argv, "runs");
-    const { subcommand: runsCommand, rest } = extractSubcommand(runsArgv);
-    const managedAlias = runsCommand === "list" && rest.includes("--managed");
-    const managedSubcommands = new Set(["inspect", "logs", "fetch", "remove"]);
-    const workspaceRoot = resolveWorkspaceRoot(flags);
-    const runIdFlagIndex = rest.indexOf("--id");
-    const runId = runIdFlagIndex >= 0 ? rest[runIdFlagIndex + 1] : null;
-    if (managedAlias) {
-      return await handleManagedRunCommand(
-        "list",
-        rest.filter((token) => token !== "--managed")
-      );
-    }
-    if ((runsCommand === "inspect" || runsCommand === "logs") && looksLikeWorkflowRun(workspaceRoot, runId)) {
-      return handleWorkflowCommand([runsCommand, ...rest]);
-    }
-    if (managedSubcommands.has(runsCommand)) {
-      return await handleManagedRunCommand(runsCommand, rest);
-    }
-    return handleRunsCommand([runsCommand, ...rest].filter(Boolean), {
-      runRoot: path.join(workspaceRoot, "runs"),
-      outputRoot: path.join(workspaceRoot, "runs-view")
-    });
+  if (command === "fetch") {
+    return handleFetchCommand(argvWithoutCommand(argv, "fetch"));
+  }
+
+  if (command === "patch") {
+    return handlePatchCommand(argvWithoutCommand(argv, "patch"));
+  }
+
+  if (command === "build") {
+    return handleBuildCommand(argvWithoutCommand(argv, "build"));
+  }
+
+  if (command === "inspect") {
+    return handleInspectCommand(argvWithoutCommand(argv, "inspect"));
+  }
+
+  if (command === "logs") {
+    return handleLogsCommand(argvWithoutCommand(argv, "logs"));
+  }
+
+  if (command === "run") {
+    return handleRunCommand(argvWithoutCommand(argv, "run"));
   }
 
   if (command === "tool") {

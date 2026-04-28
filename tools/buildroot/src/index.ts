@@ -3,9 +3,9 @@ import process from 'node:process';
 import { CliError } from './errors.js';
 import { renderHelp, COMMANDS, getHelp } from './help.js';
 import { emitErrorText, emitJson, emitText } from './io.js';
-import { runLocalBuild, runInspect, runClean } from './local.js';
+import { runFetch, runPatch, runLocalBuild, runInspect, runLogs, runClean } from './local.js';
 import { parseArgv } from './parser.js';
-import type { CleanOptions, CliContext, InspectOptions, LocalBuildOptions } from './types.js';
+import type { CleanOptions, CliContext, FetchOptions, InspectOptions, LocalBuildOptions, LogsOptions, PatchOptions } from './types.js';
 
 const VERSION = '0.2.0';
 
@@ -41,10 +41,16 @@ async function main(argv: string[]): Promise<number> {
         emitText(context, VERSION);
       }
       return 0;
+    case 'fetch':
+      return runFetch(context, parsed.options as FetchOptions);
+    case 'patch':
+      return runPatch(context, parsed.options as PatchOptions);
     case 'build':
       return runLocalBuild(context, parsed.options as LocalBuildOptions);
     case 'inspect':
       return runInspect(context, parsed.options as InspectOptions);
+    case 'logs':
+      return runLogs(context, parsed.options as LogsOptions);
     case 'clean':
       return runClean(context, parsed.options as CleanOptions);
     default:

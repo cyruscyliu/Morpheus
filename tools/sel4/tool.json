@@ -1,5 +1,31 @@
 {
   "name": "sel4",
   "runtime": "node",
-  "entry": "dist/index.js"
+  "cli-contract": "fetch,patch,build,inspect,logs",
+  "entry": "dist/index.js",
+  "config": {
+    "fields": {
+      "mode": { "aliases": ["mode"] },
+      "path": { "aliases": ["path", "source"], "path": true },
+      "build-version": { "aliases": ["build-version", "buildVersion", "sel4-version", "sel4Version", "version"] },
+      "archive-url": { "aliases": ["archive-url", "archiveUrl"] },
+      "patch-dir": { "aliases": ["patch-dir", "patchDir"], "path": true },
+      "reuse-build-dir": { "aliases": ["reuse-build-dir", "reuseBuildDir"], "boolean": true },
+      "build-dir-key": { "aliases": ["build-dir-key", "buildDirKey"] },
+      "artifacts": { "aliases": ["artifacts"], "repeatable": true }
+    }
+  },
+  "managed": {
+    "schemaVersion": 1,
+    "modes": ["local"],
+    "local": {
+      "sourceTemplate": "tools/sel4/builds/{buildDirKey}/source",
+      "downloadsDir": "tools/sel4/downloads",
+      "artifacts": {
+        "source-dir": {
+          "pathTemplate": "tools/sel4/builds/{buildDirKey}/source"
+        }
+      }
+    }
+  }
 }

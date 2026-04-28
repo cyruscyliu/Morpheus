@@ -8,16 +8,49 @@ export const COMMANDS = [
     ],
   },
   {
-    name: 'build',
-    summary: 'Materialize a managed Microkit SDK directory',
+    name: 'fetch',
+    summary: 'Fetch a managed Microkit SDK directory',
     usage: [
-      'microkit-sdk build --source DIR [--microkit-version VER] [--archive-url URL] [--downloads-dir DIR]',
+      'microkit-sdk fetch --source DIR [--build-version VER] [--archive-url URL] [--downloads-dir DIR]',
     ],
     flags: [
       { name: '--source DIR', summary: 'Managed SDK directory' },
-      { name: '--microkit-version VER', summary: 'SDK version to record in metadata' },
+      { name: '--build-version VER', summary: 'SDK version to record in metadata' },
       { name: '--archive-url URL', summary: 'Archive URL to fetch when --source is missing' },
       { name: '--downloads-dir DIR', summary: 'Directory used to cache fetched archives' },
+    ],
+  },
+  {
+    name: 'patch',
+    summary: 'Apply a patch tree to a managed Microkit SDK directory',
+    usage: [
+      'microkit-sdk patch --source DIR --patch-dir DIR',
+    ],
+    flags: [
+      { name: '--source DIR', summary: 'Managed SDK directory' },
+      { name: '--patch-dir DIR', summary: 'Directory containing patches to apply' },
+    ],
+  },
+  {
+    name: 'build',
+    summary: 'Materialize a managed Microkit SDK directory',
+    usage: [
+      'microkit-sdk build --source DIR [--build-version VER] [--archive-url URL] [--downloads-dir DIR]',
+    ],
+    flags: [
+      { name: '--source DIR', summary: 'Managed SDK directory' },
+      { name: '--build-version VER', summary: 'SDK version to record in metadata' },
+      { name: '--archive-url URL', summary: 'Archive URL to fetch when --source is missing' },
+      { name: '--downloads-dir DIR', summary: 'Directory used to cache fetched archives' },
+    ],
+  },
+  {
+    name: 'logs',
+    summary: 'Read stable local Microkit SDK logs',
+    usage: ['microkit-sdk logs --source DIR', 'microkit-sdk logs --path DIR'],
+    flags: [
+      { name: '--source DIR', summary: 'Managed SDK directory' },
+      { name: '--path DIR', summary: 'Alias of --source' },
     ],
   },
   {

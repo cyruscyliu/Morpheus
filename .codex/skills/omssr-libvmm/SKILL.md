@@ -28,7 +28,11 @@ Morpheus only orchestrates execution and records runs.
 
 ```text
 libvmm inspect
+libvmm fetch
+libvmm patch
 libvmm build
+libvmm run
+libvmm logs
 libvmm version
 libvmm help
 ```
@@ -36,8 +40,8 @@ libvmm help
 ## Typical Morpheus Flow
 
 ```bash
-./bin/morpheus --json tool build --tool libvmm
-./bin/morpheus --json tool build --tool nvirsh
+./bin/morpheus build --tool libvmm --json
+./bin/morpheus run --tool libvmm --json -- [tool run flags]
 ```
 
 ## Notes

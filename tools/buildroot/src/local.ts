@@ -1,15 +1,245 @@
 import fs from 'node:fs/promises';
+import rawFs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { CliError } from './errors.js';
 import { runCommand } from './exec.js';
 import { generateBuildId } from './ids.js';
 import { writeManifest, readManifest } from './manifest.js';
 import { emitJson, emitText } from './io.js';
 import { manifestPathForOutput, resolvePath } from './paths.js';
-import type { BuildManifest, CliContext, CleanOptions, InspectOptions, LocalBuildOptions } from './types.js';
+import type { BuildManifest, CliContext, CleanOptions, FetchOptions, InspectOptions, LocalBuildOptions, LogsOptions, PatchOptions } from './types.js';
 
 function makeEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
   return { ...process.env, ...extra };
+}
+
+function defaultArchiveUrl(version: string): string {
+  return `https://buildroot.org/downloads/buildroot-${version}.tar.gz`;
+}
+
+function archiveName(version: string, archiveUrl?: string): string {
+  if (archiveUrl) {
+    try {
+      return path.basename(new URL(archiveUrl).pathname);
+    } catch {
+      return path.basename(archiveUrl);
+    }
+  }
+  return `buildroot-${version}.tar.gz`;
+}
+
+function listPatchFiles(patchDir: string): string[] {
+  const results: string[] = [];
+  const stack: string[] = [patchDir];
+
+  while (stack.length > 0) {
+    const current = stack.pop() as string;
+    for (const entry of rawFs.readdirSync(current, { withFileTypes: true })) {
+      if (entry.name.startsWith('.')) {
+        continue;
+      }
+      const nextPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(nextPath);
+        continue;
+      }
+      if (entry.isFile() && (entry.name.endsWith('.patch') || entry.name.endsWith('.diff'))) {
+        results.push(nextPath);
+      }
+    }
+  }
+
+  results.sort((a, b) => a.localeCompare(b));
+  return results;
+}
+
+function patchFingerprint(patchDir: string, patchFiles: string[]): string {
+  const hash = crypto.createHash('sha256');
+  for (const filePath of patchFiles) {
+    hash.update(path.relative(patchDir, filePath));
+    hash.update('\0');
+    hash.update(rawFs.readFileSync(filePath));
+    hash.update('\0');
+  }
+  return hash.digest('hex');
+}
+
+function patchStatePath(source: string): string {
+  return path.join(source, '.morpheus-patches.json');
+}
+
+function readPatchState(source: string): any {
+  const statePath = patchStatePath(source);
+  if (!rawFs.existsSync(statePath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(rawFs.readFileSync(statePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+async function writePatchState(source: string, value: unknown): Promise<void> {
+  await fs.writeFile(patchStatePath(source), `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+async function appendLog(filePath: string, ...chunks: Array<string | undefined>): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  for (const chunk of chunks) {
+    if (chunk) {
+      await fs.appendFile(filePath, chunk, 'utf8');
+    }
+  }
+}
+
+export async function runFetch(context: CliContext, options: FetchOptions): Promise<number> {
+  const source = resolvePath(options.source);
+  const buildVersion = options.buildVersion;
+  const archiveUrl = options.archiveUrl || (buildVersion ? defaultArchiveUrl(buildVersion) : null);
+  if (!archiveUrl) {
+    throw new CliError('missing_version', 'fetch requires --build-version VER or --archive-url URL');
+  }
+
+  const downloadsDir = resolvePath(options.downloadsDir || path.join(path.dirname(source), '..', 'downloads'));
+  const archiveFile = archiveName(buildVersion || 'buildroot', archiveUrl);
+  const archivePath = path.join(downloadsDir, archiveFile);
+  const extractRoot = path.join(downloadsDir, '.extract');
+
+  await fs.mkdir(downloadsDir, { recursive: true });
+  if (!(await fs.stat(archivePath).then(() => true).catch(() => false))) {
+    const download = await runCommand('curl', ['-fsSL', archiveUrl, '-o', archivePath], {
+      streamOutput: !context.json,
+    });
+    if (download.exitCode !== 0) {
+      throw new CliError('fetch_failed', download.stderr || `failed to download ${archiveUrl}`, download.exitCode);
+    }
+  }
+
+  await fs.rm(extractRoot, { recursive: true, force: true });
+  await fs.mkdir(extractRoot, { recursive: true });
+  const extract = await runCommand('tar', ['-xzf', archivePath, '-C', extractRoot], {
+    streamOutput: !context.json,
+  });
+  if (extract.exitCode !== 0) {
+    throw new CliError('extract_failed', extract.stderr || `failed to extract ${archivePath}`, extract.exitCode);
+  }
+
+  const entries = await fs.readdir(extractRoot, { withFileTypes: true });
+  const directories = entries.filter((entry) => entry.isDirectory());
+  if (directories.length !== 1) {
+    throw new CliError('extract_failed', `Expected one extracted source directory in ${extractRoot}`);
+  }
+
+  await fs.rm(source, { recursive: true, force: true });
+  await fs.mkdir(path.dirname(source), { recursive: true });
+  await fs.rename(path.join(extractRoot, directories[0].name), source);
+  await fs.rm(extractRoot, { recursive: true, force: true });
+
+  const payload = {
+    command: 'fetch',
+    status: 'success' as const,
+    exit_code: 0,
+    summary: 'fetched managed Buildroot source directory',
+    details: {
+      source,
+      build_version: buildVersion || null,
+      archive: archivePath,
+      archive_url: archiveUrl,
+      downloads_dir: downloadsDir,
+    },
+  };
+  if (context.json) {
+    emitJson(context, payload);
+  } else {
+    emitText(context, source);
+  }
+  return 0;
+}
+
+export async function runPatch(context: CliContext, options: PatchOptions): Promise<number> {
+  const source = resolvePath(options.source);
+  const patchDir = resolvePath(options.patchDir);
+  const sourceExists = await fs.stat(source).then(() => true).catch(() => false);
+  if (!sourceExists) {
+    throw new CliError('missing_source', `Missing Buildroot source directory: ${source}`);
+  }
+  const patchExists = await fs.stat(patchDir).then(() => true).catch(() => false);
+  if (!patchExists) {
+    throw new CliError('missing_patch_dir', `Missing patch directory: ${patchDir}`);
+  }
+
+  const patchFiles = listPatchFiles(patchDir);
+  const fingerprint = patchFingerprint(patchDir, patchFiles);
+  const state = readPatchState(source);
+  const logFile = path.join(source, '.morpheus-patches.log');
+  if (state && state.fingerprint === fingerprint) {
+    const payload = {
+      command: 'patch',
+      status: 'success' as const,
+      exit_code: 0,
+      summary: 'reused patched Buildroot source directory',
+      details: {
+        source,
+        patches: {
+          dir: patchDir,
+          files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
+          fingerprint,
+          applied: true,
+          log_file: logFile,
+        },
+      },
+    };
+    if (context.json) emitJson(context, payload);
+    else emitText(context, source);
+    return 0;
+  }
+
+  await fs.writeFile(logFile, '', 'utf8');
+  for (const patchFile of patchFiles) {
+    await fs.appendFile(logFile, `>>> ${path.relative(patchDir, patchFile)}\n`, 'utf8');
+    const result = await runCommand('patch', ['-d', source, '-p1', '-N', '-i', patchFile], {
+      streamOutput: !context.json,
+    });
+    await fs.appendFile(logFile, result.stdout || '', 'utf8');
+    await fs.appendFile(logFile, result.stderr || '', 'utf8');
+    if (result.exitCode !== 0) {
+      const combined = `${result.stdout || ''}\n${result.stderr || ''}`;
+      if (combined.includes('Reversed (or previously applied) patch detected!') && !combined.includes('FAILED')) {
+        await fs.appendFile(logFile, 'already applied; skipping\n', 'utf8');
+        continue;
+      }
+      throw new CliError('patch_failed', `Failed to apply patch ${path.relative(patchDir, patchFile)} (see ${logFile})`, result.exitCode);
+    }
+  }
+
+  await writePatchState(source, {
+    appliedAt: new Date().toISOString(),
+    dir: patchDir,
+    files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
+    fingerprint,
+  });
+
+  const payload = {
+    command: 'patch',
+    status: 'success' as const,
+    exit_code: 0,
+    summary: 'patched managed Buildroot source directory',
+    details: {
+      source,
+      patches: {
+        dir: patchDir,
+        files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
+        fingerprint,
+        applied: true,
+        log_file: logFile,
+      },
+    },
+  };
+  if (context.json) emitJson(context, payload);
+  else emitText(context, source);
+  return 0;
 }
 
 export async function runLocalBuild(context: CliContext, options: LocalBuildOptions): Promise<number> {
@@ -17,7 +247,10 @@ export async function runLocalBuild(context: CliContext, options: LocalBuildOpti
   const output = resolvePath(options.output);
   const id = generateBuildId();
   const manifestFile = manifestPathForOutput(output);
+  const logFile = path.join(output, '.buildroot-cli', 'stdout.log');
   await fs.mkdir(output, { recursive: true });
+  await fs.mkdir(path.dirname(logFile), { recursive: true });
+  await fs.writeFile(logFile, '', 'utf8');
 
   const manifest: BuildManifest = {
     id,
@@ -28,6 +261,7 @@ export async function runLocalBuild(context: CliContext, options: LocalBuildOpti
     command: 'build',
     source,
     output,
+    logFile,
     defconfig: options.defconfig,
     makeArgs: options.makeArgs,
     env: options.env,
@@ -39,6 +273,7 @@ export async function runLocalBuild(context: CliContext, options: LocalBuildOpti
     const defconfigResult = await runCommand('make', ['-C', source, `O=${output}`, options.defconfig], {
       env: makeEnv(options.env),
     });
+    await appendLog(logFile, defconfigResult.stdout, defconfigResult.stderr);
     if (defconfigResult.exitCode !== 0) {
       manifest.status = 'error';
       manifest.exitCode = defconfigResult.exitCode;
@@ -53,6 +288,7 @@ export async function runLocalBuild(context: CliContext, options: LocalBuildOpti
     env: makeEnv(options.env),
     streamOutput: !context.json,
   });
+  await appendLog(logFile, result.stdout, result.stderr);
 
   manifest.status = result.exitCode === 0 ? 'success' : 'error';
   manifest.exitCode = result.exitCode;
@@ -71,6 +307,7 @@ export async function runLocalBuild(context: CliContext, options: LocalBuildOpti
         source,
         output,
         manifest: manifestFile,
+        log_file: logFile,
         defconfig: options.defconfig ?? null,
         make_args: options.makeArgs,
         forwarded: options.forwarded,
@@ -100,6 +337,29 @@ export async function runInspect(context: CliContext, options: InspectOptions): 
     emitText(context, `id: ${manifest.id}`);
     emitText(context, `status: ${manifest.status}`);
     emitText(context, `manifest: ${manifestFile}`);
+  }
+  return 0;
+}
+
+export async function runLogs(context: CliContext, options: LogsOptions): Promise<number> {
+  const manifestFile = options.manifest ? resolvePath(options.manifest) : manifestPathForOutput(resolvePath(options.output!));
+  const manifest = await readManifest(manifestFile);
+  const logFile = manifest.logFile || path.join(path.dirname(manifestFile), 'stdout.log');
+  const text = await fs.readFile(logFile, 'utf8');
+  if (context.json) {
+    emitJson(context, {
+      command: 'logs',
+      status: 'success',
+      exit_code: 0,
+      summary: 'read local build log',
+      details: {
+        manifest: manifestFile,
+        log_file: logFile,
+        text,
+      },
+    });
+  } else {
+    emitText(context, text);
   }
   return 0;
 }

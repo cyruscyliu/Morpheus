@@ -1,5 +1,62 @@
 {
   "name": "libvmm",
   "runtime": "node",
-  "entry": "dist/index.js"
+  "cli-contract": "fetch,patch,build,run,inspect,logs",
+  "entry": "dist/index.js",
+  "config": {
+    "fields": {
+      "mode": { "aliases": ["mode"] },
+      "source": { "aliases": ["source"], "path": true },
+      "build-version": { "aliases": ["build-version", "buildVersion", "git-ref", "gitRef"] },
+      "git-url": { "aliases": ["git-url", "gitUrl"] },
+      "example": { "aliases": ["example"] },
+      "patch-dir": { "aliases": ["patch-dir", "patchDir"], "path": true },
+      "board": { "aliases": ["board"] },
+      "linux": { "aliases": ["linux"], "path": true },
+      "initrd": { "aliases": ["initrd"], "path": true },
+      "qemu": { "aliases": ["qemu"], "path": true },
+      "toolchain-bin-dir": { "aliases": ["toolchain-bin-dir", "toolchainBinDir"], "path": true },
+      "microkit-sdk": { "aliases": ["microkit-sdk", "microkitSdk"], "path": true },
+      "make-arg": { "aliases": ["make-arg", "make-args", "makeArgs"], "repeatable": true },
+      "reuse-build-dir": { "aliases": ["reuse-build-dir", "reuseBuildDir"], "boolean": true },
+      "build-dir-key": { "aliases": ["build-dir-key", "buildDirKey"] },
+      "dependencies": { "aliases": ["dependencies"] },
+      "artifacts": { "aliases": ["artifacts"], "repeatable": true }
+    }
+  },
+  "inputs": {
+    "build": {
+      "dependencies": {
+        "microkit-sdk": { "flag": "microkit-sdk" },
+        "qemu": { "flag": "qemu" }
+      }
+    },
+    "run": {
+      "dependencies": {
+        "microkit-sdk": { "flag": "microkit-sdk" },
+        "qemu": { "flag": "qemu" }
+      }
+    }
+  },
+  "managed": {
+    "schemaVersion": 1,
+    "modes": ["local"],
+    "local": {
+      "sourceTemplate": "tools/libvmm/builds/{buildDirKey}/source",
+      "artifacts": {
+        "libvmm-dir": {
+          "pathTemplate": "tools/libvmm/builds/{buildDirKey}/source"
+        },
+        "runtime-contract": {
+          "pathTemplate": "tools/libvmm/builds/{buildDirKey}/source/runtime-contract.json"
+        },
+        "example-dir": {
+          "pathTemplate": "tools/libvmm/builds/{buildDirKey}/source/examples/{example}"
+        },
+        "example-build-dir": {
+          "pathTemplate": "tools/libvmm/builds/{buildDirKey}/source/examples/{example}/build"
+        }
+      }
+    }
+  }
 }

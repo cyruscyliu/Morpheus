@@ -115,6 +115,10 @@ function optionalStringFlag(flags: Record<string, unknown>, name: string) {
   return value || null;
 }
 
+function buildVersionFlag(flags: Record<string, unknown>) {
+  return optionalStringFlag(flags, 'build-version') || optionalStringFlag(flags, 'git-ref');
+}
+
 function stringListFlag(flags: Record<string, unknown>, name: string) {
   const raw = flags[name];
   if (!raw) {
@@ -184,6 +188,20 @@ function readPatchState(source: string) {
 
 function writePatchState(source: string, state: unknown) {
   fs.writeFileSync(patchStatePath(source), `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+}
+
+function toolLogPath(source: string) {
+  return path.join(source, '.morpheus-tool.log');
+}
+
+function appendToolLog(source: string, ...chunks: Array<string | null | undefined>) {
+  const logFile = toolLogPath(source);
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
+  for (const chunk of chunks) {
+    if (chunk) {
+      fs.appendFileSync(logFile, chunk.endsWith('\n') ? chunk : `${chunk}\n`, 'utf8');
+    }
+  }
 }
 
 function applyPatches(source: string, patchDir: string, patchFiles: string[], logFile: string) {
@@ -562,10 +580,99 @@ function validateRuntimeContract(contract: any, action: string) {
   }
 }
 
+function fetchDirectory(flags: Record<string, unknown>) {
+  const source = requirePathFlag(flags, 'source');
+  const gitUrl = optionalStringFlag(flags, 'git-url') || 'https://github.com/au-ts/libvmm';
+  const gitRef = buildVersionFlag(flags) || 'main';
+
+  logInfo('starting fetch', {
+    source: relPath(source),
+    git_url: gitUrl,
+    git_ref: gitRef,
+  });
+
+  const cloned = ensureGitRepo(source, gitUrl);
+  checkoutRef(source, gitRef);
+  updateSubmodules(source);
+  appendToolLog(source, `fetch git_url=${gitUrl} git_ref=${gitRef}`);
+  const inspected = inspectDirectory({ path: source });
+  return {
+    command: 'fetch',
+    status: 'success',
+    exit_code: 0,
+    summary: cloned.cloned ? 'fetched managed libvmm directory' : 'updated managed libvmm directory',
+    details: {
+      source,
+      git_url: gitUrl,
+      git_ref: gitRef,
+      directory: inspected.details.directory,
+      artifact: inspected.details.artifact,
+    },
+  };
+}
+
+function patchDirectory(flags: Record<string, unknown>) {
+  const source = requirePathFlag(flags, 'source');
+  const patchDir = requirePathFlag(flags, 'patch-dir');
+  if (!fileExists(source)) {
+    throw new CliError('missing_source', `Missing libvmm directory: ${source}`);
+  }
+  if (!fileExists(patchDir)) {
+    throw new CliError('missing_directory', `Missing patch directory: ${patchDir}`);
+  }
+  const patchFiles = listPatchFiles(patchDir);
+  const fingerprint = patchFingerprint(patchDir, patchFiles);
+  const patchLogFile = path.join(source, '.morpheus-patches.log');
+  const state = readPatchState(source);
+  if (state && state.fingerprint === fingerprint) {
+    return {
+      command: 'patch',
+      status: 'success',
+      exit_code: 0,
+      summary: 'reused patched managed libvmm directory',
+      details: {
+        source,
+        patches: {
+          dir: patchDir,
+          files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
+          fingerprint,
+          applied: true,
+          log_file: patchLogFile,
+        },
+      },
+    };
+  }
+  resetGitWorktree(source);
+  applyPatches(source, patchDir, patchFiles, patchLogFile);
+  appendToolLog(source, `patch patch_dir=${patchDir} patch_log=${patchLogFile}`);
+  writePatchState(source, {
+    appliedAt: new Date().toISOString(),
+    dir: patchDir,
+    files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
+    fingerprint,
+  });
+  return {
+    command: 'patch',
+    status: 'success',
+    exit_code: 0,
+    summary: 'patched managed libvmm directory',
+    details: {
+      source,
+      patches: {
+        dir: patchDir,
+        files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
+        fingerprint,
+        applied: true,
+        log_file: patchLogFile,
+      },
+    },
+  };
+}
+
 function buildDirectory(flags: Record<string, unknown>) {
   const source = requirePathFlag(flags, 'source');
   const gitUrl = optionalStringFlag(flags, 'git-url') || 'https://github.com/au-ts/libvmm';
-  const gitRef = optionalStringFlag(flags, 'git-ref') || 'main';
+  const gitRef = buildVersionFlag(flags) || 'main';
   const example = optionalStringFlag(flags, 'example') || 'virtio';
   const patchDir = optionalStringFlag(flags, 'patch-dir');
   const microkitSdk = requirePathFlag(flags, 'microkit-sdk');
@@ -679,6 +786,7 @@ function buildDirectory(flags: Record<string, unknown>) {
     makeTarget,
     makeArgs: makeArgsWithPython,
   });
+  appendToolLog(source, built.stdout, built.stderr);
   logInfo('built example', {
     example_dir: relPath(built.exampleDir),
     build_dir: built.buildDir ? relPath(built.buildDir) : null,
@@ -696,6 +804,7 @@ function buildDirectory(flags: Record<string, unknown>) {
 
   const inspected = inspectDirectory({ path: source });
   logInfo('build complete', { directory: relPath(inspected.details.directory.path) });
+  appendToolLog(source, `build example=${example} runtime_contract=${runtimeContractFile}`);
   return {
     command: 'build',
     status: 'success',
@@ -742,6 +851,32 @@ function buildDirectory(flags: Record<string, unknown>) {
       build: {
         cwd: built.exampleDir,
       },
+    },
+  };
+}
+
+function readLogs(flags: Record<string, unknown>) {
+  const runDir = optionalStringFlag(flags, 'run-dir');
+  const source = optionalStringFlag(flags, 'source');
+  const logFile = runDir
+    ? path.resolve(process.cwd(), runDir, 'stdout.log')
+    : source
+      ? toolLogPath(path.resolve(process.cwd(), source))
+      : null;
+  if (!logFile) {
+    throw new CliError('missing_flag', 'libvmm logs requires --source DIR or --run-dir DIR');
+  }
+  if (!fs.existsSync(logFile)) {
+    throw new CliError('missing_log', `Missing libvmm log file: ${logFile}`);
+  }
+  return {
+    command: 'logs',
+    status: 'success',
+    exit_code: 0,
+    summary: 'read local libvmm log',
+    details: {
+      log_file: logFile,
+      text: fs.readFileSync(logFile, 'utf8'),
     },
   };
 }
@@ -899,6 +1034,24 @@ async function main(argv: string[]) {
       }
       return 0;
     }
+    case 'fetch': {
+      const result = fetchDirectory(parsed.flags);
+      if (parsed.json) {
+        emitJson(result);
+      } else {
+        emitText(result.details.directory.path);
+      }
+      return 0;
+    }
+    case 'patch': {
+      const result = patchDirectory(parsed.flags);
+      if (parsed.json) {
+        emitJson(result);
+      } else {
+        emitText(result.details.source);
+      }
+      return 0;
+    }
     case 'build': {
       const result = buildDirectory(parsed.flags);
       if (parsed.json) {
@@ -914,6 +1067,15 @@ async function main(argv: string[]) {
         emitJson(result);
       } else {
         emitText(result.details.manifest);
+      }
+      return 0;
+    }
+    case 'logs': {
+      const result = readLogs(parsed.flags);
+      if (parsed.json) {
+        emitJson(result);
+      } else {
+        emitText(result.details.text);
       }
       return 0;
     }

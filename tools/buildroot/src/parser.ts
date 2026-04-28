@@ -1,5 +1,5 @@
 import { CliError } from './errors.js';
-import type { CleanOptions, InspectOptions, LocalBuildOptions } from './types.js';
+import type { CleanOptions, FetchOptions, InspectOptions, LocalBuildOptions, LogsOptions, PatchOptions } from './types.js';
 
 export interface ParsedCli {
   json: boolean;
@@ -8,7 +8,10 @@ export interface ParsedCli {
   topic?: string;
   options:
     | LocalBuildOptions
+    | FetchOptions
+    | PatchOptions
     | InspectOptions
+    | LogsOptions
     | CleanOptions
     | Record<string, never>;
 }
@@ -44,6 +47,40 @@ function requireValue(args: string[], index: number, flag: string): string {
     throw new CliError('missing_flag_value', `Missing value for ${flag}`);
   }
   return value;
+}
+
+function parseFetch(args: string[]): FetchOptions {
+  const options: FetchOptions = { source: '' };
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    switch (arg) {
+      case '--source':
+        options.source = requireValue(args, i, arg);
+        i += 1;
+        break;
+      case '--build-version':
+      case '--buildroot-version':
+        options.buildVersion = requireValue(args, i, arg);
+        i += 1;
+        break;
+      case '--archive-url':
+        options.archiveUrl = requireValue(args, i, arg);
+        i += 1;
+        break;
+      case '--downloads-dir':
+        options.downloadsDir = requireValue(args, i, arg);
+        i += 1;
+        break;
+      default:
+        throw new CliError('unknown_flag', `Unknown flag for fetch: ${arg}`);
+    }
+  }
+
+  if (!options.source) throw new CliError('missing_source', 'fetch requires --source DIR');
+  if (!options.buildVersion && !options.archiveUrl) {
+    throw new CliError('missing_version', 'fetch requires --build-version VER or --archive-url URL');
+  }
+  return options;
 }
 
 function parseBuild(args: string[]): LocalBuildOptions {
@@ -99,6 +136,28 @@ function parseBuild(args: string[]): LocalBuildOptions {
   return { source, output, defconfig, makeArgs, env: parseKeyValues(envArgs), forwarded };
 }
 
+function parsePatch(args: string[]): PatchOptions {
+  const options: PatchOptions = { source: '', patchDir: '' };
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    switch (arg) {
+      case '--source':
+        options.source = requireValue(args, i, arg);
+        i += 1;
+        break;
+      case '--patch-dir':
+        options.patchDir = requireValue(args, i, arg);
+        i += 1;
+        break;
+      default:
+        throw new CliError('unknown_flag', `Unknown flag for patch: ${arg}`);
+    }
+  }
+  if (!options.source) throw new CliError('missing_source', 'patch requires --source DIR');
+  if (!options.patchDir) throw new CliError('missing_patch_dir', 'patch requires --patch-dir DIR');
+  return options;
+}
+
 function parseInspect(args: string[]): InspectOptions {
   const options: InspectOptions = {};
   for (let i = 0; i < args.length; i += 1) {
@@ -118,6 +177,29 @@ function parseInspect(args: string[]): InspectOptions {
   }
   if (!options.output && !options.manifest) {
     throw new CliError('missing_target', 'inspect requires --output DIR or --manifest FILE');
+  }
+  return options;
+}
+
+function parseLogs(args: string[]): LogsOptions {
+  const options: LogsOptions = {};
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    switch (arg) {
+      case '--output':
+        options.output = requireValue(args, i, arg);
+        i += 1;
+        break;
+      case '--manifest':
+        options.manifest = requireValue(args, i, arg);
+        i += 1;
+        break;
+      default:
+        throw new CliError('unknown_flag', `Unknown flag for logs: ${arg}`);
+    }
+  }
+  if (!options.output && !options.manifest) {
+    throw new CliError('missing_target', 'logs requires --output DIR or --manifest FILE');
   }
   return options;
 }
@@ -161,10 +243,16 @@ export function parseArgv(argv: string[]): ParsedCli {
   const filteredTail = tail.filter((arg) => arg !== '--help' && arg !== '-h');
 
   switch (head) {
+    case 'fetch':
+      return { json: globalJson, help, command: head, options: parseFetch(filteredTail) };
+    case 'patch':
+      return { json: globalJson, help, command: head, options: parsePatch(filteredTail) };
     case 'build':
       return { json: globalJson, help, command: head, options: parseBuild(filteredTail) };
     case 'inspect':
       return { json: globalJson, help, command: head, options: parseInspect(filteredTail) };
+    case 'logs':
+      return { json: globalJson, help, command: head, options: parseLogs(filteredTail) };
     case 'clean':
       return { json: globalJson, help, command: head, options: parseClean(filteredTail) };
     default:

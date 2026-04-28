@@ -14,21 +14,14 @@ Create the configured workspace layout:
 Run a tool through Morpheus (records a workflow run under the workspace):
 
 ```bash
-./bin/morpheus --json tool build --tool buildroot --mode local
+./bin/morpheus workflow run --name build-buildroot --json
 ```
 
 Stage and then launch an `nvirsh` runtime through Morpheus:
 
 ```bash
-./bin/morpheus --json tool build --tool nvirsh
-./bin/morpheus --json tool run --tool nvirsh
-```
-
-Inspect recorded workflow runs:
-
-```bash
-./bin/morpheus runs list
-./bin/morpheus runs show <workflow-run-id>
+./bin/morpheus build --tool nvirsh --json
+./bin/morpheus run --tool nvirsh --json -- --detach
 ```
 
 ## Run Storage Model
@@ -60,9 +53,9 @@ The public command tree includes:
 
 - `workspace create|show`
 - `config check`
-- `tool build|run|list`
+- `fetch|patch|build|inspect|logs|run --tool <name>`
+- `tool list`
 - `workflow run|inspect|logs`
-- `runs list|show|export-html`
 
 ## `nvirsh` runtime wiring
 

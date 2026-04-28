@@ -22,6 +22,8 @@ executable path.
 Managed build mode can fetch a QEMU release tarball, unpack it into the
 canonical managed source path from `morpheus.yaml`, stage the build copy, and
 build/install the executable itself.
+Use `build-version` as the common selector when the tool needs to fetch QEMU
+source.
 
 ## First Steps
 
@@ -35,8 +37,11 @@ The public command tree is:
 
 ```text
 qemu inspect
+qemu fetch
+qemu patch
 qemu build
 qemu run
+qemu logs
 qemu version
 qemu help
 ```
@@ -45,21 +50,14 @@ qemu help
 
 - `qemu` owns local executable inspection.
 - `qemu` owns local kernel-plus-initrd runtime launch.
-- `morpheus tool build --tool qemu --mode local` records an existing executable
-  as a managed artifact when `tools.qemu.path` exists.
-- `morpheus tool run --tool qemu --mode local` resolves that executable and
-  launches `qemu run`.
-- `morpheus tool build --tool qemu --mode remote` runs the same provisioning
-  flow in the remote managed workspace and records the resulting remote
-  artifact path.
+- `qemu` owns `fetch`, `patch`, unpack, source staging, and build/install for the
+  managed build path.
+- Morpheus owns workspace directory selection and passes those paths to the
+  tool CLI.
+- Managed execution should start from Morpheus workflows.
 - That remote path now requires a remote Morpheus runtime, either from
   `morpheus` on `PATH`, a mirrored repo checkout with `bin/morpheus`, or an
   explicit `MORPHEUS_REMOTE_BIN` override.
-- Otherwise, `morpheus tool build --tool qemu` builds and records the managed
-  artifact from the canonical managed source path inside the chosen workspace
-  (fetching/unpacking as needed).
 - `tools/qemu/tool.json` is the declared managed path contract that Morpheus
   uses for the workspace-local source, build, install, and artifact layout.
-- The `qemu` CLI owns fetch, unpack, source staging, and build/install for the
-  managed build path.
 - `nvirsh` should consume the resolved QEMU artifact, not provision the binary.

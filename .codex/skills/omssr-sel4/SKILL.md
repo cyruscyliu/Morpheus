@@ -11,10 +11,10 @@ Use this skill when you need to work with the repo-local `sel4` tool.
 
 ## Purpose
 
-`sel4` is a minimal local CLI for source directory inspection and managed
-builds. It validates the source directory, detects local version metadata when
-available, and exposes a stable artifact record that Morpheus can pass to
-dependent tools such as `nvirsh`.
+`sel4` is a minimal local CLI for source directory inspection, fetch, and
+managed builds. It validates the source directory, detects local version
+metadata when available, and exposes a stable artifact record that Morpheus can
+pass to dependent tools such as `nvirsh`.
 
 ## First Steps
 
@@ -28,7 +28,10 @@ The public command tree is:
 
 ```text
 sel4 inspect
+sel4 fetch
+sel4 patch
 sel4 build
+sel4 logs
 sel4 version
 sel4 help
 ```
@@ -37,10 +40,10 @@ sel4 help
 
 - `sel4` owns local source inspection.
 - `sel4` owns archive fetch for managed source directories.
-- `sel4` can optionally apply workspace-local patches after fetch when a patch
-  directory is provided.
-- `morpheus tool build --tool sel4 --mode local` records an existing source tree
-  as a managed artifact when `tools.sel4.path` exists.
-- Otherwise, `morpheus tool build --tool sel4 --mode local` materializes and
-  records the managed source tree inside the workspace.
+- `sel4` owns explicit patch application for managed source directories.
+- Use `build-version` as the common selector when the tool needs to fetch seL4
+  source.
+- Morpheus owns workspace directory selection and passes those paths to the
+  tool CLI.
+- Managed execution should start from Morpheus workflows.
 - `nvirsh` should consume the resolved source artifact, not provision it.

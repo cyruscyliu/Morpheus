@@ -12,8 +12,8 @@ Use this skill when you need to work with the `buildroot` CLI in this repo.
 ## Purpose
 
 `buildroot` is a standalone Unix-like CLI for local Buildroot workflows.
-It supports local builds, local manifest inspection, local cleanup, and
-explicit JSON output.
+It supports managed source fetch, local builds, local manifest inspection,
+local cleanup, and explicit JSON output.
 
 Remote workspaces are not part of `buildroot`.
 Use Morpheus for managed local or remote runs, inspection, logs, and fetch
@@ -48,14 +48,21 @@ The main user-facing commands are:
 
 ```text
 buildroot build
+buildroot fetch
+buildroot patch
 buildroot inspect
+buildroot logs
 buildroot clean
 ```
 
 Use these commands by intent:
 
+- `fetch`: fetch and unpack a managed Buildroot source tree into a
+  Morpheus-selected workspace path.
+- `patch`: apply a patch tree to a fetched managed Buildroot source tree.
 - `build`: run a local Buildroot workflow against a source tree.
 - `inspect`: read a local manifest from a prior run.
+- `logs`: read a local build log from a prior run.
 - `clean`: remove a local output or explicit path.
 
 ## Remote Boundary
@@ -66,17 +73,10 @@ If the user needs a remote workspace:
 - use Morpheus instead
 - treat remote workspace lifecycle as a Morpheus concern
 
-Typical remote handoff:
+Typical Morpheus handoff:
 
 ```bash
-node apps/morpheus/dist/cli.js tool build \
-  --tool buildroot \
-  --mode remote \
-  --ssh builder@example.com:2222 \
-  --workspace workflow-workspace \
-  --buildroot-version 2025.02.1 \
-  --defconfig qemu_x86_64_defconfig \
-  --json
+node apps/morpheus/dist/cli.js workflow run --name build-buildroot --json
 ```
 
 ## JSON Contract

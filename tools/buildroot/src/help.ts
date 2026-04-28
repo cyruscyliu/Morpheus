@@ -2,6 +2,26 @@ import type { HelpCommand } from './types.js';
 
 export const COMMANDS: HelpCommand[] = [
   {
+    name: 'fetch',
+    summary: 'Fetch and unpack a managed Buildroot source tree',
+    usage: ['buildroot fetch --source DIR [--build-version VER] [--archive-url URL] [--downloads-dir DIR]'],
+    flags: [
+      { name: '--source DIR', summary: 'Managed Buildroot source directory' },
+      { name: '--build-version VER', summary: 'Buildroot version to fetch when --source is missing' },
+      { name: '--archive-url URL', summary: 'Archive URL to fetch when --source is missing' },
+      { name: '--downloads-dir DIR', summary: 'Directory used to cache fetched archives' },
+    ],
+  },
+  {
+    name: 'patch',
+    summary: 'Apply a patch tree to a managed Buildroot source tree',
+    usage: ['buildroot patch --source DIR --patch-dir DIR'],
+    flags: [
+      { name: '--source DIR', summary: 'Managed Buildroot source directory' },
+      { name: '--patch-dir DIR', summary: 'Directory containing patches to apply' },
+    ],
+  },
+  {
     name: 'build',
     summary: 'Run a local Buildroot build',
     usage: ['buildroot build --source DIR --output DIR [--defconfig NAME] [--make-arg ARG ...] [--env KEY=VALUE ...] [-- ...]'],
@@ -17,6 +37,11 @@ export const COMMANDS: HelpCommand[] = [
     name: 'inspect',
     summary: 'Inspect a local build manifest',
     usage: ['buildroot inspect --output DIR', 'buildroot inspect --manifest FILE'],
+  },
+  {
+    name: 'logs',
+    summary: 'Read the local build log',
+    usage: ['buildroot logs --output DIR', 'buildroot logs --manifest FILE'],
   },
   {
     name: 'clean',

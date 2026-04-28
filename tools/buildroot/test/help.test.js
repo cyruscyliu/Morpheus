@@ -18,3 +18,9 @@ test('help metadata is discoverable', () => {
   const command = getHelp('build');
   assert.equal(command?.name, 'build');
 });
+
+test('patch help metadata is discoverable', () => {
+  const command = getHelp('patch');
+  assert.equal(command?.name, 'patch');
+  assert.match(command?.usage?.[0] || '', /--patch-dir DIR/);
+});

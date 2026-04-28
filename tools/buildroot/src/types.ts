@@ -1,8 +1,11 @@
 export type CommandName =
   | 'help'
   | 'version'
+  | 'fetch'
+  | 'patch'
   | 'build'
   | 'inspect'
+  | 'logs'
   | 'clean';
 
 export interface JsonEnvelope {
@@ -40,7 +43,24 @@ export interface LocalBuildOptions {
   forwarded: string[];
 }
 
+export interface FetchOptions {
+  source: string;
+  downloadsDir?: string;
+  buildVersion?: string;
+  archiveUrl?: string;
+}
+
+export interface PatchOptions {
+  source: string;
+  patchDir: string;
+}
+
 export interface InspectOptions {
+  output?: string;
+  manifest?: string;
+}
+
+export interface LogsOptions {
   output?: string;
   manifest?: string;
 }
@@ -59,6 +79,7 @@ export interface BuildManifest {
   command: string;
   source?: string;
   output?: string;
+  logFile?: string;
   defconfig?: string;
   makeArgs: string[];
   env: Record<string, string>;

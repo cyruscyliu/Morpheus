@@ -255,6 +255,40 @@ function syncLocalDirectoryToRemote(localDir, remoteDir, ssh, label) {
   }
 }
 
+function syncLocalFileToRemote(localPath, remotePath, ssh, label) {
+  const source = path.resolve(process.cwd(), localPath);
+  const mode = fs.statSync(source).mode & 0o777;
+  const remoteScript = [
+    `mkdir -p ${shellQuote(path.posix.dirname(remotePath))}`,
+    `cat > ${shellQuote(remotePath)}`,
+    `chmod ${mode.toString(8)} ${shellQuote(remotePath)}`,
+  ].join(" && ");
+  const run = (noSystemConfig) => {
+    const pipeline = `cat ${shellQuote(source)} | ${shellQuote(sshBinary())} ${sshArgs(ssh, { noSystemConfig }).map(shellQuote).join(" ")} ${shellQuote(sshCommand(remoteScript))}`;
+    return runShell(pipeline);
+  };
+
+  let result = run(false);
+  if (result.exitCode !== 0 && wantsSshNoConfigRetry(result)) {
+    result = run(true);
+  }
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr || `failed to sync remote ${label}`);
+  }
+}
+
+function syncRemoteInputPath(localPath, remotePath, ssh, label) {
+  if (!localPath || !remotePath || !fs.existsSync(localPath)) {
+    return;
+  }
+  const stat = fs.statSync(localPath);
+  if (stat.isDirectory()) {
+    syncLocalDirectoryToRemote(localPath, remotePath, ssh, label);
+    return;
+  }
+  syncLocalFileToRemote(localPath, remotePath, ssh, label);
+}
+
 function stageLocalMorpheusRuntime() {
   const sourceRoot = path.resolve(repoRoot());
   const stagingParent = path.join(sourceRoot, ".morpheus-sync");
@@ -262,6 +296,7 @@ function stageLocalMorpheusRuntime() {
   const stageRoot = fs.mkdtempSync(path.join(stagingParent, "runtime-"));
   const entries = [
     "apps/morpheus",
+    "morpheus.yaml",
     "package.json",
     "pnpm-lock.yaml",
     "pnpm-workspace.yaml",
@@ -448,6 +483,7 @@ module.exports = {
   remoteRepoRoot,
   prepareRemoteMorpheusRuntime,
   runSshStreaming,
+  syncRemoteInputPath,
   effectiveBuildrootConfigFragment,
   effectiveBuildDirKey,
   kernelPatchFingerprint,

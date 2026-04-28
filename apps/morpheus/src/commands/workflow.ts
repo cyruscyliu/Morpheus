@@ -371,6 +371,7 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
     }
 
     let stdoutBuffer = "";
+    let stdoutText = "";
     let stderrText = "";
     const state = { finalPayload: null };
 
@@ -378,6 +379,7 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
     child.stderr.setEncoding("utf8");
 
     child.stdout.on("data", (chunk) => {
+      stdoutText += chunk;
       stdoutBuffer += chunk;
       const lines = stdoutBuffer.split(/\r?\n/);
       stdoutBuffer = lines.pop() || "";
@@ -396,6 +398,16 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
     child.on("close", (code) => {
       if (stdoutBuffer.trim()) {
         processToolStdoutLine(stdoutBuffer, stepLogFile, state);
+      }
+      if ((typeof state.finalPayload !== "object" || state.finalPayload == null) && stdoutText.trim()) {
+        try {
+          const parsed = JSON.parse(stdoutText.trim());
+          if (parsed && typeof parsed === "object") {
+            state.finalPayload = parsed;
+          }
+        } catch {
+          state.finalPayload = typeof state.finalPayload === "object" ? state.finalPayload : null;
+        }
       }
       resolve({
         status: typeof code === "number" ? code : 1,

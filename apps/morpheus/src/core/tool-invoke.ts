@@ -1,17 +1,18 @@
 // @ts-nocheck
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 const { applyConfigDefaults } = require("./config");
 const { resolveToolDependencies } = require("./dependency-resolver");
 const { repoRoot } = require("./paths");
 const { readToolDescriptor, renderManagedTemplate } = require("./tool-descriptor");
-const { writeStdoutLine } = require("./io");
+const { writeStdout, writeStdoutLine, writeStderrLine } = require("./io");
 const {
   parseSshTarget,
   remoteWorkspacePath,
   remoteRepoRoot,
   prepareRemoteMorpheusRuntime,
   runSshStreaming,
+  syncRemoteInputPath,
 } = require("../transport/remote");
 
 function parseToolArgs(argv) {
@@ -158,6 +159,94 @@ function spawnTool(descriptor, args) {
   });
 }
 
+async function runToolStreaming(descriptor, args, options = {}) {
+  const entryPath = path.join(repoRoot(), descriptor.installRoot, descriptor.entry);
+  const child = descriptor.runtime === "node"
+    ? spawn(process.execPath, [entryPath, ...args], {
+        cwd: process.cwd(),
+        env: process.env,
+        stdio: ["ignore", "pipe", "pipe"],
+      })
+    : spawn(entryPath, args, {
+        cwd: process.cwd(),
+        env: process.env,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+
+  return await new Promise((resolve, reject) => {
+    let stdoutText = "";
+    let stderrText = "";
+    let stdoutBuffer = "";
+    let finalPayload = null;
+
+    const handleStdoutLine = (rawLine) => {
+      const line = String(rawLine || "");
+      const trimmed = line.trim();
+      if (!trimmed) {
+        return;
+      }
+      let parsed = null;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        if (!options.jsonMode) {
+          writeStdoutLine(line);
+        }
+        return;
+      }
+      if (
+        parsed
+        && parsed.status === "stream"
+        && parsed.details
+        && parsed.details.event === "log"
+      ) {
+        if (options.jsonMode) {
+          writeStdoutLine(trimmed);
+        } else if (typeof parsed.details.chunk === "string") {
+          writeStdout(parsed.details.chunk);
+        } else if (typeof parsed.details.line === "string") {
+          writeStderrLine(parsed.details.line);
+        }
+        return;
+      }
+      finalPayload = parsed;
+    };
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+
+    child.stdout.on("data", (chunk) => {
+      stdoutText += chunk;
+      stdoutBuffer += chunk;
+      const lines = stdoutBuffer.split(/\r?\n/);
+      stdoutBuffer = lines.pop() || "";
+      for (const line of lines) {
+        handleStdoutLine(line);
+      }
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderrText += chunk;
+      if (!options.jsonMode) {
+        process.stderr.write(chunk);
+      }
+    });
+
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (stdoutBuffer.trim()) {
+        handleStdoutLine(stdoutBuffer);
+      }
+      resolve({
+        status: typeof code === "number" ? code : 1,
+        stdout: stdoutText,
+        stderr: stderrText,
+        toolPayload: finalPayload,
+      });
+    });
+  });
+}
+
 function parseToolPayload(result, fallbackMessage) {
   if (result.status !== 0) {
     let payload = null;
@@ -222,6 +311,11 @@ function parseLastJsonLine(output) {
   if (!text) {
     return null;
   }
+  try {
+    return JSON.parse(text);
+  } catch {
+    // fall through to line-based parsing for mixed output
+  }
   const lines = text.split(/\r?\n/).filter(Boolean);
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     try {
@@ -235,11 +329,23 @@ function parseLastJsonLine(output) {
 
 async function executeRemoteTopLevelToolCommand(command, tool, args, resolved, flags) {
   const ssh = parseSshTarget(resolved.ssh);
-  const remoteRoot = flags["sync-morpheus"]
+  const remoteRoot = resolved["sync-morpheus"]
     ? prepareRemoteMorpheusRuntime(resolved.workspace, ssh)
     : remoteRepoRoot();
   const remoteArgs = rewriteRemoteArgs(args, resolved);
+  const pathFlags = pathFlagSet();
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index];
+    if (!pathFlags.has(token) || index + 1 >= args.length) {
+      continue;
+    }
+    const localValue = args[index + 1];
+    const remoteValue = remoteArgs[index + 1];
+    syncRemoteInputPath(localValue, remoteValue, ssh, `${tool} ${token.slice(2)}`);
+    index += 1;
+  }
   const morpheusArgs = [
+    "--json",
     command,
     "--tool",
     tool,
@@ -264,9 +370,30 @@ async function executeRemoteTopLevelToolCommand(command, tool, args, resolved, f
     '  echo "failed to locate remote morpheus executable" >&2',
     "  exit 1",
     "fi",
+    'cd "$remote_repo_root"',
     `${commandLine.replace(`"${remoteRoot}/bin/morpheus"`, '"$MORPHEUS_REMOTE_CMD"')}`,
   ].join("\n");
-  const result = await runSshStreaming(ssh, script, { collectStdout: true });
+  const result = await runSshStreaming(ssh, script, {
+    collectStdout: true,
+    onStdoutLine(line) {
+      if (!flags.json) {
+        return;
+      }
+      try {
+        const parsed = JSON.parse(String(line || "").trim());
+        if (parsed && parsed.status === "stream") {
+          writeStdoutLine(line);
+        }
+      } catch {
+        // final pretty JSON is handled after collection
+      }
+    },
+    onStderr(chunk) {
+      if (!flags.json && chunk) {
+        process.stderr.write(chunk);
+      }
+    }
+  });
   const payload = parseLastJsonLine(result.stdout || "");
   if (result.exitCode !== 0 || !payload) {
     throw new Error((payload && payload.summary) || result.stderr || result.stdout || `failed to ${command} with tool ${tool}`);
@@ -437,7 +564,7 @@ async function handleToolLifecycleCommand(command, argv, usage, options = {}) {
   const payload = normalizeArtifacts(remoteEnabled
     ? await executeRemoteTopLevelToolCommand(command, tool, args, resolved, flags)
     : parseToolPayload(
-      spawnTool(descriptor, args),
+      await runToolStreaming(descriptor, args, { jsonMode: Boolean(resolved.json) }),
       `failed to ${command} with tool ${tool}`
     ));
 
@@ -493,7 +620,7 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   const payload = remoteEnabled
     ? await executeRemoteTopLevelToolCommand(command, tool, args, effective, flags)
     : parseToolPayload(
-      spawnTool(descriptor, args),
+      await runToolStreaming(descriptor, args, { jsonMode: Boolean(flags.json) }),
       `failed to ${command} with tool ${tool}`
     );
 

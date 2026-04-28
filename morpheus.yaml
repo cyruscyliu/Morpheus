@@ -182,6 +182,26 @@ workflows:
         args:
           - --source
           - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+  build-qemu:
+    category: build
+    steps:
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/qemu/patches"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
   local-buildroot-qemu-runtime:
     category: run
     steps:

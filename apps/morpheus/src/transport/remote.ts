@@ -383,93 +383,6 @@ function prepareRemoteMorpheusRuntime(workspace, ssh) {
   return runtimeRoot;
 }
 
-function effectiveBuildrootConfigFragment(fragmentLines, options = {}) {
-  const globalPatchDir = options.globalPatchDir || null;
-  const kernelTarballLocation = options.kernelTarballLocation || null;
-  const filtered = [];
-  for (const line of fragmentLines || []) {
-    if (/^BR2_LINUX_KERNEL_CUSTOM_VERSION(_VALUE)?=/.test(line || "")) {
-      continue;
-    }
-    filtered.push(line);
-  }
-  if (kernelTarballLocation) {
-    filtered.push("BR2_LINUX_KERNEL_CUSTOM_TARBALL=y");
-    filtered.push(`BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION="${kernelTarballLocation}"`);
-  }
-  if (globalPatchDir) {
-    filtered.push(`BR2_GLOBAL_PATCH_DIR="${globalPatchDir}"`);
-  }
-  return filtered.join("\n");
-}
-
-function listKernelPatchFiles(patchDir) {
-  const linuxPatchDir = path.join(patchDir, "linux");
-  if (!fs.existsSync(linuxPatchDir)) {
-    return [];
-  }
-  const results = [];
-  const stack = [linuxPatchDir];
-  while (stack.length > 0) {
-    const current = stack.pop();
-    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-      const nextPath = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(nextPath);
-      } else if (entry.isFile() && nextPath.endsWith(".patch")) {
-        results.push(nextPath);
-      }
-    }
-  }
-  results.sort((left, right) => left.localeCompare(right));
-  return results;
-}
-
-function kernelPatchFingerprint(patchDir, kernelPatchFiles) {
-  const hash = require("crypto").createHash("sha256");
-  for (const filePath of kernelPatchFiles || []) {
-    hash.update(path.relative(patchDir, filePath));
-    hash.update("\0");
-    hash.update(fs.readFileSync(filePath));
-    hash.update("\0");
-  }
-  return hash.digest("hex");
-}
-
-function copyPatchTreeWithoutKernelPatches(sourceDir, destinationDir) {
-  fs.rmSync(destinationDir, { recursive: true, force: true });
-  fs.mkdirSync(destinationDir, { recursive: true });
-  fs.cpSync(sourceDir, destinationDir, {
-    recursive: true,
-    filter(src) {
-      const relative = path.relative(sourceDir, src);
-      if (!relative) {
-        return true;
-      }
-      const segments = relative.split(path.sep);
-      return !(segments[0] === "linux" && src.endsWith(".patch"));
-    }
-  });
-}
-
-function ensurePatchedKernelTarballHashes(globalPatchDir, tarballPath) {
-  const crypto = require("crypto");
-  const tarballName = path.basename(tarballPath);
-  const digest = crypto.createHash("sha256").update(fs.readFileSync(tarballPath)).digest("hex");
-  for (const relativePath of [
-    path.join("linux", "linux.hash"),
-    path.join("linux-headers", "linux-headers.hash"),
-  ]) {
-    const filePath = path.join(globalPatchDir, relativePath);
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    const nextLine = `sha256  ${digest}  ${tarballName}\n`;
-    const current = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
-    if (!current.includes(tarballName)) {
-      fs.appendFileSync(filePath, nextLine, "utf8");
-    }
-  }
-}
-
 function effectiveBuildDirKey(options) {
   if (!options.reuseBuildDir) {
     return null;
@@ -484,10 +397,5 @@ module.exports = {
   prepareRemoteMorpheusRuntime,
   runSshStreaming,
   syncRemoteInputPath,
-  effectiveBuildrootConfigFragment,
   effectiveBuildDirKey,
-  kernelPatchFingerprint,
-  listKernelPatchFiles,
-  copyPatchTreeWithoutKernelPatches,
-  ensurePatchedKernelTarballHashes,
 };

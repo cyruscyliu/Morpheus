@@ -194,6 +194,10 @@ function toolLogPath(source: string) {
   return path.join(source, '.morpheus-tool.log');
 }
 
+function buildLogPath(source: string) {
+  return path.join(source, '.morpheus-build.log');
+}
+
 function appendToolLog(source: string, ...chunks: Array<string | null | undefined>) {
   const logFile = toolLogPath(source);
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
@@ -202,6 +206,20 @@ function appendToolLog(source: string, ...chunks: Array<string | null | undefine
       fs.appendFileSync(logFile, chunk.endsWith('\n') ? chunk : `${chunk}\n`, 'utf8');
     }
   }
+}
+
+function writeBuildLog(source: string, ...chunks: Array<string | null | undefined>) {
+  const logFile = buildLogPath(source);
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
+  fs.writeFileSync(
+    logFile,
+    chunks
+      .filter((chunk): chunk is string => Boolean(chunk))
+      .map((chunk) => chunk.endsWith('\n') ? chunk : `${chunk}\n`)
+      .join(''),
+    'utf8',
+  );
+  return logFile;
 }
 
 function applyPatches(source: string, patchDir: string, patchFiles: string[], logFile: string) {
@@ -791,6 +809,20 @@ function buildDirectory(flags: Record<string, unknown>) {
     example_dir: relPath(built.exampleDir),
     build_dir: built.buildDir ? relPath(built.buildDir) : null,
   });
+  const buildLogFile = writeBuildLog(
+    source,
+    `git_url=${gitUrl}`,
+    `git_ref=${gitRef}`,
+    `example=${example}`,
+    `microkit_sdk=${microkitSdk}`,
+    `board=${board}`,
+    ...(toolchainBinDir ? [`toolchain_bin_dir=${toolchainBinDir}`] : []),
+    ...(linux ? [`linux=${linux}`] : []),
+    ...(initrd ? [`initrd=${initrd}`] : []),
+    ...(qemu ? [`qemu=${qemu}`] : []),
+    built.stdout || '',
+    built.stderr || '',
+  );
 
   const runtimeContract = buildRuntimeContract({
     source,
@@ -850,7 +882,9 @@ function buildDirectory(flags: Record<string, unknown>) {
         : null,
       build: {
         cwd: built.exampleDir,
+        log_file: buildLogFile,
       },
+      log_file: buildLogFile,
     },
   };
 }
@@ -861,7 +895,11 @@ function readLogs(flags: Record<string, unknown>) {
   const logFile = runDir
     ? path.resolve(process.cwd(), runDir, 'stdout.log')
     : source
-      ? toolLogPath(path.resolve(process.cwd(), source))
+      ? [
+        buildLogPath(path.resolve(process.cwd(), source)),
+        toolLogPath(path.resolve(process.cwd(), source)),
+        path.join(path.resolve(process.cwd(), source), '.morpheus-patches.log'),
+      ].find((filePath) => fs.existsSync(filePath)) || null
       : null;
   if (!logFile) {
     throw new CliError('missing_flag', 'libvmm logs requires --source DIR or --run-dir DIR');

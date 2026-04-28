@@ -202,6 +202,66 @@ workflows:
         args:
           - --source
           - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+  build-microkit-sdk:
+    category: build
+    steps:
+      - id: microkit_sdk_fetch
+        tool: microkit-sdk
+        command: fetch
+      - id: microkit_sdk_patch
+        tool: microkit-sdk
+        command: patch
+        args:
+          - --source
+          - "{{steps.microkit_sdk_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/microkit-sdk/patches"
+      - id: microkit_sdk_build
+        tool: microkit-sdk
+        command: build
+        args:
+          - --source
+          - "{{steps.microkit_sdk_patch.artifacts.source-dir.location}}"
+  build-libvmm:
+    category: build
+    steps:
+      - id: libvmm_fetch
+        tool: libvmm
+        command: fetch
+      - id: libvmm_patch
+        tool: libvmm
+        command: patch
+        args:
+          - --source
+          - "{{steps.libvmm_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/libvmm/patches"
+      - id: libvmm_build
+        tool: libvmm
+        command: build
+        args:
+          - --source
+          - "{{steps.libvmm_patch.artifacts.source-dir.location}}"
+  build-sel4:
+    category: build
+    steps:
+      - id: sel4_fetch
+        tool: sel4
+        command: fetch
+      - id: sel4_patch
+        tool: sel4
+        command: patch
+        args:
+          - --source
+          - "{{steps.sel4_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/sel4/patches/fuzz-sel4"
+      - id: sel4_build
+        tool: sel4
+        command: build
+        args:
+          - --source
+          - "{{steps.sel4_patch.artifacts.source-dir.location}}"
   local-buildroot-qemu-runtime:
     category: run
     steps:

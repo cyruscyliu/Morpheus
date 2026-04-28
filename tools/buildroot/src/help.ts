@@ -24,11 +24,13 @@ export const COMMANDS: HelpCommand[] = [
   {
     name: 'build',
     summary: 'Run a local Buildroot build',
-    usage: ['buildroot build --source DIR --output DIR [--defconfig NAME] [--make-arg ARG ...] [--env KEY=VALUE ...] [-- ...]'],
+    usage: ['buildroot build --source DIR --output DIR [--defconfig NAME] [--patch-dir DIR] [--config-fragment LINE ...] [--make-arg ARG ...] [--env KEY=VALUE ...] [-- ...]'],
     flags: [
       { name: '--source DIR', summary: 'Buildroot source directory' },
       { name: '--output DIR', summary: 'Buildroot output directory' },
       { name: '--defconfig NAME', summary: 'Optional Buildroot defconfig target' },
+      { name: '--patch-dir DIR', summary: 'Optional Buildroot global patch directory' },
+      { name: '--config-fragment LINE', summary: 'Append a Buildroot config fragment line before olddefconfig (repeatable)' },
       { name: '--make-arg ARG', summary: 'Additional make argument (repeatable)' },
       { name: '--env KEY=VALUE', summary: 'Environment variable for build commands (repeatable)' },
     ],

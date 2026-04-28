@@ -38,6 +38,8 @@ export interface LocalBuildOptions {
   source: string;
   output: string;
   defconfig?: string;
+  patchDir?: string;
+  configFragments: string[];
   makeArgs: string[];
   env: Record<string, string>;
   forwarded: string[];
@@ -81,6 +83,8 @@ export interface BuildManifest {
   output?: string;
   logFile?: string;
   defconfig?: string;
+  patchDir?: string;
+  configFragments: string[];
   makeArgs: string[];
   env: Record<string, string>;
   forwarded: string[];

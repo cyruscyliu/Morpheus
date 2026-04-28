@@ -87,6 +87,8 @@ function parseBuild(args: string[]): LocalBuildOptions {
   let source = '';
   let output = '';
   let defconfig: string | undefined;
+  let patchDir: string | undefined;
+  const configFragments: string[] = [];
   const makeArgs: string[] = [];
   const envArgs: string[] = [];
   const forwarded: string[] = [];
@@ -110,8 +112,21 @@ function parseBuild(args: string[]): LocalBuildOptions {
         output = requireValue(args, i, arg);
         i += 1;
         break;
+      case '--build-version':
+      case '--buildroot-version':
+        requireValue(args, i, arg);
+        i += 1;
+        break;
       case '--defconfig':
         defconfig = requireValue(args, i, arg);
+        i += 1;
+        break;
+      case '--patch-dir':
+        patchDir = requireValue(args, i, arg);
+        i += 1;
+        break;
+      case '--config-fragment':
+        configFragments.push(requireValue(args, i, arg));
         i += 1;
         break;
       case '--make-arg':
@@ -133,7 +148,16 @@ function parseBuild(args: string[]): LocalBuildOptions {
   if (!source) throw new CliError('missing_source', 'build requires --source DIR');
   if (!output) throw new CliError('missing_output', 'build requires --output DIR');
 
-  return { source, output, defconfig, makeArgs, env: parseKeyValues(envArgs), forwarded };
+  return {
+    source,
+    output,
+    defconfig,
+    patchDir,
+    configFragments,
+    makeArgs,
+    env: parseKeyValues(envArgs),
+    forwarded,
+  };
 }
 
 function parsePatch(args: string[]): PatchOptions {

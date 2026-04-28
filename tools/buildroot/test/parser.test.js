@@ -10,10 +10,22 @@ test('parses help with json', () => {
 });
 
 test('parses local build flags and passthrough', () => {
-  const parsed = parseArgv(['build', '--source', './src', '--output', './out', '--defconfig', 'qemu_x86_64_defconfig', '--make-arg', 'BR2_JLEVEL=8', '--env', 'CC=clang', '--', 'V=1']);
+  const parsed = parseArgv([
+    'build',
+    '--source', './src',
+    '--output', './out',
+    '--defconfig', 'qemu_x86_64_defconfig',
+    '--patch-dir', './patches',
+    '--config-fragment', 'BR2_PACKAGE_BUSYBOX=y',
+    '--make-arg', 'BR2_JLEVEL=8',
+    '--env', 'CC=clang',
+    '--', 'V=1',
+  ]);
   assert.equal(parsed.command, 'build');
   assert.equal(parsed.options.source, './src');
   assert.equal(parsed.options.output, './out');
+  assert.equal(parsed.options.patchDir, './patches');
+  assert.deepEqual(parsed.options.configFragments, ['BR2_PACKAGE_BUSYBOX=y']);
   assert.deepEqual(parsed.options.makeArgs, ['BR2_JLEVEL=8']);
   assert.deepEqual(parsed.options.forwarded, ['V=1']);
   assert.deepEqual(parsed.options.env, { CC: 'clang' });

@@ -263,10 +263,25 @@ function toolLogPath(source: string) {
   return path.join(source, '.morpheus-tool.log');
 }
 
+function buildLogPath(source: string) {
+  return path.join(source, '.morpheus-build.log');
+}
+
 function appendToolLog(source: string, message: string) {
   const logFile = toolLogPath(source);
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
   fs.appendFileSync(logFile, `${message}\n`, 'utf8');
+}
+
+function writeBuildLog(source: string, ...messages: string[]) {
+  const logFile = buildLogPath(source);
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
+  fs.writeFileSync(
+    logFile,
+    messages.filter(Boolean).map((item) => item.endsWith('\n') ? item : `${item}\n`).join(''),
+    'utf8',
+  );
+  return logFile;
 }
 
 function applyPatches(source: string, patchDir: string, patchFiles: string[], logFile: string) {
@@ -316,6 +331,12 @@ async function buildDirectory(flags: Record<string, unknown>) {
   if (fileExists(source)) {
     const inspected = inspectDirectory({ path: source });
     appendToolLog(source, 'build reused existing sdk directory');
+    const logFile = writeBuildLog(
+      source,
+      'reused existing managed Microkit SDK directory',
+      `source=${source}`,
+      `version=${microkitVersion || inspected.details.directory.version || ''}`,
+    );
     return {
       command: 'build',
       status: 'success',
@@ -329,6 +350,7 @@ async function buildDirectory(flags: Record<string, unknown>) {
         microkit_version: microkitVersion || inspected.details.directory.version,
         directory: inspected.details.directory,
         artifact: inspected.details.artifact,
+        log_file: logFile,
       },
     };
   }
@@ -363,6 +385,14 @@ async function buildDirectory(flags: Record<string, unknown>) {
   }
   appendToolLog(source, `build archive=${archivePath}`);
   const inspected = inspectDirectory({ path: source });
+  const logFile = writeBuildLog(
+    source,
+    'built managed Microkit SDK directory',
+    `source=${source}`,
+    `archive=${archivePath}`,
+    `archive_url=${archiveUrl || ''}`,
+    `version=${microkitVersion || inspected.details.directory.version || ''}`,
+  );
 
   return {
     command: 'build',
@@ -377,6 +407,7 @@ async function buildDirectory(flags: Record<string, unknown>) {
       microkit_version: microkitVersion || inspected.details.directory.version,
       directory: inspected.details.directory,
       artifact: inspected.details.artifact,
+      log_file: logFile,
     },
   };
 }
@@ -454,11 +485,13 @@ function readLogs(flags: Record<string, unknown>) {
   if (!source) {
     throw new CliError('missing_flag', 'microkit-sdk logs requires --source DIR or --path DIR');
   }
-  const logFile = fs.existsSync(toolLogPath(source))
-    ? toolLogPath(source)
-    : path.join(source, '.morpheus-patches.log');
-  if (!fs.existsSync(logFile)) {
-    throw new CliError('missing_log', `Missing Microkit SDK log file: ${logFile}`);
+  const logFile = [
+    buildLogPath(source),
+    toolLogPath(source),
+    path.join(source, '.morpheus-patches.log'),
+  ].find((filePath) => fs.existsSync(filePath));
+  if (!logFile || !fs.existsSync(logFile)) {
+    throw new CliError('missing_log', `Missing Microkit SDK log file for: ${source}`);
   }
   return {
     command: 'logs',

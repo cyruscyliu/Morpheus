@@ -284,8 +284,6 @@ function applyConfigDefaults(flags, options) {
   const next = { ...flags };
   const allowGlobalRemote = Boolean(options && options.allowGlobalRemote);
   const allowToolDefaults = Boolean(options && options.allowToolDefaults);
-  const toolDisallowsRemote = false;
-
   let workspaceEntry = null;
   if (next.workspace) {
     workspaceEntry = resolveWorkspaceName(value, next.workspace, { baseDir });
@@ -313,6 +311,7 @@ function applyConfigDefaults(flags, options) {
   if (toolEntry && toolEntry["mode"] && !next.mode) {
     next.mode = toolEntry["mode"];
   }
+  const toolDisallowsRemote = next.mode === "local";
 
   if (toolEntry && toolEntry["remote"] && next.mode !== "local" && !next.remote && !next.ssh) {
     next.remote = toolEntry["remote"];
@@ -354,11 +353,11 @@ function applyConfigDefaults(flags, options) {
     applyToolConfigDefaults(next, toolEntry);
   }
 
-  if (!toolDisallowsRemote) {
+  if (!toolDisallowsRemote && next.mode !== "local") {
     applyRemoteReference(value, next, next.remote);
   }
 
-  if (!next.ssh && !toolDisallowsRemote) {
+  if (!next.ssh && !toolDisallowsRemote && next.mode !== "local") {
     const remoteName = workspaceEntry && workspaceEntry.remote;
     if (remoteName === true || remoteName === "true") {
       applyRemoteReference(value, next, "remote");
@@ -367,11 +366,11 @@ function applyConfigDefaults(flags, options) {
     }
   }
 
-  if (!next.ssh && allowGlobalRemote && !toolDisallowsRemote) {
+  if (!next.ssh && allowGlobalRemote && !toolDisallowsRemote && next.mode !== "local") {
     applyRemoteReference(value, next, "remote");
   }
 
-  if (!next.ssh && allowGlobalRemote && !toolDisallowsRemote) {
+  if (!next.ssh && allowGlobalRemote && !toolDisallowsRemote && next.mode !== "local") {
     const remote = resolveDefaultRemote(value);
     if (remote) {
       next.ssh = remote.ssh;

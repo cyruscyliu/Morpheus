@@ -283,10 +283,25 @@ function toolLogPath(source: string) {
   return path.join(source, '.morpheus-tool.log');
 }
 
+function buildLogPath(source: string) {
+  return path.join(source, '.morpheus-build.log');
+}
+
 function appendToolLog(source: string, message: string) {
   const logFile = toolLogPath(source);
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
   fs.appendFileSync(logFile, `${message}\n`, 'utf8');
+}
+
+function writeBuildLog(source: string, ...messages: string[]) {
+  const logFile = buildLogPath(source);
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
+  fs.writeFileSync(
+    logFile,
+    messages.filter(Boolean).map((item) => item.endsWith('\n') ? item : `${item}\n`).join(''),
+    'utf8',
+  );
+  return logFile;
 }
 
 function applyPatches(source: string, patchDir: string, patchFiles: string[], logFile: string) {
@@ -363,6 +378,14 @@ async function buildDirectory(flags: Record<string, unknown>) {
       const state = readPatchState(source);
       if (state && state.fingerprint === fingerprint) {
         const inspected = inspectDirectory({ path: source });
+        const logFile = writeBuildLog(
+          source,
+          'reused managed seL4 source directory',
+          `source=${source}`,
+          `version=${sel4Version || inspected.details.directory.version || ''}`,
+          `patch_dir=${patchDir}`,
+          `patches_applied=true`,
+        );
         return {
           command: 'build',
           status: 'success',
@@ -376,6 +399,7 @@ async function buildDirectory(flags: Record<string, unknown>) {
             sel4_version: sel4Version || inspected.details.directory.version,
             directory: inspected.details.directory,
             artifact: inspected.details.artifact,
+            log_file: logFile,
             patches: {
               dir: patchDir,
               files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
@@ -395,6 +419,14 @@ async function buildDirectory(flags: Record<string, unknown>) {
       });
       const inspected = inspectDirectory({ path: source });
       appendToolLog(source, 'build reused existing source directory');
+      const logFile = writeBuildLog(
+        source,
+        'reused managed seL4 source directory',
+        `source=${source}`,
+        `version=${sel4Version || inspected.details.directory.version || ''}`,
+        `patch_dir=${patchDir}`,
+        `patches_applied=true`,
+      );
       return {
         command: 'build',
         status: 'success',
@@ -408,6 +440,7 @@ async function buildDirectory(flags: Record<string, unknown>) {
           sel4_version: sel4Version || inspected.details.directory.version,
           directory: inspected.details.directory,
           artifact: inspected.details.artifact,
+          log_file: logFile,
           patches: {
             dir: patchDir,
             files: patchFiles.map((filePath) => path.relative(patchDir, filePath)),
@@ -419,6 +452,12 @@ async function buildDirectory(flags: Record<string, unknown>) {
       };
     }
     const inspected = inspectDirectory({ path: source });
+    const logFile = writeBuildLog(
+      source,
+      'reused managed seL4 source directory',
+      `source=${source}`,
+      `version=${sel4Version || inspected.details.directory.version || ''}`,
+    );
     return {
       command: 'build',
       status: 'success',
@@ -432,6 +471,7 @@ async function buildDirectory(flags: Record<string, unknown>) {
         sel4_version: sel4Version || inspected.details.directory.version,
         directory: inspected.details.directory,
         artifact: inspected.details.artifact,
+        log_file: logFile,
         patches: patchDir
           ? {
             dir: patchDir,
@@ -488,6 +528,15 @@ async function buildDirectory(flags: Record<string, unknown>) {
   }
   appendToolLog(source, `build archive=${archivePath}`);
   const inspected = inspectDirectory({ path: source });
+  const logFile = writeBuildLog(
+    source,
+    'built managed seL4 source directory',
+    `source=${source}`,
+    `archive=${archivePath}`,
+    `archive_url=${archiveUrl || ''}`,
+    `version=${sel4Version || inspected.details.directory.version || ''}`,
+    ...(patchDir ? [`patch_dir=${patchDir}`, `patches_applied=${String(patchesApplied)}`] : []),
+  );
 
   return {
     command: 'build',
@@ -503,6 +552,7 @@ async function buildDirectory(flags: Record<string, unknown>) {
       sel4_version: sel4Version || inspected.details.directory.version,
       directory: inspected.details.directory,
       artifact: inspected.details.artifact,
+      log_file: logFile,
       patches: patchDir
         ? {
           dir: patchDir,
@@ -591,11 +641,13 @@ function readLogs(flags: Record<string, unknown>) {
   if (!source) {
     throw new CliError('missing_flag', 'sel4 logs requires --source DIR or --path DIR');
   }
-  const logFile = fs.existsSync(toolLogPath(source))
-    ? toolLogPath(source)
-    : path.join(source, '.morpheus-patches.log');
-  if (!fs.existsSync(logFile)) {
-    throw new CliError('missing_log', `Missing seL4 log file: ${logFile}`);
+  const logFile = [
+    buildLogPath(source),
+    toolLogPath(source),
+    path.join(source, '.morpheus-patches.log'),
+  ].find((filePath) => fs.existsSync(filePath));
+  if (!logFile || !fs.existsSync(logFile)) {
+    throw new CliError('missing_log', `Missing seL4 log file for: ${source}`);
   }
   return {
     command: 'logs',

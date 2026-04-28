@@ -25,6 +25,8 @@ tools/buildroot/.tmp-smoke-out/
 # Generic local artifacts
 tmp/
 *.log
+.morpheus-sync/
+.morpheus-patches.json
 morpheus.yaml
 
 # Repo-local workspace (example)

@@ -1,12 +1,13 @@
 import fs from 'node:fs/promises';
 import rawFs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { CliError } from './errors.js';
 import { runCommand } from './exec.js';
 import { generateBuildId } from './ids.js';
 import { writeManifest, readManifest } from './manifest.js';
-import { emitJson, emitText } from './io.js';
+import { emitJson, emitJsonEvent, emitText } from './io.js';
 import { manifestPathForOutput, resolvePath } from './paths.js';
 import type { BuildManifest, CliContext, CleanOptions, FetchOptions, InspectOptions, LocalBuildOptions, LogsOptions, PatchOptions } from './types.js';
 
@@ -16,6 +17,16 @@ function makeEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
 
 function defaultArchiveUrl(version: string): string {
   return `https://buildroot.org/downloads/buildroot-${version}.tar.gz`;
+}
+
+function expandMakeArg(value: string): string {
+  const parallelism = Math.max(
+    1,
+    typeof os.availableParallelism === 'function'
+      ? os.availableParallelism()
+      : ((os.cpus() || []).length || 1),
+  );
+  return String(value).replace(/\$\(nproc\)/g, String(parallelism));
 }
 
 function archiveName(version: string, archiveUrl?: string): string {
@@ -29,22 +40,34 @@ function archiveName(version: string, archiveUrl?: string): string {
   return `buildroot-${version}.tar.gz`;
 }
 
-function listPatchFiles(patchDir: string): string[] {
+function listBuildrootSourcePatchFiles(patchDir: string): string[] {
   const results: string[] = [];
-  const stack: string[] = [patchDir];
+  const roots = [patchDir, path.join(patchDir, 'buildroot')]
+    .filter((item, index, array) => array.indexOf(item) === index)
+    .filter((item) => rawFs.existsSync(item));
 
-  while (stack.length > 0) {
-    const current = stack.pop() as string;
-    for (const entry of rawFs.readdirSync(current, { withFileTypes: true })) {
-      if (entry.name.startsWith('.')) {
-        continue;
-      }
+  for (const root of roots) {
+    const stack: string[] = [root];
+    while (stack.length > 0) {
+      const current = stack.pop() as string;
+      for (const entry of rawFs.readdirSync(current, { withFileTypes: true })) {
+        if (entry.name.startsWith('.')) {
+          continue;
+        }
       const nextPath = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(nextPath);
-        continue;
-      }
-      if (entry.isFile() && (entry.name.endsWith('.patch') || entry.name.endsWith('.diff'))) {
+        if (entry.isDirectory()) {
+          stack.push(nextPath);
+          continue;
+        }
+        if (!entry.isFile()) {
+          continue;
+        }
+        if (!(entry.name.endsWith('.patch') || entry.name.endsWith('.diff'))) {
+          continue;
+        }
+        if (root === patchDir && current !== patchDir) {
+          continue;
+        }
         results.push(nextPath);
       }
     }
@@ -91,6 +114,62 @@ async function appendLog(filePath: string, ...chunks: Array<string | undefined>)
     if (chunk) {
       await fs.appendFile(filePath, chunk, 'utf8');
     }
+  }
+}
+
+function createBuildLogStreamer(context: CliContext, stage: string, logFile: string) {
+  const writeChunk = async (stream: 'stdout' | 'stderr', chunk: string) => {
+    await appendLog(logFile, chunk);
+    if (context.json) {
+      emitJsonEvent(context, 'build', 'log', { stage, stream, chunk });
+    }
+  };
+
+  return {
+    writeStdout(chunk: string) {
+      void writeChunk('stdout', chunk);
+    },
+    writeStderr(chunk: string) {
+      void writeChunk('stderr', chunk);
+    },
+  };
+}
+
+async function applyBuildConfigInputs(
+  context: CliContext,
+  source: string,
+  output: string,
+  options: LocalBuildOptions,
+  logFile: string,
+): Promise<void> {
+  const fragmentLines = [...options.configFragments];
+  if (options.patchDir) {
+    fragmentLines.push(`BR2_GLOBAL_PATCH_DIR="${options.patchDir}"`);
+  }
+  if (fragmentLines.length === 0) {
+    return;
+  }
+
+  const configPath = path.join(output, '.config');
+  const currentConfig = await fs.readFile(configPath, 'utf8').catch(() => '');
+  const nextConfig = currentConfig.endsWith('\n') || currentConfig.length === 0
+    ? `${currentConfig}${fragmentLines.join('\n')}\n`
+    : `${currentConfig}\n${fragmentLines.join('\n')}\n`;
+  await fs.writeFile(configPath, nextConfig, 'utf8');
+
+  const olddefconfigStream = createBuildLogStreamer(context, 'olddefconfig', logFile);
+  const olddefconfigResult = await runCommand('make', ['-C', source, `O=${output}`, 'olddefconfig'], {
+    env: makeEnv(options.env),
+    streamOutput: !context.json,
+    onStdoutChunk: (chunk) => { olddefconfigStream.writeStdout(chunk); },
+    onStderrChunk: (chunk) => { olddefconfigStream.writeStderr(chunk); },
+  });
+  if (olddefconfigResult.exitCode !== 0) {
+    throw new CliError(
+      'build_failed',
+      `Buildroot olddefconfig failed with exit code ${olddefconfigResult.exitCode}`,
+      olddefconfigResult.exitCode,
+    );
   }
 }
 
@@ -170,7 +249,7 @@ export async function runPatch(context: CliContext, options: PatchOptions): Prom
     throw new CliError('missing_patch_dir', `Missing patch directory: ${patchDir}`);
   }
 
-  const patchFiles = listPatchFiles(patchDir);
+  const patchFiles = listBuildrootSourcePatchFiles(patchDir);
   const fingerprint = patchFingerprint(patchDir, patchFiles);
   const state = readPatchState(source);
   const logFile = path.join(source, '.morpheus-patches.log');
@@ -245,6 +324,7 @@ export async function runPatch(context: CliContext, options: PatchOptions): Prom
 export async function runLocalBuild(context: CliContext, options: LocalBuildOptions): Promise<number> {
   const source = resolvePath(options.source);
   const output = resolvePath(options.output);
+  const patchDir = options.patchDir ? resolvePath(options.patchDir) : undefined;
   const id = generateBuildId();
   const manifestFile = manifestPathForOutput(output);
   const logFile = path.join(output, '.buildroot-cli', 'stdout.log');
@@ -263,6 +343,8 @@ export async function runLocalBuild(context: CliContext, options: LocalBuildOpti
     output,
     logFile,
     defconfig: options.defconfig,
+    patchDir,
+    configFragments: options.configFragments,
     makeArgs: options.makeArgs,
     env: options.env,
     forwarded: options.forwarded,
@@ -270,10 +352,13 @@ export async function runLocalBuild(context: CliContext, options: LocalBuildOpti
   await writeManifest(manifestFile, manifest);
 
   if (options.defconfig) {
+    const defconfigStream = createBuildLogStreamer(context, 'defconfig', logFile);
     const defconfigResult = await runCommand('make', ['-C', source, `O=${output}`, options.defconfig], {
       env: makeEnv(options.env),
+      streamOutput: !context.json,
+      onStdoutChunk: (chunk) => { defconfigStream.writeStdout(chunk); },
+      onStderrChunk: (chunk) => { defconfigStream.writeStderr(chunk); },
     });
-    await appendLog(logFile, defconfigResult.stdout, defconfigResult.stderr);
     if (defconfigResult.exitCode !== 0) {
       manifest.status = 'error';
       manifest.exitCode = defconfigResult.exitCode;
@@ -284,11 +369,26 @@ export async function runLocalBuild(context: CliContext, options: LocalBuildOpti
     }
   }
 
-  const result = await runCommand('make', ['-C', source, `O=${output}`, ...options.makeArgs, ...options.forwarded], {
+  try {
+    await applyBuildConfigInputs(context, source, output, { ...options, patchDir }, logFile);
+  } catch (error) {
+    if (error instanceof CliError) {
+      manifest.status = 'error';
+      manifest.exitCode = error.exitCode;
+      manifest.errorMessage = error.message;
+      manifest.updatedAt = new Date().toISOString();
+      await writeManifest(manifestFile, manifest);
+    }
+    throw error;
+  }
+
+  const makeStream = createBuildLogStreamer(context, 'make', logFile);
+  const result = await runCommand('make', ['-C', source, `O=${output}`, ...options.makeArgs.map(expandMakeArg), ...options.forwarded], {
     env: makeEnv(options.env),
     streamOutput: !context.json,
+    onStdoutChunk: (chunk) => { makeStream.writeStdout(chunk); },
+    onStderrChunk: (chunk) => { makeStream.writeStderr(chunk); },
   });
-  await appendLog(logFile, result.stdout, result.stderr);
 
   manifest.status = result.exitCode === 0 ? 'success' : 'error';
   manifest.exitCode = result.exitCode;
@@ -309,6 +409,8 @@ export async function runLocalBuild(context: CliContext, options: LocalBuildOpti
         manifest: manifestFile,
         log_file: logFile,
         defconfig: options.defconfig ?? null,
+        patch_dir: patchDir ?? null,
+        config_fragments: options.configFragments,
         make_args: options.makeArgs,
         forwarded: options.forwarded,
       },

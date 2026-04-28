@@ -10,14 +10,7 @@ const repoRoot = path.resolve(appRoot, "..", "..");
 const bin = path.join(appRoot, "dist", "cli.js");
 const buildrootFixture = path.join(repoRoot, "tools", "buildroot", "test", "fixtures", "minimal-buildroot");
 const { applyConfigDefaults } = require("../dist/core/config.js");
-const {
-  effectiveBuildrootConfigFragment,
-  kernelPatchFingerprint,
-  listKernelPatchFiles,
-  copyPatchTreeWithoutKernelPatches,
-  ensurePatchedKernelTarballHashes,
-  effectiveBuildDirKey
-} = require("../dist/transport/remote.js");
+const { effectiveBuildDirKey } = require("../dist/transport/remote.js");
 
 function run(args, options = {}) {
   return spawnSync(process.execPath, [bin, ...args], {

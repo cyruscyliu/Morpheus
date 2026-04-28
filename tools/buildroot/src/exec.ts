@@ -7,7 +7,17 @@ export interface ExecResult {
   exitCode: number;
 }
 
-export async function runCommand(command: string, args: string[], options?: { cwd?: string; env?: NodeJS.ProcessEnv; streamOutput?: boolean }): Promise<ExecResult> {
+export async function runCommand(
+  command: string,
+  args: string[],
+  options?: {
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+    streamOutput?: boolean;
+    onStdoutChunk?: (chunk: string) => void;
+    onStderrChunk?: (chunk: string) => void;
+  },
+): Promise<ExecResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: options?.cwd,
@@ -21,6 +31,7 @@ export async function runCommand(command: string, args: string[], options?: { cw
     child.stdout.on('data', (chunk) => {
       const text = chunk.toString();
       stdout += text;
+      options?.onStdoutChunk?.(text);
       if (options?.streamOutput) {
         process.stdout.write(text);
       }
@@ -29,6 +40,7 @@ export async function runCommand(command: string, args: string[], options?: { cw
     child.stderr.on('data', (chunk) => {
       const text = chunk.toString();
       stderr += text;
+      options?.onStderrChunk?.(text);
       if (options?.streamOutput) {
         process.stderr.write(text);
       }

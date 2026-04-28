@@ -14,6 +14,7 @@
       "build-version": { "aliases": ["build-version", "buildVersion", "buildroot-version", "buildrootVersion"] },
       "archive-url": { "aliases": ["archive-url", "archiveUrl"] },
       "defconfig": { "aliases": ["defconfig"] },
+      "make-arg": { "aliases": ["make-arg", "make-args", "makeArgs"], "repeatable": true },
       "config-fragment": { "aliases": ["config-fragment", "configFragment"], "repeatable": true },
       "artifacts": { "aliases": ["artifacts"], "repeatable": true }
     }
@@ -39,12 +40,16 @@
       "fetchFlags": ["archive-url", "downloads-dir"],
       "commands": {
         "fetch": {
+          "scalarFlags": ["archive-url"],
+          "repeatableFlags": [],
           "pathFlags": {
             "source": "tools/buildroot/src/buildroot-{buildVersion}",
             "downloads-dir": "tools/buildroot/downloads"
           }
         },
         "build": {
+          "scalarFlags": ["defconfig", "patch-dir"],
+          "repeatableFlags": ["make-arg", "config-fragment", "env"],
           "pathFlags": {
             "source": "tools/buildroot/src/buildroot-{buildVersion}",
             "build-dir": "tools/buildroot/builds/{buildDirKey}/output"

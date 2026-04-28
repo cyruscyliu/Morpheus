@@ -97,6 +97,31 @@ function commandSpec(descriptor, command) {
     : null;
 }
 
+function forwardedFlagSpec(descriptor, command) {
+  const managed = localManaged(descriptor) || {};
+  const spec = commandSpec(descriptor, command) || {};
+  const defaultScalarByCommand = {
+    fetch: Array.isArray(managed.fetchFlags) ? managed.fetchFlags : [],
+    patch: [],
+  };
+  const defaultRepeatableByCommand = {
+    fetch: [],
+    patch: [],
+  };
+  return {
+    scalar: Array.isArray(spec.scalarFlags)
+      ? spec.scalarFlags
+      : (Object.prototype.hasOwnProperty.call(defaultScalarByCommand, command)
+        ? defaultScalarByCommand[command]
+        : null),
+    repeatable: Array.isArray(spec.repeatableFlags)
+      ? spec.repeatableFlags
+      : (Object.prototype.hasOwnProperty.call(defaultRepeatableByCommand, command)
+        ? defaultRepeatableByCommand[command]
+        : null),
+  };
+}
+
 function defaultSourceDir(workspace, tool, descriptor, buildVersion, buildDirKey) {
   const managed = localManaged(descriptor);
   if (managed && managed.sourceTemplate) {
@@ -345,12 +370,12 @@ async function executeRemoteTopLevelToolCommand(command, tool, args, resolved, f
     index += 1;
   }
   const morpheusArgs = [
-    "--json",
     command,
     "--tool",
     tool,
     "--workspace",
     resolved.workspace,
+    "--json",
     ...remoteArgs.slice(2),
   ];
   const commandLine = [
@@ -455,15 +480,26 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
   const buildVersion = resolved["build-version"] || null;
   const buildDirKey = resolved["build-dir-key"] || "default";
   const spec = commandSpec(descriptor, command);
+  const forwardSpec = forwardedFlagSpec(descriptor, command);
   const pathFlags = spec && spec.pathFlags ? spec.pathFlags : {};
   const flagAliases = spec && spec.flagAliases ? spec.flagAliases : {};
   const effectivePaths = {
     source: resolved.source || defaultSourceDir(workspace, tool, descriptor, buildVersion, buildDirKey),
-    "downloads-dir": resolved["downloads-dir"] || defaultDownloadsDir(workspace, tool, descriptor),
-    "build-dir": resolved["build-dir"] || defaultBuildDir(workspace, descriptor, buildVersion, buildDirKey),
-    "install-dir": resolved["install-dir"] || defaultInstallDir(workspace, descriptor, buildVersion, buildDirKey),
     "build-version": buildVersion,
   };
+  const optionalManagedPathResolvers = {
+    "downloads-dir": () => resolved["downloads-dir"] || defaultDownloadsDir(workspace, tool, descriptor),
+    "build-dir": () => resolved["build-dir"] || defaultBuildDir(workspace, descriptor, buildVersion, buildDirKey),
+    "install-dir": () => resolved["install-dir"] || defaultInstallDir(workspace, descriptor, buildVersion, buildDirKey),
+  };
+  for (const [genericFlag, resolveValue] of Object.entries(optionalManagedPathResolvers)) {
+    if (
+      resolved[genericFlag] != null
+      || Object.prototype.hasOwnProperty.call(pathFlags, genericFlag)
+    ) {
+      effectivePaths[genericFlag] = resolveValue();
+    }
+  }
   for (const [genericFlag, template] of Object.entries(pathFlags)) {
     if (effectivePaths[genericFlag]) {
       continue;
@@ -501,7 +537,7 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
     args.push(`--${actualFlag}`, String(value));
   }
 
-  const forwardedKeys = [
+  const defaultForwardedKeys = [
     "defconfig",
     "qemu",
     "microkit-sdk",
@@ -519,6 +555,9 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
     "append",
     "make-target",
   ];
+  const forwardedKeys = Array.isArray(forwardSpec.scalar)
+    ? forwardSpec.scalar
+    : defaultForwardedKeys;
   for (const key of forwardedKeys) {
     if (!Object.prototype.hasOwnProperty.call(resolved, key)) {
       continue;
@@ -533,7 +572,10 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
     }
     args.push(`--${key}`, String(value));
   }
-  const repeatableForwardedKeys = ["target-list", "configure-arg", "qemu-arg", "make-arg", "config-fragment", "env", "file", "filter", "kconfig", "rust-target"];
+  const defaultRepeatableForwardedKeys = ["target-list", "configure-arg", "qemu-arg", "make-arg", "config-fragment", "env", "file", "filter", "kconfig", "rust-target"];
+  const repeatableForwardedKeys = Array.isArray(forwardSpec.repeatable)
+    ? forwardSpec.repeatable
+    : defaultRepeatableForwardedKeys;
   for (const key of repeatableForwardedKeys) {
     if (!Array.isArray(resolved[key]) || resolved[key].length === 0) {
       continue;
@@ -591,13 +633,10 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   const effective = resolveToolDependencies(resolved);
   const remoteEnabled = Boolean(effective.ssh && effective.workspace && effective.localWorkspace && effective.workspace !== effective.localWorkspace);
   const descriptor = readToolDescriptor(tool);
-  const reserved = new Set(["tool", "json", "help"]);
+  const reserved = new Set(["tool", "json", "help", "workspace", "localWorkspace", "ssh", "remote", "remoteWorkspace", "remoteTarget", "mode"]);
   const args = ["--json", command];
-  for (const [key, rawValue] of Object.entries(effective)) {
+  for (const [key, rawValue] of Object.entries(flags)) {
     if (reserved.has(key)) {
-      continue;
-    }
-    if (["workspace", "localWorkspace", "ssh", "remote", "remoteWorkspace", "remoteTarget", "mode"].includes(key)) {
       continue;
     }
     if (rawValue === true) {

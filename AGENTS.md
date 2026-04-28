@@ -21,6 +21,8 @@
 - Keep output deterministic for scripts and agents.
 - Keep tool semantics thin and testable.
 - Treat remote mode as transport, not as a separate tool contract.
+- Never add tool-specific behavior to Morpheus.
+- Keep Morpheus generic and move tool-specific logic into `tools/<tool>/`.
 - Require explicit user intent for ambiguous or destructive actions.
 - When adding a new CLI package or tool, update the relevant build, lint,
   test, and smoke commands.

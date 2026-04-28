@@ -133,6 +133,86 @@ function renderAnsiHtml(value: string): string {
   return html;
 }
 
+const LARGE_LOG_LINE_THRESHOLD = 4000;
+const LARGE_LOG_CHAR_THRESHOLD = 250_000;
+const LARGE_LOG_TAIL_LINES = 1200;
+
+function normalizeTerminalLogText(value: string): string {
+  const text = value.replace(/\r\n/g, "\n");
+  let currentLine = "";
+  const lines: string[] = [];
+
+  const pushLine = () => {
+    lines.push(currentLine);
+    currentLine = "";
+  };
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index] || "";
+    if (char === "\u001b") {
+      let cursor = index + 1;
+      while (cursor < text.length && !/[A-Za-z]/.test(text[cursor] || "")) {
+        cursor += 1;
+      }
+      if (cursor < text.length) {
+        currentLine += text.slice(index, cursor + 1);
+        index = cursor;
+        continue;
+      }
+    }
+    if (char === "\r") {
+      currentLine = "";
+      continue;
+    }
+    if (char === "\b") {
+      currentLine = currentLine.slice(0, -1);
+      continue;
+    }
+    if (char === "\n") {
+      pushLine();
+      continue;
+    }
+    if (char < " " && char !== "\t") {
+      continue;
+    }
+    currentLine += char;
+  }
+
+  if (currentLine.length > 0 || text.endsWith("\n")) {
+    pushLine();
+  }
+
+  return lines.join("\n");
+}
+
+function deriveLogPresentation(
+  rawLogText: string,
+  expanded: boolean,
+): { text: string; totalLines: number; shownLines: number; truncated: boolean } {
+  const normalized = normalizeTerminalLogText(rawLogText);
+  const lines = normalized.split("\n");
+  const totalLines = lines.length;
+  const largeLog =
+    totalLines > LARGE_LOG_LINE_THRESHOLD || normalized.length > LARGE_LOG_CHAR_THRESHOLD;
+
+  if (!largeLog || expanded) {
+    return {
+      text: normalized,
+      totalLines,
+      shownLines: totalLines,
+      truncated: false,
+    };
+  }
+
+  const tail = lines.slice(-LARGE_LOG_TAIL_LINES);
+  return {
+    text: tail.join("\n"),
+    totalLines,
+    shownLines: tail.length,
+    truncated: true,
+  };
+}
+
 function formatTimestamp(value: string | null | undefined): string {
   if (!value) {
     return "-";
@@ -447,6 +527,7 @@ export function WorkflowViewer({
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<InspectionTab>("overview");
   const [logText, setLogText] = useState<string>("");
+  const [expandedLog, setExpandedLog] = useState(false);
   const [logLoading, setLogLoading] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
   const [runDetail, setRunDetail] = useState<RunDetail | null>(null);
@@ -582,7 +663,12 @@ export function WorkflowViewer({
   useEffect(() => {
     setSelectedStepId(null);
     setActiveTab("overview");
+    setExpandedLog(false);
   }, [selectedRunId]);
+
+  useEffect(() => {
+    setExpandedLog(false);
+  }, [selectedStepId]);
 
   useEffect(() => {
     if (!selectedRunId) {
@@ -707,7 +793,14 @@ export function WorkflowViewer({
     }
   }
 
-  const renderedLogHtml = useMemo(() => renderWorkflowLogHtml(logText), [logText]);
+  const logPresentation = useMemo(
+    () => deriveLogPresentation(logText, expandedLog),
+    [expandedLog, logText],
+  );
+  const renderedLogHtml = useMemo(
+    () => renderWorkflowLogHtml(logPresentation.text),
+    [logPresentation.text],
+  );
   const artifacts = useMemo(() => {
     if (!selectedStepId) {
       const items: Array<{ stepId: string; stepName: string; path: string; location: string }> = [];
@@ -1129,7 +1222,24 @@ export function WorkflowViewer({
                     {!logText ? (
                       <div className="workflow-empty-state">No log available.</div>
                     ) : (
-                      <div dangerouslySetInnerHTML={{ __html: renderedLogHtml }} />
+                      <div className="space-y-3">
+                        {logPresentation.truncated ? (
+                          <div className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm">
+                            <span>
+                              Showing the last {logPresentation.shownLines.toLocaleString()} of{" "}
+                              {logPresentation.totalLines.toLocaleString()} lines.
+                            </span>
+                            <Button
+                              onClick={() => setExpandedLog((current) => !current)}
+                              size="sm"
+                              variant="outline"
+                            >
+                              {expandedLog ? "Show tail only" : "Show full log"}
+                            </Button>
+                          </div>
+                        ) : null}
+                        <div dangerouslySetInnerHTML={{ __html: renderedLogHtml }} />
+                      </div>
                     )}
                   </>
                 )

@@ -1,12 +1,12 @@
 // @ts-nocheck
 const path = require("path");
-const { loadConfig, configDir, resolveLocalPath } = require("./config");
 
 function repoRoot() {
   return path.resolve(__dirname, "..", "..", "..", "..");
 }
 
 function workRoot() {
+  const { loadConfig, configDir, resolveLocalPath } = require("./config");
   const override = process.env.MORPHEUS_WORK_ROOT || process.env.RESEARCH_RUNTIME_WORK_ROOT;
   if (override) {
     return path.resolve(override);

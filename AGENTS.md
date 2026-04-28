@@ -24,6 +24,9 @@
 - Write streaming run logs under `<workspace>/runs/` so shell and web viewers can
   observe updates in real time.
 - Keep tool semantics thin; wrap upstream tools cleanly.
+- Treat remote mode as a transport: keep tool behavior local-shaped, run the
+  same managed tool command remotely, and avoid provider-specific tool
+  semantics.
 - Require explicit user intent for ambiguous or destructive actions.
 - Prefer persistent metadata for long-running or remote workflows.
 - Keep implementations small, testable, and easy to extend.

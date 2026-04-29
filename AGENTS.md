@@ -31,6 +31,10 @@
 - When updating a tool, update its skill and `tools/<tool>/README.md` in the
   same change.
 
+## Commit Messages
+
+- Use `prefix: summary` (subject-only) commit messages.
+
 ## Workspace Rule
 
 - Treat `<workspace>/tools/`, `<workspace>/runs/`, and `<workspace>/tmp/` as

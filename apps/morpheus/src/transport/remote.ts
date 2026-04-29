@@ -289,6 +289,43 @@ function syncRemoteInputPath(localPath, remotePath, ssh, label) {
   syncLocalFileToRemote(localPath, remotePath, ssh, label);
 }
 
+function syncRemotePathToLocal(remotePath, localPath, ssh, label) {
+  if (!remotePath || !localPath) {
+    return;
+  }
+  const destination = path.resolve(process.cwd(), localPath);
+  const destinationParent = path.dirname(destination);
+  const base = path.posix.basename(remotePath);
+  const extractedPath = path.join(destinationParent, base);
+  const finalizeMove = path.resolve(extractedPath) === path.resolve(destination)
+    ? "true"
+    : `mv ${shellQuote(extractedPath)} ${shellQuote(destination)}`;
+  fs.mkdirSync(destinationParent, { recursive: true });
+  const remoteScript = [
+    "set -e",
+    `if [ -d ${shellQuote(remotePath)} ]; then`,
+    `  tar -C ${shellQuote(path.posix.dirname(remotePath))} -cf - ${shellQuote(base)}`,
+    `elif [ -e ${shellQuote(remotePath)} ]; then`,
+    `  tar -C ${shellQuote(path.posix.dirname(remotePath))} -cf - ${shellQuote(base)}`,
+    "else",
+    `  echo "missing remote path: ${String(remotePath).replace(/"/g, '\\"')}" >&2`,
+    "  exit 1",
+    "fi",
+  ].join("\n");
+  const run = (noSystemConfig) => {
+    const pipeline = `${shellQuote(sshBinary())} ${sshArgs(ssh, { noSystemConfig }).map(shellQuote).join(" ")} ${shellQuote(sshCommand(remoteScript))} | tar -C ${shellQuote(destinationParent)} -xf - && ${finalizeMove}`;
+    return runShell(pipeline);
+  };
+
+  let result = run(false);
+  if (result.exitCode !== 0 && wantsSshNoConfigRetry(result)) {
+    result = run(true);
+  }
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr || `failed to sync local ${label}`);
+  }
+}
+
 function stageLocalMorpheusRuntime() {
   const sourceRoot = path.resolve(repoRoot());
   const stagingParent = path.join(sourceRoot, ".morpheus-sync");
@@ -397,5 +434,6 @@ module.exports = {
   prepareRemoteMorpheusRuntime,
   runSshStreaming,
   syncRemoteInputPath,
+  syncRemotePathToLocal,
   effectiveBuildDirKey,
 };

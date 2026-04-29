@@ -2,73 +2,42 @@
 
 Run local nested-virtualization targets from explicit runtime artifacts.
 
-`nvirsh` is a local-first lifecycle CLI for dependency staging, runtime launch,
-inspection, logs, stop, and cleanup. It does not own remote execution,
-workspace transport, or provider-specific launch logic.
-
-Before `nvirsh build`, stage existing local `sel4` dependencies into the
-workspace-local tree referenced by `morpheus.yaml`. When Morpheus manages the
-workflow, QEMU, Microkit SDK, and `seL4` should come from managed tool
-dependencies rather than direct `tools.nvirsh.*` paths when possible.
-
-When Morpheus runs `nvirsh` as a managed tool, the execution is recorded as a
-workflow run under `<workspace>/runs/<workflow-run-id>/`.
-
-## sel4-dev runtime
-
-The HyperARM `sel4-dev` workflow uses `libvmm` as its runtime provider.
-`nvirsh build` prepares the state and resolves the provider contract.
-`nvirsh run` then invokes `libvmm run` rather than embedding `make qemu`
-directly.
+`nvirsh` is a local-first lifecycle CLI.
+It validates pinned prerequisites, prepares stable local state, launches the
+runtime provider, and exposes `inspect`, `logs`, `stop`, and `clean`.
+It does not own remote execution or dependency resolution.
 
 ## Quick start
 
-When using Morpheus-managed dependencies, prefer configuring dependencies in
-`morpheus.yaml` and using:
-
-- `morpheus tool build --tool nvirsh` to stage dependencies and local state
-- `morpheus tool run --tool nvirsh` to launch the runtime provider
-
 ```bash
-nvirsh build \
+nvirsh run \
   --target sel4 \
-  --state-dir ./.nvirsh/sel4-dev \
+  --state-dir ./tmp/nvirsh/sel4-dev \
   --qemu ./deps/qemu-system-aarch64 \
   --microkit-sdk ./deps/microkit-sdk \
   --microkit-version 1.4.1 \
   --toolchain ./deps/arm-gnu-toolchain \
   --libvmm-dir ./deps/libvmm \
-  --runtime-contract ./deps/libvmm/runtime-contract.json
-```
-
-That command:
-
-- Validates pinned local prerequisites for the `sel4` target
-- Materializes stable local state under the explicit `--state-dir`
-- Records a local manifest and runtime provider contract for later inspection
-
-Then launch from explicit runtime artifacts:
-
-```bash
-nvirsh run \
-  --target sel4 \
-  --state-dir ./.nvirsh/sel4-dev \
   --kernel ./out/Image \
   --initrd ./out/rootfs.cpio.gz \
-  --qemu-arg -machine \
-  --qemu-arg virt,virtualization=on,gic-version=3 \
   --detach \
   --json
 ```
 
+That command:
+
+- Validates the local prerequisites for the `sel4` target
+- Prepares stable local state under `--state-dir` when it is missing
+- Starts the runtime provider for the target
+- Writes runtime metadata to `<state-dir>/manifest.json`
+- Streams runtime output into `<state-dir>/stdout.log`
+
 Expected local output layout:
 
 ```text
-.nvirsh/sel4-dev/
+tmp/nvirsh/sel4-dev/
   manifest.json
-  provider-run/
-    manifest.json
-    stdout.log
+  stdout.log
 ```
 
 Example response shape:
@@ -88,13 +57,16 @@ Example response shape:
 }
 ```
 
-To attach to the VM console (interactive), omit `--detach` and do not use
-`--json`:
+To attach to the VM console, omit `--detach` and `--json`:
 
 ```bash
 nvirsh run \
   --target sel4 \
-  --state-dir ./.nvirsh/sel4-dev \
+  --state-dir ./tmp/nvirsh/sel4-dev \
+  --qemu ./deps/qemu-system-aarch64 \
+  --microkit-sdk ./deps/microkit-sdk \
+  --toolchain ./deps/arm-gnu-toolchain \
+  --libvmm-dir ./deps/libvmm \
   --kernel ./out/Image \
   --initrd ./out/rootfs.cpio.gz
 ```
@@ -105,8 +77,6 @@ The public command tree is:
 
 ```text
 nvirsh doctor
-nvirsh build
-nvirsh prepare
 nvirsh run
 nvirsh inspect
 nvirsh stop
@@ -118,40 +88,34 @@ nvirsh help
 Use `doctor` when you want validation without state writes:
 
 ```bash
-nvirsh doctor --target sel4 --qemu ./deps/qemu-system-aarch64 --microkit-sdk ./deps/microkit-sdk --toolchain ./deps/arm-gnu-toolchain --libvmm-dir ./deps/libvmm --json
-```
-
-Use `inspect` to read a prepared or running manifest:
-
-```bash
-nvirsh inspect --state-dir ./.nvirsh/sel4-dev --json
-```
-
-Use `logs`, `stop`, and `clean` for local lifecycle follow-up:
-
-```bash
-nvirsh logs --state-dir ./.nvirsh/sel4-dev
-nvirsh stop --state-dir ./.nvirsh/sel4-dev
-nvirsh clean --state-dir ./.nvirsh/sel4-dev
-```
-
-Use `scripts/nvirsh/prepare-sel4-deps.mjs` when you already have the local
-inputs and want the workspace-local layout expected by `morpheus.yaml`:
-
-```bash
-pnpm prepare:tool:nvirsh:sel4 \
-  --qemu /path/to/qemu-system-aarch64 \
-  --microkit-sdk /path/to/microkit-sdk \
-  --toolchain /path/to/arm-gnu-toolchain \
-  --libvmm-dir /path/to/libvmm \
+nvirsh doctor \
+  --target sel4 \
+  --qemu ./deps/qemu-system-aarch64 \
+  --microkit-sdk ./deps/microkit-sdk \
+  --toolchain ./deps/arm-gnu-toolchain \
+  --libvmm-dir ./deps/libvmm \
   --json
 ```
 
+Use `inspect`, `logs`, `stop`, and `clean` for local lifecycle follow-up:
+
+```bash
+nvirsh inspect --state-dir ./tmp/nvirsh/sel4-dev --json
+nvirsh logs --state-dir ./tmp/nvirsh/sel4-dev
+nvirsh stop --state-dir ./tmp/nvirsh/sel4-dev
+nvirsh clean --state-dir ./tmp/nvirsh/sel4-dev
+```
+
+When `--state-dir` is omitted, `nvirsh` defaults to
+`<workspace>/tmp/nvirsh/<name>/` if `morpheus.yaml` defines `workspace.root`,
+or `./tmp/nvirsh/<name>/` otherwise.
+
+When Morpheus runs `nvirsh` in a workflow, the execution is recorded under
+`<workspace>/runs/<workflow-run-id>/`.
+
 ## Flags
 
-The initial `sel4` target uses these stable flags:
-
-- `--target sel4`: select the initial target contract
+- `--target sel4`: select the target contract
 - `--state-dir DIR`: explicit local state root for manifests and logs
 - `--name NAME`: stable instance name recorded in the manifest
 - `--qemu PATH`: local QEMU executable used at runtime
@@ -159,11 +123,11 @@ The initial `sel4` target uses these stable flags:
 - `--microkit-version VER`: expected Microkit SDK version
 - `--toolchain DIR`: local ARM toolchain root
 - `--libvmm-dir DIR`: local `libvmm` source or checkout root
-- `--runtime-contract PATH`: explicit libvmm runtime contract for `build`
+- `--runtime-contract PATH`: explicit runtime contract override
 - `--kernel PATH`: explicit kernel artifact for `run`
 - `--initrd PATH`: explicit initrd artifact for `run`
 - `--qemu-arg ARG`: extra QEMU argument, repeatable
-- `--append TEXT`: optional kernel command line
+- `--detach`: start in the background
 
 ## JSON
 
@@ -171,22 +135,16 @@ Every command supports `--json`, including help and errors.
 
 ```bash
 nvirsh --json --help
-nvirsh inspect --state-dir ./.nvirsh/sel4-dev --json
+nvirsh inspect --state-dir ./tmp/nvirsh/sel4-dev --json
 ```
 
 ## Morpheus boundary
 
 - `nvirsh` stays local and artifact-driven
-- `morpheus` owns `morpheus.yaml` configuration
-- `morpheus` resolves the `qemu` tool dependency into a concrete executable
-- `morpheus` can resolve `microkit-sdk` and `sel4` tool dependencies into
-  concrete local directories
-- `morpheus` resolves producer artifacts, such as Buildroot outputs
-- `morpheus tool build --tool nvirsh` stages the local `nvirsh` state
-- `morpheus tool run --tool nvirsh` builds dependencies, then launches the
-  configured runtime provider
-- `scripts/nvirsh/prepare-sel4-deps.mjs` stages existing local deps into the
-  workspace-local paths declared in `morpheus.yaml`
+- `morpheus` owns `morpheus.yaml` configuration and dependency resolution
+- `morpheus` passes explicit resolved paths to `nvirsh run`
+- workflow-managed runs live under `<workspace>/runs/`
+- direct ad hoc state defaults to `<workspace>/tmp/nvirsh/<name>/`
 
 ## Smoke test
 

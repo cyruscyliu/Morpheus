@@ -8,28 +8,13 @@ export const COMMANDS = [
     ],
   },
   {
-    name: 'build',
-    summary: 'Validate and materialize target-local prepared state',
-    usage: [
-      'nvirsh build --target sel4 --state-dir DIR --qemu PATH --microkit-sdk DIR --toolchain DIR --libvmm-dir DIR',
-      '             [--microkit-config debug|release] [--runtime-contract PATH]',
-    ],
-  },
-  {
-    name: 'prepare',
-    summary: 'Compatibility alias for build',
-    usage: [
-      'nvirsh prepare --target sel4 --state-dir DIR --qemu PATH --microkit-sdk DIR --toolchain DIR --libvmm-dir DIR',
-      '              [--microkit-config debug|release] [--runtime-contract PATH]',
-    ],
-  },
-  {
     name: 'run',
-    summary: 'Launch a prepared target from explicit runtime artifacts',
+    summary: 'Validate prerequisites, materialize local state, and launch from explicit runtime artifacts',
     usage: [
-      'nvirsh run --target sel4 --state-dir DIR --kernel PATH --initrd PATH [--detach] [--qemu-arg ARG ...]',
+      'nvirsh run --target sel4 --state-dir DIR --qemu PATH --microkit-sdk DIR --toolchain DIR --libvmm-dir DIR --kernel PATH --initrd PATH [--detach] [--runtime-contract PATH] [--qemu-arg ARG ...]',
       '',
       'Notes:',
+      '  - nvirsh run prepares local state automatically when it is missing.',
       '  - Without --detach, nvirsh runs in the foreground and attaches to the VM console.',
       '  - --json output requires --detach (otherwise console output is not machine-readable).',
     ],

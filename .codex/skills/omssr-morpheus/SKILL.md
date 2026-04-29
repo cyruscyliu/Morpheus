@@ -63,10 +63,6 @@ Top-level Morpheus commands:
 morpheus workspace create
 morpheus workspace show
 morpheus config check
-morpheus fetch --tool <name>
-morpheus patch --tool <name>
-morpheus build --tool <name>
-morpheus run --tool <name>
 morpheus workflow run
 morpheus workflow inspect
 morpheus workflow logs

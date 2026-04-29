@@ -27,7 +27,7 @@ test('help supports json', () => {
   assert.equal(payload.status, 'success');
 });
 
-test('build and run manage local sel4 state', async () => {
+test('run manages local sel4 state', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nvirsh-test-'));
   const stateDir = path.join(root, 'state');
   const depsDir = path.join(root, 'deps');
@@ -73,9 +73,9 @@ test('build and run manage local sel4 state', async () => {
   fs.writeFileSync(kernel, 'kernel');
   fs.writeFileSync(initrd, 'initrd');
 
-  const prepare = run([
+  const launch = run([
     '--json',
-    'build',
+    'run',
     '--state-dir',
     stateDir,
     '--name',
@@ -92,18 +92,6 @@ test('build and run manage local sel4 state', async () => {
     toolchain,
     '--libvmm-dir',
     libvmmDir,
-  ]);
-  assert.equal(prepare.status, 0, prepare.stdout || prepare.stderr);
-  const preparePayload = JSON.parse(prepare.stdout.trim());
-  assert.equal(preparePayload.status, 'success');
-
-  const launch = run([
-    '--json',
-    'run',
-    '--state-dir',
-    stateDir,
-    '--name',
-    'sel4-dev',
     '--kernel',
     kernel,
     '--initrd',
@@ -132,5 +120,88 @@ test('build and run manage local sel4 state', async () => {
   assert.equal(clean.status, 0, clean.stdout || clean.stderr);
   assert.equal(fs.existsSync(stateDir), false);
 
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('run defaults state under workspace tmp when morpheus.yaml is present', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nvirsh-workspace-'));
+  const workspaceRoot = path.join(root, 'workspace');
+  const depsDir = path.join(root, 'deps');
+  fs.mkdirSync(depsDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(root, 'morpheus.yaml'),
+    ['workspace:', '  root: ./workspace', ''].join('\n'),
+    'utf8',
+  );
+
+  const qemu = path.join(depsDir, 'qemu-system-aarch64');
+  const microkitSdk = path.join(depsDir, 'microkit-sdk');
+  const toolchain = path.join(depsDir, 'arm-toolchain');
+  const libvmmDir = path.join(depsDir, 'libvmm');
+  const kernel = path.join(root, 'Image');
+  const initrd = path.join(root, 'rootfs.cpio.gz');
+
+  makeExecutable(
+    qemu,
+    [
+      '#!/usr/bin/env sh',
+      'if [ "$1" = "--version" ]; then',
+      '  echo "qemu stub 1.0"',
+      '  exit 0',
+      'fi',
+      'echo "qemu launch: $*"',
+      'exit 0',
+      '',
+    ].join('\n'),
+  );
+  for (const dir of [microkitSdk, toolchain, libvmmDir]) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.mkdirSync(path.join(libvmmDir, 'examples', 'virtio'), { recursive: true });
+  fs.writeFileSync(
+    path.join(libvmmDir, 'examples', 'virtio', 'Makefile'),
+    ['.PHONY: clean qemu', 'clean:', '\t@true', 'qemu:', '\t$(QEMU) -machine virt', ''].join('\n'),
+    'utf8',
+  );
+  fs.writeFileSync(path.join(microkitSdk, 'VERSION'), '1.4.1\n');
+  fs.writeFileSync(path.join(toolchain, 'VERSION'), 'arm-toolchain\n');
+  fs.writeFileSync(path.join(libvmmDir, 'VERSION'), 'libvmm-dev\n');
+  fs.writeFileSync(kernel, 'kernel');
+  fs.writeFileSync(initrd, 'initrd');
+
+  const launch = run(
+    [
+      '--json',
+      'run',
+      '--name',
+      'sel4-dev',
+      '--target',
+      'sel4',
+      '--qemu',
+      qemu,
+      '--microkit-sdk',
+      microkitSdk,
+      '--microkit-version',
+      '1.4.1',
+      '--toolchain',
+      toolchain,
+      '--libvmm-dir',
+      libvmmDir,
+      '--kernel',
+      kernel,
+      '--initrd',
+      initrd,
+      '--detach',
+    ],
+    { cwd: root },
+  );
+  assert.equal(launch.status, 0, launch.stdout || launch.stderr);
+
+  const payload = JSON.parse(launch.stdout.trim());
+  const expectedStateDir = path.join(workspaceRoot, 'tmp', 'nvirsh', 'sel4-dev');
+  assert.equal(payload.details.manifest.stateDir, expectedStateDir);
+  assert.equal(fs.existsSync(path.join(expectedStateDir, 'manifest.json')), true);
+
+  run(['--json', 'clean', '--state-dir', expectedStateDir, '--force'], { cwd: root });
   fs.rmSync(root, { recursive: true, force: true });
 });

@@ -84,13 +84,10 @@ Use the wrappers from `bin/`:
 For Morpheus-managed execution, prefer:
 
 ```bash
-./bin/morpheus fetch --tool <name> --json
-./bin/morpheus patch --tool <name> --json
-./bin/morpheus build --tool <name> --json
-./bin/morpheus inspect --tool <name> --json
-./bin/morpheus logs --tool <name> --json
-./bin/morpheus run --tool <name> --json -- [tool flags]
 ./bin/morpheus workflow run --name <workflow> --json
+./bin/morpheus workflow inspect --id <workflow-run-id> --json
+./bin/morpheus workflow logs --id <workflow-run-id>
+./bin/morpheus tool list --json
 ```
 
 Tool-specific usage and workflow guidance now live in the skills under

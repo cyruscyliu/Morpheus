@@ -3,9 +3,14 @@ const fs = require("fs");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
 const { applyConfigDefaults, loadConfig } = require("../core/config");
+const { parseToolArgs } = require("../core/tool-invoke");
 const { repoRoot } = require("../core/paths");
 const { writeStdoutLine } = require("../core/io");
 const { logDebug, logInfo, withLogFile } = require("../core/logger");
+const {
+  parseSshTarget,
+  syncRemotePathToLocal,
+} = require("../transport/remote");
 const {
   createWorkflowRun,
   createWorkflowStep,
@@ -43,7 +48,6 @@ function parseWorkflowArgs(argv) {
 function workflowUsage() {
   return [
     "Usage:",
-    "  node apps/morpheus/dist/cli.js workflow run --tool <name> [--workflow NAME] [--json] [...tool flags]",
     "  node apps/morpheus/dist/cli.js workflow run --name WORKFLOW_NAME [--json]",
     "  node apps/morpheus/dist/cli.js workflow inspect --id WORKFLOW_RUN_ID [--json]",
     "  node apps/morpheus/dist/cli.js workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow] [--json]",
@@ -337,7 +341,61 @@ function processToolStdoutLine(rawLine, stepLogFile, state) {
     }
   }
 
-  state.finalPayload = parsed;
+  if (parsed && typeof parsed === "object") {
+    state.finalPayload = parsed;
+  }
+}
+
+function parseTrailingJsonObject(output) {
+  const text = String(output || "").trim();
+  if (!text) {
+    return null;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    // mixed stdout is expected for streamed tools
+  }
+  let end = text.lastIndexOf("}");
+  while (end >= 0) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let index = end; index >= 0; index -= 1) {
+      const char = text[index];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === "\\") {
+          escaped = true;
+        } else if (char === "\"") {
+          inString = false;
+        }
+        continue;
+      }
+      if (char === "\"") {
+        inString = true;
+        continue;
+      }
+      if (char === "}") {
+        depth += 1;
+        continue;
+      }
+      if (char === "{") {
+        depth -= 1;
+        if (depth === 0) {
+          const candidate = text.slice(index, end + 1).trim();
+          try {
+            return JSON.parse(candidate);
+          } catch {
+            break;
+          }
+        }
+      }
+    }
+    end = text.lastIndexOf("}", end - 1);
+  }
+  return null;
 }
 
 function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
@@ -400,13 +458,9 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
         processToolStdoutLine(stdoutBuffer, stepLogFile, state);
       }
       if ((typeof state.finalPayload !== "object" || state.finalPayload == null) && stdoutText.trim()) {
-        try {
-          const parsed = JSON.parse(stdoutText.trim());
-          if (parsed && typeof parsed === "object") {
-            state.finalPayload = parsed;
-          }
-        } catch {
-          state.finalPayload = typeof state.finalPayload === "object" ? state.finalPayload : null;
+        const parsed = parseTrailingJsonObject(stdoutText);
+        if (parsed && typeof parsed === "object") {
+          state.finalPayload = parsed;
         }
       }
       resolve({
@@ -480,6 +534,52 @@ function stepTemplatePayload(toolPayload) {
   return {
     ...toolPayload,
     artifacts: stepArtifactViewMap(toolPayload),
+  };
+}
+
+function resolveStepExecution(workspaceRoot, toolArgv, tool) {
+  const parsed = parseToolArgs(toolArgv || []);
+  const { flags: resolved } = applyConfigDefaults(
+    {
+      ...parsed.flags,
+      tool,
+      workspace: workspaceRoot || null,
+      json: true,
+    },
+    { allowGlobalRemote: true, allowToolDefaults: true }
+  );
+  const remoteEnabled = Boolean(
+    resolved.ssh
+    && resolved.workspace
+    && resolved.localWorkspace
+    && resolved.workspace !== resolved.localWorkspace
+  );
+  return { resolved, remoteEnabled };
+}
+
+function materializeRemoteArtifacts(step, toolPayload, execution) {
+  if (!execution || !execution.remoteEnabled || !toolPayload || !toolPayload.details || !Array.isArray(toolPayload.details.artifacts)) {
+    return toolPayload;
+  }
+  const ssh = parseSshTarget(execution.resolved.ssh);
+  const localizedArtifacts = toolPayload.details.artifacts.map((artifact) => {
+    if (!artifact || typeof artifact !== "object" || typeof artifact.path !== "string" || typeof artifact.location !== "string") {
+      return artifact;
+    }
+    const localLocation = path.join(step.artifactsDir, artifact.path);
+    syncRemotePathToLocal(artifact.location, localLocation, ssh, `${step.tool} artifact ${artifact.path}`);
+    return {
+      ...artifact,
+      remote_location: artifact.location,
+      local_location: localLocation,
+    };
+  });
+  return {
+    ...toolPayload,
+    details: {
+      ...toolPayload.details,
+      artifacts: localizedArtifacts,
+    },
   };
 }
 
@@ -652,6 +752,7 @@ async function runToolWorkflow({
       : [];
     const toolCommand = spec ? spec.toolCommand : "build";
     const attach = spec ? spec.attach : false;
+    const execution = resolveStepExecution(workspaceRoot, toolArgv, step.tool);
 
     const args = (
       ["fetch", "patch", "build", "inspect", "logs", "run"].includes(toolCommand)
@@ -721,9 +822,10 @@ async function runToolWorkflow({
       },
       { attach },
     );
-    const toolPayload = attach
+    let toolPayload = attach
       ? attachedWorkflowStepPayload(step, toolCommand, result)
       : result.toolPayload;
+    toolPayload = materializeRemoteArtifacts(step, toolPayload, execution);
     if (toolPayload) {
       writeJson(stepToolResultPath(step.stepDir), toolPayload);
     }

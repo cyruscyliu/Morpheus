@@ -10,7 +10,7 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { COMMANDS, getHelp, renderHelp } from './help.js';
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 
 class CliError extends Error {
   code: string;

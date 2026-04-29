@@ -1,7 +1,7 @@
 {
   "name": "nvirsh",
   "runtime": "node",
-  "cli-contract": "build,run,inspect,logs",
+  "cli-contract": "run,inspect,logs",
   "entry": "dist/index.js",
   "config": {
     "fields": {
@@ -27,17 +27,6 @@
     }
   },
   "inputs": {
-    "build": {
-      "dependencies": {
-        "qemu": { "flag": "qemu" },
-        "microkit-sdk": { "flag": "microkit-sdk" },
-        "toolchain-bin-dir": { "flag": "toolchain" },
-        "libvmm-dir": { "flag": "libvmm-dir" }
-      },
-      "config": {
-        "runtime.provider": { "flag": "runtime-contract" }
-      }
-    },
     "run": {
       "dependencies": {
         "qemu": { "flag": "qemu" },

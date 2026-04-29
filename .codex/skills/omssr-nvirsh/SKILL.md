@@ -12,7 +12,7 @@ Use this skill when you need to work with the repo-local `nvirsh` tool.
 ## Purpose
 
 `nvirsh` is a local lifecycle CLI.
-It validates target prerequisites, records local prepared state, launches from
+It validates target prerequisites, records stable local state, launches from
 explicit runtime artifacts, and exposes stable local inspect, logs, stop, and
 clean commands.
 
@@ -34,7 +34,6 @@ The public command tree is:
 
 ```text
 nvirsh doctor
-nvirsh prepare
 nvirsh run
 nvirsh inspect
 nvirsh stop
@@ -47,7 +46,7 @@ nvirsh help
 
 The initial target is `sel4`.
 
-- `prepare` validates pinned local prerequisites.
+- `run` validates pinned local prerequisites and auto-prepares state.
 - `run` consumes explicit `--kernel` and `--initrd` paths.
 - `inspect`, `logs`, `stop`, and `clean` operate only on local state.
 
@@ -57,7 +56,6 @@ Expected local prerequisites:
 - `--microkit-sdk`
 - `--toolchain`
 - `--libvmm-dir`
-- `--sel4-dir`
 
 Expected pinned compatibility:
 
@@ -67,25 +65,21 @@ Expected pinned compatibility:
 ## Example Flow
 
 ```bash
-./bin/morpheus workspace create
-
-./bin/morpheus build --tool nvirsh --json
+node tools/nvirsh/dist/index.js run \
+  --target sel4 \
+  --qemu ./deps/qemu-system-aarch64 \
+  --microkit-sdk ./deps/microkit-sdk \
+  --toolchain ./deps/arm-gnu-toolchain \
+  --libvmm-dir ./deps/libvmm \
+  --kernel ./out/Image \
+  --initrd ./out/rootfs.cpio.gz \
+  --detach \
+  --json
 ```
 
-That stages dependencies and prepares `nvirsh` state only.
-
-To launch the runtime provider in detached mode:
-
-```bash
-./bin/morpheus run --tool nvirsh --json -- [tool run flags]
-```
-
-To attach to the VM console (interactive), omit `--json` and pass `--attach` to
-Morpheus:
-
-```bash
-./bin/morpheus run --tool nvirsh -- --attach
-```
+Without `--state-dir`, the direct CLI defaults to
+`<workspace>/tmp/nvirsh/<name>/` when `morpheus.yaml` defines `workspace.root`,
+or `./tmp/nvirsh/<name>/` otherwise.
 
 ## Boundary Rules
 
@@ -94,5 +88,4 @@ Morpheus:
 - Pass explicit runtime artifact paths to `nvirsh`.
 - Prefer managed Morpheus tool dependencies for `qemu`, `microkit-sdk`, and
   `sel4` when those artifacts are already registered.
-- Prefer Morpheus top-level wrappers or workflows when dependency resolution
-  matters.
+- Prefer Morpheus workflows when dependency resolution matters.

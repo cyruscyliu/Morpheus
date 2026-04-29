@@ -17,10 +17,9 @@ Run a tool through Morpheus (records a workflow run under the workspace):
 ./bin/morpheus workflow run --name build-buildroot --json
 ```
 
-Stage and then launch an `nvirsh` runtime through Morpheus:
+Launch an `nvirsh` runtime through Morpheus:
 
 ```bash
-./bin/morpheus build --tool nvirsh --json
 ./bin/morpheus run --tool nvirsh --json -- --detach
 ```
 
@@ -53,7 +52,6 @@ The public command tree includes:
 
 - `workspace create|show`
 - `config check`
-- `fetch|patch|build|inspect|logs|run --tool <name>`
 - `tool list`
 - `workflow run|inspect|logs`
 

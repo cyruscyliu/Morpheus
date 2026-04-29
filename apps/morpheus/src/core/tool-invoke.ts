@@ -79,10 +79,12 @@ function requireFlag(flags, name, message) {
   return flags[name];
 }
 
-function templateValues(buildVersion, buildDirKey) {
+function templateValues(buildVersion, buildDirKey, extras = {}) {
   return {
     buildVersion,
     buildDirKey,
+    toolchainVersion: extras.toolchainVersion || "12.3.rel1",
+    example: extras.example || "virtio",
   };
 }
 
@@ -122,10 +124,10 @@ function forwardedFlagSpec(descriptor, command) {
   };
 }
 
-function defaultSourceDir(workspace, tool, descriptor, buildVersion, buildDirKey) {
+function defaultSourceDir(workspace, tool, descriptor, buildVersion, buildDirKey, extras = {}) {
   const managed = localManaged(descriptor);
   if (managed && managed.sourceTemplate) {
-    return path.join(workspace, renderManagedTemplate(managed.sourceTemplate, templateValues(buildVersion || "default", buildDirKey || "default")));
+    return path.join(workspace, renderManagedTemplate(managed.sourceTemplate, templateValues(buildVersion || "default", buildDirKey || "default", extras)));
   }
   const leaf = buildVersion ? `${tool}-${buildVersion}` : tool;
   return path.join(workspace, "tools", tool, "src", leaf);
@@ -139,34 +141,34 @@ function defaultDownloadsDir(workspace, tool, descriptor) {
   return path.join(workspace, managed.downloadsDir);
 }
 
-function defaultOutputDir(workspace, descriptor, buildVersion, buildDirKey) {
+function defaultOutputDir(workspace, descriptor, buildVersion, buildDirKey, extras = {}) {
   const managed = localManaged(descriptor);
   if (!managed || !managed.outputDirTemplate) {
     return null;
   }
-  return path.join(workspace, renderManagedTemplate(managed.outputDirTemplate, templateValues(buildVersion || "default", buildDirKey || "default")));
+  return path.join(workspace, renderManagedTemplate(managed.outputDirTemplate, templateValues(buildVersion || "default", buildDirKey || "default", extras)));
 }
 
-function defaultBuildDir(workspace, descriptor, buildVersion, buildDirKey) {
+function defaultBuildDir(workspace, descriptor, buildVersion, buildDirKey, extras = {}) {
   const managed = localManaged(descriptor);
   if (!managed || !managed.buildDirTemplate) {
     return null;
   }
-  return path.join(workspace, renderManagedTemplate(managed.buildDirTemplate, templateValues(buildVersion || "default", buildDirKey || "default")));
+  return path.join(workspace, renderManagedTemplate(managed.buildDirTemplate, templateValues(buildVersion || "default", buildDirKey || "default", extras)));
 }
 
-function defaultInstallDir(workspace, descriptor, buildVersion, buildDirKey) {
+function defaultInstallDir(workspace, descriptor, buildVersion, buildDirKey, extras = {}) {
   const managed = localManaged(descriptor);
   if (!managed || !managed.installDirTemplate) {
     return null;
   }
-  return path.join(workspace, renderManagedTemplate(managed.installDirTemplate, templateValues(buildVersion || "default", buildDirKey || "default")));
+  return path.join(workspace, renderManagedTemplate(managed.installDirTemplate, templateValues(buildVersion || "default", buildDirKey || "default", extras)));
 }
 
-function resolveManagedPathTemplate(workspace, descriptor, template, buildVersion, buildDirKey) {
+function resolveManagedPathTemplate(workspace, descriptor, template, buildVersion, buildDirKey, extras = {}) {
   return path.join(
     workspace,
-    renderManagedTemplate(template, templateValues(buildVersion || "default", buildDirKey || "default"))
+    renderManagedTemplate(template, templateValues(buildVersion || "default", buildDirKey || "default", extras))
   );
 }
 
@@ -337,17 +339,53 @@ function parseLastJsonLine(output) {
     return null;
   }
   try {
-    return JSON.parse(text);
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === "object") {
+      return parsed;
+    }
   } catch {
     // fall through to line-based parsing for mixed output
   }
-  const lines = text.split(/\r?\n/).filter(Boolean);
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    try {
-      return JSON.parse(lines[index]);
-    } catch {
-      continue;
+  let end = text.lastIndexOf("}");
+  while (end >= 0) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let index = end; index >= 0; index -= 1) {
+      const char = text[index];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === "\\") {
+          escaped = true;
+        } else if (char === "\"") {
+          inString = false;
+        }
+        continue;
+      }
+      if (char === "\"") {
+        inString = true;
+        continue;
+      }
+      if (char === "}") {
+        depth += 1;
+        continue;
+      }
+      if (char === "{") {
+        depth -= 1;
+        if (depth === 0) {
+          try {
+            const parsed = JSON.parse(text.slice(index, end + 1));
+            if (parsed && typeof parsed === "object") {
+              return parsed;
+            }
+          } catch {
+            break;
+          }
+        }
+      }
     }
+    end = text.lastIndexOf("}", end - 1);
   }
   return null;
 }
@@ -426,24 +464,62 @@ async function executeRemoteTopLevelToolCommand(command, tool, args, resolved, f
   return payload;
 }
 
-function normalizeArtifacts(payload) {
+function normalizeArtifacts(payload, command, resolved, descriptor) {
   if (!payload || !payload.details) {
     return payload;
   }
   if (Array.isArray(payload.details.artifacts)) {
     return payload;
   }
+  const artifacts = [];
+  if (payload.details.artifact && typeof payload.details.artifact === "object") {
+    artifacts.push(payload.details.artifact);
+  }
+  if (command === "build" && descriptor) {
+    const managed = localManaged(descriptor);
+    const buildVersion = resolved && resolved["build-version"] ? resolved["build-version"] : null;
+    const buildDirKey = resolved && resolved["build-dir-key"] ? resolved["build-dir-key"] : "default";
+    const workspace = resolved && resolved.workspace ? resolved.workspace : null;
+    const templateExtras = {
+      toolchainVersion: resolved && resolved["toolchain-version"] ? resolved["toolchain-version"] : null,
+      example: resolved && resolved.example ? resolved.example : null,
+    };
+    if (managed && managed.artifacts && workspace) {
+      for (const [artifactPath, spec] of Object.entries(managed.artifacts)) {
+        if (!spec || typeof spec !== "object" || !spec.pathTemplate) {
+          continue;
+        }
+        if (artifacts.some((entry) => entry && entry.path === artifactPath)) {
+          continue;
+        }
+        artifacts.push({
+          path: artifactPath,
+          location: resolveManagedPathTemplate(
+            workspace,
+            descriptor,
+            spec.pathTemplate,
+            buildVersion || "default",
+            buildDirKey || "default",
+            templateExtras
+          ),
+        });
+      }
+    }
+  }
   if (typeof payload.details.source === "string" && payload.details.source) {
+    if (!artifacts.some((entry) => entry && entry.path === "source-dir")) {
+      artifacts.push({
+        path: "source-dir",
+        location: payload.details.source,
+      });
+    }
+  }
+  if (artifacts.length > 0) {
     return {
       ...payload,
       details: {
         ...payload.details,
-        artifacts: [
-          {
-            path: "source-dir",
-            location: payload.details.source,
-          }
-        ],
+        artifacts,
       },
     };
   }
@@ -479,18 +555,22 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
   const workspace = resolved.workspace;
   const buildVersion = resolved["build-version"] || null;
   const buildDirKey = resolved["build-dir-key"] || "default";
+  const templateExtras = {
+    toolchainVersion: resolved["toolchain-version"] || null,
+    example: resolved.example || null,
+  };
   const spec = commandSpec(descriptor, command);
   const forwardSpec = forwardedFlagSpec(descriptor, command);
   const pathFlags = spec && spec.pathFlags ? spec.pathFlags : {};
   const flagAliases = spec && spec.flagAliases ? spec.flagAliases : {};
   const effectivePaths = {
-    source: resolved.source || defaultSourceDir(workspace, tool, descriptor, buildVersion, buildDirKey),
+    source: resolved.source || defaultSourceDir(workspace, tool, descriptor, buildVersion, buildDirKey, templateExtras),
     "build-version": buildVersion,
   };
   const optionalManagedPathResolvers = {
     "downloads-dir": () => resolved["downloads-dir"] || defaultDownloadsDir(workspace, tool, descriptor),
-    "build-dir": () => resolved["build-dir"] || defaultBuildDir(workspace, descriptor, buildVersion, buildDirKey),
-    "install-dir": () => resolved["install-dir"] || defaultInstallDir(workspace, descriptor, buildVersion, buildDirKey),
+    "build-dir": () => resolved["build-dir"] || defaultBuildDir(workspace, descriptor, buildVersion, buildDirKey, templateExtras),
+    "install-dir": () => resolved["install-dir"] || defaultInstallDir(workspace, descriptor, buildVersion, buildDirKey, templateExtras),
   };
   for (const [genericFlag, resolveValue] of Object.entries(optionalManagedPathResolvers)) {
     if (
@@ -504,14 +584,15 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
     if (effectivePaths[genericFlag]) {
       continue;
     }
-    effectivePaths[genericFlag] = resolveManagedPathTemplate(
-      workspace,
-      descriptor,
-      template,
-      buildVersion,
-      buildDirKey
-    );
-  }
+      effectivePaths[genericFlag] = resolveManagedPathTemplate(
+        workspace,
+        descriptor,
+        template,
+        buildVersion,
+        buildDirKey,
+        templateExtras
+      );
+    }
 
   const args = ["--json", command];
   if (effectivePaths.source) {
@@ -548,6 +629,7 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
     "microkit-version",
     "board",
     "example",
+    "name",
     "target",
     "action",
     "kernel",
@@ -608,7 +690,7 @@ async function handleToolLifecycleCommand(command, argv, usage, options = {}) {
     : parseToolPayload(
       await runToolStreaming(descriptor, args, { jsonMode: Boolean(resolved.json) }),
       `failed to ${command} with tool ${tool}`
-    ));
+    ), command, resolved, descriptor);
 
   if (resolved.json) {
     printJson(payload);
@@ -630,13 +712,16 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
     { ...flags, json: Boolean(flags.json), tool },
     { allowGlobalRemote: Boolean(options.allowGlobalRemote), allowToolDefaults: true }
   );
-  const effective = resolveToolDependencies(resolved);
+  const effective = resolveToolDependencies(resolved, command);
   const remoteEnabled = Boolean(effective.ssh && effective.workspace && effective.localWorkspace && effective.workspace !== effective.localWorkspace);
   const descriptor = readToolDescriptor(tool);
   const reserved = new Set(["tool", "json", "help", "workspace", "localWorkspace", "ssh", "remote", "remoteWorkspace", "remoteTarget", "mode"]);
   const args = ["--json", command];
-  for (const [key, rawValue] of Object.entries(flags)) {
+  for (const [key, rawValue] of Object.entries(effective)) {
     if (reserved.has(key)) {
+      continue;
+    }
+    if (rawValue && typeof rawValue === "object" && !Array.isArray(rawValue)) {
       continue;
     }
     if (rawValue === true) {

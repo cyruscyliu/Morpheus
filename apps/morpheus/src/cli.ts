@@ -51,17 +51,14 @@ function usage() {
   writeStdout(
     [
       "Usage:",
-      "  node apps/morpheus/dist/cli.js workspace create [--json]",
-      "  node apps/morpheus/dist/cli.js workspace show [--json]",
+      "  node apps/morpheus/dist/cli.js workspace create [--workspace DIR] [--json]",
+      "  node apps/morpheus/dist/cli.js workspace show [--workspace DIR] [--json]",
       "  node apps/morpheus/dist/cli.js config check [--json]",
-      "  node apps/morpheus/dist/cli.js fetch --tool <name> [--json]",
-      "  node apps/morpheus/dist/cli.js patch --tool <name> [--json]",
-      "  node apps/morpheus/dist/cli.js build --tool <name> [--json]",
-      "  node apps/morpheus/dist/cli.js inspect --tool <name> [--json] [tool inspect flags]",
-      "  node apps/morpheus/dist/cli.js logs --tool <name> [--json] [tool logs flags]",
-      "  node apps/morpheus/dist/cli.js run --tool <name> [--json] [tool run flags]",
       "  node apps/morpheus/dist/cli.js tool list [--json]",
-      "  node apps/morpheus/dist/cli.js workflow <subcommand> [--json]"
+      "  node apps/morpheus/dist/cli.js workflow run --name WORKFLOW_NAME [--json]",
+      "  node apps/morpheus/dist/cli.js workflow inspect --id WORKFLOW_RUN_ID [--json]",
+      "  node apps/morpheus/dist/cli.js workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow] [--json]",
+      "  node apps/morpheus/dist/cli.js workflow stop --id WORKFLOW_RUN_ID [--json]"
     ].join("\n") + "\n"
   );
 }

@@ -1,7 +1,7 @@
 {
   "name": "@morpheus/microkit-sdk",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "bin": {
     "microkit-sdk": "dist/index.js"

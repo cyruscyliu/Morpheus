@@ -90,6 +90,10 @@ That command:
 - Writes runtime metadata to `<run-dir>/manifest.json`
 - Streams runtime output into `<run-dir>/stdout.log`
 
+When `--run-dir` is omitted, `qemu run` defaults to `./tmp/qemu-run/`.
+When Morpheus runs QEMU in a workflow, the execution is recorded under
+`<workspace>/runs/<workflow-run-id>/`.
+
 When Morpheus runs QEMU provisioning, the execution is recorded as a workflow
 run under `<workspace>/runs/<workflow-run-id>/`.
 

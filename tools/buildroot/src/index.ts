@@ -7,7 +7,7 @@ import { runFetch, runPatch, runLocalBuild, runInspect, runLogs, runClean } from
 import { parseArgv } from './parser.js';
 import type { CleanOptions, CliContext, FetchOptions, InspectOptions, LocalBuildOptions, LogsOptions, PatchOptions } from './types.js';
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 
 function helpJson(topic?: string) {
   const command = topic ? getHelp(topic) : undefined;

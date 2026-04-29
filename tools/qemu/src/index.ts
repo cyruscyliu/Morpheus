@@ -11,7 +11,7 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { COMMANDS, getHelp, renderHelp } from './help.js';
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 
 class CliError extends Error {
   code: string;
@@ -705,6 +705,22 @@ function qemuRunArgs(
   ];
 }
 
+function defaultGuestAppend(explicit: string | null) {
+  const base = explicit || 'console=ttyAMA0';
+  if (/(^|\s)(rdinit|init)=/.test(base)) {
+    return base;
+  }
+  return `${base} rdinit=/bin/sh`;
+}
+
+function defaultRunDir() {
+  const override = String(process.env.MORPHEUS_RUN_DIR_OVERRIDE || '').trim();
+  if (override) {
+    return path.resolve(process.cwd(), override);
+  }
+  return path.resolve(process.cwd(), 'tmp', 'qemu-run');
+}
+
 async function runQemu(flags: Record<string, unknown>, jsonMode: boolean) {
   if (jsonMode && !flags.detach) {
     throw new CliError('incompatible_flags', 'qemu run --json requires --detach');
@@ -713,8 +729,8 @@ async function runQemu(flags: Record<string, unknown>, jsonMode: boolean) {
   const inspected = inspectExecutable(flags);
   const kernel = requirePathFlag(flags, 'kernel');
   const initrd = requirePathFlag(flags, 'initrd');
-  const runDir = optionalPathFlag(flags, 'run-dir') || path.resolve(process.cwd(), '.qemu-run');
-  const append = optionalStringFlag(flags, 'append') || 'console=ttyAMA0';
+  const runDir = optionalPathFlag(flags, 'run-dir') || defaultRunDir();
+  const append = defaultGuestAppend(optionalStringFlag(flags, 'append'));
   const qemuArgs = Array.isArray(flags['qemu-arg']) ? flags['qemu-arg'] as string[] : [];
   const detached = Boolean(flags.detach);
   const logFile = path.join(runDir, 'stdout.log');

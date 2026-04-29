@@ -245,3 +245,51 @@ test('run launches a detached local QEMU process and writes a manifest', async (
 
   fs.rmSync(root, { recursive: true, force: true });
 });
+
+test('run defaults to tmp/qemu-run when run-dir is omitted', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qemu-tool-default-run-'));
+  const executable = path.join(root, 'qemu-system-aarch64');
+  const kernel = path.join(root, 'Image');
+  const initrd = path.join(root, 'rootfs.cpio.gz');
+  const runDir = path.join(root, 'tmp', 'qemu-run');
+  fs.writeFileSync(
+    executable,
+    [
+      '#!/usr/bin/env sh',
+      'set -eu',
+      'if [ "${1:-}" = "--version" ]; then',
+      '  echo "qemu stub 1.0"',
+      '  exit 0',
+      'fi',
+      'printf "%s\\n" "$@" > launched.args',
+      'exit 0',
+      '',
+    ].join('\n'),
+    { mode: 0o755 },
+  );
+  fs.writeFileSync(kernel, 'kernel');
+  fs.writeFileSync(initrd, 'initrd');
+
+  const result = run(
+    [
+      '--json',
+      'run',
+      '--path',
+      executable,
+      '--kernel',
+      kernel,
+      '--initrd',
+      initrd,
+      '--detach',
+    ],
+    { cwd: root },
+  );
+  assert.equal(result.status, 0, result.stdout || result.stderr);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.details.run_dir, runDir);
+
+  await waitForFile(path.join(runDir, 'manifest.json'));
+  await waitForFile(path.join(runDir, 'launched.args'));
+
+  fs.rmSync(root, { recursive: true, force: true });
+});

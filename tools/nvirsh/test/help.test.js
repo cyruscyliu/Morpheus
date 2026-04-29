@@ -5,7 +5,7 @@ import { renderHelp, getHelp } from '../dist/help.js';
 test('main help stays flat', () => {
   const help = renderHelp();
   assert.match(help, /doctor/);
-  assert.match(help, /prepare/);
+  assert.doesNotMatch(help, /nvirsh prepare/);
   assert.doesNotMatch(help, /run\s+show/);
 });
 
@@ -16,6 +16,6 @@ test('command help renders usage', () => {
 });
 
 test('help metadata is discoverable', () => {
-  const command = getHelp('prepare');
-  assert.equal(command?.name, 'prepare');
+  const command = getHelp('run');
+  assert.equal(command?.name, 'run');
 });

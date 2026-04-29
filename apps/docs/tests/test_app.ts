@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import type { CatalogEntry } from "../src/catalog.js";
-import { createCatalogFromReadmes } from "../src/lib/catalog-discovery.js";
+import { createCatalogFromReadmes, createToolCatalog } from "../src/lib/catalog-discovery.js";
 import {
   countByKind,
   filterCatalog,
@@ -14,13 +14,17 @@ import {
 } from "../src/lib/catalog-view.js";
 
 const catalog: CatalogEntry[] = [
-  ...createCatalogFromReadmes(
+  ...createToolCatalog(
+    {
+      "../../../tools/llbic/tool.json": { name: "llbic" },
+      "../../../tools/llcg/tool.json": { name: "llcg" },
+      "../../../tools/llbase/tool.json": null,
+    },
     {
       "../../../tools/llbase/README.md": "# llbase\n\nShared container runtime images for the LLVM Linux tooling family.",
       "../../../tools/llbic/README.md": "# llbic\n\nCompile Linux kernels to LLVM bitcode and kernel images.",
       "../../../tools/llcg/README.md": "# llcg\n\nGenerate Linux kernel callgraphs from LLVM bitcode inputs.",
     },
-    "tool",
   ),
   ...createCatalogFromReadmes(
     {
@@ -70,4 +74,19 @@ test("filtering and counts reflect tools and workflows", () => {
 test("selection falls back to the first entry when the hash is missing", () => {
   assert.equal(getSelectedEntry(catalog, "")?.name, "llbase");
   assert.equal(getSelectedEntry(catalog, "#entry=kernel-callgraph")?.name, "kernel-callgraph");
+});
+
+test("tool catalog only includes directories with tool.json", () => {
+  const tools = createToolCatalog(
+    {
+      "../../../tools/buildroot/tool.json": { name: "buildroot" },
+    },
+    {
+      "../../../tools/buildroot/README.md": "# buildroot\n\nBuild Linux images.",
+      "../../../tools/llbase/README.md": "# llbase\n\nShared images.",
+    },
+  );
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0]?.name, "buildroot");
 });

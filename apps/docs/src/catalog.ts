@@ -1,4 +1,4 @@
-import { createCatalogFromReadmes } from "./lib/catalog-discovery.js";
+import { createCatalogFromReadmes, createToolCatalog } from "./lib/catalog-discovery.js";
 
 export type CatalogKind = "tool" | "workflow";
 
@@ -9,6 +9,11 @@ export interface CatalogEntry {
   summary: string;
   readme: string;
 }
+
+const toolDescriptors = import.meta.glob("../../../tools/*/tool.json", {
+  import: "default",
+  eager: true,
+}) as Record<string, unknown>;
 
 const toolReadmes = import.meta.glob("../../../tools/*/README.md", {
   query: "?raw",
@@ -24,7 +29,7 @@ const workflowReadmes = import.meta.glob("../../../workflows/*/README.md", {
 
 export function getCatalog(): CatalogEntry[] {
   return [
-    ...createCatalogFromReadmes(toolReadmes, "tool"),
+    ...createToolCatalog(toolDescriptors, toolReadmes),
     ...createCatalogFromReadmes(workflowReadmes, "workflow"),
   ];
 }

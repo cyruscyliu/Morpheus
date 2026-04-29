@@ -60,3 +60,31 @@ export function createCatalogFromReadmes(
     .filter((entry): entry is CatalogEntry => entry !== null)
     .sort((left, right) => left.name.localeCompare(right.name));
 }
+
+export function createToolCatalog(
+  descriptors: Record<string, unknown>,
+  readmes: Record<string, string>,
+): CatalogEntry[] {
+  const entries: Array<CatalogEntry | null> = Object.keys(descriptors)
+    .map((sourcePath) => {
+      const match = sourcePath.match(/tools\/([^/]+)\/tool\.json$/);
+      if (!match) {
+        return null;
+      }
+
+      const name = match[1];
+      const readmePath = sourcePath.replace(/tool\.json$/, "README.md");
+      const readme = readmes[readmePath] || `# ${name}\n\nREADME unavailable.`;
+      return {
+        name,
+        kind: "tool",
+        path: `tools/${name}`,
+        summary: summarizeReadme(readme),
+        readme,
+      };
+    });
+
+  return entries
+    .filter((entry): entry is CatalogEntry => entry !== null)
+    .sort((left, right) => left.name.localeCompare(right.name));
+}

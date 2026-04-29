@@ -87,8 +87,16 @@ For Morpheus-managed execution, prefer:
 ./bin/morpheus workflow run --name <workflow> --json
 ./bin/morpheus workflow inspect --id <workflow-run-id> --json
 ./bin/morpheus workflow logs --id <workflow-run-id>
+./bin/morpheus workflow stop --id <workflow-run-id> --json
+./bin/morpheus workflow remove --id <workflow-run-id> --json
 ./bin/morpheus tool list --json
 ```
+
+For runtime-managed runs, keep the lifecycle split explicit:
+
+- `stop` ends execution and preserves manifests and logs
+- `remove` deletes persisted run state
+- `remove` requires a prior successful stop
 
 Tool-specific usage and workflow guidance now live in the skills under
 `skills/`.

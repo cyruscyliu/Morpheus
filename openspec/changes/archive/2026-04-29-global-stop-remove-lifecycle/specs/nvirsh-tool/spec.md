@@ -1,8 +1,5 @@
-# nvirsh-tool Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change add-nvirsh-tool. Update Purpose after archive.
-## Requirements
 ### Requirement: `nvirsh` Provides a Flat Local Lifecycle CLI
 The system SHALL provide a repo-local `nvirsh` tool with only one level of
 subcommands. The public command surface SHALL include `doctor`, `run`,
@@ -13,28 +10,6 @@ subcommands. The public command surface SHALL include `doctor`, `run`,
 - **THEN** only one-level subcommands are presented
 - **AND** the public commands include `doctor`, `run`, `inspect`, `stop`,
   `logs`, and `remove`
-
-### Requirement: `nvirsh` Remains Local and Runtime-Focused
-The `nvirsh` tool SHALL operate only on local execution concerns. It SHALL NOT
-own remote execution, managed workspace transport, or producer-tool-specific
-artifact discovery.
-
-#### Scenario: `nvirsh` validates local execution inputs only
-- **WHEN** a user invokes `nvirsh` for a target run
-- **THEN** the tool validates local prerequisites, local prepared state, and
-  explicit runtime inputs
-- **AND** the tool does not require remote transport or producer-specific run
-  identifiers
-
-### Requirement: `run` Consumes Explicit Runtime Artifacts
-The `run` command SHALL launch from explicit runtime artifacts, including the
-kernel and initrd inputs required by the selected target.
-
-#### Scenario: `run` launches from explicit kernel and initrd artifacts
-- **WHEN** a user invokes `nvirsh run` with resolved local runtime artifacts
-- **THEN** the tool uses those artifacts for local target execution
-- **AND** the tool does not require direct knowledge of the producer tool that
-  created them
 
 ### Requirement: `nvirsh` Exposes Stable Local Inspection And Cleanup
 The tool SHALL provide stable local state inspection, logs, stop, and removal

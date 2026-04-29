@@ -58,7 +58,8 @@ function usage() {
       "  node apps/morpheus/dist/cli.js workflow run --name WORKFLOW_NAME [--json]",
       "  node apps/morpheus/dist/cli.js workflow inspect --id WORKFLOW_RUN_ID [--json]",
       "  node apps/morpheus/dist/cli.js workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow] [--json]",
-      "  node apps/morpheus/dist/cli.js workflow stop --id WORKFLOW_RUN_ID [--json]"
+      "  node apps/morpheus/dist/cli.js workflow stop --id WORKFLOW_RUN_ID [--json]",
+      "  node apps/morpheus/dist/cli.js workflow remove --id WORKFLOW_RUN_ID [--json]"
     ].join("\n") + "\n"
   );
 }

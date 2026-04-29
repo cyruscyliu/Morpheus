@@ -981,6 +981,11 @@ function runAction(flags: Record<string, unknown>) {
     runnerPid: null,
     monitorSock: null,
     consoleLog: null,
+    control: {
+      type: 'monitor',
+      endpoint: null,
+      graceful_methods: ['system_powerdown', 'quit'],
+    },
     exitCode: null,
     errorMessage: null,
   };

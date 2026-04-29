@@ -203,6 +203,11 @@ async function main(argv: string[]) {
     runnerPid: process.pid,
     monitorSock,
     consoleLog,
+    control: {
+      type: 'monitor',
+      endpoint: monitorSock,
+      graceful_methods: ['system_powerdown', 'quit'],
+    },
     startedAt: new Date().toISOString(),
   }));
 

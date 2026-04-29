@@ -116,8 +116,11 @@ test('run manages local sel4 state', async () => {
   assert.equal(logs.status, 0, logs.stdout || logs.stderr);
   assert.match(logs.stdout, /qemu launch/);
 
-  const clean = run(['--json', 'clean', '--state-dir', stateDir, '--force']);
-  assert.equal(clean.status, 0, clean.stdout || clean.stderr);
+  const stop = run(['--json', 'stop', '--state-dir', stateDir]);
+  assert.equal(stop.status, 0, stop.stdout || stop.stderr);
+
+  const remove = run(['--json', 'remove', '--state-dir', stateDir]);
+  assert.equal(remove.status, 0, remove.stdout || remove.stderr);
   assert.equal(fs.existsSync(stateDir), false);
 
   fs.rmSync(root, { recursive: true, force: true });
@@ -202,6 +205,7 @@ test('run defaults state under workspace tmp when morpheus.yaml is present', () 
   assert.equal(payload.details.manifest.stateDir, expectedStateDir);
   assert.equal(fs.existsSync(path.join(expectedStateDir, 'manifest.json')), true);
 
-  run(['--json', 'clean', '--state-dir', expectedStateDir, '--force'], { cwd: root });
+  run(['--json', 'stop', '--state-dir', expectedStateDir], { cwd: root });
+  run(['--json', 'remove', '--state-dir', expectedStateDir], { cwd: root });
   fs.rmSync(root, { recursive: true, force: true });
 });

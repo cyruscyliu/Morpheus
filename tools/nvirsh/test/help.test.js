@@ -6,6 +6,8 @@ test('main help stays flat', () => {
   const help = renderHelp();
   assert.match(help, /doctor/);
   assert.doesNotMatch(help, /nvirsh prepare/);
+  assert.match(help, /remove/);
+  assert.doesNotMatch(help, /clean/);
   assert.doesNotMatch(help, /run\s+show/);
 });
 

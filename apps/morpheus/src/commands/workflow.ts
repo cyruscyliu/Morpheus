@@ -51,7 +51,8 @@ function workflowUsage() {
     "  node apps/morpheus/dist/cli.js workflow run --name WORKFLOW_NAME [--json]",
     "  node apps/morpheus/dist/cli.js workflow inspect --id WORKFLOW_RUN_ID [--json]",
     "  node apps/morpheus/dist/cli.js workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow] [--json]",
-    "  node apps/morpheus/dist/cli.js workflow stop --id WORKFLOW_RUN_ID [--json]"
+    "  node apps/morpheus/dist/cli.js workflow stop --id WORKFLOW_RUN_ID [--json]",
+    "  node apps/morpheus/dist/cli.js workflow remove --id WORKFLOW_RUN_ID [--json]"
   ].join("\n");
 }
 
@@ -256,6 +257,32 @@ function stopWorkflowRun(workspaceRoot, id) {
       run_dir: updatedWorkflow.runDir,
       stopped_child_pid: currentChildPid > 0 ? currentChildPid : null,
       stopped_runner_pid: runnerPid > 0 ? runnerPid : null,
+    },
+  };
+}
+
+function removeWorkflowRun(workspaceRoot, id) {
+  const found = findWorkflowRun(workspaceRoot, id);
+  const workflow = readJson(found.manifestPath);
+  const steps = listWorkflowSteps(found.runDir);
+  if (workflow.status !== "stopped") {
+    throw new Error("workflow remove requires a prior successful workflow stop");
+  }
+  if (Number(workflow.currentChildPid || 0) > 0 || Number(workflow.runnerPid || 0) > 0) {
+    throw new Error("workflow remove requires the workflow to be fully stopped");
+  }
+  if (steps.some((step) => step && (step.status === "running" || step.status === "created"))) {
+    throw new Error("workflow remove requires all workflow steps to be stopped");
+  }
+  fs.rmSync(found.runDir, { recursive: true, force: true });
+  return {
+    command: "workflow remove",
+    status: "success",
+    exit_code: 0,
+    summary: "removed workflow run",
+    details: {
+      id,
+      run_dir: found.runDir,
     },
   };
 }
@@ -1163,6 +1190,21 @@ async function handleWorkflowCommand(argv) {
     return 0;
   }
 
+  if (subcommand === "remove") {
+    const id = flags.id;
+    if (!id) {
+      throw new Error("workflow remove requires --id WORKFLOW_RUN_ID");
+    }
+    const workspaceRoot = resolveWorkspaceRoot(flags);
+    const payload = removeWorkflowRun(workspaceRoot, id);
+    if (flags.json) {
+      writeStdoutLine(JSON.stringify(payload));
+    } else {
+      writeStdoutLine(`${payload.summary}: ${payload.details.id}`);
+    }
+    return 0;
+  }
+
   throw new Error(`unknown workflow subcommand: ${subcommand}`);
 }
 
@@ -1170,5 +1212,6 @@ module.exports = {
   handleWorkflowCommand,
   runSingleToolWorkflow,
   runToolBuildWorkflow,
-  stopWorkflowRun
+  stopWorkflowRun,
+  removeWorkflowRun
 };

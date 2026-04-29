@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 import process from 'node:process';
 import { spawn, spawnSync } from 'node:child_process';
@@ -241,6 +242,29 @@ function readManifestOrThrow(flags: Record<string, unknown>) {
   return manifest;
 }
 
+async function sendMonitorCommand(socketPath: string, command: string, timeoutMs = 2000) {
+  return await new Promise<void>((resolve, reject) => {
+    const socket = net.createConnection(socketPath);
+    const timer = setTimeout(() => {
+      socket.destroy();
+      reject(new Error(`timed out sending monitor command: ${command}`));
+    }, timeoutMs);
+
+    socket.on('connect', () => {
+      socket.write(`${command}\n`);
+      socket.end();
+    });
+    socket.on('close', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    socket.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+}
+
 function validateSel4Prerequisites(flags: Record<string, unknown>) {
   const qemu = resolvePathValue(requireFlag(flags, 'qemu'));
   const microkitSdk = resolvePathValue(requireFlag(flags, 'microkit-sdk'));
@@ -348,6 +372,11 @@ function preparedManifest(flags: Record<string, unknown>, prerequisites: Record<
     runtime: {
       provider,
       providerRun: null,
+      control: {
+        type: 'none',
+        endpoint: null,
+        graceful_methods: [],
+      },
       kernel: null,
       initrd: null,
       qemuArgs: [],
@@ -632,17 +661,25 @@ async function runLogs(flags: Record<string, unknown>) {
   };
 }
 
-function runStop(flags: Record<string, unknown>) {
+async function runStop(flags: Record<string, unknown>) {
   const manifest = readManifestOrThrow(flags);
   const providerManifestPath = manifest.runtime?.providerRun?.manifest;
   if (providerManifestPath && fs.existsSync(providerManifestPath)) {
     const providerManifest = readJson(providerManifestPath);
+    const control = providerManifest.control;
+    if (control && control.type === 'monitor' && control.endpoint && fs.existsSync(control.endpoint)) {
+      try {
+        await sendMonitorCommand(String(control.endpoint), 'system_powerdown');
+      } catch {
+        // fall through to process signals
+      }
+    }
     if (providerManifest.pid && isRunning(providerManifest.pid)) {
       process.kill(providerManifest.pid, 'SIGTERM');
     }
   }
   if (!manifest.pid || !isRunning(manifest.pid)) {
-    manifest.status = manifest.status === 'prepared' ? 'prepared' : 'stopped';
+    manifest.status = 'stopped';
     manifest.updatedAt = new Date().toISOString();
     writeJson(manifestPath(flags), manifest);
     return {
@@ -668,17 +705,20 @@ function runStop(flags: Record<string, unknown>) {
   };
 }
 
-function runClean(flags: Record<string, unknown>) {
+function runRemove(flags: Record<string, unknown>) {
   const manifest = fs.existsSync(manifestPath(flags)) ? readJson(manifestPath(flags)) : null;
-  if (manifest?.pid && isRunning(manifest.pid) && !flags.force) {
-    throw new CliError('instance_running', 'Refusing to clean a running instance without --force');
+  if (!manifest) {
+    throw new CliError('missing_state', `Missing prepared state: ${path.relative(process.cwd(), manifestPath(flags))}`);
   }
-  if (manifest?.pid && isRunning(manifest.pid) && flags.force) {
-    process.kill(manifest.pid, 'SIGTERM');
+  if (manifest.status !== 'stopped') {
+    throw new CliError('stop_required', 'Refusing to remove instance state before a successful stop');
+  }
+  if (manifest.pid && isRunning(manifest.pid)) {
+    throw new CliError('instance_running', 'Refusing to remove a running instance');
   }
   fs.rmSync(stateDir(flags), { recursive: true, force: true });
   return {
-    command: 'clean',
+    command: 'remove',
     status: 'success',
     exit_code: 0,
     summary: 'removed local target state',
@@ -722,7 +762,7 @@ async function main(argv: string[]) {
       return 0;
     }
     case 'stop': {
-      const result = runStop(parsed.flags);
+      const result = await runStop(parsed.flags);
       parsed.json ? emitJson(result) : emitText(result.summary);
       return 0;
     }
@@ -733,8 +773,13 @@ async function main(argv: string[]) {
       }
       return 0;
     }
+    case 'remove': {
+      const result = runRemove(parsed.flags);
+      parsed.json ? emitJson(result) : emitText(result.summary);
+      return 0;
+    }
     case 'clean': {
-      const result = runClean(parsed.flags);
+      const result = runRemove(parsed.flags);
       parsed.json ? emitJson(result) : emitText(result.summary);
       return 0;
     }

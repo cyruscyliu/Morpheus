@@ -35,9 +35,9 @@ export const COMMANDS = [
     usage: ['nvirsh logs --state-dir DIR [--follow]'],
   },
   {
-    name: 'clean',
-    summary: 'Remove local prepared state and logs',
-    usage: ['nvirsh clean --state-dir DIR [--force]'],
+    name: 'remove',
+    summary: 'Remove local prepared state and logs after stop',
+    usage: ['nvirsh remove --state-dir DIR'],
   },
   {
     name: 'help',

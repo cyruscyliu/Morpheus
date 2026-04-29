@@ -13,6 +13,7 @@ const {
   prepareRemoteMorpheusRuntime,
   runSshStreaming,
   syncRemoteInputPath,
+  syncRemotePathToLocal,
 } = require("../transport/remote");
 
 function parseToolArgs(argv) {
@@ -390,6 +391,63 @@ function parseLastJsonLine(output) {
   return null;
 }
 
+function canonicalLocalArtifactPath(tool, descriptor, resolved, artifact) {
+  if (!artifact || typeof artifact !== "object" || typeof artifact.path !== "string") {
+    return null;
+  }
+  const managed = localManaged(descriptor);
+  if (!managed || !managed.artifacts || !resolved || !resolved.workspace) {
+    return null;
+  }
+  const spec = managed.artifacts[artifact.path];
+  if (!spec || !spec.pathTemplate) {
+    return null;
+  }
+  const buildVersion = resolved["build-version"] || "default";
+  const buildDirKey = resolved["build-dir-key"] || "default";
+  const templateExtras = {
+    toolchainVersion: resolved["toolchain-version"] || null,
+    example: resolved.example || null,
+  };
+  return resolveManagedPathTemplate(
+    resolved.workspace,
+    descriptor,
+    spec.pathTemplate,
+    buildVersion,
+    buildDirKey,
+    templateExtras
+  );
+}
+
+function materializeRemoteCanonicalArtifacts(tool, descriptor, payload, resolved) {
+  if (!payload || !payload.details || !Array.isArray(payload.details.artifacts)) {
+    return payload;
+  }
+  const ssh = parseSshTarget(resolved.ssh);
+  const artifacts = payload.details.artifacts.map((artifact) => {
+    if (!artifact || typeof artifact !== "object" || typeof artifact.location !== "string") {
+      return artifact;
+    }
+    const localLocation = canonicalLocalArtifactPath(tool, descriptor, resolved, artifact);
+    if (!localLocation) {
+      return artifact;
+    }
+    syncRemotePathToLocal(artifact.location, localLocation, ssh, `${tool} artifact ${artifact.path}`);
+    return {
+      ...artifact,
+      remote_location: artifact.location,
+      local_location: localLocation,
+    };
+  });
+  return {
+    ...payload,
+    details: {
+      ...payload.details,
+      artifacts,
+    },
+  };
+}
+
 async function executeRemoteTopLevelToolCommand(command, tool, args, resolved, flags) {
   const ssh = parseSshTarget(resolved.ssh);
   const remoteRoot = resolved["sync-morpheus"]
@@ -461,7 +519,7 @@ async function executeRemoteTopLevelToolCommand(command, tool, args, resolved, f
   if (result.exitCode !== 0 || !payload) {
     throw new Error((payload && payload.summary) || result.stderr || result.stdout || `failed to ${command} with tool ${tool}`);
   }
-  return payload;
+  return materializeRemoteCanonicalArtifacts(tool, readToolDescriptor(tool), payload, resolved);
 }
 
 function normalizeArtifacts(payload, command, resolved, descriptor) {

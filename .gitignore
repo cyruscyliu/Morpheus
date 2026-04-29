@@ -5,6 +5,7 @@ coverage/
 *.tsbuildinfo
 apps/docs/dist/
 apps/docs/.tsbuild/
+apps/docs/.next/
 apps/runs-viewer/.tsbuild/
 apps/runs-viewer/.next/
 __pycache__/

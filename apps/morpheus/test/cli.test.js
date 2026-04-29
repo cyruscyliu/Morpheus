@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
+const { spawnSync, spawn } = require("node:child_process");
 
 const appRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(appRoot, "..", "..");
@@ -170,6 +170,7 @@ test("workflow commands are available through Morpheus", () => {
   assert.match(result.stdout, /workflow run/);
   assert.match(result.stdout, /workflow inspect/);
   assert.match(result.stdout, /workflow stop/);
+  assert.match(result.stdout, /workflow remove/);
 });
 
 test("workflow stop marks a running workflow as stopped", () => {
@@ -221,6 +222,161 @@ test("workflow stop marks a running workflow as stopped", () => {
   assert.equal(workflow.status, "stopped");
   assert.equal(step.status, "stopped");
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
+test("workflow remove requires a prior stop and removes stopped workflow state", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-remove-"));
+  const runId = "wf-remove-test";
+  const runDir = path.join(workspaceRoot, "runs", runId);
+  const stepDir = path.join(runDir, "steps", "01-run");
+  fs.mkdirSync(stepDir, { recursive: true });
+  fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
+  fs.writeFileSync(path.join(stepDir, "step.json"), `${JSON.stringify({
+    id: "01-run",
+    name: "run",
+    status: "running",
+    stepDir,
+    logFile: path.join(stepDir, "stdout.log"),
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
+    id: runId,
+    workflow: "tool-nvirsh",
+    category: "run",
+    status: "running",
+    createdAt: "2026-04-29T08:00:00.000Z",
+    updatedAt: "2026-04-29T08:00:00.000Z",
+    workspace: workspaceRoot,
+    runDir,
+    currentStepId: "01-run",
+    currentChildPid: null,
+    runnerPid: null,
+    steps: [{ id: "01-run", name: "run", stepDir, status: "running" }],
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
+    id: runId,
+    kind: "workflow",
+    category: "run",
+    status: "running",
+    createdAt: "2026-04-29T08:00:00.000Z",
+    completedAt: null,
+    summary: { workflow: "tool-nvirsh", category: "run" },
+  }, null, 2)}\n`);
+
+  const rejected = run(["--json", "workflow", "remove", "--id", runId, "--workspace", workspaceRoot], {
+    cwd: workspaceRoot,
+  });
+  assert.equal(rejected.status, 1, rejected.stderr || rejected.stdout);
+
+  const stopped = run(["--json", "workflow", "stop", "--id", runId, "--workspace", workspaceRoot], {
+    cwd: workspaceRoot,
+  });
+  assert.equal(stopped.status, 0, stopped.stderr || stopped.stdout);
+
+  const removed = run(["--json", "workflow", "remove", "--id", runId, "--workspace", workspaceRoot], {
+    cwd: workspaceRoot,
+  });
+  assert.equal(removed.status, 0, removed.stderr || removed.stdout);
+  assert.equal(fs.existsSync(runDir), false);
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
+test("tool run removes an active conflicting workspace-scoped runtime before launch", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-run-guard-project-"));
+  const workspaceRoot = path.join(projectRoot, "workspace");
+  const stateDir = path.join(workspaceRoot, "tmp", "nvirsh", "existing");
+  const depsDir = path.join(projectRoot, "deps");
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.mkdirSync(depsDir, { recursive: true });
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      ""
+    ].join("\n")
+  );
+
+  const holder = spawn("sleep", ["300"], {
+    detached: true,
+    stdio: "ignore",
+  });
+  holder.unref();
+  assert.doesNotThrow(() => process.kill(holder.pid, 0));
+  spawnSync("bash", ["-lc", "sleep 0.1"]);
+  assert.doesNotThrow(() => process.kill(holder.pid, 0));
+
+  fs.writeFileSync(path.join(stateDir, "manifest.json"), `${JSON.stringify({
+    schemaVersion: 1,
+    tool: "nvirsh",
+    id: "existing",
+    name: "existing",
+    target: "sel4",
+    command: "run",
+    status: "running",
+    stateDir,
+    manifest: path.join(stateDir, "manifest.json"),
+    runGuard: {
+      scope: "workspace",
+      tool: "nvirsh",
+      key: "sel4:qemu",
+    },
+    runtime: {
+      provider: {
+        tool: "libvmm",
+        action: "qemu",
+      },
+    },
+    pid: holder.pid,
+  }, null, 2)}\n`);
+
+  const qemu = path.join(depsDir, "qemu-system-aarch64");
+  const microkitSdk = path.join(depsDir, "microkit-sdk");
+  const toolchain = path.join(depsDir, "arm-toolchain");
+  const libvmmDir = path.join(depsDir, "libvmm");
+  const kernel = path.join(projectRoot, "Image");
+  const initrd = path.join(projectRoot, "rootfs.cpio.gz");
+  fs.writeFileSync(qemu, "#!/usr/bin/env sh\nexit 0\n", { mode: 0o755 });
+  for (const dir of [microkitSdk, toolchain, libvmmDir]) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.writeFileSync(kernel, "kernel");
+  fs.writeFileSync(initrd, "initrd");
+
+  const result = run([
+    "--json",
+    "run",
+    "--tool",
+    "nvirsh",
+    "--workspace",
+    workspaceRoot,
+    "--name",
+    "sel4-dev",
+    "--target",
+    "sel4",
+    "--qemu",
+    qemu,
+    "--microkit-sdk",
+    microkitSdk,
+    "--toolchain",
+    toolchain,
+    "--libvmm-dir",
+    libvmmDir,
+    "--kernel",
+    kernel,
+    "--initrd",
+    initrd,
+    "--detach",
+  ], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "success");
+  assert.equal(fs.existsSync(stateDir), false);
+
+  process.kill(holder.pid, "SIGKILL");
+  fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
 test("workflow run resolves prior step artifacts in configured workflows", () => {

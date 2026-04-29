@@ -242,6 +242,113 @@ function readManifestOrThrow(flags: Record<string, unknown>) {
   return manifest;
 }
 
+function findManifestFiles(rootDir: string) {
+  const results: string[] = [];
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || !fs.existsSync(current)) {
+      continue;
+    }
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const nextPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(nextPath);
+      } else if (entry.isFile() && entry.name === 'manifest.json') {
+        results.push(nextPath);
+      }
+    }
+  }
+  results.sort((a, b) => a.localeCompare(b));
+  return results;
+}
+
+function ensureNoWorkspaceRunConflict(flags: Record<string, unknown>) {
+  const workspaceRoot = configuredWorkspaceRoot();
+  if (!workspaceRoot) {
+    return;
+  }
+  const guardKey = `${normalizeTarget(flags)}:${String(flags['runtime-action'] || 'qemu')}`;
+  const currentStateDir = stateDir(flags);
+  for (const rootDir of [path.join(workspaceRoot, 'tmp'), path.join(workspaceRoot, 'runs')]) {
+    for (const filePath of findManifestFiles(rootDir)) {
+      if (path.resolve(filePath) === path.resolve(manifestPath(flags))) {
+        continue;
+      }
+      let manifest = null;
+      try {
+        manifest = readJson(filePath);
+      } catch {
+        continue;
+      }
+      if (!manifest || manifest.status !== 'running') {
+        continue;
+      }
+      const guard = manifest.runGuard;
+      if (!guard || guard.tool !== 'nvirsh' || guard.key !== guardKey) {
+        continue;
+      }
+      const otherStateDir = manifest.stateDir ? String(manifest.stateDir) : null;
+      if (otherStateDir && path.resolve(otherStateDir) === path.resolve(currentStateDir)) {
+        continue;
+      }
+      const pid = Number(manifest.pid || manifest.launcherPid || manifest.runnerPid || 0);
+      if (!isRunning(pid)) {
+        continue;
+      }
+      const providerManifestPath = manifest.runtime?.providerRun?.manifest;
+      if (providerManifestPath && fs.existsSync(providerManifestPath)) {
+        try {
+          const providerManifest = readJson(providerManifestPath);
+          const providerPid = Number(providerManifest.pid || providerManifest.launcherPid || providerManifest.runnerPid || 0);
+          if (isRunning(providerPid)) {
+            try {
+              process.kill(providerPid, 'SIGTERM');
+            } catch {}
+          }
+        } catch {}
+      }
+      for (const runningPid of [
+        Number(manifest.pid || 0),
+        Number(manifest.launcherPid || 0),
+        Number(manifest.runnerPid || 0),
+      ]) {
+        if (!isRunning(runningPid)) {
+          continue;
+        }
+        try {
+          process.kill(runningPid, 'SIGTERM');
+        } catch {}
+      }
+      const waited = spawnSync(
+        'bash',
+        ['-lc', `for i in $(seq 1 30); do if ! kill -0 ${pid} 2>/dev/null; then exit 0; fi; sleep 0.1; done; exit 1`],
+        { stdio: 'ignore' },
+      );
+      if (waited.status !== 0) {
+        for (const runningPid of [
+          Number(manifest.pid || 0),
+          Number(manifest.launcherPid || 0),
+          Number(manifest.runnerPid || 0),
+        ]) {
+          if (!isRunning(runningPid)) {
+            continue;
+          }
+          try {
+            process.kill(runningPid, 'SIGKILL');
+          } catch {}
+        }
+      }
+      for (const cleanupRoot of [
+        typeof manifest.stateDir === 'string' ? manifest.stateDir : null,
+      ].filter(Boolean)) {
+        fs.rmSync(String(cleanupRoot), { recursive: true, force: true });
+      }
+      return;
+    }
+  }
+}
+
 async function sendMonitorCommand(socketPath: string, command: string, timeoutMs = 2000) {
   return await new Promise<void>((resolve, reject) => {
     const socket = net.createConnection(socketPath);
@@ -358,6 +465,7 @@ function preparedManifest(flags: Record<string, unknown>, prerequisites: Record<
     : null;
   return {
     schemaVersion: 1,
+    tool: 'nvirsh',
     id: path.basename(state),
     name: instanceName(flags),
     target: normalizeTarget(flags),
@@ -368,6 +476,11 @@ function preparedManifest(flags: Record<string, unknown>, prerequisites: Record<
     stateDir: state,
     logFile: logPath(flags),
     manifest: manifestPath(flags),
+    runGuard: {
+      scope: 'workspace',
+      tool: 'nvirsh',
+      key: `${normalizeTarget(flags)}:${provider && provider.action ? provider.action : 'qemu'}`,
+    },
     prerequisites,
     runtime: {
       provider,
@@ -517,6 +630,7 @@ function runCommandForManifest(manifest: Record<string, any>, flags: Record<stri
 }
 
 async function runLaunch(flags: Record<string, unknown>): Promise<any> {
+  ensureNoWorkspaceRunConflict(flags);
   const manifest = ensurePreparedManifest(flags);
   if (manifest.target !== 'sel4') {
     throw new CliError('unsupported_target', `Unsupported target: ${manifest.target}`);

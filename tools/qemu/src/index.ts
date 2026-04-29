@@ -759,6 +759,11 @@ async function runQemu(flags: Record<string, unknown>, jsonMode: boolean) {
       initrd,
       append,
       qemu_args: qemuArgs,
+      runGuard: {
+        scope: 'workspace',
+        tool: 'qemu',
+        key: 'run',
+      },
       run_dir: runDir,
       log_file: logFile,
       pid: null,
@@ -798,6 +803,11 @@ async function runQemu(flags: Record<string, unknown>, jsonMode: boolean) {
     initrd,
     append,
     qemu_args: qemuArgs,
+    runGuard: {
+      scope: 'workspace',
+      tool: 'qemu',
+      key: 'run',
+    },
     run_dir: runDir,
     log_file: logFile,
     pid: child.pid || null,

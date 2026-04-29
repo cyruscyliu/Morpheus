@@ -1,4 +1,5 @@
 // @ts-nocheck
+const fs = require("fs");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
 const { applyConfigDefaults } = require("./config");
@@ -78,6 +79,18 @@ function requireFlag(flags, name, message) {
     throw new Error(message || `missing required flag: --${name}`);
   }
   return flags[name];
+}
+
+function isRunningPid(pid) {
+  if (!pid || pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function templateValues(buildVersion, buildDirKey, extras = {}) {
@@ -389,6 +402,170 @@ function parseLastJsonLine(output) {
     end = text.lastIndexOf("}", end - 1);
   }
   return null;
+}
+
+function findManifestFiles(rootDir) {
+  const results = [];
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || !fs.existsSync(current)) {
+      continue;
+    }
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const nextPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(nextPath);
+      } else if (entry.isFile() && entry.name === "manifest.json") {
+        results.push(nextPath);
+      }
+    }
+  }
+  results.sort((a, b) => a.localeCompare(b));
+  return results;
+}
+
+function getByPath(value, dottedPath) {
+  const parts = String(dottedPath || "").split(".").filter(Boolean);
+  let current = value;
+  for (const part of parts) {
+    if (!current || typeof current !== "object" || !Object.prototype.hasOwnProperty.call(current, part)) {
+      return "";
+    }
+    current = current[part];
+  }
+  return current == null ? "" : current;
+}
+
+function renderRunGuardKey(template, data) {
+  return String(template || "").replace(/\{([^}]+)\}/g, (_, key) => String(getByPath(data, key.trim()) || ""));
+}
+
+function invocationRunGuard(tool, descriptor, effective) {
+  const guard = descriptor && descriptor.runGuard ? descriptor.runGuard : null;
+  if (!guard || guard.scope !== "workspace" || !guard.keyTemplate) {
+    return null;
+  }
+  const data = {
+    tool,
+    target: effective.target || "default",
+    action: effective.action || effective["runtime-action"] || "run",
+    example: effective.example || "default",
+    runtime: {
+      provider: {
+        action: effective["runtime-action"] || effective.action || "run",
+      },
+    },
+    provider: {
+      action: effective.action || "run",
+      example: effective.example || "default",
+    },
+  };
+  return {
+    scope: guard.scope,
+    tool,
+    key: renderRunGuardKey(guard.keyTemplate, data),
+  };
+}
+
+function manifestRunGuard(manifest) {
+  if (!manifest || manifest.status !== "running") {
+    return null;
+  }
+  return manifest.runGuard || null;
+}
+
+function ensureNoWorkspaceRunConflict(tool, descriptor, effective) {
+  const workspaceRoot = effective.localWorkspace || effective.workspace;
+  if (!workspaceRoot) {
+    return;
+  }
+  const runGuard = invocationRunGuard(tool, descriptor, effective);
+  if (!runGuard) {
+    return;
+  }
+  const roots = [
+    path.join(workspaceRoot, "tmp"),
+    path.join(workspaceRoot, "runs"),
+  ];
+  for (const rootDir of roots) {
+    for (const manifestFile of findManifestFiles(rootDir)) {
+      let manifest = null;
+      try {
+        manifest = JSON.parse(fs.readFileSync(manifestFile, "utf8"));
+      } catch {
+        continue;
+      }
+      const manifestGuard = manifestRunGuard(manifest);
+      if (
+        !manifestGuard
+        || manifestGuard.scope !== runGuard.scope
+        || manifestGuard.tool !== runGuard.tool
+        || manifestGuard.key !== runGuard.key
+      ) {
+        continue;
+      }
+      const pid = Number(manifest.pid || manifest.launcherPid || manifest.runnerPid || 0);
+      if (!isRunningPid(pid)) {
+        continue;
+      }
+      const providerManifestPath = manifest.runtime
+        && manifest.runtime.providerRun
+        && typeof manifest.runtime.providerRun.manifest === "string"
+        ? manifest.runtime.providerRun.manifest
+        : null;
+      if (providerManifestPath && fs.existsSync(providerManifestPath)) {
+        try {
+          const providerManifest = JSON.parse(fs.readFileSync(providerManifestPath, "utf8"));
+          const providerPid = Number(providerManifest.pid || providerManifest.launcherPid || providerManifest.runnerPid || 0);
+          if (isRunningPid(providerPid)) {
+            try {
+              process.kill(providerPid, "SIGTERM");
+            } catch {}
+          }
+        } catch {}
+      }
+      for (const runningPid of [
+        Number(manifest.pid || 0),
+        Number(manifest.launcherPid || 0),
+        Number(manifest.runnerPid || 0),
+      ]) {
+        if (!isRunningPid(runningPid)) {
+          continue;
+        }
+        try {
+          process.kill(runningPid, "SIGTERM");
+        } catch {}
+      }
+      const waited = spawnSync(
+        "bash",
+        ["-lc", `for i in $(seq 1 30); do if ! kill -0 ${pid} 2>/dev/null; then exit 0; fi; sleep 0.1; done; exit 1`],
+        { stdio: "ignore" },
+      );
+      if (waited.status !== 0) {
+        for (const runningPid of [
+          Number(manifest.pid || 0),
+          Number(manifest.launcherPid || 0),
+          Number(manifest.runnerPid || 0),
+        ]) {
+          if (!isRunningPid(runningPid)) {
+            continue;
+          }
+          try {
+            process.kill(runningPid, "SIGKILL");
+          } catch {}
+        }
+      }
+      const cleanupRoots = [
+        typeof manifest.stateDir === "string" ? manifest.stateDir : null,
+        typeof manifest.runDir === "string" ? manifest.runDir : null,
+      ].filter(Boolean);
+      for (const cleanupRoot of cleanupRoots) {
+        fs.rmSync(cleanupRoot, { recursive: true, force: true });
+      }
+      return;
+    }
+  }
 }
 
 function canonicalLocalArtifactPath(tool, descriptor, resolved, artifact) {
@@ -771,8 +948,11 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
     { allowGlobalRemote: Boolean(options.allowGlobalRemote), allowToolDefaults: true }
   );
   const effective = resolveToolDependencies(resolved, command);
-  const remoteEnabled = Boolean(effective.ssh && effective.workspace && effective.localWorkspace && effective.workspace !== effective.localWorkspace);
   const descriptor = readToolDescriptor(tool);
+  if (command === "run") {
+    ensureNoWorkspaceRunConflict(tool, descriptor, effective);
+  }
+  const remoteEnabled = Boolean(effective.ssh && effective.workspace && effective.localWorkspace && effective.workspace !== effective.localWorkspace);
   const reserved = new Set(["tool", "json", "help", "workspace", "localWorkspace", "ssh", "remote", "remoteWorkspace", "remoteTarget", "mode"]);
   const args = ["--json", command];
   for (const [key, rawValue] of Object.entries(effective)) {

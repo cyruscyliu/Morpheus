@@ -951,6 +951,7 @@ function runAction(flags: Record<string, unknown>) {
   const provider = contract.actions[action];
   const manifest = {
     schemaVersion: 1,
+    tool: 'libvmm',
     kind: 'libvmm-runtime-run',
     id: path.basename(runDir),
     provider: {
@@ -966,6 +967,11 @@ function runAction(flags: Record<string, unknown>) {
     runDir,
     logFile,
     manifest: manifestPath,
+    runGuard: {
+      scope: 'workspace',
+      tool: 'libvmm',
+      key: `${action}:${contract.example || 'virtio'}`,
+    },
     inputs: {
       libvmmDir,
       microkitSdk,

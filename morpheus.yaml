@@ -414,6 +414,118 @@ workflows:
           - --initrd
           - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.local_location}}"
           - --detach
+  nvirsh-sel4-runtime-trace:
+    category: run
+    steps:
+      - id: microkit_sdk_fetch
+        tool: microkit-sdk
+        command: fetch
+      - id: microkit_sdk_patch
+        tool: microkit-sdk
+        command: patch
+        args:
+          - --source
+          - "{{steps.microkit_sdk_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/microkit-sdk/patches"
+      - id: microkit_sdk_build
+        tool: microkit-sdk
+        command: build
+        args:
+          - --source
+          - "{{steps.microkit_sdk_patch.artifacts.source-dir.location}}"
+      - id: libvmm_fetch
+        tool: libvmm
+        command: fetch
+      - id: libvmm_patch
+        tool: libvmm
+        command: patch
+        args:
+          - --source
+          - "{{steps.libvmm_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/libvmm/patches"
+      - id: libvmm_build
+        tool: libvmm
+        command: build
+        args:
+          - --source
+          - "{{steps.libvmm_patch.artifacts.source-dir.location}}"
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/buildroot/patches"
+      - id: buildroot_build
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/qemu/patches"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+      - id: nvirsh_run
+        tool: nvirsh
+        command: run
+        args:
+          - --name
+          - sel4-dev-trace
+          - --microkit-sdk
+          - "{{steps.microkit_sdk_build.artifacts.sdk-dir.location}}"
+          - --toolchain
+          - "{{steps.microkit_sdk_build.artifacts.toolchain-dir.location}}"
+          - --libvmm-dir
+          - "{{steps.libvmm_build.artifacts.libvmm-dir.location}}"
+          - --runtime-contract
+          - "{{steps.libvmm_build.artifacts.runtime-contract.location}}"
+          - --board
+          - qemu_virt_aarch64
+          - --microkit-config
+          - debug
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.local_location}}"
+          - --kernel
+          - "{{steps.buildroot_build.artifacts.Image.local_location}}"
+          - --initrd
+          - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.local_location}}"
+          - --qemu-arg
+          - --trace
+          - --qemu-arg
+          - enable=arm_irq
+          - --qemu-arg
+          - --trace
+          - --qemu-arg
+          - enable=arm_mmio_el2_from_el1_write
+          - --qemu-arg
+          - --trace
+          - --qemu-arg
+          - enable=arm_mmio_el2_from_el1_read_request
+          - --qemu-arg
+          - --trace
+          - --qemu-arg
+          - enable=arm_mmio_el2_from_el1_read_return
+          - --detach
   local-buildroot-qemu-runtime:
     category: run
     steps:

@@ -3,6 +3,10 @@
   "runtime": "node",
   "cli-contract": "run,inspect,logs",
   "entry": "dist/index.js",
+  "runGuard": {
+    "scope": "workspace",
+    "keyTemplate": "{target}:{runtime.provider.action}"
+  },
   "config": {
     "fields": {
       "mode": { "aliases": ["mode"] },

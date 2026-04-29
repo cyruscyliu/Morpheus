@@ -88,20 +88,6 @@ function skillDirForTool(toolName: string): string {
   return `omssr-${toolName}`;
 }
 
-function formatToolJsonMarkdown(toolJson: unknown): string {
-  if (!toolJson) {
-    return "";
-  }
-  return [
-    "## tool.json",
-    "",
-    "```json",
-    JSON.stringify(toolJson, null, 2),
-    "```",
-    "",
-  ].join("\n");
-}
-
 export async function getCatalog(): Promise<CatalogEntry[]> {
   const repoRoot = repoRootFromDocsApp();
   const skillsRoot = path.join(repoRoot, "skills");
@@ -131,7 +117,7 @@ export async function getCatalog(): Promise<CatalogEntry[]> {
       kind: "tool",
       summary: summarize(skillMarkdown || ""),
       source: `skills/${skillDir}/SKILL.md`,
-      markdown: `${formatToolJsonMarkdown(toolJson)}${body}\n`,
+      markdown: `${body}\n`,
     });
   }
 
@@ -152,4 +138,3 @@ export async function getCatalog(): Promise<CatalogEntry[]> {
 
   return [...toolEntries.sort((a, b) => a.name.localeCompare(b.name)), ...appEntries];
 }
-

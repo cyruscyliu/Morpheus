@@ -35,3 +35,11 @@
 
 - Treat `<workspace>/tools/`, `<workspace>/runs/`, and `<workspace>/tmp/` as
   the stable Morpheus-managed layout.
+
+## Skills-First Docs
+
+This repo treats `skills/` and tool descriptors as the canonical documentation
+source, and avoids maintaining per-tool `README.md` files.
+`apps/docs` renders documentation from `skills/*/SKILL.md` plus
+`tools/*/tool.json`, while `.codex/skills/` and `.claude/skills/` may contain
+additional third-party skills with `omssr-*` entries symlinked to `skills/`.

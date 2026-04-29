@@ -31,19 +31,6 @@
 - When updating a tool, update its skill and `tools/<tool>/README.md` in the
   same change.
 
-## `tools/` README Principles
-
-- Write `tools/<name>/README.md` for both humans and agents.
-- Start with a short one-line summary under the title.
-- Include a `Quick start` section near the top.
-- Show one canonical command for the main workflow.
-- Include at least one `--json` example when supported.
-- Add a `Usage` section with the public command tree.
-- Document commands by user intent, not only by flags.
-- Include realistic examples for common and advanced paths.
-- Use repo-relative paths in examples.
-- Keep README structure easy to scan.
-
 ## Workspace Rule
 
 - Treat `<workspace>/tools/`, `<workspace>/runs/`, and `<workspace>/tmp/` as

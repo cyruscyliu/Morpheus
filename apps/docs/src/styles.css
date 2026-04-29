@@ -12,7 +12,7 @@
   --body-glow: rgba(207, 152, 93, 0.12);
   --body-top: #f7f1e8;
   --code-bg: #fffaf2;
-  --workflow: #8d6a1a;
+  --app: #8d6a1a;
   --font-ui:
     "JetBrainsMono Nerd Font",
     "Hack Nerd Font",
@@ -331,8 +331,8 @@ button {
   color: var(--accent);
 }
 
-.status-pill[data-tone="workflow"] {
-  color: var(--workflow);
+.status-pill[data-tone="app"] {
+  color: var(--app);
 }
 
 .markdown-body h1,

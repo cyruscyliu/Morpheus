@@ -91,7 +91,7 @@ For Morpheus-managed execution, prefer:
 ```
 
 Tool-specific usage and workflow guidance now live in the skills under
-`.codex/skills/`.
+`skills/`.
 
 Use those as the authoritative source for:
 

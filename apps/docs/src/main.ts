@@ -11,7 +11,7 @@ import {
 } from "./lib/catalog-view.js";
 
 interface ViewState {
-  section: "all" | "tool" | "workflow";
+  section: "all" | "tool" | "app";
   selectedName: string | null;
 }
 
@@ -53,14 +53,14 @@ function refreshTable(entries: CatalogEntry[], state: ViewState): void {
   requiredElement<HTMLElement>("#catalog-summary").textContent = renderOverview(filtered);
   requiredElement<HTMLElement>("#catalog-list").innerHTML = renderList(filtered, state.selectedName);
   requiredElement<HTMLElement>("#catalog-detail").innerHTML = renderDetail(selected);
-  requiredElement<HTMLElement>("#readme-path").textContent = selected ? `${selected.path}/README.md` : "Select an entry";
+  requiredElement<HTMLElement>("#readme-path").textContent = selected ? selected.source : "Select an entry";
   requiredElement<HTMLElement>("#empty-state").hidden = filtered.length > 0;
   requiredElement<HTMLElement>("#status-left").textContent = selected
     ? `${selected.kind} ${selected.name}`
     : `${state.section} · no selection`;
   const counts = countByKind(entries);
   requiredElement<HTMLElement>("#status-right").textContent =
-    `tools:${counts.tool} workflows:${counts.workflow} total:${entries.length}`;
+    `tools:${counts.tool} apps:${counts.app} total:${entries.length}`;
 }
 
 function installListSelection(entries: CatalogEntry[], state: ViewState, listNode: HTMLElement): void {

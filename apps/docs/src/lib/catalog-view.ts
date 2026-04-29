@@ -14,7 +14,7 @@ export function countByKind(entries: CatalogEntry[]): Record<CatalogKind, number
       counts[entry.kind] += 1;
       return counts;
     },
-    { tool: 0, workflow: 0 },
+    { tool: 0, app: 0 },
   );
 }
 
@@ -28,7 +28,7 @@ export function getSelectedEntry(entries: CatalogEntry[], hash: string): Catalog
 
 export function renderOverview(entries: CatalogEntry[]): string {
   const counts = countByKind(entries);
-  return `${entries.length} entries · ${counts.tool} tools · ${counts.workflow} workflows`;
+  return `${entries.length} entries · ${counts.tool} tools · ${counts.app} apps`;
 }
 
 export function renderSectionNav(
@@ -39,7 +39,7 @@ export function renderSectionNav(
   const items: Array<{ key: CatalogKind | "all"; label: string; count: number }> = [
     { key: "all", label: "all", count: entries.length },
     { key: "tool", label: "tools", count: counts.tool },
-    { key: "workflow", label: "workflows", count: counts.workflow },
+    { key: "app", label: "apps", count: counts.app },
   ];
 
   return items
@@ -81,9 +81,9 @@ export function renderDetail(entry: CatalogEntry | null): string {
     <article class="detail-block markdown-body">
       <div class="readme-meta">
         <span class="status-pill" data-tone="${entry.kind}">${entry.kind}</span>
-        <code>${entry.path}/README.md</code>
+        <code>${entry.source}</code>
       </div>
-      ${renderMarkdown(entry.readme || `# ${entry.name}\n\nREADME unavailable.`)}
+      ${renderMarkdown(entry.readme || `# ${entry.name}\n\nDocumentation unavailable.`)}
     </article>
   `;
 }

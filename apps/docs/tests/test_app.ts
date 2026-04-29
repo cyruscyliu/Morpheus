@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import type { CatalogEntry } from "../src/catalog.js";
-import { createCatalogFromReadmes, createToolCatalog } from "../src/lib/catalog-discovery.js";
+import { createAppCatalogFromSkills, createToolCatalogFromSkills } from "../src/lib/catalog-discovery.js";
 import {
   countByKind,
   filterCatalog,
@@ -14,32 +14,56 @@ import {
 } from "../src/lib/catalog-view.js";
 
 const catalog: CatalogEntry[] = [
-  ...createToolCatalog(
+  ...createToolCatalogFromSkills(
     {
       "../../../tools/llbic/tool.json": { name: "llbic" },
       "../../../tools/llcg/tool.json": { name: "llcg" },
       "../../../tools/llbase/tool.json": null,
     },
     {
-      "../../../tools/llbase/README.md": "# llbase\n\nShared container runtime images for the LLVM Linux tooling family.",
-      "../../../tools/llbic/README.md": "# llbic\n\nCompile Linux kernels to LLVM bitcode and kernel images.",
-      "../../../tools/llcg/README.md": "# llcg\n\nGenerate Linux kernel callgraphs from LLVM bitcode inputs.",
+      "../../../skills/omssr-llbic/SKILL.md": [
+        "---",
+        "name: llbic",
+        "description: Compile Linux kernels to LLVM bitcode and kernel images.",
+        "---",
+        "",
+        "# llbic Skill",
+        "",
+        "Use this skill when you need llbic.",
+      ].join("\n"),
+      "../../../skills/omssr-llcg/SKILL.md": [
+        "---",
+        "name: llcg",
+        "description: Generate Linux kernel callgraphs from LLVM bitcode inputs.",
+        "---",
+        "",
+        "# llcg Skill",
+        "",
+        "Use this skill when you need llcg.",
+      ].join("\n"),
     },
   ),
-  ...createCatalogFromReadmes(
+  ...createAppCatalogFromSkills(
     {
-      "../../../workflows/kernel-callgraph/README.md":
-        "# kernel-callgraph\n\nCompile a kernel to LLVM bitcode with llbic, then generate a scoped callgraph with llcg.",
+      "../../../skills/omssr-morpheus/SKILL.md": [
+        "---",
+        "name: morpheus",
+        "description: Manage workspaces and workflow runs.",
+        "---",
+        "",
+        "# morpheus Skill",
+        "",
+        "Use this skill when you need morpheus.",
+      ].join("\n"),
     },
-    "workflow",
   ),
 ];
 
 test("overview rendering uses catalog counts", () => {
   const summary = renderOverview(catalog);
-  assert.match(summary, /4 entries/);
-  assert.match(summary, /3 tools/);
-  assert.match(summary, /1 workflows/);
+  assert.match(summary, /3 entries/);
+  assert.match(summary, /2 tools/);
+  assert.match(summary, /1 apps/);
 });
 
 test("list rendering includes paths and selection marker", () => {
@@ -59,31 +83,37 @@ test("detail rendering includes highlights and commands", () => {
   const html = renderDetail(entry);
   assert.match(html, /<h1>llbic<\/h1>/);
   assert.match(html, /Compile Linux kernels to LLVM bitcode and kernel images\./);
-  assert.match(html, /README\.md/);
+  assert.match(html, /SKILL\.md/);
 });
 
-test("filtering and counts reflect tools and workflows", () => {
+test("filtering and counts reflect tools and apps", () => {
   const tools = filterCatalog(catalog, "tool");
-  assert.equal(tools.length, 3);
+  assert.equal(tools.length, 2);
 
   const counts = countByKind(catalog);
-  assert.equal(counts.tool, 3);
-  assert.equal(counts.workflow, 1);
+  assert.equal(counts.tool, 2);
+  assert.equal(counts.app, 1);
 });
 
 test("selection falls back to the first entry when the hash is missing", () => {
   assert.equal(getSelectedEntry(catalog, "")?.name, "llbase");
-  assert.equal(getSelectedEntry(catalog, "#entry=kernel-callgraph")?.name, "kernel-callgraph");
+  assert.equal(getSelectedEntry(catalog, "#entry=morpheus")?.name, "morpheus");
 });
 
 test("tool catalog only includes directories with tool.json", () => {
-  const tools = createToolCatalog(
+  const tools = createToolCatalogFromSkills(
     {
       "../../../tools/buildroot/tool.json": { name: "buildroot" },
     },
     {
-      "../../../tools/buildroot/README.md": "# buildroot\n\nBuild Linux images.",
-      "../../../tools/llbase/README.md": "# llbase\n\nShared images.",
+      "../../../skills/omssr-buildroot/SKILL.md": [
+        "---",
+        "name: buildroot",
+        "description: Build Linux images.",
+        "---",
+        "",
+        "# buildroot Skill",
+      ].join("\n"),
     },
   );
 

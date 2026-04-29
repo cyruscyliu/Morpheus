@@ -6,6 +6,7 @@ coverage/
 apps/docs/dist/
 apps/docs/.tsbuild/
 apps/docs/.next/
+apps/docs/out/
 apps/runs-viewer/.tsbuild/
 apps/runs-viewer/.next/
 __pycache__/

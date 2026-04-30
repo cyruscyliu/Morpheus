@@ -247,14 +247,22 @@ function sleep(ms: number) {
 }
 
 async function waitForDetachedLaunch(flags: Record<string, unknown>, launcherPid: number | undefined) {
-  const deadline = Date.now() + 2000;
+  const deadline = Date.now() + 60000;
+  let runningSince = 0;
   while (Date.now() < deadline) {
     const manifest = readManifestOrThrow(flags);
     if (manifest.status === 'error' || manifest.status === 'stopped' || manifest.status === 'success') {
       return manifest;
     }
     if (manifest.status === 'running' && manifest.pid && isRunning(manifest.pid)) {
-      return manifest;
+      if (!runningSince) {
+        runningSince = Date.now();
+      }
+      if (Date.now() - runningSince >= 1000) {
+        return manifest;
+      }
+    } else {
+      runningSince = 0;
     }
     if (launcherPid && !isRunning(launcherPid) && (!manifest.pid || !isRunning(manifest.pid))) {
       return manifest;
@@ -757,6 +765,13 @@ async function runLaunch(flags: Record<string, unknown>): Promise<any> {
   });
 }
 
+function resultExitCode(result: any) {
+  if (result && result.status === 'error') {
+    return typeof result.exit_code === 'number' ? result.exit_code : 1;
+  }
+  return 0;
+}
+
 function runInspect(flags: Record<string, unknown>) {
   const manifest = readManifestOrThrow(flags);
   return {
@@ -926,22 +941,22 @@ async function main(argv: string[]) {
     case 'doctor': {
       const result = runDoctor(parsed.flags);
       parsed.json ? emitJson(result) : emitText(result.summary);
-      return 0;
+      return resultExitCode(result);
     }
     case 'run': {
       const result = await runLaunch(parsed.flags);
       parsed.json ? emitJson(result) : emitText(result.summary);
-      return 0;
+      return resultExitCode(result);
     }
     case 'inspect': {
       const result = runInspect(parsed.flags);
       parsed.json ? emitJson(result) : emitText(result.summary);
-      return 0;
+      return resultExitCode(result);
     }
     case 'stop': {
       const result = await runStop(parsed.flags);
       parsed.json ? emitJson(result) : emitText(result.summary);
-      return 0;
+      return resultExitCode(result);
     }
     case 'logs': {
       const result = await runLogs(parsed.flags);
@@ -953,12 +968,12 @@ async function main(argv: string[]) {
     case 'remove': {
       const result = runRemove(parsed.flags);
       parsed.json ? emitJson(result) : emitText(result.summary);
-      return 0;
+      return resultExitCode(result);
     }
     case 'clean': {
       const result = runRemove(parsed.flags);
       parsed.json ? emitJson(result) : emitText(result.summary);
-      return 0;
+      return resultExitCode(result);
     }
     default:
       throw new CliError('unknown_command', `Unknown command: ${String(parsed.command)}`);

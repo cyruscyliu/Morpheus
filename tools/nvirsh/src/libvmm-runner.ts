@@ -27,6 +27,19 @@ function requireValue(value: any, label: string) {
   return value;
 }
 
+function updateRunningState(manifestPath: string) {
+  updateManifest(manifestPath, (current) => {
+    if (current.status === 'running') {
+      return current;
+    }
+    return {
+      ...current,
+      status: 'running',
+      qemuStartedAt: new Date().toISOString(),
+    };
+  });
+}
+
 async function main(argv: string[]) {
   const manifestPath = argv[0];
   if (!manifestPath) {
@@ -133,12 +146,18 @@ async function main(argv: string[]) {
 
   child.stdout.on('data', (chunk) => {
     log.write(chunk);
+    if (String(chunk).includes('qemu-system-')) {
+      updateRunningState(manifestPath);
+    }
     if (attach) {
       process.stdout.write(chunk);
     }
   });
   child.stderr.on('data', (chunk) => {
     log.write(chunk);
+    if (String(chunk).includes('qemu-system-')) {
+      updateRunningState(manifestPath);
+    }
     if (attach) {
       process.stderr.write(chunk);
     }
@@ -146,7 +165,7 @@ async function main(argv: string[]) {
 
   updateManifest(manifestPath, (current) => ({
     ...current,
-    status: 'running',
+    status: 'starting',
     pid: child.pid,
     launcherPid: child.pid,
     runnerPid: process.pid,

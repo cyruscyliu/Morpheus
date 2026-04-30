@@ -161,8 +161,31 @@ test("tool list discovers repo-local tools", () => {
   const payload = JSON.parse(result.stdout);
   assert.deepEqual(
     payload.tools.map((tool) => tool.name),
-    ["buildroot", "libvmm", "llbic", "llcg", "microkit-sdk", "nvirsh", "qemu", "sel4"]
+    ["buildroot", "libvmm", "llbic", "llcg", "microkit-sdk", "nvirsh", "outline-to-paper", "qemu", "sel4"]
   );
+});
+
+test("config check can use explicit --config outside the config directory", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-explicit-"));
+  const nestedRoot = path.join(projectRoot, "nested", "cwd");
+  fs.mkdirSync(nestedRoot, { recursive: true });
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["--config", path.join(projectRoot, "morpheus.yaml"), "config", "check", "--json"], {
+    cwd: nestedRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "success");
+  fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
 test("workflow commands are available through Morpheus", () => {
@@ -380,6 +403,94 @@ test("tool run removes an active conflicting workspace-scoped runtime before lau
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("tool run surfaces detached nvirsh startup failures", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-nvirsh-run-fails-fast-"));
+  const workspaceRoot = path.join(projectRoot, "workspace");
+  const depsDir = path.join(projectRoot, "deps");
+  fs.mkdirSync(depsDir, { recursive: true });
+
+  const qemu = path.join(depsDir, "qemu-system-aarch64");
+  const microkitSdk = path.join(depsDir, "microkit-sdk");
+  const toolchain = path.join(depsDir, "arm-toolchain");
+  const libvmmDir = path.join(depsDir, "libvmm");
+  const kernel = path.join(projectRoot, "Image");
+  const initrd = path.join(projectRoot, "rootfs.cpio.gz");
+
+  fs.writeFileSync(
+    qemu,
+    [
+      "#!/usr/bin/env sh",
+      "if [ \"$1\" = \"--version\" ]; then",
+      "  echo \"qemu stub 1.0\"",
+      "  exit 0",
+      "fi",
+      "echo \"qemu launch failed\" >&2",
+      "exit 2",
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  for (const dir of [microkitSdk, toolchain, libvmmDir]) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.mkdirSync(path.join(libvmmDir, "examples", "virtio"), { recursive: true });
+  fs.writeFileSync(
+    path.join(libvmmDir, "examples", "virtio", "Makefile"),
+    [
+      ".PHONY: clean qemu",
+      "clean:",
+      "\t@true",
+      "qemu:",
+      "\t$(QEMU) -machine virt",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  fs.writeFileSync(path.join(microkitSdk, "VERSION"), "1.4.1\n");
+  fs.writeFileSync(path.join(toolchain, "VERSION"), "arm-toolchain\n");
+  fs.writeFileSync(path.join(libvmmDir, "VERSION"), "libvmm-dev\n");
+  fs.writeFileSync(kernel, "kernel");
+  fs.writeFileSync(initrd, "initrd");
+
+  const result = run([
+    "--json",
+    "run",
+    "--tool",
+    "nvirsh",
+    "--workspace",
+    workspaceRoot,
+    "--name",
+    "sel4-dev",
+    "--target",
+    "sel4",
+    "--qemu",
+    qemu,
+    "--microkit-sdk",
+    microkitSdk,
+    "--microkit-version",
+    "1.4.1",
+    "--toolchain",
+    toolchain,
+    "--libvmm-dir",
+    libvmmDir,
+    "--kernel",
+    kernel,
+    "--initrd",
+    initrd,
+    "--detach",
+  ], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+
+  assert.equal(result.status, 2, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.status, "error");
+  assert.equal(payload.exit_code, 2);
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
 test("workflow run resolves prior step artifacts in configured workflows", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-configured-"));
   const workspaceRoot = path.join(projectRoot, "workflow-workspace");
@@ -445,6 +556,58 @@ test("workflow run resolves prior step artifacts in configured workflows", () =>
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
   fs.rmSync(env.MORPHEUS_WORK_ROOT, { recursive: true, force: true });
+});
+
+test("workflow run records outline-to-paper artifacts for downstream reuse", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-outline-to-paper-"));
+  const workspaceRoot = path.join(projectRoot, "workflow-workspace");
+  const outlinePath = path.join(projectRoot, "fixtures", "outline.json");
+  const supportPath = path.join(projectRoot, "fixtures", "support.json");
+  fs.mkdirSync(path.dirname(outlinePath), { recursive: true });
+  fs.writeFileSync(outlinePath, JSON.stringify({
+    title: "Workflow Paper",
+    claims: [{ claim_id: "c1", text: "Main claim" }],
+  }));
+  fs.writeFileSync(supportPath, JSON.stringify({
+    supports: [{ support_id: "s1", claim_id: "c1", type: "fact", status: "available" }],
+  }));
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "workflows:",
+      "  outline-paper:",
+      "    category: run",
+      "    steps:",
+      "      - id: outline_to_paper",
+      "        tool: outline-to-paper",
+      "        command: run",
+      "        args:",
+      "          - --outline",
+      `          - ${outlinePath}`,
+      "          - --support",
+      `          - ${supportPath}`,
+      "          - --template",
+      "          - acsac26",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["--json", "workflow", "run", "--name", "outline-paper"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.status, "success");
+  const step = payload.details.steps[0];
+  assert.equal(step.tool, "outline-to-paper");
+  assert.equal(step.artifacts["plan-section-plan-json"] != null, true);
+  assert.equal(step.artifacts["draft-paper-tex"] != null, true);
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
 test("managed remote run resolves ssh and workspace from morpheus.yaml", () => {

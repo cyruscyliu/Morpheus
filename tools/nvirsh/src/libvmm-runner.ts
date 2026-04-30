@@ -67,7 +67,10 @@ async function main(argv: string[]) {
   if (!fs.existsSync(exampleDir)) {
     throw new Error(`missing libvmm virtio example directory: ${exampleDir}`);
   }
+  const buildDir = path.join(exampleDir, 'build');
   fs.mkdirSync(stateDir, { recursive: true });
+  const sharedBlkStorage = path.join(buildDir, 'blk_storage');
+  const runBlkStorage = path.join(stateDir, 'blk_storage');
 
   const log = fs.createWriteStream(logFile, { flags: 'a' });
   const attach = String(process.env.NVIRSH_ATTACH || '') === '1';
@@ -136,6 +139,19 @@ async function main(argv: string[]) {
       resolve();
     });
   });
+
+  try {
+    if (fs.existsSync(sharedBlkStorage) && !fs.existsSync(runBlkStorage)) {
+      fs.copyFileSync(sharedBlkStorage, runBlkStorage);
+    }
+    if (fs.existsSync(sharedBlkStorage)) {
+      fs.rmSync(sharedBlkStorage, { force: true });
+    }
+    fs.symlinkSync(runBlkStorage, sharedBlkStorage);
+  } catch (error) {
+    log.end();
+    throw error;
+  }
 
   const child = spawn('make', args, {
     cwd: exampleDir,

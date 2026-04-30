@@ -65,11 +65,13 @@ async function main(argv: string[]) {
   if (!fs.existsSync(exampleDir)) {
     throw new Error(`missing libvmm example directory: ${exampleDir}`);
   }
-
-  const blkStorage = path.join(exampleDir, 'build', 'blk_storage');
-  if (fs.existsSync(blkStorage)) {
-    fs.rmSync(blkStorage, { recursive: true, force: true });
+  const buildDir = path.join(exampleDir, 'build');
+  if (!fs.existsSync(path.join(buildDir, 'Makefile'))) {
+    throw new Error(`missing libvmm example build directory: ${buildDir}`);
   }
+
+  const sharedBlkStorage = path.join(buildDir, 'blk_storage');
+  const runBlkStorage = path.join(runDir, 'blk_storage');
 
   const pidFile = path.join(runDir, 'qemu.pid');
   const wrapper = path.join(runDir, 'qemu-wrapper.js');
@@ -96,12 +98,20 @@ async function main(argv: string[]) {
       "const attach = String(process.env.LIBVMM_ATTACH || '') === '1' || Boolean(process.stdout.isTTY);",
       "const consoleLog = process.env.LIBVMM_CONSOLE_LOG || '';",
       "const monitorSock = process.env.LIBVMM_MONITOR_SOCK || '';",
+      "const blkStorage = process.env.LIBVMM_BLK_STORAGE || '';",
       "if (!real) throw new Error('missing LIBVMM_REAL_QEMU');",
       "if (!pidFile) throw new Error('missing LIBVMM_QEMU_PID_FILE');",
       "fs.mkdirSync(path.dirname(pidFile), { recursive: true });",
       "fs.writeFileSync(pidFile, `${process.pid}\\n`, 'utf8');",
       'const args = process.argv.slice(2);',
       'const rewritten = args.slice();',
+      'if (blkStorage) {',
+      '  for (let index = 0; index < rewritten.length; index += 1) {',
+      "    if (rewritten[index] === '-drive' && index + 1 < rewritten.length) {",
+      '      rewritten[index + 1] = String(rewritten[index + 1]).replace("file=blk_storage", `file=${blkStorage}`);',
+      '    }',
+      '  }',
+      '}',
       'if (!attach && consoleLog) {',
       '  for (let index = 0; index < rewritten.length - 1; index += 1) {',
       "    if (rewritten[index] === '-serial' && rewritten[index + 1] === 'mon:stdio') {",
@@ -130,6 +140,7 @@ async function main(argv: string[]) {
     LIBVMM_QEMU_PID_FILE: pidFile,
     LIBVMM_CONSOLE_LOG: consoleLog,
     LIBVMM_MONITOR_SOCK: monitorSock,
+    LIBVMM_BLK_STORAGE: runBlkStorage,
     ...(python ? { PYTHON: python } : {}),
     PATH: [
       ...(toolchainBinDir ? [toolchainBinDir] : []),
@@ -151,7 +162,7 @@ async function main(argv: string[]) {
 
   const log = fs.createWriteStream(logFile, { flags: 'a' });
   const cleanResult = spawnSync('make', [...args.slice(0, -1), 'clean'], {
-    cwd: exampleDir,
+    cwd: buildDir,
     env,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -172,8 +183,38 @@ async function main(argv: string[]) {
     log.end();
     throw new Error(cleanResult.stderr || cleanResult.stdout || 'libvmm make clean failed');
   }
+
+  if (!fs.existsSync(sharedBlkStorage)) {
+    const diskResult = spawnSync('make', ['MICROKIT_SDK=' + microkitSdk, 'blk_storage'], {
+      cwd: buildDir,
+      env,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    if (diskResult.stdout) {
+      log.write(diskResult.stdout);
+      if (attach) {
+        process.stdout.write(diskResult.stdout);
+      }
+    }
+    if (diskResult.stderr) {
+      log.write(diskResult.stderr);
+      if (attach) {
+        process.stderr.write(diskResult.stderr);
+      }
+    }
+    if (diskResult.status !== 0 || !fs.existsSync(sharedBlkStorage)) {
+      log.end();
+      throw new Error(diskResult.stderr || diskResult.stdout || 'libvmm blk_storage generation failed');
+    }
+  }
+
+  if (fs.existsSync(sharedBlkStorage)) {
+    fs.copyFileSync(sharedBlkStorage, runBlkStorage);
+  }
+
   const child = spawn('make', args, {
-    cwd: exampleDir,
+    cwd: buildDir,
     detached: false,
     env,
     stdio: [attach ? 'inherit' : 'ignore', 'pipe', 'pipe'],

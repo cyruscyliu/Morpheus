@@ -312,11 +312,11 @@ workflows:
           - --mode
           - local
           - --path
-          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.local_location}}"
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
           - --kernel
-          - "{{steps.buildroot_build.artifacts.Image.local_location}}"
+          - "{{steps.buildroot_build.artifacts.Image.location}}"
           - --initrd
-          - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.local_location}}"
+          - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.location}}"
           - --detach
   nvirsh-sel4-runtime:
     category: run
@@ -408,11 +408,11 @@ workflows:
           - --microkit-config
           - debug
           - --qemu
-          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.local_location}}"
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
           - --kernel
-          - "{{steps.buildroot_build.artifacts.Image.local_location}}"
+          - "{{steps.buildroot_build.artifacts.Image.location}}"
           - --initrd
-          - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.local_location}}"
+          - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.location}}"
           - --detach
   nvirsh-sel4-runtime-trace:
     category: run
@@ -504,11 +504,11 @@ workflows:
           - --microkit-config
           - debug
           - --qemu
-          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.local_location}}"
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
           - --kernel
-          - "{{steps.buildroot_build.artifacts.Image.local_location}}"
+          - "{{steps.buildroot_build.artifacts.Image.location}}"
           - --initrd
-          - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.local_location}}"
+          - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.location}}"
           - --qemu-arg
           - --trace
           - --qemu-arg

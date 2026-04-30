@@ -283,6 +283,61 @@ const inspectionTabs = ["overview", "log", "artifacts"] as const;
 
 type InspectionTab = (typeof inspectionTabs)[number];
 
+function applyOptimisticWorkflowRunState(
+  detail: RunDetail | null,
+  runId: string,
+  fromStep: string | null,
+): RunDetail | null {
+  if (!detail || detail.id !== runId || detail.format !== "workflow-first") {
+    return detail;
+  }
+
+  const stepIds = detail.steps.map((step) => step.id);
+  const requestedIndex = fromStep ? stepIds.indexOf(fromStep) : -1;
+  const firstPendingIndex = detail.steps.findIndex((step) => step.status !== "success" && step.status !== "reused");
+  const startIndex =
+    requestedIndex >= 0
+      ? requestedIndex
+      : firstPendingIndex >= 0
+        ? firstPendingIndex
+        : Math.max(detail.steps.length - 1, 0);
+
+  const nextSteps = detail.steps.map((step, index) => {
+    if (index < startIndex) {
+      return {
+        ...step,
+        status: step.status === "success" ? "reused" : step.status,
+      };
+    }
+    if (index === startIndex) {
+      return {
+        ...step,
+        status: "running",
+      };
+    }
+    return {
+      ...step,
+      status: "created",
+    };
+  });
+
+  const nextGraphNodes = detail.graph.nodes.map((node, index) => ({
+    ...node,
+    status: nextSteps[index]?.status || node.status,
+  }));
+
+  return {
+    ...detail,
+    status: "running",
+    completedAt: null,
+    steps: nextSteps,
+    graph: {
+      ...detail.graph,
+      nodes: nextGraphNodes,
+    },
+  };
+}
+
 function buildGraphLayout(
   nodes: RunGraphNode[],
   edges: RunGraphEdge[],
@@ -859,6 +914,12 @@ export function WorkflowViewer({
     addLoadingRunId(setResumeLoadingRunIds, runId);
     setRerunLoadingStepId(fromStep);
     try {
+      setSummaries((current) => current.map((summary) => (
+        summary.id === runId
+          ? { ...summary, status: "running", completedAt: null }
+          : summary
+      )));
+      setRunDetail((current) => applyOptimisticWorkflowRunState(current, runId, fromStep));
       const query = fromStep ? `?fromStep=${encodeURIComponent(fromStep)}` : "";
       await postJson(`/api/runs/${encodeURIComponent(runId)}/resume${query}`);
       await refreshRunsIndex(setSummaries, setTotalRuns, setUpdatedAt);

@@ -104,12 +104,74 @@ function getByPath(value, dottedPath) {
   const parts = String(dottedPath || "").split(".").filter(Boolean);
   let current = value;
   for (const part of parts) {
-    if (!current || typeof current !== "object" || !Object.prototype.hasOwnProperty.call(current, part)) {
+    if (!current || typeof current !== "object") {
+      return undefined;
+    }
+    if (!Object.prototype.hasOwnProperty.call(current, part)) {
+      if (
+        (part === "location" || part === "local_location" || part === "remote_location")
+        && (
+          Object.prototype.hasOwnProperty.call(current, "local_location")
+          || Object.prototype.hasOwnProperty.call(current, "location")
+          || Object.prototype.hasOwnProperty.call(current, "remote_location")
+        )
+      ) {
+        current = current.local_location || current.location || current.remote_location;
+        continue;
+      }
       return undefined;
     }
     current = current[part];
   }
   return current;
+}
+
+function templateStepPayloadFromRecord(stepRecord) {
+  if (!stepRecord || typeof stepRecord !== "object") {
+    return null;
+  }
+  if (stepRecord.toolResult && typeof stepRecord.toolResult === "object") {
+    const artifacts = Array.isArray(stepRecord.artifacts) ? stepRecord.artifacts : [];
+    return stepTemplatePayload({
+      ...stepRecord.toolResult,
+      details: {
+        ...(stepRecord.toolResult.details || {}),
+        artifacts: Array.isArray(stepRecord.toolResult?.details?.artifacts)
+          ? stepRecord.toolResult.details.artifacts
+          : artifacts,
+      },
+    });
+  }
+  if (Array.isArray(stepRecord.artifacts)) {
+    return {
+      artifacts: stepArtifactViewMap({
+        details: {
+          artifacts: stepRecord.artifacts,
+        },
+      }),
+    };
+  }
+  return null;
+}
+
+function resolveTemplateStepValue(context, stepId, stepPath) {
+  const direct = getByPath(context.stepResults[stepId], stepPath);
+  if (direct != null) {
+    return direct;
+  }
+  if (!context.runDir) {
+    return undefined;
+  }
+  const stepManifestPath = path.join(context.runDir, "steps", stepId, "step.json");
+  if (!fs.existsSync(stepManifestPath)) {
+    return undefined;
+  }
+  const stepRecord = readJson(stepManifestPath);
+  const payload = templateStepPayloadFromRecord(stepRecord);
+  if (!payload) {
+    return undefined;
+  }
+  return getByPath(payload, stepPath);
 }
 
 function resolveConfiguredWorkflow(name) {
@@ -145,8 +207,7 @@ function resolveWorkflowStringTemplate(value, context) {
     }
     const stepId = pathExpr.slice(0, dot);
     const stepPath = pathExpr.slice(dot + 1);
-    const stepValue = context.stepResults[stepId];
-    const resolved = getByPath(stepValue, stepPath);
+    const resolved = resolveTemplateStepValue(context, stepId, stepPath);
     if (resolved == null) {
       throw new Error(`workflow template resolved empty value: ${expr}`);
     }
@@ -870,7 +931,7 @@ async function runToolWorkflow({
 
     const spec = stepSpecs.find((candidate) => candidate.id === step.id) || null;
     const toolArgv = spec
-      ? resolveConfiguredStepArgs(spec, { workspaceRoot, stepResults })
+      ? resolveConfiguredStepArgs(spec, { workspaceRoot, stepResults, runDir: workflow.runDir })
       : [];
     const toolCommand = spec ? spec.toolCommand : "build";
     const attach = spec ? spec.attach : false;
@@ -1162,7 +1223,7 @@ function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) 
       toolCommand: spec.command || "run",
       attach: Boolean(spec.attach),
     };
-    const toolArgv = resolveConfiguredStepArgs(stepSpec, { workspaceRoot, stepResults });
+    const toolArgv = resolveConfiguredStepArgs(stepSpec, { workspaceRoot, stepResults, runDir: workflowRecord.runDir });
     if (fromStep && !seenFromStep) {
       const execution = resolveStepExecution(workspaceRoot, toolArgv, spec.tool);
       const fingerprint = stepFingerprint(stepRecord, spec.command || "run", toolArgv, execution);

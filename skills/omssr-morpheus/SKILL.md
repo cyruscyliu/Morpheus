@@ -54,6 +54,9 @@ remote:
 - Treat `--source` as the concrete destination path selected by Morpheus.
 - Do not let tool CLIs invent managed workspace roots.
 - Treat run ids as the stable lookup key for managed run lifecycle commands.
+- Treat `stop` as an execution-only lifecycle action.
+- Treat `remove` as a persisted-state deletion action.
+- Require a prior successful stop before managed run removal.
 
 ## Top-Level Contract
 
@@ -66,6 +69,8 @@ morpheus config check
 morpheus workflow run
 morpheus workflow inspect
 morpheus workflow logs
+morpheus workflow stop
+morpheus workflow remove
 morpheus tool list
 ```
 

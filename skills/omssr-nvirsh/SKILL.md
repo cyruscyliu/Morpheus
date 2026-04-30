@@ -1,6 +1,6 @@
 ---
 name: nvirsh
-description: Prepare, launch, inspect, stop, and clean local nested-virtualization targets from explicit runtime artifacts. Use when the user wants direct nvirsh CLI work or to reason about the local nvirsh boundary.
+description: Prepare, launch, inspect, stop, and remove local nested-virtualization targets from explicit runtime artifacts. Use when the user wants direct nvirsh CLI work or to reason about the local nvirsh boundary.
 license: MIT
 compatibility: Designed for Codex CLI (or similar products)
 ---
@@ -14,7 +14,7 @@ Use this skill when you need to work with the repo-local `nvirsh` tool.
 `nvirsh` is a local lifecycle CLI.
 It validates target prerequisites, records stable local state, launches from
 explicit runtime artifacts, and exposes stable local inspect, logs, stop, and
-clean commands.
+remove commands.
 
 `nvirsh` does not own remote execution or producer-tool artifact resolution.
 When those concerns matter, use Morpheus around it.
@@ -38,7 +38,7 @@ nvirsh run
 nvirsh inspect
 nvirsh stop
 nvirsh logs
-nvirsh clean
+nvirsh remove
 nvirsh help
 ```
 
@@ -48,7 +48,9 @@ The initial target is `sel4`.
 
 - `run` validates pinned local prerequisites and auto-prepares state.
 - `run` consumes explicit `--kernel` and `--initrd` paths.
-- `inspect`, `logs`, `stop`, and `clean` operate only on local state.
+- `inspect`, `logs`, `stop`, and `remove` operate only on local state.
+- `stop` preserves manifests and logs for later inspection.
+- `remove` deletes local state only after a prior successful stop.
 
 Expected local prerequisites:
 

@@ -55,6 +55,47 @@ export function stopWorkflowRun(runId: string): ActionResult {
   };
 }
 
+export function resumeWorkflowRun(runId: string, fromStep?: string | null): ActionResult {
+  const context = resolveViewerContext();
+  const detail = loadRunDetail(context.runRoot, runId);
+  if (!detail) {
+    return { statusCode: 404, body: { summary: "workflow run not found" } };
+  }
+  if (detail.format !== "workflow-first") {
+    return { statusCode: 400, body: { summary: "resume only supports workflow-first runs" } };
+  }
+  const args = [
+    workflowCliPath(context.repoRoot),
+    "--json",
+    "workflow",
+    "resume",
+    "--id",
+    runId,
+    "--workspace",
+    context.workspaceRoot,
+  ];
+  if (fromStep) {
+    args.push("--from-step", fromStep);
+  }
+  const result = spawnSync("node", args, {
+    cwd: context.repoRoot,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    return {
+      statusCode: 500,
+      body: {
+        status: "error",
+        summary: (result.stderr || result.stdout || "failed to resume workflow").trim(),
+      },
+    };
+  }
+  return {
+    statusCode: 200,
+    body: JSON.parse(String(result.stdout || "{}").trim() || "{}"),
+  };
+}
+
 export function removeWorkflowRun(runId: string): ActionResult {
   const context = resolveViewerContext();
   const detail = loadRunDetail(context.runRoot, runId);

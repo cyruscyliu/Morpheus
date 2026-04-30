@@ -1,6 +1,7 @@
 // @ts-nocheck
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { spawn, spawnSync } = require("child_process");
 const { applyConfigDefaults, loadConfig } = require("../core/config");
 const { parseToolArgs } = require("../core/tool-invoke");
@@ -49,6 +50,7 @@ function workflowUsage() {
   return [
     "Usage:",
     "  node apps/morpheus/dist/cli.js workflow run --name WORKFLOW_NAME [--json]",
+    "  node apps/morpheus/dist/cli.js workflow resume --id WORKFLOW_RUN_ID [--from-step STEP_ID] [--json]",
     "  node apps/morpheus/dist/cli.js workflow inspect --id WORKFLOW_RUN_ID [--json]",
     "  node apps/morpheus/dist/cli.js workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow] [--json]",
     "  node apps/morpheus/dist/cli.js workflow stop --id WORKFLOW_RUN_ID [--json]",
@@ -189,6 +191,19 @@ function findWorkflowRun(workspaceRoot, id) {
   return { runDir, manifestPath };
 }
 
+function listRunDirsForWorkflow(workspaceRoot, workflowName) {
+  const root = workflowRunsRoot(workspaceRoot);
+  if (!fs.existsSync(root)) {
+    return [];
+  }
+  return fs.readdirSync(root)
+    .map((name) => path.join(root, name))
+    .filter((entry) => fs.existsSync(path.join(entry, "workflow.json")))
+    .map((entry) => readJson(path.join(entry, "workflow.json")))
+    .filter((record) => String(record.workflow || "") === String(workflowName || ""))
+    .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")));
+}
+
 function stopPid(pid) {
   if (!pid || pid <= 0) {
     return;
@@ -285,6 +300,56 @@ function removeWorkflowRun(workspaceRoot, id) {
       run_dir: found.runDir,
     },
   };
+}
+
+function stableValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => stableValue(item));
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  const sorted = {};
+  for (const key of Object.keys(value).sort()) {
+    sorted[key] = stableValue(value[key]);
+  }
+  return sorted;
+}
+
+function stepFingerprint(step, toolCommand, toolArgv, execution) {
+  const hash = crypto.createHash("sha256");
+  hash.update(JSON.stringify(stableValue({
+    step: step.id,
+    tool: step.tool,
+    command: toolCommand,
+    args: toolArgv,
+    resolved: execution && execution.resolved ? execution.resolved : null,
+  })));
+  return hash.digest("hex");
+}
+
+function artifactLocation(artifact) {
+  if (!artifact || typeof artifact !== "object") {
+    return null;
+  }
+  return artifact.local_location || artifact.location || artifact.remote_location || null;
+}
+
+function artifactsExist(stepRecord) {
+  const artifacts = Array.isArray(stepRecord && stepRecord.artifacts)
+    ? stepRecord.artifacts
+    : [];
+  for (const artifact of artifacts) {
+    const location = artifactLocation(artifact);
+    if (!location || !fs.existsSync(location)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function workflowResumeStateFromStatus(status) {
+  return status === "success" ? "reused" : "rerun";
 }
 
 function consumeToolOutput(stdout, stepLogFile) {
@@ -704,24 +769,43 @@ async function runToolWorkflow({
   jsonMode,
   commandLabel,
   category = "build",
+  existingWorkflow = null,
+  existingSteps = null,
+  initialStepResults = null,
+  startIndex = 0,
+  resumeMeta = null,
 }) {
-  const workflow = createWorkflowRun(workspaceRoot, workflowName, { category });
+  const workflow = existingWorkflow || createWorkflowRun(workspaceRoot, workflowName, { category });
   return await withLogFile(path.join(workflow.runDir, "progress.jsonl"), async () => {
   updateWorkflowRun(workflow.runDir, (current) => ({
     ...current,
     runnerPid: process.pid,
     currentChildPid: null,
     currentStepId: null,
+    ...(resumeMeta ? {
+      resumeCount: Number(current.resumeCount || 0) + 1,
+      resumedFromStep: resumeMeta.fromStep,
+      resumeHistory: [
+        ...(Array.isArray(current.resumeHistory) ? current.resumeHistory : []),
+        {
+          at: new Date().toISOString(),
+          fromStep: resumeMeta.fromStep,
+          mode: resumeMeta.mode,
+        },
+      ],
+    } : {}),
   }));
-  const createdSteps = [];
-  for (let index = 0; index < steps.length; index += 1) {
-    const step = steps[index];
-    createdSteps.push(createWorkflowStep(
-      workflow.runDir,
-      index + 1,
-      step.name || `${step.tool}.build`,
-      { tool: step.tool, id: step.id || null },
-    ));
+  const createdSteps = existingSteps ? [...existingSteps] : [];
+  if (!existingSteps) {
+    for (let index = 0; index < steps.length; index += 1) {
+      const step = steps[index];
+      createdSteps.push(createWorkflowStep(
+        workflow.runDir,
+        index + 1,
+        step.name || `${step.tool}.build`,
+        { tool: step.tool, id: step.id || null },
+      ));
+    }
   }
   const stepSpecs = createdSteps.map((created, index) => ({
     id: created.id,
@@ -729,7 +813,7 @@ async function runToolWorkflow({
     name: created.name,
     toolArgv: steps[index] && steps[index].toolArgv ? steps[index].toolArgv : [],
     toolCommand: steps[index] && steps[index].toolCommand ? steps[index].toolCommand : "build",
-    attach: Boolean(steps[index] && steps[index].attach),
+      attach: Boolean(steps[index] && steps[index].attach),
   }));
 
   logDebug("workflow", "created workflow run", {
@@ -752,17 +836,28 @@ async function runToolWorkflow({
     status: "running",
     currentStepId: null,
     currentChildPid: null,
-    steps: createdSteps.map((step) => ({ id: step.id, name: step.name, stepDir: step.stepDir, status: "created" }))
+    steps: createdSteps.map((step, index) => {
+      const status = index < startIndex
+        ? workflowResumeStateFromStatus(step.status)
+        : "created";
+      return {
+        id: step.id,
+        name: step.name,
+        stepDir: step.stepDir,
+        status,
+      };
+    })
   }));
 
   let workflowStatus = "success";
   let exitCode = 0;
   let lastToolPayload = null;
   let lastStderr = "";
-  const stepResults = {};
+  const stepResults = initialStepResults ? { ...initialStepResults } : {};
   let activeStep = null;
   try {
-  for (const step of createdSteps) {
+  for (let stepIndex = startIndex; stepIndex < createdSteps.length; stepIndex += 1) {
+    const step = createdSteps[stepIndex];
     activeStep = step;
     updateWorkflowRun(workflow.runDir, (current) => ({
       ...current,
@@ -780,6 +875,13 @@ async function runToolWorkflow({
     const toolCommand = spec ? spec.toolCommand : "build";
     const attach = spec ? spec.attach : false;
     const execution = resolveStepExecution(workspaceRoot, toolArgv, step.tool);
+    const fingerprint = stepFingerprint(step, toolCommand, toolArgv, execution);
+    updateWorkflowStep(step.stepDir, (current) => ({
+      ...current,
+      fingerprint,
+      resolvedInputs: execution && execution.resolved ? execution.resolved : null,
+      reuseState: stepIndex < startIndex ? "reused" : "rerun",
+    }));
 
     const args = (
       ["fetch", "patch", "build", "inspect", "logs", "run"].includes(toolCommand)
@@ -883,7 +985,10 @@ async function runToolWorkflow({
       status,
       artifacts: stepArtifactsFromToolPayload(toolPayload),
       toolResult: toolPayload,
-      exitCode
+      exitCode,
+      fingerprint,
+      resolvedInputs: execution && execution.resolved ? execution.resolved : null,
+      reuseState: "rerun",
     }));
 
     updateWorkflowRun(workflow.runDir, (current) => ({
@@ -1022,6 +1127,80 @@ async function runToolWorkflow({
   });
 }
 
+function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) {
+  const existingSteps = listWorkflowSteps(workflowRecord.runDir);
+  const existingMap = new Map(existingSteps.map((step) => [step.id, step]));
+  const createdSteps = [];
+  const stepResults = {};
+  let startIndex = configured.steps.length;
+  let seenFromStep = !fromStep;
+
+  for (let index = 0; index < configured.steps.length; index += 1) {
+    const spec = configured.steps[index];
+    const stepId = spec.id || spec.name || `step-${index + 1}`;
+    let stepRecord = existingMap.get(stepId);
+    if (!stepRecord) {
+      stepRecord = createWorkflowStep(
+        workflowRecord.runDir,
+        index + 1,
+        spec.name || `${spec.tool}.${spec.command || "run"}`,
+        { tool: spec.tool, id: stepId },
+      );
+    }
+    createdSteps.push(stepRecord);
+
+    if (!seenFromStep && stepId === fromStep) {
+      seenFromStep = true;
+      startIndex = Math.min(startIndex, index);
+      continue;
+    }
+    if (fromStep && !seenFromStep) {
+      const execution = resolveStepExecution(workspaceRoot, Array.isArray(spec.args) ? spec.args : [], spec.tool);
+      const fingerprint = stepFingerprint(stepRecord, spec.command || "run", Array.isArray(spec.args) ? spec.args : [], execution);
+      const reusable = stepRecord.status === "success"
+        && stepRecord.fingerprint === fingerprint
+        && artifactsExist(stepRecord);
+      if (!reusable) {
+        throw new Error(`cannot rerun from step ${fromStep}; prior step ${stepId} is not reusable`);
+      }
+      updateWorkflowStep(stepRecord.stepDir, (current) => ({
+        ...current,
+        reuseState: "reused",
+        resolvedInputs: execution && execution.resolved ? execution.resolved : current.resolvedInputs || null,
+      }));
+      stepResults[stepId] = stepTemplatePayload(stepRecord.toolResult);
+      continue;
+    }
+
+    const toolArgv = Array.isArray(spec.args) ? spec.args : [];
+    const execution = resolveStepExecution(workspaceRoot, toolArgv, spec.tool);
+    const fingerprint = stepFingerprint(stepRecord, spec.command || "run", toolArgv, execution);
+    const reusable = stepRecord.status === "success"
+      && stepRecord.fingerprint === fingerprint
+      && artifactsExist(stepRecord);
+    if (reusable && startIndex === configured.steps.length) {
+      stepResults[stepId] = stepTemplatePayload(stepRecord.toolResult);
+      updateWorkflowStep(stepRecord.stepDir, (current) => ({
+        ...current,
+        reuseState: "reused",
+        resolvedInputs: execution && execution.resolved ? execution.resolved : current.resolvedInputs || null,
+      }));
+      continue;
+    }
+    if (startIndex === configured.steps.length) {
+      startIndex = index;
+    }
+  }
+
+  if (fromStep && !seenFromStep) {
+    throw new Error(`workflow resume could not resolve step: ${fromStep}`);
+  }
+  if (startIndex === configured.steps.length) {
+    startIndex = configured.steps.length;
+  }
+  return { createdSteps, stepResults, startIndex };
+}
+
 async function runToolBuildWorkflow(options) {
   return await runToolWorkflow(options);
 }
@@ -1073,6 +1252,42 @@ async function handleWorkflowCommand(argv) {
     if (flags.name) {
       const configured = resolveConfiguredWorkflow(String(flags.name));
       const workspaceRoot = resolveWorkspaceRoot(flags);
+      if (flags["from-step"]) {
+        const workflowRuns = listRunDirsForWorkflow(workspaceRoot, String(flags.name));
+        if (workflowRuns.length === 0) {
+          throw new Error(`workflow run --from-step requires an existing workflow run for ${String(flags.name)}`);
+        }
+        const latest = workflowRuns[0];
+        const plan = collectResumePlan(
+          workspaceRoot,
+          latest,
+          configured,
+          String(flags["from-step"]),
+        );
+        return await runToolWorkflow({
+          steps: configured.steps.map((step, index) => ({
+            id: step.id || step.name || `step-${index + 1}`,
+            tool: step.tool,
+            name: step.name || `${step.tool}.${step.command || "run"}`,
+            toolArgv: Array.isArray(step.args) ? step.args : [],
+            toolCommand: step.command || "run",
+            attach: Boolean(step.attach),
+          })),
+          workflowName: String(flags.name),
+          workspaceRoot,
+          jsonMode: Boolean(flags.json),
+          category: configured.category || "run",
+          commandLabel: "workflow run",
+          existingWorkflow: latest,
+          existingSteps: plan.createdSteps,
+          initialStepResults: plan.stepResults,
+          startIndex: plan.startIndex,
+          resumeMeta: {
+            mode: "from-step",
+            fromStep: String(flags["from-step"]),
+          },
+        });
+      }
       return await runToolWorkflow({
         steps: configured.steps.map((step, index) => ({
           id: step.id || step.name || `step-${index + 1}`,
@@ -1107,6 +1322,45 @@ async function handleWorkflowCommand(argv) {
       jsonMode: Boolean(flags.json),
       category: "run",
       commandLabel: "workflow run",
+    });
+  }
+
+  if (subcommand === "resume") {
+    const id = flags.id;
+    if (!id) {
+      throw new Error("workflow resume requires --id WORKFLOW_RUN_ID");
+    }
+    const workspaceRoot = resolveWorkspaceRoot(flags);
+    const found = findWorkflowRun(workspaceRoot, id);
+    const workflow = readJson(found.manifestPath);
+    if (workflow.status === "running") {
+      throw new Error("workflow resume requires a non-running workflow run");
+    }
+    const configured = resolveConfiguredWorkflow(String(workflow.workflow));
+    const fromStep = flags["from-step"] ? String(flags["from-step"]) : null;
+    const plan = collectResumePlan(workspaceRoot, workflow, configured, fromStep);
+    return await runToolWorkflow({
+      steps: configured.steps.map((step, index) => ({
+        id: step.id || step.name || `step-${index + 1}`,
+        tool: step.tool,
+        name: step.name || `${step.tool}.${step.command || "run"}`,
+        toolArgv: Array.isArray(step.args) ? step.args : [],
+        toolCommand: step.command || "run",
+        attach: Boolean(step.attach),
+      })),
+      workflowName: String(workflow.workflow),
+      workspaceRoot,
+      jsonMode: Boolean(flags.json),
+      category: configured.category || "run",
+      commandLabel: "workflow resume",
+      existingWorkflow: workflow,
+      existingSteps: plan.createdSteps,
+      initialStepResults: plan.stepResults,
+      startIndex: plan.startIndex,
+      resumeMeta: {
+        mode: fromStep ? "from-step" : "resume",
+        fromStep: fromStep || (configured.steps[plan.startIndex] && (configured.steps[plan.startIndex].id || configured.steps[plan.startIndex].name)) || null,
+      },
     });
   }
 

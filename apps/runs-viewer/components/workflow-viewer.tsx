@@ -535,6 +535,8 @@ export function WorkflowViewer({
   const [actionError, setActionError] = useState<string | null>(null);
   const [stopLoadingRunId, setStopLoadingRunId] = useState<string | null>(null);
   const [removeLoadingRunId, setRemoveLoadingRunId] = useState<string | null>(null);
+  const [resumeLoadingRunId, setResumeLoadingRunId] = useState<string | null>(null);
+  const [rerunLoadingStepId, setRerunLoadingStepId] = useState<string | null>(null);
   const [graphViewportWidth, setGraphViewportWidth] = useState(0);
   const logBodyRef = useRef<HTMLDivElement | null>(null);
   const graphBodyRef = useRef<HTMLDivElement | null>(null);
@@ -793,6 +795,26 @@ export function WorkflowViewer({
     }
   }
 
+  async function onResumeWorkflow(runId: string, fromStep: string | null): Promise<void> {
+    setActionError(null);
+    setResumeLoadingRunId(runId);
+    setRerunLoadingStepId(fromStep);
+    try {
+      const query = fromStep ? `?fromStep=${encodeURIComponent(fromStep)}` : "";
+      await postJson(`/api/runs/${encodeURIComponent(runId)}/resume${query}`);
+      await refreshRunsIndex(setSummaries, setTotalRuns, setUpdatedAt);
+      await refreshRunDetail(runId);
+      if (activeTab === "log") {
+        await refreshActiveLog(runId, selectedStepId);
+      }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Failed to resume workflow.");
+    } finally {
+      setResumeLoadingRunId(null);
+      setRerunLoadingStepId(null);
+    }
+  }
+
   const logPresentation = useMemo(
     () => deriveLogPresentation(logText, expandedLog),
     [expandedLog, logText],
@@ -971,6 +993,16 @@ export function WorkflowViewer({
                       Workflow overview
                     </Button>
                   ) : null}
+                  {selectedSummary?.format === "workflow-first" && selectedStep && selectedSummary.status !== "running" ? (
+                    <Button
+                      disabled={resumeLoadingRunId != null || removeLoadingRunId != null || stopLoadingRunId != null}
+                      onClick={() => void onResumeWorkflow(selectedSummary.id, selectedStep.id)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      {rerunLoadingStepId === selectedStep.id ? "Rerunning..." : "Rerun From Step"}
+                    </Button>
+                  ) : null}
                   {selectedSummary?.format === "workflow-first" && selectedSummary.status === "running" ? (
                     <Button
                       onClick={() => void onStopWorkflow(selectedSummary.id)}
@@ -980,9 +1012,19 @@ export function WorkflowViewer({
                       {stopLoadingRunId === selectedSummary.id ? "Stopping..." : "Stop"}
                     </Button>
                   ) : null}
+                  {selectedSummary?.format === "workflow-first" && selectedSummary.status !== "running" ? (
+                    <Button
+                      disabled={resumeLoadingRunId != null || removeLoadingRunId != null || stopLoadingRunId != null}
+                      onClick={() => void onResumeWorkflow(selectedSummary.id, null)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      {resumeLoadingRunId === selectedSummary.id && rerunLoadingStepId == null ? "Resuming..." : "Resume"}
+                    </Button>
+                  ) : null}
                   {selectedSummary ? (
                     <Button
-                      disabled={removeLoadingRunId != null || stopLoadingRunId != null}
+                      disabled={removeLoadingRunId != null || stopLoadingRunId != null || resumeLoadingRunId != null}
                       onClick={() => void onRemoveWorkflow(selectedSummary.id)}
                       size="sm"
                       variant="outline"

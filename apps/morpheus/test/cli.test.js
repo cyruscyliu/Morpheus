@@ -480,6 +480,125 @@ test("managed remote run resolves ssh and workspace from morpheus.yaml", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("workflow resume reuses successful prefix in place", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-resume-"));
+  const workspaceRoot = path.join(projectRoot, "workspace");
+  const depsDir = path.join(projectRoot, "deps");
+  fs.mkdirSync(depsDir, { recursive: true });
+  const qemuA = path.join(depsDir, "qemu-a");
+  const qemuB = path.join(depsDir, "qemu-b");
+  fs.writeFileSync(qemuA, '#!/usr/bin/env sh\necho "QEMU emulator version 1.0"\n', { mode: 0o755 });
+  fs.writeFileSync(qemuB, '#!/usr/bin/env sh\necho "QEMU emulator version 1.0"\n', { mode: 0o755 });
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      "workflows:",
+      "  inspect-pair:",
+      "    category: build",
+      "    steps:",
+      "      - id: inspect_a",
+      "        tool: qemu",
+      "        command: inspect",
+      "        args:",
+      "          - --path",
+      `          - ${qemuA}`,
+      "      - id: inspect_b",
+      "        tool: qemu",
+      "        command: inspect",
+      "        args:",
+      "          - --path",
+      `          - ${qemuB}`,
+      ""
+    ].join("\n")
+  );
+
+  const first = run(["--json", "workflow", "run", "--name", "inspect-pair"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(first.status, 0, first.stderr || first.stdout);
+  const firstPayload = JSON.parse(first.stdout.trim());
+  const runId = firstPayload.details.id;
+  const runDir = path.join(workspaceRoot, "runs", runId);
+  const stepAPath = path.join(runDir, "steps", "inspect_a", "step.json");
+  const stepBPath = path.join(runDir, "steps", "inspect_b", "step.json");
+  const workflowPath = path.join(runDir, "workflow.json");
+  const stepA = JSON.parse(fs.readFileSync(stepAPath, "utf8"));
+  const stepB = JSON.parse(fs.readFileSync(stepBPath, "utf8"));
+  const workflow = JSON.parse(fs.readFileSync(workflowPath, "utf8"));
+  workflow.status = "error";
+  stepB.status = "error";
+  fs.writeFileSync(workflowPath, `${JSON.stringify(workflow, null, 2)}\n`);
+  fs.writeFileSync(stepBPath, `${JSON.stringify(stepB, null, 2)}\n`);
+
+  const resumed = run(["--json", "workflow", "resume", "--id", runId, "--workspace", workspaceRoot], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(resumed.status, 0, resumed.stderr || resumed.stdout);
+  const resumedStepA = JSON.parse(fs.readFileSync(stepAPath, "utf8"));
+  const resumedWorkflow = JSON.parse(fs.readFileSync(workflowPath, "utf8"));
+  assert.equal(resumedStepA.reuseState, "reused");
+  assert.equal(resumedWorkflow.resumeCount, 1);
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("workflow run --from-step reuses earlier validated steps from latest run", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-from-step-"));
+  const workspaceRoot = path.join(projectRoot, "workspace");
+  const depsDir = path.join(projectRoot, "deps");
+  fs.mkdirSync(depsDir, { recursive: true });
+  const qemuA = path.join(depsDir, "qemu-a");
+  const qemuB = path.join(depsDir, "qemu-b");
+  fs.writeFileSync(qemuA, '#!/usr/bin/env sh\necho "QEMU emulator version 1.0"\n', { mode: 0o755 });
+  fs.writeFileSync(qemuB, '#!/usr/bin/env sh\necho "QEMU emulator version 1.0"\n', { mode: 0o755 });
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      "workflows:",
+      "  inspect-pair:",
+      "    category: build",
+      "    steps:",
+      "      - id: inspect_a",
+      "        tool: qemu",
+      "        command: inspect",
+      "        args:",
+      "          - --path",
+      `          - ${qemuA}`,
+      "      - id: inspect_b",
+      "        tool: qemu",
+      "        command: inspect",
+      "        args:",
+      "          - --path",
+      `          - ${qemuB}`,
+      ""
+    ].join("\n")
+  );
+
+  const first = run(["--json", "workflow", "run", "--name", "inspect-pair"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(first.status, 0, first.stderr || first.stdout);
+  const firstPayload = JSON.parse(first.stdout.trim());
+  const runId = firstPayload.details.id;
+  const runDir = path.join(workspaceRoot, "runs", runId);
+  const stepAPath = path.join(runDir, "steps", "inspect_a", "step.json");
+
+  const rerun = run(["--json", "workflow", "run", "--name", "inspect-pair", "--from-step", "inspect_b"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(rerun.status, 0, rerun.stderr || rerun.stdout);
+  const stepA = JSON.parse(fs.readFileSync(stepAPath, "utf8"));
+  assert.equal(stepA.reuseState, "reused");
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
 test("explicit local tool workspace is not overridden by morpheus.yaml remote", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-tool-explicit-project-"));
   const explicitWorkspace = path.join(projectRoot, "explicit-workspace");

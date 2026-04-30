@@ -21,6 +21,7 @@ The server binds to `127.0.0.1:4174`.
 - `GET /api/runs`
 - `GET /api/runs/<run-id>`
 - `GET /api/runs/<run-id>/steps/<step-id>/log`
+- `POST /api/runs/<run-id>/resume`
 - `POST /api/runs/<run-id>/stop`
 - `POST /api/runs/<run-id>/remove`
 - `GET /api/events`

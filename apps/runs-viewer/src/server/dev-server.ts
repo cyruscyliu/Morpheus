@@ -115,6 +115,39 @@ export function createRunsViewerServer(options: Options): RunsViewerServer {
     };
   }
 
+  function resumeWorkflowRun(runId: string, fromStep?: string | null): { ok: true; body: unknown } | { ok: false; body: unknown } {
+    const args = [
+      path.join(repoRoot, "apps", "morpheus", "dist", "cli.js"),
+      "--json",
+      "workflow",
+      "resume",
+      "--id",
+      runId,
+      "--workspace",
+      runRootInfo.workspaceRoot,
+    ];
+    if (fromStep) {
+      args.push("--from-step", fromStep);
+    }
+    const result = spawnSync("node", args, {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    if (result.status !== 0) {
+      return {
+        ok: false,
+        body: {
+          status: "error",
+          summary: (result.stderr || result.stdout || "failed to resume workflow").trim(),
+        },
+      };
+    }
+    return {
+      ok: true,
+      body: JSON.parse(String(result.stdout || "{}").trim() || "{}"),
+    };
+  }
+
   function handleApi(req: IncomingMessage, res: ServerResponse): boolean {
     const url = requestPath(req);
     if (!url) {
@@ -145,6 +178,31 @@ export function createRunsViewerServer(options: Options): RunsViewerServer {
           return true;
         }
         json(res, 200, stopResult.body);
+        return true;
+      }
+
+      const resumeMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/resume$/);
+      if (resumeMatch) {
+        const runId = decodeURIComponent(resumeMatch[1] || "");
+        if (!isSafeId(runId)) {
+          notFound(res);
+          return true;
+        }
+        const detail = loadRunDetail(runRoot, runId);
+        if (!detail) {
+          notFound(res);
+          return true;
+        }
+        if (detail.format !== "workflow-first") {
+          badRequest(res, "resume only supports workflow-first runs");
+          return true;
+        }
+        const resumeResult = resumeWorkflowRun(runId, url.searchParams.get("fromStep"));
+        if (!resumeResult.ok) {
+          json(res, 500, resumeResult.body);
+          return true;
+        }
+        json(res, 200, resumeResult.body);
         return true;
       }
 

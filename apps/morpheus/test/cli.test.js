@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const { spawnSync, spawn } = require("node:child_process");
 
 const appRoot = path.resolve(__dirname, "..");
@@ -590,6 +591,77 @@ test("workflow run --from-step reuses earlier validated steps from latest run", 
   const stepAPath = path.join(runDir, "steps", "inspect_a", "step.json");
 
   const rerun = run(["--json", "workflow", "run", "--name", "inspect-pair", "--from-step", "inspect_b"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(rerun.status, 0, rerun.stderr || rerun.stdout);
+  const stepA = JSON.parse(fs.readFileSync(stepAPath, "utf8"));
+  assert.equal(stepA.reuseState, "reused");
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("workflow run --from-step resolves templated prior-step args for reuse validation", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-from-step-template-"));
+  const workspaceRoot = path.join(projectRoot, "workspace");
+  const sourceParent = path.join(projectRoot, "archive-src");
+  const archiveSource = path.join(sourceParent, "qemu-1.0.0");
+  const archivePath = path.join(projectRoot, "qemu-1.0.0.tar.xz");
+  const patchDir = path.join(projectRoot, "patches");
+  fs.mkdirSync(archiveSource, { recursive: true });
+  fs.mkdirSync(patchDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(archiveSource, "configure"),
+    [
+      "#!/usr/bin/env sh",
+      "exit 0",
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  const archive = spawnSync("tar", ["-cJf", archivePath, "-C", sourceParent, "qemu-1.0.0"], {
+    encoding: "utf8",
+  });
+  assert.equal(archive.status, 0, archive.stdout || archive.stderr);
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      "workflows:",
+      "  inspect-template-pair:",
+      "    category: build",
+      "    steps:",
+      "      - id: fetch_a",
+      "        tool: qemu",
+      "        command: fetch",
+      "        args:",
+      "          - --qemu-version",
+      "          - 1.0.0",
+      "          - --archive-url",
+      `          - ${pathToFileURL(archivePath).toString()}`,
+      "      - id: patch_b",
+      "        tool: qemu",
+      "        command: patch",
+      "        args:",
+      "          - --source",
+      "          - \"{{steps.fetch_a.artifacts.source-dir.location}}\"",
+      "          - --patch-dir",
+      `          - ${patchDir}`,
+      ""
+    ].join("\n")
+  );
+
+  const first = run(["--json", "workflow", "run", "--name", "inspect-template-pair"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(first.status, 0, first.stderr || first.stdout);
+  const firstPayload = JSON.parse(first.stdout.trim());
+  const runId = firstPayload.details.id;
+  const runDir = path.join(workspaceRoot, "runs", runId);
+  const stepAPath = path.join(runDir, "steps", "fetch_a", "step.json");
+
+  const rerun = run(["--json", "workflow", "run", "--name", "inspect-template-pair", "--from-step", "patch_b"], {
     cwd: projectRoot,
     env: isolatedEnv(),
   });

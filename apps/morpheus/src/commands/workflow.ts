@@ -1154,9 +1154,18 @@ function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) 
       startIndex = Math.min(startIndex, index);
       continue;
     }
+    const stepSpec = {
+      id: stepId,
+      tool: spec.tool,
+      name: spec.name || `${spec.tool}.${spec.command || "run"}`,
+      toolArgv: Array.isArray(spec.args) ? spec.args : [],
+      toolCommand: spec.command || "run",
+      attach: Boolean(spec.attach),
+    };
+    const toolArgv = resolveConfiguredStepArgs(stepSpec, { workspaceRoot, stepResults });
     if (fromStep && !seenFromStep) {
-      const execution = resolveStepExecution(workspaceRoot, Array.isArray(spec.args) ? spec.args : [], spec.tool);
-      const fingerprint = stepFingerprint(stepRecord, spec.command || "run", Array.isArray(spec.args) ? spec.args : [], execution);
+      const execution = resolveStepExecution(workspaceRoot, toolArgv, spec.tool);
+      const fingerprint = stepFingerprint(stepRecord, spec.command || "run", toolArgv, execution);
       const reusable = stepRecord.status === "success"
         && stepRecord.fingerprint === fingerprint
         && artifactsExist(stepRecord);
@@ -1172,7 +1181,6 @@ function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) 
       continue;
     }
 
-    const toolArgv = Array.isArray(spec.args) ? spec.args : [];
     const execution = resolveStepExecution(workspaceRoot, toolArgv, spec.tool);
     const fingerprint = stepFingerprint(stepRecord, spec.command || "run", toolArgv, execution);
     const reusable = stepRecord.status === "success"

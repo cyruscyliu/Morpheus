@@ -467,7 +467,23 @@ async function postJson<T>(input: string): Promise<T> {
     headers: { accept: "application/json" },
   });
   if (!response.ok) {
-    throw new Error((await response.text()) || `${response.status} ${response.statusText}`);
+    const body = await response.text();
+    if (body) {
+      try {
+        const parsed = JSON.parse(body);
+        const message =
+          (parsed && typeof parsed.summary === "string" && parsed.summary)
+          || (parsed && parsed.error && typeof parsed.error.message === "string" && parsed.error.message)
+          || body;
+        throw new Error(message);
+      } catch (error) {
+        if (error instanceof Error) {
+          throw error;
+        }
+      }
+      throw new Error(body);
+    }
+    throw new Error(`${response.status} ${response.statusText}`);
   }
   return (await response.json()) as T;
 }

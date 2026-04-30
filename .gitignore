@@ -33,6 +33,7 @@ morpheus.yaml
 
 # Repo-local workspace (example)
 hyperarm-workspace/
+hyperarm-workspace-o2p/
 hyperarm-workspace/tools/
 hyperarm-workspace/.morpheus/managed/runs/qemu-*.json
 hyperarm-workspace/.morpheus/managed/runs/microkit-sdk-*.json

@@ -57,6 +57,20 @@ export interface RunDetail extends RunSummary {
 
 export interface RunsIndexPayload {
   runRoot: string;
+  workspaceRoot: string;
+  configPath: string | null;
+  configLabel: string;
+  availableConfigs: Array<{
+    id: string;
+    label: string;
+    configPath: string | null;
+    workspaceRoot: string;
+    runRoot: string;
+  }>;
+  availableWorkflows: Array<{
+    name: string;
+    category: string;
+  }>;
   updatedAt: string;
   runs: RunSummary[];
   totalRuns: number;

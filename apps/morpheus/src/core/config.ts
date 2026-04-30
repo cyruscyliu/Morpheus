@@ -20,7 +20,26 @@ function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function findConfigPath(startDir) {
+function explicitConfigPath(inputPath) {
+  if (!inputPath) {
+    return null;
+  }
+  const resolved = path.resolve(String(inputPath));
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`config file not found: ${inputPath}`);
+  }
+  return resolved;
+}
+
+function configuredConfigPath() {
+  return explicitConfigPath(process.env.MORPHEUS_CONFIG || null);
+}
+
+function findConfigPath(startDir, options = {}) {
+  const chosen = explicitConfigPath(options.explicitPath || configuredConfigPath());
+  if (chosen) {
+    return chosen;
+  }
   let current = path.resolve(startDir || process.cwd());
   while (true) {
     const candidate = path.join(current, "morpheus.yaml");
@@ -35,8 +54,8 @@ function findConfigPath(startDir) {
   }
 }
 
-function loadConfig(startDir) {
-  const filePath = findConfigPath(startDir);
+function loadConfig(startDir, options = {}) {
+  const filePath = findConfigPath(startDir, options);
   if (!filePath) {
     return {
       path: null,
@@ -278,7 +297,9 @@ function applyRemoteReference(configValue, next, remoteName) {
 }
 
 function applyConfigDefaults(flags, options) {
-  const config = loadConfig(process.cwd());
+  const config = loadConfig(process.cwd(), {
+    explicitPath: options && options.explicitConfigPath ? options.explicitConfigPath : null,
+  });
   const value = config.value || {};
   const baseDir = configDir(config.path);
   const next = { ...flags };
@@ -393,6 +414,8 @@ function applyConfigDefaults(flags, options) {
 module.exports = {
   applyConfigDefaults,
   configDir,
+  configuredConfigPath,
+  explicitConfigPath,
   findConfigPath,
   loadConfig,
   RESERVED_MANAGED_TOOL_CONFIG_KEYS,

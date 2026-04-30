@@ -1,0 +1,29 @@
+{
+  "id": "acsac26",
+  "name": "ACSAC 2026",
+  "submission_url": "https://www.acsac.org/2026/submissions/papers/",
+  "documentclass": "\\documentclass[conference,compsoc]{IEEEtran}",
+  "page_format": "US letter",
+  "submission": {
+    "main_pages_max": 11,
+    "appendix_pages_max": 5,
+    "total_pages_max": 16,
+    "double_column": true,
+    "anonymous": true
+  },
+  "formatting_rules": [
+    "Use the IEEE double-column conference format.",
+    "Use IEEEtran.cls version 1.8b with the conference,compsoc options for LaTeX submissions.",
+    "Format the paper for US letter, not A4.",
+    "Do not modify margins, line spacing, or font size.",
+    "Do not include author names or affiliations in the submission PDF.",
+    "Refer to prior work in the third person to preserve dual-anonymous review.",
+    "References and appendices must be well marked.",
+    "Program committee members are not required to read appendices."
+  ],
+  "review_warnings": [
+    "Page limits are enforced strictly.",
+    "Too-short submissions may be desk rejected.",
+    "Submissions that do not match conference topics risk desk rejection."
+  ]
+}

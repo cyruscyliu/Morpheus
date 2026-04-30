@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const { spawn, spawnSync } = require("child_process");
 const { applyConfigDefaults, loadConfig } = require("../core/config");
 const { parseToolArgs } = require("../core/tool-invoke");
+const { readToolDescriptor } = require("../core/tool-descriptor");
 const { repoRoot } = require("../core/paths");
 const { writeStdoutLine } = require("../core/io");
 const { logDebug, logInfo, withLogFile } = require("../core/logger");
@@ -174,8 +175,8 @@ function resolveTemplateStepValue(context, stepId, stepPath) {
   return getByPath(payload, stepPath);
 }
 
-function resolveConfiguredWorkflow(name) {
-  const config = loadConfig(process.cwd());
+function resolveConfiguredWorkflow(name, explicitConfigPath = null) {
+  const config = loadConfig(process.cwd(), { explicitPath: explicitConfigPath });
   const workflows = config && config.value && config.value.workflows ? config.value.workflows : {};
   const workflow = workflows && workflows[name] ? workflows[name] : null;
   if (!workflow) {
@@ -188,6 +189,7 @@ function resolveConfiguredWorkflow(name) {
     name,
     category: workflow.category || "run",
     steps: workflow.steps,
+    configPath: config.path || null,
   };
 }
 
@@ -690,16 +692,26 @@ function stepTemplatePayload(toolPayload) {
   };
 }
 
-function resolveStepExecution(workspaceRoot, toolArgv, tool) {
+function resolveStepExecution(workspaceRoot, toolArgv, tool, explicitConfigPath = null) {
   const parsed = parseToolArgs(toolArgv || []);
+  const descriptor = readToolDescriptor(tool);
+  const supportedModes = descriptor && descriptor.managed && Array.isArray(descriptor.managed.modes)
+    ? descriptor.managed.modes
+    : null;
+  const localOnly = Array.isArray(supportedModes) && supportedModes.length > 0 && !supportedModes.includes("remote");
   const { flags: resolved } = applyConfigDefaults(
     {
       ...parsed.flags,
+      mode: parsed.flags.mode || (localOnly ? "local" : null),
       tool,
       workspace: workspaceRoot || null,
       json: true,
     },
-    { allowGlobalRemote: true, allowToolDefaults: true }
+    {
+      allowGlobalRemote: true,
+      allowToolDefaults: true,
+      explicitConfigPath,
+    }
   );
   const remoteEnabled = Boolean(
     resolved.ssh
@@ -835,8 +847,9 @@ async function runToolWorkflow({
   initialStepResults = null,
   startIndex = 0,
   resumeMeta = null,
+  configPath = null,
 }) {
-  const workflow = existingWorkflow || createWorkflowRun(workspaceRoot, workflowName, { category });
+  const workflow = existingWorkflow || createWorkflowRun(workspaceRoot, workflowName, { category, configPath });
   return await withLogFile(path.join(workflow.runDir, "progress.jsonl"), async () => {
   updateWorkflowRun(workflow.runDir, (current) => ({
     ...current,
@@ -1000,6 +1013,7 @@ async function runToolWorkflow({
       {
         ...process.env,
         MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1",
+        ...(configPath ? { MORPHEUS_CONFIG: configPath } : {}),
         MORPHEUS_RUN_DIR_OVERRIDE: stepToolRunDir(step.stepDir),
         MORPHEUS_EVENT_LOG_FILE: path.join(step.stepDir, "progress.jsonl")
       },
@@ -1225,7 +1239,7 @@ function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) 
     };
     const toolArgv = resolveConfiguredStepArgs(stepSpec, { workspaceRoot, stepResults, runDir: workflowRecord.runDir });
     if (fromStep && !seenFromStep) {
-      const execution = resolveStepExecution(workspaceRoot, toolArgv, spec.tool);
+      const execution = resolveStepExecution(workspaceRoot, toolArgv, spec.tool, configured.configPath || workflowRecord.configPath || null);
       const fingerprint = stepFingerprint(stepRecord, spec.command || "run", toolArgv, execution);
       const reusable = stepRecord.status === "success"
         && stepRecord.fingerprint === fingerprint
@@ -1242,7 +1256,7 @@ function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) 
       continue;
     }
 
-    const execution = resolveStepExecution(workspaceRoot, toolArgv, spec.tool);
+    const execution = resolveStepExecution(workspaceRoot, toolArgv, spec.tool, configured.configPath || workflowRecord.configPath || null);
     const fingerprint = stepFingerprint(stepRecord, spec.command || "run", toolArgv, execution);
     const reusable = stepRecord.status === "success"
       && stepRecord.fingerprint === fingerprint
@@ -1347,6 +1361,7 @@ async function handleWorkflowCommand(argv) {
           jsonMode: Boolean(flags.json),
           category: configured.category || "run",
           commandLabel: "workflow run",
+          configPath: configured.configPath,
           existingWorkflow: latest,
           existingSteps: plan.createdSteps,
           initialStepResults: plan.stepResults,
@@ -1371,6 +1386,7 @@ async function handleWorkflowCommand(argv) {
         jsonMode: Boolean(flags.json),
         category: configured.category || "run",
         commandLabel: "workflow run",
+        configPath: configured.configPath,
       });
     }
 
@@ -1405,7 +1421,7 @@ async function handleWorkflowCommand(argv) {
     if (workflow.status === "running") {
       throw new Error("workflow resume requires a non-running workflow run");
     }
-    const configured = resolveConfiguredWorkflow(String(workflow.workflow));
+    const configured = resolveConfiguredWorkflow(String(workflow.workflow), workflow.configPath || null);
     const fromStep = flags["from-step"] ? String(flags["from-step"]) : null;
     const plan = collectResumePlan(workspaceRoot, workflow, configured, fromStep);
     return await runToolWorkflow({
@@ -1422,6 +1438,7 @@ async function handleWorkflowCommand(argv) {
       jsonMode: Boolean(flags.json),
       category: configured.category || "run",
       commandLabel: "workflow resume",
+      configPath: configured.configPath,
       existingWorkflow: workflow,
       existingSteps: plan.createdSteps,
       initialStepResults: plan.stepResults,

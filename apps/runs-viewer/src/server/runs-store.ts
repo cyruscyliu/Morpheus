@@ -333,10 +333,37 @@ function normalizeStepKind(...values: unknown[]): string | null {
   return null;
 }
 
+function prettifyStepId(stepId: string): string {
+  return String(stepId || "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\bphase\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function normalizeStepName(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      continue;
+    }
+    return trimmed;
+  }
+  return null;
+}
+
 function normalizeStepSummary(entry: any, manifest: any, runId: string, stepId: string, logExists: boolean, artifacts: RunArtifactRef[]): RunStepSummary {
+  const rawName = normalizeStepName(manifest?.name, entry?.name);
+  const displayName = rawName && !/^[a-z0-9-]+\.run$/i.test(rawName)
+    ? rawName
+    : prettifyStepId(stepId);
   return {
     id: stepId,
-    name: manifest?.name || entry?.name || null,
+    name: displayName,
     kind: normalizeStepKind(manifest?.kind, entry?.kind),
     status: String(manifest?.status || entry?.status || "unknown"),
     startedAt: manifest?.startedAt || entry?.startedAt || null,

@@ -246,8 +246,21 @@ function nextSelectedRunIdAfterRemoval(runs: RunSummary[], runId: string): strin
   return nextRun ? nextRun.id : null;
 }
 
+function prettifyStepId(value: string): string {
+  return value
+    .replace(/[-_]+/g, " ")
+    .replace(/\bphase\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function stepDisplayName(step: RunStepSummary | RunGraphNode): string {
-  return step.name || step.id;
+  const rawName = String(step.name || "").trim();
+  if (rawName && !/^[a-z0-9-]+\.run$/i.test(rawName)) {
+    return rawName;
+  }
+  return prettifyStepId(step.id);
 }
 
 function formatGraphEdge(edge: RunGraphEdge): string {
@@ -258,6 +271,23 @@ function formatGraphEdge(edge: RunGraphEdge): string {
     return edge.label;
   }
   return edge.kind === "artifact" ? "artifact" : "sequence";
+}
+
+function formatPathLabel(value: string | null | undefined): string {
+  if (!value) {
+    return "-";
+  }
+  const normalized = value.replace(/\\/g, "/").replace(/\/+$/, "");
+  const parts = normalized.split("/").filter(Boolean);
+  return parts[parts.length - 1] || normalized;
+}
+
+function withConfigQuery(input: string, configPath: string | null): string {
+  if (!configPath) {
+    return input;
+  }
+  const separator = input.includes("?") ? "&" : "?";
+  return `${input}${separator}config=${encodeURIComponent(configPath)}`;
 }
 
 function nextStepInspectionTab(
@@ -516,10 +546,14 @@ async function fetchText(input: string): Promise<string> {
   return await response.text();
 }
 
-async function postJson<T>(input: string): Promise<T> {
+async function postJson<T>(input: string, body?: unknown): Promise<T> {
   const response = await fetch(input, {
     method: "POST",
-    headers: { accept: "application/json" },
+    headers: {
+      accept: "application/json",
+      ...(body !== undefined ? { "content-type": "application/json" } : {}),
+    },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   if (!response.ok) {
     const body = await response.text();
@@ -555,24 +589,27 @@ function renderWorkflowLogHtml(logText: string): string {
   return `<div class="log-viewer"><ul class="log-lines">${items}</ul></div>`;
 }
 
-async function loadWorkflowLog(runId: string): Promise<string> {
-  return await fetchText(`/api/runs/${encodeURIComponent(runId)}/log`);
+async function loadWorkflowLog(runId: string, configPath: string | null): Promise<string> {
+  return await fetchText(withConfigQuery(`/api/runs/${encodeURIComponent(runId)}/log`, configPath));
 }
 
-async function loadStepLog(runId: string, stepId: string): Promise<string> {
-  return await fetchText(`/api/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/log`);
+async function loadStepLog(runId: string, stepId: string, configPath: string | null): Promise<string> {
+  return await fetchText(
+    withConfigQuery(`/api/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/log`, configPath),
+  );
 }
 
-async function loadWorkflowDetail(runId: string): Promise<RunDetail> {
-  return await fetchJson<RunDetail>(`/api/runs/${encodeURIComponent(runId)}`);
+async function loadWorkflowDetail(runId: string, configPath: string | null): Promise<RunDetail> {
+  return await fetchJson<RunDetail>(withConfigQuery(`/api/runs/${encodeURIComponent(runId)}`, configPath));
 }
 
 async function refreshRunsIndex(
+  configPath: string | null,
   setSummaries: (runs: RunSummary[]) => void,
   setTotalRuns: (total: number) => void,
   setUpdatedAt: (updatedAt: string) => void,
 ): Promise<void> {
-  const payload = await fetchJson<RunsIndexPayload>("/api/runs");
+  const payload = await fetchJson<RunsIndexPayload>(withConfigQuery("/api/runs", configPath));
   setSummaries(payload.runs);
   setTotalRuns(payload.totalRuns);
   setUpdatedAt(payload.updatedAt);
@@ -582,16 +619,36 @@ interface WorkflowViewerProps {
   initialSummaries: RunSummary[];
   initialTotalRuns: number;
   initialUpdatedAt: string;
+  initialWorkspaceRoot: string;
+  initialConfigPath: string | null;
+  initialConfigLabel: string;
+  initialAvailableConfigs: RunsIndexPayload["availableConfigs"];
+  initialAvailableWorkflows: RunsIndexPayload["availableWorkflows"];
 }
 
 export function WorkflowViewer({
   initialSummaries,
   initialTotalRuns,
   initialUpdatedAt,
+  initialWorkspaceRoot,
+  initialConfigPath,
+  initialConfigLabel,
+  initialAvailableConfigs,
+  initialAvailableWorkflows,
 }: WorkflowViewerProps) {
   const [summaries, setSummaries] = useState<RunSummary[]>(initialSummaries);
   const [totalRuns, setTotalRuns] = useState(initialTotalRuns);
   const [updatedAt, setUpdatedAt] = useState(initialUpdatedAt);
+  const [refreshLoading, setRefreshLoading] = useState(false);
+  const [workspaceRoot] = useState(initialWorkspaceRoot);
+  const [configPath] = useState(initialConfigPath);
+  const [configLabel] = useState(initialConfigLabel);
+  const [availableConfigs] = useState(initialAvailableConfigs);
+  const [availableWorkflows] = useState(initialAvailableWorkflows);
+  const [selectedWorkflowName, setSelectedWorkflowName] = useState<string>(
+    initialAvailableWorkflows[0]?.name || "",
+  );
+  const [runWorkflowLoading, setRunWorkflowLoading] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(() =>
     normalizeSelectedRunId(initialSummaries, null),
   );
@@ -666,6 +723,76 @@ export function WorkflowViewer({
     return null;
   }
 
+  function onWorkspaceSelectChange(event: React.ChangeEvent<HTMLSelectElement>): void {
+    const nextConfig = event.target.value;
+    const url = new URL(window.location.href);
+    if (nextConfig) {
+      url.searchParams.set("config", nextConfig);
+    } else {
+      url.searchParams.delete("config");
+    }
+    window.location.assign(url.toString());
+  }
+
+  async function onRunWorkflow(): Promise<void> {
+    if (!selectedWorkflowName) {
+      return;
+    }
+    setActionError(null);
+    setRunWorkflowLoading(true);
+    try {
+      const existingIds = new Set(summaries.map((summary) => summary.id));
+      await postJson(withConfigQuery("/api/workflows/run", configPath), { name: selectedWorkflowName });
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        const payload = await fetchJson<RunsIndexPayload>(withConfigQuery("/api/runs", configPath));
+        setSummaries(payload.runs);
+        setTotalRuns(payload.totalRuns);
+        setUpdatedAt(payload.updatedAt);
+        const nextRun = payload.runs.find((summary) => !existingIds.has(summary.id) && summary.workflowName === selectedWorkflowName);
+        if (nextRun) {
+          setSelectedRunId(nextRun.id);
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Failed to start workflow.");
+    } finally {
+      setRunWorkflowLoading(false);
+    }
+  }
+
+  function summariesSignature(runs: RunSummary[]): string {
+    return runs.map((run) => `${run.id}:${run.status}:${run.completedAt || ""}`).join("|");
+  }
+
+  async function refreshSummariesWithPolling(): Promise<void> {
+    setRefreshLoading(true);
+    try {
+      const beforeUpdatedAt = updatedAt;
+      const beforeSignature = summariesSignature(summaries);
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const payload = await fetchJson<RunsIndexPayload>(withConfigQuery("/api/runs", configPath));
+        setSummaries(payload.runs);
+        setTotalRuns(payload.totalRuns);
+        setUpdatedAt(payload.updatedAt);
+        const afterSignature = summariesSignature(payload.runs);
+        if (payload.updatedAt !== beforeUpdatedAt || afterSignature !== beforeSignature || attempt === 7) {
+          if (selectedRunId) {
+            await refreshRunDetail(selectedRunId);
+            if (activeTab === "log") {
+              await refreshActiveLog(selectedRunId, selectedStepId);
+            }
+          }
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    } finally {
+      setRefreshLoading(false);
+    }
+  }
+
   function focusTab(tab: InspectionTab): void {
     tabRefs.current[tab]?.focus();
   }
@@ -721,7 +848,9 @@ export function WorkflowViewer({
     }
     setLogError(null);
     try {
-      const nextLog = stepId ? await loadStepLog(runId, stepId) : await loadWorkflowLog(runId);
+      const nextLog = stepId
+        ? await loadStepLog(runId, stepId, configPath)
+        : await loadWorkflowLog(runId, configPath);
       if (requestId !== logRequestIdRef.current) {
         return;
       }
@@ -743,7 +872,7 @@ export function WorkflowViewer({
   async function refreshRunDetail(runId: string): Promise<void> {
     setDetailLoading(true);
     try {
-      const detail = await loadWorkflowDetail(runId);
+      const detail = await loadWorkflowDetail(runId, configPath);
       setRunDetail(detail);
     } catch {
       setRunDetail(null);
@@ -801,7 +930,7 @@ export function WorkflowViewer({
     setRunDetail(null);
     setLogLoading(activeTab === "log");
     setDetailLoading(true);
-    void loadWorkflowDetail(selectedRunId)
+    void loadWorkflowDetail(selectedRunId, configPath)
       .then((detail) => {
         if (cancelled) {
           return;
@@ -853,7 +982,7 @@ export function WorkflowViewer({
   }, [runDetail, selectedStepId]);
 
   async function refreshSummaries(): Promise<void> {
-    await refreshRunsIndex(setSummaries, setTotalRuns, setUpdatedAt);
+    await refreshRunsIndex(configPath, setSummaries, setTotalRuns, setUpdatedAt);
     if (!selectedRunId) {
       return;
     }
@@ -867,8 +996,8 @@ export function WorkflowViewer({
     setActionError(null);
     addLoadingRunId(setStopLoadingRunIds, runId);
     try {
-      await postJson(`/api/runs/${encodeURIComponent(runId)}/stop`);
-      await refreshRunsIndex(setSummaries, setTotalRuns, setUpdatedAt);
+      await postJson(withConfigQuery(`/api/runs/${encodeURIComponent(runId)}/stop`, configPath));
+      await refreshRunsIndex(configPath, setSummaries, setTotalRuns, setUpdatedAt);
       await refreshRunDetail(runId);
       if (activeTab === "log") {
         await refreshActiveLog(runId, selectedRunId === runId ? selectedStepId : null);
@@ -889,14 +1018,14 @@ export function WorkflowViewer({
     setActionError(null);
     addLoadingRunId(setRemoveLoadingRunIds, runId);
     try {
-      await postJson(`/api/runs/${encodeURIComponent(runId)}/remove`);
+      await postJson(withConfigQuery(`/api/runs/${encodeURIComponent(runId)}/remove`, configPath));
       const nextSelectedRunId =
         selectedRunId === runId
           ? nextSelectedRunIdAfterRemoval(summaries, runId)
           : selectedRunId;
       setSelectedRunId(nextSelectedRunId);
       setSelectedStepId(null);
-      await refreshRunsIndex(setSummaries, setTotalRuns, setUpdatedAt);
+      await refreshRunsIndex(configPath, setSummaries, setTotalRuns, setUpdatedAt);
       if (!nextSelectedRunId) {
         setLogText("");
         setLogError(null);
@@ -921,8 +1050,8 @@ export function WorkflowViewer({
       )));
       setRunDetail((current) => applyOptimisticWorkflowRunState(current, runId, fromStep));
       const query = fromStep ? `?fromStep=${encodeURIComponent(fromStep)}` : "";
-      await postJson(`/api/runs/${encodeURIComponent(runId)}/resume${query}`);
-      await refreshRunsIndex(setSummaries, setTotalRuns, setUpdatedAt);
+      await postJson(withConfigQuery(`/api/runs/${encodeURIComponent(runId)}/resume${query}`, configPath));
+      await refreshRunsIndex(configPath, setSummaries, setTotalRuns, setUpdatedAt);
       await refreshRunDetail(runId);
       if (activeTab === "log") {
         await refreshActiveLog(runId, selectedStepId);
@@ -1008,9 +1137,9 @@ export function WorkflowViewer({
   }, []);
 
   useEffect(() => {
-    const events = new EventSource("/api/events");
+    const events = new EventSource(withConfigQuery("/api/events", configPath));
     events.addEventListener("runs-changed", () => {
-      void refreshRunsIndex(setSummaries, setTotalRuns, setUpdatedAt);
+      void refreshRunsIndex(configPath, setSummaries, setTotalRuns, setUpdatedAt);
       if (selectedRunId) {
         scheduleDetailRefresh(selectedRunId, 250);
         if (activeTab === "log") {
@@ -1029,7 +1158,7 @@ export function WorkflowViewer({
         detailRefreshTimerRef.current = null;
       }
     };
-  }, [activeTab, selectedRunId, selectedStepId]);
+  }, [activeTab, configPath, selectedRunId, selectedStepId]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -1044,12 +1173,63 @@ export function WorkflowViewer({
               <span>{summaries.length}</span>
               <span className="text-muted-foreground">/ {totalRuns}</span>
             </div>
+            <label className="workflow-topbar-chip" title={workspaceRoot}>
+              <span className="workflow-topbar-label">Workspace</span>
+              <select
+                aria-label="Select workspace config"
+                className="workflow-topbar-select"
+                onChange={onWorkspaceSelectChange}
+                value={configPath || ""}
+              >
+                {availableConfigs.map((option) => (
+                  <option key={option.id} value={option.configPath || ""}>
+                    {option.label} · {formatPathLabel(option.workspaceRoot)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="workflow-topbar-chip" title={workspaceRoot}>
+              <span className="workflow-topbar-label">Active</span>
+              <span>{formatPathLabel(workspaceRoot)}</span>
+            </div>
+            {configPath ? (
+              <div className="workflow-topbar-chip" title={configPath}>
+                <span className="workflow-topbar-label">Config</span>
+                <span>{configLabel}</span>
+              </div>
+            ) : null}
+            {availableWorkflows.length > 0 ? (
+              <label className="workflow-topbar-chip">
+                <span className="workflow-topbar-label">Workflow</span>
+                <select
+                  aria-label="Select workflow"
+                  className="workflow-topbar-select"
+                  onChange={(event) => setSelectedWorkflowName(event.target.value)}
+                  value={selectedWorkflowName}
+                >
+                  {availableWorkflows.map((workflow) => (
+                    <option key={workflow.name} value={workflow.name}>
+                      {workflow.name} · {workflow.category}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <div className="workflow-topbar-chip">
               <span className="workflow-topbar-label">Updated</span>
               <span>{updatedAt ? formatTimestamp(updatedAt) : "-"}</span>
             </div>
-            <Button onClick={() => void refreshSummaries()} variant="outline">
-              Refresh
+            {availableWorkflows.length > 0 ? (
+              <Button
+                disabled={runWorkflowLoading || !selectedWorkflowName}
+                onClick={() => void onRunWorkflow()}
+                variant="outline"
+              >
+                {runWorkflowLoading ? "Running..." : "Run"}
+              </Button>
+            ) : null}
+            <Button onClick={() => void refreshSummariesWithPolling()} variant="outline">
+              {refreshLoading ? "Refreshing..." : "Refresh"}
             </Button>
           </div>
         </header>

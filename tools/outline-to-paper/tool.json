@@ -1,0 +1,17 @@
+{
+  "name": "outline-to-paper",
+  "runtime": "node",
+  "cli-contract": "run,inspect,logs",
+  "entry": "index.js",
+  "config": {
+    "fields": {
+      "template": { "aliases": ["template"] },
+      "language": { "aliases": ["language", "lang"] },
+      "output-format": { "aliases": ["output-format", "outputFormat"] }
+    }
+  },
+  "managed": {
+    "schemaVersion": 1,
+    "modes": ["local"]
+  }
+}

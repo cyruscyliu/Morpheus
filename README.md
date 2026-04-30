@@ -69,15 +69,6 @@ pnpm run install:bin
 Use the wrappers from `bin/`:
 
 ```bash
-./bin/buildroot --help
-./bin/microkit-sdk --help
-./bin/qemu --help
-./bin/llbic --help
-./bin/llcg --help
-./bin/nvirsh --help
-./bin/sel4 --help
-./bin/libvmm --help
-./bin/morpheus --help
 ./bin/morpheus tool list --json
 ```
 
@@ -111,5 +102,4 @@ Use those as the authoritative source for:
 
 ## TODO
 
-- Add a remote task callback mechanism where the Morpheus-managed remote
-  runner triggers the callback after final manifest update.
+- Enhance the run-viewer's status update

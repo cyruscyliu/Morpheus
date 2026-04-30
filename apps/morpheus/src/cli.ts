@@ -72,9 +72,29 @@ function argvWithoutCommand(argv, command) {
   return [...argv.slice(0, index), ...argv.slice(index + 1)];
 }
 
+function stripGlobalFlags(argv) {
+  const next = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === "--config") {
+      const value = argv[index + 1];
+      if (value && !value.startsWith("--")) {
+        index += 1;
+      }
+      continue;
+    }
+    next.push(token);
+  }
+  return next;
+}
+
 async function main() {
-  const argv = process.argv.slice(2);
-  const { positionals } = parseArgs(argv);
+  const rawArgv = process.argv.slice(2);
+  const { positionals, flags } = parseArgs(rawArgv);
+  if (flags.config && typeof flags.config === "string") {
+    process.env.MORPHEUS_CONFIG = path.resolve(String(flags.config));
+  }
+  const argv = stripGlobalFlags(rawArgv);
   const command = positionals[0];
 
   if (!command || command === "help" || command === "--help") {
@@ -102,6 +122,9 @@ async function main() {
     return handleBuildCommand(argvWithoutCommand(argv, "build"));
   }
 
+  // Keep these passthrough commands for internal workflow execution and
+  // compatibility, even though workflow-first commands are the documented
+  // public surface.
   if (command === "inspect") {
     return handleInspectCommand(argvWithoutCommand(argv, "inspect"));
   }

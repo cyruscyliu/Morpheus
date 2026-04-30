@@ -46,6 +46,10 @@ remote:
 ## Core Rules
 
 - Treat `--workspace` as the shared managed workspace root.
+- Use `morpheus workflow run`, `morpheus workflow inspect`, and
+  `morpheus workflow logs` as the canonical execution surface.
+- Do not expect top-level `morpheus run`, `morpheus inspect`, or
+  `morpheus logs` aliases.
 - Treat `tools.<name>` in `morpheus.yaml` as management policy, not tool
   business logic.
 - Treat `build-version` as the common Morpheus selector for versioned fetch

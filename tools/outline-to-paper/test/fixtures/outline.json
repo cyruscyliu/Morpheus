@@ -1,0 +1,73 @@
+{
+  "title": "Sample Outline-to-Paper Submission",
+  "references": [
+    {
+      "ref_id": "r1",
+      "citation_key": "inozemtseva2024icse",
+      "status": "available",
+      "relevance": "background",
+      "linked_claim_ids": ["c2"],
+      "bibtex": "@inproceedings{inozemtseva2024icse,\n  author = {Laura Inozemtseva},\n  title = {Most Influential Paper Talk},\n  booktitle = {ICSE 2024},\n  year = {2024}\n}"
+    }
+  ],
+  "sections": [
+    {
+      "section_id": "sample-sec-01",
+      "title": "Problem",
+      "purpose": "Explain the paper problem and why the workflow matters.",
+      "paragraphs": [
+        {
+          "paragraph_id": "sample-sec-01-p01",
+          "role": "argument",
+          "topic": "The workflow should produce a managed LaTeX draft.",
+          "arguments": [
+            {
+              "argument_id": "sample-sec-01-a01",
+              "type": "claim",
+              "text": "The workflow turns normalized outline inputs into a managed LaTeX draft.",
+              "supports": [
+                {
+                  "support_id": "sample-sec-01-s01",
+                  "type": "fact",
+                  "status": "available",
+                  "content": "The tool produces paper.tex, paper.bib, and paper.pdf as managed artifacts.",
+                  "reference_ids": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "section_id": "sample-sec-02",
+      "title": "Implications",
+      "purpose": "Explain how structured outputs improve later revision workflows.",
+      "paragraphs": [
+        {
+          "paragraph_id": "sample-sec-02-p01",
+          "role": "argument",
+          "topic": "Structured planning and review artifacts enable later revision loops.",
+          "arguments": [
+            {
+              "argument_id": "sample-sec-02-a01",
+              "type": "claim",
+              "text": "Stable planning and review artifacts make downstream revision workflows easier.",
+              "supports": [
+                {
+                  "support_id": "sample-sec-02-s01",
+                  "type": "table",
+                  "status": "partial",
+                  "content": "A comparative table would strengthen this claim.",
+                  "reference_ids": [
+                    "r1"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

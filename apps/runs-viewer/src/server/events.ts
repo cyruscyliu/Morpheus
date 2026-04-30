@@ -14,25 +14,32 @@ interface EventState {
   clients: Set<Client>;
 }
 
-function getState(): EventState {
+function getState(key: string): EventState {
   const globalState = globalThis as typeof globalThis & {
-    __morpheusRunsViewerEvents?: EventState;
+    __morpheusRunsViewerEvents?: Map<string, EventState>;
   };
   if (!globalState.__morpheusRunsViewerEvents) {
-    globalState.__morpheusRunsViewerEvents = {
-      watcher: null,
-      clients: new Set<Client>(),
-    };
+    globalState.__morpheusRunsViewerEvents = new Map<string, EventState>();
   }
-  return globalState.__morpheusRunsViewerEvents;
+  const existing = globalState.__morpheusRunsViewerEvents.get(key);
+  if (existing) {
+    return existing;
+  }
+  const created: EventState = {
+    watcher: null,
+    clients: new Set<Client>(),
+  };
+  globalState.__morpheusRunsViewerEvents.set(key, created);
+  return created;
 }
 
-function ensureWatcher(): EventState {
-  const state = getState();
+function ensureWatcher(configPath: string | null): EventState {
+  const key = configPath || "default";
+  const state = getState(key);
   if (state.watcher) {
     return state;
   }
-  const { runRoot } = resolveViewerContext();
+  const { runRoot } = resolveViewerContext(configPath);
   const broadcast = debounce(() => {
     for (const client of state.clients) {
       client.write("runs-changed", { updatedAt: new Date().toISOString() });
@@ -51,8 +58,8 @@ function ensureWatcher(): EventState {
   return state;
 }
 
-export function subscribeRunsEvents(client: Client): () => void {
-  const state = ensureWatcher();
+export function subscribeRunsEvents(configPath: string | null, client: Client): () => void {
+  const state = ensureWatcher(configPath);
   state.clients.add(client);
   client.write("runs-changed", { updatedAt: new Date().toISOString() });
   return () => {

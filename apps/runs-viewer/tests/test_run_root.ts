@@ -40,3 +40,30 @@ test("findRunRoot falls back to hyperarm-workspace when config missing", () => {
   assert.equal(resolved.runRoot, path.join(repoRoot, "hyperarm-workspace", "runs"));
 });
 
+test("findRunRoot honors MORPHEUS_CONFIG for nonstandard config filenames", () => {
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-viewer-"));
+  const repoRoot = path.join(baseDir, "repo");
+  const startDir = path.join(repoRoot, "apps", "runs-viewer");
+  const workspaceDir = path.join(repoRoot, "my-o2p-workspace");
+  const configPath = path.join(repoRoot, "morpheus.o2p.yaml");
+
+  writeFile(
+    configPath,
+    ["workspace:", "  root: my-o2p-workspace", ""].join("\n"),
+  );
+
+  const previous = process.env.MORPHEUS_CONFIG;
+  process.env.MORPHEUS_CONFIG = configPath;
+  try {
+    const resolved = findRunRoot({ startDir, repoRoot });
+    assert.equal(resolved.configPath, configPath);
+    assert.equal(resolved.workspaceRoot, workspaceDir);
+    assert.equal(resolved.runRoot, path.join(workspaceDir, "runs"));
+  } finally {
+    if (previous == null) {
+      delete process.env.MORPHEUS_CONFIG;
+    } else {
+      process.env.MORPHEUS_CONFIG = previous;
+    }
+  }
+});

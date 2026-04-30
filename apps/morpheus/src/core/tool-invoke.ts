@@ -106,6 +106,16 @@ function localManaged(descriptor) {
   return descriptor.managed && descriptor.managed.local ? descriptor.managed.local : null;
 }
 
+function descriptorSupportsRemote(descriptor) {
+  const modes = descriptor && descriptor.managed && Array.isArray(descriptor.managed.modes)
+    ? descriptor.managed.modes
+    : null;
+  if (!modes || modes.length === 0) {
+    return true;
+  }
+  return modes.includes("remote");
+}
+
 function commandSpec(descriptor, command) {
   const managed = localManaged(descriptor);
   return managed && managed.commands && managed.commands[command]
@@ -278,6 +288,9 @@ async function runToolStreaming(descriptor, args, options = {}) {
       if (stdoutBuffer.trim()) {
         handleStdoutLine(stdoutBuffer);
       }
+      if ((!finalPayload || typeof finalPayload !== "object") && stdoutText.trim()) {
+        finalPayload = parseLastJsonLine(stdoutText);
+      }
       resolve({
         status: typeof code === "number" ? code : 1,
         stdout: stdoutText,
@@ -289,14 +302,19 @@ async function runToolStreaming(descriptor, args, options = {}) {
 }
 
 function parseToolPayload(result, fallbackMessage) {
-  if (result.status !== 0) {
-    let payload = null;
-    try {
-      payload = result.stdout ? JSON.parse(String(result.stdout).trim().split(/\r?\n/).at(-1)) : null;
-    } catch {
-      payload = null;
+  if (result.toolPayload && typeof result.toolPayload === "object") {
+    if (result.status !== 0) {
+      throw new Error(result.toolPayload.summary || result.stderr || result.stdout || fallbackMessage);
     }
+    return result.toolPayload;
+  }
+  if (result.status !== 0) {
+    const payload = parseLastJsonLine(result.stdout || "");
     throw new Error((payload && payload.summary) || result.stderr || result.stdout || fallbackMessage);
+  }
+  const payload = parseLastJsonLine(result.stdout || "");
+  if (payload && typeof payload === "object") {
+    return payload;
   }
   return JSON.parse(String(result.stdout).trim().split(/\r?\n/).at(-1));
 }
@@ -767,6 +785,7 @@ function resolveInvocation(command, flags, options = {}) {
   const { flags: resolved } = applyConfigDefaults(
     {
       json: Boolean(flags.json),
+      mode: flags.mode || (descriptorSupportsRemote(descriptor) ? null : "local"),
       tool,
       workspace: flags.workspace || null,
       source: flags.source || flags.path || null,
@@ -943,12 +962,17 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   }
 
   const tool = requireFlag(flags, "tool", `${command} requires --tool <name>`);
+  const descriptor = readToolDescriptor(tool);
   const { flags: resolved } = applyConfigDefaults(
-    { ...flags, json: Boolean(flags.json), tool },
+    {
+      ...flags,
+      json: Boolean(flags.json),
+      mode: flags.mode || (descriptorSupportsRemote(descriptor) ? null : "local"),
+      tool,
+    },
     { allowGlobalRemote: Boolean(options.allowGlobalRemote), allowToolDefaults: true }
   );
   const effective = resolveToolDependencies(resolved, command);
-  const descriptor = readToolDescriptor(tool);
   if (command === "run") {
     ensureNoWorkspaceRunConflict(tool, descriptor, effective);
   }

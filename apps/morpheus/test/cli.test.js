@@ -602,12 +602,35 @@ test("workflow run records outline-to-paper artifacts for downstream reuse", () 
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim());
   assert.equal(payload.status, "success");
-  const step = payload.details.steps[0];
-  assert.equal(step.tool, "outline-to-paper");
-  assert.equal(step.artifacts["plan-section-plan-json"] != null, true);
-  assert.equal(step.artifacts["draft-paper-tex"] != null, true);
+  const runDir = payload.details.run_dir;
+  const stepDir = path.join(runDir, "steps", "outline_to_paper");
+  const toolResult = JSON.parse(fs.readFileSync(path.join(stepDir, "tool-result.json"), "utf8"));
+  const artifacts = toolResult && toolResult.details && Array.isArray(toolResult.details.artifacts)
+    ? toolResult.details.artifacts
+    : [];
+  assert.equal(artifacts.some((item) => item.path === "plan/section-plan.json"), true);
+  assert.equal(artifacts.some((item) => item.path === "draft/paper.tex"), true);
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("workflow resume reuses workflow config path for nondefault workflow files", () => {
+  const configPath = path.join(repoRoot, "morpheus.o2p.yaml");
+  const first = run(["--config", configPath, "--json", "workflow", "run", "--name", "outline-paper-sample"], {
+    cwd: repoRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(first.status, 0, first.stderr || first.stdout);
+  const firstPayload = JSON.parse(first.stdout.trim());
+  const runId = firstPayload.details.id;
+
+  const resumed = run(["--json", "workflow", "resume", "--id", runId, "--workspace", path.join(repoRoot, "hyperarm-workspace-o2p")], {
+    cwd: repoRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(resumed.status, 0, resumed.stderr || resumed.stdout);
+  const resumedPayload = JSON.parse(resumed.stdout.trim());
+  assert.equal(resumedPayload.status, "success");
 });
 
 test("managed remote run resolves ssh and workspace from morpheus.yaml", () => {

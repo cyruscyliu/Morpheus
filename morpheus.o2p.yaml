@@ -1,0 +1,80 @@
+workspace:
+  root: ./hyperarm-workspace-o2p
+
+tools:
+  outline-to-paper:
+    mode: local
+    template: acsac26
+    language: zh
+
+workflows:
+  outline-paper-sample:
+    category: run
+    steps:
+      - id: outline_to_paper
+        tool: outline-to-paper
+        command: run
+        args:
+          - --outline
+          - "{{workspace.root}}/../tools/outline-to-paper/test/fixtures/outline.json"
+          - --template
+          - acsac26
+  outline-paper-phased:
+    category: run
+    steps:
+      - id: outline_phase
+        name: Outline
+        tool: outline-to-paper
+        command: run
+        args:
+          - --outline
+          - "{{workspace.root}}/tmp/syssec-research-book1-outline.json"
+          - --template
+          - book
+          - --only-phase
+          - outline
+      - id: revise_phase
+        name: Revise
+        tool: outline-to-paper
+        command: run
+        args:
+          - --outline
+          - "{{workspace.root}}/tmp/syssec-research-book1-outline.json"
+          - --template
+          - book
+          - --use-deepseek
+          - --only-phase
+          - revise
+      - id: draft_phase
+        name: Draft
+        tool: outline-to-paper
+        command: run
+        args:
+          - --outline
+          - "{{workspace.root}}/tmp/syssec-research-book1-outline.json"
+          - --template
+          - book
+          - --only-phase
+          - draft
+      - id: edit_phase
+        name: Edit
+        tool: outline-to-paper
+        command: run
+        args:
+          - --outline
+          - "{{workspace.root}}/tmp/syssec-research-book1-outline.json"
+          - --template
+          - book
+          - --only-phase
+          - edit
+      - id: review_phase
+        name: Review
+        tool: outline-to-paper
+        command: run
+        args:
+          - --outline
+          - "{{workspace.root}}/tmp/syssec-research-book1-outline.json"
+          - --template
+          - book
+          - --only-phase
+          - review

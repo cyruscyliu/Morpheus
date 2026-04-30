@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ runId: string; stepId: string }> },
 ): Promise<NextResponse> {
   const resolvedParams = await params;
@@ -17,7 +17,8 @@ export async function GET(
   if (!isSafeId(runId) || !isSafeId(stepId)) {
     return new NextResponse("not found\n", { status: 404 });
   }
-  const context = resolveViewerContext();
+  const url = new URL(request.url);
+  const context = resolveViewerContext(url.searchParams.get("config"));
   const logText = loadStepLogText(context.runRoot, runId, stepId);
   if (logText == null) {
     return new NextResponse("not found\n", { status: 404 });

@@ -3,8 +3,10 @@ import { subscribeRunsEvents } from "@/src/server/events";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export function GET(): Response {
+export function GET(request: Request): Response {
   let unsubscribe: (() => void) | null = null;
+  const url = new URL(request.url);
+  const configPath = url.searchParams.get("config");
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
@@ -21,7 +23,7 @@ export function GET(): Response {
         }
       };
 
-      unsubscribe = subscribeRunsEvents({
+      unsubscribe = subscribeRunsEvents(configPath, {
         write(event: string, data?: unknown) {
           if (closed) {
             return;

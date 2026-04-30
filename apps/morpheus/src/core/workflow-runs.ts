@@ -87,6 +87,7 @@ function createWorkflowRun(workspaceRoot, workflowName, options = {}) {
     schemaVersion: WORKFLOW_SCHEMA_VERSION,
     id,
     workflow: workflowName || "workflow",
+    configPath: options.configPath || null,
     category,
     status: "created",
     createdAt,

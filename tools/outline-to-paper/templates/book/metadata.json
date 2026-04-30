@@ -1,0 +1,33 @@
+{
+  "id": "book",
+  "name": "Generic Research Book",
+  "default_language": "en",
+  "bibliography_backend": "biber",
+  "language_profiles": {
+    "en": {
+      "documentclass": "\\documentclass[11pt]{book}",
+      "latex_engine": "pdflatex"
+    },
+    "zh": {
+      "documentclass": "\\documentclass[UTF8,11pt]{ctexbook}",
+      "latex_engine": "xelatex"
+    }
+  },
+  "page_format": "A4 or US letter, depending on the book production target",
+  "section_command": "chapter",
+  "unnumbered_section_command": "chapter*",
+  "submission": {
+    "double_column": false,
+    "anonymous": false
+  },
+  "formatting_rules": [
+    "Use a single-column book layout.",
+    "Treat the generated section plan as chapter-level structure by default.",
+    "Allow references in a shared bibliography file named paper.bib.",
+    "Preserve explicit TODO placeholders for missing support until the book content is complete."
+  ],
+  "review_warnings": [
+    "Book chapters can be longer and more explanatory than conference sections.",
+    "Do not collapse chapter-level exposition into conference-paper density."
+  ]
+}

@@ -549,9 +549,9 @@ export function WorkflowViewer({
   const [runDetail, setRunDetail] = useState<RunDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [stopLoadingRunId, setStopLoadingRunId] = useState<string | null>(null);
-  const [removeLoadingRunId, setRemoveLoadingRunId] = useState<string | null>(null);
-  const [resumeLoadingRunId, setResumeLoadingRunId] = useState<string | null>(null);
+  const [stopLoadingRunIds, setStopLoadingRunIds] = useState<string[]>([]);
+  const [removeLoadingRunIds, setRemoveLoadingRunIds] = useState<string[]>([]);
+  const [resumeLoadingRunIds, setResumeLoadingRunIds] = useState<string[]>([]);
   const [rerunLoadingStepId, setRerunLoadingStepId] = useState<string | null>(null);
   const [graphViewportWidth, setGraphViewportWidth] = useState(0);
   const logBodyRef = useRef<HTMLDivElement | null>(null);
@@ -567,6 +567,49 @@ export function WorkflowViewer({
 
   const selectedSummary = summaries.find((summary) => summary.id === selectedRunId) || null;
   const selectedStep = runDetail?.steps.find((step) => step.id === selectedStepId) || null;
+  const selectedRunActionLocked = Boolean(
+    selectedSummary
+    && (
+      stopLoadingRunIds.includes(selectedSummary.id)
+      || removeLoadingRunIds.includes(selectedSummary.id)
+      || resumeLoadingRunIds.includes(selectedSummary.id)
+    )
+  );
+
+  function addLoadingRunId(
+    setState: React.Dispatch<React.SetStateAction<string[]>>,
+    runId: string,
+  ): void {
+    setState((current) => (current.includes(runId) ? current : [...current, runId]));
+  }
+
+  function removeLoadingRunId(
+    setState: React.Dispatch<React.SetStateAction<string[]>>,
+    runId: string,
+  ): void {
+    setState((current) => current.filter((entry) => entry !== runId));
+  }
+
+  function isRunSelectionLocked(runId: string): boolean {
+    return (
+      stopLoadingRunIds.includes(runId)
+      || removeLoadingRunIds.includes(runId)
+      || resumeLoadingRunIds.includes(runId)
+    );
+  }
+
+  function actionLabelForRun(runId: string): string | null {
+    if (removeLoadingRunIds.includes(runId)) {
+      return "Removing...";
+    }
+    if (stopLoadingRunIds.includes(runId)) {
+      return "Stopping...";
+    }
+    if (resumeLoadingRunIds.includes(runId)) {
+      return "Resuming...";
+    }
+    return null;
+  }
 
   function focusTab(tab: InspectionTab): void {
     tabRefs.current[tab]?.focus();
@@ -767,7 +810,7 @@ export function WorkflowViewer({
 
   async function onStopWorkflow(runId: string): Promise<void> {
     setActionError(null);
-    setStopLoadingRunId(runId);
+    addLoadingRunId(setStopLoadingRunIds, runId);
     try {
       await postJson(`/api/runs/${encodeURIComponent(runId)}/stop`);
       await refreshRunsIndex(setSummaries, setTotalRuns, setUpdatedAt);
@@ -778,7 +821,7 @@ export function WorkflowViewer({
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Failed to stop workflow.");
     } finally {
-      setStopLoadingRunId(null);
+      removeLoadingRunId(setStopLoadingRunIds, runId);
     }
   }
 
@@ -789,7 +832,7 @@ export function WorkflowViewer({
       return;
     }
     setActionError(null);
-    setRemoveLoadingRunId(runId);
+    addLoadingRunId(setRemoveLoadingRunIds, runId);
     try {
       await postJson(`/api/runs/${encodeURIComponent(runId)}/remove`);
       const nextSelectedRunId =
@@ -807,13 +850,13 @@ export function WorkflowViewer({
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Failed to remove workflow.");
     } finally {
-      setRemoveLoadingRunId(null);
+      removeLoadingRunId(setRemoveLoadingRunIds, runId);
     }
   }
 
   async function onResumeWorkflow(runId: string, fromStep: string | null): Promise<void> {
     setActionError(null);
-    setResumeLoadingRunId(runId);
+    addLoadingRunId(setResumeLoadingRunIds, runId);
     setRerunLoadingStepId(fromStep);
     try {
       const query = fromStep ? `?fromStep=${encodeURIComponent(fromStep)}` : "";
@@ -826,7 +869,7 @@ export function WorkflowViewer({
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Failed to resume workflow.");
     } finally {
-      setResumeLoadingRunId(null);
+      removeLoadingRunId(setResumeLoadingRunIds, runId);
       setRerunLoadingStepId(null);
     }
   }
@@ -964,11 +1007,15 @@ export function WorkflowViewer({
                 ) : (
                   summaries.map((summary) => {
                     const isSelected = selectedRunId === summary.id;
+                    const selectionLocked = isRunSelectionLocked(summary.id);
+                    const actionLabel = actionLabelForRun(summary.id);
                     return (
                       <button
                         className={`workflow-list-item${isSelected ? " is-selected" : ""}`}
+                        disabled={selectionLocked}
                         key={summary.id}
                         onClick={() => setSelectedRunId(summary.id)}
+                        title={selectionLocked ? `${summary.workflowName || summary.id} is busy` : undefined}
                         type="button"
                       >
                         <div className="workflow-list-item-top">
@@ -980,7 +1027,9 @@ export function WorkflowViewer({
                             title={summary.status}
                           />
                         </div>
-                        <div className="workflow-list-item-subtle">{formatTimestamp(summary.createdAt)}</div>
+                        <div className="workflow-list-item-subtle">
+                          {actionLabel || formatTimestamp(summary.createdAt)}
+                        </div>
                       </button>
                     );
                   })
@@ -1011,7 +1060,7 @@ export function WorkflowViewer({
                   ) : null}
                   {selectedSummary?.format === "workflow-first" && selectedStep && selectedSummary.status !== "running" ? (
                     <Button
-                      disabled={resumeLoadingRunId != null || removeLoadingRunId != null || stopLoadingRunId != null}
+                      disabled={selectedRunActionLocked}
                       onClick={() => void onResumeWorkflow(selectedSummary.id, selectedStep.id)}
                       size="sm"
                       variant="outline"
@@ -1021,31 +1070,32 @@ export function WorkflowViewer({
                   ) : null}
                   {selectedSummary?.format === "workflow-first" && selectedSummary.status === "running" ? (
                     <Button
+                      disabled={selectedRunActionLocked}
                       onClick={() => void onStopWorkflow(selectedSummary.id)}
                       size="sm"
                       variant="outline"
                     >
-                      {stopLoadingRunId === selectedSummary.id ? "Stopping..." : "Stop"}
+                      {stopLoadingRunIds.includes(selectedSummary.id) ? "Stopping..." : "Stop"}
                     </Button>
                   ) : null}
                   {selectedSummary?.format === "workflow-first" && selectedSummary.status !== "running" ? (
                     <Button
-                      disabled={resumeLoadingRunId != null || removeLoadingRunId != null || stopLoadingRunId != null}
+                      disabled={selectedRunActionLocked}
                       onClick={() => void onResumeWorkflow(selectedSummary.id, null)}
                       size="sm"
                       variant="outline"
                     >
-                      {resumeLoadingRunId === selectedSummary.id && rerunLoadingStepId == null ? "Resuming..." : "Resume"}
+                      {resumeLoadingRunIds.includes(selectedSummary.id) && rerunLoadingStepId == null ? "Resuming..." : "Resume"}
                     </Button>
                   ) : null}
                   {selectedSummary ? (
                     <Button
-                      disabled={removeLoadingRunId != null || stopLoadingRunId != null || resumeLoadingRunId != null}
+                      disabled={selectedRunActionLocked}
                       onClick={() => void onRemoveWorkflow(selectedSummary.id)}
                       size="sm"
                       variant="outline"
                     >
-                      {removeLoadingRunId === selectedSummary.id ? "Removing..." : "Remove"}
+                      {removeLoadingRunIds.includes(selectedSummary.id) ? "Removing..." : "Remove"}
                     </Button>
                   ) : null}
                 </div>

@@ -110,6 +110,10 @@ function readJsonIfExists<T>(filePath: string, fallback: T): T {
   return readJson(filePath) as T;
 }
 
+function writeJson(filePath: string, value: unknown): void {
+  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
 function readJsonLinesIfExists(filePath: string): any[] {
   if (!fs.existsSync(filePath)) {
     return [];
@@ -145,6 +149,68 @@ function fileHasLogContent(filePath: string): boolean {
   } catch {
     return false;
   }
+}
+
+function pidIsAlive(pid: unknown): boolean {
+  if (typeof pid !== "number" || !Number.isFinite(pid) || pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function reconcileWorkflowRecord(runDir: string, record: any): any {
+  if (!record || typeof record !== "object" || record.status !== "running") {
+    return record;
+  }
+  const runnerAlive = pidIsAlive(record.runnerPid);
+  const childAlive = pidIsAlive(record.currentChildPid);
+  if (runnerAlive || childAlive) {
+    return record;
+  }
+
+  const currentStepId = typeof record.currentStepId === "string" ? record.currentStepId : null;
+  const nextRecord = {
+    ...record,
+    status: "error",
+    runnerPid: null,
+    currentChildPid: null,
+    updatedAt: new Date().toISOString(),
+    steps: Array.isArray(record.steps)
+      ? record.steps.map((entry: any) => {
+          if (!entry || typeof entry !== "object") {
+            return entry;
+          }
+          if (currentStepId && entry.id === currentStepId && entry.status === "running") {
+            return { ...entry, status: "error" };
+          }
+          return entry;
+        })
+      : [],
+  };
+
+  if (currentStepId) {
+    const currentStep = nextRecord.steps.find((entry: any) => entry && entry.id === currentStepId) || null;
+    const stepDir =
+      currentStep && typeof currentStep.stepDir === "string"
+        ? currentStep.stepDir
+        : path.join(runDir, "steps", currentStepId);
+    const stepPath = path.join(stepDir, "step.json");
+    const stepRecord = readJsonIfExists<any>(stepPath, null as any);
+    if (stepRecord && stepRecord.status === "running") {
+      writeJson(stepPath, {
+        ...stepRecord,
+        status: "error",
+      });
+    }
+  }
+
+  writeJson(path.join(runDir, "workflow.json"), nextRecord);
+  return nextRecord;
 }
 
 function uniquePaths(values: string[]): string[] {
@@ -217,7 +283,7 @@ function summarizeWorkflowFirst(runDir: string): RunSummary | null {
   if (!fs.existsSync(recordPath)) {
     return null;
   }
-  const record = readJson(recordPath);
+  const record = reconcileWorkflowRecord(runDir, readJson(recordPath));
   const steps = Array.isArray(record.steps) ? record.steps : [];
   return {
     id: String(record.id || path.basename(runDir)),
@@ -371,7 +437,7 @@ function loadWorkflowFirstDetail(runRoot: string, runId: string, options: LoadOp
   if (!fs.existsSync(recordPath)) {
     return null;
   }
-  const record = readJson(recordPath);
+  const record = reconcileWorkflowRecord(runDir, readJson(recordPath));
   const stepEntries = Array.isArray(record.steps) ? record.steps : [];
   const relations = readJsonLinesIfExists(path.join(runDir, "relations.jsonl")) as RunRelationRecord[];
 

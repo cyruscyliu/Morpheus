@@ -307,3 +307,86 @@ test("workflow-first steps with empty logs do not advertise log URLs", () => {
   assert.equal(detail.steps[0]?.logUrl, `/api/runs/${workflowId}/steps/01-has-log/log`);
   assert.equal(detail.steps[1]?.logUrl, null);
 });
+
+test("listRunSummaries reconciles stale running workflows to error", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-store-"));
+  const runRoot = path.join(workspaceRoot, "runs");
+  const workflowId = "wf-stale-running-summary";
+  const workflowDir = path.join(runRoot, workflowId);
+
+  writeJson(path.join(workflowDir, "workflow.json"), {
+    id: workflowId,
+    workflow: "stale-workflow",
+    category: "run",
+    status: "running",
+    createdAt: "2026-04-30T08:00:00.000Z",
+    updatedAt: "2026-04-30T08:01:00.000Z",
+    runnerPid: 99999999,
+    currentChildPid: null,
+    currentStepId: "01-step",
+    steps: [
+      {
+        id: "01-step",
+        name: "step",
+        status: "running",
+        stepDir: path.join(workflowDir, "steps", "01-step"),
+      },
+    ],
+  });
+  writeJson(path.join(workflowDir, "steps", "01-step", "step.json"), {
+    id: "01-step",
+    name: "step",
+    kind: "tool",
+    status: "running",
+  });
+
+  const summaries = listRunSummaries(runRoot);
+  assert.equal(summaries[0]?.status, "error");
+
+  const record = JSON.parse(fs.readFileSync(path.join(workflowDir, "workflow.json"), "utf8"));
+  assert.equal(record.status, "error");
+  assert.equal(record.runnerPid, null);
+  assert.equal(record.currentChildPid, null);
+  assert.equal(record.steps[0]?.status, "error");
+});
+
+test("loadRunDetail reconciles stale running step status to error", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-store-"));
+  const runRoot = path.join(workspaceRoot, "runs");
+  const workflowId = "wf-stale-running-detail";
+  const workflowDir = path.join(runRoot, workflowId);
+
+  writeJson(path.join(workflowDir, "workflow.json"), {
+    id: workflowId,
+    workflow: "stale-workflow",
+    category: "run",
+    status: "running",
+    createdAt: "2026-04-30T08:00:00.000Z",
+    updatedAt: "2026-04-30T08:01:00.000Z",
+    runnerPid: 99999999,
+    currentChildPid: null,
+    currentStepId: "01-step",
+    steps: [
+      {
+        id: "01-step",
+        name: "step",
+        status: "running",
+        stepDir: path.join(workflowDir, "steps", "01-step"),
+      },
+    ],
+  });
+  writeJson(path.join(workflowDir, "steps", "01-step", "step.json"), {
+    id: "01-step",
+    name: "step",
+    kind: "tool",
+    status: "running",
+  });
+
+  const detail = loadRunDetail(runRoot, workflowId);
+  assert.ok(detail);
+  assert.equal(detail.status, "error");
+  assert.equal(detail.steps[0]?.status, "error");
+
+  const stepRecord = JSON.parse(fs.readFileSync(path.join(workflowDir, "steps", "01-step", "step.json"), "utf8"));
+  assert.equal(stepRecord.status, "error");
+});

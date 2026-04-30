@@ -7,10 +7,11 @@
   "scripts": {
     "setup": "pnpm install && pnpm run build && pnpm run install:bin",
     "build": "pnpm run build:apps && pnpm run build:js-tools",
-    "build:apps": "pnpm --filter @morpheus/app build && pnpm --filter @morpheus/docs build && pnpm --filter @morpheus/runs-viewer build",
+    "build:apps": "pnpm --filter @morpheus/app build && pnpm --filter @morpheus/docs build && pnpm --filter @morpheus/runs-viewer build && pnpm --filter @morpheus/outline-editor build",
     "build:js-tools": "pnpm --filter @morpheus/buildroot build && pnpm --filter @morpheus/microkit-sdk build && pnpm --filter @morpheus/qemu build && pnpm --filter @morpheus/nvirsh build && pnpm --filter @morpheus/sel4 build && pnpm --filter @morpheus/libvmm build && pnpm --filter @morpheus/outline-to-paper build",
     "dev:docs": "pnpm --filter @morpheus/docs dev",
     "dev:runs-viewer": "pnpm --filter @morpheus/runs-viewer dev",
+    "dev:outline-editor": "pnpm --filter @morpheus/outline-editor dev",
     "smoke:tool:buildroot": "pnpm --filter @morpheus/buildroot smoke",
     "smoke:tool:microkit-sdk": "pnpm --filter @morpheus/microkit-sdk smoke",
     "smoke:tool:qemu": "pnpm --filter @morpheus/qemu smoke",
@@ -18,8 +19,8 @@
     "smoke:tool:sel4": "pnpm --filter @morpheus/sel4 smoke",
     "smoke:tool:libvmm": "pnpm --filter @morpheus/libvmm smoke",
     "smoke:tool:outline-to-paper": "pnpm --filter @morpheus/outline-to-paper smoke",
-    "test": "pnpm --filter @morpheus/app test && pnpm --filter @morpheus/docs test && pnpm --filter @morpheus/runs-viewer test && pnpm --filter @morpheus/buildroot test && pnpm --filter @morpheus/microkit-sdk test && pnpm --filter @morpheus/qemu test && pnpm --filter @morpheus/nvirsh test && pnpm --filter @morpheus/sel4 test && pnpm --filter @morpheus/libvmm test && pnpm --filter @morpheus/outline-to-paper test",
-    "lint": "pnpm --filter @morpheus/app lint && pnpm --filter @morpheus/docs lint && pnpm --filter @morpheus/runs-viewer lint && pnpm --filter @morpheus/buildroot lint && pnpm --filter @morpheus/microkit-sdk lint && pnpm --filter @morpheus/qemu lint && pnpm --filter @morpheus/nvirsh lint && pnpm --filter @morpheus/sel4 lint && pnpm --filter @morpheus/libvmm lint && pnpm --filter @morpheus/outline-to-paper lint",
+    "test": "pnpm --filter @morpheus/app test && pnpm --filter @morpheus/docs test && pnpm --filter @morpheus/runs-viewer test && pnpm --filter @morpheus/outline-editor test && pnpm --filter @morpheus/buildroot test && pnpm --filter @morpheus/microkit-sdk test && pnpm --filter @morpheus/qemu test && pnpm --filter @morpheus/nvirsh test && pnpm --filter @morpheus/sel4 test && pnpm --filter @morpheus/libvmm test && pnpm --filter @morpheus/outline-to-paper test",
+    "lint": "pnpm --filter @morpheus/app lint && pnpm --filter @morpheus/docs lint && pnpm --filter @morpheus/runs-viewer lint && pnpm --filter @morpheus/outline-editor lint && pnpm --filter @morpheus/buildroot lint && pnpm --filter @morpheus/microkit-sdk lint && pnpm --filter @morpheus/qemu lint && pnpm --filter @morpheus/nvirsh lint && pnpm --filter @morpheus/sel4 lint && pnpm --filter @morpheus/libvmm lint && pnpm --filter @morpheus/outline-to-paper lint",
     "install:bin": "node scripts/install-bin.mjs"
   },
   "devDependencies": {

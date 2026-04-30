@@ -1,0 +1,6 @@
+{
+  "/api/outline/document/route": "app/api/outline/document/route.js",
+  "/api/outline/save/route": "app/api/outline/save/route.js",
+  "/api/outline/versions/route": "app/api/outline/versions/route.js",
+  "/page": "app/page.js"
+}

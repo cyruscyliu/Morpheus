@@ -1,0 +1,22 @@
+{
+  "name": "@morpheus/outline-editor",
+  "private": true,
+  "version": "0.3.0",
+  "type": "module",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev --hostname 127.0.0.1 --port 4175",
+    "lint": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "test": "pnpm exec node --import tsx --test tests/*.ts"
+  },
+  "dependencies": {
+    "next": "^15.3.2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.4",
+    "@types/react-dom": "^19.1.4",
+    "tsx": "^4.20.3"
+  }
+}

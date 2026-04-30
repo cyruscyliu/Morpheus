@@ -242,6 +242,28 @@ function readManifestOrThrow(flags: Record<string, unknown>) {
   return manifest;
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForDetachedLaunch(flags: Record<string, unknown>, launcherPid: number | undefined) {
+  const deadline = Date.now() + 2000;
+  while (Date.now() < deadline) {
+    const manifest = readManifestOrThrow(flags);
+    if (manifest.status === 'error' || manifest.status === 'stopped' || manifest.status === 'success') {
+      return manifest;
+    }
+    if (manifest.status === 'running' && manifest.pid && isRunning(manifest.pid)) {
+      return manifest;
+    }
+    if (launcherPid && !isRunning(launcherPid) && (!manifest.pid || !isRunning(manifest.pid))) {
+      return manifest;
+    }
+    await sleep(100);
+  }
+  return readManifestOrThrow(flags);
+}
+
 function findManifestFiles(rootDir: string) {
   const results: string[] = [];
   const stack = [rootDir];
@@ -654,6 +676,47 @@ async function runLaunch(flags: Record<string, unknown>): Promise<any> {
 
     nextManifest.runnerPid = child.pid;
     writeJson(manifestPath(flags), nextManifest);
+    const launchedManifest = await waitForDetachedLaunch(flags, child.pid);
+    if (launchedManifest.status === 'error') {
+      return {
+        command: 'run',
+        status: 'error',
+        exit_code: typeof launchedManifest.exitCode === 'number' ? launchedManifest.exitCode : 1,
+        summary: launchedManifest.errorMessage || 'failed to start local target instance',
+        details: {
+          manifest: launchedManifest,
+          detach: true,
+        },
+      };
+    }
+    if (launchedManifest.status === 'stopped') {
+      return {
+        command: 'run',
+        status: 'error',
+        exit_code: typeof launchedManifest.exitCode === 'number' ? launchedManifest.exitCode : 1,
+        summary: 'local target instance stopped during startup',
+        details: {
+          manifest: launchedManifest,
+          detach: true,
+        },
+      };
+    }
+    if (
+      launchedManifest.status !== 'running'
+      && launchedManifest.status !== 'success'
+      && (!launchedManifest.pid || !isRunning(launchedManifest.pid))
+    ) {
+      return {
+        command: 'run',
+        status: 'error',
+        exit_code: 1,
+        summary: 'local target instance exited before entering running state',
+        details: {
+          manifest: launchedManifest,
+          detach: true,
+        },
+      };
+    }
 
     return {
       command: 'run',
@@ -661,7 +724,7 @@ async function runLaunch(flags: Record<string, unknown>): Promise<any> {
       exit_code: 0,
       summary: 'started local target instance',
       details: {
-        manifest: nextManifest,
+        manifest: launchedManifest,
         detach: true,
       },
     };

@@ -7,8 +7,10 @@ apps/docs/dist/
 apps/docs/.tsbuild/
 apps/docs/.next/
 apps/docs/out/
+apps/outline-editor/.next/
 apps/runs-viewer/.tsbuild/
 apps/runs-viewer/.next/
+apps/morpheus/runs/
 __pycache__/
 *.pyc
 .pytest_cache/

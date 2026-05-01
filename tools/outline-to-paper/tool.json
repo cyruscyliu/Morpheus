@@ -12,9 +12,6 @@
   },
   "managed": {
     "schemaVersion": 1,
-    "modes": ["local"],
-    "local": {
-      "execDirTemplate": "runs/{tool}-exec"
-    }
+    "modes": ["local"]
   }
 }

@@ -413,12 +413,9 @@ function stopWorkflowStepTool(step) {
     ? process.execPath
     : entryPath;
   const result = spawnSync(command, args, {
-    cwd: process.cwd(),
+    cwd: step.stepDir,
     encoding: "utf8",
-    env: {
-      ...process.env,
-      MORPHEUS_RUN_DIR_OVERRIDE: stepToolRunDir(step.stepDir),
-    },
+    env: process.env,
   });
   return result;
 }
@@ -786,14 +783,15 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
   return new Promise((resolve, reject) => {
     const attach = Boolean(options.attach);
     const eventContext = options.eventContext || {};
+    const childCwd = options.cwd || process.cwd();
     const child = attach
       ? spawn(process.execPath, args, {
-          cwd: process.cwd(),
+          cwd: childCwd,
           env,
           stdio: "inherit",
         })
       : spawn(process.execPath, args, {
-          cwd: process.cwd(),
+          cwd: childCwd,
           env,
           stdio: ["ignore", "pipe", "pipe"],
         });
@@ -1311,7 +1309,6 @@ async function runToolWorkflow({
         ...process.env,
         MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1",
         ...(configPath ? { MORPHEUS_CONFIG: configPath } : {}),
-        MORPHEUS_RUN_DIR_OVERRIDE: stepToolRunDir(step.stepDir),
         MORPHEUS_EVENT_LOG_FILE: workflowEventLogPath(workflow.runDir),
         MORPHEUS_EVENT_CONTEXT: JSON.stringify({
           workflow_id: workflow.id,
@@ -1326,7 +1323,7 @@ async function runToolWorkflow({
           currentChildPid: childPid || null,
         }));
       },
-      { attach, eventContext: { workflowId: workflow.id, stepId: step.id, tool: step.tool } },
+      { attach, cwd: step.stepDir, eventContext: { workflowId: workflow.id, stepId: step.id, tool: step.tool } },
     );
     let toolPayload = attach
       ? attachedWorkflowStepPayload(step, toolCommand, result)

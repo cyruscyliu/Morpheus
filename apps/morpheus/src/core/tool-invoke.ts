@@ -227,14 +227,15 @@ function spawnTool(descriptor, args) {
 
 async function runToolStreaming(descriptor, args, options = {}) {
   const entryPath = path.join(repoRoot(), descriptor.installRoot, descriptor.entry);
+  const childCwd = options.cwd || process.cwd();
   const child = descriptor.runtime === "node"
     ? spawn(process.execPath, [entryPath, ...args], {
-        cwd: process.cwd(),
+        cwd: childCwd,
         env: options.env || process.env,
         stdio: ["ignore", "pipe", "pipe"],
       })
     : spawn(entryPath, args, {
-        cwd: process.cwd(),
+        cwd: childCwd,
         env: options.env || process.env,
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -1021,9 +1022,6 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   const legacyExecRunDir = command === "exec" && workspaceForExec
     ? path.join(workspaceForExec, "tmp", tool, "exec")
     : null;
-  const legacyFlatWorkflowRunDir = command === "exec" && workspaceForExec
-    ? path.join(workspaceForExec, "runs", `${tool}-exec`)
-    : null;
   const managedRunDir = command === "exec" && workspaceForExec
     ? (
       defaultExecRunDir(workspaceForExec, tool, descriptor, {
@@ -1042,23 +1040,12 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   ) {
     fs.rmSync(path.dirname(legacyExecRunDir), { recursive: true, force: true });
   }
-  if (
-    command === "exec"
-    && workspaceForExec
-    && managedRunDir
-    && legacyFlatWorkflowRunDir
-    && !managedRunDir.startsWith(`${legacyFlatWorkflowRunDir}${path.sep}`)
-  ) {
-    fs.rmSync(legacyFlatWorkflowRunDir, { recursive: true, force: true });
-  }
-  const env = managedRunDir
-    ? { ...process.env, MORPHEUS_RUN_DIR_OVERRIDE: managedRunDir }
-    : process.env;
+  const childCwd = managedRunDir || process.cwd();
 
   const payload = remoteEnabled
     ? await executeRemoteTopLevelToolCommand(command, tool, args, effective, flags)
     : parseToolPayload(
-      await runToolStreaming(descriptor, args, { jsonMode: Boolean(flags.json), env }),
+      await runToolStreaming(descriptor, args, { jsonMode: Boolean(flags.json), env: process.env, cwd: childCwd }),
       `failed to ${command} with tool ${tool}`
     );
   if (command === "exec" && payload && typeof payload.command === "string") {

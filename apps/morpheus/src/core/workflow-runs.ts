@@ -68,7 +68,7 @@ function stepArtifactsDir(stepDir) {
 }
 
 function stepToolRunDir(stepDir) {
-  return path.join(stepDir, "run");
+  return stepDir;
 }
 
 function readJson(filePath) {

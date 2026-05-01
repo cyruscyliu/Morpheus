@@ -16,17 +16,10 @@ function run(args, options = {}) {
   });
 }
 
-function managedEnv(runDir) {
-  return {
-    ...process.env,
-    MORPHEUS_RUN_DIR_OVERRIDE: runDir,
-  };
-}
-
-function writeCurrentOutlineVersion(workspace, versionName, outline) {
-  const versionsDir = path.join(workspace, "outline-versions");
+function writeCurrentOutlineVersion(stateRoot, versionName, outline) {
+  const versionsDir = path.join(stateRoot, "outline-versions");
   const versionPath = path.join(versionsDir, `${versionName}.json`);
-  const currentPath = path.join(workspace, "current-outline.json");
+  const currentPath = path.join(stateRoot, "current-outline.json");
   fs.mkdirSync(versionsDir, { recursive: true });
   fs.writeFileSync(versionPath, JSON.stringify({
     schema_version: 1,
@@ -42,12 +35,30 @@ function writeCurrentOutlineVersion(workspace, versionName, outline) {
   return { versionPath, currentPath };
 }
 
+function workflowRunDir(projectRoot, workflowId, stepId = "outline_to_paper") {
+  return path.join(projectRoot, "workspace", "runs", workflowId, "steps", stepId);
+}
+
+function ensureStepDir(stepDir, stepId = path.basename(stepDir), tool = "outline-to-paper") {
+  fs.mkdirSync(stepDir, { recursive: true });
+  fs.writeFileSync(path.join(stepDir, "step.json"), JSON.stringify({
+    id: stepId,
+    name: stepId,
+    tool,
+    status: "running",
+    stepDir,
+    toolRunDir: stepDir,
+    logFile: path.join(stepDir, "stdout.log"),
+  }, null, 2));
+}
+
 test("run emits stable paper artifacts", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "outline-to-paper-"));
   const workspace = path.join(projectRoot, "workspace");
-  const runDir = path.join(projectRoot, "managed-run");
+  const runDir = workflowRunDir(projectRoot, "wf-run-artifacts");
   const outline = path.join(projectRoot, "outline.json");
   fs.mkdirSync(workspace, { recursive: true });
+  ensureStepDir(runDir);
   fs.writeFileSync(outline, JSON.stringify({
     title: "Paper Test",
     sections: [
@@ -82,23 +93,23 @@ test("run emits stable paper artifacts", () => {
     ]
   }));
 
-  const result = run(["run", "--json", "--workspace", workspace, "--outline", outline], {
-    env: managedEnv(runDir),
-  });
+  const result = run(["run", "--json", "--workspace", workspace, "--outline", outline], { cwd: runDir });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.status, "success");
   const manifest = JSON.parse(fs.readFileSync(payload.details.manifest, "utf8"));
   assert.equal(Array.isArray(manifest.artifacts), true);
   assert.equal(fs.existsSync(path.join(payload.details.run_dir, "draft", "paper.tex")), true);
+  assert.equal(fs.existsSync(path.join(payload.details.run_dir, "outline", "normalized-outline.md")), true);
 });
 
 test("inspect and logs read an existing run", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "outline-to-paper-inspect-"));
   const workspace = path.join(projectRoot, "workspace");
-  const runDir = path.join(projectRoot, "managed-run");
+  const runDir = workflowRunDir(projectRoot, "wf-inspect");
   const outline = path.join(projectRoot, "outline.json");
   fs.mkdirSync(workspace, { recursive: true });
+  ensureStepDir(runDir);
   fs.writeFileSync(outline, JSON.stringify({
     title: "Paper Test 2",
     sections: [
@@ -111,19 +122,13 @@ test("inspect and logs read an existing run", () => {
     ]
   }));
 
-  const first = JSON.parse(run(["run", "--json", "--workspace", workspace, "--outline", outline], {
-    env: managedEnv(runDir),
-  }).stdout);
-  const inspect = run(["inspect", "--json", "--workspace", workspace], {
-    env: managedEnv(runDir),
-  });
+  const first = JSON.parse(run(["run", "--json", "--workspace", workspace, "--outline", outline], { cwd: runDir }).stdout);
+  const inspect = run(["inspect", "--json", "--workspace", workspace], { cwd: runDir });
   assert.equal(inspect.status, 0, inspect.stderr || inspect.stdout);
   const inspectPayload = JSON.parse(inspect.stdout);
   assert.equal(inspectPayload.details.id, first.details.id);
 
-  const logs = run(["logs", "--json", "--workspace", workspace], {
-    env: managedEnv(runDir),
-  });
+  const logs = run(["logs", "--json", "--workspace", workspace], { cwd: runDir });
   assert.equal(logs.status, 0, logs.stderr || logs.stdout);
   const logPayload = JSON.parse(logs.stdout);
   assert.match(logPayload.details.text, /\[outline-to-paper\] run start/);
@@ -132,9 +137,9 @@ test("inspect and logs read an existing run", () => {
 test("stop marks a managed run as stopped", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "outline-to-paper-stop-"));
   const workspace = path.join(projectRoot, "workspace");
-  const runDir = path.join(projectRoot, "managed-run");
+  const runDir = workflowRunDir(projectRoot, "wf-stop");
   fs.mkdirSync(workspace, { recursive: true });
-  fs.mkdirSync(runDir, { recursive: true });
+  ensureStepDir(runDir);
 
   const sleeper = spawn("sleep", ["30"], { stdio: "ignore" });
   const manifestPath = path.join(runDir, "manifest.json");
@@ -146,9 +151,7 @@ test("stop marks a managed run as stopped", () => {
     pid: sleeper.pid,
   }, null, 2));
 
-  const stopped = run(["stop", "--json", "--workspace", workspace], {
-    env: managedEnv(runDir),
-  });
+  const stopped = run(["stop", "--json", "--workspace", workspace], { cwd: runDir });
   assert.equal(stopped.status, 0, stopped.stderr || stopped.stdout);
   const payload = JSON.parse(stopped.stdout);
   assert.equal(payload.status, "success");
@@ -160,9 +163,10 @@ test("stop marks a managed run as stopped", () => {
 test("run supports stage-limited execution through --only-phase", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "outline-to-paper-phase-"));
   const workspace = path.join(projectRoot, "workspace");
-  const runDir = path.join(projectRoot, "managed-run");
+  const runDir = workflowRunDir(projectRoot, "wf-phase");
   const outline = path.join(projectRoot, "outline.json");
   fs.mkdirSync(workspace, { recursive: true });
+  ensureStepDir(runDir);
   fs.writeFileSync(outline, JSON.stringify({
     title: "Phase Test",
     sections: [
@@ -197,9 +201,7 @@ test("run supports stage-limited execution through --only-phase", () => {
     ]
   }));
 
-  const result = run(["run", "--json", "--workspace", workspace, "--outline", outline, "--only-phase", "revise"], {
-    env: managedEnv(runDir),
-  });
+  const result = run(["run", "--json", "--workspace", workspace, "--outline", outline, "--only-phase", "revise"], { cwd: runDir });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout);
   assert.deepEqual(payload.details.phases, ["revise"]);
@@ -210,9 +212,10 @@ test("run supports stage-limited execution through --only-phase", () => {
 test("revise output preserves nested outline contract without legacy top-level claims", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "outline-to-paper-revise-"));
   const workspace = path.join(projectRoot, "workspace");
-  const runDir = path.join(projectRoot, "managed-run");
+  const runDir = workflowRunDir(projectRoot, "wf-revise");
   const outline = path.join(projectRoot, "outline.json");
   fs.mkdirSync(workspace, { recursive: true });
+  ensureStepDir(runDir);
   fs.writeFileSync(outline, JSON.stringify({
     title: "Revise Contract Test",
     sections: [
@@ -247,9 +250,7 @@ test("revise output preserves nested outline contract without legacy top-level c
     ]
   }));
 
-  const result = run(["run", "--json", "--workspace", workspace, "--outline", outline, "--only-phase", "revise"], {
-    env: managedEnv(runDir),
-  });
+  const result = run(["run", "--json", "--workspace", workspace, "--outline", outline, "--only-phase", "revise"], { cwd: runDir });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const revised = JSON.parse(fs.readFileSync(path.join(runDir, "revise", "revised-outline.json"), "utf8"));
   assert.equal(Object.prototype.hasOwnProperty.call(revised, "claims"), false);
@@ -264,7 +265,8 @@ test("revise output preserves nested outline contract without legacy top-level c
 test("outline phase prefers current-outline symlink over the requested source outline", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "outline-to-paper-current-"));
   const workspace = path.join(projectRoot, "workspace");
-  const runDir = path.join(projectRoot, "managed-run");
+  const workflowRunDir = path.join(workspace, "runs", "wf-current");
+  const runDir = path.join(workflowRunDir, "steps", "outline_phase");
   const sourceOutline = path.join(projectRoot, "outline.json");
   fs.mkdirSync(workspace, { recursive: true });
   fs.writeFileSync(sourceOutline, JSON.stringify({
@@ -277,7 +279,7 @@ test("outline phase prefers current-outline symlink over the requested source ou
       }
     ]
   }));
-  writeCurrentOutlineVersion(workspace, "outline-v0001", {
+  writeCurrentOutlineVersion(workflowRunDir, "outline-v0001", {
     title: "Current Outline",
     sections: [
       {
@@ -288,22 +290,24 @@ test("outline phase prefers current-outline symlink over the requested source ou
     ]
   });
 
-  const result = run(["run", "--json", "--workspace", workspace, "--outline", sourceOutline, "--only-phase", "outline"], {
-    env: managedEnv(runDir),
-  });
+  ensureStepDir(runDir, "outline_phase");
+  const result = run(["run", "--json", "--workspace", workspace, "--outline", sourceOutline, "--only-phase", "outline"], { cwd: runDir });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const normalized = JSON.parse(fs.readFileSync(path.join(runDir, "outline", "normalized-outline.json"), "utf8"));
+  const normalizedMarkdown = fs.readFileSync(path.join(runDir, "outline", "normalized-outline.md"), "utf8");
   assert.equal(normalized.title, "Current Outline");
+  assert.match(normalizedMarkdown, /^# Current Outline$/m);
 });
 
 test("revise phase prefers normalized outline and updates current-outline symlink to a new version", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "outline-to-paper-loop-"));
   const workspace = path.join(projectRoot, "workspace");
   const workflowRunDir = path.join(workspace, "runs", "wf-test");
-  const outlineRunDir = path.join(workflowRunDir, "steps", "outline_phase", "run");
-  const reviseRunDir = path.join(workflowRunDir, "steps", "revise_phase", "run");
+  const outlineRunDir = path.join(workflowRunDir, "steps", "outline_phase");
+  const reviseRunDir = path.join(workflowRunDir, "steps", "revise_phase");
   const sourceOutline = path.join(projectRoot, "outline.json");
   fs.mkdirSync(workspace, { recursive: true });
+  ensureStepDir(reviseRunDir, "revise_phase");
   fs.writeFileSync(sourceOutline, JSON.stringify({
     title: "Source Outline",
     sections: [
@@ -370,17 +374,54 @@ test("revise phase prefers normalized outline and updates current-outline symlin
     ]
   }));
 
-  const result = run(["run", "--json", "--workspace", workspace, "--outline", sourceOutline, "--only-phase", "revise"], {
-    env: managedEnv(reviseRunDir),
-  });
+  const result = run(["run", "--json", "--workspace", workspace, "--outline", sourceOutline, "--only-phase", "revise"], { cwd: reviseRunDir });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const revised = JSON.parse(fs.readFileSync(path.join(reviseRunDir, "revise", "revised-outline.json"), "utf8"));
+  const revisedMarkdown = fs.readFileSync(path.join(reviseRunDir, "revise", "revised-outline.md"), "utf8");
   assert.equal(revised.title, "Normalized Outline");
-  const currentPath = path.join(workspace, "current-outline.json");
+  assert.match(revisedMarkdown, /^# Normalized Outline$/m);
+  const currentPath = path.join(workflowRunDir, "current-outline.json");
   assert.equal(fs.lstatSync(currentPath).isSymbolicLink(), true);
   const versionPath = path.resolve(path.dirname(currentPath), fs.readlinkSync(currentPath));
   const versioned = JSON.parse(fs.readFileSync(versionPath, "utf8"));
   assert.equal(versioned.schema_version, 1);
   assert.equal(versioned.source, "revise-phase");
   assert.equal(versioned.outline.title, "Normalized Outline");
+});
+
+test("workflow-local current outline does not leak across workflow runs in one workspace", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "outline-to-paper-workflow-scope-"));
+  const workspace = path.join(projectRoot, "workspace");
+  const workflowOneRoot = path.join(workspace, "runs", "wf-one");
+  const workflowTwoRoot = path.join(workspace, "runs", "wf-two");
+  const runDir = path.join(workflowTwoRoot, "steps", "outline_phase");
+  const sourceOutline = path.join(projectRoot, "outline.json");
+  fs.mkdirSync(workspace, { recursive: true });
+  fs.writeFileSync(sourceOutline, JSON.stringify({
+    title: "Requested Outline",
+    sections: [
+      {
+        section_id: "requested-sec",
+        title: "Requested Section",
+        paragraphs: []
+      }
+    ]
+  }));
+  writeCurrentOutlineVersion(workflowOneRoot, "outline-v0001", {
+    title: "Workflow One Outline",
+    sections: [
+      {
+        section_id: "wf-one-sec",
+        title: "Workflow One Section",
+        paragraphs: []
+      }
+    ]
+  });
+
+  ensureStepDir(runDir, "outline_phase");
+  const result = run(["run", "--json", "--workspace", workspace, "--outline", sourceOutline, "--only-phase", "outline"], { cwd: runDir });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const normalized = JSON.parse(fs.readFileSync(path.join(runDir, "outline", "normalized-outline.json"), "utf8"));
+  assert.equal(normalized.title, "Requested Outline");
+  assert.equal(fs.existsSync(path.join(workflowTwoRoot, "current-outline.json")), false);
 });

@@ -4,6 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
+const { outlineToMarkdown } = require("./outline-markdown");
 
 function parseArgs(argv) {
   const positionals = [];
@@ -135,42 +136,43 @@ function repoToolRoot() {
   return __dirname;
 }
 
-function explicitRunDir(flags) {
-  const envValue = String(process.env.MORPHEUS_RUN_DIR_OVERRIDE || "").trim();
-  if (envValue) {
-    return path.resolve(envValue);
-  }
-  const flagValue = String(flags["run-dir"] || flags["state-dir"] || "").trim();
-  if (flagValue) {
-    return path.resolve(flagValue);
-  }
-  return null;
+function managedStepDir() {
+  const cwd = path.resolve(process.cwd());
+  return fs.existsSync(path.join(cwd, "step.json")) ? cwd : null;
 }
 
-function requireManagedInvocation(command, flags) {
-  const runDir = explicitRunDir(flags);
-  if (!runDir) {
+function requireManagedInvocation(command) {
+  const stepDir = managedStepDir();
+  if (!stepDir) {
     throw new Error(
       `${command} is Morpheus-managed only; use 'morpheus workflow run/inspect/logs' instead of invoking outline-to-paper directly`
     );
   }
-  return runDir;
+  return stepDir;
 }
 
 function runsRoot(workspace) {
   return path.join(path.resolve(workspace), "runs");
 }
 
-function currentOutlinePath(workspace) {
-  return path.join(path.resolve(workspace), "current-outline.json");
+function outlineStateRoot(workspace, runDir = null) {
+  const workflowRunRoot = workflowRunRootFromRunDir(runDir);
+  if (!workflowRunRoot) {
+    throw new Error("outline-to-paper requires a workflow-managed run directory for outline state");
+  }
+  return workflowRunRoot;
 }
 
-function currentOutlineVersionsDir(workspace) {
-  return path.join(path.resolve(workspace), "outline-versions");
+function currentOutlinePath(workspace, runDir = null) {
+  return path.join(outlineStateRoot(workspace, runDir), "current-outline.json");
 }
 
-function readCurrentOutlineSymlink(workspace) {
-  const currentPath = currentOutlinePath(workspace);
+function currentOutlineVersionsDir(workspace, runDir = null) {
+  return path.join(outlineStateRoot(workspace, runDir), "outline-versions");
+}
+
+function readCurrentOutlineSymlink(workspace, runDir = null) {
+  const currentPath = currentOutlinePath(workspace, runDir);
   if (!fs.existsSync(currentPath) || !fs.lstatSync(currentPath).isSymbolicLink()) {
     return null;
   }
@@ -178,8 +180,8 @@ function readCurrentOutlineSymlink(workspace) {
   return path.resolve(path.dirname(currentPath), target);
 }
 
-function nextOutlineVersionPath(workspace) {
-  const versionsDir = currentOutlineVersionsDir(workspace);
+function nextOutlineVersionPath(workspace, runDir = null) {
+  const versionsDir = currentOutlineVersionsDir(workspace, runDir);
   fs.mkdirSync(versionsDir, { recursive: true });
   const existing = fs.readdirSync(versionsDir)
     .map((name) => {
@@ -192,8 +194,8 @@ function nextOutlineVersionPath(workspace) {
 }
 
 function writeVersionedCurrentOutline(workspace, outline, metadata = {}) {
-  const versionPath = nextOutlineVersionPath(workspace);
-  const currentPath = currentOutlinePath(workspace);
+  const versionPath = nextOutlineVersionPath(workspace, metadata.runDir || null);
+  const currentPath = currentOutlinePath(workspace, metadata.runDir || null);
   const payload = {
     schema_version: 1,
     version_id: path.basename(versionPath, ".json"),
@@ -240,18 +242,17 @@ function readOutlinePayload(filePath) {
   };
 }
 
-function workflowRunRootFromRunDir(runDir) {
-  const stepDir = path.dirname(runDir);
+function workflowRunRootFromRunDir(stepDir) {
   const stepsDir = path.dirname(stepDir);
   return path.basename(stepsDir) === "steps" ? path.dirname(stepsDir) : null;
 }
 
-function siblingStepRunDir(runDir, stepId) {
-  const workflowRunRoot = workflowRunRootFromRunDir(runDir);
+function siblingStepRunDir(stepDir, stepId) {
+  const workflowRunRoot = workflowRunRootFromRunDir(stepDir);
   if (!workflowRunRoot) {
     return null;
   }
-  return path.join(workflowRunRoot, "steps", stepId, "run");
+  return path.join(workflowRunRoot, "steps", stepId);
 }
 
 function normalizedOutlineFromWorkflow(runDir) {
@@ -264,8 +265,9 @@ function normalizedOutlineFromWorkflow(runDir) {
 }
 
 function resolvePhaseOutlineInput(workspace, requestedOutlinePath, phases, runDir) {
-  const currentPath = currentOutlinePath(workspace);
-  const currentTargetPath = readCurrentOutlineSymlink(workspace) || (fs.existsSync(currentPath) ? currentPath : null);
+  const currentPath = currentOutlinePath(workspace, runDir);
+  const currentTargetPath = readCurrentOutlineSymlink(workspace, runDir)
+    || (fs.existsSync(currentPath) ? currentPath : null);
   const normalizedFromOutlinePhase = normalizedOutlineFromWorkflow(runDir);
   if (phases.has("revise")) {
     if (normalizedFromOutlinePhase) {
@@ -1473,7 +1475,7 @@ function compileLatex(texPath, hasReferences, engine = "pdflatex", bibliographyB
 
 async function runCommand(flags) {
   const workspace = resolveWorkspace(flags);
-  const configuredRunDir = requireManagedInvocation("outline-to-paper run", flags);
+  const configuredRunDir = requireManagedInvocation("outline-to-paper run");
   const requestedOutlinePath = path.resolve(String(flags.outline || ""));
   const template = String(flags.template || "acsac26");
   const phases = selectedPhases(flags);
@@ -1603,6 +1605,7 @@ async function runCommand(flags) {
   });
 
   const normalizedOutlinePath = path.join(runDir, "outline", "normalized-outline.json");
+  const normalizedOutlineMarkdownPath = path.join(runDir, "outline", "normalized-outline.md");
   const sectionPlanPath = path.join(runDir, "plan", "section-plan.json");
   const templatePlanPath = path.join(runDir, "plan", "template-plan.json");
   const unityReviewPath = path.join(runDir, "revise", "unity-review.json");
@@ -1618,6 +1621,7 @@ async function runCommand(flags) {
   const revisionPlanPath = path.join(runDir, "revise", "revision-plan.json");
   const sectionTodosPath = path.join(runDir, "revise", "section-todos.json");
   const revisedOutlinePath = path.join(runDir, "revise", "revised-outline.json");
+  const revisedOutlineMarkdownPath = path.join(runDir, "revise", "revised-outline.md");
   const texPath = path.join(runDir, "draft", "paper.tex");
   const bibPath = path.join(runDir, "draft", "paper.bib");
   const pdfPath = path.join(runDir, "draft", "paper.pdf");
@@ -1625,7 +1629,7 @@ async function runCommand(flags) {
   const polishedTexPath = path.join(runDir, "edit", "polished-paper.tex");
   const manifestPath = path.join(runDir, "manifest.json");
   const workflowRunRoot = workflowRunRootFromRunDir(runDir);
-  const currentOutlineLinkPath = currentOutlinePath(workspace);
+  const currentOutlineLinkPath = currentOutlinePath(workspace, runDir);
   const createdAt = new Date().toISOString();
 
   writeJson(manifestPath, {
@@ -1649,8 +1653,10 @@ async function runCommand(flags) {
   if (phases.has("outline")) {
     logPhase(logFile, "phase outline start");
     writeJson(normalizedOutlinePath, outline);
+    fs.writeFileSync(normalizedOutlineMarkdownPath, outlineToMarkdown(outline), "utf8");
     logPhase(logFile, "phase outline wrote normalized outline", {
       output: normalizedOutlinePath,
+      markdown: normalizedOutlineMarkdownPath,
     });
   }
   if (phases.has("revise")) {
@@ -1691,13 +1697,16 @@ async function runCommand(flags) {
       })).filter((section) => section.todos.length > 0),
     });
     writeJson(revisedOutlinePath, reviseMerge.revisedDocument);
+    fs.writeFileSync(revisedOutlineMarkdownPath, outlineToMarkdown(reviseMerge.revisedDocument), "utf8");
     const currentOutline = writeVersionedCurrentOutline(workspace, reviseMerge.revisedDocument, {
+      runDir,
       source: "revise-phase",
       workflow_run_id: workflowRunRoot ? path.basename(workflowRunRoot) : null,
       step_id: "revise_phase",
     });
     logPhase(logFile, "phase revise wrote artifacts", {
       revisedOutline: revisedOutlinePath,
+      revisedOutlineMarkdown: revisedOutlineMarkdownPath,
       currentOutline: currentOutline.currentPath,
       currentOutlineVersion: currentOutline.versionPath,
       gaps: gapPath,
@@ -1775,7 +1784,10 @@ async function runCommand(flags) {
 
   const artifacts = [
     ...(phases.has("outline")
-      ? [artifact(relativeArtifact(runDir, normalizedOutlinePath), normalizedOutlinePath)]
+      ? [
+          artifact(relativeArtifact(runDir, normalizedOutlinePath), normalizedOutlinePath),
+          artifact(relativeArtifact(runDir, normalizedOutlineMarkdownPath), normalizedOutlineMarkdownPath),
+        ]
       : []),
     ...(phases.has("draft") || phases.has("edit") || phases.has("review")
       ? [
@@ -1800,6 +1812,7 @@ async function runCommand(flags) {
           artifact(relativeArtifact(runDir, revisionPlanPath), revisionPlanPath),
           artifact(relativeArtifact(runDir, sectionTodosPath), sectionTodosPath),
           artifact(relativeArtifact(runDir, revisedOutlinePath), revisedOutlinePath),
+          artifact(relativeArtifact(runDir, revisedOutlineMarkdownPath), revisedOutlineMarkdownPath),
         ]
       : []),
     ...(phases.has("edit") || phases.has("review")
@@ -1856,7 +1869,7 @@ async function runCommand(flags) {
 
 function inspectCommand(flags) {
   const workspace = resolveWorkspace(flags);
-  const configuredRunDir = requireManagedInvocation("outline-to-paper inspect", flags);
+  const configuredRunDir = requireManagedInvocation("outline-to-paper inspect");
   const id = String(flags.id || "").trim();
   const manifestPath = path.join(configuredRunDir, "manifest.json");
   if (!fs.existsSync(manifestPath)) {
@@ -1874,7 +1887,7 @@ function inspectCommand(flags) {
 
 function logsCommand(flags) {
   const workspace = resolveWorkspace(flags);
-  const configuredRunDir = requireManagedInvocation("outline-to-paper logs", flags);
+  const configuredRunDir = requireManagedInvocation("outline-to-paper logs");
   const id = String(flags.id || "").trim();
   const logPath = path.join(configuredRunDir, "stdout.log");
   if (!fs.existsSync(logPath)) {
@@ -1895,7 +1908,7 @@ function logsCommand(flags) {
 }
 
 function stopCommand(flags) {
-  const configuredRunDir = requireManagedInvocation("outline-to-paper stop", flags);
+  const configuredRunDir = requireManagedInvocation("outline-to-paper stop");
   const manifestPath = path.join(configuredRunDir, "manifest.json");
   if (!fs.existsSync(manifestPath)) {
     throw new Error(`run not found: ${configuredRunDir}`);

@@ -15,11 +15,6 @@ function nestedRunsRoot(runDir) {
 }
 
 function resolveManagedRunDir(workspace, id) {
-  const explicitRunDir = process.env.MORPHEUS_RUN_DIR_OVERRIDE;
-  if (explicitRunDir) {
-    return path.resolve(process.cwd(), explicitRunDir);
-  }
-
   const explicitRunsRoot = process.env.MORPHEUS_RUNS_ROOT_OVERRIDE;
   if (explicitRunsRoot) {
     return path.join(path.resolve(process.cwd(), explicitRunsRoot), id);
@@ -29,21 +24,13 @@ function resolveManagedRunDir(workspace, id) {
 }
 
 function withNestedRunRoot(parentRunDir, callback) {
-  const previousRunDir = process.env.MORPHEUS_RUN_DIR_OVERRIDE;
   const previousRunsRoot = process.env.MORPHEUS_RUNS_ROOT_OVERRIDE;
 
-  delete process.env.MORPHEUS_RUN_DIR_OVERRIDE;
   process.env.MORPHEUS_RUNS_ROOT_OVERRIDE = nestedRunsRoot(parentRunDir);
 
   try {
     return callback();
   } finally {
-    if (previousRunDir == null) {
-      delete process.env.MORPHEUS_RUN_DIR_OVERRIDE;
-    } else {
-      process.env.MORPHEUS_RUN_DIR_OVERRIDE = previousRunDir;
-    }
-
     if (previousRunsRoot == null) {
       delete process.env.MORPHEUS_RUNS_ROOT_OVERRIDE;
     } else {

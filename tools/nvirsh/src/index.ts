@@ -192,9 +192,9 @@ function normalizeTarget(flags: Record<string, unknown>) {
 }
 
 function defaultStateDir(flags: Record<string, unknown>) {
-  const override = resolvePathValue(String(process.env.MORPHEUS_RUN_DIR_OVERRIDE || '').trim());
-  if (override) {
-    return override;
+  const managed = managedRunDir();
+  if (managed) {
+    return managed;
   }
   const name = String(flags.name || 'default');
   const workspaceRoot = configuredWorkspaceRoot();
@@ -225,7 +225,8 @@ function instanceName(flags: Record<string, unknown>) {
 }
 
 function managedRunDir() {
-  return resolvePathValue(String(process.env.MORPHEUS_RUN_DIR_OVERRIDE || '').trim());
+  const cwd = path.resolve(process.cwd());
+  return fs.existsSync(path.join(cwd, 'step.json')) ? cwd : null;
 }
 
 function requireManagedInvocation(command: string) {

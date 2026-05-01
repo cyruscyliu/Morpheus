@@ -253,7 +253,7 @@ test("workflow stop invokes tool stop for attached managed runs", () => {
   const runId = "wf-stop-tool-test";
   const runDir = path.join(workspaceRoot, "runs", runId);
   const stepDir = path.join(runDir, "steps", "01-run");
-  const toolRunDir = path.join(stepDir, "run");
+  const toolRunDir = stepDir;
   fs.mkdirSync(toolRunDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
 
@@ -329,7 +329,7 @@ test("workflow stop invokes tool stop for detached managed runs whose step alrea
   const runId = "wf-stop-detached-tool-test";
   const runDir = path.join(workspaceRoot, "runs", runId);
   const stepDir = path.join(runDir, "steps", "01-run");
-  const toolRunDir = path.join(stepDir, "run");
+  const toolRunDir = stepDir;
   fs.mkdirSync(toolRunDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
 
@@ -635,43 +635,6 @@ test("tool exec surfaces detached nvirsh startup failures", () => {
   assert.equal(payload.exit_code, 2);
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
-});
-
-test("tool exec can use a descriptor-defined managed exec run dir outside tmp", () => {
-  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-outline-exec-"));
-  const outline = path.join(workspaceRoot, "outline.json");
-  fs.writeFileSync(outline, JSON.stringify({
-    title: "Outline Exec Test",
-    sections: [
-      {
-        section_id: "sec-1",
-        title: "Section One",
-        purpose: "Minimal section.",
-        paragraphs: [],
-      },
-    ],
-  }), "utf8");
-
-  const result = run([
-    "--json",
-    "exec",
-    "--tool",
-    "outline-to-paper",
-    "--workspace",
-    workspaceRoot,
-    "--outline",
-    outline,
-  ], {
-    cwd: workspaceRoot,
-    env: isolatedEnv(),
-  });
-  assert.equal(result.status, 0, result.stderr || result.stdout);
-  const payload = JSON.parse(result.stdout.trim());
-  assert.equal(payload.status, "success");
-  assert.match(String(payload.details.run_dir || ""), /runs\/wf-outline-to-paper-exec\/steps\/outline-to-paper-exec\/run$/);
-  assert.equal(fs.existsSync(path.join(workspaceRoot, "tmp", "outline-to-paper", "exec")), false);
-
-  fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 
 test("workflow run resolves prior step artifacts in configured workflows", () => {

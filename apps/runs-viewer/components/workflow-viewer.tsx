@@ -312,7 +312,6 @@ function flattenEventPayload(value: unknown): string[] {
   const text = JSON.stringify(value ?? {}, null, 2) || "{}";
   return text
     .replace(/\r\n/g, "\n")
-    .replace(/\\n/g, "\n")
     .split("\n")
     .map((line) => line.replace(/\s+$/, ""))
     .filter((line) => line.length > 0);
@@ -1515,7 +1514,16 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
                 ) : !graphLayout ? (
                   <div className="workflow-empty-state">No graph nodes available.</div>
                 ) : (
-                  <div className="workflow-graph-scroll">
+                  <div
+                    className="workflow-graph-scroll"
+                    onClick={() => {
+                      setSelectedStepId(null);
+                      setEventFilter("all");
+                      setEventStepFilter("all");
+                      setEventQuery("");
+                      setActiveTab("log");
+                    }}
+                  >
                     <div
                       className="workflow-graph-canvas"
                       style={{ height: `${graphLayout.height}px`, width: `${graphLayout.width}px` }}
@@ -1583,7 +1591,8 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
                           <button
                             className={`workflow-graph-node is-${node.status}${isSelected ? " is-selected" : ""}`}
                             key={node.id}
-                            onClick={() => {
+                            onClick={(event) => {
+                              event.stopPropagation();
                               setSelectedStepId(node.id);
                               setEventStepFilter(node.id);
                               setActiveTab("log");

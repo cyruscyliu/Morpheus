@@ -103,6 +103,17 @@ export const COMMANDS: HelpTopic[] = [
     ],
   },
   {
+    name: 'stop',
+    summary: 'Stop a recorded libvmm runtime action',
+    usage: [
+      'libvmm stop --run-dir DIR [--json]',
+    ],
+    flags: [
+      '--run-dir DIR',
+      '--json',
+    ],
+  },
+  {
     name: 'version',
     summary: 'Print libvmm CLI version',
     usage: [

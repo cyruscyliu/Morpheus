@@ -589,6 +589,53 @@ function writeRuntimeContract(source: string, contract: unknown) {
   return filePath;
 }
 
+function isRunning(pid: number | null | undefined) {
+  if (!pid || pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function sendMonitorCommand(socketPath: string, command: string, timeoutMs = 2000) {
+  const net = await import('node:net');
+  return await new Promise<void>((resolve, reject) => {
+    const socket = net.createConnection(socketPath);
+    const timer = setTimeout(() => {
+      socket.destroy();
+      reject(new Error(`timed out sending monitor command: ${command}`));
+    }, timeoutMs);
+
+    socket.on('connect', () => {
+      socket.write(`${command}\n`);
+      socket.end();
+    });
+    socket.on('close', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    socket.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+}
+
+function readRunManifest(runDir: string) {
+  const manifestPath = path.join(runDir, 'manifest.json');
+  if (!fs.existsSync(manifestPath)) {
+    throw new CliError('missing_state', `Missing libvmm run manifest: ${manifestPath}`);
+  }
+  return {
+    manifestPath,
+    manifest: JSON.parse(fs.readFileSync(manifestPath, 'utf8')),
+  };
+}
+
 function validateRuntimeContract(contract: any, action: string) {
   if (!contract || contract.kind !== 'libvmm-runtime-contract') {
     throw new CliError('invalid_contract', 'Invalid libvmm runtime contract');
@@ -919,6 +966,78 @@ function readLogs(flags: Record<string, unknown>) {
   };
 }
 
+async function stopRun(flags: Record<string, unknown>) {
+  const runDir = requirePathFlag(flags, 'run-dir');
+  const { manifestPath, manifest } = readRunManifest(runDir);
+  const control = manifest.control || null;
+
+  if (control && control.type === 'monitor' && control.endpoint && fs.existsSync(control.endpoint)) {
+    for (const command of ['system_powerdown', 'quit']) {
+      try {
+        await sendMonitorCommand(String(control.endpoint), command);
+        break;
+      } catch {}
+    }
+  }
+
+  for (const pid of [
+    Number(manifest.pid || 0),
+    Number(manifest.launcherPid || 0),
+    Number(manifest.runnerPid || 0),
+  ]) {
+    if (!isRunning(pid)) {
+      continue;
+    }
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {}
+  }
+
+  const targetPid = Number(manifest.pid || manifest.launcherPid || manifest.runnerPid || 0);
+  if (targetPid > 0 && isRunning(targetPid)) {
+    const waited = spawnSync(
+      'bash',
+      ['-lc', `for i in $(seq 1 30); do if ! kill -0 ${targetPid} 2>/dev/null; then exit 0; fi; sleep 0.1; done; exit 1`],
+      { stdio: 'ignore' },
+    );
+    if (waited.status !== 0) {
+      for (const pid of [
+        Number(manifest.pid || 0),
+        Number(manifest.launcherPid || 0),
+        Number(manifest.runnerPid || 0),
+      ]) {
+        if (!isRunning(pid)) {
+          continue;
+        }
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch {}
+      }
+    }
+  }
+
+  const updated = {
+    ...manifest,
+    status: 'stopped',
+    signal: 'SIGTERM',
+    updatedAt: new Date().toISOString(),
+  };
+  fs.writeFileSync(manifestPath, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
+  return {
+    command: 'stop',
+    status: 'success',
+    exit_code: 0,
+    summary: 'stopped libvmm runtime action',
+    details: {
+      run_dir: runDir,
+      manifest: manifestPath,
+      pid: updated.pid,
+      launcher_pid: updated.launcherPid,
+      runner_pid: updated.runnerPid,
+    },
+  };
+}
+
 function defaultRunDir(libvmmDir: string) {
   const stamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
   return path.join(libvmmDir, '.morpheus-runs', `libvmm-run-${stamp}-${Math.random().toString(16).slice(2, 10)}`);
@@ -1125,6 +1244,15 @@ async function main(argv: string[]) {
         emitJson(result);
       } else {
         emitText(result.details.text);
+      }
+      return 0;
+    }
+    case 'stop': {
+      const result = await stopRun(parsed.flags);
+      if (parsed.json) {
+        emitJson(result);
+      } else {
+        emitText(result.summary);
       }
       return 0;
     }

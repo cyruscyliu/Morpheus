@@ -39,7 +39,7 @@ workflow steps.
 
 `tools/libvmm/tool.json` is the Morpheus integration contract.
 
-- `cli-contract` is `fetch,patch,build,exec,inspect,logs`
+- `cli-contract` is `fetch,patch,build,exec,inspect,logs,stop`
 - `runGuard` prevents conflicting runs in one workspace
 - `config.fields` defines accepted flags and aliases
 - `inputs` maps managed dependencies such as `microkit-sdk` and `qemu` onto
@@ -60,6 +60,7 @@ example, and can execute the resulting runtime flow when Morpheus asks for
 - `patch` applies the configured patch set
 - `build` compiles the selected example against the resolved SDK and toolchain
 - `exec` runs with the prepared runtime inputs
+- `stop` terminates a recorded runtime run from its managed run directory
 - `inspect` and `logs` re-read prior state instead of repeating work
 
 ## JSON Contract

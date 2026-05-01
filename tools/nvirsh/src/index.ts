@@ -39,6 +39,10 @@ function writeJson(filePath: string, value: unknown) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
+function toolRepoEntry(tool: string) {
+  return path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..', tool, 'dist', 'index.js');
+}
+
 function fileExists(filePath: string | null | undefined) {
   return Boolean(filePath && fs.existsSync(filePath));
 }
@@ -873,16 +877,27 @@ async function runStop(flags: Record<string, unknown>) {
   const providerManifestPath = manifest.runtime?.providerRun?.manifest;
   if (providerManifestPath && fs.existsSync(providerManifestPath)) {
     const providerManifest = readJson(providerManifestPath);
-    const control = providerManifest.control;
-    if (control && control.type === 'monitor' && control.endpoint && fs.existsSync(control.endpoint)) {
-      try {
-        await sendMonitorCommand(String(control.endpoint), 'system_powerdown');
-      } catch {
-        // fall through to process signals
+    if (providerManifest.tool === 'libvmm' && providerManifest.runDir) {
+      spawnSync(
+        process.execPath,
+        [toolRepoEntry('libvmm'), 'stop', '--json', '--run-dir', String(providerManifest.runDir)],
+        {
+          encoding: 'utf8',
+          stdio: 'ignore',
+        },
+      );
+    } else {
+      const control = providerManifest.control;
+      if (control && control.type === 'monitor' && control.endpoint && fs.existsSync(control.endpoint)) {
+        try {
+          await sendMonitorCommand(String(control.endpoint), 'system_powerdown');
+        } catch {
+          // fall through to process signals
+        }
       }
-    }
-    if (providerManifest.pid && isRunning(providerManifest.pid)) {
-      process.kill(providerManifest.pid, 'SIGTERM');
+      if (providerManifest.pid && isRunning(providerManifest.pid)) {
+        process.kill(providerManifest.pid, 'SIGTERM');
+      }
     }
   }
   if (!manifest.pid || !isRunning(manifest.pid)) {

@@ -59,7 +59,7 @@ artifacts into one concrete runtime invocation.
 - `exec` validates prerequisites, prepares run state, and launches the target
 - `inspect` re-reads recorded runtime metadata
 - `logs` re-reads recorded runtime output
-- `stop` and `remove` are part of the lifecycle handled around those records
+- `stop` and `remove` operate on the recorded managed runtime state
 
 `nvirsh` expects explicit resolved artifact paths rather than provisioning its
 own dependencies.

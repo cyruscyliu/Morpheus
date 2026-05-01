@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
@@ -130,5 +130,56 @@ test('libvmm run launches qemu action from a runtime contract', () => {
   assert.equal(launchedPayload.status, 'success');
   assert.equal(fs.existsSync(path.join(runDir, 'manifest.json')), true);
 
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('libvmm stop stops a detached runtime run', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'morpheus-libvmm-stop-'));
+  const runDir = path.join(root, 'run');
+  fs.mkdirSync(runDir, { recursive: true });
+
+  const sleeper = spawn('sleep', ['30'], { stdio: 'ignore' });
+  const manifestPath = path.join(runDir, 'manifest.json');
+  fs.writeFileSync(
+    manifestPath,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      tool: 'libvmm',
+      kind: 'libvmm-runtime-run',
+      id: 'libvmm-run-test',
+      status: 'running',
+      runDir,
+      logFile: path.join(runDir, 'stdout.log'),
+      manifest: manifestPath,
+      pid: sleeper.pid,
+      launcherPid: null,
+      runnerPid: null,
+      control: {
+        type: 'monitor',
+        endpoint: path.join(runDir, 'missing-monitor.sock'),
+        graceful_methods: ['system_powerdown', 'quit'],
+      },
+    }, null, 2)}\n`,
+    'utf8',
+  );
+
+  const stopped = spawnSync(process.execPath, [
+    cli,
+    '--json',
+    'stop',
+    '--run-dir',
+    runDir,
+  ], { encoding: 'utf8' });
+  assert.equal(stopped.status, 0, stopped.stderr || stopped.stdout);
+  const payload = JSON.parse(stopped.stdout.trim());
+  assert.equal(payload.status, 'success');
+
+  const updated = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  assert.equal(updated.status, 'stopped');
+  assert.equal(updated.signal, 'SIGTERM');
+
+  try {
+    process.kill(sleeper.pid, 'SIGKILL');
+  } catch {}
   fs.rmSync(root, { recursive: true, force: true });
 });

@@ -1,7 +1,7 @@
 {
   "name": "nvirsh",
   "runtime": "node",
-  "cli-contract": "exec,inspect,logs",
+  "cli-contract": "exec,inspect,logs,stop",
   "entry": "dist/index.js",
   "runGuard": {
     "scope": "workspace",

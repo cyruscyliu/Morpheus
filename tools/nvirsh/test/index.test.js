@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import process from 'node:process';
 
 const bin = path.resolve(process.cwd(), 'dist/index.js');
 
@@ -156,6 +157,75 @@ test('run manages local sel4 state', async () => {
   assert.equal(remove.status, 0, remove.stdout || remove.stderr);
   assert.equal(fs.existsSync(stateDir), false);
 
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('nvirsh stop delegates provider shutdown to libvmm stop', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nvirsh-stop-delegate-'));
+  const stateDir = path.join(root, 'state');
+  const providerRunDir = path.join(root, 'provider-run');
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.mkdirSync(providerRunDir, { recursive: true });
+
+  const providerPid = spawnSync('sh', ['-c', 'sleep 30 & echo $!'], { encoding: 'utf8' });
+  const pid = Number.parseInt(String(providerPid.stdout || '').trim(), 10);
+  assert.equal(Number.isFinite(pid), true);
+
+  const providerManifestPath = path.join(providerRunDir, 'manifest.json');
+  fs.writeFileSync(
+    providerManifestPath,
+    `${JSON.stringify({
+      tool: 'libvmm',
+      status: 'running',
+      runDir: providerRunDir,
+      logFile: path.join(providerRunDir, 'stdout.log'),
+      manifest: providerManifestPath,
+      pid,
+      launcherPid: null,
+      runnerPid: null,
+      control: {
+        type: 'monitor',
+        endpoint: path.join(providerRunDir, 'missing-monitor.sock'),
+        graceful_methods: ['system_powerdown', 'quit'],
+      },
+    }, null, 2)}\n`,
+    'utf8',
+  );
+  fs.writeFileSync(
+    path.join(stateDir, 'manifest.json'),
+    `${JSON.stringify({
+      tool: 'nvirsh',
+      status: 'running',
+      stateDir,
+      logFile: path.join(stateDir, 'stdout.log'),
+      manifest: path.join(stateDir, 'manifest.json'),
+      pid: null,
+      runtime: {
+        providerRun: {
+          provider: 'libvmm',
+          run_dir: providerRunDir,
+          manifest: providerManifestPath,
+          log_file: path.join(providerRunDir, 'stdout.log'),
+        },
+      },
+    }, null, 2)}\n`,
+    'utf8',
+  );
+
+  const result = run(['--json', 'stop', '--state-dir', stateDir], {
+    env: {
+      MORPHEUS_RUN_DIR_OVERRIDE: stateDir,
+    },
+  });
+  assert.equal(result.status, 0, result.stdout || result.stderr);
+
+  const providerUpdated = JSON.parse(fs.readFileSync(providerManifestPath, 'utf8'));
+  assert.equal(providerUpdated.status, 'stopped');
+  assert.equal(providerUpdated.signal, 'SIGTERM');
+
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch {}
   fs.rmSync(root, { recursive: true, force: true });
 });
 

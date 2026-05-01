@@ -370,8 +370,22 @@ function normalizeStepName(...values: unknown[]): string | null {
   return null;
 }
 
-function runtimeBackedStepStatus(manifest: any): string | null {
-  const runtime = manifest?.toolResult?.details?.manifest;
+function liveManagedRunManifest(stepDir: string | null): any {
+  if (!stepDir) {
+    return null;
+  }
+  const manifestPath = path.join(stepDir, "run", "manifest.json");
+  return readJsonIfExists<any>(manifestPath, null as any);
+}
+
+function runtimeBackedStepStatus(entry: any, manifest: any): string | null {
+  const stepDir =
+    typeof manifest?.stepDir === "string"
+      ? manifest.stepDir
+      : typeof entry?.stepDir === "string"
+        ? entry.stepDir
+        : null;
+  const runtime = liveManagedRunManifest(stepDir) || manifest?.toolResult?.details?.manifest;
   if (!runtime || typeof runtime !== "object") {
     return null;
   }
@@ -421,7 +435,7 @@ function normalizeStepSummary(entry: any, manifest: any, runId: string, stepId: 
     ? rawName
     : prettifyStepId(stepId);
   const normalizedStatus =
-    runtimeBackedStepStatus(manifest)
+    runtimeBackedStepStatus(entry, manifest)
     || (typeof manifest?.status === "string" ? manifest.status : "")
     || (typeof entry?.status === "string" ? entry.status : "")
     || "unknown";

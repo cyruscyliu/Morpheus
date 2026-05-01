@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 function readJson(filePath: string) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -27,17 +27,38 @@ function requireValue(value: any, label: string) {
   return value;
 }
 
-function updateRunningState(manifestPath: string) {
-  updateManifest(manifestPath, (current) => {
-    if (current.status === 'running') {
-      return current;
+function toolRepoEntry(tool: string) {
+  return path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..', tool, 'dist', 'index.js');
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function providerRunDir(stateDir: string) {
+  return path.join(stateDir, 'provider-libvmm');
+}
+
+function providerManifestPath(stateDir: string) {
+  return path.join(providerRunDir(stateDir), 'manifest.json');
+}
+
+function providerLogPath(stateDir: string) {
+  return path.join(providerRunDir(stateDir), 'stdout.log');
+}
+
+function appendLog(log: fs.WriteStream, chunk: string | null | undefined, attach: boolean, target: 'stdout' | 'stderr' = 'stdout') {
+  if (!chunk) {
+    return;
+  }
+  log.write(chunk);
+  if (attach) {
+    if (target === 'stderr') {
+      process.stderr.write(chunk);
+    } else {
+      process.stdout.write(chunk);
     }
-    return {
-      ...current,
-      status: 'running',
-      qemuStartedAt: new Date().toISOString(),
-    };
-  });
+  }
 }
 
 async function main(argv: string[]) {
@@ -52,174 +73,159 @@ async function main(argv: string[]) {
 
   const stateDir = requireValue(manifest.stateDir, 'manifest.stateDir');
   const logFile = requireValue(manifest.logFile, 'manifest.logFile');
-
   const qemu = requireValue(prerequisites.qemu, 'prerequisites.qemu');
   const microkitSdk = requireValue(prerequisites.microkitSdk, 'prerequisites.microkitSdk');
   const toolchain = requireValue(prerequisites.toolchain, 'prerequisites.toolchain');
   const libvmmDir = requireValue(prerequisites.libvmmDir, 'prerequisites.libvmmDir');
   const board = requireValue(prerequisites.board, 'prerequisites.board');
   const microkitConfig = prerequisites.microkitConfig ? String(prerequisites.microkitConfig) : 'debug';
-
+  const runtimeContract = requireValue(prerequisites.runtimeContract, 'prerequisites.runtimeContract');
   const kernel = requireValue(runtime.kernel, 'runtime.kernel');
   const initrd = requireValue(runtime.initrd, 'runtime.initrd');
 
-  const exampleDir = path.join(libvmmDir, 'examples', 'virtio');
-  if (!fs.existsSync(exampleDir)) {
-    throw new Error(`missing libvmm virtio example directory: ${exampleDir}`);
-  }
-  const buildDir = path.join(exampleDir, 'build');
   fs.mkdirSync(stateDir, { recursive: true });
-  const sharedBlkStorage = path.join(buildDir, 'blk_storage');
-  const runBlkStorage = path.join(stateDir, 'blk_storage');
-
   const log = fs.createWriteStream(logFile, { flags: 'a' });
   const attach = String(process.env.NVIRSH_ATTACH || '') === '1';
   const toolchainBin = path.join(toolchain, 'bin');
-  const venvPython = path.resolve(libvmmDir, '..', '..', '..', 'pyvenv', 'bin', 'python');
-  const python = process.env.NVIRSH_PYTHON && String(process.env.NVIRSH_PYTHON).trim()
-    ? String(process.env.NVIRSH_PYTHON).trim()
-    : (fs.existsSync(venvPython) ? venvPython : null);
-  const env = {
-    ...process.env,
-    ...(python ? { PYTHON: python } : {}),
-    PATH: [
-      path.dirname(qemu),
-      fs.existsSync(toolchainBin) ? toolchainBin : '',
-      '/usr/local/sbin',
-      '/usr/sbin',
-      '/sbin',
-      process.env.PATH || '',
-    ].filter(Boolean).join(path.delimiter),
-  };
+  const libvmmCli = toolRepoEntry('libvmm');
+  const providerDir = providerRunDir(stateDir);
 
   const args = [
-    `MICROKIT_BOARD=${board}`,
-    `MICROKIT_CONFIG=${microkitConfig}`,
-    `MICROKIT_SDK=${microkitSdk}`,
-    `LINUX=${kernel}`,
-    `INITRD=${initrd}`,
+    libvmmCli,
+    '--json',
+    'run',
+    '--contract',
+    runtimeContract,
+    '--action',
     'qemu',
+    '--run-dir',
+    providerDir,
+    '--libvmm-dir',
+    libvmmDir,
+    '--microkit-sdk',
+    microkitSdk,
+    '--board',
+    board,
+    '--microkit-config',
+    microkitConfig,
+    '--kernel',
+    kernel,
+    '--initrd',
+    initrd,
+    '--qemu',
+    qemu,
+    '--toolchain-bin-dir',
+    toolchainBin,
+    ...(attach ? [] : ['--detach']),
   ];
 
-  const cleanArgs = [
-    `MICROKIT_BOARD=${board}`,
-    `MICROKIT_CONFIG=${microkitConfig}`,
-    `MICROKIT_SDK=${microkitSdk}`,
-    `LINUX=${kernel}`,
-    `INITRD=${initrd}`,
-    'clean',
-  ];
+  const launched = attach
+    ? spawn(process.execPath, args, {
+        cwd: stateDir,
+        detached: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+    : null;
 
-  const clean = spawn('make', cleanArgs, {
-    cwd: exampleDir,
-    detached: false,
-    env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-
-  await new Promise<void>((resolve, reject) => {
-    clean.stdout.on('data', (chunk) => {
-      log.write(chunk);
-      if (attach) {
-        process.stdout.write(chunk);
-      }
-    });
-    clean.stderr.on('data', (chunk) => {
-      log.write(chunk);
-      if (attach) {
-        process.stderr.write(chunk);
-      }
-    });
-    clean.on('error', reject);
-    clean.on('close', (code) => {
-      if ((code ?? 1) !== 0) {
-        reject(new Error(`make clean failed with exit code ${code ?? 1}`));
-        return;
-      }
-      resolve();
-    });
-  });
-
-  try {
-    if (fs.existsSync(sharedBlkStorage) && !fs.existsSync(runBlkStorage)) {
-      fs.copyFileSync(sharedBlkStorage, runBlkStorage);
-    }
-    if (fs.existsSync(sharedBlkStorage)) {
-      fs.rmSync(sharedBlkStorage, { force: true });
-    }
-    fs.symlinkSync(runBlkStorage, sharedBlkStorage);
-  } catch (error) {
-    log.end();
-    throw error;
+  if (launched) {
+    launched.stdout.on('data', (chunk) => appendLog(log, String(chunk), attach));
+    launched.stderr.on('data', (chunk) => appendLog(log, String(chunk), attach, 'stderr'));
   }
 
-  const child = spawn('make', args, {
-    cwd: exampleDir,
-    detached: false,
-    env,
-    stdio: [attach ? 'inherit' : 'ignore', 'pipe', 'pipe'],
-  });
+  const launchResult = launched
+    ? await new Promise<{ code: number | null }>((resolve, reject) => {
+        launched.on('error', reject);
+        launched.on('close', (code) => resolve({ code }));
+      })
+    : (() => {
+        const result = spawnSync(process.execPath, args, {
+          cwd: stateDir,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        appendLog(log, result.stdout || '', attach);
+        appendLog(log, result.stderr || '', attach, 'stderr');
+        if (result.status !== 0) {
+          throw new Error(result.stderr || result.stdout || 'failed to launch libvmm runtime');
+        }
+        return { code: result.status };
+      })();
 
-  child.stdout.on('data', (chunk) => {
-    log.write(chunk);
-    if (String(chunk).includes('qemu-system-')) {
-      updateRunningState(manifestPath);
-    }
-    if (attach) {
-      process.stdout.write(chunk);
-    }
-  });
-  child.stderr.on('data', (chunk) => {
-    log.write(chunk);
-    if (String(chunk).includes('qemu-system-')) {
-      updateRunningState(manifestPath);
-    }
-    if (attach) {
-      process.stderr.write(chunk);
-    }
-  });
+  const providerManifestFile = providerManifestPath(stateDir);
+  const providerLogFile = providerLogPath(stateDir);
+  const launchDeadline = Date.now() + 30000;
+  while (!fs.existsSync(providerManifestFile) && Date.now() < launchDeadline) {
+    await sleep(100);
+  }
+  if (!fs.existsSync(providerManifestFile)) {
+    log.end();
+    throw new Error('libvmm runtime did not create a provider manifest');
+  }
 
+  let providerManifest = readJson(providerManifestFile);
   updateManifest(manifestPath, (current) => ({
     ...current,
-    status: 'starting',
-    pid: child.pid,
-    launcherPid: child.pid,
+    status: providerManifest.status === 'running' ? 'running' : 'starting',
+    pid: providerManifest.pid || null,
+    launcherPid: providerManifest.launcherPid || null,
     runnerPid: process.pid,
     runtime: {
       ...(current.runtime || {}),
       providerRun: {
         provider: 'libvmm',
-        run_dir: stateDir,
-        manifest: manifestPath,
-        log_file: logFile,
+        run_dir: providerDir,
+        manifest: providerManifestFile,
+        log_file: providerLogFile,
       },
     },
     startedAt: new Date().toISOString(),
+    ...(providerManifest.status === 'running' ? { qemuStartedAt: new Date().toISOString() } : {}),
   }));
 
-  child.on('close', (code, signal) => {
-    log.end();
-    updateManifest(manifestPath, (current) => ({
-      ...current,
-      status: code === 0 ? 'success' : signal ? 'stopped' : 'error',
-      exitCode: code == null ? null : code,
-      signal: signal || null,
-      finishedAt: new Date().toISOString(),
-    }));
-    process.exit(code == null ? 1 : code);
-  });
+  while (true) {
+    providerManifest = readJson(providerManifestFile);
+    const providerStatus = String(providerManifest.status || '').trim().toLowerCase();
 
-  child.on('error', (error) => {
-    log.write(`${String(error.message)}\n`);
-    log.end();
-    updateManifest(manifestPath, (current) => ({
-      ...current,
-      status: 'error',
-      errorMessage: error.message,
-      finishedAt: new Date().toISOString(),
-    }));
-    process.exit(1);
-  });
+    if (providerStatus === 'running') {
+      updateManifest(manifestPath, (current) => ({
+        ...current,
+        status: 'running',
+        pid: providerManifest.pid || current.pid || null,
+        launcherPid: providerManifest.launcherPid || current.launcherPid || null,
+        runnerPid: process.pid,
+        qemuStartedAt: current.qemuStartedAt || new Date().toISOString(),
+      }));
+    }
+
+    if (providerStatus === 'success' || providerStatus === 'stopped' || providerStatus === 'error') {
+      log.end();
+      updateManifest(manifestPath, (current) => ({
+        ...current,
+        status: providerStatus,
+        pid: providerManifest.pid || current.pid || null,
+        launcherPid: providerManifest.launcherPid || current.launcherPid || null,
+        runnerPid: process.pid,
+        exitCode: typeof providerManifest.exitCode === 'number' ? providerManifest.exitCode : current.exitCode,
+        signal: providerManifest.signal || current.signal || null,
+        errorMessage: providerManifest.errorMessage || current.errorMessage || null,
+        finishedAt: providerManifest.finishedAt || new Date().toISOString(),
+      }));
+      process.exit(typeof providerManifest.exitCode === 'number' ? providerManifest.exitCode : (providerStatus === 'success' ? 0 : 1));
+    }
+
+    if (attach && launchResult.code != null && launchResult.code !== 0) {
+      log.end();
+      updateManifest(manifestPath, (current) => ({
+        ...current,
+        status: 'error',
+        exitCode: launchResult.code,
+        finishedAt: new Date().toISOString(),
+      }));
+      process.exit(launchResult.code);
+    }
+
+    await sleep(250);
+  }
 }
 
 main(process.argv.slice(2)).catch((error: unknown) => {

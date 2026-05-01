@@ -1,7 +1,7 @@
 {
   "name": "libvmm",
   "runtime": "node",
-  "cli-contract": "fetch,patch,build,exec,inspect,logs",
+  "cli-contract": "fetch,patch,build,exec,inspect,logs,stop",
   "entry": "dist/index.js",
   "runGuard": {
     "scope": "workspace",

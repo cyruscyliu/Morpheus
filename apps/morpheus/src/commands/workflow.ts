@@ -402,12 +402,87 @@ function stopPid(pid) {
   spawnSync("kill", ["-KILL", String(pid)], { stdio: "ignore" });
 }
 
+function toolSupportsCommand(descriptor, command) {
+  const contract = String(descriptor && descriptor["cli-contract"] || "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return contract.includes(command);
+}
+
+function stepToolManifest(step) {
+  if (!step || !step.stepDir) {
+    return null;
+  }
+  const manifestPath = path.join(stepToolRunDir(step.stepDir), "manifest.json");
+  if (!fs.existsSync(manifestPath)) {
+    return null;
+  }
+  try {
+    return readJson(manifestPath);
+  } catch {
+    return null;
+  }
+}
+
+function shouldStopWorkflowStepTool(step) {
+  if (!step || !step.tool || !step.stepDir) {
+    return false;
+  }
+  if (step.status === "created" || step.status === "running") {
+    return true;
+  }
+  const manifest = stepToolManifest(step);
+  const status = String(manifest && manifest.status || "").trim().toLowerCase();
+  return status === "created" || status === "prepared" || status === "starting" || status === "running";
+}
+
+function stopWorkflowStepTool(step) {
+  if (!step || !step.tool || !step.stepDir) {
+    return null;
+  }
+  if (!stepToolManifest(step)) {
+    return null;
+  }
+
+  const descriptor = readToolDescriptor(step.tool);
+  if (!toolSupportsCommand(descriptor, "stop")) {
+    return null;
+  }
+
+  const entryPath = path.join(repoRoot(), descriptor.installRoot, descriptor.entry);
+  const args = descriptor.runtime === "node"
+    ? [entryPath, "stop", "--json"]
+    : ["stop", "--json"];
+  const command = descriptor.runtime === "node"
+    ? process.execPath
+    : entryPath;
+  const result = spawnSync(command, args, {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      MORPHEUS_RUN_DIR_OVERRIDE: stepToolRunDir(step.stepDir),
+    },
+  });
+  return result;
+}
+
 function stopWorkflowRun(workspaceRoot, id) {
   const found = findWorkflowRun(workspaceRoot, id);
   const workflow = readJson(found.manifestPath);
   const steps = listWorkflowSteps(found.runDir);
   const currentChildPid = Number(workflow.currentChildPid || 0);
   const runnerPid = Number(workflow.runnerPid || 0);
+
+  for (const step of steps) {
+    if (!shouldStopWorkflowStepTool(step)) {
+      continue;
+    }
+    try {
+      stopWorkflowStepTool(step);
+    } catch {}
+  }
 
   if (currentChildPid > 0) {
     stopPid(currentChildPid);
@@ -1346,6 +1421,9 @@ function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) 
     if (!seenFromStep && stepId === fromStep) {
       seenFromStep = true;
       startIndex = Math.min(startIndex, index);
+      continue;
+    }
+    if (fromStep && seenFromStep) {
       continue;
     }
     const stepSpec = {

@@ -188,6 +188,8 @@ workflows:
         args:
           - --source
           - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/buildroot/patches"
   build-qemu:
     category: build
     steps:
@@ -288,6 +290,8 @@ workflows:
         args:
           - --source
           - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/buildroot/patches"
       - id: qemu_fetch
         tool: qemu
         command: fetch
@@ -372,6 +376,8 @@ workflows:
         args:
           - --source
           - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/buildroot/patches"
       - id: qemu_fetch
         tool: qemu
         command: fetch
@@ -434,6 +440,8 @@ workflows:
         args:
           - --source
           - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/buildroot/patches"
       - id: qemu_fetch
         tool: qemu
         command: fetch

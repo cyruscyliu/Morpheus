@@ -116,13 +116,11 @@ function logDebug(scope, message, fields) {
     return;
   }
   const text = consoleLine(scope, message, fields);
-  emitEvent("console.stderr", { text }, { level: "debug", scope });
   fs.writeSync(2, text);
 }
 
 function logInfo(scope, message, fields) {
   const text = consoleLine(scope, message, fields);
-  emitEvent("console.stderr", { text }, { level: "info", scope });
   if (process.env.MORPHEUS_NO_PROGRESS === "1" || process.env.MORPHEUS_NO_PROGRESS === "true") {
     return;
   }

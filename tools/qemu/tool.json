@@ -1,7 +1,7 @@
 {
   "name": "qemu",
   "runtime": "node",
-  "cli-contract": "fetch,patch,build,run,inspect,logs",
+  "cli-contract": "fetch,patch,build,exec,inspect,logs",
   "entry": "dist/index.js",
   "runGuard": {
     "scope": "workspace",

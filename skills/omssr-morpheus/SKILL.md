@@ -15,7 +15,7 @@ Use this skill when you need to work with the `morpheus` app in this repo.
 
 `morpheus` is the management CLI.
 It owns workspace selection, managed run records, workflow entrypoints,
-manifests, logs, and the top-level wrappers that invoke repo-local tool CLIs.
+manifests, logs, and the top-level wrappers that invoke internal tool CLIs.
 
 Morpheus does not own tool internals.
 Tool CLIs own tool behavior.
@@ -26,43 +26,59 @@ Morpheus owns the managed workspace and the management contract around it.
 When operating in this repo:
 
 1. Run `pnpm --filter @morpheus/app build` if the CLI may be stale.
-2. Run `node apps/morpheus/dist/cli.js --help` to confirm the live surface.
+2. Run `node apps/morpheus/dist/cli.js --help` or `./bin/morpheus --help`
+   to confirm the live surface.
 3. Prefer `--json` for anything that may be consumed programmatically.
-4. Re-read existing state with `inspect`, `logs`, or the checked-in schema
-   before rerunning work.
+4. Re-read existing state with `inspect` or `logs` before rerunning work.
 
-Minimal local-plus-remote config:
+Minimal config:
 
 ```yaml
 workspace:
   root: ./workspace
 
-remote:
-  ssh: builder@example.com:2222
-  workspace:
-    root: /home/builder/workspace
 ```
 
 ## Core Rules
 
 - Treat `--workspace` as the shared managed workspace root.
+- Treat run ids as the stable lookup key for managed run lifecycle commands.
 - Use `morpheus workflow run`, `morpheus workflow inspect`, and
   `morpheus workflow logs` as the canonical execution surface.
-- Do not expect top-level `morpheus run`, `morpheus inspect`, or
-  `morpheus logs` aliases.
-- Treat `tools.<name>` in `morpheus.yaml` as management policy, not tool
-  business logic.
-- Treat `build-version` as the common Morpheus selector for versioned fetch
-  and build flows.
-- Treat `patch-dir` as a managed workspace-relative input when possible.
-- Treat `--source` as the concrete destination path selected by Morpheus.
-- Do not let tool CLIs invent managed workspace roots.
-- Treat run ids as the stable lookup key for managed run lifecycle commands.
+- Do not expect top-level `morpheus inspect` or `morpheus logs` aliases.
+- Use `morpheus workflow stop` and `morpheus workflow remove` for lifecycle
+  actions.
+- Prefer Morpheus-managed workflow runs when later steps need reusable
+  published artifacts.
 - Treat `stop` as an execution-only lifecycle action.
 - Treat `remove` as a persisted-state deletion action.
 - Require a prior successful stop before managed run removal.
+- Treat Morpheus as the owner of workflow ids, logs, and published artifact
+  records.
+- Treat internal tool CLIs as Morpheus-internal only.
+- Do not invoke internal tool CLIs directly from the agent shell.
+- Treat `tool.json` as the tool contract schema: tools must implement
+  `inspect` and `logs`, and may optionally implement `fetch`, `patch`,
+  `build`, and `exec`.
+- Treat `tools.<name>` in `morpheus.yaml` as management policy, not tool
+  business logic.
+- Keep patch inputs in managed workspace locations when possible, and point
+  tool patch configuration at those managed paths or at repo-shipped patch
+  directories when that is the intended source.
+- When patch sets change, prefer resetting managed patch targets before
+  reapplying patches so patch iteration stays consistent, unless a tool
+  contract defines a different update strategy.
+- When `--json` is used, treat stdout as the machine-readable result channel
+  and stderr as the progress or diagnostic channel unless a tool contract says
+  otherwise.
+- Tool CLIs should use the workspace paths Morpheus gives them instead of
+  making up their own managed workspace directories.
+- Downstream workflows should depend on stable published artifacts rather than
+  tool-private scratch files or intermediate prompt state.
 
-## Top-Level Contract
+## Top-Level Morpheus Contract
+
+This is the documented Morpheus CLI surface that users interact with directly.
 
 Top-level Morpheus commands:
 
@@ -105,7 +121,32 @@ Error JSON shape:
 }
 ```
 
-## CLI Contract
+The common JSON envelope for top-level Morpheus commands is:
+
+```json
+{
+  "command": "string",
+  "status": "success|error|stream|submitted",
+  "exit_code": 0,
+  "summary": "string",
+  "details": {}
+}
+```
+
+Top-level error JSON shape:
+
+```json
+{
+  "command": "string",
+  "status": "error",
+  "exit_code": 1,
+  "summary": "string",
+  "error": {
+    "code": "string",
+    "message": "string"
+  }
+}
+```
 
 ### `workspace create`
 
@@ -175,123 +216,8 @@ Returned JSON:
   "exit_code": 0,
   "summary": "config is valid",
   "details": {
-    "allowed_tool_modes": ["local", "remote"],
+    "allowed_tool_modes": ["managed"],
     "issues": []
-  }
-}
-```
-
-### `fetch --tool <name>`
-
-Input:
-
-- Required `--tool <name>`
-- Optional `--workspace DIR`
-- Optional `--source DIR`
-- Optional `--build-version VER`
-- Optional `--archive-url URL`
-- Optional `--downloads-dir DIR`
-- Optional `--json`
-
-Behavior:
-
-- Morpheus resolves the managed destination path.
-- Morpheus invokes the tool CLI `fetch` subcommand.
-- `fetch` must only materialize source or archive state.
-
-Returned JSON:
-
-```json
-{
-  "command": "fetch",
-  "status": "success",
-  "exit_code": 0,
-  "summary": "fetched managed source directory",
-  "details": {
-    "source": "<workspace>/tools/<tool>/...",
-    "artifacts": [
-      {
-        "path": "source-dir",
-        "location": "<workspace>/tools/<tool>/..."
-      }
-    ]
-  }
-}
-```
-
-### `patch --tool <name>`
-
-Input:
-
-- Required `--tool <name>`
-- Required `--patch-dir DIR`
-- Optional `--workspace DIR`
-- Optional `--source DIR`
-- Optional `--json`
-
-Behavior:
-
-- Morpheus resolves the managed source path.
-- Morpheus invokes the tool CLI `patch` subcommand.
-- `patch` must only apply patch state.
-
-Returned JSON:
-
-```json
-{
-  "command": "patch",
-  "status": "success",
-  "exit_code": 0,
-  "summary": "patched managed source directory",
-  "details": {
-    "source": "<workspace>/tools/<tool>/...",
-    "patches": {
-      "dir": "<workspace>/tools/<tool>/patches",
-      "files": ["0001-example.patch"],
-      "fingerprint": "sha256",
-      "applied": true,
-      "log_file": "<workspace>/tools/<tool>/.../.morpheus-patches.log"
-    }
-  }
-}
-```
-
-### `build --tool <name>`
-
-Input:
-
-- Required `--tool <name>`
-- Optional `--workspace DIR`
-- Optional `--source DIR`
-- Optional `--build-version VER`
-- Optional `--archive-url URL`
-- Optional `--build-dir-key KEY`
-- Optional `--json`
-- Optional tool-specific passthrough after `--`
-
-Behavior:
-
-- Morpheus resolves managed source, output, build, or install paths.
-- Morpheus invokes the tool CLI `build` subcommand.
-- `build` should assume fetch and patch are explicit earlier stages unless the
-  tool contract says otherwise.
-
-Returned JSON:
-
-```json
-{
-  "command": "build",
-  "status": "success",
-  "exit_code": 0,
-  "summary": "built managed artifact",
-  "details": {
-    "source": "<workspace>/tools/<tool>/...",
-    "artifacts": [
-      {
-        "path": "artifact-name",
-        "location": "<workspace>/tools/<tool>/..."
-      }
-    ]
   }
 }
 ```
@@ -415,20 +341,224 @@ Returned JSON:
 }
 ```
 
-## Static Schema
+## Morpheus-Tools Contract
 
-Use the checked-in schema file for a stable machine-readable contract:
+This is the tool-side contract that Morpheus may invoke behind the scenes.
+Treat it as an internal integration surface described by `tool.json`, not as
+the preferred user-facing CLI.
 
-```text
-.codex/skills/omssr-morpheus/schema.json
+### `fetch --tool <name>`
+
+Input:
+
+- Required `--tool <name>`
+- Optional `--workspace DIR`
+- Optional `--source DIR`
+- Optional `--build-version VER`
+- Optional `--archive-url URL`
+- Optional `--downloads-dir DIR`
+- Optional `--json`
+
+Behavior:
+
+- Morpheus resolves the managed destination path.
+- Morpheus invokes the tool CLI `fetch` subcommand.
+- `fetch` must only materialize source or archive state.
+
+Returned JSON:
+
+```json
+{
+  "command": "fetch",
+  "status": "success",
+  "exit_code": 0,
+  "summary": "fetched managed source directory",
+  "details": {
+    "source": "<workspace>/tools/<tool>/...",
+    "artifacts": [
+      {
+        "path": "source-dir",
+        "location": "<workspace>/tools/<tool>/..."
+      }
+    ]
+  }
+}
 ```
 
-It contains:
+### `patch --tool <name>`
 
-- the top-level Morpheus command surface
-- the common JSON envelope
-- the workspace layout contract
-- the declared tool catalog and each tool's `cli-contract`
+Input:
+
+- Required `--tool <name>`
+- Required `--patch-dir DIR`
+- Optional `--workspace DIR`
+- Optional `--source DIR`
+- Optional `--json`
+
+Behavior:
+
+- Morpheus resolves the managed source path.
+- Morpheus invokes the tool CLI `patch` subcommand.
+- `patch` must only apply patch state.
+
+Returned JSON:
+
+```json
+{
+  "command": "patch",
+  "status": "success",
+  "exit_code": 0,
+  "summary": "patched managed source directory",
+  "details": {
+    "source": "<workspace>/tools/<tool>/...",
+    "patches": {
+      "dir": "<workspace>/tools/<tool>/patches",
+      "files": ["0001-example.patch"],
+      "fingerprint": "sha256",
+      "applied": true,
+      "log_file": "<workspace>/tools/<tool>/.../.morpheus-patches.log"
+    }
+  }
+}
+```
+
+### `build --tool <name>`
+
+Input:
+
+- Required `--tool <name>`
+- Optional `--workspace DIR`
+- Optional `--source DIR`
+- Optional `--build-version VER`
+- Optional `--archive-url URL`
+- Optional `--build-dir-key KEY`
+- Optional `--json`
+- Optional tool-specific passthrough after `--`
+
+Behavior:
+
+- Morpheus resolves managed source, output, build, or install paths.
+- Morpheus invokes the tool CLI `build` subcommand.
+- `build` should assume fetch and patch are explicit earlier stages unless the
+  tool contract says otherwise.
+
+Returned JSON:
+
+```json
+{
+  "command": "build",
+  "status": "success",
+  "exit_code": 0,
+  "summary": "built managed artifact",
+  "details": {
+    "source": "<workspace>/tools/<tool>/...",
+    "artifacts": [
+      {
+        "path": "artifact-name",
+        "location": "<workspace>/tools/<tool>/..."
+      }
+    ]
+  }
+}
+```
+
+### `exec --tool <name>`
+
+Input:
+
+- Required `--tool <name>`
+- Optional `--workspace DIR`
+- Optional `--json`
+- Optional tool-specific passthrough after `--`
+
+Behavior:
+
+- Morpheus resolves the managed run context and invokes the tool CLI `run`
+  subcommand when the tool exposes one.
+- `exec` should execute against prepared managed artifacts instead of creating
+  its own workspace layout.
+
+Returned JSON:
+
+```json
+{
+  "command": "exec",
+  "status": "success",
+  "exit_code": 0,
+  "summary": "ran managed tool action",
+  "details": {
+    "artifacts": [
+      {
+        "path": "artifact-name",
+        "location": "<workspace>/tools/<tool>/..."
+      }
+    ]
+  }
+}
+```
+
+### `inspect --tool <name>`
+
+Input:
+
+- Required `--tool <name>`
+- Optional `--workspace DIR`
+- Optional `--json`
+
+Behavior:
+
+- Morpheus invokes the tool CLI `inspect` subcommand to re-read managed state.
+- `inspect` should describe existing artifacts and metadata without rerunning
+  fetch, patch, build, or exec steps.
+
+Returned JSON:
+
+```json
+{
+  "command": "inspect",
+  "status": "success",
+  "exit_code": 0,
+  "summary": "inspected managed tool state",
+  "details": {
+    "artifacts": [
+      {
+        "path": "artifact-name",
+        "location": "<workspace>/tools/<tool>/..."
+      }
+    ]
+  }
+}
+```
+
+### `logs --tool <name>`
+
+Input:
+
+- Required `--tool <name>`
+- Optional `--workspace DIR`
+- Optional `--follow`
+- Optional `--json`
+
+Behavior:
+
+- Morpheus invokes the tool CLI `logs` subcommand to read existing managed log
+  output.
+- `logs` should report prior execution logs rather than rerunning tool work.
+
+Returned JSON:
+
+```json
+{
+  "command": "logs",
+  "status": "success",
+  "exit_code": 0,
+  "summary": "tool logs",
+  "details": {
+    "log_file": "<workspace>/tools/<tool>/.../stdout.log"
+  }
+}
+```
+
 
 ## Workspace Layout
 
@@ -451,13 +581,13 @@ Treat this layout as stable.
 Treat `<workspace>/runs/` as the canonical managed run root.
 Do not invent parallel management roots outside it.
 
-## Boundary Rules
+## Remote Mode
 
-- Use Morpheus when the user needs managed workspace selection, managed run
-  records, or workflow execution.
-- Use repo-local tool CLIs directly when the user needs unmanaged tool
-  behavior.
-- Use the checked-in schema when you need the machine-readable Morpheus
-  contract.
-- Keep tool-specific behavior out of the Morpheus contract unless it appears
-  in a tool descriptor or tool CLI response.
+Remote mode is a Morpheus execution mode, not a separate tool CLI surface.
+The user still works through the same `morpheus workflow ...` commands and the
+same JSON contract.
+Morpheus chooses the configured transport, prepares the managed workspace on
+the target system, and invokes the internal tool CLI there.
+Tools should not grow `remote-*` commands or transport-specific semantics.
+Keep transport handling in Morpheus and keep tool behavior in
+`tools/<tool>/`.

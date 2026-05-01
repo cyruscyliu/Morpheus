@@ -51,8 +51,8 @@ Typical flow:
 Use the host path when:
 
 - the required host Clang version exists
-- you want the fastest local iteration
-- the local environment is already prepared for the target kernel/toolchain, or
+- you want the fastest iteration
+- the environment is already prepared for the target kernel/toolchain, or
   `llbic` can install the required host Rust toolchain automatically for
   `--rust`
 

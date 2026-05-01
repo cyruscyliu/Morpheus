@@ -8,7 +8,7 @@ const { handleFetchCommand } = require("./commands/fetch");
 const { handleInspectCommand } = require("./commands/inspect");
 const { handleLogsCommand } = require("./commands/logs");
 const { handlePatchCommand } = require("./commands/patch");
-const { handleRunCommand } = require("./commands/run");
+const { handleExecCommand } = require("./commands/exec");
 const { handleToolCommand } = require("./commands/tools");
 const { handleWorkflowCommand } = require("./commands/workflow");
 const { handleWorkspaceCommand } = require("./commands/workspace");
@@ -133,8 +133,8 @@ async function main() {
     return handleLogsCommand(argvWithoutCommand(argv, "logs"));
   }
 
-  if (command === "run") {
-    return handleRunCommand(argvWithoutCommand(argv, "run"));
+  if (command === "exec") {
+    return handleExecCommand(argvWithoutCommand(argv, "exec"));
   }
 
   if (command === "tool") {

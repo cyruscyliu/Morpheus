@@ -304,7 +304,7 @@ test("workflow remove requires a prior stop and removes stopped workflow state",
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 
-test("tool run removes an active conflicting workspace-scoped runtime before launch", () => {
+test("tool exec removes an active conflicting workspace-scoped runtime before launch", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-run-guard-project-"));
   const workspaceRoot = path.join(projectRoot, "workspace");
   const stateDir = path.join(workspaceRoot, "tmp", "nvirsh", "existing");
@@ -368,7 +368,7 @@ test("tool run removes an active conflicting workspace-scoped runtime before lau
 
   const result = run([
     "--json",
-    "run",
+    "exec",
     "--tool",
     "nvirsh",
     "--workspace",
@@ -403,7 +403,7 @@ test("tool run removes an active conflicting workspace-scoped runtime before lau
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
-test("tool run surfaces detached nvirsh startup failures", () => {
+test("tool exec surfaces detached nvirsh startup failures", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-nvirsh-run-fails-fast-"));
   const workspaceRoot = path.join(projectRoot, "workspace");
   const depsDir = path.join(projectRoot, "deps");
@@ -454,7 +454,7 @@ test("tool run surfaces detached nvirsh startup failures", () => {
 
   const result = run([
     "--json",
-    "run",
+    "exec",
     "--tool",
     "nvirsh",
     "--workspace",
@@ -532,7 +532,7 @@ test("workflow run resolves prior step artifacts in configured workflows", () =>
       "    steps:",
       "      - id: inspect_a",
       "        tool: llbic",
-      "        command: run",
+      "        command: exec",
       `        args: ["inspect", "${llbicManifestPath}"]`,
       ""
     ].join("\n")
@@ -583,7 +583,7 @@ test("workflow run records outline-to-paper artifacts for downstream reuse", () 
       "    steps:",
       "      - id: outline_to_paper",
       "        tool: outline-to-paper",
-      "        command: run",
+      "        command: exec",
       "        args:",
       "          - --outline",
       `          - ${outlinePath}`,

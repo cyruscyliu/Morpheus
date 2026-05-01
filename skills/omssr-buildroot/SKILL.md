@@ -1,6 +1,9 @@
 ---
 name: buildroot
-description: Run local Buildroot workflows, inspect local build metadata, and validate the CLI with the smoke fixture. Use when the user wants to build with Buildroot locally, inspect a prior local build, or reason about the local Buildroot CLI boundary.
+description: Run Buildroot workflows, inspect build metadata, and validate the
+  CLI with the smoke fixture. Use when the user wants to build with
+  Buildroot, inspect a prior build, or reason about the Buildroot CLI
+  contract.
 license: MIT
 compatibility: Designed for Codex CLI (or similar products)
 ---
@@ -11,84 +14,69 @@ Use this skill when you need to work with the `buildroot` CLI in this repo.
 
 ## Purpose
 
-`buildroot` is a standalone Unix-like CLI for local Buildroot workflows.
-It supports managed source fetch, local builds, local manifest inspection,
-local cleanup, and explicit JSON output.
+`buildroot` is a Morpheus tool CLI for Buildroot workflows.
+It supports managed source fetch, builds, manifest inspection, cleanup, and
+explicit JSON output.
+Use Morpheus for workflow runs, inspection, logs, and artifact-oriented
+execution.
 
-Remote workspaces are not part of `buildroot`.
-Use Morpheus for managed local or remote runs, inspection, logs, and fetch
-operations when workspace-managed execution matters.
+## Config Schema
 
-## First Steps
+Treat `tools.buildroot` in Morpheus config as the stable config surface for
+Buildroot-specific policy.
+The descriptor accepts these field families:
 
-When operating as an agent in this repo:
+- source selection: `source`, `build-version`, `archive-url`
+- patching: `patch-dir`
+- build reuse: `reuse-build-dir`, `build-dir-key`
+- Buildroot build inputs: `defconfig`, `make-arg`, `config-fragment`
+- artifact publication: `artifacts`
 
-1. Run `pnpm --filter @morpheus/buildroot build` if the CLI has not been built.
-2. Run `node tools/buildroot/dist/index.js --help` to discover the current
-   command surface.
-3. Prefer `--json` when the output will be consumed programmatically.
-4. Use `inspect` to re-read local metadata instead of rerunning a build when
-   possible.
+Use aliases from the descriptor when Morpheus resolves workflow config into
+tool flags.
+Prefer shared config for stable defaults and workflow-step overrides for
+run-specific values.
 
-Typical flow:
+## `tool.json`
 
-```bash
-node tools/buildroot/dist/index.js --help
-node tools/buildroot/dist/index.js build \
-  --source ./some-buildroot-tree \
-  --output ./out \
-  --defconfig qemu_x86_64_defconfig \
-  --json
-node tools/buildroot/dist/index.js inspect --output ./out --json
-```
+`tools/buildroot/tool.json` is the integration contract Morpheus reads.
 
-## Command Surface
+- `cli-contract` is `fetch,patch,build,inspect,logs`
+- `entry` is `dist/index.js`
+- `config.fields` defines accepted config names and aliases
+- `managed` declares managed source, downloads, build output, and artifact
+  path templates
+- `commands.fetch` and `commands.build` tell Morpheus which flags are scalar,
+  repeatable, path-based, and aliased
 
-The main user-facing commands are:
+This descriptor is the source of truth for how Morpheus materializes workspace
+paths and forwards Buildroot options.
 
-```text
-buildroot build
-buildroot fetch
-buildroot patch
-buildroot inspect
-buildroot logs
-buildroot clean
-```
+## How The Tool Works
 
-Use these commands by intent:
+Buildroot work is split into explicit stages.
 
-- `fetch`: fetch and unpack a managed Buildroot source tree into a
-  Morpheus-selected workspace path.
-- `patch`: apply a patch tree to a fetched managed Buildroot source tree.
-- `build`: run a local Buildroot workflow against a source tree.
-- `inspect`: read a local manifest from a prior run.
-- `logs`: read a local build log from a prior run.
-- `clean`: remove a local output or explicit path.
+- `fetch` materializes a managed source tree
+- `patch` applies a configured patch set to that tree
+- `build` runs Buildroot against the resolved source and output paths
+- `inspect` re-reads the recorded manifest instead of rebuilding
+- `logs` re-reads prior build logs
 
-## Remote Boundary
-
-If the user needs a remote workspace:
-
-- do not look for `buildroot remote-*`
-- use Morpheus instead
-- treat remote workspace lifecycle as a Morpheus concern
-
-Typical Morpheus handoff:
-
-```bash
-node apps/morpheus/dist/cli.js workflow run --name build-buildroot --json
-```
+The managed artifact contract is centered on the fetched source tree and the
+published image outputs such as `images/Image` and
+`images/rootfs.cpio.gz`.
+Treat manifest files as the primary stable automation contract.
 
 ## JSON Contract
 
 Every command supports `--json`, including `--help` and error cases.
 
 - Prefer `--json` for automation.
-- Treat local manifest files as the primary stable automation contract.
+- Treat manifest files as the primary stable automation contract.
 
 ## Smoke Test
 
-The repo includes a tiny fixture for fast validation of the local CLI path.
+The repo includes a tiny fixture for fast validation of the CLI path.
 Use it when you want to confirm the command surface without downloading a real
 Buildroot release.
 
@@ -97,4 +85,17 @@ pnpm --filter @morpheus/buildroot smoke
 ```
 
 The smoke test verifies that `buildroot build` and `buildroot inspect` can
-produce and read a small local artifact and manifest.
+produce and read a small artifact and manifest.
+
+## Feature List
+
+- managed source fetch and patch application
+- Buildroot build execution with explicit config fragments and make arguments
+- manifest and log re-read through stable automation surfaces
+- published image artifacts such as kernel and initrd outputs
+
+## Potential To-Do List
+
+- broaden artifact publication for more Buildroot output types
+- document common workflow patterns for reusable Buildroot runs
+- add clearer guidance for patch iteration and build directory reuse

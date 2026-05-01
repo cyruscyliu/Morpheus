@@ -220,6 +220,21 @@ function instanceName(flags: Record<string, unknown>) {
   return path.basename(stateDir(flags));
 }
 
+function managedRunDir() {
+  return resolvePathValue(String(process.env.MORPHEUS_RUN_DIR_OVERRIDE || '').trim());
+}
+
+function requireManagedInvocation(command: string) {
+  const runDir = managedRunDir();
+  if (!runDir) {
+    throw new CliError(
+      'managed_only',
+      `${command} is Morpheus-managed only; use 'morpheus workflow run/inspect/logs/stop/remove' instead of invoking nvirsh directly`,
+    );
+  }
+  return runDir;
+}
+
 function requireFlag(flags: Record<string, unknown>, name: string) {
   const value = flags[name];
   if (!value) {
@@ -939,26 +954,31 @@ async function main(argv: string[]) {
       }
       return 0;
     case 'doctor': {
+      requireManagedInvocation('nvirsh doctor');
       const result = runDoctor(parsed.flags);
       parsed.json ? emitJson(result) : emitText(result.summary);
       return resultExitCode(result);
     }
     case 'run': {
+      requireManagedInvocation('nvirsh run');
       const result = await runLaunch(parsed.flags);
       parsed.json ? emitJson(result) : emitText(result.summary);
       return resultExitCode(result);
     }
     case 'inspect': {
+      requireManagedInvocation('nvirsh inspect');
       const result = runInspect(parsed.flags);
       parsed.json ? emitJson(result) : emitText(result.summary);
       return resultExitCode(result);
     }
     case 'stop': {
+      requireManagedInvocation('nvirsh stop');
       const result = await runStop(parsed.flags);
       parsed.json ? emitJson(result) : emitText(result.summary);
       return resultExitCode(result);
     }
     case 'logs': {
+      requireManagedInvocation('nvirsh logs');
       const result = await runLogs(parsed.flags);
       if (parsed.json) {
         emitJson(result);
@@ -966,11 +986,13 @@ async function main(argv: string[]) {
       return 0;
     }
     case 'remove': {
+      requireManagedInvocation('nvirsh remove');
       const result = runRemove(parsed.flags);
       parsed.json ? emitJson(result) : emitText(result.summary);
       return resultExitCode(result);
     }
     case 'clean': {
+      requireManagedInvocation('nvirsh remove');
       const result = runRemove(parsed.flags);
       parsed.json ? emitJson(result) : emitText(result.summary);
       return resultExitCode(result);

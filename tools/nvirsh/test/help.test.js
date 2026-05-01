@@ -13,8 +13,8 @@ test('main help stays flat', () => {
 
 test('command help renders usage', () => {
   const help = renderHelp('run');
-  assert.match(help, /--kernel PATH/);
-  assert.match(help, /--initrd PATH/);
+  assert.match(help, /Morpheus-internal/);
+  assert.match(help, /morpheus workflow execution/);
 });
 
 test('help metadata is discoverable', () => {

@@ -1,43 +1,44 @@
 export const COMMANDS = [
   {
     name: 'doctor',
-    summary: 'Validate target prerequisites without writing state',
+    summary: 'Validate target prerequisites for a Morpheus-managed invocation',
     usage: [
-      'nvirsh doctor --target sel4 --qemu PATH --microkit-sdk DIR --toolchain DIR --libvmm-dir DIR',
-      '             [--microkit-config debug|release]',
+      'nvirsh doctor [Morpheus-internal]',
+      '',
+      'Notes:',
+      '  - Invoke this command only through morpheus workflow execution.',
     ],
   },
   {
     name: 'run',
-    summary: 'Validate prerequisites, materialize local state, and launch from explicit runtime artifacts',
+    summary: 'Launch from explicit runtime artifacts as a Morpheus-managed step',
     usage: [
-      'nvirsh run --target sel4 --state-dir DIR --qemu PATH --microkit-sdk DIR --toolchain DIR --libvmm-dir DIR --kernel PATH --initrd PATH [--detach] [--runtime-contract PATH] [--qemu-arg ARG ...]',
+      'nvirsh run [Morpheus-internal]',
       '',
       'Notes:',
-      '  - nvirsh run prepares local state automatically when it is missing.',
-      '  - Without --detach, nvirsh runs in the foreground and attaches to the VM console.',
-      '  - --json output requires --detach (otherwise console output is not machine-readable).',
+      '  - Invoke this command only through morpheus workflow execution.',
+      '  - Morpheus prepares the managed run directory and explicit artifacts.',
     ],
   },
   {
     name: 'inspect',
-    summary: 'Inspect local prepared or running state',
-    usage: ['nvirsh inspect --state-dir DIR'],
+    summary: 'Inspect Morpheus-managed prepared or running state',
+    usage: ['nvirsh inspect [Morpheus-internal]'],
   },
   {
     name: 'stop',
-    summary: 'Stop a local running instance',
-    usage: ['nvirsh stop --state-dir DIR'],
+    summary: 'Stop a Morpheus-managed running instance',
+    usage: ['nvirsh stop [Morpheus-internal]'],
   },
   {
     name: 'logs',
-    summary: 'Print local logs for an instance',
-    usage: ['nvirsh logs --state-dir DIR [--follow]'],
+    summary: 'Print Morpheus-managed logs for an instance',
+    usage: ['nvirsh logs [Morpheus-internal]'],
   },
   {
     name: 'remove',
-    summary: 'Remove local prepared state and logs after stop',
-    usage: ['nvirsh remove --state-dir DIR'],
+    summary: 'Remove Morpheus-managed prepared state and logs after stop',
+    usage: ['nvirsh remove [Morpheus-internal]'],
   },
   {
     name: 'help',
@@ -68,6 +69,9 @@ export function renderHelp(command?: string): string {
       'Global flags:',
       '  --json          Emit machine-readable output',
       '  --help, -h      Print help',
+      '',
+      'Execution policy:',
+      '  Invoke nvirsh only through morpheus workflow commands.',
     ].join('\n');
   }
 

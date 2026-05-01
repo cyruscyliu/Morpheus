@@ -1,63 +1,99 @@
 ---
 name: qemu
-description: Inspect, fetch, unpack, build, run, and register QEMU executables as stable artifacts for Morpheus-managed dependencies. Use when the user wants QEMU executable metadata, workspace-local QEMU paths, direct kernel-plus-initrd boots, or Morpheus-managed QEMU builds.
+description: Inspect, fetch, unpack, build, run, and register QEMU executables as stable artifacts for Morpheus-managed dependencies through Morpheus workflows.
 license: MIT
 compatibility: Designed for Codex CLI (or similar products)
 ---
 
 # qemu Skill
 
-Use this skill when you need to work with the repo-local `qemu` tool.
+Use this skill when you need to work with the `qemu` tool.
 
 ## Purpose
 
-`qemu` is a minimal CLI for executable inspection, managed builds, and direct
-local runtime launch.
+`qemu` is a Morpheus-internal CLI for executable inspection and managed builds.
 It validates the binary, reads `--version`, and exposes a stable artifact
 record that Morpheus can pass to dependent tools such as `nvirsh`.
-It can also boot a kernel and initrd locally with `qemu run`.
-Morpheus manages execution placement around that contract for both `local` and
-`remote` builds, and can invoke `qemu run` locally after resolving the managed
-executable path.
+Morpheus manages execution placement around that contract and can invoke
+`qemu run` after resolving the managed executable path.
 Managed build mode can fetch a QEMU release tarball, unpack it into the
-canonical managed source path from `morpheus.yaml`, stage the build copy, and
+canonical managed source path from Morpheus config, stage the build copy, and
 build/install the executable itself.
 Use `build-version` as the common selector when the tool needs to fetch QEMU
 source.
 
-## First Steps
+## Config Schema
 
-1. Run `pnpm --filter @morpheus/qemu build` if the tool has not been built.
-2. Run `node tools/qemu/dist/index.js --help` to inspect the current surface.
-3. Prefer `--json` when the output will be consumed programmatically.
+Treat `tools.qemu` in Morpheus config as the stable config surface.
+The descriptor accepts these field families:
 
-## Command Surface
+- source or binary selection: `source`, `path`, `build-version`, `archive-url`
+- patching: `patch-dir`
+- build reuse: `reuse-build-dir`, `build-dir-key`
+- build configuration: `target-list`, `configure-arg`
+- runtime passthrough: `qemu-arg`, `append`
+- artifact publication: `artifacts`
 
-The public command tree is:
+Use shared config for durable defaults and workflow overrides for per-run
+boot arguments or target selection.
 
-```text
-qemu inspect
-qemu fetch
-qemu patch
-qemu build
-qemu run
-qemu logs
-qemu version
-qemu help
+## `tool.json`
+
+`tools/qemu/tool.json` is the Morpheus integration contract.
+
+- `cli-contract` is `fetch,patch,build,exec,inspect,logs`
+- `runGuard` serializes managed runs in one workspace
+- `config.fields` defines accepted names and aliases
+- `managed.artifactPath` names the primary executable artifact
+- `managed` defines managed source, downloads, build, install, and artifact
+  path templates
+- `commands.fetch` and `commands.build` describe how Morpheus rewrites path
+  flags before invoking the tool
+
+This descriptor is the source of truth for how Morpheus locates and publishes
+`qemu-system-aarch64`.
+
+## How The Tool Works
+
+`qemu` can either inspect an existing executable or build one as a managed
+artifact.
+
+- `fetch` downloads and unpacks the requested source release
+- `patch` applies the configured patch tree
+- `build` configures, compiles, and installs the executable into the managed
+  install path
+- `exec` runs QEMU against prepared artifacts that Morpheus resolved earlier
+- `inspect` and `logs` re-read prior metadata and logs
+
+`nvirsh` should consume the published QEMU artifact instead of provisioning
+the binary itself.
+
+## JSON Contract
+
+Prefer `--json` for automation.
+Treat the emitted JSON payload as the stable machine-readable contract for
+artifact and metadata inspection.
+
+## Smoke Test
+
+Use the package smoke script for a fast CLI validation pass:
+
+```bash
+pnpm --filter @morpheus/qemu smoke
 ```
 
-## Managed Boundary
+The smoke test validates the managed QEMU CLI path without requiring a full
+workflow.
 
-- `qemu` owns local executable inspection.
-- `qemu` owns local kernel-plus-initrd runtime launch.
-- `qemu` owns `fetch`, `patch`, unpack, source staging, and build/install for the
-  managed build path.
-- Morpheus owns workspace directory selection and passes those paths to the
-  tool CLI.
-- Managed execution should start from Morpheus workflows.
-- That remote path now requires a remote Morpheus runtime, either from
-  `morpheus` on `PATH`, a mirrored repo checkout with `bin/morpheus`, or an
-  explicit `MORPHEUS_REMOTE_BIN` override.
-- `tools/qemu/tool.json` is the declared managed path contract that Morpheus
-  uses for the workspace-local source, build, install, and artifact layout.
-- `nvirsh` should consume the resolved QEMU artifact, not provision the binary.
+## Feature List
+
+- executable inspection and version detection
+- managed source fetch, patch, build, and install
+- published QEMU executable artifacts for downstream tools
+- runtime execution against previously prepared artifacts
+
+## Potential To-Do List
+
+- expand documented target coverage beyond the primary executable path
+- add clearer guidance for runtime argument conventions
+- document more reusable workflow patterns for managed QEMU builds

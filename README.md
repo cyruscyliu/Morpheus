@@ -16,13 +16,13 @@ Build the workspace:
 pnpm build
 ```
 
-Set up all tools:
+Set up the Morpheus CLI:
 
 ```bash
 pnpm setup
 ```
 
-This builds the tool entrypoints and installs repo-local CLI wrappers under
+This builds the workspace and installs the repo-local `morpheus` wrapper under
 `bin/`.
 
 List available project scripts:
@@ -60,13 +60,13 @@ be only `local` or `remote`.
 
 ## Usage
 
-Install or refresh the repo-local CLI wrappers directly:
+Install or refresh the repo-local `morpheus` wrapper directly:
 
 ```bash
 pnpm run install:bin
 ```
 
-Use the wrappers from `bin/`:
+Use the wrapper from `bin/`:
 
 ```bash
 ./bin/morpheus tool list --json

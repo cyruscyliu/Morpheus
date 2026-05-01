@@ -21,13 +21,16 @@
 - Keep output deterministic for scripts and agents.
 - Keep tool semantics thin and testable.
 - Treat remote mode as transport, not as a separate tool contract.
+- Treat repo-local tool CLIs as Morpheus-internal execution surfaces.
+- Do not invoke repo-local tools directly from the agent shell.
+- Run tools only through `morpheus workflow ...`.
 - Never add tool-specific behavior to Morpheus.
 - Keep Morpheus generic and move tool-specific logic into `tools/<tool>/`.
 - Require explicit user intent for ambiguous or destructive actions.
 - When adding a new CLI package or tool, update the relevant build, lint,
   test, and smoke commands.
-- When adding a repo-local tool wrapper, declare it in `tools/<tool>/tool.json`
-  so `install:bin` can discover it automatically.
+- `install:bin` installs only the repo-local `morpheus` wrapper in `bin/`.
+- Do not expose repo-local tool CLIs as top-level wrappers in `bin/`.
 - When updating a tool, update its skill and `tools/<tool>/README.md` in the
   same change.
 

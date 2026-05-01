@@ -1,49 +1,89 @@
 ---
 name: sel4
-description: Inspect, build, and register local seL4 source directories as managed artifacts for Morpheus-managed dependencies. Use when the user wants seL4 source metadata, workspace-local source paths, or Morpheus-managed seL4 registration.
+description: Inspect, build, and register seL4 source directories as managed
+  artifacts for Morpheus-managed dependencies. Use when the user wants seL4
+  source metadata, workspace-managed source paths, or Morpheus-managed seL4
+  registration.
 license: MIT
 compatibility: Designed for Codex CLI (or similar products)
 ---
 
 # sel4 Skill
 
-Use this skill when you need to work with the repo-local `sel4` tool.
+Use this skill when you need to work with the `sel4` tool.
 
 ## Purpose
 
-`sel4` is a minimal local CLI for source directory inspection, fetch, and
-managed builds. It validates the source directory, detects local version
-metadata when available, and exposes a stable artifact record that Morpheus can
-pass to dependent tools such as `nvirsh`.
+`sel4` is a minimal CLI for source directory inspection, fetch, and managed
+builds. It validates the source directory, detects version metadata when
+available, and exposes a stable artifact record that Morpheus can pass to
+dependent tools such as `nvirsh`.
 
-## First Steps
+## Config Schema
 
-1. Run `pnpm --filter @morpheus/sel4 build` if the tool has not been built.
-2. Run `node tools/sel4/dist/index.js --help` to inspect the current surface.
-3. Prefer `--json` when the output will be consumed programmatically.
+Treat `tools.sel4` in Morpheus config as the stable config surface.
+The descriptor accepts these field families:
 
-## Command Surface
+- source selection: `path`, `build-version`, `archive-url`
+- patching: `patch-dir`
+- build reuse: `reuse-build-dir`, `build-dir-key`
+- artifact publication: `artifacts`
 
-The public command tree is:
+Use shared config for stable source defaults and workflow overrides when a run
+needs a specific seL4 version.
 
-```text
-sel4 inspect
-sel4 fetch
-sel4 patch
-sel4 build
-sel4 logs
-sel4 version
-sel4 help
+## `tool.json`
+
+`tools/sel4/tool.json` is the Morpheus integration contract.
+
+- `cli-contract` is `fetch,patch,build,inspect,logs`
+- `config.fields` defines accepted names and aliases
+- `managed` defines downloads, source, and artifact path templates
+- `managed.artifacts` publishes the stable `source-dir` artifact
+
+This descriptor is the source of truth for how Morpheus resolves and records
+the managed seL4 source tree.
+
+## How The Tool Works
+
+`sel4` manages seL4 source material as a reusable artifact for later
+workflows.
+
+- `fetch` downloads or materializes the requested source tree
+- `patch` applies the configured patch set
+- `build` records the prepared source artifact for downstream use
+- `inspect` re-reads version and artifact metadata
+- `logs` re-reads prior execution logs
+
+`nvirsh` should consume the published source artifact instead of provisioning
+it directly.
+
+## JSON Contract
+
+Prefer `--json` for automation.
+Treat the emitted JSON payload as the stable machine-readable contract for
+source artifacts and version metadata.
+
+## Smoke Test
+
+Use the package smoke script for a fast CLI validation pass:
+
+```bash
+pnpm --filter @morpheus/sel4 smoke
 ```
 
-## Managed Boundary
+The smoke test validates the managed seL4 CLI path without requiring a full
+downstream workflow.
 
-- `sel4` owns local source inspection.
-- `sel4` owns archive fetch for managed source directories.
-- `sel4` owns explicit patch application for managed source directories.
-- Use `build-version` as the common selector when the tool needs to fetch seL4
-  source.
-- Morpheus owns workspace directory selection and passes those paths to the
-  tool CLI.
-- Managed execution should start from Morpheus workflows.
-- `nvirsh` should consume the resolved source artifact, not provision it.
+## Feature List
+
+- source directory inspection and version metadata capture
+- managed source fetch and patch flow
+- published seL4 source artifacts for downstream workflows
+- reusable source preparation for later runtime or build steps
+
+## Potential To-Do List
+
+- expand guidance for version pinning and source reuse
+- document common downstream workflow patterns that consume seL4 artifacts
+- add sharper examples for patch management and source preparation

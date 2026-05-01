@@ -38,7 +38,7 @@ tools:
   qemu:
     mode: remote
     sync-morpheus: true
-    cli-contract: fetch,patch,build,run
+    cli-contract: fetch,patch,build,exec
     build-version: 8.2.7
     reuse-build-dir: true
     build-dir-key: qemu-8.2.7-aarch64-softmmu
@@ -63,7 +63,7 @@ tools:
   llbic:
     mode: remote
     sync-morpheus: true
-    cli-contract: run
+    cli-contract: exec
     arch: arm64
     clang: 15
     out-of-tree: true
@@ -80,7 +80,7 @@ tools:
   llcg:
     mode: local
     sync-morpheus: true
-    cli-contract: run
+    cli-contract: exec
     arch: arm64
     clang: 15
     reuse-build-dir: true
@@ -106,7 +106,7 @@ tools:
       - log_file
   libvmm:
     mode: local
-    cli-contract: fetch,patch,build,run
+    cli-contract: fetch,patch,build,exec
     reuse-build-dir: true
     build-dir-key: libvmm-2fd1d64d
     git-ref: 2fd1d64d7805ad1647af6e2a832e4671d0d40297
@@ -137,7 +137,7 @@ tools:
       - source-dir
   nvirsh:
     mode: local
-    cli-contract: run
+    cli-contract: exec
     target: sel4
     name: sel4-dev
     board: qemu_virt_aarch64
@@ -307,7 +307,7 @@ workflows:
           - "{{steps.qemu_patch.artifacts.source-dir.location}}"
       - id: qemu_run
         tool: qemu
-        command: run
+        command: exec
         args:
           - --mode
           - local
@@ -391,7 +391,7 @@ workflows:
           - "{{steps.qemu_patch.artifacts.source-dir.location}}"
       - id: nvirsh_run
         tool: nvirsh
-        command: run
+        command: exec
         args:
           - --name
           - sel4-dev
@@ -417,40 +417,6 @@ workflows:
   nvirsh-sel4-runtime-trace:
     category: run
     steps:
-      - id: microkit_sdk_fetch
-        tool: microkit-sdk
-        command: fetch
-      - id: microkit_sdk_patch
-        tool: microkit-sdk
-        command: patch
-        args:
-          - --source
-          - "{{steps.microkit_sdk_fetch.artifacts.source-dir.location}}"
-          - --patch-dir
-          - "{{workspace.root}}/tools/microkit-sdk/patches"
-      - id: microkit_sdk_build
-        tool: microkit-sdk
-        command: build
-        args:
-          - --source
-          - "{{steps.microkit_sdk_patch.artifacts.source-dir.location}}"
-      - id: libvmm_fetch
-        tool: libvmm
-        command: fetch
-      - id: libvmm_patch
-        tool: libvmm
-        command: patch
-        args:
-          - --source
-          - "{{steps.libvmm_fetch.artifacts.source-dir.location}}"
-          - --patch-dir
-          - "{{workspace.root}}/tools/libvmm/patches"
-      - id: libvmm_build
-        tool: libvmm
-        command: build
-        args:
-          - --source
-          - "{{steps.libvmm_patch.artifacts.source-dir.location}}"
       - id: buildroot_fetch
         tool: buildroot
         command: fetch
@@ -485,9 +451,43 @@ workflows:
         args:
           - --source
           - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+      - id: microkit_sdk_fetch
+        tool: microkit-sdk
+        command: fetch
+      - id: microkit_sdk_patch
+        tool: microkit-sdk
+        command: patch
+        args:
+          - --source
+          - "{{steps.microkit_sdk_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/microkit-sdk/patches"
+      - id: microkit_sdk_build
+        tool: microkit-sdk
+        command: build
+        args:
+          - --source
+          - "{{steps.microkit_sdk_patch.artifacts.source-dir.location}}"
+      - id: libvmm_fetch
+        tool: libvmm
+        command: fetch
+      - id: libvmm_patch
+        tool: libvmm
+        command: patch
+        args:
+          - --source
+          - "{{steps.libvmm_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/libvmm/patches"
+      - id: libvmm_build
+        tool: libvmm
+        command: build
+        args:
+          - --source
+          - "{{steps.libvmm_patch.artifacts.source-dir.location}}"
       - id: nvirsh_run
         tool: nvirsh
-        command: run
+        command: exec
         args:
           - --name
           - sel4-dev-trace
@@ -545,7 +545,7 @@ workflows:
           - "{{workspace.root}}/tools/qemu/builds/qemu-8.2.7-aarch64-softmmu/install/bin/qemu-system-aarch64"
       - id: qemu_runtime_local
         tool: qemu
-        command: run
+        command: exec
         args:
           - --mode
           - local

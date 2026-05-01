@@ -2,19 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const repoRoot = process.cwd();
-const descriptorRoots = [
-  path.join(repoRoot, 'tools'),
-  path.join(repoRoot, 'apps'),
-];
 const binDir = path.join(repoRoot, 'bin');
 const marker = '# managed-by-install-bin';
+const installedDescriptors = [
+  path.join(repoRoot, 'apps', 'morpheus', 'tool.json'),
+];
 
 function listToolDescriptors() {
-  return descriptorRoots
-    .filter((root) => fs.existsSync(root))
-    .flatMap((root) => fs.readdirSync(root, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => path.join(root, entry.name, 'tool.json')))
+  return installedDescriptors
     .filter((descriptorPath) => fs.existsSync(descriptorPath))
     .map((descriptorPath) => {
       const toolRoot = path.dirname(descriptorPath);
@@ -98,4 +93,4 @@ for (const tool of tools) {
   fs.chmodSync(target, 0o755);
 }
 
-process.stdout.write(`installed ${tools.length} wrappers in ${path.relative(repoRoot, binDir) || 'bin'}\n`);
+process.stdout.write(`installed ${tools.length} Morpheus wrapper in ${path.relative(repoRoot, binDir) || 'bin'}\n`);

@@ -958,7 +958,7 @@ async function runToolWorkflow({
     }));
 
     const args = (
-      ["fetch", "patch", "build", "inspect", "logs", "run"].includes(toolCommand)
+      ["fetch", "patch", "build", "inspect", "logs", "exec"].includes(toolCommand)
     )
       ? [
           cliEntrypoint(),
@@ -1218,7 +1218,7 @@ function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) 
       stepRecord = createWorkflowStep(
         workflowRecord.runDir,
         index + 1,
-        spec.name || `${spec.tool}.${spec.command || "run"}`,
+        spec.name || `${spec.tool}.${spec.command || "exec"}`,
         { tool: spec.tool, id: stepId },
       );
     }
@@ -1232,15 +1232,15 @@ function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) 
     const stepSpec = {
       id: stepId,
       tool: spec.tool,
-      name: spec.name || `${spec.tool}.${spec.command || "run"}`,
+      name: spec.name || `${spec.tool}.${spec.command || "exec"}`,
       toolArgv: Array.isArray(spec.args) ? spec.args : [],
-      toolCommand: spec.command || "run",
+      toolCommand: spec.command || "exec",
       attach: Boolean(spec.attach),
     };
     const toolArgv = resolveConfiguredStepArgs(stepSpec, { workspaceRoot, stepResults, runDir: workflowRecord.runDir });
     if (fromStep && !seenFromStep) {
       const execution = resolveStepExecution(workspaceRoot, toolArgv, spec.tool, configured.configPath || workflowRecord.configPath || null);
-      const fingerprint = stepFingerprint(stepRecord, spec.command || "run", toolArgv, execution);
+      const fingerprint = stepFingerprint(stepRecord, spec.command || "exec", toolArgv, execution);
       const reusable = stepRecord.status === "success"
         && stepRecord.fingerprint === fingerprint
         && artifactsExist(stepRecord);
@@ -1257,7 +1257,7 @@ function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) 
     }
 
     const execution = resolveStepExecution(workspaceRoot, toolArgv, spec.tool, configured.configPath || workflowRecord.configPath || null);
-    const fingerprint = stepFingerprint(stepRecord, spec.command || "run", toolArgv, execution);
+    const fingerprint = stepFingerprint(stepRecord, spec.command || "exec", toolArgv, execution);
     const reusable = stepRecord.status === "success"
       && stepRecord.fingerprint === fingerprint
       && artifactsExist(stepRecord);
@@ -1351,9 +1351,9 @@ async function handleWorkflowCommand(argv) {
           steps: configured.steps.map((step, index) => ({
             id: step.id || step.name || `step-${index + 1}`,
             tool: step.tool,
-            name: step.name || `${step.tool}.${step.command || "run"}`,
+            name: step.name || `${step.tool}.${step.command || "exec"}`,
             toolArgv: Array.isArray(step.args) ? step.args : [],
-            toolCommand: step.command || "run",
+            toolCommand: step.command || "exec",
             attach: Boolean(step.attach),
           })),
           workflowName: String(flags.name),
@@ -1376,9 +1376,9 @@ async function handleWorkflowCommand(argv) {
         steps: configured.steps.map((step, index) => ({
           id: step.id || step.name || `step-${index + 1}`,
           tool: step.tool,
-          name: step.name || `${step.tool}.${step.command || "run"}`,
+          name: step.name || `${step.tool}.${step.command || "exec"}`,
           toolArgv: Array.isArray(step.args) ? step.args : [],
-          toolCommand: step.command || "run",
+          toolCommand: step.command || "exec",
           attach: Boolean(step.attach),
         })),
         workflowName: String(flags.name),
@@ -1401,7 +1401,7 @@ async function handleWorkflowCommand(argv) {
       .filter((token) => token !== "--json").filter((token) => token !== "--workspace").filter((token) => token !== workspaceRoot);
 
     return runToolWorkflow({
-      steps: [{ tool, name: `${tool}.run`, toolArgv, toolCommand: "run" }],
+      steps: [{ tool, name: `${tool}.exec`, toolArgv, toolCommand: "exec" }],
       workflowName,
       workspaceRoot,
       jsonMode: Boolean(flags.json),
@@ -1428,9 +1428,9 @@ async function handleWorkflowCommand(argv) {
       steps: configured.steps.map((step, index) => ({
         id: step.id || step.name || `step-${index + 1}`,
         tool: step.tool,
-        name: step.name || `${step.tool}.${step.command || "run"}`,
+        name: step.name || `${step.tool}.${step.command || "exec"}`,
         toolArgv: Array.isArray(step.args) ? step.args : [],
-        toolCommand: step.command || "run",
+        toolCommand: step.command || "exec",
         attach: Boolean(step.attach),
       })),
       workflowName: String(workflow.workflow),

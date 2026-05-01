@@ -135,7 +135,7 @@ async function handleToolCommand(argv) {
     return 0;
   }
 
-  if (subcommand === "run" || subcommand === "build") {
+  if (subcommand === "exec" || subcommand === "build") {
     throw new Error(`tool ${subcommand} was removed; start from a configured workflow with 'morpheus workflow run --name <workflow>'`);
   }
 

@@ -1,7 +1,7 @@
 {
   "name": "outline-to-paper",
   "runtime": "node",
-  "cli-contract": "run,inspect,logs",
+  "cli-contract": "exec,inspect,logs",
   "entry": "index.js",
   "config": {
     "fields": {

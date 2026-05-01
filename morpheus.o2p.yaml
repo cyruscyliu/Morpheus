@@ -13,7 +13,7 @@ workflows:
     steps:
       - id: outline_to_paper
         tool: outline-to-paper
-        command: run
+        command: exec
         args:
           - --outline
           - "{{workspace.root}}/../tools/outline-to-paper/test/fixtures/outline.json"
@@ -25,7 +25,7 @@ workflows:
       - id: outline_phase
         name: Outline
         tool: outline-to-paper
-        command: run
+        command: exec
         args:
           - --outline
           - "{{workspace.root}}/tmp/syssec-research-book1-outline.json"
@@ -36,7 +36,7 @@ workflows:
       - id: revise_phase
         name: Revise
         tool: outline-to-paper
-        command: run
+        command: exec
         args:
           - --outline
           - "{{workspace.root}}/tmp/syssec-research-book1-outline.json"
@@ -48,7 +48,7 @@ workflows:
       - id: draft_phase
         name: Draft
         tool: outline-to-paper
-        command: run
+        command: exec
         args:
           - --outline
           - "{{workspace.root}}/tmp/syssec-research-book1-outline.json"
@@ -59,7 +59,7 @@ workflows:
       - id: edit_phase
         name: Edit
         tool: outline-to-paper
-        command: run
+        command: exec
         args:
           - --outline
           - "{{workspace.root}}/tmp/syssec-research-book1-outline.json"
@@ -70,7 +70,7 @@ workflows:
       - id: review_phase
         name: Review
         tool: outline-to-paper
-        command: run
+        command: exec
         args:
           - --outline
           - "{{workspace.root}}/tmp/syssec-research-book1-outline.json"

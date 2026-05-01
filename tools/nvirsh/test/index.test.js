@@ -8,9 +8,14 @@ import { spawnSync } from 'node:child_process';
 const bin = path.resolve(process.cwd(), 'dist/index.js');
 
 function run(args, options = {}) {
+  const env = {
+    ...process.env,
+    ...(options.env || {}),
+  };
   return spawnSync(process.execPath, [bin, ...args], {
     encoding: 'utf8',
     cwd: process.cwd(),
+    env,
     ...options,
   });
 }
@@ -25,6 +30,14 @@ test('help supports json', () => {
   const payload = JSON.parse(result.stdout.trim());
   assert.equal(payload.command, 'help');
   assert.equal(payload.status, 'success');
+});
+
+test('direct run is rejected outside Morpheus-managed execution', () => {
+  const result = run(['--json', 'run']);
+  assert.equal(result.status, 1);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.status, 'error');
+  assert.equal(payload.error.code, 'managed_only');
 });
 
 test('run manages local sel4 state', async () => {
@@ -101,10 +114,18 @@ test('run manages local sel4 state', async () => {
     '-machine',
     '--qemu-arg',
     'virt',
-  ]);
+  ], {
+    env: {
+      MORPHEUS_RUN_DIR_OVERRIDE: stateDir,
+    },
+  });
   assert.equal(launch.status, 0, launch.stdout || launch.stderr);
 
-  const inspect = run(['--json', 'inspect', '--state-dir', stateDir]);
+  const inspect = run(['--json', 'inspect', '--state-dir', stateDir], {
+    env: {
+      MORPHEUS_RUN_DIR_OVERRIDE: stateDir,
+    },
+  });
   assert.equal(inspect.status, 0, inspect.stdout || inspect.stderr);
   const inspectPayload = JSON.parse(inspect.stdout.trim());
   assert.equal(
@@ -112,14 +133,26 @@ test('run manages local sel4 state', async () => {
     true,
   );
 
-  const logs = run(['--json', 'logs', '--state-dir', stateDir]);
+  const logs = run(['--json', 'logs', '--state-dir', stateDir], {
+    env: {
+      MORPHEUS_RUN_DIR_OVERRIDE: stateDir,
+    },
+  });
   assert.equal(logs.status, 0, logs.stdout || logs.stderr);
   assert.match(logs.stdout, /qemu launch/);
 
-  const stop = run(['--json', 'stop', '--state-dir', stateDir]);
+  const stop = run(['--json', 'stop', '--state-dir', stateDir], {
+    env: {
+      MORPHEUS_RUN_DIR_OVERRIDE: stateDir,
+    },
+  });
   assert.equal(stop.status, 0, stop.stdout || stop.stderr);
 
-  const remove = run(['--json', 'remove', '--state-dir', stateDir]);
+  const remove = run(['--json', 'remove', '--state-dir', stateDir], {
+    env: {
+      MORPHEUS_RUN_DIR_OVERRIDE: stateDir,
+    },
+  });
   assert.equal(remove.status, 0, remove.stdout || remove.stderr);
   assert.equal(fs.existsSync(stateDir), false);
 
@@ -196,7 +229,12 @@ test('run defaults state under workspace tmp when morpheus.yaml is present', () 
       initrd,
       '--detach',
     ],
-    { cwd: root },
+    {
+      cwd: root,
+      env: {
+        MORPHEUS_RUN_DIR_OVERRIDE: path.join(workspaceRoot, 'tmp', 'nvirsh', 'sel4-dev'),
+      },
+    },
   );
   assert.equal(launch.status, 0, launch.stdout || launch.stderr);
 
@@ -205,8 +243,18 @@ test('run defaults state under workspace tmp when morpheus.yaml is present', () 
   assert.equal(payload.details.manifest.stateDir, expectedStateDir);
   assert.equal(fs.existsSync(path.join(expectedStateDir, 'manifest.json')), true);
 
-  run(['--json', 'stop', '--state-dir', expectedStateDir], { cwd: root });
-  run(['--json', 'remove', '--state-dir', expectedStateDir], { cwd: root });
+  run(['--json', 'stop', '--state-dir', expectedStateDir], {
+    cwd: root,
+    env: {
+      MORPHEUS_RUN_DIR_OVERRIDE: expectedStateDir,
+    },
+  });
+  run(['--json', 'remove', '--state-dir', expectedStateDir], {
+    cwd: root,
+    env: {
+      MORPHEUS_RUN_DIR_OVERRIDE: expectedStateDir,
+    },
+  });
   fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -282,14 +330,22 @@ test('detached run fails when libvmm qemu launch exits immediately', () => {
     '--initrd',
     initrd,
     '--detach',
-  ]);
+  ], {
+    env: {
+      MORPHEUS_RUN_DIR_OVERRIDE: stateDir,
+    },
+  });
   assert.equal(launch.status, 0, launch.stdout || launch.stderr);
   const payload = JSON.parse(launch.stdout.trim());
   assert.equal(payload.status, 'error');
   assert.equal(payload.exit_code, 2);
   assert.match(payload.summary, /failed to start local target instance|qemu launch failed/i);
 
-  const inspect = run(['--json', 'inspect', '--state-dir', stateDir]);
+  const inspect = run(['--json', 'inspect', '--state-dir', stateDir], {
+    env: {
+      MORPHEUS_RUN_DIR_OVERRIDE: stateDir,
+    },
+  });
   assert.equal(inspect.status, 0, inspect.stdout || inspect.stderr);
   const inspectPayload = JSON.parse(inspect.stdout.trim());
   assert.equal(inspectPayload.details.manifest.status, 'error');

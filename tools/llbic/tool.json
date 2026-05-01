@@ -1,6 +1,6 @@
 {
   "name": "llbic",
   "runtime": "exec",
-  "cli-contract": "run,inspect,logs",
+  "cli-contract": "exec,inspect,logs",
   "entry": "llbic"
 }

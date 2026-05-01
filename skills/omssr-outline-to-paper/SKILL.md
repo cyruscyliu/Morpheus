@@ -27,103 +27,76 @@ managed paper draft.
 Morpheus owns workflow runs, logs, and artifact orchestration.
 `outline-to-paper` owns paper-specific logic.
 
-## First Steps
+## Config Schema
 
-When operating in this repo:
+Treat `tools.outline-to-paper` in Morpheus config as the stable config
+surface.
+The descriptor currently exposes these core fields:
 
-1. Run `node tools/outline-to-paper/index.js --help` to confirm the live CLI
-   surface.
-2. Prefer `--json` when the output will be consumed programmatically.
-3. Re-read prior state with `inspect` or `logs` before rerunning a paper step
-   when possible.
-4. Prefer Morpheus-managed workflow runs when the paper artifacts should be
-   reusable by later workflows.
-
-Typical direct flow:
-
-```bash
-node tools/outline-to-paper/index.js run \
-  --workspace ./workspace \
-  --outline ./normalized-outline.json \
-  --support ./support-registry.json \
-  --template acsac26 \
-  --json
-
-node tools/outline-to-paper/index.js inspect --workspace ./workspace --id <run-id> --json
-node tools/outline-to-paper/index.js logs --workspace ./workspace --id <run-id>
-```
-
-Typical Morpheus handoff:
-
-```bash
-node apps/morpheus/dist/cli.js workflow run --name outline-paper --json
-```
-
-## Command Surface
-
-The v1 public commands are:
-
-```text
-outline-to-paper run
-outline-to-paper inspect
-outline-to-paper logs
-```
-
-Use them by intent:
-
-- `run`: create a paper run from normalized outline/support inputs.
-- `inspect`: read stable metadata and artifact references for a prior run.
-- `logs`: read textual execution logs for a prior run.
-
-## Stable Inputs
-
-The workflow expects explicit structured inputs:
-
-- normalized outline artifact
-- support registry artifact
-- template selection such as `acsac26`
+- template selection: `template`
+- language selection: `language`
+- output shape: `output-format`
+- workflow inputs should include a normalized outline artifact and a support
+  registry artifact
 
 Treat the outline and support inputs as the semantic source of truth.
 Paper drafts are derived artifacts.
 
-## Stable Outputs
+Keep stable paper defaults in shared config and pass workflow-specific template
+or language changes through Morpheus.
 
-Treat the following as the public artifact contract:
+## `tool.json`
 
-- normalized outline copy
-- support registry copy
-- section plan
-- word budget
-- support gap report
-- mock review summary
-- LaTeX paper draft
+`tools/outline-to-paper/tool.json` is the Morpheus integration contract.
 
+- `cli-contract` is `exec,inspect,logs`
+- `entry` is `index.js`
+- `config.fields` defines the supported paper-generation knobs
+- `managed.schemaVersion` declares the descriptor schema version Morpheus
+  understands
+- the stable artifact contract should include the normalized outline copy,
+  support registry copy, section plan, word budget, support gap report, mock
+  review summary, and LaTeX paper draft
+
+This descriptor is intentionally thin because Morpheus handles workflow
+orchestration while the tool owns paper-specific semantics.
 Do not treat prompt payloads, intermediate LLM outputs, or scratch routing
 state as stable downstream inputs.
 
-## Morpheus Boundary
+## How The Tool Works
 
-If the user wants reusable workflow artifacts:
+`outline-to-paper` is the execution endpoint for turning normalized inputs into
+paper artifacts.
 
-- prefer Morpheus-managed workflow runs
-- let Morpheus own workflow ids, logs, and artifact publication
-- let `outline-to-paper` own paper-specific semantics
+- `exec` produces the planning and LaTeX outputs for one paper run
+- `inspect` re-reads stable metadata and artifact references
+- `logs` re-reads textual execution logs
 
-If a later workflow needs to build on the paper step:
+## JSON Contract
 
-- cite stable published artifacts
-- do not depend on tool-private scratch files
+Prefer `--json` for automation.
+Treat the emitted JSON payload as the stable machine-readable contract for run
+metadata and published paper artifacts.
 
-## Current Scope
+## Smoke Test
 
-The current v1 scope is:
+Use the package smoke script for a fast CLI validation pass:
+
+```bash
+pnpm --filter @morpheus/outline-to-paper smoke
+```
+
+The smoke test validates the paper workflow CLI path without requiring a full
+paper run.
+
+## Feature List
 
 - LaTeX paper generation
 - structured planning artifacts
 - support gap detection
 - mock review summary output
 
-Out of scope for now:
+## Potential To-Do List
 
 - support collection
 - literature retrieval

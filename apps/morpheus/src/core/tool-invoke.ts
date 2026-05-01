@@ -215,12 +215,12 @@ async function runToolStreaming(descriptor, args, options = {}) {
   const child = descriptor.runtime === "node"
     ? spawn(process.execPath, [entryPath, ...args], {
         cwd: process.cwd(),
-        env: process.env,
+        env: options.env || process.env,
         stdio: ["ignore", "pipe", "pipe"],
       })
     : spawn(entryPath, args, {
         cwd: process.cwd(),
-        env: process.env,
+        env: options.env || process.env,
         stdio: ["ignore", "pipe", "pipe"],
       });
 
@@ -972,13 +972,14 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
     },
     { allowGlobalRemote: Boolean(options.allowGlobalRemote), allowToolDefaults: true }
   );
-  const effective = resolveToolDependencies(resolved, command);
-  if (command === "run") {
+  const toolCommand = command === "exec" ? "run" : command;
+  const effective = resolveToolDependencies(resolved, toolCommand);
+  if (command === "exec") {
     ensureNoWorkspaceRunConflict(tool, descriptor, effective);
   }
   const remoteEnabled = Boolean(effective.ssh && effective.workspace && effective.localWorkspace && effective.workspace !== effective.localWorkspace);
   const reserved = new Set(["tool", "json", "help", "workspace", "localWorkspace", "ssh", "remote", "remoteWorkspace", "remoteTarget", "mode"]);
-  const args = ["--json", command];
+  const args = [toolCommand, "--json"];
   for (const [key, rawValue] of Object.entries(effective)) {
     if (reserved.has(key)) {
       continue;
@@ -1002,13 +1003,26 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
     args.push(`--${key}`, String(rawValue));
   }
   args.push(...passthrough);
+  const managedRunDir = command === "exec" && (effective.localWorkspace || effective.workspace)
+    ? path.join(effective.localWorkspace || effective.workspace, "tmp", tool, "exec")
+    : null;
+  const env = managedRunDir
+    ? { ...process.env, MORPHEUS_RUN_DIR_OVERRIDE: managedRunDir }
+    : process.env;
 
   const payload = remoteEnabled
     ? await executeRemoteTopLevelToolCommand(command, tool, args, effective, flags)
     : parseToolPayload(
-      await runToolStreaming(descriptor, args, { jsonMode: Boolean(flags.json) }),
+      await runToolStreaming(descriptor, args, { jsonMode: Boolean(flags.json), env }),
       `failed to ${command} with tool ${tool}`
     );
+  if (command === "exec" && payload && typeof payload.command === "string") {
+    if (payload.command === "run") {
+      payload.command = "exec";
+    } else if (payload.command.endsWith(" run")) {
+      payload.command = `${payload.command.slice(0, -4)} exec`;
+    }
+  }
 
   if (flags.json) {
     printJson(payload);

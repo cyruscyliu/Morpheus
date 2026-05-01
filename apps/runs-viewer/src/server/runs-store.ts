@@ -32,6 +32,13 @@ interface RunRelationRecord {
   from?: string;
   to?: string;
   artifactPath?: string;
+  consumedAs?: string;
+  artifactLocation?: string;
+}
+
+interface WorkflowDetailStepRecord {
+  summary: RunStepSummary;
+  manifest: any;
 }
 
 function normalizeWorkflowCategory(value: unknown): "build" | "run" | "unknown" {
@@ -356,6 +363,17 @@ function normalizeStepName(...values: unknown[]): string | null {
   return null;
 }
 
+function stepParameters(manifest: any): string[] {
+  const params = [];
+  const mode = typeof manifest?.resolvedInputs?.mode === "string"
+    ? manifest.resolvedInputs.mode.trim()
+    : "";
+  if (mode) {
+    params.push(mode);
+  }
+  return params;
+}
+
 function normalizeStepSummary(entry: any, manifest: any, runId: string, stepId: string, logExists: boolean, artifacts: RunArtifactRef[]): RunStepSummary {
   const rawName = normalizeStepName(manifest?.name, entry?.name);
   const displayName = rawName && !/^[a-z0-9-]+\.run$/i.test(rawName)
@@ -371,7 +389,73 @@ function normalizeStepSummary(entry: any, manifest: any, runId: string, stepId: 
     logUrl: logExists ? stepLogUrl(runId, stepId) : null,
     artifactCount: artifacts.length,
     artifacts,
+    parameters: stepParameters(manifest),
   };
+}
+
+function collectStringLeaves(value: unknown, bucket: Set<string>): void {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed) {
+      bucket.add(trimmed);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectStringLeaves(item, bucket);
+    }
+    return;
+  }
+  if (!value || typeof value !== "object") {
+    return;
+  }
+  for (const item of Object.values(value as Record<string, unknown>)) {
+    collectStringLeaves(item, bucket);
+  }
+}
+
+function inferArtifactRelations(stepRecords: WorkflowDetailStepRecord[]): RunRelationRecord[] {
+  const seen = new Set<string>();
+  const inferred: RunRelationRecord[] = [];
+
+  for (let consumerIndex = 0; consumerIndex < stepRecords.length; consumerIndex += 1) {
+    const consumer = stepRecords[consumerIndex];
+    const consumerId = consumer.summary.id;
+    const values = new Set<string>();
+    collectStringLeaves(consumer.manifest?.resolvedInputs, values);
+
+    for (const value of values) {
+      let matched = false;
+      for (let producerIndex = consumerIndex - 1; producerIndex >= 0 && !matched; producerIndex -= 1) {
+        const producer = stepRecords[producerIndex];
+        if (producer.summary.id === consumerId) {
+          continue;
+        }
+        for (const artifact of producer.summary.artifacts || []) {
+          const locations = [artifact.location].filter(Boolean);
+          if (!locations.some((location) => String(location) === String(value))) {
+            continue;
+          }
+          const relation = {
+            kind: "artifact",
+            from: producer.summary.id,
+            to: consumerId,
+            artifactPath: artifact.path,
+          };
+          const key = JSON.stringify(relation);
+          if (!seen.has(key)) {
+            seen.add(key);
+            inferred.push(relation);
+          }
+          matched = true;
+          break;
+        }
+      }
+    }
+  }
+
+  return inferred;
 }
 
 function buildGraph(steps: RunStepSummary[], relations: RunRelationRecord[]): { nodes: RunGraphNode[]; edges: RunGraphEdge[] } {
@@ -381,6 +465,7 @@ function buildGraph(steps: RunStepSummary[], relations: RunRelationRecord[]): { 
     kind: step.kind,
     status: step.status,
     artifactCount: step.artifactCount || 0,
+    parameters: Array.isArray(step.parameters) ? step.parameters : [],
   }));
 
   const stepIds = new Set(steps.map((step) => step.id));
@@ -415,7 +500,7 @@ function buildGraph(steps: RunStepSummary[], relations: RunRelationRecord[]): { 
       source,
       target,
       kind,
-      label: relation.kind || null,
+      label: relation.artifactPath || relation.consumedAs || relation.kind || null,
       artifactPath: relation.artifactPath || null,
       inferred: false,
     });
@@ -468,7 +553,7 @@ function loadWorkflowFirstDetail(runRoot: string, runId: string, options: LoadOp
   const stepEntries = Array.isArray(record.steps) ? record.steps : [];
   const relations = readJsonLinesIfExists(path.join(runDir, "relations.jsonl")) as RunRelationRecord[];
 
-  const steps: RunStepSummary[] = stepEntries.map((entry: any) => {
+  const stepRecords: WorkflowDetailStepRecord[] = stepEntries.map((entry: any) => {
     const stepId = String(entry.id || "");
     const stepDir = typeof entry.stepDir === "string" ? entry.stepDir : path.join(runDir, "steps", stepId);
     const manifest = readJsonIfExists<any>(path.join(stepDir, "step.json"), null as any);
@@ -481,8 +566,10 @@ function loadWorkflowFirstDetail(runRoot: string, runId: string, options: LoadOp
     if (options.includeLogs && exists) {
       summary.logText = loadStepLogText(runRoot, runId, stepId);
     }
-    return summary as RunStepSummary;
+    return { summary: summary as RunStepSummary, manifest };
   });
+  const steps = stepRecords.map((entry) => entry.summary);
+  const graphRelations = relations.length > 0 ? relations : inferArtifactRelations(stepRecords);
 
   return {
     id: String(record.id || runId),
@@ -496,7 +583,7 @@ function loadWorkflowFirstDetail(runRoot: string, runId: string, options: LoadOp
     changeName: null,
     stepCount: steps.length,
     runDir,
-    graph: buildGraph(steps, relations),
+    graph: buildGraph(steps, graphRelations),
     steps,
   };
 }

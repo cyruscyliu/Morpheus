@@ -22,6 +22,7 @@ export interface RunGraphNode {
   kind: string | null;
   status: string;
   artifactCount: number;
+  parameters?: string[];
 }
 
 export interface RunGraphEdge {
@@ -44,6 +45,7 @@ export interface RunStepSummary {
   logUrl: string | null;
   artifactCount: number | null;
   artifacts?: RunArtifactRef[];
+  parameters?: string[];
 }
 
 export interface RunDetail extends RunSummary {

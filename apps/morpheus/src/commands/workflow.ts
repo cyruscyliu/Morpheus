@@ -217,16 +217,87 @@ function resolveWorkflowStringTemplate(value, context) {
   });
 }
 
+function relationRecordFromTemplateExpr(context, currentStepId, expr) {
+  if (!currentStepId || !expr.startsWith("steps.")) {
+    return null;
+  }
+  const pathExpr = expr.slice("steps.".length);
+  const dot = pathExpr.indexOf(".");
+  if (dot <= 0) {
+    return null;
+  }
+  const stepId = pathExpr.slice(0, dot);
+  const stepPath = pathExpr.slice(dot + 1);
+  const parts = stepPath.split(".");
+  if (parts[0] !== "artifacts" || parts.length < 3) {
+    return null;
+  }
+  const artifactAlias = parts[1];
+  const property = parts[2];
+  const artifact = getByPath(context.stepResults[stepId], `artifacts.${artifactAlias}`);
+  if (!artifact || typeof artifact !== "object") {
+    return null;
+  }
+  const artifactPath = typeof artifact.path === "string" ? artifact.path : artifactAlias;
+  const artifactLocation =
+    property === "location"
+      ? (artifact.local_location || artifact.location || artifact.remote_location || null)
+      : getByPath(artifact, property);
+  return {
+    kind: "artifact",
+    from: stepId,
+    to: currentStepId,
+    artifactPath: artifactPath || null,
+    artifactLocation: artifactLocation == null ? null : String(artifactLocation),
+    consumedAs: stepPath,
+  };
+}
+
+function resolveWorkflowStringTemplateWithTrace(value, context, currentStepId) {
+  const relations = [];
+  const resolved = String(value).replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_match, expression) => {
+    const expr = String(expression || "").trim();
+    const relation = relationRecordFromTemplateExpr(context, currentStepId, expr);
+    if (relation) {
+      relations.push(relation);
+    }
+    if (expr === "workspace.root") {
+      return String(context.workspaceRoot);
+    }
+    if (!expr.startsWith("steps.")) {
+      throw new Error(`unsupported workflow template: ${expr}`);
+    }
+    const pathExpr = expr.slice("steps.".length);
+    const dot = pathExpr.indexOf(".");
+    if (dot <= 0) {
+      throw new Error(`invalid workflow step template: ${expr}`);
+    }
+    const stepId = pathExpr.slice(0, dot);
+    const stepPath = pathExpr.slice(dot + 1);
+    const valueResolved = resolveTemplateStepValue(context, stepId, stepPath);
+    if (valueResolved == null) {
+      throw new Error(`workflow template resolved empty value: ${expr}`);
+    }
+    return String(valueResolved);
+  });
+  return { value: resolved, relations };
+}
+
 function resolveConfiguredStepArgs(step, context) {
   const items = Array.isArray(step.args)
     ? step.args
     : (Array.isArray(step.toolArgv) ? step.toolArgv : []);
-  return items.map((item) => {
+  const relations = [];
+  const currentStepId = step && step.id ? String(step.id) : null;
+  const args = items.map((item) => {
     if (typeof item !== "string") {
       return String(item);
     }
-    return resolveWorkflowStringTemplate(item, context);
+    const resolved = resolveWorkflowStringTemplateWithTrace(item, context, currentStepId);
+    relations.push(...resolved.relations);
+    return resolved.value;
   });
+  return { args, relations };
 }
 
 function listWorkflowSteps(runDir) {
@@ -243,6 +314,52 @@ function listWorkflowSteps(runDir) {
       const manifestPath = path.join(stepDir, "step.json");
       return fs.existsSync(manifestPath) ? readJson(manifestPath) : { id: path.basename(stepDir), stepDir };
     });
+}
+
+function readJsonLinesIfExists(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return [];
+  }
+  return fs
+    .readFileSync(filePath, "utf8")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter((entry) => entry !== null);
+}
+
+function appendWorkflowRelations(runDir, relations) {
+  if (!runDir || !Array.isArray(relations) || relations.length === 0) {
+    return;
+  }
+  const relationsPath = path.join(runDir, "relations.jsonl");
+  const existing = new Set(
+    readJsonLinesIfExists(relationsPath)
+      .map((entry) => JSON.stringify(entry))
+      .filter(Boolean),
+  );
+  const lines = [];
+  for (const relation of relations) {
+    if (!relation || typeof relation !== "object") {
+      continue;
+    }
+    const key = JSON.stringify(relation);
+    if (existing.has(key)) {
+      continue;
+    }
+    existing.add(key);
+    lines.push(`${key}\n`);
+  }
+  if (lines.length > 0) {
+    fs.appendFileSync(relationsPath, lines.join(""), "utf8");
+  }
 }
 
 function findWorkflowRun(workspaceRoot, id) {
@@ -943,9 +1060,10 @@ async function runToolWorkflow({
     updateWorkflowStep(step.stepDir, (current) => ({ ...current, status: "running" }));
 
     const spec = stepSpecs.find((candidate) => candidate.id === step.id) || null;
-    const toolArgv = spec
+    const resolvedStep = spec
       ? resolveConfiguredStepArgs(spec, { workspaceRoot, stepResults, runDir: workflow.runDir })
-      : [];
+      : { args: [], relations: [] };
+    const toolArgv = resolvedStep.args;
     const toolCommand = spec ? spec.toolCommand : "build";
     const attach = spec ? spec.attach : false;
     const execution = resolveStepExecution(workspaceRoot, toolArgv, step.tool);
@@ -956,6 +1074,7 @@ async function runToolWorkflow({
       resolvedInputs: execution && execution.resolved ? execution.resolved : null,
       reuseState: stepIndex < startIndex ? "reused" : "rerun",
     }));
+    appendWorkflowRelations(workflow.runDir, resolvedStep.relations);
 
     const args = (
       ["fetch", "patch", "build", "inspect", "logs", "exec"].includes(toolCommand)
@@ -1237,7 +1356,8 @@ function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) 
       toolCommand: spec.command || "exec",
       attach: Boolean(spec.attach),
     };
-    const toolArgv = resolveConfiguredStepArgs(stepSpec, { workspaceRoot, stepResults, runDir: workflowRecord.runDir });
+    const resolvedStep = resolveConfiguredStepArgs(stepSpec, { workspaceRoot, stepResults, runDir: workflowRecord.runDir });
+    const toolArgv = resolvedStep.args;
     if (fromStep && !seenFromStep) {
       const execution = resolveStepExecution(workspaceRoot, toolArgv, spec.tool, configured.configPath || workflowRecord.configPath || null);
       const fingerprint = stepFingerprint(stepRecord, spec.command || "exec", toolArgv, execution);

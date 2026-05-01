@@ -276,7 +276,59 @@ test("workflow graph uses explicit relations and ordered fallback edges", () => 
   assert.deepEqual(detail.graph.edges.map((edge) => edge.kind), ["sequence", "artifact"]);
   assert.equal(detail.graph.edges[0]?.inferred, true);
   assert.equal(detail.graph.edges[1]?.artifactPath, "artifacts/input.json");
+  assert.equal(detail.graph.edges[1]?.label, "artifacts/input.json");
   assert.equal(detail.graph.edges[1]?.inferred, false);
+});
+
+test("workflow graph infers artifact relations from resolved inputs when relation log is absent", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-store-"));
+  const runRoot = path.join(workspaceRoot, "runs");
+
+  const workflowId = "wf-inferred-artifacts";
+  const workflowDir = path.join(runRoot, workflowId);
+  const producedLocation = "/tmp/workspace/tools/qemu/src/qemu-1.0.0";
+  writeJson(path.join(workflowDir, "workflow.json"), {
+    id: workflowId,
+    workflow: "artifact-flow",
+    category: "build",
+    status: "success",
+    createdAt: "2026-04-26T10:00:00.000Z",
+    updatedAt: "2026-04-26T10:01:00.000Z",
+    steps: [
+      { id: "01-fetch", name: "fetch", kind: "tool", status: "success", stepDir: path.join(workflowDir, "steps", "01-fetch") },
+      { id: "02-patch", name: "patch", kind: "tool", status: "success", stepDir: path.join(workflowDir, "steps", "02-patch") },
+    ],
+  });
+  writeJson(path.join(workflowDir, "steps", "01-fetch", "step.json"), {
+    id: "01-fetch",
+    name: "fetch",
+    kind: "tool",
+    status: "success",
+    artifacts: [
+      { path: "source-dir", location: producedLocation },
+    ],
+  });
+  writeJson(path.join(workflowDir, "steps", "02-patch", "step.json"), {
+    id: "02-patch",
+    name: "patch",
+    kind: "tool",
+    status: "success",
+    resolvedInputs: {
+      source: producedLocation,
+      mode: "local",
+    },
+  });
+  writeText(path.join(workflowDir, "steps", "01-fetch", "stdout.log"), "fetch\n");
+  writeText(path.join(workflowDir, "steps", "02-patch", "stdout.log"), "patch\n");
+
+  const detail = loadRunDetail(runRoot, workflowId);
+  assert.ok(detail);
+  assert.equal(detail.graph.edges.length, 2);
+  assert.deepEqual(detail.graph.edges.map((edge) => edge.kind), ["sequence", "artifact"]);
+  assert.equal(detail.graph.edges[1]?.source, "01-fetch");
+  assert.equal(detail.graph.edges[1]?.target, "02-patch");
+  assert.equal(detail.graph.edges[1]?.artifactPath, "source-dir");
+  assert.equal(detail.graph.edges[1]?.label, "source-dir");
 });
 
 test("workflow-first steps with empty logs do not advertise log URLs", () => {

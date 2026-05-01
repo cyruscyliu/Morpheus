@@ -846,6 +846,17 @@ test("workflow run --from-step resolves templated prior-step args for reuse vali
   const runId = firstPayload.details.id;
   const runDir = path.join(workspaceRoot, "runs", runId);
   const stepAPath = path.join(runDir, "steps", "fetch_a", "step.json");
+  const relationsPath = path.join(runDir, "relations.jsonl");
+  const relations = fs.readFileSync(relationsPath, "utf8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  assert.equal(relations.some((entry) =>
+    entry.kind === "artifact"
+    && entry.from === "fetch_a"
+    && entry.to === "patch_b"
+    && entry.artifactPath === "source-dir"
+  ), true);
 
   const rerun = run(["--json", "workflow", "run", "--name", "inspect-template-pair", "--from-step", "patch_b"], {
     cwd: projectRoot,

@@ -264,14 +264,17 @@ function stepDisplayName(step: RunStepSummary | RunGraphNode): string {
   return prettifyStepId(step.id);
 }
 
-function formatGraphEdge(edge: RunGraphEdge): string {
+function formatGraphEdge(edge: RunGraphEdge): string | null {
+  if (edge.kind !== "artifact") {
+    return null;
+  }
   if (edge.artifactPath) {
     return edge.artifactPath;
   }
   if (edge.label) {
     return edge.label;
   }
-  return edge.kind === "artifact" ? "artifact" : "sequence";
+  return "artifact";
 }
 
 function formatPathLabel(value: string | null | undefined): string {
@@ -385,6 +388,8 @@ function buildGraphLayout(
   const wrapRowGap = 56;
   const paddingX = 32;
   const paddingY = 24;
+  const primaryEdges = edges.filter((edge) => edge.kind === "sequence");
+  const layoutEdges = primaryEdges.length > 0 ? primaryEdges : edges;
 
   const layerMap = new Map<string, number>();
   for (const node of nodes) {
@@ -393,7 +398,7 @@ function buildGraphLayout(
 
   for (let pass = 0; pass < nodes.length; pass += 1) {
     let changed = false;
-    for (const edge of edges) {
+    for (const edge of layoutEdges) {
       const sourceLayer = layerMap.get(edge.source);
       const targetLayer = layerMap.get(edge.target);
       if (sourceLayer == null || targetLayer == null) {
@@ -418,7 +423,76 @@ function buildGraphLayout(
     grouped.set(layer, items);
   }
 
-  const layerEntries = [...grouped.entries()].sort((left, right) => left[0] - right[0]);
+  const incoming = new Map<string, string[]>();
+  const outgoing = new Map<string, string[]>();
+  for (const node of nodes) {
+    incoming.set(node.id, []);
+    outgoing.set(node.id, []);
+  }
+  for (const edge of edges) {
+    incoming.get(edge.target)?.push(edge.source);
+    outgoing.get(edge.source)?.push(edge.target);
+  }
+
+  const layerEntries = [...grouped.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .map(([layer, items]) => [layer, [...items]] as [number, RunGraphNode[]]);
+
+  function nodeCenterForLayerRefs(ids: string[], layerIndexMap: Map<string, number>): number | null {
+    const positions = ids
+      .map((id) => layerIndexMap.get(id))
+      .filter((value): value is number => value != null);
+    if (positions.length === 0) {
+      return null;
+    }
+    return positions.reduce((sum, value) => sum + value, 0) / positions.length;
+  }
+
+  function optimizeLayerOrdering(): void {
+    for (let pass = 0; pass < 4; pass += 1) {
+      for (let index = 1; index < layerEntries.length; index += 1) {
+        const prevLayer = layerEntries[index - 1]?.[1] || [];
+        const currentLayer = layerEntries[index]?.[1] || [];
+        const prevIndexMap = new Map(prevLayer.map((node, nodeIndex) => [node.id, nodeIndex]));
+        currentLayer.sort((left, right) => {
+          const leftScore = nodeCenterForLayerRefs(incoming.get(left.id) || [], prevIndexMap);
+          const rightScore = nodeCenterForLayerRefs(incoming.get(right.id) || [], prevIndexMap);
+          if (leftScore == null && rightScore == null) {
+            return left.id.localeCompare(right.id);
+          }
+          if (leftScore == null) {
+            return 1;
+          }
+          if (rightScore == null) {
+            return -1;
+          }
+          return leftScore - rightScore;
+        });
+      }
+      for (let index = layerEntries.length - 2; index >= 0; index -= 1) {
+        const nextLayer = layerEntries[index + 1]?.[1] || [];
+        const currentLayer = layerEntries[index]?.[1] || [];
+        const nextIndexMap = new Map(nextLayer.map((node, nodeIndex) => [node.id, nodeIndex]));
+        currentLayer.sort((left, right) => {
+          const leftScore = nodeCenterForLayerRefs(outgoing.get(left.id) || [], nextIndexMap);
+          const rightScore = nodeCenterForLayerRefs(outgoing.get(right.id) || [], nextIndexMap);
+          if (leftScore == null && rightScore == null) {
+            return left.id.localeCompare(right.id);
+          }
+          if (leftScore == null) {
+            return 1;
+          }
+          if (rightScore == null) {
+            return -1;
+          }
+          return leftScore - rightScore;
+        });
+      }
+    }
+  }
+
+  optimizeLayerOrdering();
+
   const shouldWrap =
     viewportWidth > 0 &&
     nodes.length > 4 &&
@@ -444,8 +518,7 @@ function buildGraphLayout(
       const startX = paddingX + (contentWidth - row.width) / 2;
       const y = paddingY + rowIndex * (nodeHeight + wrapRowGap);
       row.items.forEach((node, itemIndex) => {
-        const visualIndex = rowIndex % 2 === 0 ? itemIndex : row.items.length - 1 - itemIndex;
-        const x = startX + visualIndex * (nodeWidth + colGap);
+        const x = startX + itemIndex * (nodeWidth + colGap);
         positioned.push({
           ...node,
           x,
@@ -1428,7 +1501,7 @@ export function WorkflowViewer({
                             refX="7"
                             refY="4"
                           >
-                            <path d="M0,0 L8,4 L0,8 z" fill="#6e5f4d" />
+                            <path d="M0,0 L8,4 L0,8 z" fill="#9a8d7a" />
                           </marker>
                           <marker
                             id="workflow-arrow-artifact"
@@ -1438,7 +1511,7 @@ export function WorkflowViewer({
                             refX="7"
                             refY="4"
                           >
-                            <path d="M0,0 L8,4 L0,8 z" fill="#165d52" />
+                            <path d="M0,0 L8,4 L0,8 z" fill="#0f766e" />
                           </marker>
                         </defs>
                         {graphEdges.map((edge) => {
@@ -1447,6 +1520,7 @@ export function WorkflowViewer({
                           if (!source || !target) {
                             return null;
                           }
+                          const label = formatGraphEdge(edge);
                           const labelPosition = edgeLabelPosition(source, target);
                           return (
                             <g key={edge.id}>
@@ -1455,14 +1529,16 @@ export function WorkflowViewer({
                                 d={edgePath(source, target)}
                                 markerEnd={`url(#workflow-arrow-${edge.kind})`}
                               />
-                              <text
-                                className="workflow-graph-path-label"
-                                textAnchor="middle"
-                                x={labelPosition.x}
-                                y={labelPosition.y}
-                              >
-                                {formatGraphEdge(edge)}
-                              </text>
+                              {label ? (
+                                <text
+                                  className={`workflow-graph-path-label is-${edge.kind}`}
+                                  textAnchor="middle"
+                                  x={labelPosition.x}
+                                  y={labelPosition.y}
+                                >
+                                  {label}
+                                </text>
+                              ) : null}
                             </g>
                           );
                         })}
@@ -1492,6 +1568,9 @@ export function WorkflowViewer({
                             </div>
                             <div className="workflow-graph-node-meta">
                               <span>{node.kind || "step"}</span>
+                              {Array.isArray(node.parameters) && node.parameters.length > 0 ? (
+                                <span className="workflow-graph-node-param">{node.parameters.join(" · ")}</span>
+                              ) : null}
                               <span>{node.artifactCount} artifacts</span>
                             </div>
                           </button>

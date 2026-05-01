@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { CatalogEntry, CatalogKind } from "@/lib/types";
-import { renderMarkdown } from "@/lib/markdown";
+import { extractHeadings, renderMarkdown } from "@/lib/markdown";
 
 function byName(a: CatalogEntry, b: CatalogEntry) {
   if (a.name.toLowerCase() === "morpheus" && b.name.toLowerCase() !== "morpheus") {
@@ -37,9 +37,20 @@ function defaultSelectedName(entries: CatalogEntry[], kind: CatalogKind | "all")
   return filtered[0]?.name ?? null;
 }
 
+const sectionStorageKey = "morpheus-docs-section";
+const selectedStorageKey = "morpheus-docs-selected";
+const docsScrollStorageKey = "morpheus-docs-scroll";
+
+function isSavedSection(value: string | null): value is CatalogKind | "all" {
+  return value === "all" || value === "tool" || value === "app";
+}
+
 export function DocsShell({ entries }: { entries: CatalogEntry[] }) {
   const [section, setSection] = useState<CatalogKind | "all">("all");
   const [selectedName, setSelectedName] = useState<string | null>(() => defaultSelectedName(entries, "all"));
+  const docsPaneRef = useRef<HTMLDivElement | null>(null);
+  const restoreScrollRef = useRef<number | null>(null);
+  const previousSelectedRef = useRef<string | null>(selectedName);
 
   const filtered = useMemo(() => filterByKind(entries, section).slice().sort(byName), [entries, section]);
   const selected = useMemo(() => {
@@ -50,6 +61,56 @@ export function DocsShell({ entries }: { entries: CatalogEntry[] }) {
   }, [filtered, selectedName]);
 
   const counts = useMemo(() => countByKind(entries), [entries]);
+  const headings = useMemo(
+    () => (selected ? extractHeadings(selected.markdown).filter((heading) => heading.level <= 3) : []),
+    [selected],
+  );
+
+  useEffect(() => {
+    const savedSection = window.localStorage.getItem(sectionStorageKey);
+    const nextSection = isSavedSection(savedSection) ? savedSection : "all";
+    const nextSelected = window.localStorage.getItem(selectedStorageKey);
+    const nextScroll = window.localStorage.getItem(docsScrollStorageKey);
+
+    setSection(nextSection);
+    setSelectedName(
+      nextSelected && entries.some((entry) => entry.name === nextSelected)
+        ? nextSelected
+        : defaultSelectedName(entries, nextSection),
+    );
+    restoreScrollRef.current = nextScroll ? Number.parseInt(nextScroll, 10) : 0;
+  }, [entries]);
+
+  useEffect(() => {
+    window.localStorage.setItem(sectionStorageKey, section);
+  }, [section]);
+
+  useEffect(() => {
+    if (selectedName) {
+      window.localStorage.setItem(selectedStorageKey, selectedName);
+      return;
+    }
+    window.localStorage.removeItem(selectedStorageKey);
+  }, [selectedName]);
+
+  useEffect(() => {
+    const docsPane = docsPaneRef.current;
+    if (!docsPane || !selected?.name) {
+      return;
+    }
+
+    if (restoreScrollRef.current !== null) {
+      docsPane.scrollTop = restoreScrollRef.current;
+      restoreScrollRef.current = null;
+      previousSelectedRef.current = selected.name;
+      return;
+    }
+
+    if (previousSelectedRef.current !== selected.name) {
+      docsPane.scrollTop = 0;
+      previousSelectedRef.current = selected.name;
+    }
+  }, [selected]);
 
   return (
     <div className="docs-shell">
@@ -153,15 +214,40 @@ export function DocsShell({ entries }: { entries: CatalogEntry[] }) {
               <p className="docs-pane-caption">{selected ? selected.source : "Select an entry"}</p>
             </div>
           </div>
-          <div className="docs-pane-body">
-            {selected ? (
-              <article
-                className="markdown-body"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(selected.markdown) }}
-              />
-            ) : (
-              <p className="text-sm text-muted-foreground">No entry available.</p>
-            )}
+          <div className="docs-pane-body docs-content-shell">
+            <aside className="docs-toc">
+              {headings.length > 0 ? (
+                <nav className="docs-toc-list">
+                  {headings.map((heading) => (
+                    <a
+                      className={`docs-toc-link docs-toc-level-${heading.level}`}
+                      href={`#${heading.id}`}
+                      key={heading.id}
+                    >
+                      {heading.text}
+                    </a>
+                  ))}
+                </nav>
+              ) : (
+                <p className="docs-toc-empty">No headings</p>
+              )}
+            </aside>
+            <div
+              className="docs-content-scroll"
+              onScroll={(event) => {
+                window.localStorage.setItem(docsScrollStorageKey, String(event.currentTarget.scrollTop));
+              }}
+              ref={docsPaneRef}
+            >
+              {selected ? (
+                <article
+                  className="markdown-body"
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(selected.markdown) }}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">No entry available.</p>
+              )}
+            </div>
           </div>
         </section>
       </main>

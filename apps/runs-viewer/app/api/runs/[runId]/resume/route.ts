@@ -12,6 +12,6 @@ export async function POST(request: Request, context: RouteContext): Promise<Nex
   const { runId } = await context.params;
   const url = new URL(request.url);
   const fromStep = url.searchParams.get("fromStep");
-  const result = resumeWorkflowRun(runId, fromStep);
+  const result = resumeWorkflowRun(runId, fromStep, url.searchParams.get("config"));
   return NextResponse.json(result.body, { status: result.statusCode });
 }

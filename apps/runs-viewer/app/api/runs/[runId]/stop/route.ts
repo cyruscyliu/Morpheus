@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ runId: string }> },
 ): Promise<NextResponse> {
   const resolvedParams = await params;
@@ -15,6 +15,7 @@ export async function POST(
   if (!isSafeId(runId)) {
     return new NextResponse("not found\n", { status: 404 });
   }
-  const result = stopWorkflowRun(runId);
+  const url = new URL(request.url);
+  const result = stopWorkflowRun(runId, url.searchParams.get("config"));
   return NextResponse.json(result.body, { status: result.statusCode });
 }

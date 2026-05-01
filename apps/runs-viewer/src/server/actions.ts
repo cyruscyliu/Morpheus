@@ -26,8 +26,8 @@ function workflowManifestForRun(runRoot: string, runId: string): { configPath?: 
   }
 }
 
-export function stopWorkflowRun(runId: string): ActionResult {
-  const context = resolveViewerContext();
+export function stopWorkflowRun(runId: string, selectedConfigPath?: string | null): ActionResult {
+  const context = resolveViewerContext(selectedConfigPath);
   const detail = loadRunDetail(context.runRoot, runId);
   if (!detail) {
     return { statusCode: 404, body: { summary: "workflow run not found" } };
@@ -69,8 +69,12 @@ export function stopWorkflowRun(runId: string): ActionResult {
   };
 }
 
-export function resumeWorkflowRun(runId: string, fromStep?: string | null): ActionResult {
-  const context = resolveViewerContext();
+export function resumeWorkflowRun(
+  runId: string,
+  fromStep?: string | null,
+  selectedConfigPath?: string | null,
+): ActionResult {
+  const context = resolveViewerContext(selectedConfigPath);
   const detail = loadRunDetail(context.runRoot, runId);
   if (!detail) {
     return { statusCode: 404, body: { summary: "workflow run not found" } };
@@ -112,8 +116,8 @@ export function resumeWorkflowRun(runId: string, fromStep?: string | null): Acti
   };
 }
 
-export function removeWorkflowRun(runId: string): ActionResult {
-  const context = resolveViewerContext();
+export function removeWorkflowRun(runId: string, selectedConfigPath?: string | null): ActionResult {
+  const context = resolveViewerContext(selectedConfigPath);
   const detail = loadRunDetail(context.runRoot, runId);
   if (!detail) {
     return { statusCode: 404, body: { summary: "workflow run not found" } };
@@ -124,7 +128,7 @@ export function removeWorkflowRun(runId: string): ActionResult {
     return { statusCode: 400, body: { summary: "invalid run directory" } };
   }
   if (detail.format === "workflow-first" && detail.status === "running") {
-    const stopped = stopWorkflowRun(runId);
+    const stopped = stopWorkflowRun(runId, selectedConfigPath);
     if (stopped.statusCode !== 200) {
       return stopped;
     }

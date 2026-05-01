@@ -277,6 +277,19 @@ function formatGraphEdge(edge: RunGraphEdge): string | null {
   return "artifact";
 }
 
+function toolFamily(step: RunStepSummary | RunGraphNode): string {
+  const rawName = String(step.name || "").trim().toLowerCase();
+  if (rawName.includes(".")) {
+    return rawName.split(".")[0] || rawName;
+  }
+  const rawId = String(step.id || "").trim().toLowerCase();
+  const match = rawId.match(/^([a-z0-9]+(?:[-_][a-z0-9]+)*)[-_.]/);
+  if (match && match[1]) {
+    return match[1];
+  }
+  return rawId;
+}
+
 function formatPathLabel(value: string | null | undefined): string {
   if (!value) {
     return "-";
@@ -383,13 +396,33 @@ function buildGraphLayout(
 
   const nodeWidth = 220;
   const nodeHeight = 88;
-  const colGap = 92;
-  const rowGap = 28;
-  const wrapRowGap = 56;
+  const colGap = 40;
+  const rowGap = 92;
   const paddingX = 32;
   const paddingY = 24;
-  const primaryEdges = edges.filter((edge) => edge.kind === "sequence");
-  const layoutEdges = primaryEdges.length > 0 ? primaryEdges : edges;
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const primaryEdges = edges.filter((edge) => {
+    const source = nodeById.get(edge.source);
+    const target = nodeById.get(edge.target);
+    if (!source || !target) {
+      return false;
+    }
+    const sameTool = toolFamily(source) === toolFamily(target);
+    if (sameTool) {
+      return edge.kind === "sequence";
+    }
+    return edge.kind === "artifact";
+  });
+  const primaryNodeIds = new Set<string>();
+  for (const edge of primaryEdges) {
+    primaryNodeIds.add(edge.source);
+    primaryNodeIds.add(edge.target);
+  }
+  const fallbackSequenceEdges = edges.filter((edge) =>
+    edge.kind === "sequence"
+    && (!primaryNodeIds.has(edge.source) || !primaryNodeIds.has(edge.target)),
+  );
+  const layoutEdges = [...primaryEdges, ...fallbackSequenceEdges];
 
   const layerMap = new Map<string, number>();
   for (const node of nodes) {
@@ -493,59 +526,17 @@ function buildGraphLayout(
 
   optimizeLayerOrdering();
 
-  const shouldWrap =
-    viewportWidth > 0 &&
-    nodes.length > 4 &&
-    layerEntries.length === nodes.length &&
-    layerEntries.every(([, items]) => items.length === 1);
-
   const positioned: PositionedGraphNode[] = [];
 
-  if (shouldWrap) {
-    const orderedNodes = layerEntries.flatMap(([, items]) => items);
-    const usableWidth = Math.max(viewportWidth - paddingX * 2, nodeWidth);
-    const maxColumns = Math.max(1, Math.floor((usableWidth + colGap) / (nodeWidth + colGap)));
-    const rows: GraphRow[] = [];
-
-    for (let index = 0; index < orderedNodes.length; index += maxColumns) {
-      const items = orderedNodes.slice(index, index + maxColumns);
-      const width = items.length * nodeWidth + Math.max(items.length - 1, 0) * colGap;
-      rows.push({ items, width });
-    }
-
-    const contentWidth = Math.max(...rows.map((row) => row.width), nodeWidth);
-    rows.forEach((row, rowIndex) => {
-      const startX = paddingX + (contentWidth - row.width) / 2;
-      const y = paddingY + rowIndex * (nodeHeight + wrapRowGap);
-      row.items.forEach((node, itemIndex) => {
-        const x = startX + itemIndex * (nodeWidth + colGap);
-        positioned.push({
-          ...node,
-          x,
-          y,
-          width: nodeWidth,
-          height: nodeHeight,
-          centerX: x + nodeWidth / 2,
-          centerY: y + nodeHeight / 2,
-        });
-      });
-    });
-
-    const nodeMap = new Map(positioned.map((node) => [node.id, node]));
-    const width = paddingX * 2 + contentWidth;
-    const height = paddingY * 2 + rows.length * nodeHeight + Math.max(rows.length - 1, 0) * wrapRowGap;
-    return { width, height, nodes: positioned, nodeMap };
-  }
-
-  const maxRows = Math.max(...layerEntries.map(([, items]) => items.length), 1);
-  const contentHeight = maxRows * nodeHeight + Math.max(maxRows - 1, 0) * rowGap;
+  const maxColumns = Math.max(...layerEntries.map(([, items]) => items.length), 1);
+  const contentWidth = maxColumns * nodeWidth + Math.max(maxColumns - 1, 0) * colGap;
 
   for (const [layer, items] of layerEntries) {
-    const layerHeight = items.length * nodeHeight + Math.max(items.length - 1, 0) * rowGap;
-    const startY = paddingY + (contentHeight - layerHeight) / 2;
+    const layerWidth = items.length * nodeWidth + Math.max(items.length - 1, 0) * colGap;
+    const startX = paddingX + (contentWidth - layerWidth) / 2;
+    const y = paddingY + layer * (nodeHeight + rowGap);
     items.forEach((node, index) => {
-      const x = paddingX + layer * (nodeWidth + colGap);
-      const y = startY + index * (nodeHeight + rowGap);
+      const x = startX + index * (nodeWidth + colGap);
       positioned.push({
         ...node,
         x,
@@ -560,8 +551,8 @@ function buildGraphLayout(
 
   const nodeMap = new Map(positioned.map((node) => [node.id, node]));
   const maxLayer = Math.max(...layerEntries.map(([layer]) => layer), 0);
-  const width = paddingX * 2 + (maxLayer + 1) * nodeWidth + maxLayer * colGap;
-  const height = paddingY * 2 + contentHeight;
+  const width = paddingX * 2 + contentWidth;
+  const height = paddingY * 2 + (maxLayer + 1) * nodeHeight + maxLayer * rowGap;
 
   return { width, height, nodes: positioned, nodeMap };
 }
@@ -1212,6 +1203,14 @@ export function WorkflowViewer({
 
   const graphNodes = runDetail?.graph.nodes || [];
   const graphEdges = runDetail?.graph.edges || [];
+  const graphSequenceEdges = useMemo(
+    () => graphEdges.filter((edge) => edge.kind === "sequence"),
+    [graphEdges],
+  );
+  const graphArtifactEdges = useMemo(
+    () => graphEdges.filter((edge) => edge.kind === "artifact"),
+    [graphEdges],
+  );
   const graphLayout = useMemo(
     () => buildGraphLayout(graphNodes, graphEdges, graphViewportWidth),
     [graphEdges, graphNodes, graphViewportWidth],
@@ -1514,7 +1513,7 @@ export function WorkflowViewer({
                             <path d="M0,0 L8,4 L0,8 z" fill="#0f766e" />
                           </marker>
                         </defs>
-                        {graphEdges.map((edge) => {
+                        {[...graphSequenceEdges, ...graphArtifactEdges].map((edge) => {
                           const source = graphLayout.nodeMap.get(edge.source);
                           const target = graphLayout.nodeMap.get(edge.target);
                           if (!source || !target) {

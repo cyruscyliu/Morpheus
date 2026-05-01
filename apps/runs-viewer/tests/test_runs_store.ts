@@ -280,6 +280,47 @@ test("workflow graph uses explicit relations and ordered fallback edges", () => 
   assert.equal(detail.graph.edges[1]?.inferred, false);
 });
 
+test("workflow graph keeps multiple artifact relations for the same step pair", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-store-"));
+  const runRoot = path.join(workspaceRoot, "runs");
+
+  const workflowId = "wf-multi-artifact-edge";
+  const workflowDir = path.join(runRoot, workflowId);
+  writeJson(path.join(workflowDir, "workflow.json"), {
+    id: workflowId,
+    workflow: "artifact-flow",
+    category: "run",
+    status: "success",
+    createdAt: "2026-04-26T10:00:00.000Z",
+    updatedAt: "2026-04-26T10:01:00.000Z",
+    steps: [
+      { id: "01-build", name: "build", kind: "tool", status: "success", stepDir: path.join(workflowDir, "steps", "01-build") },
+      { id: "02-run", name: "run", kind: "tool", status: "success", stepDir: path.join(workflowDir, "steps", "02-run") },
+    ],
+  });
+  writeJson(path.join(workflowDir, "steps", "01-build", "step.json"), { id: "01-build", name: "build", kind: "tool", status: "success" });
+  writeJson(path.join(workflowDir, "steps", "02-run", "step.json"), { id: "02-run", name: "run", kind: "tool", status: "success" });
+  writeText(path.join(workflowDir, "steps", "01-build", "stdout.log"), "build\n");
+  writeText(path.join(workflowDir, "steps", "02-run", "stdout.log"), "run\n");
+  writeText(
+    path.join(workflowDir, "relations.jsonl"),
+    [
+      JSON.stringify({ kind: "artifact", from: "01-build", to: "02-run", artifactPath: "images/Image" }),
+      JSON.stringify({ kind: "artifact", from: "01-build", to: "02-run", artifactPath: "images/rootfs.cpio.gz" }),
+    ].join("\n") + "\n",
+  );
+
+  const detail = loadRunDetail(runRoot, workflowId);
+  assert.ok(detail);
+  assert.equal(detail.graph.edges.length, 3);
+  assert.equal(detail.graph.edges[1]?.kind, "artifact");
+  assert.equal(detail.graph.edges[1]?.source, "01-build");
+  assert.equal(detail.graph.edges[1]?.target, "02-run");
+  assert.equal(detail.graph.edges[1]?.label, "images/Image");
+  assert.equal(detail.graph.edges[2]?.kind, "artifact");
+  assert.equal(detail.graph.edges[2]?.label, "images/rootfs.cpio.gz");
+});
+
 test("workflow graph infers artifact relations from resolved inputs when relation log is absent", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-store-"));
   const runRoot = path.join(workspaceRoot, "runs");

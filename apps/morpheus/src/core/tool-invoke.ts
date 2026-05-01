@@ -97,6 +97,7 @@ function templateValues(buildVersion, buildDirKey, extras = {}) {
   return {
     buildVersion,
     buildDirKey,
+    tool: extras.tool || null,
     toolchainVersion: extras.toolchainVersion || "12.3.rel1",
     example: extras.example || "virtio",
   };
@@ -187,6 +188,20 @@ function defaultInstallDir(workspace, descriptor, buildVersion, buildDirKey, ext
     return null;
   }
   return path.join(workspace, renderManagedTemplate(managed.installDirTemplate, templateValues(buildVersion || "default", buildDirKey || "default", extras)));
+}
+
+function defaultExecRunDir(workspace, tool, descriptor, extras = {}) {
+  const managed = localManaged(descriptor);
+  if (!managed || !managed.execDirTemplate) {
+    return null;
+  }
+  return path.join(
+    workspace,
+    renderManagedTemplate(
+      managed.execDirTemplate,
+      templateValues("default", "default", { ...extras, tool }),
+    ),
+  );
 }
 
 function resolveManagedPathTemplate(workspace, descriptor, template, buildVersion, buildDirKey, extras = {}) {
@@ -1003,8 +1018,15 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
     args.push(`--${key}`, String(rawValue));
   }
   args.push(...passthrough);
-  const managedRunDir = command === "exec" && (effective.localWorkspace || effective.workspace)
-    ? path.join(effective.localWorkspace || effective.workspace, "tmp", tool, "exec")
+  const workspaceForExec = effective.localWorkspace || effective.workspace;
+  const managedRunDir = command === "exec" && workspaceForExec
+    ? (
+      defaultExecRunDir(workspaceForExec, tool, descriptor, {
+        toolchainVersion: effective["toolchain-version"] || null,
+        example: effective.example || null,
+      })
+      || path.join(workspaceForExec, "tmp", tool, "exec")
+    )
     : null;
   const env = managedRunDir
     ? { ...process.env, MORPHEUS_RUN_DIR_OVERRIDE: managedRunDir }

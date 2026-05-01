@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
 const bin = path.join(repoRoot, "tools", "outline-to-paper", "index.js");
@@ -127,6 +127,34 @@ test("inspect and logs read an existing run", () => {
   assert.equal(logs.status, 0, logs.stderr || logs.stdout);
   const logPayload = JSON.parse(logs.stdout);
   assert.match(logPayload.details.text, /\[outline-to-paper\] run start/);
+});
+
+test("stop marks a managed run as stopped", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "outline-to-paper-stop-"));
+  const workspace = path.join(projectRoot, "workspace");
+  const runDir = path.join(projectRoot, "managed-run");
+  fs.mkdirSync(workspace, { recursive: true });
+  fs.mkdirSync(runDir, { recursive: true });
+
+  const sleeper = spawn("sleep", ["30"], { stdio: "ignore" });
+  const manifestPath = path.join(runDir, "manifest.json");
+  fs.writeFileSync(manifestPath, JSON.stringify({
+    id: "outline-stop",
+    status: "running",
+    workspace,
+    runDir,
+    pid: sleeper.pid,
+  }, null, 2));
+
+  const stopped = run(["stop", "--json", "--workspace", workspace], {
+    env: managedEnv(runDir),
+  });
+  assert.equal(stopped.status, 0, stopped.stderr || stopped.stdout);
+  const payload = JSON.parse(stopped.stdout);
+  assert.equal(payload.status, "success");
+
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  assert.equal(manifest.status, "stopped");
 });
 
 test("run supports stage-limited execution through --only-phase", () => {

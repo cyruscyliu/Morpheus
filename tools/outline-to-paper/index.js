@@ -28,7 +28,7 @@ function parseArgs(argv) {
 }
 
 function printJson(value) {
-  process.stdout.write(`${JSON.stringify(value)}\n`);
+  fs.writeSync(1, `${JSON.stringify(value)}\n`);
 }
 
 function usage() {
@@ -42,6 +42,7 @@ function usage() {
     "Run phases (for Morpheus-managed use):",
     "  outline-to-paper run --only-phase outline|revise|draft|edit|review",
     "  outline-to-paper run --from-phase outline|revise|draft|edit|review [--to-phase ...]",
+    "  outline-to-paper stop",
   ].join("\n");
 }
 
@@ -1438,6 +1439,18 @@ function logPhase(logFile, message, extra = null) {
   appendLog(logFile, `[outline-to-paper] ${message}${suffix}`);
 }
 
+function isRunningPid(pid) {
+  if (typeof pid !== "number" || !Number.isFinite(pid) || pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function runLatexCommand(command, args, cwd) {
   return spawnSync(command, args, {
     cwd,
@@ -1613,6 +1626,25 @@ async function runCommand(flags) {
   const manifestPath = path.join(runDir, "manifest.json");
   const workflowRunRoot = workflowRunRootFromRunDir(runDir);
   const currentOutlineLinkPath = currentOutlinePath(workspace);
+  const createdAt = new Date().toISOString();
+
+  writeJson(manifestPath, {
+    id: runId,
+    status: "running",
+    template,
+    title,
+    workspace,
+    runDir,
+    createdAt,
+    updatedAt: createdAt,
+    pid: process.pid,
+    outline: outlinePath,
+    requested_outline: requestedOutlinePath,
+    outline_source: resolvedOutlineInput.source,
+    current_outline: fs.existsSync(currentOutlineLinkPath) ? currentOutlineLinkPath : null,
+    artifacts: [],
+    gapCount: 0,
+  });
 
   if (phases.has("outline")) {
     logPhase(logFile, "phase outline start");
@@ -1788,7 +1820,9 @@ async function runCommand(flags) {
     title,
     workspace,
     runDir,
-    createdAt: new Date().toISOString(),
+    createdAt,
+    updatedAt: new Date().toISOString(),
+    pid: process.pid,
     outline: outlinePath,
     requested_outline: requestedOutlinePath,
     outline_source: resolvedOutlineInput.source,
@@ -1860,6 +1894,34 @@ function logsCommand(flags) {
   };
 }
 
+function stopCommand(flags) {
+  const configuredRunDir = requireManagedInvocation("outline-to-paper stop", flags);
+  const manifestPath = path.join(configuredRunDir, "manifest.json");
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error(`run not found: ${configuredRunDir}`);
+  }
+  const manifest = readJson(manifestPath);
+  const pid = typeof manifest.pid === "number" ? manifest.pid : null;
+  const wasRunning = isRunningPid(pid);
+  if (wasRunning) {
+    process.kill(pid, "SIGTERM");
+  }
+  const next = {
+    ...manifest,
+    status: "stopped",
+    updatedAt: new Date().toISOString(),
+    signal: "SIGTERM",
+  };
+  writeJson(manifestPath, next);
+  return {
+    command: "outline-to-paper stop",
+    status: "success",
+    exit_code: 0,
+    summary: wasRunning ? "stopped workflow run" : "run is not running",
+    details: next,
+  };
+}
+
 async function main() {
   const { positionals, flags } = parseArgs(process.argv.slice(2));
   const command = positionals[0];
@@ -1875,6 +1937,8 @@ async function main() {
     payload = inspectCommand(flags);
   } else if (command === "logs") {
     payload = logsCommand(flags);
+  } else if (command === "stop") {
+    payload = stopCommand(flags);
   } else {
     throw new Error(`unknown command: ${command}`);
   }
@@ -1891,10 +1955,12 @@ async function main() {
   return payload.exit_code || 0;
 }
 
-try {
-  Promise.resolve(main()).then((code) => {
-    process.exitCode = code;
-  }).catch((error) => {
+const keepalive = setInterval(() => {}, 1000);
+
+(async () => {
+  try {
+    process.exitCode = await main();
+  } catch (error) {
     const payload = {
       command: process.argv[2] ? `outline-to-paper ${process.argv[2]}` : "outline-to-paper",
       status: "error",
@@ -1911,8 +1977,7 @@ try {
       process.stderr.write(`${error.message}\n`);
     }
     process.exitCode = 1;
-  });
-} catch (error) {
-  process.stderr.write(`${error.message}\n`);
-  process.exitCode = 1;
-}
+  } finally {
+    clearInterval(keepalive);
+  }
+})();

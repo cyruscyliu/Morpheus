@@ -1,7 +1,7 @@
 {
   "name": "outline-to-paper",
   "runtime": "node",
-  "cli-contract": "exec,inspect,logs",
+  "cli-contract": "exec,inspect,logs,stop",
   "entry": "index.js",
   "config": {
     "fields": {
@@ -12,6 +12,9 @@
   },
   "managed": {
     "schemaVersion": 1,
-    "modes": ["local"]
+    "modes": ["local"],
+    "local": {
+      "execDirTemplate": "runs/{tool}-exec"
+    }
   }
 }

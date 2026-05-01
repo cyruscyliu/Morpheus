@@ -33,7 +33,7 @@
 
 ## Commit Messages
 
-- Use `prefix: summary` (subject-only) commit messages.
+- Use `component: action short-summary` subject-only commit messages.
 
 ## Workspace Rule
 

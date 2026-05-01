@@ -683,6 +683,26 @@ export function WorkflowViewer({
   const selectedSummary = summaries.find((summary) => summary.id === selectedRunId) || null;
   const selectedRunCopyId = selectedSummary?.id || null;
   const selectedStep = runDetail?.steps.find((step) => step.id === selectedStepId) || null;
+  const overviewStepStats = useMemo(() => {
+    if (!runDetail) {
+      return null;
+    }
+
+    const byStatus = new Map<string, number>();
+    let artifactCount = 0;
+    for (const step of runDetail.steps) {
+      byStatus.set(step.status, (byStatus.get(step.status) || 0) + 1);
+      artifactCount += step.artifactCount || 0;
+    }
+
+    return {
+      stepCount: runDetail.steps.length,
+      artifactCount,
+      successCount: byStatus.get("success") || 0,
+      runningCount: byStatus.get("running") || 0,
+      errorCount: (byStatus.get("error") || 0) + (byStatus.get("failed") || 0),
+    };
+  }, [runDetail]);
   const selectedRunActionLocked = Boolean(
     selectedSummary
     && (
@@ -1554,35 +1574,39 @@ export function WorkflowViewer({
                   <div className="workflow-empty-state">No overview available.</div>
                 ) : (
                   <div className="workflow-overview-grid">
-                    <div className="workflow-overview-card">
-                      <span className="workflow-overview-label">Workflow</span>
-                      <strong>{selectedSummary?.workflowName || selectedSummary?.id || "-"}</strong>
-                    </div>
-                    <div className="workflow-overview-card">
-                      <span className="workflow-overview-label">ID</span>
-                      <code title={selectedSummary?.id || undefined}>{selectedSummary?.id || "-"}</code>
-                    </div>
-                    <div className="workflow-overview-card">
-                      <span className="workflow-overview-label">Scope</span>
-                      <strong>{selectedStep ? stepDisplayName(selectedStep) : "Workflow"}</strong>
-                    </div>
-                    <div className="workflow-overview-card">
-                      <span className="workflow-overview-label">Status</span>
-                      <strong className={`workflow-status-text is-${selectedStep?.status || selectedSummary?.status || "unknown"}`}>
-                        {selectedStep?.status || selectedSummary?.status || "unknown"}
-                      </strong>
-                    </div>
-                    <div className="workflow-overview-card">
-                      <span className="workflow-overview-label">Category</span>
-                      <strong>{selectedSummary?.category || "-"}</strong>
-                    </div>
-                    <div className="workflow-overview-card">
-                      <span className="workflow-overview-label">Created</span>
-                      <strong>{formatTimestamp(selectedSummary?.createdAt)}</strong>
-                    </div>
-                    <div className="workflow-overview-card">
-                      <span className="workflow-overview-label">Completed</span>
-                      <strong>{formatTimestamp(selectedSummary?.completedAt)}</strong>
+                    <div className="workflow-overview-card is-table">
+                      <table className="workflow-overview-table">
+                        <tbody>
+                          <tr>
+                            <th>Workflow</th>
+                            <th>ID</th>
+                            <th>Status</th>
+                            <th>Category</th>
+                            <th>Format</th>
+                            <th>Scope</th>
+                            <th>Steps</th>
+                            <th>Artifacts</th>
+                            <th>Created</th>
+                            <th>Completed</th>
+                          </tr>
+                          <tr>
+                            <td>{selectedSummary?.workflowName || selectedSummary?.id || "-"}</td>
+                            <td><code title={selectedSummary?.id || undefined}>{selectedSummary?.id || "-"}</code></td>
+                            <td>
+                              <span className={`workflow-status-text is-${selectedStep?.status || selectedSummary?.status || "unknown"}`}>
+                                {selectedStep?.status || selectedSummary?.status || "unknown"}
+                              </span>
+                            </td>
+                            <td>{selectedSummary?.category || "-"}</td>
+                            <td>{selectedSummary?.format || "-"}</td>
+                            <td>{selectedStep ? stepDisplayName(selectedStep) : "Workflow"}</td>
+                            <td>{overviewStepStats?.stepCount ?? "-"}</td>
+                            <td>{overviewStepStats?.artifactCount ?? "-"}</td>
+                            <td>{formatTimestamp(selectedSummary?.createdAt)}</td>
+                            <td>{formatTimestamp(selectedSummary?.completedAt)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
                     <div className="workflow-overview-card is-wide">
                       <span className="workflow-overview-label">Run directory</span>

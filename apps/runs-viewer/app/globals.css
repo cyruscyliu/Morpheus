@@ -419,15 +419,15 @@ code {
 
 .workflow-overview-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
 .workflow-overview-card {
   display: flex;
-  min-height: 84px;
+  min-height: 68px;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   border: 1px solid rgb(var(--border) / 0.75);
   border-radius: 8px;
   padding: 10px;
@@ -435,16 +435,82 @@ code {
 }
 
 .workflow-overview-card.is-wide {
-  grid-column: span 3;
+  grid-column: span 4;
+}
+
+.workflow-overview-card.is-table {
+  grid-column: span 4;
+  overflow-x: auto;
 }
 
 .workflow-overview-label {
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  font-size: 0.78rem;
+}
+
+.workflow-overview-card code {
+  overflow-x: auto;
+  white-space: nowrap;
+  font-size: 0.82rem;
+}
+
+.workflow-overview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.workflow-overview-table th,
+.workflow-overview-table td {
+  padding: 8px 10px;
+  border-top: 1px solid rgb(var(--border) / 0.6);
+  text-align: left;
+  vertical-align: top;
+}
+
+.workflow-overview-table tbody tr:first-child th,
+.workflow-overview-table tbody tr:first-child td {
+  border-top: 0;
+}
+
+.workflow-overview-table th {
+  color: rgb(var(--muted-foreground));
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.76rem;
+}
+
+.workflow-overview-table td {
+  font-size: 0.92rem;
 }
 
 .workflow-empty-state {
   color: rgb(var(--muted-foreground));
+}
+
+@media (max-width: 1200px) {
+  .workflow-overview-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .workflow-overview-card.is-wide,
+  .workflow-overview-card.is-table {
+    grid-column: span 3;
+  }
+}
+
+@media (max-width: 820px) {
+  .workflow-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workflow-overview-card.is-wide,
+  .workflow-overview-card.is-table {
+    grid-column: span 2;
+  }
+
 }
 
 .workflow-artifacts-list {

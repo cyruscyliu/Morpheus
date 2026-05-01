@@ -637,6 +637,43 @@ test("tool exec surfaces detached nvirsh startup failures", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("tool exec can use a descriptor-defined managed exec run dir outside tmp", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-outline-exec-"));
+  const outline = path.join(workspaceRoot, "outline.json");
+  fs.writeFileSync(outline, JSON.stringify({
+    title: "Outline Exec Test",
+    sections: [
+      {
+        section_id: "sec-1",
+        title: "Section One",
+        purpose: "Minimal section.",
+        paragraphs: [],
+      },
+    ],
+  }), "utf8");
+
+  const result = run([
+    "--json",
+    "exec",
+    "--tool",
+    "outline-to-paper",
+    "--workspace",
+    workspaceRoot,
+    "--outline",
+    outline,
+  ], {
+    cwd: workspaceRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.status, "success");
+  assert.match(String(payload.details.run_dir || ""), /runs\/wf-outline-to-paper-exec\/steps\/outline-to-paper-exec\/run$/);
+  assert.equal(fs.existsSync(path.join(workspaceRoot, "tmp", "outline-to-paper", "exec")), false);
+
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
 test("workflow run resolves prior step artifacts in configured workflows", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-configured-"));
   const workspaceRoot = path.join(projectRoot, "workflow-workspace");
@@ -699,9 +736,145 @@ test("workflow run resolves prior step artifacts in configured workflows", () =>
   const payload = JSON.parse(result.stdout.trim());
   assert.equal(payload.status, "success");
   assert.equal(payload.details.steps.length, 1);
+  const runDir = payload.details.run_dir;
+  const events = fs.readFileSync(path.join(runDir, "events.jsonl"), "utf8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  assert.equal(events.some((entry) => entry.event === "workflow.created"), true);
+  assert.equal(events.some((entry) => entry.event === "workflow.started"), true);
+  assert.equal(events.some((entry) => entry.event === "step.created" && entry.step_id === "inspect_a"), true);
+  assert.equal(events.some((entry) => entry.event === "step.started" && entry.step_id === "inspect_a"), true);
+  assert.equal(events.some((entry) => entry.event === "step.completed" && entry.step_id === "inspect_a"), true);
+  assert.equal(events.some((entry) => entry.event === "workflow.completed"), true);
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
   fs.rmSync(env.MORPHEUS_WORK_ROOT, { recursive: true, force: true });
+});
+
+test("workflow run writes failure events to canonical event log", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-events-fail-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "workflows:",
+      "  failing-workflow:",
+      "    category: build",
+      "    steps:",
+      "      - id: patch_missing",
+      "        tool: qemu",
+      "        command: patch",
+      "        args:",
+      "          - --source",
+      `          - ${path.join(projectRoot, "missing-source")}`,
+      "          - --patch-dir",
+      `          - ${path.join(projectRoot, "missing-patches")}`,
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["--json", "workflow", "run", "--name", "failing-workflow"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.notEqual(result.status, 0);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.status, "error");
+  const runDir = payload.details.run_dir;
+  const events = fs.readFileSync(path.join(runDir, "events.jsonl"), "utf8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  assert.equal(events.some((entry) => entry.event === "step.failed" && entry.step_id === "patch_missing"), true);
+  assert.equal(events.some((entry) => entry.event === "workflow.failed"), true);
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("workflow run captures tool phase events in canonical event log", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-phase-events-"));
+  const sourceParent = path.join(projectRoot, "archive-src");
+  const archiveSource = path.join(sourceParent, "qemu-1.0.0");
+  const archivePath = path.join(projectRoot, "qemu-1.0.0.tar.xz");
+  fs.mkdirSync(archiveSource, { recursive: true });
+  fs.writeFileSync(
+    path.join(archiveSource, "configure"),
+    [
+      "#!/usr/bin/env sh",
+      "set -eu",
+      "prefix=\"\"",
+      "for arg in \"$@\"; do",
+      "  case \"$arg\" in",
+      "    --prefix=*) prefix=\"${arg#--prefix=}\" ;;",
+      "  esac",
+      "done",
+      "cat > Makefile <<MAKE",
+      "all:",
+      "\t@echo BUILDING",
+      "install:",
+      "\t@mkdir -p ${prefix}/bin",
+      "\t@printf '#!/usr/bin/env sh\\necho qemu\\n' > ${prefix}/bin/qemu-system-aarch64",
+      "\t@chmod +x ${prefix}/bin/qemu-system-aarch64",
+      "MAKE",
+      "exit 0",
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  const archive = spawnSync("tar", ["-cJf", archivePath, "-C", sourceParent, "qemu-1.0.0"], {
+    encoding: "utf8",
+  });
+  assert.equal(archive.status, 0, archive.stdout || archive.stderr);
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "workflows:",
+      "  qemu-phase-events:",
+      "    category: build",
+      "    steps:",
+      "      - id: fetch_qemu",
+      "        tool: qemu",
+      "        command: fetch",
+      "        args:",
+      "          - --qemu-version",
+      "          - 1.0.0",
+      "          - --archive-url",
+      `          - ${pathToFileURL(archivePath).toString()}`,
+      "      - id: build_qemu",
+      "        tool: qemu",
+      "        command: build",
+      "        args:",
+      "          - --source",
+      "          - \"{{steps.fetch_qemu.artifacts.source-dir.location}}\"",
+      "          - --build-dir",
+      "          - ./workflow-workspace/tools/qemu/builds/test/build",
+      "          - --install-dir",
+      "          - ./workflow-workspace/tools/qemu/builds/test/install",
+      "",
+    ].join("\n")
+  );
+
+  const result = run(["--json", "workflow", "run", "--name", "qemu-phase-events"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim());
+  const events = fs.readFileSync(path.join(payload.details.run_dir, "events.jsonl"), "utf8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  const phases = events
+    .filter((entry) => entry.event === "tool.phase" && entry.step_id === "build_qemu")
+    .map((entry) => entry.data && entry.data.phase);
+  assert.deepEqual(phases, ["configure", "build", "install"]);
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
 test("workflow run records outline-to-paper artifacts for downstream reuse", () => {
@@ -992,16 +1165,17 @@ test("workflow run --from-step resolves templated prior-step args for reuse vali
   const runId = firstPayload.details.id;
   const runDir = path.join(workspaceRoot, "runs", runId);
   const stepAPath = path.join(runDir, "steps", "fetch_a", "step.json");
-  const relationsPath = path.join(runDir, "relations.jsonl");
-  const relations = fs.readFileSync(relationsPath, "utf8")
+  const eventsPath = path.join(runDir, "events.jsonl");
+  const relations = fs.readFileSync(eventsPath, "utf8")
     .split(/\r?\n/)
     .filter(Boolean)
-    .map((line) => JSON.parse(line));
+    .map((line) => JSON.parse(line))
+    .filter((entry) => entry.event === "artifact.consumed");
   assert.equal(relations.some((entry) =>
-    entry.kind === "artifact"
-    && entry.from === "fetch_a"
-    && entry.to === "patch_b"
-    && entry.artifactPath === "source-dir"
+    entry.data
+    && entry.data.from_step === "fetch_a"
+    && entry.step_id === "patch_b"
+    && entry.data.artifact_path === "source-dir"
   ), true);
 
   const rerun = run(["--json", "workflow", "run", "--name", "inspect-template-pair", "--from-step", "patch_b"], {

@@ -57,6 +57,18 @@ export interface RunDetail extends RunSummary {
   steps: RunStepSummary[];
 }
 
+export interface RunEventRecord {
+  ts?: string;
+  producer?: string | null;
+  level?: string | null;
+  scope?: string | null;
+  event?: string | null;
+  workflow_id?: string | null;
+  step_id?: string | null;
+  tool?: string | null;
+  data?: Record<string, unknown> | null;
+}
+
 export interface RunsIndexPayload {
   runRoot: string;
   workspaceRoot: string;

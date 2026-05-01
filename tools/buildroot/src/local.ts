@@ -352,6 +352,9 @@ export async function runLocalBuild(context: CliContext, options: LocalBuildOpti
   await writeManifest(manifestFile, manifest);
 
   if (options.defconfig) {
+    if (context.json) {
+      emitJsonEvent(context, 'build', 'tool.phase', { phase: 'defconfig' });
+    }
     const defconfigStream = createBuildLogStreamer(context, 'defconfig', logFile);
     const defconfigResult = await runCommand('make', ['-C', source, `O=${output}`, options.defconfig], {
       env: makeEnv(options.env),
@@ -370,6 +373,9 @@ export async function runLocalBuild(context: CliContext, options: LocalBuildOpti
   }
 
   try {
+    if (context.json) {
+      emitJsonEvent(context, 'build', 'tool.phase', { phase: 'config-inputs' });
+    }
     await applyBuildConfigInputs(context, source, output, { ...options, patchDir }, logFile);
   } catch (error) {
     if (error instanceof CliError) {
@@ -382,6 +388,9 @@ export async function runLocalBuild(context: CliContext, options: LocalBuildOpti
     throw error;
   }
 
+  if (context.json) {
+    emitJsonEvent(context, 'build', 'tool.phase', { phase: 'build' });
+  }
   const makeStream = createBuildLogStreamer(context, 'make', logFile);
   const result = await runCommand('make', ['-C', source, `O=${output}`, ...options.makeArgs.map(expandMakeArg), ...options.forwarded], {
     env: makeEnv(options.env),

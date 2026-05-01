@@ -26,6 +26,8 @@ test("Workflow Viewer uses Next.js app routes and three-region shell", () => {
   assert.match(viewerTsx, /edgePath/);
   assert.match(viewerTsx, /Overview/);
   assert.match(viewerTsx, /loadWorkflowLog/);
+  assert.match(viewerTsx, /loadWorkflowEvents/);
+  assert.match(viewerTsx, /Events/);
   assert.match(viewerTsx, /Refresh/);
   assert.match(viewerTsx, /Resume/);
   assert.match(viewerTsx, /Rerun From Step/);

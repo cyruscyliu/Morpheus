@@ -8,7 +8,7 @@ const { parseToolArgs } = require("../core/tool-invoke");
 const { readToolDescriptor } = require("../core/tool-descriptor");
 const { repoRoot } = require("../core/paths");
 const { writeStdoutLine } = require("../core/io");
-const { logDebug, logInfo, withLogFile } = require("../core/logger");
+const { emitEvent, logDebug, logInfo, withEventContext, withLogFile } = require("../core/logger");
 const {
   parseSshTarget,
   syncRemotePathToLocal,
@@ -19,6 +19,7 @@ const {
   updateWorkflowRun,
   updateWorkflowStep,
   workflowManifestPath,
+  workflowEventLogPath,
   workflowRunsRoot,
   stepToolRunDir,
 } = require("../core/workflow-runs");
@@ -316,52 +317,6 @@ function listWorkflowSteps(runDir) {
     });
 }
 
-function readJsonLinesIfExists(filePath) {
-  if (!fs.existsSync(filePath)) {
-    return [];
-  }
-  return fs
-    .readFileSync(filePath, "utf8")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      try {
-        return JSON.parse(line);
-      } catch {
-        return null;
-      }
-    })
-    .filter((entry) => entry !== null);
-}
-
-function appendWorkflowRelations(runDir, relations) {
-  if (!runDir || !Array.isArray(relations) || relations.length === 0) {
-    return;
-  }
-  const relationsPath = path.join(runDir, "relations.jsonl");
-  const existing = new Set(
-    readJsonLinesIfExists(relationsPath)
-      .map((entry) => JSON.stringify(entry))
-      .filter(Boolean),
-  );
-  const lines = [];
-  for (const relation of relations) {
-    if (!relation || typeof relation !== "object") {
-      continue;
-    }
-    const key = JSON.stringify(relation);
-    if (existing.has(key)) {
-      continue;
-    }
-    existing.add(key);
-    lines.push(`${key}\n`);
-  }
-  if (lines.length > 0) {
-    fs.appendFileSync(relationsPath, lines.join(""), "utf8");
-  }
-}
-
 function findWorkflowRun(workspaceRoot, id) {
   const runDir = path.join(workflowRunsRoot(workspaceRoot), id);
   const manifestPath = workflowManifestPath(runDir);
@@ -657,7 +612,21 @@ function writeStepLogLine(stepLogFile, line) {
   process.stderr.write(`${text}\n`);
 }
 
-function processToolStdoutLine(rawLine, stepLogFile, state) {
+function emitConsoleEvent(channel, text, eventContext) {
+  if (!text) {
+    return;
+  }
+  emitEvent(channel, {
+    text,
+  }, {
+    scope: "step",
+    workflowId: eventContext.workflowId || null,
+    stepId: eventContext.stepId || null,
+    tool: eventContext.tool || null,
+  });
+}
+
+function processToolStdoutLine(rawLine, stepLogFile, state, eventContext) {
   const line = String(rawLine || "").trim();
   if (!line) {
     return;
@@ -668,6 +637,7 @@ function processToolStdoutLine(rawLine, stepLogFile, state) {
     parsed = JSON.parse(line);
   } catch {
     writeStepLogLine(stepLogFile, rawLine);
+    emitConsoleEvent("console.stdout", `${rawLine}\n`, eventContext);
     return;
   }
 
@@ -680,12 +650,31 @@ function processToolStdoutLine(rawLine, stepLogFile, state) {
     if (typeof parsed.details.chunk === "string") {
       fs.appendFileSync(stepLogFile, parsed.details.chunk, "utf8");
       process.stderr.write(parsed.details.chunk);
+      emitConsoleEvent("console.stdout", parsed.details.chunk, eventContext);
       return;
     }
     if (typeof parsed.details.line === "string") {
       writeStepLogLine(stepLogFile, parsed.details.line);
+      emitConsoleEvent("console.stdout", `${parsed.details.line}\n`, eventContext);
       return;
     }
+  }
+
+  if (
+    parsed &&
+    parsed.status === "stream" &&
+    parsed.details &&
+    typeof parsed.details.event === "string"
+  ) {
+    const { event, ...details } = parsed.details;
+    emitEvent(event, details, {
+      producer: "tool",
+      scope: "step",
+      workflowId: eventContext.workflowId || null,
+      stepId: eventContext.stepId || null,
+      tool: eventContext.tool || null,
+    });
+    return;
   }
 
   if (parsed && typeof parsed === "object") {
@@ -745,9 +734,58 @@ function parseTrailingJsonObject(output) {
   return null;
 }
 
+function emitRuntimeEventsFromPayload(workflow, step, toolPayload) {
+  const manifest = toolPayload && toolPayload.details && toolPayload.details.manifest;
+  if (!manifest || typeof manifest !== "object") {
+    return;
+  }
+  const status = typeof manifest.status === "string" ? manifest.status : "";
+  if (status) {
+    emitEvent(`runtime.${status}`, {
+      manifest,
+    }, {
+      scope: "step",
+      workflowId: workflow.id,
+      stepId: step.id,
+      tool: step.tool,
+    });
+  }
+}
+
+function emitArtifactEvents(workflow, step, artifacts, relations) {
+  for (const artifact of Array.isArray(artifacts) ? artifacts : []) {
+    if (!artifact || typeof artifact !== "object" || typeof artifact.path !== "string") {
+      continue;
+    }
+    emitEvent("artifact.produced", {
+      path: artifact.path,
+      location: artifact.local_location || artifact.location || artifact.remote_location || null,
+    }, {
+      scope: "step",
+      workflowId: workflow.id,
+      stepId: step.id,
+      tool: step.tool,
+    });
+  }
+  for (const relation of Array.isArray(relations) ? relations : []) {
+    emitEvent("artifact.consumed", {
+      from_step: relation.from || null,
+      artifact_path: relation.artifactPath || null,
+      artifact_location: relation.artifactLocation || null,
+      consumed_as: relation.consumedAs || null,
+    }, {
+      scope: "step",
+      workflowId: workflow.id,
+      stepId: step.id,
+      tool: step.tool,
+    });
+  }
+}
+
 function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
   return new Promise((resolve, reject) => {
     const attach = Boolean(options.attach);
+    const eventContext = options.eventContext || {};
     const child = attach
       ? spawn(process.execPath, args, {
           cwd: process.cwd(),
@@ -762,10 +800,29 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
     if (typeof onSpawn === "function") {
       onSpawn(child.pid);
     }
+    emitEvent("step.process.spawned", {
+      argv: args.slice(1),
+      pid: child.pid || null,
+      attach,
+    }, {
+      scope: "step",
+      workflowId: eventContext.workflowId || null,
+      stepId: eventContext.stepId || null,
+      tool: eventContext.tool || null,
+    });
 
     if (attach) {
       child.on("error", reject);
       child.on("close", (code) => {
+        emitEvent("step.process.exited", {
+          pid: child.pid || null,
+          exit_code: typeof code === "number" ? code : 1,
+        }, {
+          scope: "step",
+          workflowId: eventContext.workflowId || null,
+          stepId: eventContext.stepId || null,
+          tool: eventContext.tool || null,
+        });
         resolve({
           status: typeof code === "number" ? code : 1,
           stderr: "",
@@ -789,20 +846,21 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
       const lines = stdoutBuffer.split(/\r?\n/);
       stdoutBuffer = lines.pop() || "";
       for (const rawLine of lines) {
-        processToolStdoutLine(rawLine, stepLogFile, state);
+        processToolStdoutLine(rawLine, stepLogFile, state, eventContext);
       }
     });
 
     child.stderr.on("data", (chunk) => {
       stderrText += chunk;
       fs.appendFileSync(stepLogFile, chunk, "utf8");
+      emitConsoleEvent("console.stderr", String(chunk), eventContext);
       process.stderr.write(chunk);
     });
 
     child.on("error", reject);
     child.on("close", (code) => {
       if (stdoutBuffer.trim()) {
-        processToolStdoutLine(stdoutBuffer, stepLogFile, state);
+        processToolStdoutLine(stdoutBuffer, stepLogFile, state, eventContext);
       }
       if ((typeof state.finalPayload !== "object" || state.finalPayload == null) && stdoutText.trim()) {
         const parsed = parseTrailingJsonObject(stdoutText);
@@ -810,6 +868,15 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
           state.finalPayload = parsed;
         }
       }
+      emitEvent("step.process.exited", {
+        pid: child.pid || null,
+        exit_code: typeof code === "number" ? code : 1,
+      }, {
+        scope: "step",
+        workflowId: eventContext.workflowId || null,
+        stepId: eventContext.stepId || null,
+        tool: eventContext.tool || null,
+      });
       resolve({
         status: typeof code === "number" ? code : 1,
         stderr: stderrText,
@@ -1042,7 +1109,14 @@ async function runToolWorkflow({
   configPath = null,
 }) {
   const workflow = existingWorkflow || createWorkflowRun(workspaceRoot, workflowName, { category, configPath });
-  return await withLogFile(path.join(workflow.runDir, "progress.jsonl"), async () => {
+  return await withLogFile(workflowEventLogPath(workflow.runDir), async () => withEventContext({
+    workflow_id: workflow.id,
+  }, async () => {
+  emitEvent("workflow.created", {
+    workflow: workflow.workflow,
+    category: workflow.category,
+    workspace: workflow.workspace,
+  }, { scope: "workflow", workflowId: workflow.id });
   updateWorkflowRun(workflow.runDir, (current) => ({
     ...current,
     runnerPid: process.pid,
@@ -1114,6 +1188,20 @@ async function runToolWorkflow({
       };
     })
   }));
+  emitEvent("workflow.started", {
+    workflow: workflow.workflow,
+    step_count: createdSteps.length,
+  }, { scope: "workflow", workflowId: workflow.id });
+  for (const step of createdSteps) {
+    emitEvent("step.created", {
+      name: step.name,
+    }, {
+      scope: "step",
+      workflowId: workflow.id,
+      stepId: step.id,
+      tool: step.tool,
+    });
+  }
 
   let workflowStatus = "success";
   let exitCode = 0;
@@ -1133,6 +1221,14 @@ async function runToolWorkflow({
       steps: current.steps.map((entry) => entry.id === step.id ? { ...entry, status: "running" } : entry)
     }));
     updateWorkflowStep(step.stepDir, (current) => ({ ...current, status: "running" }));
+    emitEvent("step.started", {
+      name: step.name,
+    }, {
+      scope: "step",
+      workflowId: workflow.id,
+      stepId: step.id,
+      tool: step.tool,
+    });
 
     const spec = stepSpecs.find((candidate) => candidate.id === step.id) || null;
     const resolvedStep = spec
@@ -1149,7 +1245,14 @@ async function runToolWorkflow({
       resolvedInputs: execution && execution.resolved ? execution.resolved : null,
       reuseState: stepIndex < startIndex ? "reused" : "rerun",
     }));
-    appendWorkflowRelations(workflow.runDir, resolvedStep.relations);
+    emitEvent("step.inputs.resolved", {
+      resolved: execution && execution.resolved ? execution.resolved : null,
+    }, {
+      scope: "step",
+      workflowId: workflow.id,
+      stepId: step.id,
+      tool: step.tool,
+    });
 
     const args = (
       ["fetch", "patch", "build", "inspect", "logs", "exec"].includes(toolCommand)
@@ -1209,7 +1312,12 @@ async function runToolWorkflow({
         MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1",
         ...(configPath ? { MORPHEUS_CONFIG: configPath } : {}),
         MORPHEUS_RUN_DIR_OVERRIDE: stepToolRunDir(step.stepDir),
-        MORPHEUS_EVENT_LOG_FILE: path.join(step.stepDir, "progress.jsonl")
+        MORPHEUS_EVENT_LOG_FILE: workflowEventLogPath(workflow.runDir),
+        MORPHEUS_EVENT_CONTEXT: JSON.stringify({
+          workflow_id: workflow.id,
+          step_id: step.id,
+          tool: step.tool,
+        }),
       },
       (childPid) => {
         updateWorkflowRun(workflow.runDir, (current) => ({
@@ -1218,7 +1326,7 @@ async function runToolWorkflow({
           currentChildPid: childPid || null,
         }));
       },
-      { attach },
+      { attach, eventContext: { workflowId: workflow.id, stepId: step.id, tool: step.tool } },
     );
     let toolPayload = attach
       ? attachedWorkflowStepPayload(step, toolCommand, result)
@@ -1259,6 +1367,16 @@ async function runToolWorkflow({
       resolvedInputs: execution && execution.resolved ? execution.resolved : null,
       reuseState: "rerun",
     }));
+    emitArtifactEvents(workflow, step, updatedStep.artifacts, resolvedStep.relations);
+    emitRuntimeEventsFromPayload(workflow, step, toolPayload);
+    emitEvent(status === "success" ? "step.completed" : status === "stopped" ? "step.stopped" : "step.failed", {
+      exit_code: exitCode,
+    }, {
+      scope: "step",
+      workflowId: workflow.id,
+      stepId: step.id,
+      tool: step.tool,
+    });
 
     updateWorkflowRun(workflow.runDir, (current) => ({
       ...current,
@@ -1325,6 +1443,14 @@ async function runToolWorkflow({
         log_file: path.relative(process.cwd(), activeStep.logFile),
         error: error instanceof Error ? error.message : String(error),
       });
+      emitEvent("step.failed", {
+        error: error instanceof Error ? error.message : String(error),
+      }, {
+        scope: "step",
+        workflowId: workflow.id,
+        stepId: activeStep.id,
+        tool: activeStep.tool,
+      });
     }
   }
 
@@ -1345,6 +1471,13 @@ async function runToolWorkflow({
     workflow: updatedWorkflow.workflow,
     status: workflowStatus,
     run_dir: path.relative(process.cwd(), updatedWorkflow.runDir),
+  });
+  emitEvent(workflowStatus === "success" ? "workflow.completed" : workflowStatus === "stopped" ? "workflow.stopped" : "workflow.failed", {
+    exit_code: workflowStatus === "success" ? 0 : exitCode || 1,
+    workflow: updatedWorkflow.workflow,
+  }, {
+    scope: "workflow",
+    workflowId: updatedWorkflow.id,
   });
 
   const payload = {
@@ -1393,7 +1526,7 @@ async function runToolWorkflow({
   }
 
   return payload.exit_code || 0;
-  });
+  }));
 }
 
 function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) {

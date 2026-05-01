@@ -535,6 +535,9 @@ async function buildQemu(flags: Record<string, unknown>, jsonMode: boolean) {
     fs.writeFileSync(buildStatePath, nextBuildState, 'utf8');
   }
   const configureScript = ensureSourceTree(stagedSourceState.path);
+  if (jsonMode) {
+    emitJsonEvent('build', 'tool.phase', { phase: 'configure' });
+  }
   const configureStream = createBuildLogStreamer('configure', jsonMode, logFile);
 
   const configure = await runCommandStreaming(
@@ -555,6 +558,9 @@ async function buildQemu(flags: Record<string, unknown>, jsonMode: boolean) {
     throw new CliError('configure_failed', configure.stderr || configure.stdout || 'QEMU configure failed');
   }
 
+  if (jsonMode) {
+    emitJsonEvent('build', 'tool.phase', { phase: 'build' });
+  }
   const makeStream = createBuildLogStreamer('make', jsonMode, logFile);
   const make = await runCommandStreaming('make', [`-j${detectParallelism()}`], {
     cwd: buildDir,
@@ -566,6 +572,9 @@ async function buildQemu(flags: Record<string, unknown>, jsonMode: boolean) {
     throw new CliError('build_failed', make.stderr || make.stdout || 'QEMU build failed');
   }
 
+  if (jsonMode) {
+    emitJsonEvent('build', 'tool.phase', { phase: 'install' });
+  }
   const installStream = createBuildLogStreamer('install', jsonMode, logFile);
   const install = await runCommandStreaming('make', ['install'], {
     cwd: buildDir,

@@ -372,6 +372,65 @@ test("workflow graph infers artifact relations from resolved inputs when relatio
   assert.equal(detail.graph.edges[1]?.label, "source-dir");
 });
 
+test("workflow-first detail derives artifact relations from canonical events", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-store-"));
+  const runRoot = path.join(workspaceRoot, "runs");
+  const workflowId = "wf-event-relations";
+  const workflowDir = path.join(runRoot, workflowId);
+
+  writeJson(path.join(workflowDir, "workflow.json"), {
+    id: workflowId,
+    workflow: "artifact-flow",
+    category: "run",
+    status: "success",
+    createdAt: "2026-05-01T08:00:00.000Z",
+    updatedAt: "2026-05-01T08:01:00.000Z",
+    steps: [
+      { id: "01-build", name: "build", kind: "tool", status: "success", stepDir: path.join(workflowDir, "steps", "01-build") },
+      { id: "02-run", name: "run", kind: "tool", status: "success", stepDir: path.join(workflowDir, "steps", "02-run") },
+    ],
+  });
+  writeJson(path.join(workflowDir, "steps", "01-build", "step.json"), {
+    id: "01-build",
+    name: "build",
+    kind: "tool",
+    status: "success",
+  });
+  writeJson(path.join(workflowDir, "steps", "02-run", "step.json"), {
+    id: "02-run",
+    name: "run",
+    kind: "tool",
+    status: "success",
+  });
+  writeText(
+    path.join(workflowDir, "events.jsonl"),
+    `${JSON.stringify({
+      ts: "2026-05-01T08:00:10.000Z",
+      producer: "morpheus",
+      level: "info",
+      scope: "step",
+      event: "artifact.consumed",
+      workflow_id: workflowId,
+      step_id: "02-run",
+      tool: "run",
+      data: {
+        from_step: "01-build",
+        artifact_path: "images/Image",
+        consumed_as: "kernel",
+      },
+    })}\n`,
+  );
+
+  const detail = loadRunDetail(runRoot, workflowId);
+  assert.ok(detail);
+  assert.equal(detail.graph.edges.some((edge) =>
+    edge.kind === "artifact"
+    && edge.source === "01-build"
+    && edge.target === "02-run"
+    && edge.artifactPath === "images/Image"
+  ), true);
+});
+
 test("workflow-first steps with empty logs do not advertise log URLs", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-store-"));
   const runRoot = path.join(workspaceRoot, "runs");
@@ -399,6 +458,59 @@ test("workflow-first steps with empty logs do not advertise log URLs", () => {
   assert.ok(detail);
   assert.equal(detail.steps[0]?.logUrl, `/api/runs/${workflowId}/steps/01-has-log/log`);
   assert.equal(detail.steps[1]?.logUrl, null);
+});
+
+test("workflow-first step logs can be reconstructed from canonical events", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-store-"));
+  const runRoot = path.join(workspaceRoot, "runs");
+  const workflowId = "wf-event-log";
+  const workflowDir = path.join(runRoot, workflowId);
+  writeJson(path.join(workflowDir, "workflow.json"), {
+    id: workflowId,
+    workflow: "event-log",
+    category: "run",
+    status: "success",
+    createdAt: "2026-05-01T08:00:00.000Z",
+    updatedAt: "2026-05-01T08:01:00.000Z",
+    steps: [
+      { id: "01-step", name: "step", kind: "tool", status: "success", stepDir: path.join(workflowDir, "steps", "01-step") },
+    ],
+  });
+  writeJson(path.join(workflowDir, "steps", "01-step", "step.json"), {
+    id: "01-step",
+    name: "step",
+    kind: "tool",
+    status: "success",
+  });
+  writeText(
+    path.join(workflowDir, "events.jsonl"),
+    [
+      JSON.stringify({
+        ts: "2026-05-01T08:00:10.000Z",
+        producer: "morpheus",
+        level: "info",
+        scope: "step",
+        event: "console.stdout",
+        workflow_id: workflowId,
+        step_id: "01-step",
+        tool: "step",
+        data: { text: "hello\n" },
+      }),
+      JSON.stringify({
+        ts: "2026-05-01T08:00:11.000Z",
+        producer: "morpheus",
+        level: "info",
+        scope: "step",
+        event: "console.stderr",
+        workflow_id: workflowId,
+        step_id: "01-step",
+        tool: "step",
+        data: { text: "warn\n" },
+      }),
+    ].join("\n") + "\n",
+  );
+
+  assert.equal(loadStepLogText(runRoot, workflowId, "01-step"), "hello\nwarn\n");
 });
 
 test("listRunSummaries reconciles stale running workflows to error", () => {

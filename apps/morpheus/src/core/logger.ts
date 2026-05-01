@@ -21,32 +21,89 @@ function currentLogFile() {
   return process.env.MORPHEUS_EVENT_LOG_FILE || null;
 }
 
-function appendJsonl(level, scope, message, fields) {
+function currentEventContext() {
+  const raw = process.env.MORPHEUS_EVENT_CONTEXT || "";
+  if (!raw) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function appendJsonl(record) {
   const filePath = currentLogFile();
   if (!filePath) {
     return;
   }
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.appendFileSync(filePath, `${JSON.stringify({
+  fs.appendFileSync(filePath, `${JSON.stringify(record)}\n`, "utf8");
+}
+
+function emitEvent(event, data = {}, options = {}) {
+  const context = currentEventContext();
+  appendJsonl({
     ts: new Date().toISOString(),
-    level,
-    scope,
-    message,
-    fields: fields || {},
-  })}\n`, "utf8");
+    producer: options.producer || "morpheus",
+    level: options.level || "info",
+    scope: options.scope || "workflow",
+    event,
+    workflow_id: options.workflowId || context.workflow_id || null,
+    step_id: options.stepId || context.step_id || null,
+    tool: options.tool || context.tool || null,
+    data: data || {},
+  });
 }
 
 function withLogFile(filePath, callback) {
   const previous = process.env.MORPHEUS_EVENT_LOG_FILE;
   process.env.MORPHEUS_EVENT_LOG_FILE = filePath;
-  try {
-    return callback();
-  } finally {
+  const restore = () => {
     if (previous == null) {
       delete process.env.MORPHEUS_EVENT_LOG_FILE;
     } else {
       process.env.MORPHEUS_EVENT_LOG_FILE = previous;
     }
+  };
+  try {
+    const result = callback();
+    if (result && typeof result.then === "function") {
+      return Promise.resolve(result).finally(restore);
+    }
+    restore();
+    return result;
+  } catch (error) {
+    restore();
+    throw error;
+  }
+}
+
+function withEventContext(context, callback) {
+  const previous = process.env.MORPHEUS_EVENT_CONTEXT;
+  process.env.MORPHEUS_EVENT_CONTEXT = JSON.stringify({
+    ...currentEventContext(),
+    ...(context || {}),
+  });
+  const restore = () => {
+    if (previous == null) {
+      delete process.env.MORPHEUS_EVENT_CONTEXT;
+    } else {
+      process.env.MORPHEUS_EVENT_CONTEXT = previous;
+    }
+  };
+  try {
+    const result = callback();
+    if (result && typeof result.then === "function") {
+      return Promise.resolve(result).finally(restore);
+    }
+    restore();
+    return result;
+  } catch (error) {
+    restore();
+    throw error;
   }
 }
 
@@ -54,12 +111,12 @@ function logDebug(scope, message, fields) {
   if (!isVerboseEnabled()) {
     return;
   }
-  appendJsonl("debug", scope, message, fields);
+  emitEvent("morpheus.log", { message, fields: fields || {} }, { level: "debug", scope });
   fs.writeSync(2, `[morpheus:${scope}] ${message}${formatFields(fields)}\n`);
 }
 
 function logInfo(scope, message, fields) {
-  appendJsonl("info", scope, message, fields);
+  emitEvent("morpheus.log", { message, fields: fields || {} }, { level: "info", scope });
   if (process.env.MORPHEUS_NO_PROGRESS === "1" || process.env.MORPHEUS_NO_PROGRESS === "true") {
     return;
   }
@@ -67,8 +124,10 @@ function logInfo(scope, message, fields) {
 }
 
 module.exports = {
+  emitEvent,
   isVerboseEnabled,
   logDebug,
   logInfo,
+  withEventContext,
   withLogFile,
 };

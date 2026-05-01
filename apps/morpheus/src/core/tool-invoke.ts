@@ -264,13 +264,12 @@ async function runToolStreaming(descriptor, args, options = {}) {
         parsed
         && parsed.status === "stream"
         && parsed.details
-        && parsed.details.event === "log"
       ) {
         if (options.jsonMode) {
           writeStdoutLine(trimmed);
-        } else if (typeof parsed.details.chunk === "string") {
+        } else if (parsed.details.event === "log" && typeof parsed.details.chunk === "string") {
           writeStdout(parsed.details.chunk);
-        } else if (typeof parsed.details.line === "string") {
+        } else if (parsed.details.event === "log" && typeof parsed.details.line === "string") {
           writeStderrLine(parsed.details.line);
         }
         return;
@@ -1019,15 +1018,39 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   }
   args.push(...passthrough);
   const workspaceForExec = effective.localWorkspace || effective.workspace;
+  const legacyExecRunDir = command === "exec" && workspaceForExec
+    ? path.join(workspaceForExec, "tmp", tool, "exec")
+    : null;
+  const legacyFlatWorkflowRunDir = command === "exec" && workspaceForExec
+    ? path.join(workspaceForExec, "runs", `${tool}-exec`)
+    : null;
   const managedRunDir = command === "exec" && workspaceForExec
     ? (
       defaultExecRunDir(workspaceForExec, tool, descriptor, {
         toolchainVersion: effective["toolchain-version"] || null,
         example: effective.example || null,
       })
-      || path.join(workspaceForExec, "tmp", tool, "exec")
+      || legacyExecRunDir
     )
     : null;
+  if (
+    command === "exec"
+    && workspaceForExec
+    && managedRunDir
+    && legacyExecRunDir
+    && managedRunDir !== legacyExecRunDir
+  ) {
+    fs.rmSync(path.dirname(legacyExecRunDir), { recursive: true, force: true });
+  }
+  if (
+    command === "exec"
+    && workspaceForExec
+    && managedRunDir
+    && legacyFlatWorkflowRunDir
+    && !managedRunDir.startsWith(`${legacyFlatWorkflowRunDir}${path.sep}`)
+  ) {
+    fs.rmSync(legacyFlatWorkflowRunDir, { recursive: true, force: true });
+  }
   const env = managedRunDir
     ? { ...process.env, MORPHEUS_RUN_DIR_OVERRIDE: managedRunDir }
     : process.env;

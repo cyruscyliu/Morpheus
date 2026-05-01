@@ -4,6 +4,7 @@ import path from "node:path";
 import type {
   RunArtifactRef,
   RunDetail,
+  RunEventRecord,
   RunGraphEdge,
   RunGraphNode,
   RunStepSummary,
@@ -39,6 +40,17 @@ interface RunRelationRecord {
 interface WorkflowDetailStepRecord {
   summary: RunStepSummary;
   manifest: any;
+}
+
+interface RunEventRecord {
+  ts?: string;
+  level?: string;
+  scope?: string;
+  event?: string;
+  workflow_id?: string | null;
+  step_id?: string | null;
+  tool?: string | null;
+  data?: any;
 }
 
 function normalizeWorkflowCategory(value: unknown): "build" | "run" | "unknown" {
@@ -140,6 +152,28 @@ function readJsonLinesIfExists(filePath: string): any[] {
     .filter((entry) => entry !== null);
 }
 
+function readRunEvents(runDir: string): RunEventRecord[] {
+  const canonical = readJsonLinesIfExists(path.join(runDir, "events.jsonl")) as RunEventRecord[];
+  if (canonical.length > 0) {
+    return canonical;
+  }
+  const progress = readJsonLinesIfExists(path.join(runDir, "progress.jsonl")) as any[];
+  return progress.map((entry) => ({
+    ts: entry.ts,
+    producer: "morpheus",
+    level: entry.level || "info",
+    scope: entry.scope || "workflow",
+    event: "morpheus.log",
+    workflow_id: null,
+    step_id: null,
+    tool: null,
+    data: {
+      message: entry.message || null,
+      fields: entry.fields || {},
+    },
+  }));
+}
+
 function readTextIfExists(filePath: string): string {
   if (!fs.existsSync(filePath)) {
     return "";
@@ -222,6 +256,32 @@ function reconcileWorkflowRecord(runDir: string, record: any): any {
 
 function uniquePaths(values: string[]): string[] {
   return [...new Set(values.filter((value) => Boolean(value)))];
+}
+
+function eventArtifactsConsumed(events: RunEventRecord[]): RunRelationRecord[] {
+  return events
+    .filter((entry) => entry && entry.event === "artifact.consumed" && entry.step_id)
+    .map((entry) => ({
+      kind: "artifact",
+      from: entry.data?.from_step || null,
+      to: entry.step_id || null,
+      artifactPath: entry.data?.artifact_path || null,
+      consumedAs: entry.data?.consumed_as || null,
+      artifactLocation: entry.data?.artifact_location || null,
+    }))
+    .filter((entry) => typeof entry.from === "string" && typeof entry.to === "string");
+}
+
+function eventConsoleText(events: RunEventRecord[], stepId?: string | null): string | null {
+  const text = events
+    .filter((entry) =>
+      entry
+      && (entry.event === "console.stdout" || entry.event === "console.stderr")
+      && (!stepId || entry.step_id === stepId),
+    )
+    .map((entry) => (entry.data && typeof entry.data.text === "string" ? entry.data.text : ""))
+    .join("");
+  return text ? text : null;
 }
 
 function workflowStepLogPaths(runDir: string, stepId: string): string[] {
@@ -627,20 +687,25 @@ function loadWorkflowFirstDetail(runRoot: string, runId: string, options: LoadOp
   }
   const record = reconcileWorkflowRecord(runDir, readJson(recordPath));
   const stepEntries = Array.isArray(record.steps) ? record.steps : [];
-  const relations = readJsonLinesIfExists(path.join(runDir, "relations.jsonl")) as RunRelationRecord[];
+  const events = readRunEvents(runDir);
+  const eventRelations = eventArtifactsConsumed(events);
+  const relations = eventRelations.length > 0
+    ? eventRelations
+    : (readJsonLinesIfExists(path.join(runDir, "relations.jsonl")) as RunRelationRecord[]);
 
   const stepRecords: WorkflowDetailStepRecord[] = stepEntries.map((entry: any) => {
     const stepId = String(entry.id || "");
     const stepDir = typeof entry.stepDir === "string" ? entry.stepDir : path.join(runDir, "steps", stepId);
     const manifest = readJsonIfExists<any>(path.join(stepDir, "step.json"), null as any);
     const exists = workflowStepLogPaths(runDir, stepId).some((logFile) => fileHasLogContent(logFile));
+    const eventLogText = eventConsoleText(events, stepId);
 
     const manifestArtifacts = normalizeArtifactsArray(manifest?.artifacts);
     const artifacts = manifestArtifacts.length > 0 ? manifestArtifacts : toolResultArtifacts(manifest);
 
-    const summary: any = normalizeStepSummary(entry, manifest, runId, stepId, exists, artifacts);
-    if (options.includeLogs && exists) {
-      summary.logText = loadStepLogText(runRoot, runId, stepId);
+    const summary: any = normalizeStepSummary(entry, manifest, runId, stepId, exists || Boolean(eventLogText), artifacts);
+    if (options.includeLogs && (exists || eventLogText)) {
+      summary.logText = eventLogText || loadStepLogText(runRoot, runId, stepId);
     }
     return { summary: summary as RunStepSummary, manifest };
   });
@@ -742,6 +807,10 @@ export function loadStepLogText(runRoot: string, runId: string, stepId: string):
   }
 
   if (kind === "workflow-first") {
+    const eventText = eventConsoleText(readRunEvents(runDir), stepId);
+    if (eventText) {
+      return eventText;
+    }
     const parts = workflowStepLogPaths(runDir, stepId)
       .map((logFile) => ({ logFile, text: readTextIfExists(logFile).trimEnd() }))
       .filter((entry) => entry.text);
@@ -784,8 +853,12 @@ export function loadRunLogText(runRoot: string, runId: string): string | null {
 
   const sections: string[] = [];
   const runDir = path.join(runRoot, runId);
+  const eventText = eventConsoleText(readRunEvents(runDir), null);
+  if (eventText) {
+    sections.push(["=== workflow.events ===", eventText.trimEnd()].join("\n"));
+  }
   const progressLog = readTextIfExists(path.join(runDir, "progress.jsonl")).trim();
-  if (progressLog) {
+  if (!eventText && progressLog) {
     sections.push(["=== workflow.progress ===", progressLog].join("\n"));
   }
 
@@ -800,4 +873,16 @@ export function loadRunLogText(runRoot: string, runId: string): string | null {
   }
 
   return sections.join("\n\n");
+}
+
+export function loadRunEvents(runRoot: string, runId: string): RunEventRecord[] | null {
+  if (!isSafeId(runId)) {
+    return null;
+  }
+  const runDir = path.join(runRoot, runId);
+  const kind = detectRunKind(runDir);
+  if (!kind) {
+    return null;
+  }
+  return readRunEvents(runDir);
 }

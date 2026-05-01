@@ -47,6 +47,10 @@ function legacyRunRecordPath(workflowRunDir) {
   return path.join(workflowRunDir, "run.json");
 }
 
+function workflowEventLogPath(workflowRunDir) {
+  return path.join(workflowRunDir, "events.jsonl");
+}
+
 function stepDir(workflowRunDir, stepId) {
   return path.join(workflowRunDir, "steps", stepId);
 }
@@ -82,6 +86,9 @@ function createWorkflowRun(workspaceRoot, workflowName, options = {}) {
   const createdAt = nowIso();
   const category = normalizeWorkflowCategory(options.category, "build");
   fs.mkdirSync(path.join(runDir, "steps"), { recursive: true });
+  if (!fs.existsSync(workflowEventLogPath(runDir))) {
+    fs.writeFileSync(workflowEventLogPath(runDir), "", "utf8");
+  }
 
   const record = {
     schemaVersion: WORKFLOW_SCHEMA_VERSION,
@@ -92,6 +99,7 @@ function createWorkflowRun(workspaceRoot, workflowName, options = {}) {
     status: "created",
     createdAt,
     updatedAt: createdAt,
+    eventLogFile: workflowEventLogPath(runDir),
     workspace: path.resolve(process.cwd(), workspaceRoot),
     runDir,
     steps: []
@@ -148,6 +156,7 @@ function createWorkflowStep(runDir, index, name, options = {}) {
     status: "created",
     createdAt,
     updatedAt: createdAt,
+    eventLogFile: workflowEventLogPath(runDir),
     stepDir: dir,
     toolRunDir: stepToolRunDir(dir),
     logFile: stepLogPath(dir),
@@ -181,6 +190,7 @@ module.exports = {
   stepArtifactsDir,
   stepToolRunDir,
   stepDir,
+  workflowEventLogPath,
   stepLogPath,
   stepManifestPath,
   updateWorkflowRun,

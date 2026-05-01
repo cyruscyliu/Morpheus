@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, Copy } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type {
@@ -661,6 +662,7 @@ export function WorkflowViewer({
   const [runDetail, setRunDetail] = useState<RunDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [copiedRunId, setCopiedRunId] = useState<string | null>(null);
   const [stopLoadingRunIds, setStopLoadingRunIds] = useState<string[]>([]);
   const [removeLoadingRunIds, setRemoveLoadingRunIds] = useState<string[]>([]);
   const [resumeLoadingRunIds, setResumeLoadingRunIds] = useState<string[]>([]);
@@ -675,9 +677,11 @@ export function WorkflowViewer({
   });
   const logRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const detailRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const logRequestIdRef = useRef(0);
 
   const selectedSummary = summaries.find((summary) => summary.id === selectedRunId) || null;
+  const selectedRunCopyId = selectedSummary?.id || null;
   const selectedStep = runDetail?.steps.find((step) => step.id === selectedStepId) || null;
   const selectedRunActionLocked = Boolean(
     selectedSummary
@@ -732,6 +736,21 @@ export function WorkflowViewer({
       url.searchParams.delete("config");
     }
     window.location.assign(url.toString());
+  }
+
+  async function onCopyRunId(runId: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(runId);
+      setCopiedRunId(runId);
+      if (copyResetTimerRef.current) {
+        clearTimeout(copyResetTimerRef.current);
+      }
+      copyResetTimerRef.current = setTimeout(() => {
+        setCopiedRunId((current) => (current === runId ? null : current));
+      }, 1500);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Failed to copy workflow id.");
+    }
   }
 
   async function onRunWorkflow(): Promise<void> {
@@ -1157,6 +1176,10 @@ export function WorkflowViewer({
         clearTimeout(detailRefreshTimerRef.current);
         detailRefreshTimerRef.current = null;
       }
+      if (copyResetTimerRef.current) {
+        clearTimeout(copyResetTimerRef.current);
+        copyResetTimerRef.current = null;
+      }
     };
   }, [activeTab, configPath, selectedRunId, selectedStepId]);
 
@@ -1284,7 +1307,20 @@ export function WorkflowViewer({
                   <h2 className="workflow-pane-title">
                     {selectedSummary ? `${selectedSummary.workflowName || selectedSummary.id}` : "Workflow graph"}
                   </h2>
-                  {selectedStep ? <p className="workflow-pane-caption">Inspecting {stepDisplayName(selectedStep)}</p> : null}
+                  {selectedRunCopyId ? (
+                    <div className="workflow-pane-meta">
+                      <code title={selectedRunCopyId}>{selectedRunCopyId}</code>
+                      <Button
+                        aria-label={copiedRunId === selectedRunCopyId ? "Copied workflow id" : "Copy workflow id"}
+                        onClick={() => void onCopyRunId(selectedRunCopyId)}
+                        size="icon"
+                        title={copiedRunId === selectedRunCopyId ? "Copied" : "Copy workflow id"}
+                        variant="ghost"
+                      >
+                        {copiedRunId === selectedRunCopyId ? <Check size={14} /> : <Copy size={14} />}
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="workflow-pane-actions">
                   {selectedStep ? (
@@ -1521,6 +1557,10 @@ export function WorkflowViewer({
                     <div className="workflow-overview-card">
                       <span className="workflow-overview-label">Workflow</span>
                       <strong>{selectedSummary?.workflowName || selectedSummary?.id || "-"}</strong>
+                    </div>
+                    <div className="workflow-overview-card">
+                      <span className="workflow-overview-label">ID</span>
+                      <code title={selectedSummary?.id || undefined}>{selectedSummary?.id || "-"}</code>
                     </div>
                     <div className="workflow-overview-card">
                       <span className="workflow-overview-label">Scope</span>

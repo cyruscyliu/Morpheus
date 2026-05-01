@@ -168,6 +168,24 @@ code {
   font-size: 0.82rem;
 }
 
+.workflow-pane-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  color: rgb(var(--muted-foreground));
+  font-size: 0.82rem;
+  flex-wrap: wrap;
+}
+
+.workflow-pane-meta code {
+  max-width: min(52vw, 480px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgb(var(--foreground));
+}
+
 .workflow-pane-actions,
 .workflow-pane-tabs {
   display: inline-flex;

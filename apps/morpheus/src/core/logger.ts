@@ -58,6 +58,10 @@ function emitEvent(event, data = {}, options = {}) {
   });
 }
 
+function consoleLine(scope, message, fields) {
+  return `[morpheus:${scope}] ${message}${formatFields(fields)}\n`;
+}
+
 function withLogFile(filePath, callback) {
   const previous = process.env.MORPHEUS_EVENT_LOG_FILE;
   process.env.MORPHEUS_EVENT_LOG_FILE = filePath;
@@ -111,16 +115,18 @@ function logDebug(scope, message, fields) {
   if (!isVerboseEnabled()) {
     return;
   }
-  emitEvent("morpheus.log", { message, fields: fields || {} }, { level: "debug", scope });
-  fs.writeSync(2, `[morpheus:${scope}] ${message}${formatFields(fields)}\n`);
+  const text = consoleLine(scope, message, fields);
+  emitEvent("console.stderr", { text }, { level: "debug", scope });
+  fs.writeSync(2, text);
 }
 
 function logInfo(scope, message, fields) {
-  emitEvent("morpheus.log", { message, fields: fields || {} }, { level: "info", scope });
+  const text = consoleLine(scope, message, fields);
+  emitEvent("console.stderr", { text }, { level: "info", scope });
   if (process.env.MORPHEUS_NO_PROGRESS === "1" || process.env.MORPHEUS_NO_PROGRESS === "true") {
     return;
   }
-  fs.writeSync(2, `[morpheus:${scope}] ${message}${formatFields(fields)}\n`);
+  fs.writeSync(2, text);
 }
 
 module.exports = {

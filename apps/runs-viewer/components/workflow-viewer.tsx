@@ -33,6 +33,14 @@ interface PositionedGraphNode extends RunGraphNode {
   centerY: number;
 }
 
+interface RenderedLogRow {
+  ts: string | null;
+  event: string;
+  stepId: string | null;
+  text: string;
+  key: string;
+}
+
 interface GraphLayout {
   width: number;
   height: number;
@@ -300,6 +308,16 @@ function formatPathLabel(value: string | null | undefined): string {
   return parts[parts.length - 1] || normalized;
 }
 
+function flattenEventPayload(value: unknown): string[] {
+  const text = JSON.stringify(value ?? {}, null, 2) || "{}";
+  return text
+    .replace(/\r\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+$/, ""))
+    .filter((line) => line.length > 0);
+}
+
 function withConfigQuery(input: string, configPath: string | null): string {
   if (!configPath) {
     return input;
@@ -310,24 +328,17 @@ function withConfigQuery(input: string, configPath: string | null): string {
 
 function nextStepInspectionTab(
   step: RunStepSummary | null,
-  currentTab: "overview" | "log" | "artifacts" | "events",
-): "overview" | "log" | "artifacts" | "events" {
-  const hasLog = Boolean(step?.logUrl);
+  currentTab: "overview" | "log" | "artifacts",
+): "overview" | "log" | "artifacts" {
   const hasArtifacts = (step?.artifacts?.length || 0) > 0;
 
-  if (hasLog) {
-    return "log";
-  }
   if (currentTab === "artifacts" && hasArtifacts) {
     return "artifacts";
   }
-  if (hasArtifacts) {
-    return "artifacts";
-  }
-  return "overview";
+  return "log";
 }
 
-const inspectionTabs = ["overview", "log", "artifacts", "events"] as const;
+const inspectionTabs = ["overview", "log", "artifacts"] as const;
 
 type InspectionTab = (typeof inspectionTabs)[number];
 
@@ -727,14 +738,13 @@ export function WorkflowViewer({
   );
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<InspectionTab>("overview");
-  const [logText, setLogText] = useState<string>("");
-  const [expandedLog, setExpandedLog] = useState(false);
   const [logLoading, setLogLoading] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
   const [eventLog, setEventLog] = useState<RunEventRecord[]>([]);
   const [eventLoading, setEventLoading] = useState(false);
   const [eventError, setEventError] = useState<string | null>(null);
   const [eventFilter, setEventFilter] = useState("all");
+  const [eventStepFilter, setEventStepFilter] = useState("all");
   const [eventQuery, setEventQuery] = useState("");
   const [runDetail, setRunDetail] = useState<RunDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -745,17 +755,14 @@ export function WorkflowViewer({
   const [resumeLoadingRunIds, setResumeLoadingRunIds] = useState<string[]>([]);
   const [rerunLoadingStepId, setRerunLoadingStepId] = useState<string | null>(null);
   const [graphViewportWidth, setGraphViewportWidth] = useState(0);
-  const logBodyRef = useRef<HTMLDivElement | null>(null);
   const graphBodyRef = useRef<HTMLDivElement | null>(null);
   const tabRefs = useRef<Record<InspectionTab, HTMLButtonElement | null>>({
     overview: null,
     log: null,
     artifacts: null,
   });
-  const logRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const detailRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const logRequestIdRef = useRef(0);
 
   const selectedSummary = summaries.find((summary) => summary.id === selectedRunId) || null;
   const selectedRunCopyId = selectedSummary?.id || null;
@@ -789,10 +796,22 @@ export function WorkflowViewer({
     }
     return ["all", ...[...values].sort()];
   }, [eventLog]);
+  const eventStepOptions = useMemo(() => {
+    const values = new Set<string>();
+    for (const entry of eventLog) {
+      const stepId = typeof entry.step_id === "string" && entry.step_id ? entry.step_id : "workflow";
+      values.add(stepId);
+    }
+    return ["all", ...[...values].sort()];
+  }, [eventLog]);
   const filteredEvents = useMemo(() => {
     const query = eventQuery.trim().toLowerCase();
     return eventLog.filter((entry) => {
       if (eventFilter !== "all" && entry.event !== eventFilter) {
+        return false;
+      }
+      const stepId = typeof entry.step_id === "string" && entry.step_id ? entry.step_id : "workflow";
+      if (eventStepFilter !== "all" && stepId !== eventStepFilter) {
         return false;
       }
       if (!query) {
@@ -800,7 +819,25 @@ export function WorkflowViewer({
       }
       return JSON.stringify(entry).toLowerCase().includes(query);
     });
-  }, [eventFilter, eventLog, eventQuery]);
+  }, [eventFilter, eventLog, eventQuery, eventStepFilter]);
+  const renderedLogRows = useMemo<RenderedLogRow[]>(() => {
+    const rows: RenderedLogRow[] = [];
+    filteredEvents.forEach((entry, entryIndex) => {
+      const event = entry.event || "unknown";
+      const stepId = entry.step_id || null;
+      const lines = flattenEventPayload(entry.data || {});
+      for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+        rows.push({
+          ts: entry.ts || null,
+          event,
+          stepId,
+          text: lines[lineIndex] || "",
+          key: `${entry.ts || "event"}:${event}:${stepId || "workflow"}:${entryIndex}:${lineIndex}`,
+        });
+      }
+    });
+    return rows;
+  }, [filteredEvents]);
   const selectedRunActionLocked = Boolean(
     selectedSummary
     && (
@@ -972,57 +1009,23 @@ export function WorkflowViewer({
     }
   }
 
-  async function refreshActiveLog(
-    runId: string,
-    stepId: string | null,
-    options: { background?: boolean } = {},
-  ): Promise<void> {
-    const requestId = logRequestIdRef.current + 1;
-    logRequestIdRef.current = requestId;
-    if (!options.background) {
-      setLogLoading(true);
-      setLogText("");
-    }
-    setLogError(null);
-    try {
-      const nextLog = stepId
-        ? await loadStepLog(runId, stepId, configPath)
-        : await loadWorkflowLog(runId, configPath);
-      if (requestId !== logRequestIdRef.current) {
-        return;
-      }
-      setLogText(nextLog);
-    } catch (error) {
-      if (requestId !== logRequestIdRef.current) {
-        return;
-      }
-      setLogText("");
-      const message = error instanceof Error ? error.message : "Failed to load log.";
-      setLogError(/^404\b/.test(message) ? null : message);
-    } finally {
-      if (!options.background && requestId === logRequestIdRef.current) {
-        setLogLoading(false);
-      }
-    }
-  }
-
-  async function refreshActiveEvents(runId: string, options: { background?: boolean } = {}): Promise<void> {
+  async function refreshActiveLog(runId: string, options: { background?: boolean } = {}): Promise<void> {
     const background = Boolean(options.background);
     if (!background) {
-      setEventLoading(true);
+      setLogLoading(true);
       setEventLog([]);
     }
-    setEventError(null);
+    setLogError(null);
     try {
       const nextEvents = await loadWorkflowEvents(runId, configPath);
       setEventLog(nextEvents);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setEventLog([]);
-      setEventError(/^404\b/.test(message) ? null : message);
+      setLogError(/^404\b/.test(message) ? null : message);
     } finally {
       if (!background) {
-        setEventLoading(false);
+        setLogLoading(false);
       }
     }
   }
@@ -1039,17 +1042,7 @@ export function WorkflowViewer({
     }
   }
 
-  function scheduleLogRefresh(runId: string, stepId: string | null, delayMs: number): void {
-    if (logRefreshTimerRef.current) {
-      clearTimeout(logRefreshTimerRef.current);
-    }
-    logRefreshTimerRef.current = setTimeout(() => {
-      logRefreshTimerRef.current = null;
-      void refreshActiveLog(runId, stepId, { background: true });
-    }, delayMs);
-  }
-
-  function scheduleDetailRefresh(runId: string, delayMs: number): void {
+function scheduleDetailRefresh(runId: string, delayMs: number): void {
     if (detailRefreshTimerRef.current) {
       clearTimeout(detailRefreshTimerRef.current);
     }
@@ -1066,18 +1059,13 @@ export function WorkflowViewer({
   useEffect(() => {
     setSelectedStepId(null);
     setActiveTab("overview");
-    setExpandedLog(false);
     setEventFilter("all");
+    setEventStepFilter("all");
     setEventQuery("");
   }, [selectedRunId]);
 
   useEffect(() => {
-    setExpandedLog(false);
-  }, [selectedStepId]);
-
-  useEffect(() => {
     if (!selectedRunId) {
-      setLogText("");
       setLogError(null);
       setLogLoading(false);
       setEventLog([]);
@@ -1088,13 +1076,12 @@ export function WorkflowViewer({
       return;
     }
     let cancelled = false;
-    setLogText("");
     setLogError(null);
     setEventLog([]);
     setEventError(null);
     setRunDetail(null);
     setLogLoading(activeTab === "log");
-    setEventLoading(activeTab === "events");
+    setEventLoading(false);
     setDetailLoading(true);
     void loadWorkflowDetail(selectedRunId, configPath)
       .then((detail) => {
@@ -1112,10 +1099,7 @@ export function WorkflowViewer({
         setDetailLoading(false);
       });
     if (activeTab === "log") {
-      void refreshActiveLog(selectedRunId, selectedStepId);
-    }
-    if (activeTab === "events") {
-      void refreshActiveEvents(selectedRunId);
+      void refreshActiveLog(selectedRunId);
     }
     return () => {
       cancelled = true;
@@ -1123,9 +1107,7 @@ export function WorkflowViewer({
   }, [selectedRunId]);
 
   useEffect(() => {
-    logRequestIdRef.current += 1;
     if (!selectedRunId) {
-      setLogText("");
       setLogError(null);
       setLogLoading(false);
       setEventLog([]);
@@ -1134,22 +1116,13 @@ export function WorkflowViewer({
       return;
     }
     if (activeTab !== "log") {
-      setLogText("");
       setLogError(null);
       setLogLoading(false);
     }
-    if (activeTab !== "events") {
-      setEventLog([]);
-      setEventError(null);
-      setEventLoading(false);
-    }
     if (activeTab === "log") {
-      void refreshActiveLog(selectedRunId, selectedStepId);
+      void refreshActiveLog(selectedRunId);
     }
-    if (activeTab === "events") {
-      void refreshActiveEvents(selectedRunId);
-    }
-  }, [activeTab, selectedRunId, selectedStepId]);
+  }, [activeTab, selectedRunId]);
 
   useEffect(() => {
     if (!runDetail || !selectedStepId) {
@@ -1159,6 +1132,7 @@ export function WorkflowViewer({
       return;
     }
     setSelectedStepId(null);
+    setEventStepFilter("all");
     setActiveTab("overview");
   }, [runDetail, selectedStepId]);
 
@@ -1169,7 +1143,7 @@ export function WorkflowViewer({
     }
     await refreshRunDetail(selectedRunId);
     if (activeTab === "log") {
-      await refreshActiveLog(selectedRunId, selectedStepId);
+      await refreshActiveLog(selectedRunId);
     }
   }
 
@@ -1181,7 +1155,7 @@ export function WorkflowViewer({
       await refreshRunsIndex(configPath, setSummaries, setTotalRuns, setUpdatedAt);
       await refreshRunDetail(runId);
       if (activeTab === "log") {
-        await refreshActiveLog(runId, selectedRunId === runId ? selectedStepId : null);
+        await refreshActiveLog(runId);
       }
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Failed to stop workflow.");
@@ -1235,7 +1209,7 @@ export function WorkflowViewer({
       await refreshRunsIndex(configPath, setSummaries, setTotalRuns, setUpdatedAt);
       await refreshRunDetail(runId);
       if (activeTab === "log") {
-        await refreshActiveLog(runId, selectedStepId);
+        await refreshActiveLog(runId);
       }
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Failed to resume workflow.");
@@ -1245,14 +1219,6 @@ export function WorkflowViewer({
     }
   }
 
-  const logPresentation = useMemo(
-    () => deriveLogPresentation(logText, expandedLog),
-    [expandedLog, logText],
-  );
-  const renderedLogHtml = useMemo(
-    () => renderWorkflowLogHtml(logPresentation.text),
-    [logPresentation.text],
-  );
   const artifacts = useMemo(() => {
     if (!selectedStepId) {
       const items: Array<{ stepId: string; stepName: string; path: string; location: string }> = [];
@@ -1295,14 +1261,6 @@ export function WorkflowViewer({
   );
 
   useEffect(() => {
-    const logBody = logBodyRef.current;
-    if (!logBody) {
-      return;
-    }
-    logBody.scrollTop = logBody.scrollHeight;
-  }, [logText, logLoading]);
-
-  useEffect(() => {
     const graphBody = graphBodyRef.current;
     if (!graphBody) {
       return;
@@ -1332,19 +1290,12 @@ export function WorkflowViewer({
         if (selectedRunId) {
           scheduleDetailRefresh(selectedRunId, 250);
           if (activeTab === "log") {
-            scheduleLogRefresh(selectedRunId, selectedStepId, 1000);
-          }
-          if (activeTab === "events") {
-            void refreshActiveEvents(selectedRunId, { background: true });
+            void refreshActiveLog(selectedRunId, { background: true });
           }
         }
       });
     return () => {
       events.close();
-      if (logRefreshTimerRef.current) {
-        clearTimeout(logRefreshTimerRef.current);
-        logRefreshTimerRef.current = null;
-      }
       if (detailRefreshTimerRef.current) {
         clearTimeout(detailRefreshTimerRef.current);
         detailRefreshTimerRef.current = null;
@@ -1500,6 +1451,9 @@ export function WorkflowViewer({
                     <Button
                       onClick={() => {
                         setSelectedStepId(null);
+                        setEventFilter("all");
+                        setEventStepFilter("all");
+                        setEventQuery("");
                         setActiveTab("overview");
                       }}
                       size="sm"
@@ -1630,9 +1584,9 @@ export function WorkflowViewer({
                             className={`workflow-graph-node is-${node.status}${isSelected ? " is-selected" : ""}`}
                             key={node.id}
                             onClick={() => {
-                              const selectedNodeStep = runDetail?.steps.find((step) => step.id === node.id) || null;
                               setSelectedStepId(node.id);
-                              setActiveTab(nextStepInspectionTab(selectedNodeStep, activeTab));
+                              setEventStepFilter(node.id);
+                              setActiveTab("log");
                             }}
                             style={{
                               height: `${node.height}px`,
@@ -1714,26 +1668,48 @@ export function WorkflowViewer({
                 >
                   Artifacts
                 </button>
-                <button
-                  aria-controls="inspection-panel"
-                  aria-selected={activeTab === "events"}
-                  className={`workflow-tab${activeTab === "events" ? " is-active" : ""}`}
-                  id="inspection-tab-events"
-                  onClick={() => setActiveTab("events")}
-                  onKeyDown={(event) => onTabKeyDown(event, "events")}
-                  role="tab"
-                  tabIndex={activeTab === "events" ? 0 : -1}
-                  type="button"
-                >
-                  Events
-                </button>
               </div>
+              {activeTab === "log" ? (
+                <div className="workflow-events-toolbar">
+                  <select
+                    aria-label="Filter event type"
+                    className="workflow-events-select"
+                    onChange={(event) => setEventFilter(event.currentTarget.value)}
+                    value={eventFilter}
+                  >
+                    {eventKinds.map((kind) => (
+                      <option key={kind} value={kind}>
+                        {kind}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Filter step"
+                    className="workflow-events-select"
+                    onChange={(event) => setEventStepFilter(event.currentTarget.value)}
+                    value={eventStepFilter}
+                  >
+                    {eventStepOptions.map((stepId) => (
+                      <option key={stepId} value={stepId}>
+                        {stepId}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    aria-label="Search events"
+                    className="workflow-events-search"
+                    onChange={(event) => setEventQuery(event.currentTarget.value)}
+                    placeholder="Search event payload"
+                    type="search"
+                    value={eventQuery}
+                  />
+                </div>
+              ) : null}
             </div>
             <div
               aria-labelledby={`inspection-tab-${activeTab}`}
               className="workflow-bottom-body"
               id="inspection-panel"
-              ref={activeTab === "log" ? logBodyRef : null}
               role="tabpanel"
             >
               {actionError ? <p className="mb-4 text-sm text-destructive">{actionError}</p> : null}
@@ -1787,75 +1763,26 @@ export function WorkflowViewer({
                   </div>
                 )
               ) : activeTab === "log" ? (
-                !logText && logLoading ? (
+                eventLog.length === 0 && logLoading ? (
                   <div className="workflow-empty-state">Loading log…</div>
                 ) : (
                   <>
                     {logError ? <p className="mb-4 text-sm text-destructive">{logError}</p> : null}
-                    {!logText ? (
-                      <div className="workflow-empty-state">No log available.</div>
-                    ) : (
-                      <div className="space-y-3">
-                        {logPresentation.truncated ? (
-                          <div className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm">
-                            <span>
-                              Showing the last {logPresentation.shownLines.toLocaleString()} of{" "}
-                              {logPresentation.totalLines.toLocaleString()} lines.
-                            </span>
-                            <Button
-                              onClick={() => setExpandedLog((current) => !current)}
-                              size="sm"
-                              variant="outline"
-                            >
-                              {expandedLog ? "Show tail only" : "Show full log"}
-                            </Button>
-                          </div>
-                        ) : null}
-                        <div dangerouslySetInnerHTML={{ __html: renderedLogHtml }} />
-                      </div>
-                    )}
-                  </>
-                )
-              ) : activeTab === "events" ? (
-                eventLoading && eventLog.length === 0 ? (
-                  <div className="workflow-empty-state">Loading events…</div>
-                ) : (
-                  <>
-                    {eventError ? <p className="mb-4 text-sm text-destructive">{eventError}</p> : null}
-                    <div className="workflow-events-toolbar">
-                      <select
-                        aria-label="Filter event type"
-                        className="workflow-events-select"
-                        onChange={(event) => setEventFilter(event.currentTarget.value)}
-                        value={eventFilter}
-                      >
-                        {eventKinds.map((kind) => (
-                          <option key={kind} value={kind}>
-                            {kind}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        aria-label="Search events"
-                        className="workflow-events-search"
-                        onChange={(event) => setEventQuery(event.currentTarget.value)}
-                        placeholder="Search event payload"
-                        type="search"
-                        value={eventQuery}
-                      />
-                    </div>
-                    {filteredEvents.length === 0 ? (
-                      <div className="workflow-empty-state">No events available.</div>
+                    {renderedLogRows.length === 0 ? (
+                      <div className="workflow-empty-state">No log events available.</div>
                     ) : (
                       <div className="workflow-events-list">
-                        {filteredEvents.map((entry, index) => (
-                          <div className="workflow-event-row" key={`${entry.ts || "event"}:${entry.event || "unknown"}:${index}`}>
+                        {renderedLogRows.map((row) => (
+                          <div
+                            className="workflow-event-row"
+                            key={row.key}
+                          >
                             <div className="workflow-event-meta">
-                              <strong>{entry.event || "unknown"}</strong>
-                              <span>{entry.step_id || "workflow"}</span>
-                              <span>{entry.ts ? formatTimestamp(entry.ts) : "-"}</span>
+                              <span>{row.ts || "-"}</span>
+                              <strong>{row.event}</strong>
+                              <span>{row.stepId || "workflow"}</span>
                             </div>
-                            <code>{JSON.stringify(entry.data || {}, null, 2)}</code>
+                            <code>{row.text}</code>
                           </div>
                         ))}
                       </div>

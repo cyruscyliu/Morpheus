@@ -590,6 +590,7 @@ function buildGraph(steps: RunStepSummary[], relations: RunRelationRecord[]): { 
 
   const stepIds = new Set(steps.map((step) => step.id));
   const edges: RunGraphEdge[] = [];
+  const relationKeys = new Set<string>();
 
   for (let index = 0; index < steps.length - 1; index += 1) {
     const source = steps[index];
@@ -615,6 +616,18 @@ function buildGraph(steps: RunStepSummary[], relations: RunRelationRecord[]): { 
       continue;
     }
     const kind = relation.kind === "sequence" ? "sequence" : "artifact";
+    const relationKey = JSON.stringify({
+      kind,
+      source,
+      target,
+      artifactPath: relation.artifactPath || null,
+      consumedAs: relation.consumedAs || null,
+      artifactLocation: relation.artifactLocation || null,
+    });
+    if (relationKeys.has(relationKey)) {
+      continue;
+    }
+    relationKeys.add(relationKey);
     edges.push({
       id: `relation:${kind}:${source}:${target}:${relation.artifactPath || relation.kind || "edge"}`,
       source,

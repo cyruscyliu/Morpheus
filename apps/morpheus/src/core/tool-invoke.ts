@@ -71,7 +71,7 @@ function parseToolArgs(argv) {
 }
 
 function printJson(value) {
-  writeStdoutLine(JSON.stringify(value, null, 2));
+  writeStdoutLine(JSON.stringify(value));
 }
 
 function requireFlag(flags, name, message) {

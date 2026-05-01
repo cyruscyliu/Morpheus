@@ -1588,18 +1588,6 @@ export function WorkflowViewer({
                       <span className="workflow-overview-label">Run directory</span>
                       <code>{runDetail.runDir || "-"}</code>
                     </div>
-                    <div className="workflow-overview-card is-wide">
-                      <span className="workflow-overview-label">Selection</span>
-                      <div className="workflow-overview-list">
-                        {(selectedStep ? [selectedStep] : runDetail.steps).map((step) => (
-                          <div className="workflow-overview-list-item" key={step.id}>
-                            <strong>{stepDisplayName(step)}</strong>
-                            <span>{step.kind || "step"}</span>
-                            <span className={`workflow-status-text is-${step.status}`}>{step.status}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
                   </div>
                 )
               ) : activeTab === "log" ? (

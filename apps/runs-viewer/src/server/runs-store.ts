@@ -292,15 +292,22 @@ function summarizeWorkflowFirst(runDir: string): RunSummary | null {
   }
   const record = reconcileWorkflowRecord(runDir, readJson(recordPath));
   const steps = Array.isArray(record.steps) ? record.steps : [];
+  const normalizedSteps = steps.map((entry: any) => {
+    const stepId = String(entry.id || "");
+    const stepDir = typeof entry.stepDir === "string" ? entry.stepDir : path.join(runDir, "steps", stepId);
+    const manifest = readJsonIfExists<any>(path.join(stepDir, "step.json"), null as any);
+    return normalizeStepSummary(entry, manifest, String(record.id || path.basename(runDir)), stepId, false, []);
+  });
+  const status = workflowStatusFromSteps(record.status, normalizedSteps);
   return {
     id: String(record.id || path.basename(runDir)),
     kind: "workflow",
     format: "workflow-first",
     category: normalizeWorkflowCategory(record.category),
     workflowName: typeof record.workflow === "string" ? record.workflow : null,
-    status: String(record.status || "unknown"),
+    status,
     createdAt: record.createdAt || null,
-    completedAt: record.status === "success" || record.status === "error" ? record.updatedAt || null : null,
+    completedAt: status === "success" || status === "error" ? record.updatedAt || null : null,
     changeName: null,
     stepCount: steps.length,
   };
@@ -363,6 +370,40 @@ function normalizeStepName(...values: unknown[]): string | null {
   return null;
 }
 
+function runtimeBackedStepStatus(manifest: any): string | null {
+  const runtime = manifest?.toolResult?.details?.manifest;
+  if (!runtime || typeof runtime !== "object") {
+    return null;
+  }
+  const status = typeof runtime.status === "string" ? runtime.status.trim() : "";
+  const trackedPids = [runtime.pid, runtime.launcherPid, runtime.runnerPid]
+    .filter((value) => typeof value === "number");
+  const alive = trackedPids.some((pid) => pidIsAlive(pid));
+
+  if (status === "running") {
+    if (alive) {
+      return "running";
+    }
+    if (typeof runtime.exitCode === "number") {
+      return runtime.exitCode === 0 ? "success" : "error";
+    }
+    if (runtime.finishedAt) {
+      return "error";
+    }
+    return "error";
+  }
+  if (status === "error") {
+    return "error";
+  }
+  if (status === "stopped") {
+    return "stopped";
+  }
+  if (status === "success") {
+    return "success";
+  }
+  return null;
+}
+
 function stepParameters(manifest: any): string[] {
   const params = [];
   const mode = typeof manifest?.resolvedInputs?.mode === "string"
@@ -379,11 +420,16 @@ function normalizeStepSummary(entry: any, manifest: any, runId: string, stepId: 
   const displayName = rawName && !/^[a-z0-9-]+\.run$/i.test(rawName)
     ? rawName
     : prettifyStepId(stepId);
+  const normalizedStatus =
+    runtimeBackedStepStatus(manifest)
+    || (typeof manifest?.status === "string" ? manifest.status : "")
+    || (typeof entry?.status === "string" ? entry.status : "")
+    || "unknown";
   return {
     id: stepId,
     name: displayName,
     kind: normalizeStepKind(manifest?.kind, entry?.kind),
-    status: String(manifest?.status || entry?.status || "unknown"),
+    status: normalizedStatus,
     startedAt: manifest?.startedAt || entry?.startedAt || null,
     endedAt: manifest?.endedAt || entry?.endedAt || null,
     logUrl: logExists ? stepLogUrl(runId, stepId) : null,
@@ -509,6 +555,22 @@ function buildGraph(steps: RunStepSummary[], relations: RunRelationRecord[]): { 
   return { nodes, edges };
 }
 
+function workflowStatusFromSteps(recordStatus: unknown, steps: RunStepSummary[]): string {
+  if (steps.some((step) => step.status === "running")) {
+    return "running";
+  }
+  if (steps.some((step) => step.status === "error" || step.status === "failed")) {
+    return "error";
+  }
+  if (steps.some((step) => step.status === "stopped")) {
+    return "stopped";
+  }
+  if (steps.length > 0 && steps.every((step) => step.status === "success" || step.status === "reused")) {
+    return "success";
+  }
+  return String(recordStatus || "unknown");
+}
+
 export function listRunSummaries(runRoot: string, options: ListOptions = {}): RunSummary[] {
   return listRunSummariesWithTotal(runRoot, options).runs;
 }
@@ -570,6 +632,7 @@ function loadWorkflowFirstDetail(runRoot: string, runId: string, options: LoadOp
   });
   const steps = stepRecords.map((entry) => entry.summary);
   const graphRelations = relations.length > 0 ? relations : inferArtifactRelations(stepRecords);
+  const status = workflowStatusFromSteps(record.status, steps);
 
   return {
     id: String(record.id || runId),
@@ -577,9 +640,9 @@ function loadWorkflowFirstDetail(runRoot: string, runId: string, options: LoadOp
     format: "workflow-first",
     category: normalizeWorkflowCategory(record.category),
     workflowName: typeof record.workflow === "string" ? record.workflow : null,
-    status: String(record.status || "unknown"),
+    status,
     createdAt: record.createdAt || null,
-    completedAt: record.status === "success" || record.status === "error" ? record.updatedAt || null : null,
+    completedAt: status === "success" || status === "error" ? record.updatedAt || null : null,
     changeName: null,
     stepCount: steps.length,
     runDir,

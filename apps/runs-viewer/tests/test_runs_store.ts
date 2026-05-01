@@ -483,3 +483,88 @@ test("loadRunDetail reconciles stale running step status to error", () => {
   const stepRecord = JSON.parse(fs.readFileSync(path.join(workflowDir, "steps", "01-step", "step.json"), "utf8"));
   assert.equal(stepRecord.status, "error");
 });
+
+test("workflow summary treats runtime-backed live step as running", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-store-"));
+  const runRoot = path.join(workspaceRoot, "runs");
+  const workflowId = "wf-runtime-live-summary";
+  const workflowDir = path.join(runRoot, workflowId);
+
+  writeJson(path.join(workflowDir, "workflow.json"), {
+    id: workflowId,
+    workflow: "runtime-workflow",
+    category: "run",
+    status: "success",
+    createdAt: "2026-05-01T08:00:00.000Z",
+    updatedAt: "2026-05-01T08:01:00.000Z",
+    steps: [
+      {
+        id: "01-runtime",
+        name: "runtime",
+        status: "success",
+        stepDir: path.join(workflowDir, "steps", "01-runtime"),
+      },
+    ],
+  });
+  writeJson(path.join(workflowDir, "steps", "01-runtime", "step.json"), {
+    id: "01-runtime",
+    name: "runtime",
+    kind: "tool",
+    status: "success",
+    toolResult: {
+      details: {
+        manifest: {
+          status: "running",
+          pid: process.pid,
+        },
+      },
+    },
+  });
+
+  const summaries = listRunSummaries(runRoot);
+  assert.equal(summaries[0]?.status, "running");
+});
+
+test("workflow detail treats runtime-backed live step as running", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-store-"));
+  const runRoot = path.join(workspaceRoot, "runs");
+  const workflowId = "wf-runtime-live-detail";
+  const workflowDir = path.join(runRoot, workflowId);
+
+  writeJson(path.join(workflowDir, "workflow.json"), {
+    id: workflowId,
+    workflow: "runtime-workflow",
+    category: "run",
+    status: "success",
+    createdAt: "2026-05-01T08:00:00.000Z",
+    updatedAt: "2026-05-01T08:01:00.000Z",
+    steps: [
+      {
+        id: "01-runtime",
+        name: "runtime",
+        status: "success",
+        stepDir: path.join(workflowDir, "steps", "01-runtime"),
+      },
+    ],
+  });
+  writeJson(path.join(workflowDir, "steps", "01-runtime", "step.json"), {
+    id: "01-runtime",
+    name: "runtime",
+    kind: "tool",
+    status: "success",
+    toolResult: {
+      details: {
+        manifest: {
+          status: "running",
+          pid: process.pid,
+        },
+      },
+    },
+  });
+  writeText(path.join(workflowDir, "steps", "01-runtime", "stdout.log"), "runtime\n");
+
+  const detail = loadRunDetail(runRoot, workflowId);
+  assert.ok(detail);
+  assert.equal(detail.status, "running");
+  assert.equal(detail.steps[0]?.status, "running");
+});

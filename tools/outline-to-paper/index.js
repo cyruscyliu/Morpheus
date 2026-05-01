@@ -137,8 +137,18 @@ function repoToolRoot() {
 }
 
 function managedStepDir() {
-  const cwd = path.resolve(process.cwd());
-  return fs.existsSync(path.join(cwd, "step.json")) ? cwd : null;
+  let current = path.resolve(process.cwd());
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (fs.existsSync(path.join(current, "step.json"))) {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+  return null;
 }
 
 function requireManagedInvocation(command) {

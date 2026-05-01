@@ -1040,7 +1040,8 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   ) {
     fs.rmSync(path.dirname(legacyExecRunDir), { recursive: true, force: true });
   }
-  const childCwd = managedRunDir || process.cwd();
+  const workflowManagedExec = command === "exec" && process.env.MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP === "1";
+  const childCwd = workflowManagedExec ? process.cwd() : (managedRunDir || process.cwd());
 
   const payload = remoteEnabled
     ? await executeRemoteTopLevelToolCommand(command, tool, args, effective, flags)

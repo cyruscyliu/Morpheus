@@ -784,6 +784,8 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
     const attach = Boolean(options.attach);
     const eventContext = options.eventContext || {};
     const childCwd = options.cwd || process.cwd();
+    // `attach` is narrowly scoped to terminal attachment for interactive tools.
+    // Non-attached steps remain the default managed workflow execution path.
     const child = attach
       ? spawn(process.execPath, args, {
           cwd: childCwd,

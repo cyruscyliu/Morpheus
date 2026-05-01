@@ -103,6 +103,34 @@ test("run emits stable paper artifacts", () => {
   assert.equal(fs.existsSync(path.join(payload.details.run_dir, "outline", "normalized-outline.md")), true);
 });
 
+test("run accepts the managed step run subdirectory as cwd", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "outline-to-paper-step-run-"));
+  const workspace = path.join(projectRoot, "workspace");
+  const stepDir = workflowRunDir(projectRoot, "wf-step-run");
+  const toolRunDir = path.join(stepDir, "run");
+  const outline = path.join(projectRoot, "outline.json");
+  fs.mkdirSync(workspace, { recursive: true });
+  ensureStepDir(stepDir);
+  fs.mkdirSync(toolRunDir, { recursive: true });
+  fs.writeFileSync(outline, JSON.stringify({
+    title: "Paper Test From Run Dir",
+    sections: [
+      {
+        section_id: "sec-1",
+        title: "Problem",
+        purpose: "Explain the main problem.",
+        paragraphs: []
+      }
+    ]
+  }));
+
+  const result = run(["run", "--json", "--workspace", workspace, "--outline", outline], { cwd: toolRunDir });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.run_dir, stepDir);
+});
+
 test("inspect and logs read an existing run", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "outline-to-paper-inspect-"));
   const workspace = path.join(projectRoot, "workspace");

@@ -177,6 +177,10 @@ function currentOutlinePath(workspace, runDir = null) {
   return path.join(outlineStateRoot(workspace, runDir), "current-outline.json");
 }
 
+function currentOutlineMarkdownPath(workspace, runDir = null) {
+  return path.join(outlineStateRoot(workspace, runDir), "current-outline.md");
+}
+
 function currentOutlineVersionsDir(workspace, runDir = null) {
   return path.join(outlineStateRoot(workspace, runDir), "outline-versions");
 }
@@ -206,6 +210,7 @@ function nextOutlineVersionPath(workspace, runDir = null) {
 function writeVersionedCurrentOutline(workspace, outline, metadata = {}) {
   const versionPath = nextOutlineVersionPath(workspace, metadata.runDir || null);
   const currentPath = currentOutlinePath(workspace, metadata.runDir || null);
+  const currentMarkdownPath = currentOutlineMarkdownPath(workspace, metadata.runDir || null);
   const payload = {
     schema_version: 1,
     version_id: path.basename(versionPath, ".json"),
@@ -224,8 +229,10 @@ function writeVersionedCurrentOutline(workspace, outline, metadata = {}) {
     }
   }
   fs.symlinkSync(path.relative(path.dirname(currentPath), versionPath), currentPath);
+  fs.writeFileSync(currentMarkdownPath, outlineToMarkdown(outline), "utf8");
   return {
     currentPath,
+    currentMarkdownPath,
     versionPath,
     payload,
   };

@@ -409,12 +409,15 @@ test("revise phase prefers normalized outline and updates current-outline symlin
   assert.equal(revised.title, "Normalized Outline");
   assert.match(revisedMarkdown, /^# Normalized Outline$/m);
   const currentPath = path.join(workflowRunDir, "current-outline.json");
+  const currentMarkdownPath = path.join(workflowRunDir, "current-outline.md");
   assert.equal(fs.lstatSync(currentPath).isSymbolicLink(), true);
   const versionPath = path.resolve(path.dirname(currentPath), fs.readlinkSync(currentPath));
   const versioned = JSON.parse(fs.readFileSync(versionPath, "utf8"));
+  const currentMarkdown = fs.readFileSync(currentMarkdownPath, "utf8");
   assert.equal(versioned.schema_version, 1);
   assert.equal(versioned.source, "revise-phase");
   assert.equal(versioned.outline.title, "Normalized Outline");
+  assert.match(currentMarkdown, /^# Normalized Outline$/m);
 });
 
 test("workflow-local current outline does not leak across workflow runs in one workspace", () => {

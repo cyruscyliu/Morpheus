@@ -6,6 +6,12 @@ import type { CatalogEntry, CatalogKind } from "@/lib/types";
 import { renderMarkdown } from "@/lib/markdown";
 
 function byName(a: CatalogEntry, b: CatalogEntry) {
+  if (a.name.toLowerCase() === "morpheus" && b.name.toLowerCase() !== "morpheus") {
+    return -1;
+  }
+  if (b.name.toLowerCase() === "morpheus" && a.name.toLowerCase() !== "morpheus") {
+    return 1;
+  }
   return a.name.localeCompare(b.name);
 }
 
@@ -26,9 +32,14 @@ function filterByKind(entries: CatalogEntry[], kind: CatalogKind | "all") {
   return entries.filter((entry) => entry.kind === kind);
 }
 
+function defaultSelectedName(entries: CatalogEntry[], kind: CatalogKind | "all") {
+  const filtered = filterByKind(entries, kind).slice().sort(byName);
+  return filtered[0]?.name ?? null;
+}
+
 export function DocsShell({ entries }: { entries: CatalogEntry[] }) {
   const [section, setSection] = useState<CatalogKind | "all">("all");
-  const [selectedName, setSelectedName] = useState<string | null>(entries[0]?.name ?? null);
+  const [selectedName, setSelectedName] = useState<string | null>(() => defaultSelectedName(entries, "all"));
 
   const filtered = useMemo(() => filterByKind(entries, section).slice().sort(byName), [entries, section]);
   const selected = useMemo(() => {
@@ -47,8 +58,32 @@ export function DocsShell({ entries }: { entries: CatalogEntry[] }) {
           <strong>Morpheus</strong>
           <span className="text-sm text-muted-foreground">Docs</span>
         </div>
-        <div className="text-sm text-muted-foreground">
-          tools:{counts.tool} apps:{counts.app} total:{entries.length}
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <a
+            className="docs-repo-link"
+            aria-label="Open repository"
+            href="https://github.com/cyruscyliu/Morpheus"
+            rel="noreferrer"
+            target="_blank"
+          >
+            <svg
+              aria-hidden="true"
+              fill="currentColor"
+              height="18"
+              viewBox="0 0 16 16"
+              width="18"
+            >
+              <path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38
+              0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52
+              0-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95
+              0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.5 7.5 0 0 1 4 0c1.53-1.04
+              2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54
+              1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+            </svg>
+          </a>
+          <span>
+            tools:{counts.tool} apps:{counts.app} total:{entries.length}
+          </span>
         </div>
       </header>
 
@@ -56,47 +91,37 @@ export function DocsShell({ entries }: { entries: CatalogEntry[] }) {
         <aside className="docs-pane">
           <div className="docs-pane-header">
             <div>
-              <h2 className="docs-pane-title">Sections</h2>
-              <p className="docs-pane-caption">Filter catalog entries</p>
-            </div>
-          </div>
-          <div className="docs-pane-body flex flex-col gap-2">
-            {(
-              [
-                { key: "all", label: `all (${entries.length})` },
-                { key: "tool", label: `tools (${counts.tool})` },
-                { key: "app", label: `apps (${counts.app})` },
-              ] as const
-            ).map((item) => (
-              <button
-                key={item.key}
-                className={[
-                  "text-left rounded-md border px-3 py-2 text-sm font-semibold transition-colors",
-                  section === item.key
-                    ? "border-primary/40 bg-muted text-foreground"
-                    : "border-border bg-card text-muted-foreground hover:text-foreground hover:border-primary/40",
-                ].join(" ")}
-                onClick={() => {
-                  setSection(item.key);
-                  const nextFiltered = filterByKind(entries, item.key).slice().sort(byName);
-                  setSelectedName(nextFiltered[0]?.name ?? null);
-                }}
-                type="button"
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </aside>
-
-        <section className="docs-pane">
-          <div className="docs-pane-header">
-            <div>
-              <h2 className="docs-pane-title">Catalog</h2>
+              <h2 className="docs-pane-title">Tools</h2>
               <p className="docs-pane-caption">{filtered.length} entries</p>
             </div>
           </div>
           <div className="docs-pane-body flex flex-col gap-2">
+            <div className="docs-filter-row">
+              {(
+                [
+                  { key: "all", label: `all (${entries.length})` },
+                  { key: "tool", label: `tools (${counts.tool})` },
+                  { key: "app", label: `apps (${counts.app})` },
+                ] as const
+              ).map((item) => (
+                <button
+                  key={item.key}
+                  className={[
+                    "text-left rounded-md border px-3 py-2 text-sm font-semibold transition-colors",
+                    section === item.key
+                      ? "border-primary/40 bg-muted text-foreground"
+                      : "border-border bg-card text-muted-foreground hover:text-foreground hover:border-primary/40",
+                  ].join(" ")}
+                  onClick={() => {
+                    setSection(item.key);
+                    setSelectedName(defaultSelectedName(entries, item.key));
+                  }}
+                  type="button"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
             {filtered.map((entry) => {
               const active = entry.name === selected?.name;
               return (
@@ -115,15 +140,11 @@ export function DocsShell({ entries }: { entries: CatalogEntry[] }) {
                     <span className="font-semibold">{entry.name}</span>
                     <code className="text-xs text-muted-foreground">{entry.kind}</code>
                   </div>
-                  <div className="mt-1 text-sm text-muted-foreground">{entry.summary}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    <code>{entry.source}</code>
-                  </div>
                 </button>
               );
             })}
           </div>
-        </section>
+        </aside>
 
         <section className="docs-pane">
           <div className="docs-pane-header">
@@ -147,4 +168,3 @@ export function DocsShell({ entries }: { entries: CatalogEntry[] }) {
     </div>
   );
 }
-

@@ -18,7 +18,10 @@ function repoRoot() {
 }
 
 export function workspaceRoot() {
-  const configured = String(process.env.OUTLINE_WORKSPACE_ROOT || "hyperarm-workspace-o2p").trim();
+  const configured = String(process.env.OUTLINE_WORKSPACE_ROOT || "").trim();
+  if (!configured) {
+    throw new Error("OUTLINE_WORKSPACE_ROOT must be set");
+  }
   return path.resolve(repoRoot(), configured);
 }
 

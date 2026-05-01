@@ -29,15 +29,15 @@ test("findRunRoot resolves workspace.root relative to morpheus.yaml", () => {
   assert.equal(resolved.runRoot, path.join(workspaceDir, "runs"));
 });
 
-test("findRunRoot falls back to hyperarm-workspace when config missing", () => {
+test("findRunRoot requires workspace.root when config is missing", () => {
   const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-viewer-"));
   const repoRoot = path.join(baseDir, "repo");
   const startDir = path.join(repoRoot, "apps", "runs-viewer");
 
-  const resolved = findRunRoot({ startDir, repoRoot });
-  assert.equal(resolved.configPath, null);
-  assert.equal(resolved.workspaceRoot, path.join(repoRoot, "hyperarm-workspace"));
-  assert.equal(resolved.runRoot, path.join(repoRoot, "hyperarm-workspace", "runs"));
+  assert.throws(
+    () => findRunRoot({ startDir, repoRoot }),
+    /workspace\.root must be configured in Morpheus config/,
+  );
 });
 
 test("findRunRoot honors MORPHEUS_CONFIG for nonstandard config filenames", () => {

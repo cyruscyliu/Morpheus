@@ -18,7 +18,11 @@ function workRoot() {
     ? resolveLocalPath(baseDir, config.value.workspace.root)
     : null;
 
-  return path.resolve(configured || path.join(repoRoot(), "hyperarm-workspace"));
+  if (!configured) {
+    throw new Error("workspace.root must be configured in Morpheus config or provided via MORPHEUS_WORK_ROOT");
+  }
+
+  return path.resolve(configured);
 }
 
 function workspacePaths() {

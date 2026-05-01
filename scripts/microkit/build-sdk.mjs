@@ -268,7 +268,10 @@ function buildMicrokitSdk({
 }
 
 function defaultSdkOut({ workspaceRoot, microkitVersion }) {
-  const root = workspaceRoot || "./hyperarm-workspace";
+  if (!workspaceRoot) {
+    throw new Error("workspace.root must be configured to derive the default Microkit SDK output path");
+  }
+  const root = workspaceRoot;
   if (microkitVersion) {
     return path.join(root, "tools", "microkit-sdk", "sdk", `microkit-sdk-${microkitVersion}`);
   }

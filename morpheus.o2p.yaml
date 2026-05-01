@@ -1,5 +1,5 @@
 workspace:
-  root: ./hyperarm-workspace-o2p
+  root: ./workspace-o2p
 
 tools:
   outline-to-paper:

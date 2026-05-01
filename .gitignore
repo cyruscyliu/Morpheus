@@ -17,6 +17,7 @@ __pycache__/
 .venv/
 venv/
 .DS_Store
+.env
 
 # Imported tool outputs
 tools/llcg/build/
@@ -32,7 +33,4 @@ tmp/
 .morpheus-sync/
 .morpheus-patches.json
 morpheus.yaml
-
-# Repo-local workspace (example)
-hyperarm-workspace/
-hyperarm-workspace-o2p/
+*workspace*/

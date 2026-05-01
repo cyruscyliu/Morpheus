@@ -624,7 +624,7 @@ test("workflow resume reuses workflow config path for nondefault workflow files"
   const firstPayload = JSON.parse(first.stdout.trim());
   const runId = firstPayload.details.id;
 
-  const resumed = run(["--json", "workflow", "resume", "--id", runId, "--workspace", path.join(repoRoot, "hyperarm-workspace-o2p")], {
+  const resumed = run(["--json", "workflow", "resume", "--id", runId, "--workspace", path.join(repoRoot, "workspace-o2p")], {
     cwd: repoRoot,
     env: isolatedEnv(),
   });

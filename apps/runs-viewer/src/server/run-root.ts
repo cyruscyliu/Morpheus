@@ -84,6 +84,14 @@ function resolveLocalPath(baseDir: string, inputPath: string | undefined): strin
   return path.resolve(baseDir, value);
 }
 
+function requireWorkspaceRoot(config: ConfigFile<MorpheusConfigValue>, baseDir: string): string {
+  const resolved = resolveLocalPath(baseDir, config.value.workspace?.root);
+  if (!resolved) {
+    throw new Error("workspace.root must be configured in Morpheus config");
+  }
+  return resolved;
+}
+
 export function findRunRoot(options: { startDir: string; repoRoot: string }): {
   runRoot: string;
   workspaceRoot: string;
@@ -91,9 +99,7 @@ export function findRunRoot(options: { startDir: string; repoRoot: string }): {
 } & { label: string } {
   const config = loadConfig(options.startDir);
   const baseDir = config.path ? path.dirname(config.path) : options.startDir;
-  const workspaceRoot =
-    resolveLocalPath(baseDir, config.value.workspace?.root) ||
-    path.resolve(options.repoRoot, "hyperarm-workspace");
+  const workspaceRoot = requireWorkspaceRoot(config, baseDir);
   return {
     runRoot: path.join(workspaceRoot, "runs"),
     workspaceRoot,
@@ -114,9 +120,7 @@ export function findRunRootForConfig(options: {
 } {
   const config = loadConfig(options.startDir, options.configPath);
   const baseDir = config.path ? path.dirname(config.path) : options.startDir;
-  const workspaceRoot =
-    resolveLocalPath(baseDir, config.value.workspace?.root) ||
-    path.resolve(options.repoRoot, "hyperarm-workspace");
+  const workspaceRoot = requireWorkspaceRoot(config, baseDir);
   return {
     runRoot: path.join(workspaceRoot, "runs"),
     workspaceRoot,

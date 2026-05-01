@@ -1,9 +1,4 @@
 {
-  "files.exclude": {
-    "**/.morpheus": true,
-    "**/builds": true,
-    "**/runs": true
-  },
   "search.exclude": {
     "**/.morpheus/**": true,
     "**/builds/**": true,

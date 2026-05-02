@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
 const { repoRoot } = require("../core/paths");
-const { logDebug } = require("../core/logger");
+const { emitEvent } = require("../core/logger");
 
 function toPosixPath(value) {
   return String(value).split(path.sep).join(path.posix.sep);
@@ -90,6 +90,17 @@ function wantsSshNoConfigRetry(result) {
   return /Bad owner or permissions on .*ssh_config\.d/.test(stderr);
 }
 
+function scriptPreview(script) {
+  return String(script || "").split(/\r?\n/).slice(0, 3).join(" ; ").slice(0, 240);
+}
+
+function emitRemoteEvent(event, data = {}, options = {}) {
+  emitEvent(event, data, {
+    scope: "remote",
+    ...options,
+  });
+}
+
 function runSsh(target, script, streamOutput) {
   const run = (noSystemConfig) => spawnSync(
     sshBinary(),
@@ -100,19 +111,30 @@ function runSsh(target, script, streamOutput) {
     }
   );
 
-  logDebug("remote", "running ssh command", {
+  emitRemoteEvent("ssh.command.started", {
     ssh: target.original,
     stream: Boolean(streamOutput),
+    script_preview: scriptPreview(script),
   });
 
   let result = run(false);
   if (result.status !== 0 && wantsSshNoConfigRetry(result)) {
-    logDebug("remote", "retrying ssh command with -F /dev/null", {
+    emitRemoteEvent("ssh.command.retried", {
       ssh: target.original,
+      script_preview: scriptPreview(script),
+      no_system_config: true,
     });
     result = run(true);
   }
-  return normalizeSpawnResult(result);
+  const normalized = normalizeSpawnResult(result);
+  emitRemoteEvent("ssh.command.completed", {
+    ssh: target.original,
+    stream: Boolean(streamOutput),
+    exit_code: normalized.exitCode,
+    stdout_bytes: normalized.stdout.length,
+    stderr_bytes: normalized.stderr.length,
+  });
+  return normalized;
 }
 
 function runRequiredSsh(target, script, message, streamOutput) {
@@ -125,9 +147,11 @@ function runRequiredSsh(target, script, message, streamOutput) {
 
 function runSshStreaming(target, script, handlers) {
   const run = (noSystemConfig) => new Promise((resolve) => {
-    logDebug("remote", "running ssh streaming command", {
+    emitRemoteEvent("ssh.streaming.started", {
       ssh: target.original,
-      noSystemConfig,
+      no_system_config: noSystemConfig,
+      script_preview: scriptPreview(script),
+      collect_stdout: Boolean(handlers && handlers.collectStdout),
     });
     const child = spawn(sshBinary(), [...sshArgs(target, { noSystemConfig }), sshCommand(script)], {
       stdio: ["ignore", "pipe", "pipe"]
@@ -192,10 +216,18 @@ function runSshStreaming(target, script, handlers) {
           handlers.onStderrLine(stderrRemainder);
         }
       }
+      const exitCode = code == null ? 1 : code;
+      emitRemoteEvent("ssh.streaming.completed", {
+        ssh: target.original,
+        no_system_config: noSystemConfig,
+        exit_code: exitCode,
+        stdout_bytes: stdout.length,
+        stderr_bytes: stderr.length,
+      });
       resolve({
         stdout,
         stderr,
-        exitCode: code == null ? 1 : code,
+        exitCode,
         error: null
       });
     });
@@ -210,13 +242,25 @@ function runSshStreaming(target, script, handlers) {
 }
 
 function runCommand(command, args, options) {
+  emitRemoteEvent("command.started", {
+    command,
+    args,
+    cwd: options && options.cwd ? options.cwd : process.cwd(),
+  });
   const result = spawnSync(command, args, {
     encoding: "utf8",
     cwd: options && options.cwd,
     env: options && options.env,
     stdio: ["ignore", "pipe", "pipe"]
   });
-  return normalizeSpawnResult(result);
+  const normalized = normalizeSpawnResult(result);
+  emitRemoteEvent("command.completed", {
+    command,
+    exit_code: normalized.exitCode,
+    stdout_bytes: normalized.stdout.length,
+    stderr_bytes: normalized.stderr.length,
+  });
+  return normalized;
 }
 
 function runShell(command) {
@@ -241,6 +285,13 @@ function syncLocalDirectoryToRemote(localDir, remoteDir, ssh, label) {
   const finalizeMove = extractedDir === remoteDir
     ? "true"
     : `mv ${shellQuote(extractedDir)} ${shellQuote(remoteDir)}`;
+  emitRemoteEvent("sync.directory.started", {
+    label,
+    ssh: ssh.original,
+    local: sourceRoot,
+    remote: remoteDir,
+    extracted_dir: extractedDir,
+  });
   const run = (noSystemConfig) => {
     const pipeline = `tar -C ${shellQuote(parent)} -cf - ${shellQuote(base)} | ${shellQuote(sshBinary())} ${sshArgs(ssh, { noSystemConfig }).map(shellQuote).join(" ")} ${shellQuote(sshCommand(`rm -rf ${shellQuote(remoteDir)} ${shellQuote(extractedDir)} && mkdir -p ${shellQuote(destinationParent)} && tar -C ${shellQuote(destinationParent)} -xf - && ${finalizeMove}`))}`;
     return runShell(pipeline);
@@ -248,16 +299,35 @@ function syncLocalDirectoryToRemote(localDir, remoteDir, ssh, label) {
 
   let result = run(false);
   if (result.exitCode !== 0 && wantsSshNoConfigRetry(result)) {
+    emitRemoteEvent("sync.directory.retried", {
+      label,
+      ssh: ssh.original,
+      remote: remoteDir,
+      no_system_config: true,
+    });
     result = run(true);
   }
   if (result.exitCode !== 0) {
     throw new Error(result.stderr || `failed to sync remote ${label}`);
   }
+  emitRemoteEvent("sync.directory.completed", {
+    label,
+    ssh: ssh.original,
+    local: sourceRoot,
+    remote: remoteDir,
+  });
 }
 
 function syncLocalFileToRemote(localPath, remotePath, ssh, label) {
   const source = path.resolve(process.cwd(), localPath);
   const mode = fs.statSync(source).mode & 0o777;
+  emitRemoteEvent("sync.file.started", {
+    label,
+    ssh: ssh.original,
+    local: source,
+    remote: remotePath,
+    mode: mode.toString(8),
+  });
   const remoteScript = [
     `mkdir -p ${shellQuote(path.posix.dirname(remotePath))}`,
     `cat > ${shellQuote(remotePath)}`,
@@ -270,18 +340,42 @@ function syncLocalFileToRemote(localPath, remotePath, ssh, label) {
 
   let result = run(false);
   if (result.exitCode !== 0 && wantsSshNoConfigRetry(result)) {
+    emitRemoteEvent("sync.file.retried", {
+      label,
+      ssh: ssh.original,
+      remote: remotePath,
+      no_system_config: true,
+    });
     result = run(true);
   }
   if (result.exitCode !== 0) {
     throw new Error(result.stderr || `failed to sync remote ${label}`);
   }
+  emitRemoteEvent("sync.file.completed", {
+    label,
+    ssh: ssh.original,
+    local: source,
+    remote: remotePath,
+  });
 }
 
 function syncRemoteInputPath(localPath, remotePath, ssh, label) {
   if (!localPath || !remotePath || !fs.existsSync(localPath)) {
+    emitRemoteEvent("sync.input.skipped", {
+      label,
+      local: localPath || null,
+      remote: remotePath || null,
+      exists: localPath ? fs.existsSync(localPath) : false,
+    });
     return;
   }
   const stat = fs.statSync(localPath);
+  emitRemoteEvent("sync.input.resolved", {
+    label,
+    local: path.resolve(process.cwd(), localPath),
+    remote: remotePath,
+    type: stat.isDirectory() ? "directory" : "file",
+  });
   if (stat.isDirectory()) {
     syncLocalDirectoryToRemote(localPath, remotePath, ssh, label);
     return;
@@ -291,16 +385,26 @@ function syncRemoteInputPath(localPath, remotePath, ssh, label) {
 
 function syncRemotePathToLocal(remotePath, localPath, ssh, label) {
   if (!remotePath || !localPath) {
+    emitRemoteEvent("sync.output.skipped", {
+      label,
+      remote: remotePath || null,
+      local: localPath || null,
+    });
     return;
   }
   const destination = path.resolve(process.cwd(), localPath);
   const destinationParent = path.dirname(destination);
   const base = path.posix.basename(remotePath);
-  const extractedPath = path.join(destinationParent, base);
-  const finalizeMove = path.resolve(extractedPath) === path.resolve(destination)
-    ? "true"
-    : `mv ${shellQuote(extractedPath)} ${shellQuote(destination)}`;
   fs.mkdirSync(destinationParent, { recursive: true });
+  const stagingDir = fs.mkdtempSync(path.join(destinationParent, `.morpheus-sync-${base}-`));
+  const extractedPath = path.join(stagingDir, base);
+  emitRemoteEvent("sync.output.started", {
+    label,
+    ssh: ssh.original,
+    remote: remotePath,
+    local: destination,
+    staging_dir: stagingDir,
+  });
   const remoteScript = [
     "set -e",
     `if [ -d ${shellQuote(remotePath)} ]; then`,
@@ -313,16 +417,39 @@ function syncRemotePathToLocal(remotePath, localPath, ssh, label) {
     "fi",
   ].join("\n");
   const run = (noSystemConfig) => {
-    const pipeline = `${shellQuote(sshBinary())} ${sshArgs(ssh, { noSystemConfig }).map(shellQuote).join(" ")} ${shellQuote(sshCommand(remoteScript))} | tar -C ${shellQuote(destinationParent)} -xf - && ${finalizeMove}`;
+    const pipeline = `${shellQuote(sshBinary())} ${sshArgs(ssh, { noSystemConfig }).map(shellQuote).join(" ")} ${shellQuote(sshCommand(remoteScript))} | tar -C ${shellQuote(stagingDir)} -xf -`;
     return runShell(pipeline);
   };
 
-  let result = run(false);
-  if (result.exitCode !== 0 && wantsSshNoConfigRetry(result)) {
-    result = run(true);
-  }
-  if (result.exitCode !== 0) {
-    throw new Error(result.stderr || `failed to sync local ${label}`);
+  try {
+    let result = run(false);
+    if (result.exitCode !== 0 && wantsSshNoConfigRetry(result)) {
+      emitRemoteEvent("sync.output.retried", {
+        label,
+        ssh: ssh.original,
+        remote: remotePath,
+        local: destination,
+        no_system_config: true,
+      });
+      result = run(true);
+    }
+    if (result.exitCode !== 0) {
+      throw new Error(result.stderr || `failed to sync local ${label}`);
+    }
+    fs.rmSync(destination, { recursive: true, force: true });
+    fs.renameSync(extractedPath, destination);
+    emitRemoteEvent("sync.output.completed", {
+      label,
+      ssh: ssh.original,
+      remote: remotePath,
+      local: destination,
+    });
+  } finally {
+    fs.rmSync(stagingDir, { recursive: true, force: true });
+    emitRemoteEvent("sync.output.staging.cleaned", {
+      label,
+      staging_dir: stagingDir,
+    });
   }
 }
 
@@ -331,6 +458,10 @@ function stageLocalMorpheusRuntime() {
   const stagingParent = path.join(sourceRoot, ".morpheus-sync");
   fs.mkdirSync(stagingParent, { recursive: true });
   const stageRoot = fs.mkdtempSync(path.join(stagingParent, "runtime-"));
+  emitRemoteEvent("runtime.stage.started", {
+    source_root: sourceRoot,
+    stage_root: stageRoot,
+  });
   const entries = [
     "apps/morpheus",
     "morpheus.yaml",
@@ -390,16 +521,28 @@ function stageLocalMorpheusRuntime() {
     }
   }
 
+  emitRemoteEvent("runtime.stage.completed", {
+    stage_root: stageRoot,
+  });
   return stageRoot;
 }
 
 function prepareRemoteMorpheusRuntime(workspace, ssh) {
   const runtimeRoot = remoteMorpheusRuntimeRoot(workspace);
   const localStage = stageLocalMorpheusRuntime();
+  emitRemoteEvent("runtime.prepare.started", {
+    ssh: ssh.original,
+    workspace,
+    runtime_root: runtimeRoot,
+    local_stage: localStage,
+  });
   try {
     syncLocalDirectoryToRemote(localStage, runtimeRoot, ssh, "morpheus runtime");
   } finally {
     fs.rmSync(localStage, { recursive: true, force: true });
+    emitRemoteEvent("runtime.stage.cleaned", {
+      local_stage: localStage,
+    });
   }
 
   const script = [
@@ -417,6 +560,10 @@ function prepareRemoteMorpheusRuntime(workspace, ssh) {
     "node scripts/install-bin.mjs",
   ].join("\n");
   runRequiredSsh(ssh, script, "failed to prepare remote morpheus runtime");
+  emitRemoteEvent("runtime.prepare.completed", {
+    ssh: ssh.original,
+    runtime_root: runtimeRoot,
+  });
   return runtimeRoot;
 }
 

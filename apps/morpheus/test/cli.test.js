@@ -11,7 +11,7 @@ const repoRoot = path.resolve(appRoot, "..", "..");
 const bin = path.join(appRoot, "dist", "cli.js");
 const buildrootFixture = path.join(repoRoot, "tools", "buildroot", "test", "fixtures", "minimal-buildroot");
 const { applyConfigDefaults } = require("../dist/core/config.js");
-const { effectiveBuildDirKey } = require("../dist/transport/remote.js");
+const { effectiveBuildDirKey, syncRemotePathToLocal } = require("../dist/transport/remote.js");
 
 function run(args, options = {}) {
   return spawnSync(process.execPath, [bin, ...args], {
@@ -102,6 +102,38 @@ test("workspace show returns JSON metadata", () => {
   assert.equal(typeof payload.root, "string");
   assert.equal(typeof payload.directories.runs.exists, "boolean");
   fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("syncRemotePathToLocal replaces existing localized directories", () => {
+  const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-sync-"));
+  const sourceDir = path.join(remoteRoot, "qemu-8.2.7");
+  const localRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-local-sync-"));
+  const destination = path.join(localRoot, "source-dir");
+  const env = { ...process.env, ...makeFakeSshEnv(remoteRoot) };
+
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.writeFileSync(path.join(sourceDir, "first.txt"), "first\n");
+
+  const previousEnv = process.env;
+  process.env = env;
+  try {
+    syncRemotePathToLocal("/remote-workspace/qemu-8.2.7", destination, { host: "fake" }, "test artifact");
+    assert.equal(fs.readFileSync(path.join(destination, "first.txt"), "utf8"), "first\n");
+
+    fs.rmSync(sourceDir, { recursive: true, force: true });
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.writeFileSync(path.join(sourceDir, "second.txt"), "second\n");
+
+    syncRemotePathToLocal("/remote-workspace/qemu-8.2.7", destination, { host: "fake" }, "test artifact");
+
+    assert.equal(fs.readFileSync(path.join(destination, "second.txt"), "utf8"), "second\n");
+    assert.equal(fs.existsSync(path.join(destination, "first.txt")), false);
+    assert.equal(fs.existsSync(path.join(destination, "qemu-8.2.7")), false);
+  } finally {
+    process.env = previousEnv;
+    fs.rmSync(localRoot, { recursive: true, force: true });
+    fs.rmSync(remoteRoot, { recursive: true, force: true });
+  }
 });
 
 test("config check reports success for local and remote modes", () => {

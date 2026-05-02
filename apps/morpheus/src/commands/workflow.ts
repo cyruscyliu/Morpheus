@@ -8,7 +8,7 @@ const { parseToolArgs } = require("../core/tool-invoke");
 const { readToolDescriptor } = require("../core/tool-descriptor");
 const { repoRoot } = require("../core/paths");
 const { writeStdoutLine } = require("../core/io");
-const { emitEvent, logDebug, logInfo, withEventContext, withLogFile } = require("../core/logger");
+const { emitEvent, withEventContext, withLogFile } = require("../core/logger");
 const {
   parseSshTarget,
   syncRemotePathToLocal,
@@ -128,27 +128,90 @@ function getByPath(value, dottedPath) {
   return current;
 }
 
-function templateStepPayloadFromRecord(stepRecord) {
+function ensureStepArtifactLocalized(stepRecord, artifactPath) {
+  if (!stepRecord || !stepRecord.stepDir || !Array.isArray(stepRecord.artifacts)) {
+    return stepRecord;
+  }
+  const artifactIndex = stepRecord.artifacts.findIndex((artifact) => (
+    artifact && typeof artifact === "object" && artifact.path === artifactPath
+  ));
+  if (artifactIndex < 0) {
+    return stepRecord;
+  }
+  const artifact = stepRecord.artifacts[artifactIndex];
+  if (!artifact || typeof artifact !== "object") {
+    return stepRecord;
+  }
+  const localLocation = path.join(stepRecord.artifactsDir, artifact.path);
+  if (artifact.local_location === localLocation && fs.existsSync(localLocation)) {
+    return stepRecord;
+  }
+  const remoteLocation = typeof artifact.remote_location === "string"
+    ? artifact.remote_location
+    : (typeof artifact.location === "string" ? artifact.location : null);
+  const sshTarget = stepRecord.resolvedInputs && typeof stepRecord.resolvedInputs.ssh === "string"
+    ? stepRecord.resolvedInputs.ssh
+    : null;
+  if (!remoteLocation || !sshTarget) {
+    return stepRecord;
+  }
+  syncRemotePathToLocal(remoteLocation, localLocation, parseSshTarget(sshTarget), `${stepRecord.tool} artifact ${artifact.path}`);
+  return updateWorkflowStep(stepRecord.stepDir, (current) => ({
+    ...current,
+    artifacts: (Array.isArray(current.artifacts) ? current.artifacts : []).map((entry) => (
+      entry && typeof entry === "object" && entry.path === artifact.path
+        ? {
+            ...entry,
+            remote_location: remoteLocation,
+            local_location: localLocation,
+          }
+        : entry
+    )),
+    toolResult: current.toolResult && typeof current.toolResult === "object"
+      ? {
+          ...current.toolResult,
+          details: current.toolResult.details && Array.isArray(current.toolResult.details.artifacts)
+            ? {
+                ...current.toolResult.details,
+                artifacts: current.toolResult.details.artifacts.map((entry) => (
+                  entry && typeof entry === "object" && entry.path === artifact.path
+                    ? {
+                        ...entry,
+                        remote_location: remoteLocation,
+                        local_location: localLocation,
+                      }
+                    : entry
+                )),
+              }
+            : current.toolResult.details,
+        }
+      : current.toolResult,
+  }));
+}
+
+function templateStepPayloadFromRecord(stepRecord, options = {}) {
   if (!stepRecord || typeof stepRecord !== "object") {
     return null;
   }
-  if (stepRecord.toolResult && typeof stepRecord.toolResult === "object") {
-    const artifacts = Array.isArray(stepRecord.artifacts) ? stepRecord.artifacts : [];
+  const artifactPath = options && options.artifactPath ? options.artifactPath : null;
+  const effectiveStepRecord = artifactPath ? ensureStepArtifactLocalized(stepRecord, artifactPath) : stepRecord;
+  if (effectiveStepRecord.toolResult && typeof effectiveStepRecord.toolResult === "object") {
+    const artifacts = Array.isArray(effectiveStepRecord.artifacts) ? effectiveStepRecord.artifacts : [];
     return stepTemplatePayload({
-      ...stepRecord.toolResult,
+      ...effectiveStepRecord.toolResult,
       details: {
-        ...(stepRecord.toolResult.details || {}),
-        artifacts: Array.isArray(stepRecord.toolResult?.details?.artifacts)
-          ? stepRecord.toolResult.details.artifacts
+        ...(effectiveStepRecord.toolResult.details || {}),
+        artifacts: Array.isArray(effectiveStepRecord.toolResult?.details?.artifacts)
+          ? effectiveStepRecord.toolResult.details.artifacts
           : artifacts,
       },
     });
   }
-  if (Array.isArray(stepRecord.artifacts)) {
+  if (Array.isArray(effectiveStepRecord.artifacts)) {
     return {
       artifacts: stepArtifactViewMap({
         details: {
-          artifacts: stepRecord.artifacts,
+          artifacts: effectiveStepRecord.artifacts,
         },
       }),
     };
@@ -169,7 +232,9 @@ function resolveTemplateStepValue(context, stepId, stepPath) {
     return undefined;
   }
   const stepRecord = readJson(stepManifestPath);
-  const payload = templateStepPayloadFromRecord(stepRecord);
+  const parts = String(stepPath || "").split(".");
+  const artifactPath = parts[0] === "artifacts" && parts.length >= 3 ? parts[1] : null;
+  const payload = templateStepPayloadFromRecord(stepRecord, { artifactPath });
   if (!payload) {
     return undefined;
   }
@@ -546,7 +611,25 @@ function artifactsExist(stepRecord) {
   const artifacts = Array.isArray(stepRecord && stepRecord.artifacts)
     ? stepRecord.artifacts
     : [];
+  const remoteEnabled = Boolean(
+    stepRecord
+    && stepRecord.resolvedInputs
+    && typeof stepRecord.resolvedInputs.ssh === "string"
+    && stepRecord.resolvedInputs.workspace
+    && stepRecord.resolvedInputs.localWorkspace
+    && stepRecord.resolvedInputs.workspace !== stepRecord.resolvedInputs.localWorkspace
+  );
   for (const artifact of artifacts) {
+    if (!artifact || typeof artifact !== "object") {
+      return false;
+    }
+    if (remoteEnabled) {
+      const remoteLocation = artifact.remote_location || artifact.location || null;
+      if (!remoteLocation) {
+        return false;
+      }
+      continue;
+    }
     const location = artifactLocation(artifact);
     if (!location || !fs.existsSync(location)) {
       return false;
@@ -988,17 +1071,14 @@ function materializeRemoteArtifacts(step, toolPayload, execution) {
   if (!execution || !execution.remoteEnabled || !toolPayload || !toolPayload.details || !Array.isArray(toolPayload.details.artifacts)) {
     return toolPayload;
   }
-  const ssh = parseSshTarget(execution.resolved.ssh);
   const localizedArtifacts = toolPayload.details.artifacts.map((artifact) => {
     if (!artifact || typeof artifact !== "object" || typeof artifact.path !== "string" || typeof artifact.location !== "string") {
       return artifact;
     }
-    const localLocation = path.join(step.artifactsDir, artifact.path);
-    syncRemotePathToLocal(artifact.location, localLocation, ssh, `${step.tool} artifact ${artifact.path}`);
     return {
       ...artifact,
       remote_location: artifact.location,
-      local_location: localLocation,
+      local_location: path.join(step.artifactsDir, artifact.path),
     };
   });
   return {
@@ -1115,11 +1195,6 @@ async function runToolWorkflow({
   return await withLogFile(workflowEventLogPath(workflow.runDir), async () => withEventContext({
     workflow_id: workflow.id,
   }, async () => {
-  emitEvent("workflow.created", {
-    workflow: workflow.workflow,
-    category: workflow.category,
-    workspace: workflow.workspace,
-  }, { scope: "workflow", workflowId: workflow.id });
   updateWorkflowRun(workflow.runDir, (current) => ({
     ...current,
     runnerPid: process.pid,
@@ -1159,20 +1234,15 @@ async function runToolWorkflow({
       attach: Boolean(steps[index] && steps[index].attach),
   }));
 
-  logDebug("workflow", "created workflow run", {
+  emitEvent("workflow.created", {
     id: workflow.id,
     workflow: workflow.workflow,
-    workspace: workflow.workspace,
-    steps: createdSteps.map((step) => ({ id: step.id, tool: step.tool, name: step.name }))
-  });
-  logInfo("workflow", "created workflow run", {
-    id: workflow.id,
-    workflow: workflow.workflow,
+    category: workflow.category,
     workspace: workflow.workspace,
     run_dir: path.relative(process.cwd(), workflow.runDir),
     step_count: createdSteps.length,
-    steps: createdSteps.map((step) => ({ id: step.id, tool: step.tool }))
-  });
+    steps: createdSteps.map((step) => ({ id: step.id, tool: step.tool, name: step.name })),
+  }, { scope: "workflow", workflowId: workflow.id });
 
   updateWorkflowRun(workflow.runDir, (current) => ({
     ...current,
@@ -1284,15 +1354,7 @@ async function runToolWorkflow({
       args.splice(1, 0, "--json");
     }
 
-    logDebug("workflow", "running workflow step", {
-      workflow: workflow.id,
-      step: step.id,
-      tool: step.tool,
-      argv: args.slice(1),
-      command: toolCommand,
-      attach,
-    });
-    logInfo("workflow", "running workflow step", {
+    emitEvent("step.launching", {
       workflow: workflow.id,
       step: step.id,
       tool: step.tool,
@@ -1301,6 +1363,11 @@ async function runToolWorkflow({
       run_dir: path.relative(process.cwd(), stepToolRunDir(step.stepDir)),
       command: toolCommand,
       attach,
+    }, {
+      scope: "step",
+      workflowId: workflow.id,
+      stepId: step.id,
+      tool: step.tool,
     });
     fs.appendFileSync(
       step.logFile,
@@ -1346,20 +1413,6 @@ async function runToolWorkflow({
       ? toolPayload.exit_code
       : (result.status == null ? 1 : result.status);
 
-    logDebug("workflow", "completed workflow step", {
-      workflow: workflow.id,
-      step: step.id,
-      tool: step.tool,
-      status,
-      exitCode
-    });
-    logInfo("workflow", "completed workflow step", {
-      workflow: workflow.id,
-      step: step.id,
-      tool: step.tool,
-      status,
-      exit_code: exitCode
-    });
     const updatedStep = updateWorkflowStep(step.stepDir, (current) => ({
       ...current,
       status,
@@ -1373,7 +1426,15 @@ async function runToolWorkflow({
     emitProducedArtifactEvents(workflow, step, updatedStep.artifacts);
     emitRuntimeEventsFromPayload(workflow, step, toolPayload);
     emitEvent(status === "success" ? "step.completed" : status === "stopped" ? "step.stopped" : "step.failed", {
+      workflow: workflow.id,
+      step: step.id,
+      tool: step.tool,
+      status,
       exit_code: exitCode,
+      log_file: path.relative(process.cwd(), step.logFile),
+      ...(status === "success" ? {} : {
+        hint: `./bin/morpheus --json workflow logs --id ${workflow.id} --step ${step.id}`,
+      }),
     }, {
       scope: "step",
       workflowId: workflow.id,
@@ -1393,25 +1454,11 @@ async function runToolWorkflow({
 
     if (status === "stopped") {
       workflowStatus = "stopped";
-      logInfo("workflow", "workflow step stopped", {
-        workflow: workflow.id,
-        step: step.id,
-        tool: step.tool,
-        log_file: path.relative(process.cwd(), step.logFile),
-        hint: `./bin/morpheus --json workflow logs --id ${workflow.id} --step ${step.id}`
-      });
       break;
     }
 
     if (status !== "success") {
       workflowStatus = "error";
-      logInfo("workflow", "workflow step failed", {
-        workflow: workflow.id,
-        step: step.id,
-        tool: step.tool,
-        log_file: path.relative(process.cwd(), step.logFile),
-        hint: `./bin/morpheus --json workflow logs --id ${workflow.id} --step ${step.id}`
-      });
       break;
     }
   }
@@ -1439,14 +1486,11 @@ async function runToolWorkflow({
           : entry
         )
       }));
-      logInfo("workflow", "workflow step failed before tool execution", {
+      emitEvent("step.failed", {
         workflow: workflow.id,
         step: activeStep.id,
         tool: activeStep.tool,
         log_file: path.relative(process.cwd(), activeStep.logFile),
-        error: error instanceof Error ? error.message : String(error),
-      });
-      emitEvent("step.failed", {
         error: error instanceof Error ? error.message : String(error),
       }, {
         scope: "step",
@@ -1465,19 +1509,16 @@ async function runToolWorkflow({
     runnerPid: null,
     steps: current.steps
   }));
-  logInfo("workflow", workflowStatus === "success"
-    ? "completed workflow run"
+  emitEvent(workflowStatus === "success"
+    ? "workflow.completed"
     : workflowStatus === "stopped"
-      ? "workflow run stopped"
-      : "workflow run failed", {
+      ? "workflow.stopped"
+      : "workflow.failed", {
     id: updatedWorkflow.id,
     workflow: updatedWorkflow.workflow,
     status: workflowStatus,
     run_dir: path.relative(process.cwd(), updatedWorkflow.runDir),
-  });
-  emitEvent(workflowStatus === "success" ? "workflow.completed" : workflowStatus === "stopped" ? "workflow.stopped" : "workflow.failed", {
     exit_code: workflowStatus === "success" ? 0 : exitCode || 1,
-    workflow: updatedWorkflow.workflow,
   }, {
     scope: "workflow",
     workflowId: updatedWorkflow.id,

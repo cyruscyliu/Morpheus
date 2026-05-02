@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -762,6 +762,8 @@ export function WorkflowViewer({
   });
   const detailRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeLogRequestIdRef = useRef(0);
+  const loadedLogRunIdRef = useRef<string | null>(null);
 
   const selectedSummary = summaries.find((summary) => summary.id === selectedRunId) || null;
   const selectedRunCopyId = selectedSummary?.id || null;
@@ -954,7 +956,7 @@ export function WorkflowViewer({
           if (selectedRunId) {
             await refreshRunDetail(selectedRunId);
             if (activeTab === "log") {
-              await refreshActiveLog(selectedRunId, selectedStepId);
+              await refreshActiveLog(selectedRunId);
             }
           }
           return;
@@ -1008,26 +1010,38 @@ export function WorkflowViewer({
     }
   }
 
-  async function refreshActiveLog(runId: string, options: { background?: boolean } = {}): Promise<void> {
-    const background = Boolean(options.background);
-    if (!background) {
-      setLogLoading(true);
-      setEventLog([]);
-    }
-    setLogError(null);
-    try {
-      const nextEvents = await loadWorkflowEvents(runId, configPath);
-      setEventLog(nextEvents);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setEventLog([]);
-      setLogError(/^404\b/.test(message) ? null : message);
-    } finally {
+  const refreshActiveLog = useCallback(
+    async (runId: string, options: { background?: boolean } = {}): Promise<void> => {
+      const requestId = activeLogRequestIdRef.current + 1;
+      activeLogRequestIdRef.current = requestId;
+      const background = Boolean(options.background);
       if (!background) {
-        setLogLoading(false);
+        setLogLoading(true);
       }
-    }
-  }
+      setLogError(null);
+      try {
+        const nextEvents = await loadWorkflowEvents(runId, configPath);
+        if (activeLogRequestIdRef.current !== requestId) {
+          return;
+        }
+        loadedLogRunIdRef.current = runId;
+        setEventLog(nextEvents);
+      } catch (error) {
+        if (activeLogRequestIdRef.current !== requestId) {
+          return;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        loadedLogRunIdRef.current = null;
+        setEventLog([]);
+        setLogError(/^404\b/.test(message) ? null : message);
+      } finally {
+        if (!background && activeLogRequestIdRef.current === requestId) {
+          setLogLoading(false);
+        }
+      }
+    },
+    [configPath],
+  );
 
   async function refreshRunDetail(runId: string): Promise<void> {
     setDetailLoading(true);
@@ -1065,6 +1079,7 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
 
   useEffect(() => {
     if (!selectedRunId) {
+      loadedLogRunIdRef.current = null;
       setLogError(null);
       setLogLoading(false);
       setEventLog([]);
@@ -1075,6 +1090,7 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
       return;
     }
     let cancelled = false;
+    loadedLogRunIdRef.current = null;
     setLogError(null);
     setEventLog([]);
     setEventError(null);
@@ -1117,11 +1133,11 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
     if (activeTab !== "log") {
       setLogError(null);
       setLogLoading(false);
+      return;
     }
-    if (activeTab === "log") {
-      void refreshActiveLog(selectedRunId);
-    }
-  }, [activeTab, selectedRunId]);
+    const hasLoadedLog = loadedLogRunIdRef.current === selectedRunId && eventLog.length > 0;
+    void refreshActiveLog(selectedRunId, hasLoadedLog ? { background: true } : {});
+  }, [activeTab, eventLog.length, refreshActiveLog, selectedRunId]);
 
   useEffect(() => {
     if (!runDetail || !selectedStepId) {
@@ -1181,7 +1197,8 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
       setSelectedStepId(null);
       await refreshRunsIndex(configPath, setSummaries, setTotalRuns, setUpdatedAt);
       if (!nextSelectedRunId) {
-        setLogText("");
+        loadedLogRunIdRef.current = null;
+        setEventLog([]);
         setLogError(null);
         setRunDetail(null);
       }
@@ -1787,7 +1804,7 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
                             key={row.key}
                           >
                             <div className="workflow-event-meta">
-                              <span>{row.ts || "-"}</span>
+                              <span>{formatTimestamp(row.ts)}</span>
                               <strong>{row.event}</strong>
                               <span>{row.stepId || "workflow"}</span>
                             </div>

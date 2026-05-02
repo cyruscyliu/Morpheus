@@ -14,7 +14,6 @@ const {
   prepareRemoteMorpheusRuntime,
   runSshStreaming,
   syncRemoteInputPath,
-  syncRemotePathToLocal,
 } = require("../transport/remote");
 
 function parseToolArgs(argv) {
@@ -380,6 +379,19 @@ function rewriteRemoteArgs(args, resolved) {
   return rewritten;
 }
 
+function isRemoteManagedPath(value, resolved) {
+  if (!value || !resolved || !resolved.workspace || !resolved.localWorkspace) {
+    return false;
+  }
+  if (resolved.workspace === resolved.localWorkspace) {
+    return false;
+  }
+  const candidate = String(value);
+  const remoteRoot = path.posix.normalize(String(resolved.workspace));
+  const remoteValue = path.posix.normalize(candidate);
+  return remoteValue === remoteRoot || remoteValue.startsWith(`${remoteRoot}/`);
+}
+
 function parseLastJsonLine(output) {
   const text = String(output || "").trim();
   if (!text) {
@@ -633,7 +645,6 @@ function materializeRemoteCanonicalArtifacts(tool, descriptor, payload, resolved
   if (!payload || !payload.details || !Array.isArray(payload.details.artifacts)) {
     return payload;
   }
-  const ssh = parseSshTarget(resolved.ssh);
   const artifacts = payload.details.artifacts.map((artifact) => {
     if (!artifact || typeof artifact !== "object" || typeof artifact.location !== "string") {
       return artifact;
@@ -642,7 +653,6 @@ function materializeRemoteCanonicalArtifacts(tool, descriptor, payload, resolved
     if (!localLocation) {
       return artifact;
     }
-    syncRemotePathToLocal(artifact.location, localLocation, ssh, `${tool} artifact ${artifact.path}`);
     return {
       ...artifact,
       remote_location: artifact.location,
@@ -672,7 +682,9 @@ async function executeRemoteTopLevelToolCommand(command, tool, args, resolved, f
     }
     const localValue = args[index + 1];
     const remoteValue = remoteArgs[index + 1];
-    syncRemoteInputPath(localValue, remoteValue, ssh, `${tool} ${token.slice(2)}`);
+    if (!isRemoteManagedPath(localValue, resolved)) {
+      syncRemoteInputPath(localValue, remoteValue, ssh, `${tool} ${token.slice(2)}`);
+    }
     index += 1;
   }
   const morpheusArgs = [

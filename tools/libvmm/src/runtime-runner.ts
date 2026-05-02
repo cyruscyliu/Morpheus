@@ -83,6 +83,12 @@ async function main(argv: string[]) {
   const qemu = requireValue(inputs.qemu, 'inputs.qemu');
   const microkitSdk = requireValue(inputs.microkitSdk, 'inputs.microkitSdk');
   const toolchainBinDir = inputs.toolchainBinDir ? String(inputs.toolchainBinDir) : null;
+  const qemuArgs = Array.isArray(inputs.qemuArgs)
+    ? inputs.qemuArgs.flatMap((item: unknown) => {
+      const value = String(item);
+      return /^(enable|events|file)=/.test(value) ? ['--trace', value] : [value];
+    })
+    : [];
   const board = requireValue(inputs.board, 'inputs.board');
   const microkitConfig = inputs.microkitConfig ? String(inputs.microkitConfig) : 'debug';
   const kernel = requireValue(inputs.kernel, 'inputs.kernel');
@@ -103,6 +109,7 @@ async function main(argv: string[]) {
   const pidFile = path.join(runDir, 'qemu.pid');
   const wrapper = path.join(runDir, 'qemu-wrapper.js');
   const consoleLog = path.join(runDir, 'console.log');
+  const traceLog = path.join(runDir, 'trace.log');
   let monitorSock = path.join(runDir, 'monitor.sock');
   if (monitorSock.length >= 100) {
     const digest = crypto.createHash('sha1').update(runDir).digest('hex').slice(0, 12);
@@ -124,8 +131,17 @@ async function main(argv: string[]) {
       "const pidFile = process.env.LIBVMM_QEMU_PID_FILE;",
       "const attach = String(process.env.LIBVMM_ATTACH || '') === '1' || Boolean(process.stdout.isTTY);",
       "const consoleLog = process.env.LIBVMM_CONSOLE_LOG || '';",
+      "const traceLog = process.env.LIBVMM_TRACE_LOG || '';",
       "const monitorSock = process.env.LIBVMM_MONITOR_SOCK || '';",
       "const blkStorage = process.env.LIBVMM_BLK_STORAGE || '';",
+      "const extraQemuArgs = (() => {",
+      "  try {",
+      "    const parsed = JSON.parse(process.env.LIBVMM_QEMU_ARGS || '[]');",
+      "    return Array.isArray(parsed) ? parsed.map((item) => String(item)) : [];",
+      "  } catch {",
+      "    return [];",
+      "  }",
+      "})();",
       "if (!real) throw new Error('missing LIBVMM_REAL_QEMU');",
       "if (!pidFile) throw new Error('missing LIBVMM_QEMU_PID_FILE');",
       "fs.mkdirSync(path.dirname(pidFile), { recursive: true });",
@@ -153,6 +169,27 @@ async function main(argv: string[]) {
       '    rewritten.push("-monitor", `unix:${monitorSock},server,nowait`);',
       '  }',
       '}',
+      'if (extraQemuArgs.length > 0) {',
+      '  rewritten.push(...extraQemuArgs);',
+      '}',
+      'if (traceLog) {',
+      '  let sawTrace = false;',
+      '  let hasTraceFile = false;',
+      '  for (let index = 0; index < rewritten.length - 1; index += 1) {',
+      '    if (rewritten[index] !== "--trace" && rewritten[index] !== "-trace") {',
+      '      continue;',
+      '    }',
+      '    sawTrace = true;',
+      '    const traceArg = String(rewritten[index + 1] || "");',
+      '    if (traceArg.includes("file=")) {',
+      '      hasTraceFile = true;',
+      '      break;',
+      '    }',
+      '  }',
+      '  if (sawTrace && !hasTraceFile) {',
+      '    rewritten.push("--trace", `file=${traceLog}`);',
+      '  }',
+      '}',
       "const result = spawnSync(real, rewritten, { stdio: 'inherit' });",
       'process.exit(result.status == null ? 1 : result.status);',
       '',
@@ -170,6 +207,8 @@ async function main(argv: string[]) {
     LIBVMM_REAL_QEMU: qemu,
     LIBVMM_QEMU_PID_FILE: pidFile,
     LIBVMM_CONSOLE_LOG: consoleLog,
+    LIBVMM_TRACE_LOG: traceLog,
+    LIBVMM_QEMU_ARGS: JSON.stringify(qemuArgs),
     LIBVMM_MONITOR_SOCK: monitorSock,
     LIBVMM_BLK_STORAGE: runBlkStorage,
     LIBVMM: libvmmDir,
@@ -262,6 +301,7 @@ async function main(argv: string[]) {
     runnerPid: process.pid,
     monitorSock,
     consoleLog,
+    traceLog,
     control: {
       type: 'monitor',
       endpoint: monitorSock,

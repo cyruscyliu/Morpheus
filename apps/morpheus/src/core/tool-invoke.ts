@@ -879,7 +879,7 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
   if (effectivePaths.source) {
     args.push("--source", effectivePaths.source);
   }
-  if (command !== "patch" && buildVersion) {
+  if (buildVersion) {
     args.push("--build-version", buildVersion);
   }
   if (resolved["archive-url"]) {

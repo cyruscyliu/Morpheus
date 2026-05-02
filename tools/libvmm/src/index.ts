@@ -32,7 +32,7 @@ function parseArgv(argv: string[]) {
   const positionals: string[] = [];
   const flags: Record<string, unknown> = {};
   const booleanFlags = new Set(['json', 'help', 'detach']);
-  const repeatableFlags = new Set(['make-arg']);
+  const repeatableFlags = new Set(['make-arg', 'qemu-arg']);
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -552,7 +552,7 @@ function buildRuntimeContract(opts: {
         cwd: exampleDir,
         requiredInputs: ['libvmm-dir', 'microkit-sdk', 'board', 'kernel', 'initrd', 'qemu'],
         optionalInputs: ['microkit-config', 'toolchain-bin-dir'],
-        outputs: ['manifest', 'log-file', 'pid', 'monitor-sock', 'console-log'],
+        outputs: ['manifest', 'log-file', 'pid', 'monitor-sock', 'console-log', 'trace-log'],
       },
     },
     defaults: {
@@ -770,9 +770,9 @@ function buildDirectory(flags: Record<string, unknown>) {
   const requirementsPath = path.join(source, 'requirements.txt');
   const { python: venvPython, venvDir } = ensurePythonVenv(toolRoot);
   const depsStatePath = path.join(venvDir, '.morpheus-requirements.json');
-  const deps = ensurePythonRequirements(venvPython, requirementsPath, depsStatePath);
+  void ensurePythonRequirements(venvPython, requirementsPath, depsStatePath);
   const hasPythonOverride = makeArgs.some((item) => String(item).startsWith('PYTHON='));
-  const makeArgsWithPython = !hasPythonOverride && deps.installed
+  const makeArgsWithPython = !hasPythonOverride
     ? [...makeArgs, `PYTHON=${venvPython}`]
     : makeArgs;
 
@@ -983,6 +983,7 @@ function runAction(flags: Record<string, unknown>) {
   const qemu = requirePathFlag(flags, 'qemu');
   const microkitConfig = optionalStringFlag(flags, 'microkit-config') || 'debug';
   const toolchainBinDir = optionalStringFlag(flags, 'toolchain-bin-dir');
+  const qemuArgs = stringListFlag(flags, 'qemu-arg');
   const runDir = flags['run-dir']
     ? requirePathFlag(flags, 'run-dir')
     : defaultRunDir(libvmmDir);
@@ -1029,12 +1030,14 @@ function runAction(flags: Record<string, unknown>) {
       initrd,
       qemu,
       toolchainBinDir,
+      qemuArgs,
     },
     pid: null,
     launcherPid: null,
     runnerPid: null,
     monitorSock: null,
     consoleLog: null,
+    traceLog: null,
     control: {
       type: 'monitor',
       endpoint: null,
@@ -1070,6 +1073,7 @@ function runAction(flags: Record<string, unknown>) {
         run_dir: runDir,
         manifest: manifestPath,
         log_file: logFile,
+        trace_log: path.join(runDir, 'trace.log'),
       },
     };
   }
@@ -1098,6 +1102,7 @@ function runAction(flags: Record<string, unknown>) {
       pid: updated.pid,
       monitor_sock: updated.monitorSock,
       console_log: updated.consoleLog,
+      trace_log: updated.traceLog,
     },
   };
 }

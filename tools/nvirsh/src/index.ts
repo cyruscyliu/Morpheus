@@ -627,6 +627,10 @@ function ensurePreparedManifest(flags: Record<string, unknown>) {
   return readManifestOrThrow(flags);
 }
 
+function expandQemuArgs(args: string[]) {
+  return args.flatMap((arg) => /^(enable|events|file)=/.test(arg) ? ['--trace', arg] : [arg]);
+}
+
 function runCommandForManifest(manifest: Record<string, any>, flags: Record<string, unknown>) {
   const kernel = resolvePathValue(requireFlag(flags, 'kernel'));
   const initrd = resolvePathValue(requireFlag(flags, 'initrd'));
@@ -637,9 +641,11 @@ function runCommandForManifest(manifest: Record<string, any>, flags: Record<stri
     throw new CliError('missing_artifact', `Missing initrd artifact: ${initrd}`);
   }
 
-  const runtimeArgs = Array.isArray(flags['qemu-arg']) && (flags['qemu-arg'] as string[]).length > 0
-    ? [...(flags['qemu-arg'] as string[])]
-    : [...((manifest.prerequisites?.qemuArgs as string[]) || [])];
+  const runtimeArgs = expandQemuArgs(
+    Array.isArray(flags['qemu-arg']) && (flags['qemu-arg'] as string[]).length > 0
+      ? [...(flags['qemu-arg'] as string[])]
+      : [...((manifest.prerequisites?.qemuArgs as string[]) || [])]
+  );
 
   if (!runtimeArgs.includes('-nographic')) {
     runtimeArgs.push('-nographic');

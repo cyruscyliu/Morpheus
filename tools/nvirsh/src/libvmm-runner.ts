@@ -107,6 +107,13 @@ function emitProviderEvent(event: string, stateDir: string, providerLogFile: str
   });
 }
 
+function relativeIfPresent(filePath: string | null | undefined) {
+  if (!filePath) {
+    return null;
+  }
+  return path.relative(process.cwd(), filePath);
+}
+
 function readNewLogLines(filePath: string, state: { offset: number; remainder: string }) {
   if (!fs.existsSync(filePath)) {
     return [] as string[];
@@ -188,6 +195,7 @@ async function main(argv: string[]) {
     qemu,
     '--toolchain-bin-dir',
     toolchainBin,
+    ...((Array.isArray(prerequisites.qemuArgs) ? prerequisites.qemuArgs : []).flatMap((value: unknown) => ['--qemu-arg', String(value)])),
     ...(attach ? [] : ['--detach']),
   ];
 
@@ -226,6 +234,7 @@ async function main(argv: string[]) {
   const providerManifestFile = providerManifestPath(stateDir);
   const providerLogFile = providerLogPath(stateDir);
   const providerLogState = { offset: 0, remainder: '' };
+  const providerTraceLogState = { offset: 0, remainder: '' };
   const launchDeadline = Date.now() + 30000;
   while (!fs.existsSync(providerManifestFile) && Date.now() < launchDeadline) {
     await sleep(100);
@@ -260,6 +269,8 @@ async function main(argv: string[]) {
     launcher_pid: providerManifest.launcherPid || null,
     runner_pid: providerManifest.runnerPid || null,
     status: providerManifest.status || 'starting',
+    console_log: relativeIfPresent(providerManifest.consoleLog),
+    trace_log: relativeIfPresent(providerManifest.traceLog),
   });
   emitProviderEvent('provider.log.attached', stateDir, providerLogFile, {
     provider_manifest: path.relative(process.cwd(), providerManifestFile),
@@ -277,6 +288,16 @@ async function main(argv: string[]) {
         stream: 'stdout',
       });
     }
+    const providerTraceLogFile = providerManifest.traceLog ? String(providerManifest.traceLog) : null;
+    if (providerTraceLogFile) {
+      const traceLines = readNewLogLines(providerTraceLogFile, providerTraceLogState);
+      for (const line of traceLines) {
+        emitProviderEvent('provider.trace.line', stateDir, providerLogFile, {
+          line,
+          trace_log: relativeIfPresent(providerTraceLogFile),
+        });
+      }
+    }
 
     if (providerStatus === 'running') {
       updateManifest(manifestPath, (current) => ({
@@ -292,8 +313,9 @@ async function main(argv: string[]) {
           pid: providerManifest.pid || null,
           launcher_pid: providerManifest.launcherPid || null,
           runner_pid: providerManifest.runnerPid || null,
-          monitor_sock: providerManifest.monitorSock || null,
-          console_log: providerManifest.consoleLog || null,
+          monitor_sock: relativeIfPresent(providerManifest.monitorSock),
+          console_log: relativeIfPresent(providerManifest.consoleLog),
+          trace_log: relativeIfPresent(providerManifest.traceLog),
         });
         mirroredRunning = true;
       }

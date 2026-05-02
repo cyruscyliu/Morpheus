@@ -234,12 +234,14 @@ function stageSourceTree(source: string, stageDir: string) {
   }
   const configurePath = path.join(source, 'configure');
   const versionPath = path.join(source, 'VERSION');
+  const sourcePatchStatePath = patchStatePath(source);
   const stampPath = path.join(stageDir, '.morpheus-source-state.json');
   const nextState = JSON.stringify({
     source,
     sourceMtimeMs: fs.statSync(source).mtimeMs,
     configureMtimeMs: fs.existsSync(configurePath) ? fs.statSync(configurePath).mtimeMs : null,
     versionMtimeMs: fs.existsSync(versionPath) ? fs.statSync(versionPath).mtimeMs : null,
+    patchState: fs.existsSync(sourcePatchStatePath) ? fs.readFileSync(sourcePatchStatePath, 'utf8') : null,
   });
   const currentState = fs.existsSync(stampPath)
     ? fs.readFileSync(stampPath, 'utf8')
@@ -397,6 +399,23 @@ function applyPatches(source: string, patchDir: string, patchFiles: string[], lo
       throw new CliError('patch_failed', `Failed to apply patch ${path.relative(patchDir, patchFile)} (see ${logFile})`);
     }
   }
+}
+
+async function refreshFetchedSourceTree(
+  source: string,
+  qemuVersion: string | null,
+  archiveUrl: string | null,
+  downloadsDir: string,
+) {
+  if (!qemuVersion && !archiveUrl) {
+    throw new CliError(
+      'missing_build_version',
+      'Patch set changed for the managed QEMU source tree, but no build version or archive URL was provided to refresh it',
+    );
+  }
+
+  removeDirectory(source);
+  return ensureFetchedSourceTree(source, qemuVersion, archiveUrl, downloadsDir);
 }
 
 async function ensureFetchedSourceTree(
@@ -636,6 +655,9 @@ async function fetchQemu(flags: Record<string, unknown>) {
 async function patchQemu(flags: Record<string, unknown>) {
   const source = requirePathFlag(flags, 'source');
   const patchDir = requirePathFlag(flags, 'patch-dir');
+  const qemuVersion = buildVersionFlag(flags);
+  const archiveUrl = optionalStringFlag(flags, 'archive-url');
+  const downloadsDir = resolveDownloadsDir(flags, source);
   if (!fs.existsSync(source)) {
     throw new CliError('missing_source', `Missing QEMU source tree: ${source}`);
   }
@@ -644,7 +666,7 @@ async function patchQemu(flags: Record<string, unknown>) {
   }
   const patchFiles = listPatchFiles(patchDir);
   const fingerprint = patchFingerprint(patchDir, patchFiles);
-  const patchLogFile = path.join(source, '.morpheus-patches.log');
+  let patchLogFile = path.join(source, '.morpheus-patches.log');
   const state = readPatchState(source);
   if (state && state.fingerprint === fingerprint) {
     return {
@@ -663,6 +685,10 @@ async function patchQemu(flags: Record<string, unknown>) {
         },
       },
     };
+  }
+  if (state && state.fingerprint !== fingerprint) {
+    await refreshFetchedSourceTree(source, qemuVersion, archiveUrl, downloadsDir);
+    patchLogFile = path.join(source, '.morpheus-patches.log');
   }
   applyPatches(source, patchDir, patchFiles, patchLogFile);
   appendToolLog(source, `patch patch_dir=${patchDir} patch_log=${patchLogFile}`);

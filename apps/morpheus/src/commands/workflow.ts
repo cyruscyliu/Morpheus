@@ -143,9 +143,6 @@ function ensureStepArtifactLocalized(stepRecord, artifactPath) {
     return stepRecord;
   }
   const localLocation = path.join(stepRecord.artifactsDir, artifact.path);
-  if (artifact.local_location === localLocation && fs.existsSync(localLocation)) {
-    return stepRecord;
-  }
   const remoteLocation = typeof artifact.remote_location === "string"
     ? artifact.remote_location
     : (typeof artifact.location === "string" ? artifact.location : null);
@@ -219,8 +216,65 @@ function templateStepPayloadFromRecord(stepRecord, options = {}) {
   return null;
 }
 
+function preferredArtifactLocation(artifact, preferLocal) {
+  if (!artifact || typeof artifact !== "object") {
+    return undefined;
+  }
+  return preferLocal
+    ? (artifact.local_location || artifact.location || artifact.remote_location || undefined)
+    : (artifact.remote_location || artifact.location || artifact.local_location || undefined);
+}
+
+function resolveArtifactTemplateValue(payload, stepPath, preferLocal) {
+  const parts = String(stepPath || "").split(".");
+  if (parts[0] !== "artifacts" || parts.length < 3) {
+    return getByPath(payload, stepPath);
+  }
+  const artifact = getByPath(payload, `artifacts.${parts[1]}`);
+  if (!artifact || typeof artifact !== "object") {
+    return getByPath(payload, stepPath);
+  }
+  if (parts[2] === "location") {
+    return preferredArtifactLocation(artifact, preferLocal);
+  }
+  if (parts[2] === "local_location") {
+    return artifact.local_location || artifact.location || artifact.remote_location || undefined;
+  }
+  if (parts[2] === "remote_location") {
+    return artifact.remote_location || artifact.location || artifact.local_location || undefined;
+  }
+  return getByPath(payload, stepPath);
+}
+
 function resolveTemplateStepValue(context, stepId, stepPath) {
-  const direct = getByPath(context.stepResults[stepId], stepPath);
+  const preferLocal = !context.currentStepRemoteEnabled;
+  const parts = String(stepPath || "").split(".");
+  const artifactPath = parts[0] === "artifacts" && parts.length >= 3 ? parts[1] : null;
+
+  if (artifactPath && context.runDir) {
+    const stepManifestPath = path.join(context.runDir, "steps", stepId, "step.json");
+    if (fs.existsSync(stepManifestPath)) {
+      const stepRecord = readJson(stepManifestPath);
+      const unresolvedPayload = templateStepPayloadFromRecord(stepRecord, {});
+      const unresolvedArtifact = unresolvedPayload
+        ? getByPath(unresolvedPayload, `artifacts.${artifactPath}`)
+        : null;
+      const localizedArtifactPath = unresolvedArtifact && typeof unresolvedArtifact.path === "string"
+        ? unresolvedArtifact.path
+        : artifactPath;
+      const payload = templateStepPayloadFromRecord(stepRecord, {
+        artifactPath: preferLocal ? localizedArtifactPath : null,
+      });
+      if (payload) {
+        const localized = resolveArtifactTemplateValue(payload, stepPath, preferLocal);
+        if (localized != null) {
+          return localized;
+        }
+      }
+    }
+  }
+
+  const direct = resolveArtifactTemplateValue(context.stepResults[stepId], stepPath, preferLocal);
   if (direct != null) {
     return direct;
   }
@@ -232,13 +286,11 @@ function resolveTemplateStepValue(context, stepId, stepPath) {
     return undefined;
   }
   const stepRecord = readJson(stepManifestPath);
-  const parts = String(stepPath || "").split(".");
-  const artifactPath = parts[0] === "artifacts" && parts.length >= 3 ? parts[1] : null;
   const payload = templateStepPayloadFromRecord(stepRecord, { artifactPath });
   if (!payload) {
     return undefined;
   }
-  return getByPath(payload, stepPath);
+  return resolveArtifactTemplateValue(payload, stepPath, preferLocal);
 }
 
 function resolveConfiguredWorkflow(name, explicitConfigPath = null) {
@@ -307,7 +359,7 @@ function relationRecordFromTemplateExpr(context, currentStepId, expr) {
   const artifactPath = typeof artifact.path === "string" ? artifact.path : artifactAlias;
   const artifactLocation =
     property === "location"
-      ? (artifact.local_location || artifact.location || artifact.remote_location || null)
+      ? preferredArtifactLocation(artifact, !context.currentStepRemoteEnabled)
       : getByPath(artifact, property);
   return {
     kind: "artifact",
@@ -355,11 +407,22 @@ function resolveConfiguredStepArgs(step, context) {
     : (Array.isArray(step.toolArgv) ? step.toolArgv : []);
   const relations = [];
   const currentStepId = step && step.id ? String(step.id) : null;
+  const provisionalArgs = items.map((item) => typeof item === "string" ? item : String(item));
+  const currentStepExecution = resolveStepExecution(
+    context.workspaceRoot,
+    provisionalArgs,
+    step.tool,
+    context.configPath || null,
+  );
+  const templateContext = {
+    ...context,
+    currentStepRemoteEnabled: Boolean(currentStepExecution && currentStepExecution.remoteEnabled),
+  };
   const args = items.map((item) => {
     if (typeof item !== "string") {
       return String(item);
     }
-    const resolved = resolveWorkflowStringTemplateWithTrace(item, context, currentStepId);
+    const resolved = resolveWorkflowStringTemplateWithTrace(item, templateContext, currentStepId);
     relations.push(...resolved.relations);
     return resolved.value;
   });
@@ -1305,7 +1368,7 @@ async function runToolWorkflow({
 
     const spec = stepSpecs.find((candidate) => candidate.id === step.id) || null;
     const resolvedStep = spec
-      ? resolveConfiguredStepArgs(spec, { workspaceRoot, stepResults, runDir: workflow.runDir })
+      ? resolveConfiguredStepArgs(spec, { workspaceRoot, stepResults, runDir: workflow.runDir, configPath })
       : { args: [], relations: [] };
     const toolArgv = resolvedStep.args;
     const toolCommand = spec ? spec.toolCommand : "build";
@@ -1610,7 +1673,12 @@ function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) 
       toolCommand: spec.command || "exec",
       attach: Boolean(spec.attach),
     };
-    const resolvedStep = resolveConfiguredStepArgs(stepSpec, { workspaceRoot, stepResults, runDir: workflowRecord.runDir });
+    const resolvedStep = resolveConfiguredStepArgs(stepSpec, {
+      workspaceRoot,
+      stepResults,
+      runDir: workflowRecord.runDir,
+      configPath: configured.configPath || workflowRecord.configPath || null,
+    });
     const toolArgv = resolvedStep.args;
     if (fromStep && !seenFromStep) {
       const execution = resolveStepExecution(workspaceRoot, toolArgv, spec.tool, configured.configPath || workflowRecord.configPath || null);

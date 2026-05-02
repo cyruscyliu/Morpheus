@@ -246,6 +246,159 @@ test('run launches a detached local QEMU process and writes a manifest', async (
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+test('patch refreshes fetched source when the patch fingerprint changes', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qemu-tool-patch-refresh-'));
+  const sourceParent = path.join(root, 'archive-src');
+  const archiveSource = path.join(sourceParent, 'qemu-1.0.0');
+  const source = path.join(root, 'managed-src', 'qemu-1.0.0');
+  const patchDir = path.join(root, 'patches');
+  const downloadsDir = path.join(root, 'downloads');
+  const archivePath = path.join(root, 'qemu-1.0.0.tar.xz');
+  fs.mkdirSync(path.join(archiveSource, 'target'), { recursive: true });
+  fs.writeFileSync(path.join(archiveSource, 'configure'), '#!/usr/bin/env sh\nexit 0\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(archiveSource, 'target', 'trace.txt'), 'base\n');
+  fs.mkdirSync(patchDir, { recursive: true });
+
+  const writePatch = (previousValue, nextValue) => {
+    fs.writeFileSync(
+      path.join(patchDir, 'trace.patch'),
+      [
+        '--- a/target/trace.txt',
+        '+++ b/target/trace.txt',
+        '@@ -1 +1 @@',
+        `-${previousValue}`,
+        `+${nextValue}`,
+        '',
+      ].join('\n'),
+    );
+  };
+
+  const archive = spawnSync('tar', ['-cJf', archivePath, '-C', sourceParent, 'qemu-1.0.0'], {
+    encoding: 'utf8',
+  });
+  assert.equal(archive.status, 0, archive.stdout || archive.stderr);
+
+  const fetched = run([
+    '--json',
+    'fetch',
+    '--source',
+    source,
+    '--qemu-version',
+    '1.0.0',
+    '--archive-url',
+    pathToFileURL(archivePath).toString(),
+    '--downloads-dir',
+    downloadsDir,
+  ]);
+  assert.equal(fetched.status, 0, fetched.stdout || fetched.stderr);
+
+  writePatch('base', 'first');
+  const firstPatch = run([
+    '--json',
+    'patch',
+    '--source',
+    source,
+    '--patch-dir',
+    patchDir,
+    '--qemu-version',
+    '1.0.0',
+    '--archive-url',
+    pathToFileURL(archivePath).toString(),
+    '--downloads-dir',
+    downloadsDir,
+  ]);
+  assert.equal(firstPatch.status, 0, firstPatch.stdout || firstPatch.stderr);
+  assert.equal(fs.readFileSync(path.join(source, 'target', 'trace.txt'), 'utf8'), 'first\n');
+
+  writePatch('base', 'second');
+  const secondPatch = run([
+    '--json',
+    'patch',
+    '--source',
+    source,
+    '--patch-dir',
+    patchDir,
+    '--qemu-version',
+    '1.0.0',
+    '--archive-url',
+    pathToFileURL(archivePath).toString(),
+    '--downloads-dir',
+    downloadsDir,
+  ]);
+  assert.equal(secondPatch.status, 0, secondPatch.stdout || secondPatch.stderr);
+  assert.equal(fs.readFileSync(path.join(source, 'target', 'trace.txt'), 'utf8'), 'second\n');
+
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('build restages source after patch state changes', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qemu-tool-build-restage-'));
+  const source = path.join(root, 'src');
+  const buildDir = path.join(root, 'build');
+  const installDir = path.join(root, 'install');
+  fs.mkdirSync(path.join(source, 'target'), { recursive: true });
+  fs.writeFileSync(
+    path.join(source, 'configure'),
+    [
+      '#!/usr/bin/env sh',
+      'set -eu',
+      "prefix=''",
+      'for arg in "$@"; do',
+      '  case "$arg" in',
+      '    --prefix=*) prefix="${arg#--prefix=}" ;;',
+      '  esac',
+      'done',
+      'cat > Makefile <<EOF',
+      'all:',
+      "\t@mkdir -p build-out",
+      "\t@cp ../source/target/trace.txt build-out/qemu-system-aarch64",
+      "\t@chmod +x build-out/qemu-system-aarch64",
+      'install:',
+      '\t@mkdir -p ${prefix}/bin',
+      '\t@cp build-out/qemu-system-aarch64 ${prefix}/bin/qemu-system-aarch64',
+      'EOF',
+      '',
+    ].join('\n'),
+    { mode: 0o755 },
+  );
+  fs.writeFileSync(path.join(source, 'target', 'trace.txt'), '#!/usr/bin/env sh\necho first\n', { mode: 0o755 });
+
+  const firstBuild = run([
+    '--json',
+    'build',
+    '--source',
+    source,
+    '--build-dir',
+    buildDir,
+    '--install-dir',
+    installDir,
+    '--target-list',
+    'aarch64-softmmu',
+  ]);
+  assert.equal(firstBuild.status, 0, firstBuild.stdout || firstBuild.stderr);
+  assert.equal(spawnSync(path.join(installDir, 'bin', 'qemu-system-aarch64'), { encoding: 'utf8' }).stdout.trim(), 'first');
+
+  fs.writeFileSync(path.join(source, 'target', 'trace.txt'), '#!/usr/bin/env sh\necho second\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(source, '.morpheus-patches.json'), JSON.stringify({ fingerprint: 'updated' }, null, 2));
+
+  const secondBuild = run([
+    '--json',
+    'build',
+    '--source',
+    source,
+    '--build-dir',
+    buildDir,
+    '--install-dir',
+    installDir,
+    '--target-list',
+    'aarch64-softmmu',
+  ]);
+  assert.equal(secondBuild.status, 0, secondBuild.stdout || secondBuild.stderr);
+  assert.equal(spawnSync(path.join(installDir, 'bin', 'qemu-system-aarch64'), { encoding: 'utf8' }).stdout.trim(), 'second');
+
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
 test('run defaults to tmp/qemu-run when run-dir is omitted', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qemu-tool-default-run-'));
   const executable = path.join(root, 'qemu-system-aarch64');

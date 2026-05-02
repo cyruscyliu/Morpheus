@@ -191,17 +191,15 @@ function normalizeTarget(flags: Record<string, unknown>) {
   return String(flags.target || 'sel4');
 }
 
-function defaultStateDir(flags: Record<string, unknown>) {
+function defaultStateDir(_flags: Record<string, unknown>) {
   const managed = managedRunDir();
   if (managed) {
     return managed;
   }
-  const name = String(flags.name || 'default');
-  const workspaceRoot = configuredWorkspaceRoot();
-  if (workspaceRoot) {
-    return path.join(workspaceRoot, 'tmp', 'nvirsh', name);
-  }
-  return path.resolve(process.cwd(), 'tmp', 'nvirsh', name);
+  throw new CliError(
+    'missing_state_dir',
+    'nvirsh requires a managed workflow step directory or explicit --state-dir',
+  );
 }
 
 function stateDir(flags: Record<string, unknown>) {

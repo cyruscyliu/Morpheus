@@ -40,6 +40,13 @@ function requireValue(value: any, label: string) {
   return value;
 }
 
+function appendLog(logFile: string, chunk: string | null | undefined) {
+  if (!chunk) {
+    return;
+  }
+  fs.appendFileSync(logFile, chunk.endsWith('\n') ? chunk : `${chunk}\n`, 'utf8');
+}
+
 async function main(argv: string[]) {
   const manifestPath = argv[0];
   if (!manifestPath) {
@@ -106,6 +113,10 @@ async function main(argv: string[]) {
       'const args = process.argv.slice(2);',
       'const rewritten = args.slice();',
       'if (blkStorage) {',
+      '  const localBlkStorage = path.resolve(process.cwd(), "blk_storage");',
+      '  if (!fs.existsSync(blkStorage) && fs.existsSync(localBlkStorage)) {',
+      '    fs.copyFileSync(localBlkStorage, blkStorage);',
+      '  }',
       '  for (let index = 0; index < rewritten.length; index += 1) {',
       "    if (rewritten[index] === '-drive' && index + 1 < rewritten.length) {",
       '      rewritten[index + 1] = String(rewritten[index + 1]).replace("file=blk_storage", `file=${blkStorage}`);',
@@ -141,6 +152,13 @@ async function main(argv: string[]) {
     LIBVMM_CONSOLE_LOG: consoleLog,
     LIBVMM_MONITOR_SOCK: monitorSock,
     LIBVMM_BLK_STORAGE: runBlkStorage,
+    LIBVMM: libvmmDir,
+    MICROKIT_BOARD: board,
+    MICROKIT_CONFIG: microkitConfig,
+    MICROKIT_SDK: microkitSdk,
+    LINUX: kernel,
+    INITRD: initrd,
+    QEMU: wrapper,
     ...(python ? { PYTHON: python } : {}),
     PATH: [
       ...(toolchainBinDir ? [toolchainBinDir] : []),
@@ -150,19 +168,9 @@ async function main(argv: string[]) {
     ].filter(Boolean).join(path.delimiter),
   };
 
-  const args = [
-    `MICROKIT_BOARD=${board}`,
-    `MICROKIT_CONFIG=${microkitConfig}`,
-    `MICROKIT_SDK=${microkitSdk}`,
-    `LINUX=${kernel}`,
-    `INITRD=${initrd}`,
-    `QEMU=${wrapper}`,
-    'qemu',
-  ];
-
   const log = fs.createWriteStream(logFile, { flags: 'a' });
-  const cleanResult = spawnSync('make', [...args.slice(0, -1), 'clean'], {
-    cwd: buildDir,
+  const cleanResult = spawnSync('make', ['clean'], {
+    cwd: exampleDir,
     env,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -185,36 +193,15 @@ async function main(argv: string[]) {
   }
 
   if (!fs.existsSync(sharedBlkStorage)) {
-    const diskResult = spawnSync('make', ['MICROKIT_SDK=' + microkitSdk, 'blk_storage'], {
-      cwd: buildDir,
-      env,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    if (diskResult.stdout) {
-      log.write(diskResult.stdout);
-      if (attach) {
-        process.stdout.write(diskResult.stdout);
+    try {
+      if (fs.lstatSync(sharedBlkStorage).isSymbolicLink()) {
+        fs.unlinkSync(sharedBlkStorage);
       }
-    }
-    if (diskResult.stderr) {
-      log.write(diskResult.stderr);
-      if (attach) {
-        process.stderr.write(diskResult.stderr);
-      }
-    }
-    if (diskResult.status !== 0 || !fs.existsSync(sharedBlkStorage)) {
-      log.end();
-      throw new Error(diskResult.stderr || diskResult.stdout || 'libvmm blk_storage generation failed');
-    }
+    } catch {}
   }
 
-  if (fs.existsSync(sharedBlkStorage)) {
-    fs.copyFileSync(sharedBlkStorage, runBlkStorage);
-  }
-
-  const child = spawn('make', args, {
-    cwd: buildDir,
+  const child = spawn('make', ['qemu'], {
+    cwd: exampleDir,
     detached: false,
     env,
     stdio: [attach ? 'inherit' : 'ignore', 'pipe', 'pipe'],
@@ -278,6 +265,23 @@ async function main(argv: string[]) {
 }
 
 main(process.argv.slice(2)).catch((error: unknown) => {
-  process.stderr.write(`${error instanceof Error ? error.message : 'Unexpected libvmm runtime runner error'}\n`);
+  const message = error instanceof Error ? error.message : 'Unexpected libvmm runtime runner error';
+  const manifestPath = process.argv[2];
+  if (manifestPath && fs.existsSync(manifestPath)) {
+    try {
+      const manifest = readJson(manifestPath);
+      if (manifest?.logFile) {
+        appendLog(String(manifest.logFile), message);
+      }
+      updateManifest(manifestPath, (current) => ({
+        ...current,
+        status: 'error',
+        errorMessage: message,
+        runnerPid: current.runnerPid || process.pid,
+        finishedAt: new Date().toISOString(),
+      }));
+    } catch {}
+  }
+  process.stderr.write(`${message}\n`);
   process.exit(1);
 });

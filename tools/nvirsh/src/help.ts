@@ -10,10 +10,10 @@ export const COMMANDS = [
     ],
   },
   {
-    name: 'run',
+    name: 'exec',
     summary: 'Launch from explicit runtime artifacts as a Morpheus-managed step',
     usage: [
-      'nvirsh run [Morpheus-internal]',
+      'nvirsh exec [Morpheus-internal]',
       '',
       'Notes:',
       '  - Invoke this command only through morpheus workflow execution.',

@@ -999,7 +999,7 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
     },
     { allowGlobalRemote: Boolean(options.allowGlobalRemote), allowToolDefaults: true }
   );
-  const toolCommand = command === "exec" ? "run" : command;
+  const toolCommand = command;
   const effective = resolveToolDependencies(resolved, toolCommand);
   if (command === "exec") {
     ensureNoWorkspaceRunConflict(tool, descriptor, effective);
@@ -1052,8 +1052,10 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   ) {
     fs.rmSync(path.dirname(legacyExecRunDir), { recursive: true, force: true });
   }
-  const workflowManagedExec = command === "exec" && process.env.MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP === "1";
-  const childCwd = workflowManagedExec ? process.cwd() : (managedRunDir || process.cwd());
+  const workflowStepCwd = command === "exec" && fs.existsSync(path.join(process.cwd(), "step.json"))
+    ? process.cwd()
+    : null;
+  const childCwd = workflowStepCwd || managedRunDir || process.cwd();
 
   const payload = remoteEnabled
     ? await executeRemoteTopLevelToolCommand(command, tool, args, effective, flags)
@@ -1061,13 +1063,6 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
       await runToolStreaming(descriptor, args, { jsonMode: Boolean(flags.json), env: process.env, cwd: childCwd }),
       `failed to ${command} with tool ${tool}`
     );
-  if (command === "exec" && payload && typeof payload.command === "string") {
-    if (payload.command === "run") {
-      payload.command = "exec";
-    } else if (payload.command.endsWith(" run")) {
-      payload.command = `${payload.command.slice(0, -4)} exec`;
-    }
-  }
 
   if (flags.json) {
     printJson(payload);

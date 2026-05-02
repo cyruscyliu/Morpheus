@@ -395,7 +395,7 @@ workflows:
         args:
           - --source
           - "{{steps.qemu_patch.artifacts.source-dir.location}}"
-      - id: nvirsh_run
+      - id: nvirsh_exec
         tool: nvirsh
         command: exec
         args:
@@ -493,7 +493,7 @@ workflows:
         args:
           - --source
           - "{{steps.libvmm_patch.artifacts.source-dir.location}}"
-      - id: nvirsh_run
+      - id: nvirsh_exec
         tool: nvirsh
         command: exec
         args:

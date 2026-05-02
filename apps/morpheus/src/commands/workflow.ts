@@ -1380,7 +1380,6 @@ async function runToolWorkflow({
       step.logFile,
       {
         ...process.env,
-        MORPHEUS_DISABLE_TOOL_WORKFLOW_WRAP: "1",
         ...(configPath ? { MORPHEUS_CONFIG: configPath } : {}),
         MORPHEUS_EVENT_LOG_FILE: workflowEventLogPath(workflow.runDir),
         MORPHEUS_EVENT_CONTEXT: JSON.stringify({

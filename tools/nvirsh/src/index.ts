@@ -334,7 +334,15 @@ function ensureNoWorkspaceRunConflict(flags: Record<string, unknown>) {
       if (!manifest || manifest.status !== 'running') {
         continue;
       }
-      const guard = manifest.runGuard;
+      const guard = manifest.runGuard || (
+        manifest.tool === 'nvirsh'
+          ? {
+              scope: 'workspace',
+              tool: 'nvirsh',
+              key: `${String(manifest.target || 'sel4')}:${String(manifest.runtime?.provider?.action || 'qemu')}`,
+            }
+          : null
+      );
       if (!guard || guard.tool !== 'nvirsh' || guard.key !== guardKey) {
         continue;
       }
@@ -975,8 +983,8 @@ async function main(argv: string[]) {
       parsed.json ? emitJson(result) : emitText(result.summary);
       return resultExitCode(result);
     }
-    case 'run': {
-      requireManagedInvocation('nvirsh run');
+    case 'exec': {
+      requireManagedInvocation('nvirsh exec');
       const result = await runLaunch(parsed.flags);
       parsed.json ? emitJson(result) : emitText(result.summary);
       return resultExitCode(result);

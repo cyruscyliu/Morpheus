@@ -39,6 +39,8 @@ interface RenderedLogRow {
   stepId: string | null;
   text: string;
   key: string;
+  producerLabel: string | null;
+  nested: boolean;
 }
 
 interface GraphLayout {
@@ -315,6 +317,51 @@ function flattenEventPayload(value: unknown): string[] {
     .split("\n")
     .map((line) => line.replace(/\s+$/, ""))
     .filter((line) => line.length > 0);
+}
+
+function providerEventLabel(entry: RunEventRecord): string | null {
+  const provider = typeof entry.data?.provider === "string" ? entry.data.provider : null;
+  if (!provider) {
+    return null;
+  }
+  return `${provider}.exec`;
+}
+
+function providerEventText(entry: RunEventRecord): string[] | null {
+  const event = entry.event || "";
+  if (!event.startsWith("provider.")) {
+    return null;
+  }
+  if (event === "provider.log.line") {
+    const line = typeof entry.data?.line === "string" ? entry.data.line : "";
+    return line ? [line] : [];
+  }
+  const summary: string[] = [];
+  const status = typeof entry.data?.status === "string" ? entry.data.status : null;
+  const error = typeof entry.data?.error === "string" ? entry.data.error : null;
+  const exitCode = typeof entry.data?.exit_code === "number" ? entry.data.exit_code : null;
+  const providerLogFile = typeof entry.data?.provider_log_file === "string" ? entry.data.provider_log_file : null;
+  const monitorSock = typeof entry.data?.monitor_sock === "string" ? entry.data.monitor_sock : null;
+  const consoleLog = typeof entry.data?.console_log === "string" ? entry.data.console_log : null;
+  if (status) {
+    summary.push(`status=${status}`);
+  }
+  if (exitCode != null) {
+    summary.push(`exit_code=${String(exitCode)}`);
+  }
+  if (error) {
+    summary.push(`error=${error}`);
+  }
+  if (monitorSock) {
+    summary.push(`monitor_sock=${monitorSock}`);
+  }
+  if (consoleLog) {
+    summary.push(`console_log=${consoleLog}`);
+  }
+  if (providerLogFile) {
+    summary.push(`provider_log=${providerLogFile}`);
+  }
+  return summary.length > 0 ? [summary.join(" ")] : [event];
 }
 
 function withConfigQuery(input: string, configPath: string | null): string {
@@ -761,9 +808,12 @@ export function WorkflowViewer({
     artifacts: null,
   });
   const detailRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const logRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeLogRequestIdRef = useRef(0);
   const loadedLogRunIdRef = useRef<string | null>(null);
+  const selectedRunIdRef = useRef<string | null>(null);
+  const activeTabRef = useRef<InspectionTab>("overview");
 
   const selectedSummary = summaries.find((summary) => summary.id === selectedRunId) || null;
   const selectedRunCopyId = selectedSummary?.id || null;
@@ -826,7 +876,9 @@ export function WorkflowViewer({
     filteredEvents.forEach((entry, entryIndex) => {
       const event = entry.event || "unknown";
       const stepId = entry.step_id || null;
-      const lines = flattenEventPayload(entry.data || {});
+      const producerLabel = providerEventLabel(entry);
+      const nested = Boolean(producerLabel);
+      const lines = providerEventText(entry) || flattenEventPayload(entry.data || {});
       for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
         rows.push({
           ts: entry.ts || null,
@@ -834,6 +886,8 @@ export function WorkflowViewer({
           stepId,
           text: lines[lineIndex] || "",
           key: `${entry.ts || "event"}:${event}:${stepId || "workflow"}:${entryIndex}:${lineIndex}`,
+          producerLabel,
+          nested,
         });
       }
     });
@@ -1065,6 +1119,24 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
     }, delayMs);
   }
 
+  function scheduleActiveLogRefresh(runId: string, delayMs: number): void {
+    if (logRefreshTimerRef.current) {
+      clearTimeout(logRefreshTimerRef.current);
+    }
+    logRefreshTimerRef.current = setTimeout(() => {
+      logRefreshTimerRef.current = null;
+      void refreshActiveLog(runId, { background: true });
+    }, delayMs);
+  }
+
+  useEffect(() => {
+    selectedRunIdRef.current = selectedRunId;
+  }, [selectedRunId]);
+
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
   useEffect(() => {
     setSelectedRunId((current) => normalizeSelectedRunId(summaries, current));
   }, [summaries]);
@@ -1135,9 +1207,9 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
       setLogLoading(false);
       return;
     }
-    const hasLoadedLog = loadedLogRunIdRef.current === selectedRunId && eventLog.length > 0;
+    const hasLoadedLog = loadedLogRunIdRef.current === selectedRunId;
     void refreshActiveLog(selectedRunId, hasLoadedLog ? { background: true } : {});
-  }, [activeTab, eventLog.length, refreshActiveLog, selectedRunId]);
+  }, [activeTab, refreshActiveLog, selectedRunId]);
 
   useEffect(() => {
     if (!runDetail || !selectedStepId) {
@@ -1303,25 +1375,48 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
     const events = new EventSource(withConfigQuery("/api/events", configPath));
     events.addEventListener("runs-changed", () => {
       void refreshRunsIndex(configPath, setSummaries, setTotalRuns, setUpdatedAt);
-        if (selectedRunId) {
-          scheduleDetailRefresh(selectedRunId, 250);
-          if (activeTab === "log") {
-            void refreshActiveLog(selectedRunId, { background: true });
-          }
+      const runId = selectedRunIdRef.current;
+      if (runId) {
+        scheduleDetailRefresh(runId, 250);
+        if (activeTabRef.current === "log") {
+          scheduleActiveLogRefresh(runId, 250);
         }
-      });
+      }
+    });
+    events.addEventListener("run-events-changed", (event) => {
+      const payload = event instanceof MessageEvent ? JSON.parse(String(event.data || "{}")) as { runId?: string } : {};
+      const runId = typeof payload.runId === "string" ? payload.runId : null;
+      if (!runId || runId !== selectedRunIdRef.current) {
+        return;
+      }
+      if (activeTabRef.current === "log") {
+        scheduleActiveLogRefresh(runId, 250);
+      }
+    });
+    events.addEventListener("run-detail-changed", (event) => {
+      const payload = event instanceof MessageEvent ? JSON.parse(String(event.data || "{}")) as { runId?: string } : {};
+      const runId = typeof payload.runId === "string" ? payload.runId : null;
+      if (!runId || runId !== selectedRunIdRef.current) {
+        return;
+      }
+      scheduleDetailRefresh(runId, 250);
+    });
     return () => {
       events.close();
       if (detailRefreshTimerRef.current) {
         clearTimeout(detailRefreshTimerRef.current);
         detailRefreshTimerRef.current = null;
       }
+      if (logRefreshTimerRef.current) {
+        clearTimeout(logRefreshTimerRef.current);
+        logRefreshTimerRef.current = null;
+      }
       if (copyResetTimerRef.current) {
         clearTimeout(copyResetTimerRef.current);
         copyResetTimerRef.current = null;
       }
     };
-  }, [activeTab, configPath, selectedRunId, selectedStepId]);
+  }, [configPath, refreshActiveLog]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -1800,13 +1895,14 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
                       <div className="workflow-events-list">
                         {renderedLogRows.map((row) => (
                           <div
-                            className="workflow-event-row"
+                            className={`workflow-event-row${row.nested ? " is-nested" : ""}`}
                             key={row.key}
                           >
                             <div className="workflow-event-meta">
                               <span>{formatTimestamp(row.ts)}</span>
-                              <strong>{row.event}</strong>
+                              <strong>{row.producerLabel || row.event}</strong>
                               <span>{row.stepId || "workflow"}</span>
+                              {row.producerLabel ? <span>{row.event}</span> : null}
                             </div>
                             <code>{row.text}</code>
                           </div>

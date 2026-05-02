@@ -578,6 +578,11 @@ code {
   padding: 0;
 }
 
+.workflow-event-row.is-nested {
+  padding-left: 16px;
+  border-left: 2px solid rgb(var(--border) / 0.85);
+}
+
 .workflow-event-meta {
   display: flex;
   flex: 0 0 auto;

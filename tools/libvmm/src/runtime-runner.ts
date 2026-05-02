@@ -47,6 +47,26 @@ function appendLog(logFile: string, chunk: string | null | undefined) {
   fs.appendFileSync(logFile, chunk.endsWith('\n') ? chunk : `${chunk}\n`, 'utf8');
 }
 
+function makeVariableArgs(options: {
+  microkitSdk: string;
+  board: string;
+  microkitConfig: string;
+  kernel: string;
+  initrd: string;
+  wrapper: string;
+  python: string | null;
+}) {
+  return [
+    `MICROKIT_SDK=${options.microkitSdk}`,
+    `MICROKIT_BOARD=${options.board}`,
+    `MICROKIT_CONFIG=${options.microkitConfig}`,
+    `LINUX=${options.kernel}`,
+    `INITRD=${options.initrd}`,
+    `QEMU=${options.wrapper}`,
+    ...(options.python ? [`PYTHON=${options.python}`] : []),
+  ];
+}
+
 async function main(argv: string[]) {
   const manifestPath = argv[0];
   if (!manifestPath) {
@@ -167,9 +187,19 @@ async function main(argv: string[]) {
       process.env.PATH || '',
     ].filter(Boolean).join(path.delimiter),
   };
+  const makeArgs = makeVariableArgs({
+    microkitSdk,
+    board,
+    microkitConfig,
+    kernel,
+    initrd,
+    wrapper,
+    python,
+  });
 
   const log = fs.createWriteStream(logFile, { flags: 'a' });
-  const cleanResult = spawnSync('make', ['clean'], {
+  log.write(`make ${makeArgs.join(' ')} clean\n`);
+  const cleanResult = spawnSync('make', [...makeArgs, 'clean'], {
     cwd: exampleDir,
     env,
     encoding: 'utf8',
@@ -200,7 +230,8 @@ async function main(argv: string[]) {
     } catch {}
   }
 
-  const child = spawn('make', ['qemu'], {
+  log.write(`make ${makeArgs.join(' ')} qemu\n`);
+  const child = spawn('make', [...makeArgs, 'qemu'], {
     cwd: exampleDir,
     detached: false,
     env,

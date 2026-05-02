@@ -7,7 +7,7 @@ import chokidar from "chokidar";
 
 import { findRunRoot } from "./run-root";
 import { debounce } from "./debounce";
-import { loadRunDetail, loadStepLogText, listRunSummariesWithTotal } from "./runs-store";
+import { loadRunDetail, loadRunEvents, loadStepLogText, listRunSummariesWithTotal } from "./runs-store";
 import { isSafeId } from "./validate";
 
 export interface RunsViewerServer {
@@ -59,6 +59,46 @@ function writeSse(res: ServerResponse, event: string, data?: unknown): void {
   res.write("\n");
 }
 
+function runIdFromWatcherPath(runRoot: string, filePath: string): string | null {
+  const relative = path.relative(runRoot, filePath);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    return null;
+  }
+  const [runId] = relative.split(path.sep);
+  return runId || null;
+}
+
+function classifyWatcherEvent(runRoot: string, filePath: string): { event: string; data: Record<string, string> } | null {
+  const baseName = path.basename(filePath);
+  if (baseName === "events.jsonl") {
+    const runId = runIdFromWatcherPath(runRoot, filePath);
+    if (!runId) {
+      return null;
+    }
+    return {
+      event: "run-events-changed",
+      data: { runId, updatedAt: new Date().toISOString() },
+    };
+  }
+  if (baseName === "workflow.json" || baseName === "manifest.json") {
+    const runId = runIdFromWatcherPath(runRoot, filePath);
+    if (!runId) {
+      return null;
+    }
+    return {
+      event: "run-detail-changed",
+      data: { runId, updatedAt: new Date().toISOString() },
+    };
+  }
+  if (baseName === "stdout.log" || baseName === "console.log") {
+    return null;
+  }
+  return {
+    event: "runs-changed",
+    data: { updatedAt: new Date().toISOString() },
+  };
+}
+
 export function createRunsViewerServer(options: Options): RunsViewerServer {
   void options;
   const repoRoot = path.resolve(process.cwd(), "..", "..");
@@ -66,9 +106,13 @@ export function createRunsViewerServer(options: Options): RunsViewerServer {
   const { runRoot } = runRootInfo;
   const sseClients = new Set<ServerResponse>();
 
-  const broadcastRunsChanged = debounce(() => {
+  const broadcastWatcherEvent = debounce((filePath: string) => {
+    const classified = classifyWatcherEvent(runRoot, filePath);
+    if (!classified) {
+      return;
+    }
     for (const client of sseClients) {
-      writeSse(client, "runs-changed", { updatedAt: new Date().toISOString() });
+      writeSse(client, classified.event, classified.data);
     }
   }, 250);
 
@@ -76,11 +120,11 @@ export function createRunsViewerServer(options: Options): RunsViewerServer {
     ignoreInitial: true,
     depth: 5,
   });
-  watcher.on("add", broadcastRunsChanged);
-  watcher.on("change", broadcastRunsChanged);
-  watcher.on("unlink", broadcastRunsChanged);
-  watcher.on("addDir", broadcastRunsChanged);
-  watcher.on("unlinkDir", broadcastRunsChanged);
+  watcher.on("add", broadcastWatcherEvent);
+  watcher.on("change", broadcastWatcherEvent);
+  watcher.on("unlink", broadcastWatcherEvent);
+  watcher.on("addDir", broadcastWatcherEvent);
+  watcher.on("unlinkDir", broadcastWatcherEvent);
 
   function stopWorkflowRun(runId: string): { ok: true; body: unknown } | { ok: false; body: unknown } {
     const result = spawnSync(
@@ -297,6 +341,22 @@ export function createRunsViewerServer(options: Options): RunsViewerServer {
         return true;
       }
       json(res, 200, detail);
+      return true;
+    }
+
+    const runEventsMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/events$/);
+    if (runEventsMatch) {
+      const runId = decodeURIComponent(runEventsMatch[1] || "");
+      if (!isSafeId(runId)) {
+        notFound(res);
+        return true;
+      }
+      const events = loadRunEvents(runRoot, runId);
+      if (events == null) {
+        notFound(res);
+        return true;
+      }
+      json(res, 200, { events });
       return true;
     }
 

@@ -61,6 +61,78 @@ function appendLog(log: fs.WriteStream, chunk: string | null | undefined, attach
   }
 }
 
+function currentEventLogFile() {
+  return process.env.MORPHEUS_EVENT_LOG_FILE || null;
+}
+
+function currentEventContext() {
+  const raw = process.env.MORPHEUS_EVENT_CONTEXT || '';
+  if (!raw) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function emitEvent(event: string, data: Record<string, unknown> = {}, options: Record<string, unknown> = {}) {
+  const filePath = currentEventLogFile();
+  if (!filePath) {
+    return;
+  }
+  const context = currentEventContext() as Record<string, unknown>;
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.appendFileSync(filePath, `${JSON.stringify({
+    ts: new Date().toISOString(),
+    producer: options.producer || 'nvirsh',
+    level: options.level || 'info',
+    scope: options.scope || 'step',
+    event,
+    workflow_id: options.workflowId || context.workflow_id || null,
+    step_id: options.stepId || context.step_id || null,
+    tool: options.tool || context.tool || null,
+    data,
+  })}\n`, 'utf8');
+}
+
+function emitProviderEvent(event: string, stateDir: string, providerLogFile: string, data: Record<string, unknown> = {}) {
+  emitEvent(event, {
+    provider: 'libvmm',
+    provider_run_dir: path.relative(process.cwd(), providerRunDir(stateDir)),
+    provider_log_file: path.relative(process.cwd(), providerLogFile),
+    ...data,
+  });
+}
+
+function readNewLogLines(filePath: string, state: { offset: number; remainder: string }) {
+  if (!fs.existsSync(filePath)) {
+    return [] as string[];
+  }
+  const stats = fs.statSync(filePath);
+  if (stats.size < state.offset) {
+    state.offset = 0;
+    state.remainder = '';
+  }
+  if (stats.size === state.offset) {
+    return [] as string[];
+  }
+  const handle = fs.openSync(filePath, 'r');
+  try {
+    const buffer = Buffer.alloc(stats.size - state.offset);
+    fs.readSync(handle, buffer, 0, buffer.length, state.offset);
+    state.offset = stats.size;
+    const text = state.remainder + buffer.toString('utf8');
+    const lines = text.split(/\r?\n/);
+    state.remainder = lines.pop() || '';
+    return lines.filter((line) => line.length > 0);
+  } finally {
+    fs.closeSync(handle);
+  }
+}
+
 async function main(argv: string[]) {
   const manifestPath = argv[0];
   if (!manifestPath) {
@@ -153,6 +225,7 @@ async function main(argv: string[]) {
 
   const providerManifestFile = providerManifestPath(stateDir);
   const providerLogFile = providerLogPath(stateDir);
+  const providerLogState = { offset: 0, remainder: '' };
   const launchDeadline = Date.now() + 30000;
   while (!fs.existsSync(providerManifestFile) && Date.now() < launchDeadline) {
     await sleep(100);
@@ -181,10 +254,29 @@ async function main(argv: string[]) {
     startedAt: new Date().toISOString(),
     ...(providerManifest.status === 'running' ? { qemuStartedAt: new Date().toISOString() } : {}),
   }));
+  emitProviderEvent('provider.started', stateDir, providerLogFile, {
+    provider_manifest: path.relative(process.cwd(), providerManifestFile),
+    pid: providerManifest.pid || null,
+    launcher_pid: providerManifest.launcherPid || null,
+    runner_pid: providerManifest.runnerPid || null,
+    status: providerManifest.status || 'starting',
+  });
+  emitProviderEvent('provider.log.attached', stateDir, providerLogFile, {
+    provider_manifest: path.relative(process.cwd(), providerManifestFile),
+  });
 
+  let mirroredRunning = false;
+  let mirroredTerminalStatus: string | null = null;
   while (true) {
     providerManifest = readJson(providerManifestFile);
     const providerStatus = String(providerManifest.status || '').trim().toLowerCase();
+    const newLines = readNewLogLines(providerLogFile, providerLogState);
+    for (const line of newLines) {
+      emitProviderEvent('provider.log.line', stateDir, providerLogFile, {
+        line,
+        stream: 'stdout',
+      });
+    }
 
     if (providerStatus === 'running') {
       updateManifest(manifestPath, (current) => ({
@@ -195,9 +287,39 @@ async function main(argv: string[]) {
         runnerPid: process.pid,
         qemuStartedAt: current.qemuStartedAt || new Date().toISOString(),
       }));
+      if (!mirroredRunning) {
+        emitProviderEvent('provider.running', stateDir, providerLogFile, {
+          pid: providerManifest.pid || null,
+          launcher_pid: providerManifest.launcherPid || null,
+          runner_pid: providerManifest.runnerPid || null,
+          monitor_sock: providerManifest.monitorSock || null,
+          console_log: providerManifest.consoleLog || null,
+        });
+        mirroredRunning = true;
+      }
     }
 
     if (providerStatus === 'success' || providerStatus === 'stopped' || providerStatus === 'error') {
+      if (mirroredTerminalStatus !== providerStatus) {
+        emitProviderEvent(
+          providerStatus === 'success'
+            ? 'provider.completed'
+            : providerStatus === 'stopped'
+              ? 'provider.stopped'
+              : 'provider.failed',
+          stateDir,
+          providerLogFile,
+          {
+            pid: providerManifest.pid || null,
+            launcher_pid: providerManifest.launcherPid || null,
+            runner_pid: providerManifest.runnerPid || null,
+            exit_code: typeof providerManifest.exitCode === 'number' ? providerManifest.exitCode : null,
+            signal: providerManifest.signal || null,
+            error: providerManifest.errorMessage || null,
+          },
+        );
+        mirroredTerminalStatus = providerStatus;
+      }
       log.end();
       updateManifest(manifestPath, (current) => ({
         ...current,
@@ -214,6 +336,10 @@ async function main(argv: string[]) {
     }
 
     if (attach && launchResult.code != null && launchResult.code !== 0) {
+      emitProviderEvent('provider.failed', stateDir, providerLogFile, {
+        exit_code: launchResult.code,
+        error: 'failed to launch libvmm runtime',
+      });
       log.end();
       updateManifest(manifestPath, (current) => ({
         ...current,

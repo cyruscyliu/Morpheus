@@ -1,5 +1,6 @@
 import type { FSWatcher } from "chokidar";
 import chokidar from "chokidar";
+import path from "node:path";
 
 import { debounce } from "./debounce";
 import { resolveViewerContext } from "./context";
@@ -12,6 +13,46 @@ interface Client {
 interface EventState {
   watcher: FSWatcher | null;
   clients: Set<Client>;
+}
+
+function runIdFromWatcherPath(runRoot: string, filePath: string): string | null {
+  const relative = path.relative(runRoot, filePath);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    return null;
+  }
+  const [runId] = relative.split(path.sep);
+  return runId || null;
+}
+
+function classifyWatcherEvent(runRoot: string, filePath: string): { event: string; data: Record<string, string> } | null {
+  const baseName = path.basename(filePath);
+  if (baseName === "events.jsonl") {
+    const runId = runIdFromWatcherPath(runRoot, filePath);
+    if (!runId) {
+      return null;
+    }
+    return {
+      event: "run-events-changed",
+      data: { runId, updatedAt: new Date().toISOString() },
+    };
+  }
+  if (baseName === "workflow.json" || baseName === "manifest.json") {
+    const runId = runIdFromWatcherPath(runRoot, filePath);
+    if (!runId) {
+      return null;
+    }
+    return {
+      event: "run-detail-changed",
+      data: { runId, updatedAt: new Date().toISOString() },
+    };
+  }
+  if (baseName === "stdout.log" || baseName === "console.log") {
+    return null;
+  }
+  return {
+    event: "runs-changed",
+    data: { updatedAt: new Date().toISOString() },
+  };
 }
 
 function getState(key: string): EventState {
@@ -40,9 +81,13 @@ function ensureWatcher(configPath: string | null): EventState {
     return state;
   }
   const { runRoot } = resolveViewerContext(configPath);
-  const broadcast = debounce(() => {
+  const broadcast = debounce((filePath: string) => {
+    const classified = classifyWatcherEvent(runRoot, filePath);
+    if (!classified) {
+      return;
+    }
     for (const client of state.clients) {
-      client.write("runs-changed", { updatedAt: new Date().toISOString() });
+      client.write(classified.event, classified.data);
     }
   }, 75);
   const watcher = chokidar.watch(runRoot, {

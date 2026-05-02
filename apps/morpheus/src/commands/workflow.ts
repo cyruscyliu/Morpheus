@@ -749,7 +749,7 @@ function emitRuntimeEventsFromPayload(workflow, step, toolPayload) {
   }
 }
 
-function emitArtifactEvents(workflow, step, artifacts, relations) {
+function emitProducedArtifactEvents(workflow, step, artifacts) {
   for (const artifact of Array.isArray(artifacts) ? artifacts : []) {
     if (!artifact || typeof artifact !== "object" || typeof artifact.path !== "string") {
       continue;
@@ -764,6 +764,9 @@ function emitArtifactEvents(workflow, step, artifacts, relations) {
       tool: step.tool,
     });
   }
+}
+
+function emitConsumedArtifactEvents(workflow, step, relations) {
   for (const relation of Array.isArray(relations) ? relations : []) {
     emitEvent("artifact.consumed", {
       from_step: relation.from || null,
@@ -1253,6 +1256,7 @@ async function runToolWorkflow({
       stepId: step.id,
       tool: step.tool,
     });
+    emitConsumedArtifactEvents(workflow, step, resolvedStep.relations);
 
     const args = (
       ["fetch", "patch", "build", "inspect", "logs", "exec"].includes(toolCommand)
@@ -1366,7 +1370,7 @@ async function runToolWorkflow({
       resolvedInputs: execution && execution.resolved ? execution.resolved : null,
       reuseState: "rerun",
     }));
-    emitArtifactEvents(workflow, step, updatedStep.artifacts, resolvedStep.relations);
+    emitProducedArtifactEvents(workflow, step, updatedStep.artifacts);
     emitRuntimeEventsFromPayload(workflow, step, toolPayload);
     emitEvent(status === "success" ? "step.completed" : status === "stopped" ? "step.stopped" : "step.failed", {
       exit_code: exitCode,

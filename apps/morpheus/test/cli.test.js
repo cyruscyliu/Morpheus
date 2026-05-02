@@ -1140,6 +1140,23 @@ test("workflow run --from-step resolves templated prior-step args for reuse vali
     && entry.step_id === "patch_b"
     && entry.data.artifact_path === "source-dir"
   ), true);
+  const allEvents = fs.readFileSync(eventsPath, "utf8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  const consumedIndex = allEvents.findIndex((entry) =>
+    entry.event === "artifact.consumed"
+    && entry.step_id === "patch_b"
+    && entry.data
+    && entry.data.from_step === "fetch_a",
+  );
+  const spawnedIndex = allEvents.findIndex((entry) =>
+    entry.event === "step.process.spawned"
+    && entry.step_id === "patch_b",
+  );
+  assert.notEqual(consumedIndex, -1);
+  assert.notEqual(spawnedIndex, -1);
+  assert.equal(consumedIndex < spawnedIndex, true);
 
   const rerun = run(["--json", "workflow", "run", "--name", "inspect-template-pair", "--from-step", "patch_b"], {
     cwd: projectRoot,

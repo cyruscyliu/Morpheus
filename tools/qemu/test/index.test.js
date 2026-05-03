@@ -16,6 +16,11 @@ function run(args, options = {}) {
   });
 }
 
+function parseLastJsonLine(text) {
+  const lines = String(text || '').trim().split(/\r?\n/).filter(Boolean);
+  return JSON.parse(lines[lines.length - 1]);
+}
+
 async function waitForFile(filePath, timeoutMs = 2000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -30,7 +35,7 @@ async function waitForFile(filePath, timeoutMs = 2000) {
 test('help supports json', () => {
   const result = run(['--json', '--help']);
   assert.equal(result.status, 0);
-  const payload = JSON.parse(result.stdout.trim());
+  const payload = parseLastJsonLine(result.stdout);
   assert.equal(payload.command, 'help');
 });
 
@@ -53,7 +58,7 @@ test('inspect reports executable metadata', () => {
 
   const result = run(['--json', 'inspect', '--path', executable]);
   assert.equal(result.status, 0, result.stdout || result.stderr);
-  const payload = JSON.parse(result.stdout.trim());
+  const payload = parseLastJsonLine(result.stdout);
   assert.equal(payload.status, 'success');
   assert.equal(payload.details.artifact.path, 'qemu-system-aarch64');
 
@@ -104,7 +109,7 @@ test('build produces an installable executable', () => {
     'aarch64-softmmu',
   ]);
   assert.equal(result.status, 0, result.stdout || result.stderr);
-  const payload = JSON.parse(result.stdout.trim());
+  const payload = parseLastJsonLine(result.stdout);
   assert.equal(payload.status, 'success');
   assert.equal(fs.existsSync(path.join(installDir, 'bin', 'qemu-system-aarch64')), true);
 
@@ -167,7 +172,7 @@ test('build can fetch and unpack a QEMU release archive', () => {
     'aarch64-softmmu',
   ]);
   assert.equal(result.status, 0, result.stdout || result.stderr);
-  const payload = JSON.parse(result.stdout.trim());
+  const payload = parseLastJsonLine(result.stdout);
   assert.equal(payload.status, 'success');
   assert.equal(payload.details.fetched_source, true);
   assert.equal(fs.existsSync(path.join(source, 'configure')), true);
@@ -222,7 +227,7 @@ test('run launches a detached local QEMU process and writes a manifest', async (
     '--detach',
   ]);
   assert.equal(result.status, 0, result.stdout || result.stderr);
-  const payload = JSON.parse(result.stdout.trim());
+  const payload = parseLastJsonLine(result.stdout);
   assert.equal(payload.status, 'success');
   assert.equal(payload.command, 'run');
   assert.equal(payload.details.run_dir, runDir);
@@ -399,6 +404,73 @@ test('build restages source after patch state changes', () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+test('build restages source after nested source edits without patch state changes', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qemu-tool-build-nested-restage-'));
+  const source = path.join(root, 'src');
+  const buildDir = path.join(root, 'build');
+  const installDir = path.join(root, 'install');
+  fs.mkdirSync(path.join(source, 'target'), { recursive: true });
+  fs.writeFileSync(
+    path.join(source, 'configure'),
+    [
+      '#!/usr/bin/env sh',
+      'set -eu',
+      "prefix=''",
+      'for arg in "$@"; do',
+      '  case "$arg" in',
+      '    --prefix=*) prefix="${arg#--prefix=}" ;;',
+      '  esac',
+      'done',
+      'cat > Makefile <<EOF',
+      'all:',
+      "\t@mkdir -p build-out",
+      "\t@cp ../source/target/trace.txt build-out/qemu-system-aarch64",
+      "\t@chmod +x build-out/qemu-system-aarch64",
+      'install:',
+      '\t@mkdir -p ${prefix}/bin',
+      '\t@cp build-out/qemu-system-aarch64 ${prefix}/bin/qemu-system-aarch64',
+      'EOF',
+      '',
+    ].join('\n'),
+    { mode: 0o755 },
+  );
+  fs.writeFileSync(path.join(source, 'target', 'trace.txt'), '#!/usr/bin/env sh\necho first\n', { mode: 0o755 });
+
+  const firstBuild = run([
+    '--json',
+    'build',
+    '--source',
+    source,
+    '--build-dir',
+    buildDir,
+    '--install-dir',
+    installDir,
+    '--target-list',
+    'aarch64-softmmu',
+  ]);
+  assert.equal(firstBuild.status, 0, firstBuild.stdout || firstBuild.stderr);
+  assert.equal(spawnSync(path.join(installDir, 'bin', 'qemu-system-aarch64'), { encoding: 'utf8' }).stdout.trim(), 'first');
+
+  fs.writeFileSync(path.join(source, 'target', 'trace.txt'), '#!/usr/bin/env sh\necho second\n', { mode: 0o755 });
+
+  const secondBuild = run([
+    '--json',
+    'build',
+    '--source',
+    source,
+    '--build-dir',
+    buildDir,
+    '--install-dir',
+    installDir,
+    '--target-list',
+    'aarch64-softmmu',
+  ]);
+  assert.equal(secondBuild.status, 0, secondBuild.stdout || secondBuild.stderr);
+  assert.equal(spawnSync(path.join(installDir, 'bin', 'qemu-system-aarch64'), { encoding: 'utf8' }).stdout.trim(), 'second');
+
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
 test('run defaults to tmp/qemu-run when run-dir is omitted', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qemu-tool-default-run-'));
   const executable = path.join(root, 'qemu-system-aarch64');
@@ -438,7 +510,7 @@ test('run defaults to tmp/qemu-run when run-dir is omitted', async () => {
     { cwd: root },
   );
   assert.equal(result.status, 0, result.stdout || result.stderr);
-  const payload = JSON.parse(result.stdout.trim());
+  const payload = parseLastJsonLine(result.stdout);
   assert.equal(payload.details.run_dir, runDir);
 
   await waitForFile(path.join(runDir, 'manifest.json'));

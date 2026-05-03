@@ -63,6 +63,7 @@ test('run manages local sel4 state', async () => {
       '  exit 0',
       'fi',
       'echo "qemu launch: $*"',
+      'echo "inject virq: ${MORPHEUS_QEMU_INJECT_VIRQ:-unset} period: ${MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS:-unset}"',
       'exit 0',
       '',
     ].join('\n'),
@@ -111,6 +112,10 @@ test('run manages local sel4 state', async () => {
     '--initrd',
     initrd,
     '--detach',
+    '--env',
+    'MORPHEUS_QEMU_INJECT_VIRQ=42',
+    '--env',
+    'MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS=1000',
     '--qemu-arg',
     '-machine',
     '--qemu-arg',
@@ -133,6 +138,8 @@ test('run manages local sel4 state', async () => {
     ['starting', 'running', 'success'].includes(inspectPayload.details.manifest.status),
     true,
   );
+  assert.equal(inspectPayload.details.manifest.prerequisites.env.MORPHEUS_QEMU_INJECT_VIRQ, '42');
+  assert.equal(inspectPayload.details.manifest.prerequisites.env.MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS, '1000');
 
   const logs = run(['--json', 'logs', '--state-dir', stateDir], {
     env: {
@@ -141,6 +148,7 @@ test('run manages local sel4 state', async () => {
   });
   assert.equal(logs.status, 0, logs.stdout || logs.stderr);
   assert.match(logs.stdout, /qemu launch/);
+  assert.match(logs.stdout, /inject virq: 42 period: 1000/);
 
   const stop = run(['--json', 'stop', '--state-dir', stateDir], {
     env: {
@@ -256,6 +264,7 @@ test('run defaults state under workspace tmp when morpheus.yaml is present', () 
       '  exit 0',
       'fi',
       'echo "qemu launch: $*"',
+      'echo "inject virq: ${MORPHEUS_QEMU_INJECT_VIRQ:-unset} period: ${MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS:-unset}"',
       'exit 0',
       '',
     ].join('\n'),

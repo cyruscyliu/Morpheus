@@ -517,6 +517,10 @@ workflows:
           - "{{steps.buildroot_build.artifacts.Image.location}}"
           - --initrd
           - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.location}}"
+          - --env
+          - MORPHEUS_QEMU_INJECT_VIRQ=42
+          - --env
+          - MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS=1000
           - --qemu-arg
           - --trace
           - --qemu-arg
@@ -533,6 +537,14 @@ workflows:
           - --trace
           - --qemu-arg
           - enable=arm_mmio_el2_from_el1_read_return
+          - --qemu-arg
+          - --trace
+          - --qemu-arg
+          - enable=gicv3_inject_virq
+          - --qemu-arg
+          - --trace
+          - --qemu-arg
+          - enable=gicv3_inject_virq_skipped
           - --detach
   local-buildroot-qemu-runtime:
     category: run

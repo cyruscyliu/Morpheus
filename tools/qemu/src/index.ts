@@ -228,6 +228,46 @@ function ensureSourceTree(source: string) {
   return configureScript;
 }
 
+function fingerprintSourceTree(source: string) {
+  const hash = crypto.createHash('sha256');
+  const stack = [''];
+
+  while (stack.length > 0) {
+    const relativeDir = stack.pop() as string;
+    const absoluteDir = path.join(source, relativeDir);
+    const entries = fs.readdirSync(absoluteDir, { withFileTypes: true })
+      .filter((entry) => !entry.name.startsWith('.morpheus-'))
+      .sort((left, right) => left.name.localeCompare(right.name));
+
+    for (const entry of entries) {
+      const relativePath = path.join(relativeDir, entry.name);
+      const absolutePath = path.join(source, relativePath);
+      const stats = fs.lstatSync(absolutePath);
+
+      hash.update(relativePath);
+      hash.update('\0');
+      hash.update(entry.isDirectory() ? 'dir' : entry.isSymbolicLink() ? 'symlink' : 'file');
+      hash.update('\0');
+      hash.update(String(stats.size));
+      hash.update('\0');
+      hash.update(String(stats.mtimeMs));
+      hash.update('\0');
+
+      if (entry.isDirectory()) {
+        stack.push(relativePath);
+        continue;
+      }
+
+      if (entry.isSymbolicLink()) {
+        hash.update(fs.readlinkSync(absolutePath));
+        hash.update('\0');
+      }
+    }
+  }
+
+  return hash.digest('hex');
+}
+
 function stageSourceTree(source: string, stageDir: string) {
   if (!fs.existsSync(source)) {
     throw new CliError('missing_source', `Missing QEMU source tree: ${source}`);
@@ -238,7 +278,7 @@ function stageSourceTree(source: string, stageDir: string) {
   const stampPath = path.join(stageDir, '.morpheus-source-state.json');
   const nextState = JSON.stringify({
     source,
-    sourceMtimeMs: fs.statSync(source).mtimeMs,
+    sourceFingerprint: fingerprintSourceTree(source),
     configureMtimeMs: fs.existsSync(configurePath) ? fs.statSync(configurePath).mtimeMs : null,
     versionMtimeMs: fs.existsSync(versionPath) ? fs.statSync(versionPath).mtimeMs : null,
     patchState: fs.existsSync(sourcePatchStatePath) ? fs.readFileSync(sourcePatchStatePath, 'utf8') : null,

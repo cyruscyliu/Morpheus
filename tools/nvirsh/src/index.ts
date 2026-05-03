@@ -30,6 +30,18 @@ function emitText(value: string) {
   fs.writeSync(1, `${value}\n`);
 }
 
+function parseKeyValues(values: string[]) {
+  const out: Record<string, string> = {};
+  for (const item of values) {
+    const eq = item.indexOf('=');
+    if (eq <= 0) {
+      throw new CliError('invalid_env', `Expected KEY=VALUE but received: ${item}`);
+    }
+    out[item.slice(0, eq)] = item.slice(eq + 1);
+  }
+  return out;
+}
+
 function readJson(filePath: string) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
@@ -140,7 +152,7 @@ function resolvePathValue(value: string | null | undefined) {
 }
 
 function parseArgv(argv: string[]) {
-  const repeatable = new Set(['qemu-arg']);
+  const repeatable = new Set(['qemu-arg', 'env']);
   const booleanFlags = new Set(['json', 'help', 'detach', 'follow', 'force']);
   const flags: Record<string, unknown> = {};
   const positionals: string[] = [];
@@ -504,6 +516,7 @@ function validateSel4Prerequisites(flags: Record<string, unknown>) {
     runtimeContract,
     board: String(flags.board || 'qemu_arm_virt'),
     qemuArgs: Array.isArray(flags['qemu-arg']) ? [...(flags['qemu-arg'] as string[])] : [],
+    env: parseKeyValues(Array.isArray(flags.env) ? (flags.env as string[]) : []),
     append: String(flags.append || ''),
     checks,
   };
@@ -652,6 +665,9 @@ function runCommandForManifest(manifest: Record<string, any>, flags: Record<stri
   }
 
   const append = String(flags.append || manifest.prerequisites?.append || '');
+  const env = Array.isArray(flags.env)
+    ? parseKeyValues(flags.env as string[])
+    : { ...((manifest.prerequisites?.env as Record<string, string> | undefined) || {}) };
   const provider = manifest.runtime?.provider || null;
   let command;
   if (!(provider && provider.tool === 'libvmm')) {
@@ -680,6 +696,7 @@ function runCommandForManifest(manifest: Record<string, any>, flags: Record<stri
     kernel,
     initrd,
     append,
+    env,
     qemuArgs: runtimeArgs,
     command,
     runner: provider && provider.tool === 'libvmm' ? 'libvmm-runner.js' : 'runner.js',
@@ -701,6 +718,10 @@ async function runLaunch(flags: Record<string, unknown>): Promise<any> {
   const nextManifest = runCommandForManifest(manifest, flags);
   const runnerName = nextManifest.runtime?.runner || 'runner.js';
   const detach = Boolean(flags.detach);
+  const runtimeEnv = {
+    ...process.env,
+    ...((nextManifest.runtime?.env as Record<string, string> | undefined) || {}),
+  };
   if (flags.json && !detach) {
     throw new CliError('incompatible_flags', 'nvirsh run --json requires --detach');
   }
@@ -711,6 +732,7 @@ async function runLaunch(flags: Record<string, unknown>): Promise<any> {
       detached: true,
       stdio: 'ignore',
       cwd: stateDir(flags),
+      env: runtimeEnv,
     });
     child.unref();
 
@@ -775,7 +797,7 @@ async function runLaunch(flags: Record<string, unknown>): Promise<any> {
     stdio: 'inherit',
     cwd: stateDir(flags),
     env: {
-      ...process.env,
+      ...runtimeEnv,
       NVIRSH_ATTACH: '1',
     },
   });

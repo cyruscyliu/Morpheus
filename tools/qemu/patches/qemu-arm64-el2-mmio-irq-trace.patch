@@ -1,0 +1,236 @@
+--- a/include/hw/intc/arm_gicv3_common.h	2024-09-19 23:54:01.000000000 +0200
++++ b/include/hw/intc/arm_gicv3_common.h	2026-05-03 10:40:03.249647122 +0200
+@@ -26,6 +26,7 @@
+ 
+ #include "hw/sysbus.h"
+ #include "hw/intc/arm_gic_common.h"
++#include "qemu/timer.h"
+ #include "qom/object.h"
+ 
+ /*
+@@ -192,6 +193,11 @@
+     uint64_t ich_hcr_el2;
+     uint64_t ich_lr_el2[GICV3_LR_MAX];
+     uint64_t ich_vmcr_el2;
++    QEMUTimer *inject_timer;
++    uint32_t inject_vintid;
++    uint32_t inject_period_ms;
++    int inject_lr;
++    bool inject_group1ns;
+ 
+     /* Properties of the CPU interface. These are initialized from
+      * the settings in the CPU proper.
+--- a/hw/intc/arm_gicv3_common.c	2024-09-19 23:54:00.000000000 +0200
++++ b/hw/intc/arm_gicv3_common.c	2026-05-03 10:40:29.317256108 +0200
+@@ -447,6 +447,16 @@
+ static void arm_gicv3_finalize(Object *obj)
+ {
+     GICv3State *s = ARM_GICV3_COMMON(obj);
++    int i;
++
++    if (s->cpu) {
++        for (i = 0; i < s->num_cpu; i++) {
++            if (s->cpu[i].inject_timer) {
++                timer_free(s->cpu[i].inject_timer);
++            }
++        }
++        g_free(s->cpu);
++    }
+ 
+     g_free(s->redist_region_count);
+ }
+--- a/hw/intc/arm_gicv3_cpuif.c	2024-09-19 23:54:00.000000000 +0200
++++ b/hw/intc/arm_gicv3_cpuif.c	2026-05-03 10:42:12.291703595 +0200
+@@ -29,6 +29,10 @@
+  * the architecturally maximum possible list register index (which is 15)
+  */
+ #define HPPVI_INDEX_VLPI 16
++#define MORPHEUS_QEMU_INJECT_VIRQ_ENV "MORPHEUS_QEMU_INJECT_VIRQ"
++#define MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS_ENV "MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS"
++#define MORPHEUS_QEMU_INJECT_VIRQ_DEFAULT_PERIOD_MS 1000
++#define MORPHEUS_QEMU_INJECT_VIRQ_DEFAULT_PRIO 0x40
+ 
+ static GICv3CPUState *icc_cs_from_env(CPUARMState *env)
+ {
+@@ -80,6 +84,42 @@
+     return extract64(lr, ICH_LR_EL2_STATE_SHIFT, ICH_LR_EL2_STATE_LENGTH);
+ }
+ 
++static uint32_t morpheus_qemu_inject_vintid(void)
++{
++    const char *value = g_getenv(MORPHEUS_QEMU_INJECT_VIRQ_ENV);
++    char *end = NULL;
++    unsigned long long vintid;
++
++    if (!value || !*value) {
++        return 0;
++    }
++
++    vintid = g_ascii_strtoull(value, &end, 0);
++    if (end == value || *end != '\0' || vintid > GICV3_MAXIRQ) {
++        return 0;
++    }
++
++    return vintid;
++}
++
++static uint32_t morpheus_qemu_inject_period_ms(void)
++{
++    const char *value = g_getenv(MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS_ENV);
++    char *end = NULL;
++    unsigned long long period_ms;
++
++    if (!value || !*value) {
++        return MORPHEUS_QEMU_INJECT_VIRQ_DEFAULT_PERIOD_MS;
++    }
++
++    period_ms = g_ascii_strtoull(value, &end, 0);
++    if (end == value || *end != '\0' || period_ms == 0 || period_ms > INT32_MAX) {
++        return MORPHEUS_QEMU_INJECT_VIRQ_DEFAULT_PERIOD_MS;
++    }
++
++    return period_ms;
++}
++
+ static bool icv_access(CPUARMState *env, int hcr_flags)
+ {
+     /* Return true if this ICC_ register access should really be
+@@ -530,6 +570,87 @@
+     qemu_set_irq(cpu->gicv3_maintenance_interrupt, maintlevel);
+ }
+ 
++static int gicv3_inject_virq_lr_index(GICv3CPUState *cs)
++{
++    int i;
++
++    if (cs->inject_lr >= 0 && cs->inject_lr < cs->num_list_regs) {
++        uint64_t lr = cs->ich_lr_el2[cs->inject_lr];
++
++        if ((lr & ICH_LR_EL2_STATE_MASK) == 0 &&
++            ((lr & ICH_LR_EL2_HW) != 0 || (lr & ICH_LR_EL2_EOI) == 0)) {
++            return cs->inject_lr;
++        }
++        return -1;
++    }
++
++    for (i = 0; i < cs->num_list_regs; i++) {
++        uint64_t lr = cs->ich_lr_el2[i];
++
++        if ((lr & ICH_LR_EL2_STATE_MASK) == 0 &&
++            ((lr & ICH_LR_EL2_HW) != 0 || (lr & ICH_LR_EL2_EOI) == 0)) {
++            return i;
++        }
++    }
++
++    return -1;
++}
++
++static bool gicv3_inject_virq_lr(GICv3CPUState *cs, int lr_idx,
++                                 uint32_t vintid, uint8_t prio,
++                                 bool group1ns)
++{
++    uint64_t lr = 0;
++
++    if (lr_idx < 0 || lr_idx >= cs->num_list_regs) {
++        return false;
++    }
++
++    cs->ich_hcr_el2 |= ICH_HCR_EL2_EN;
++
++    lr = deposit64(lr, ICH_LR_EL2_VINTID_SHIFT, ICH_LR_EL2_VINTID_LENGTH, vintid);
++    lr = deposit64(lr, ICH_LR_EL2_PRIORITY_SHIFT, ICH_LR_EL2_PRIORITY_LENGTH, prio);
++    if (group1ns) {
++        lr |= ICH_LR_EL2_GROUP;
++    }
++    lr = deposit64(lr, ICH_LR_EL2_STATE_SHIFT, ICH_LR_EL2_STATE_LENGTH,
++                   ICH_LR_EL2_STATE_PENDING);
++
++    cs->ich_lr_el2[lr_idx] = lr;
++    gicv3_cpuif_virt_update(cs);
++    trace_gicv3_inject_virq(gicv3_redist_affid(cs), vintid, lr_idx, prio,
++                            group1ns);
++    return true;
++}
++
++static void gicv3_inject_virq_timer_cb(void *opaque)
++{
++    GICv3CPUState *cs = opaque;
++    int lr_idx = -1;
++    uint64_t existing_lr = 0;
++
++    if (!cs->inject_timer || !cs->inject_vintid || !cs->inject_period_ms) {
++        return;
++    }
++
++    if (cs->num_list_regs == 0) {
++        trace_gicv3_inject_virq_skipped(gicv3_redist_affid(cs), cs->inject_vintid,
++                                        -1, 0);
++        timer_mod(cs->inject_timer,
++                  qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + cs->inject_period_ms);
++        return;
++    }
++
++    lr_idx = gicv3_inject_virq_lr_index(cs);
++    if (lr_idx < 0) {
++        if (cs->inject_lr >= 0 && cs->inject_lr < cs->num_list_regs) {
++            existing_lr = cs->ich_lr_el2[cs->inject_lr];
++        }
++        trace_gicv3_inject_virq_skipped(gicv3_redist_affid(cs), cs->inject_vintid,
++                                        cs->inject_lr, existing_lr);
++    } else {
++        gicv3_inject_virq_lr(cs, lr_idx, cs->inject_vintid,
++                             MORPHEUS_QEMU_INJECT_VIRQ_DEFAULT_PRIO,
++                             cs->inject_group1ns);
++    }
++
++    timer_mod(cs->inject_timer,
++              qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + cs->inject_period_ms);
++}
++
+ static uint64_t icv_ap_read(CPUARMState *env, const ARMCPRegInfo *ri)
+ {
+     GICv3CPUState *cs = icc_cs_from_env(env);
+@@ -2235,6 +2356,11 @@
+     cs->ich_vmcr_el2 = ICH_VMCR_EL2_VFIQEN |
+         ((icv_min_vbpr(cs) + 1) << ICH_VMCR_EL2_VBPR1_SHIFT) |
+         (icv_min_vbpr(cs) << ICH_VMCR_EL2_VBPR0_SHIFT);
++
++    if (cs->inject_timer && cs->inject_vintid && cs->inject_period_ms) {
++        timer_mod(cs->inject_timer,
++                  qemu_clock_get_ms(QEMU_CLOCK_REALTIME) + cs->inject_period_ms);
++    }
+ }
+ 
+ static const ARMCPRegInfo gicv3_cpuif_reginfo[] = {
+@@ -2854,6 +2980,20 @@
+         if (cs->prebits == 8) {
+             cs->prebits--;
+         }
++
++        cs->inject_vintid = morpheus_qemu_inject_vintid();
++        cs->inject_period_ms = cs->inject_vintid ? morpheus_qemu_inject_period_ms() : 0;
++        cs->inject_lr = -1;
++        cs->inject_group1ns = true;
++        if (cs->inject_period_ms) {
++            if (!cs->inject_timer) {
++                cs->inject_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL,
++                                                gicv3_inject_virq_timer_cb, cs);
++            }
++            timer_mod(cs->inject_timer,
++                      qemu_clock_get_ms(QEMU_CLOCK_REALTIME) + cs->inject_period_ms);
++        }
++
+         /*
+          * Check that CPU code defining pribits didn't violate
+          * architectural constraints our implementation relies on.
+--- a/hw/intc/trace-events	2024-09-19 23:54:01.000000000 +0200
++++ b/hw/intc/trace-events	2026-05-03 10:40:17.973426372 +0200
+@@ -155,6 +155,8 @@
+ gicv3_cpuif_virt_update(uint32_t cpuid, int idx, int hppvlpi, int grp, int prio) "GICv3 CPU i/f 0x%x virt HPPI update LR index %d HPPVLPI %d grp %d prio %d"
+ gicv3_cpuif_virt_set_irqs(uint32_t cpuid, int fiqlevel, int irqlevel) "GICv3 CPU i/f 0x%x virt HPPI update: setting FIQ %d IRQ %d"
+ gicv3_cpuif_virt_set_maint_irq(uint32_t cpuid, int maintlevel) "GICv3 CPU i/f 0x%x virt HPPI update: setting maintenance-irq %d"
++gicv3_inject_virq(uint32_t cpuid, int vintid, int lr, int prio, int group1ns) "GICv3 CPU i/f 0x%x injected vIRQ %d via LR %d prio %d group1ns %d"
++gicv3_inject_virq_skipped(uint32_t cpuid, int vintid, int lr, uint64_t lr_value) "GICv3 CPU i/f 0x%x skipped vIRQ %d via LR %d existing 0x%" PRIx64
+ 
+ # arm_gicv3_dist.c
+ gicv3_dist_read(uint64_t offset, uint64_t data, unsigned size, bool secure) "GICv3 distributor read: offset 0x%" PRIx64 " data 0x%" PRIx64 " size %u secure %d"

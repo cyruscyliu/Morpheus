@@ -548,6 +548,22 @@ function stopWorkflowStepTool(step) {
   return result;
 }
 
+function stopWorkflowStepToolProcesses(step) {
+  const manifest = stepToolManifest(step);
+  if (!manifest) {
+    return;
+  }
+  for (const pid of [
+    Number(manifest.pid || 0),
+    Number(manifest.launcherPid || 0),
+    Number(manifest.runnerPid || 0),
+  ]) {
+    if (pid > 0) {
+      stopPid(pid);
+    }
+  }
+}
+
 function stopWorkflowRun(workspaceRoot, id) {
   const found = findWorkflowRun(workspaceRoot, id);
   const workflow = readJson(found.manifestPath);
@@ -556,11 +572,14 @@ function stopWorkflowRun(workspaceRoot, id) {
   const runnerPid = Number(workflow.runnerPid || 0);
 
   for (const step of steps) {
-    if (!shouldStopWorkflowStepTool(step)) {
+    if (!step || !step.tool || !step.stepDir || !stepToolManifest(step)) {
       continue;
     }
     try {
       stopWorkflowStepTool(step);
+    } catch {}
+    try {
+      stopWorkflowStepToolProcesses(step);
     } catch {}
   }
 
@@ -618,11 +637,24 @@ function removeWorkflowRun(workspaceRoot, id) {
   if (workflow.status !== "stopped") {
     throw new Error("workflow remove requires a prior successful workflow stop");
   }
-  if (Number(workflow.currentChildPid || 0) > 0 || Number(workflow.runnerPid || 0) > 0) {
-    throw new Error("workflow remove requires the workflow to be fully stopped");
+  for (const step of steps) {
+    if (!step || !step.tool || !step.stepDir || !stepToolManifest(step)) {
+      continue;
+    }
+    try {
+      stopWorkflowStepTool(step);
+    } catch {}
+    try {
+      stopWorkflowStepToolProcesses(step);
+    } catch {}
   }
-  if (steps.some((step) => step && (step.status === "running" || step.status === "created"))) {
-    throw new Error("workflow remove requires all workflow steps to be stopped");
+  const currentChildPid = Number(workflow.currentChildPid || 0);
+  const runnerPid = Number(workflow.runnerPid || 0);
+  if (currentChildPid > 0) {
+    stopPid(currentChildPid);
+  }
+  if (runnerPid > 0 && runnerPid !== process.pid) {
+    stopPid(runnerPid);
   }
   fs.rmSync(found.runDir, { recursive: true, force: true });
   return {

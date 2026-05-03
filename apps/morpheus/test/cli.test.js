@@ -33,6 +33,18 @@ function isolatedEnv(extra = {}) {
   };
 }
 
+function pidState(pid) {
+  const result = spawnSync("ps", ["-o", "stat=", "-p", String(pid)], {
+    encoding: "utf8",
+  });
+  return result.status === 0 ? result.stdout.trim() : null;
+}
+
+function assertPidInactive(pid) {
+  const state = pidState(pid);
+  assert.ok(!state || state.startsWith("Z"), `expected pid ${pid} to be inactive, got ${state}`);
+}
+
 function makeFakeSshEnv(remoteRoot) {
   const fakeBin = path.join(remoteRoot, "fake-ssh-bin");
   fs.mkdirSync(fakeBin, { recursive: true });
@@ -426,6 +438,73 @@ test("workflow stop invokes tool stop for detached managed runs whose step alrea
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 
+test("workflow stop reaps lingering managed tool processes even when the tool manifest already says stopped", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stop-stopped-tool-"));
+  const runId = "wf-stop-stopped-tool-test";
+  const runDir = path.join(workspaceRoot, "runs", runId);
+  const stepDir = path.join(runDir, "steps", "01-run");
+  const toolRunDir = stepDir;
+  fs.mkdirSync(toolRunDir, { recursive: true });
+  fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
+
+  const sleeper = spawn("sleep", ["30"], { stdio: "ignore" });
+  fs.writeFileSync(path.join(toolRunDir, "stdout.log"), "", "utf8");
+  fs.writeFileSync(path.join(toolRunDir, "manifest.json"), `${JSON.stringify({
+    id: "nvirsh-run",
+    tool: "nvirsh",
+    status: "stopped",
+    stateDir: toolRunDir,
+    logFile: path.join(toolRunDir, "stdout.log"),
+    manifest: path.join(toolRunDir, "manifest.json"),
+    pid: sleeper.pid,
+    runtime: {
+      providerRun: null,
+    },
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(stepDir, "step.json"), `${JSON.stringify({
+    id: "01-run",
+    name: "run",
+    tool: "nvirsh",
+    status: "success",
+    stepDir,
+    toolRunDir,
+    logFile: path.join(stepDir, "stdout.log"),
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
+    id: runId,
+    workflow: "tool-nvirsh",
+    category: "run",
+    status: "stopped",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    updatedAt: "2026-04-26T12:00:00.000Z",
+    workspace: workspaceRoot,
+    runDir,
+    currentStepId: null,
+    currentChildPid: null,
+    runnerPid: null,
+    steps: [{ id: "01-run", name: "run", stepDir, status: "success" }],
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
+    id: runId,
+    kind: "workflow",
+    category: "run",
+    status: "stopped",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    completedAt: "2026-04-26T12:01:00.000Z",
+    summary: { workflow: "tool-nvirsh", category: "run" },
+  }, null, 2)}\n`);
+
+  assert.doesNotThrow(() => process.kill(sleeper.pid, 0));
+
+  const result = run(["--json", "workflow", "stop", "--id", runId, "--workspace", workspaceRoot], {
+    cwd: workspaceRoot,
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assertPidInactive(sleeper.pid);
+
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
 test("workflow remove requires a prior stop and removes stopped workflow state", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-remove-"));
   const runId = "wf-remove-test";
@@ -479,6 +558,74 @@ test("workflow remove requires a prior stop and removes stopped workflow state",
   });
   assert.equal(removed.status, 0, removed.stderr || removed.stdout);
   assert.equal(fs.existsSync(runDir), false);
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
+test("workflow remove stops lingering managed tool processes before deleting the run", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-remove-stop-tool-"));
+  const runId = "wf-remove-stop-tool-test";
+  const runDir = path.join(workspaceRoot, "runs", runId);
+  const stepDir = path.join(runDir, "steps", "01-run");
+  const toolRunDir = stepDir;
+  fs.mkdirSync(toolRunDir, { recursive: true });
+  fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
+
+  const sleeper = spawn("sleep", ["30"], { stdio: "ignore" });
+  fs.writeFileSync(path.join(toolRunDir, "stdout.log"), "", "utf8");
+  fs.writeFileSync(path.join(toolRunDir, "manifest.json"), `${JSON.stringify({
+    id: "nvirsh-run",
+    tool: "nvirsh",
+    status: "stopped",
+    stateDir: toolRunDir,
+    logFile: path.join(toolRunDir, "stdout.log"),
+    manifest: path.join(toolRunDir, "manifest.json"),
+    pid: sleeper.pid,
+    runtime: {
+      providerRun: null,
+    },
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(stepDir, "step.json"), `${JSON.stringify({
+    id: "01-run",
+    name: "run",
+    tool: "nvirsh",
+    status: "success",
+    stepDir,
+    toolRunDir,
+    logFile: path.join(stepDir, "stdout.log"),
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
+    id: runId,
+    workflow: "tool-nvirsh",
+    category: "run",
+    status: "stopped",
+    createdAt: "2026-04-29T08:00:00.000Z",
+    updatedAt: "2026-04-29T08:00:00.000Z",
+    workspace: workspaceRoot,
+    runDir,
+    currentStepId: null,
+    currentChildPid: null,
+    runnerPid: null,
+    steps: [{ id: "01-run", name: "run", stepDir, status: "success" }],
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
+    id: runId,
+    kind: "workflow",
+    category: "run",
+    status: "stopped",
+    createdAt: "2026-04-29T08:00:00.000Z",
+    completedAt: "2026-04-29T08:01:00.000Z",
+    summary: { workflow: "tool-nvirsh", category: "run" },
+  }, null, 2)}\n`);
+
+  assert.doesNotThrow(() => process.kill(sleeper.pid, 0));
+
+  const removed = run(["--json", "workflow", "remove", "--id", runId, "--workspace", workspaceRoot], {
+    cwd: workspaceRoot,
+  });
+  assert.equal(removed.status, 0, removed.stderr || removed.stdout);
+  assert.equal(fs.existsSync(runDir), false);
+  assertPidInactive(sleeper.pid);
+
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 

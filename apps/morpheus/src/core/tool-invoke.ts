@@ -879,7 +879,7 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
   if (effectivePaths.source) {
     args.push("--source", effectivePaths.source);
   }
-  if (buildVersion) {
+  if (buildVersion && (command !== "patch" || descriptor.name === "qemu")) {
     args.push("--build-version", buildVersion);
   }
   if (resolved["archive-url"]) {

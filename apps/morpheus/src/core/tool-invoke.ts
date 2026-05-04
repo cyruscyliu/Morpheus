@@ -882,8 +882,9 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
   if (buildVersion && (command !== "patch" || descriptor.name === "qemu")) {
     args.push("--build-version", buildVersion);
   }
-  if (resolved["archive-url"]) {
-    args.push("--archive-url", resolved["archive-url"]);
+  const archiveUrl = resolved["archive-url"] || resolved["microkit-archive-url"] || null;
+  if (archiveUrl) {
+    args.push("--archive-url", archiveUrl);
   }
   if (command === "patch") {
     args.push("--patch-dir", requireFlag(resolved, "patch-dir", "patch requires --patch-dir DIR"));
@@ -903,6 +904,7 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
     "defconfig",
     "qemu",
     "microkit-sdk",
+    "toolchain-version",
     "toolchain",
     "libvmm-dir",
     "runtime-contract",

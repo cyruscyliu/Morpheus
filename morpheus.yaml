@@ -8,7 +8,7 @@ remote:
 
 tools:
   buildroot:
-    mode: remote
+    mode: local
     sync-morpheus: true
     cli-contract: fetch,patch,build
     build-version: 2025.02.12
@@ -221,7 +221,7 @@ workflows:
         command: patch
         args:
           - --source
-          - "{{steps.microkit_sdk_fetch.artifacts.source-dir.location}}"
+          - "{{steps.microkit_sdk_fetch.artifacts.sdk-dir.location}}"
           - --patch-dir
           - "{{workspace.root}}/tools/microkit-sdk/patches"
       - id: microkit_sdk_build
@@ -229,7 +229,7 @@ workflows:
         command: build
         args:
           - --source
-          - "{{steps.microkit_sdk_patch.artifacts.source-dir.location}}"
+          - "{{steps.microkit_sdk_patch.artifacts.sdk-dir.location}}"
   build-libvmm:
     category: build
     steps:
@@ -333,7 +333,7 @@ workflows:
         command: patch
         args:
           - --source
-          - "{{steps.microkit_sdk_fetch.artifacts.source-dir.location}}"
+          - "{{steps.microkit_sdk_fetch.artifacts.sdk-dir.location}}"
           - --patch-dir
           - "{{workspace.root}}/tools/microkit-sdk/patches"
       - id: microkit_sdk_build
@@ -341,7 +341,7 @@ workflows:
         command: build
         args:
           - --source
-          - "{{steps.microkit_sdk_patch.artifacts.source-dir.location}}"
+          - "{{steps.microkit_sdk_patch.artifacts.sdk-dir.location}}"
       - id: libvmm_fetch
         tool: libvmm
         command: fetch
@@ -467,7 +467,7 @@ workflows:
         command: patch
         args:
           - --source
-          - "{{steps.microkit_sdk_fetch.artifacts.source-dir.location}}"
+          - "{{steps.microkit_sdk_fetch.artifacts.sdk-dir.location}}"
           - --patch-dir
           - "{{workspace.root}}/tools/microkit-sdk/patches"
       - id: microkit_sdk_build
@@ -475,7 +475,7 @@ workflows:
         command: build
         args:
           - --source
-          - "{{steps.microkit_sdk_patch.artifacts.source-dir.location}}"
+          - "{{steps.microkit_sdk_patch.artifacts.sdk-dir.location}}"
       - id: libvmm_fetch
         tool: libvmm
         command: fetch

@@ -323,14 +323,49 @@ function resolveDownloadsDir(flags: Record<string, unknown>, source: string) {
   return path.join(toolRootFromSource(source), 'downloads');
 }
 
+function resolveToolchainDir(flags: Record<string, unknown>, source: string) {
+  const explicit = resolveOptionalPath(flags, 'toolchain-dir');
+  if (explicit) {
+    return explicit;
+  }
+  const version = optionalStringFlag(flags, 'toolchain-version');
+  if (!version) {
+    return null;
+  }
+  return path.join(toolRootFromSource(source), 'deps', `arm-gnu-toolchain-${version}`);
+}
+
+function managedArtifacts(flags: Record<string, unknown>, source: string) {
+  const artifacts = [
+    {
+      path: 'sdk-dir',
+      location: source,
+    },
+    {
+      path: 'source-dir',
+      location: source,
+    },
+  ];
+  const toolchainDir = resolveToolchainDir(flags, source);
+  if (toolchainDir) {
+    artifacts.push({
+      path: 'toolchain-dir',
+      location: toolchainDir,
+    });
+  }
+  return artifacts;
+}
+
 async function buildDirectory(flags: Record<string, unknown>) {
   const source = requirePathFlag(flags, 'source');
   const microkitVersion = buildVersionFlag(flags);
-  const archiveUrl = optionalStringFlag(flags, 'archive-url');
+  const archiveUrl = optionalStringFlag(flags, 'archive-url')
+    || optionalStringFlag(flags, 'microkit-archive-url');
 
   if (fileExists(source)) {
     const inspected = inspectDirectory({ path: source });
     appendToolLog(source, 'build reused existing sdk directory');
+    const artifacts = managedArtifacts(flags, source);
     const logFile = writeBuildLog(
       source,
       'reused existing managed Microkit SDK directory',
@@ -351,6 +386,7 @@ async function buildDirectory(flags: Record<string, unknown>) {
         directory: inspected.details.directory,
         artifact: inspected.details.artifact,
         log_file: logFile,
+        artifacts,
       },
     };
   }
@@ -385,6 +421,7 @@ async function buildDirectory(flags: Record<string, unknown>) {
   }
   appendToolLog(source, `build archive=${archivePath}`);
   const inspected = inspectDirectory({ path: source });
+  const artifacts = managedArtifacts(flags, source);
   const logFile = writeBuildLog(
     source,
     'built managed Microkit SDK directory',
@@ -408,6 +445,7 @@ async function buildDirectory(flags: Record<string, unknown>) {
       directory: inspected.details.directory,
       artifact: inspected.details.artifact,
       log_file: logFile,
+      artifacts,
     },
   };
 }
@@ -437,6 +475,7 @@ async function patchDirectory(flags: Record<string, unknown>) {
   const patchLogFile = path.join(source, '.morpheus-patches.log');
   const state = readPatchState(source);
   if (state && state.fingerprint === fingerprint) {
+    const artifacts = managedArtifacts(flags, source);
     return {
       command: 'patch',
       status: 'success',
@@ -451,11 +490,13 @@ async function patchDirectory(flags: Record<string, unknown>) {
           applied: true,
           log_file: patchLogFile,
         },
+        artifacts,
       },
     };
   }
   applyPatches(source, patchDir, patchFiles, patchLogFile);
   appendToolLog(source, `patch patch_dir=${patchDir} patch_log=${patchLogFile}`);
+  const artifacts = managedArtifacts(flags, source);
   writePatchState(source, {
     appliedAt: new Date().toISOString(),
     dir: patchDir,
@@ -476,6 +517,7 @@ async function patchDirectory(flags: Record<string, unknown>) {
         applied: true,
         log_file: patchLogFile,
       },
+      artifacts,
     },
   };
 }

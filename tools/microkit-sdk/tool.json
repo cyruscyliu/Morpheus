@@ -11,6 +11,7 @@
       "archive-url": { "aliases": ["archive-url", "archiveUrl"] },
       "microkit-archive-url": { "aliases": ["microkit-archive-url", "microkitArchiveUrl"] },
       "microkit-dir": { "aliases": ["microkit-dir", "microkitDir"], "path": true },
+      "downloads-dir": { "aliases": ["downloads-dir", "downloadsDir"], "path": true },
       "patch-dir": { "aliases": ["patch-dir", "patchDir"], "path": true },
       "boards": { "aliases": ["boards"] },
       "configs": { "aliases": ["configs"] },
@@ -36,6 +37,20 @@
         },
         "toolchain-dir": {
           "pathTemplate": "tools/microkit-sdk/deps/arm-gnu-toolchain-{toolchainVersion}"
+        }
+      },
+      "commands": {
+        "fetch": {
+          "pathFlags": {
+            "source": "tools/microkit-sdk/builds/{buildDirKey}/install",
+            "downloads-dir": "tools/microkit-sdk/downloads"
+          }
+        },
+        "build": {
+          "pathFlags": {
+            "source": "tools/microkit-sdk/builds/{buildDirKey}/install",
+            "downloads-dir": "tools/microkit-sdk/downloads"
+          }
         }
       }
     }

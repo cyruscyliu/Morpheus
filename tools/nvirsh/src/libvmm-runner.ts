@@ -27,6 +27,18 @@ function requireValue(value: any, label: string) {
   return value;
 }
 
+function providerQemuArgs(runtime: Record<string, any>, prerequisites: Record<string, any>) {
+  if (Array.isArray(prerequisites.qemuArgs) && prerequisites.qemuArgs.length > 0) {
+    return prerequisites.qemuArgs.map((value: unknown) => String(value));
+  }
+  if (!Array.isArray(runtime.qemuArgs)) {
+    return [] as string[];
+  }
+  return runtime.qemuArgs
+    .map((value: unknown) => String(value))
+    .filter((value) => value !== '--trace' && value !== '-trace' && value !== '-nographic');
+}
+
 function toolRepoEntry(tool: string) {
   return path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..', tool, 'dist', 'index.js');
 }
@@ -161,6 +173,7 @@ async function main(argv: string[]) {
   const runtimeContract = requireValue(prerequisites.runtimeContract, 'prerequisites.runtimeContract');
   const kernel = requireValue(runtime.kernel, 'runtime.kernel');
   const initrd = requireValue(runtime.initrd, 'runtime.initrd');
+  const qemuArgs = providerQemuArgs(runtime, prerequisites);
 
   fs.mkdirSync(stateDir, { recursive: true });
   const log = fs.createWriteStream(logFile, { flags: 'a' });
@@ -195,7 +208,7 @@ async function main(argv: string[]) {
     qemu,
     '--toolchain-bin-dir',
     toolchainBin,
-    ...((Array.isArray(prerequisites.qemuArgs) ? prerequisites.qemuArgs : []).flatMap((value: unknown) => ['--qemu-arg', String(value)])),
+    ...(qemuArgs.flatMap((value: unknown) => ['--qemu-arg', String(value)])),
     ...(attach ? [] : ['--detach']),
   ];
 

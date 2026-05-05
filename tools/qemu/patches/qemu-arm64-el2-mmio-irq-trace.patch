@@ -234,3 +234,70 @@
  
  # arm_gicv3_dist.c
  gicv3_dist_read(uint64_t offset, uint64_t data, unsigned size, bool secure) "GICv3 distributor read: offset 0x%" PRIx64 " data 0x%" PRIx64 " size %u secure %d"
+--- a/target/arm/trace-events	2024-09-19 23:54:01.000000000 +0200
++++ b/target/arm/trace-events	2026-05-05 09:00:00.000000000 +0200
+@@ -8,6 +8,10 @@
+ arm_gt_ctl_write(int timer, uint64_t value) "gt_ctl_write: timer %d value 0x%" PRIx64
+ arm_gt_imask_toggle(int timer) "gt_ctl_write: timer %d IMASK toggle"
+ arm_gt_cntvoff_write(uint64_t value) "gt_cntvoff_write: value 0x%" PRIx64
+ arm_gt_update_irq(int timer, int irqstate) "gt_update_irq: timer %d irqstate %d"
++# Trap-path tracing for guest EL1 MMIO faults routed into EL2.
++# These fire before libvmm handles or rejects the access, which makes them
++# the right signal for telemetry aperture debugging.
++arm_mmio_el2_from_el1_read_request(uint64_t pc, uint64_t far, uint32_t esr) "EL1->EL2 MMIO read request pc=0x%" PRIx64 " far=0x%" PRIx64 " esr=0x%" PRIx32
++arm_mmio_el2_from_el1_write(uint64_t pc, uint64_t far, uint32_t esr, uint64_t value) "EL1->EL2 MMIO write pc=0x%" PRIx64 " far=0x%" PRIx64 " esr=0x%" PRIx32 " value=0x%" PRIx64
+ 
+ # kvm.c
+ kvm_arm_fixup_msi_route(uint64_t iova, uint64_t gpa) "MSI iova = 0x%"PRIx64" is translated into 0x%"PRIx64
+--- a/target/arm/helper.c	2024-09-19 23:54:00.000000000 +0200
++++ b/target/arm/helper.c	2026-05-05 09:00:00.000000000 +0200
+@@ -11096,6 +11096,34 @@
+ static bool syndrome_is_sync_extabt(uint32_t syndrome)
+ {
+@@
+     }
+ }
++
++static void trace_el1_to_el2_mmio_abort(CPUARMState *env)
++{
++    uint32_t syndrome = env->exception.syndrome;
++    uint32_t ec = syn_get_ec(syndrome);
++    uint64_t value = 0;
++
++    if (arm_current_el(env) != 1 || env->exception.target_el != 2) {
++        return;
++    }
++
++    if (ec != EC_DATAABORT && ec != EC_DATAABORT_SAME_EL) {
++        return;
++    }
++
++    if (syndrome & (1U << 6)) {
++        if (syndrome & ARM_EL_ISV) {
++            unsigned int srt = extract32(syndrome, 16, 5);
++
++            if (srt != 31) {
++                value = env->xregs[srt];
++            }
++        }
++        trace_arm_mmio_el2_from_el1_write(env->pc, env->exception.vaddress,
++                                          syndrome, value);
++    } else {
++        trace_arm_mmio_el2_from_el1_read_request(env->pc, env->exception.vaddress, syndrome);
++    }
++}
+ 
+ /* Handle exception entry to a target EL which is using AArch64 */
+ static void arm_cpu_do_interrupt_aarch64(CPUState *cs)
+@@ -11108,6 +11136,11 @@
+         aarch64_sve_change_el(env, cur_el, new_el, is_a64(env));
+     }
+ 
++    /*
++     * Emit the trap-path trace before EL2 software handles the access so the
++     * trace still exists when libvmm later rejects the MMIO operation.
++     */
++    trace_el1_to_el2_mmio_abort(env);
+     if (cur_el < new_el) {
+         /*
+          * Entry vector offset depends on whether the implemented EL

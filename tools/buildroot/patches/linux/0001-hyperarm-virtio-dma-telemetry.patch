@@ -1,0 +1,311 @@
+diff --git a/drivers/virtio/virtio_ring.c b/drivers/virtio/virtio_ring.c
+index ddab689..3859248 100644
+--- a/drivers/virtio/virtio_ring.c	2026-05-04 13:29:58.411228182 +0200
++++ b/drivers/virtio/virtio_ring.c	2026-05-04 13:37:09.800491185 +0200
+@@ -11,8 +11,10 @@
+ #include <linux/module.h>
+ #include <linux/hrtimer.h>
+ #include <linux/dma-mapping.h>
++#include <linux/dma_telemetry_aperture.h>
+ #include <linux/kmsan.h>
+ #include <linux/spinlock.h>
++#include <linux/string.h>
+ #include <xen/xen.h>
+ 
+ #ifdef DEBUG
+@@ -224,6 +226,11 @@
+ 
+ static struct vring_desc_extra *vring_alloc_desc_extra(unsigned int num);
+ static void vring_free(struct virtqueue *_vq);
++static int vring_mapping_error(const struct vring_virtqueue *vq,
++			       dma_addr_t addr,
++			       enum dma_data_direction direction,
++			       size_t size,
++			       const char *kind);
+ 
+ /*
+  * Helpers.
+@@ -293,6 +300,92 @@
+ 	return vring->use_map_api && (extra->addr != DMA_MAPPING_ERROR);
+ }
+ 
++/*
++ * Log DMA visibility and a small set of virtqueue progress events from
++ * virtio_ring.c, where both the sharing decisions and used-ring harvesting
++ * are centralized.
++ */
++static atomic_t hp_dma_trace_seq = ATOMIC_INIT(0);
++
++static bool hp_dma_trace_via_mmio(struct virtio_device *vdev)
++{
++	const char *bus_name;
++
++	if (!vdev->config || !vdev->config->set || !vdev->config->bus_name)
++		return false;
++
++	bus_name = vdev->config->bus_name(vdev);
++
++	return bus_name && !strcmp(bus_name, "virtio-mmio");
++}
++
++static void hp_dma_trace_publish(struct virtio_device *vdev, u32 opcode,
++				 enum dma_data_direction dir, size_t size,
++				 dma_addr_t addr)
++{
++	__le32 event;
++	__le32 addr_lo;
++	__le32 addr_hi;
++	u32 sequence;
++
++	if (!hp_dma_trace_via_mmio(vdev))
++		return;
++
++	/*
++	 * Publish the payload first and commit with HP_DMA_EVENT last so EL2
++	 * observers never decode a partially updated record.
++	 */
++	sequence = (u32)atomic_inc_return(&hp_dma_trace_seq) &
++		   (HP_DMA_EVENT_SEQUENCE_MASK >>
++		    HP_DMA_EVENT_SEQUENCE_SHIFT);
++	addr_lo = cpu_to_le32(hp_dma_addr_lo((u64)addr));
++	addr_hi = cpu_to_le32(hp_dma_addr_hi((u64)addr));
++	event = cpu_to_le32(HP_DMA_EVENT_ENCODE(opcode,
++						hp_dma_event_dir(dir),
++						size,
++						sequence));
++
++	vdev->config->set(vdev, HP_DMA_ADDR_LO_OFFSET, &addr_lo,
++			  sizeof(addr_lo));
++	vdev->config->set(vdev, HP_DMA_ADDR_HI_OFFSET, &addr_hi,
++			  sizeof(addr_hi));
++	vdev->config->set(vdev, HP_DMA_EVENT_OFFSET, &event,
++			  sizeof(event));
++}
++
++#define HP_DMA_OP_NAME(_op)						\
++	((_op) == HP_DMA_EVENT_OP_ALLOC_SUCCESS ? "alloc" :		\
++	 (_op) == HP_DMA_EVENT_OP_ALLOC_FAIL ? "alloc_fail" :		\
++	 (_op) == HP_DMA_EVENT_OP_FREE ? "free" :			\
++	 (_op) == HP_DMA_EVENT_OP_MAP ? "map" :				\
++	 (_op) == HP_DMA_EVENT_OP_MAP_FAIL ? "map_fail" :		\
++	 (_op) == HP_DMA_EVENT_OP_UNMAP ? "unmap" :			\
++	 (_op) == HP_DMA_EVENT_OP_VQ_POLL_HIT ? "vq_poll_hit" :	\
++	 (_op) == HP_DMA_EVENT_OP_VQ_POLL_MISS ? "vq_poll_miss" :	\
++	 (_op) == HP_DMA_EVENT_OP_VQ_GET_BUF ? "vq_get_buf" :		\
++	 (_op) == HP_DMA_EVENT_OP_VQ_GET_BUF_EMPTY ?			\
++	 "vq_get_buf_empty" : "unknown")
++
++#define HP_DMA_DIR_NAME(_dir)						\
++	((_dir) == HP_DMA_EVENT_DIR_BIDIRECTIONAL ? "bidirectional" :	\
++	 (_dir) == HP_DMA_EVENT_DIR_TO_DEVICE ? "to_device" :		\
++	 (_dir) == HP_DMA_EVENT_DIR_FROM_DEVICE ? "from_device" :	\
++	 (_dir) == HP_DMA_EVENT_DIR_NONE ? "none" : "unknown")
++
++#define HP_DMA_TRACE(_vdev, _op, _dir, _size, _addr, _kind, _use_dma)	\
++	do {								\
++		u32 hp_dma_trace_dir = hp_dma_event_dir(_dir);		\
++		dma_addr_t hp_dma_trace_addr = (_addr);			\
++		/* The trapped config-space write is the telemetry signal.
++		 * EL2 can observe it even if later software ignores the
++		 * payload contents.
++		 */							\
++		hp_dma_trace_publish((_vdev), (_op), (_dir), (_size),	\
++				     hp_dma_trace_addr);			\
++									\
++		dev_info_ratelimited(&(_vdev)->dev,			\
++				     "virtio_telemetry op=%s kind=%s "	\
++				     "dir=%s size=%zu aux=%pad "	\
++				     "path=%s\n",			\
++				     HP_DMA_OP_NAME(_op), (_kind),	\
++				     HP_DMA_DIR_NAME(hp_dma_trace_dir),	\
++				     (size_t)(_size),			\
++				     &hp_dma_trace_addr,		\
++				     (_use_dma) ? "dma_api" : "phys");	\
++	} while (0)
++
+ size_t virtio_max_dma_size(const struct virtio_device *vdev)
+ {
+ 	size_t max_segment_size = SIZE_MAX;
+@@ -366,17 +459,29 @@
+ }
+ 
+ static int vring_mapping_error(const struct vring_virtqueue *vq,
+-			       dma_addr_t addr)
++			       dma_addr_t addr,
++			       enum dma_data_direction direction,
++			       size_t size,
++			       const char *kind)
+ {
+ 	struct virtio_device *vdev = vq->vq.vdev;
++	int err;
+ 
+ 	if (!vq->use_map_api)
+ 		return 0;
+ 
+ 	if (vdev->map)
+-		return vdev->map->mapping_error(vq->map, addr);
++		err = vdev->map->mapping_error(vq->map, addr);
+ 	else
+-		return dma_mapping_error(vring_dma_dev(vq), addr);
++		err = dma_mapping_error(vring_dma_dev(vq), addr);
++
++	if (err) {
++		HP_DMA_TRACE(vq->vq.vdev, HP_DMA_EVENT_OP_MAP_FAIL,
++			     direction, size, addr, kind, true);
++		return -ENOMEM;
++	}
++
++	return 0;
+ }
+ 
+ /* Map one sg entry. */
+@@ -412,7 +517,7 @@
+ 					 sg->offset, sg->length,
+ 					 direction, 0);
+ 
+-	if (vring_mapping_error(vq, *addr))
++	if (vring_mapping_error(vq, *addr, direction, *len, "payload"))
+ 		return -ENOMEM;
+ 
+ 	return 0;
+@@ -646,7 +751,9 @@
+ 		dma_addr_t addr = vring_map_single(
+ 			vq, desc, total_sg * sizeof(struct vring_desc),
+ 			DMA_TO_DEVICE);
+-		if (vring_mapping_error(vq, addr))
++		if (vring_mapping_error(vq, addr, DMA_TO_DEVICE,
++					total_sg * sizeof(struct vring_desc),
++					"indirect"))
+ 			goto unmap_release;
+ 
+ 		virtqueue_add_desc_split(_vq, vq->split.vring.desc,
+@@ -1379,7 +1486,9 @@
+ 	addr = vring_map_single(vq, desc,
+ 			total_sg * sizeof(struct vring_packed_desc),
+ 			DMA_TO_DEVICE);
+-	if (vring_mapping_error(vq, addr))
++	if (vring_mapping_error(vq, addr, DMA_TO_DEVICE,
++				total_sg * sizeof(struct vring_packed_desc),
++				"indirect"))
+ 		goto unmap_release;
+ 
+ 	vq->packed.vring.desc[head].addr = cpu_to_le64(addr);
+@@ -3310,7 +3419,7 @@
+ {
+ 	const struct vring_virtqueue *vq = to_vvq(_vq);
+ 
+-	return vring_mapping_error(vq, addr);
++	return vring_mapping_error(vq, addr, DMA_NONE, 0, "premap");
+ }
+ EXPORT_SYMBOL_GPL(virtqueue_map_mapping_error);
+ 
+diff --git a/include/linux/dma_telemetry_aperture.h b/include/linux/dma_telemetry_aperture.h
+index e69de29..69beeff 100644
+--- a/include/linux/dma_telemetry_aperture.h
++++ b/include/linux/dma_telemetry_aperture.h
+@@ -0,0 +1,105 @@
++#ifndef _LINUX_DMA_TELEMETRY_APERTURE_H
++#define _LINUX_DMA_TELEMETRY_APERTURE_H
++
++#include <linux/dma-direction.h>
++#include <linux/types.h>
++
++/*
++ * Telemetry aperture for HyperArm virtio debug instrumentation.
++ *
++ * This aperture lives inside an otherwise unused virtio transport hole and
++ * exposes a single latched event plus one 64-bit auxiliary payload. For DMA
++ * operations, the payload is normally a DMA address. For virtqueue polling
++ * and completion events, the payload can carry queue-local state such as the
++ * caller's last_used snapshot or the post-consume used index.
++ *
++ * Writers should publish fields in this order:
++ *
++ *   1. HP_DMA_ADDR_LO
++ *   2. HP_DMA_ADDR_HI
++ *   3. HP_DMA_EVENT
++ *
++ * HP_DMA_EVENT is written last and acts as the commit point for observers.
++ */
++
++#define HP_DMA_APERTURE_OFFSET              0x0c0u
++#define HP_DMA_APERTURE_SIZE                0x00cu
++
++#define HP_DMA_EVENT_OFFSET                 0x0c0u
++#define HP_DMA_ADDR_LO_OFFSET               0x0c4u
++#define HP_DMA_ADDR_HI_OFFSET               0x0c8u
++
++#define HP_DMA_EVENT(base)                  ((unsigned long)(base) + \
++					    HP_DMA_EVENT_OFFSET)
++#define HP_DMA_ADDR_LO(base)                ((unsigned long)(base) + \
++					    HP_DMA_ADDR_LO_OFFSET)
++#define HP_DMA_ADDR_HI(base)                ((unsigned long)(base) + \
++					    HP_DMA_ADDR_HI_OFFSET)
++
++/*
++ * HP_DMA_EVENT register layout
++ *
++ *  31                        18 17         10 9        8 7         0
++ * +----------------------------+-------------+----------+-----------+
++ * |          sequence          |    size     |   dir    |  opcode   |
++ * +----------------------------+-------------+----------+-----------+
++ */
++#define HP_DMA_EVENT_OPCODE_SHIFT           0u
++#define HP_DMA_EVENT_OPCODE_MASK            0x000000ffu
++#define HP_DMA_EVENT_DIRECTION_SHIFT        8u
++#define HP_DMA_EVENT_DIRECTION_MASK         0x00000300u
++#define HP_DMA_EVENT_SIZE_SHIFT             10u
++#define HP_DMA_EVENT_SIZE_MASK              0x0003fc00u
++#define HP_DMA_EVENT_SEQUENCE_SHIFT         18u
++#define HP_DMA_EVENT_SEQUENCE_MASK          0xfffc0000u
++
++#define HP_DMA_EVENT_ENCODE(opcode, direction, size, sequence) \
++	((((u32)(opcode)) << HP_DMA_EVENT_OPCODE_SHIFT) | \
++	 (((u32)(direction)) << HP_DMA_EVENT_DIRECTION_SHIFT) | \
++	 ((((u32)(size)) & 0xffu) << HP_DMA_EVENT_SIZE_SHIFT) | \
++	 (((u32)(sequence)) << HP_DMA_EVENT_SEQUENCE_SHIFT))
++
++/* HP_DMA_EVENT opcode values */
++#define HP_DMA_EVENT_OP_ALLOC_SUCCESS       0x01u
++#define HP_DMA_EVENT_OP_ALLOC_FAIL          0x02u
++#define HP_DMA_EVENT_OP_FREE                0x03u
++#define HP_DMA_EVENT_OP_MAP                 0x04u
++#define HP_DMA_EVENT_OP_MAP_FAIL            0x05u
++#define HP_DMA_EVENT_OP_UNMAP               0x06u
++#define HP_DMA_EVENT_OP_VQ_POLL_HIT         0x07u
++#define HP_DMA_EVENT_OP_VQ_POLL_MISS        0x08u
++#define HP_DMA_EVENT_OP_VQ_GET_BUF          0x09u
++#define HP_DMA_EVENT_OP_VQ_GET_BUF_EMPTY    0x0au
++
++/* HP_DMA_EVENT direction values */
++#define HP_DMA_EVENT_DIR_NONE               0x0u
++#define HP_DMA_EVENT_DIR_TO_DEVICE          0x1u
++#define HP_DMA_EVENT_DIR_FROM_DEVICE        0x2u
++#define HP_DMA_EVENT_DIR_BIDIRECTIONAL      0x3u
++
++static inline u32 hp_dma_addr_lo(u64 addr)
++{
++	return (u32)(addr & 0xffffffffull);
++}
++
++static inline u32 hp_dma_addr_hi(u64 addr)
++{
++	return (u32)((addr >> 32) & 0xffffffffull);
++}
++
++static inline u32 hp_dma_event_dir(enum dma_data_direction dir)
++{
++	switch (dir) {
++	case DMA_TO_DEVICE:
++		return HP_DMA_EVENT_DIR_TO_DEVICE;
++	case DMA_FROM_DEVICE:
++		return HP_DMA_EVENT_DIR_FROM_DEVICE;
++	case DMA_BIDIRECTIONAL:
++		return HP_DMA_EVENT_DIR_BIDIRECTIONAL;
++	case DMA_NONE:
++	default:
++		return HP_DMA_EVENT_DIR_NONE;
++	}
++}
++
++#endif /* _LINUX_DMA_TELEMETRY_APERTURE_H */

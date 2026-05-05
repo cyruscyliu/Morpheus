@@ -1,0 +1,323 @@
+diff --git a/examples/virtio/client_vmm.c b/examples/virtio/client_vmm.c
+index 2354400..9999999 100644
+--- a/examples/virtio/client_vmm.c
++++ b/examples/virtio/client_vmm.c
+@@
+ static struct virtio_net_device virtio_net;
++
++/*
++ * The guest DT advertises a 0x200-byte virtio-mmio window so the telemetry
++ * aperture at config offsets 0xc0/0xc4/0xc8 traps into EL2 instead of
++ * bypassing the registered MMIO handler.
++ */
++#define HP_VIRTIO_MMIO_REGION_SIZE 0x200
+@@
+-    success = virtio_mmio_console_init(&virtio_console,
+-                                       vmm_config.virtio_mmio_devices[console_vdev_idx].base,
+-                                       vmm_config.virtio_mmio_devices[console_vdev_idx].size,
++    success = virtio_mmio_console_init(&virtio_console,
++                                       vmm_config.virtio_mmio_devices[console_vdev_idx].base,
++                                       HP_VIRTIO_MMIO_REGION_SIZE,
+                                        vmm_config.virtio_mmio_devices[console_vdev_idx].irq,
+                                        &serial_rx_queue, &serial_tx_queue,
+                                        serial_config.tx.id);
+@@
+-    success = virtio_mmio_blk_init(&virtio_blk, vmm_config.virtio_mmio_devices[blk_vdev_idx].base,
+-                                   vmm_config.virtio_mmio_devices[blk_vdev_idx].size,
++    success = virtio_mmio_blk_init(&virtio_blk, vmm_config.virtio_mmio_devices[blk_vdev_idx].base,
++                                   HP_VIRTIO_MMIO_REGION_SIZE,
+                                    vmm_config.virtio_mmio_devices[blk_vdev_idx].irq, (uintptr_t)blk_config.data.vaddr,
+                                    blk_config.data.size, storage_info, &blk_queue, blk_config.virt.num_buffers,
+                                    blk_config.virt.id);
+@@
+-    success = virtio_mmio_net_init(&virtio_net,
+-                                   vmm_config.virtio_mmio_devices[net_vdev_idx].base,
+-                                   vmm_config.virtio_mmio_devices[net_vdev_idx].size,
++    success = virtio_mmio_net_init(&virtio_net,
++                                   vmm_config.virtio_mmio_devices[net_vdev_idx].base,
++                                   HP_VIRTIO_MMIO_REGION_SIZE,
+                                    vmm_config.virtio_mmio_devices[net_vdev_idx].irq,
+                                    &net_rx_queue, &net_tx_queue,
+                                    (uintptr_t)net_config.rx_data.vaddr, (uintptr_t)net_config.tx_data.vaddr,
+diff --git a/include/libvmm/virtio/console.h b/include/libvmm/virtio/console.h
+index 6503c0c..9999999 100644
+--- a/include/libvmm/virtio/console.h
++++ b/include/libvmm/virtio/console.h
+@@
+ struct virtio_console_device {
+     struct virtio_device virtio_device;
+     struct virtio_queue_handler vqs[VIRTIO_CONSOLE_NUM_VIRTQ];
+     serial_queue_handle_t *rxq;
+     serial_queue_handle_t *txq;
+     int tx_ch;
++    uint32_t hp_dma_event;
++    uint32_t hp_dma_addr_lo;
++    uint32_t hp_dma_addr_hi;
+ };
+diff --git a/include/libvmm/virtio/net.h b/include/libvmm/virtio/net.h
+index 3cf196e..9999999 100644
+--- a/include/libvmm/virtio/net.h
++++ b/include/libvmm/virtio/net.h
+@@
+ struct virtio_net_device {
+     struct virtio_device virtio_device;
+ 
+     struct virtio_net_config config;
++    uint32_t hp_dma_event;
++    uint32_t hp_dma_addr_lo;
++    uint32_t hp_dma_addr_hi;
+     struct virtio_queue_handler vqs[VIRTIO_NET_NUM_VIRTQ];
+diff --git a/include/libvmm/virtio/block.h b/include/libvmm/virtio/block.h
+index 99b0774..9999999 100644
+--- a/include/libvmm/virtio/block.h
++++ b/include/libvmm/virtio/block.h
+@@
+ struct virtio_blk_device {
+     struct virtio_device virtio_device;
+     struct virtio_blk_config config;
++    uint32_t hp_dma_event;
++    uint32_t hp_dma_addr_lo;
++    uint32_t hp_dma_addr_hi;
+     struct virtio_queue_handler vqs[VIRTIO_BLK_NUM_VIRTQ];
+diff --git a/src/virtio/mmio.c b/src/virtio/mmio.c
+index 503df27..9999999 100644
+--- a/src/virtio/mmio.c
++++ b/src/virtio/mmio.c
+@@
+-    case REG_RANGE(REG_VIRTIO_MMIO_CONFIG, REG_VIRTIO_MMIO_CONFIG + 0x100):
+-        success = dev->funs->set_device_config(dev, offset, data);
++    case REG_RANGE(REG_VIRTIO_MMIO_CONFIG, REG_VIRTIO_MMIO_CONFIG + 0x100):
++        /*
++         * Device callbacks expect offsets relative to REG_VIRTIO_MMIO_CONFIG,
++         * matching the guest driver transport API.
++         */
++        success = dev->funs->set_device_config(dev, offset - REG_VIRTIO_MMIO_CONFIG, data);
+         break;
+diff --git a/src/virtio/console.c b/src/virtio/console.c
+index 6b3cc8f..9999999 100644
+--- a/src/virtio/console.c
++++ b/src/virtio/console.c
+@@
+ static bool virtio_console_get_device_config(struct virtio_device *dev, uint32_t offset, uint32_t *config)
+ {
+-    LOG_CONSOLE("operation: get device config\n");
+-    return false;
++    struct virtio_console_device *console = device_state(dev);
++
++    LOG_CONSOLE("operation: get device config\n");
++    switch (offset) {
++    case 0xc0:
++        *config = console->hp_dma_event;
++        return true;
++    case 0xc4:
++        *config = console->hp_dma_addr_lo;
++        return true;
++    case 0xc8:
++        *config = console->hp_dma_addr_hi;
++        return true;
++    default:
++        /*
++         * Console config is otherwise unused here. Returning zero prevents
++         * telemetry reads from escalating into a guest-visible fault.
++         */
++        *config = 0;
++        return true;
++    }
+ }
+@@
+ static bool virtio_console_set_device_config(struct virtio_device *dev, uint32_t offset, uint32_t config)
+ {
+-    LOG_CONSOLE("operation: set device config\n");
+-    return false;
++    struct virtio_console_device *console = device_state(dev);
++
++    LOG_CONSOLE("operation: set device config\n");
++    switch (offset) {
++    case 0xc0:
++        console->hp_dma_event = config;
++        return true;
++    case 0xc4:
++        console->hp_dma_addr_lo = config;
++        return true;
++    case 0xc8:
++        console->hp_dma_addr_hi = config;
++        return true;
++    default:
++        /*
++         * These telemetry writes are intentionally consumed locally. The trap
++         * itself is what QEMU traces; no host-device side effect is required.
++         */
++        return true;
++    }
+ }
+diff --git a/src/virtio/net.c b/src/virtio/net.c
+index 9c5d2af..9999999 100644
+--- a/src/virtio/net.c
++++ b/src/virtio/net.c
+@@
+ static bool virtio_net_get_device_config(struct virtio_device *dev,
+                                          uint32_t offset,
+                                          uint32_t *ret_val)
+ {
+-    struct virtio_net_config *config = &device_state(dev)->config;
++    struct virtio_net_device *state = device_state(dev);
++    struct virtio_net_config *config = &state->config;
++
++    switch (offset) {
++    case 0xc0:
++        *ret_val = state->hp_dma_event;
++        return true;
++    case 0xc4:
++        *ret_val = state->hp_dma_addr_lo;
++        return true;
++    case 0xc8:
++        *ret_val = state->hp_dma_addr_hi;
++        return true;
++    default:
++        break;
++    }
+@@
+-    default:
+-        LOG_NET_ERR("Unknown device config register: 0x%x\n", offset);
+-        return false;
++    default:
++        *ret_val = 0;
++        return true;
+     }
+-
+-    return true;
+ }
+@@
+ static bool virtio_net_set_device_config(struct virtio_device *dev, uint32_t offset, uint32_t val)
+ {
+-    LOG_NET_ERR("All configuration fields are read-only\n");
+-    return false;
++    struct virtio_net_device *state = device_state(dev);
++
++    switch (offset) {
++    case 0xc0:
++        state->hp_dma_event = val;
++        return true;
++    case 0xc4:
++        state->hp_dma_addr_lo = val;
++        return true;
++    case 0xc8:
++        state->hp_dma_addr_hi = val;
++        return true;
++    default:
++        return true;
++    }
+ }
+diff --git a/src/virtio/block.c b/src/virtio/block.c
+index 274fd3f..9999999 100644
+--- a/src/virtio/block.c
++++ b/src/virtio/block.c
+@@
+ static inline bool virtio_blk_mmio_get_device_config(struct virtio_device *dev, uint32_t offset, uint32_t *ret_val)
+ {
+     struct virtio_blk_device *state = device_state(dev);
+-
+-    uintptr_t config_base_addr = (uintptr_t)&state->config;
+-    uint32_t *config_field_addr = (uint32_t *)(config_base_addr + offset);
+-    *ret_val = *config_field_addr;
+-    LOG_BLOCK("get device config with base_addr 0x%x and field_address 0x%x has "
+-              "value %d\n",
+-              config_base_addr, config_field_addr, *ret_val);
+-
+-    return true;
++    switch (offset) {
++    case 0xc0:
++        *ret_val = state->hp_dma_event;
++        return true;
++    case 0xc4:
++        *ret_val = state->hp_dma_addr_lo;
++        return true;
++    case 0xc8:
++        *ret_val = state->hp_dma_addr_hi;
++        return true;
++    default:
++        if (offset + sizeof(uint32_t) <= sizeof(state->config)) {
++            uintptr_t config_base_addr = (uintptr_t)&state->config;
++            uint32_t *config_field_addr = (uint32_t *)(config_base_addr + offset);
++            *ret_val = *config_field_addr;
++            LOG_BLOCK("get device config with base_addr 0x%x and field_address 0x%x has "
++                      "value %d\n",
++                      config_base_addr, config_field_addr, *ret_val);
++            return true;
++        }
++        *ret_val = 0;
++        return true;
++    }
+ }
+@@
+ static inline bool virtio_blk_mmio_set_device_config(struct virtio_device *dev, uint32_t offset, uint32_t val)
+ {
+     struct virtio_blk_device *state = device_state(dev);
+-
+-    uintptr_t config_base_addr = (uintptr_t)&state->config;
+-    uint32_t *config_field_addr = (uint32_t *)(config_base_addr + offset);
+-    *config_field_addr = val;
+-    LOG_BLOCK("set device config with base_addr 0x%x and field_address 0x%x with "
+-              "value %d\n",
+-              config_base_addr, config_field_addr, val);
+-
+-    return true;
++    switch (offset) {
++    case 0xc0:
++        state->hp_dma_event = val;
++        return true;
++    case 0xc4:
++        state->hp_dma_addr_lo = val;
++        return true;
++    case 0xc8:
++        state->hp_dma_addr_hi = val;
++        return true;
++    default:
++        /*
++         * Guard the real config struct bounds so telemetry writes do not
++         * scribble past the block device configuration payload.
++         */
++        if (offset + sizeof(uint32_t) <= sizeof(state->config)) {
++            uintptr_t config_base_addr = (uintptr_t)&state->config;
++            uint32_t *config_field_addr = (uint32_t *)(config_base_addr + offset);
++            *config_field_addr = val;
++            LOG_BLOCK("set device config with base_addr 0x%x and field_address 0x%x with "
++                      "value %d\n",
++                      config_base_addr, config_field_addr, val);
++        }
++        return true;
++    }
+ }
+diff --git a/src/arch/aarch64/virq.c b/src/arch/aarch64/virq.c
+index ba31a26..9999999 100644
+--- a/src/arch/aarch64/virq.c
++++ b/src/arch/aarch64/virq.c
+@@
+-#define SGI_RESCHEDULE_IRQ  0
+-#define SGI_FUNC_CALL       1
++#define SGI_MIN_IRQ         0
++#define SGI_MAX_IRQ         15
+ #define PPI_VTIMER_IRQ      27
+@@
+-        success = vgic_register_irq(vcpu, SGI_RESCHEDULE_IRQ, &sgi_ack, NULL);
+-        if (!success) {
+-            LOG_VMM_ERR("Failed to register vCPU SGI 0 IRQ");
+-            return false;
+-        }
+-        success = vgic_register_irq(vcpu, SGI_FUNC_CALL, &sgi_ack, NULL);
+-        if (!success) {
+-            LOG_VMM_ERR("Failed to register vCPU SGI 1 IRQ");
+-            return false;
++        /*
++         * Linux touches more than SGI0/1 during normal bring-up. Register the
++         * whole SGI range so telemetry-side progress does not get hidden by an
++         * unrelated VGIC assertion.
++         */
++        for (int irq = SGI_MIN_IRQ; irq <= SGI_MAX_IRQ; irq++) {
++            success = vgic_register_irq(vcpu, irq, &sgi_ack, NULL);
++            if (!success) {
++                LOG_VMM_ERR("Failed to register vCPU SGI IRQ 0x%lx\n", irq);
++                return false;
++            }
+         }
+     }

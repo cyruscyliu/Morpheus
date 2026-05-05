@@ -1,11 +1,6 @@
 workspace:
   root: ./workspace
 
-remote:
-  ssh: debian@mcc96e5308801.dyn.epfl.ch
-  workspace:
-    root: /home/debian/hyperarm-workspace2
-
 tools:
   buildroot:
     mode: local

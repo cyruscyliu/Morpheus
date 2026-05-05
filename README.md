@@ -49,10 +49,10 @@ pnpm dev:runs-viewer
 
 Then open `http://127.0.0.1:4174`.
 
-Validate `morpheus.yaml` with:
+Validate a project config with:
 
 ```bash
-./bin/morpheus config check --json
+./bin/morpheus --config projects/hyperarm/morpheus.yaml config check --json
 ```
 
 The checker currently enforces one important rule: `tools.<name>.mode` should
@@ -75,13 +75,17 @@ Use the wrapper from `bin/`:
 For Morpheus-managed execution, prefer:
 
 ```bash
-./bin/morpheus workflow run --name <workflow> --json
-./bin/morpheus workflow inspect --id <workflow-run-id> --json
-./bin/morpheus workflow logs --id <workflow-run-id>
-./bin/morpheus workflow stop --id <workflow-run-id> --json
-./bin/morpheus workflow remove --id <workflow-run-id> --json
+./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow run --name <workflow> --json
+./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow inspect --id <workflow-run-id> --json
+./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow logs --id <workflow-run-id>
+./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow stop --id <workflow-run-id> --json
+./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow remove --id <workflow-run-id> --json
 ./bin/morpheus tool list --json
 ```
+
+Project configs live under `projects/<project>/morpheus.yaml`.
+The root `morpheus.yaml` is intentionally minimal and exists only as a default
+CI/testing stub.
 
 For runtime-managed runs, keep the lifecycle split explicit:
 

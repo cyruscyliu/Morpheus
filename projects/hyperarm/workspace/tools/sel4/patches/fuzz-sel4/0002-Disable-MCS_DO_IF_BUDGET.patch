@@ -1,0 +1,35 @@
+From 7fbbeab2ed6ae7bed6d03920c56789530039fad2 Mon Sep 17 00:00:00 2001
+From: Qiang Liu <cyruscyliu@gmail.com>
+Date: Tue, 2 Dec 2025 20:20:46 +0100
+Subject: [PATCH 2/2] Disable MCS_DO_IF_BUDGET
+
+---
+ include/api/syscall.h | 8 --------
+ 1 file changed, 8 deletions(-)
+
+diff --git a/include/api/syscall.h b/include/api/syscall.h
+index 42cb8fb5e..6f6c381b9 100644
+--- a/include/api/syscall.h
++++ b/include/api/syscall.h
+@@ -16,18 +16,10 @@
+ 
+ #define TIME_ARG_SIZE (sizeof(ticks_t) / sizeof(word_t))
+ 
+-#ifdef CONFIG_KERNEL_MCS
+-#define MCS_DO_IF_BUDGET(_block) \
+-    updateTimestamp(); \
+-    if (likely(checkBudgetRestart())) { \
+-        _block \
+-    }
+-#else
+ #define MCS_DO_IF_BUDGET(_block) \
+     { \
+         _block \
+     }
+-#endif
+ 
+ exception_t handleSyscall(syscall_t syscall);
+ exception_t handleInterruptEntry(void);
+-- 
+2.47.3
+

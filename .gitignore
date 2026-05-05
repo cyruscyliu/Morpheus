@@ -32,5 +32,10 @@ tmp/
 *.log
 .morpheus-sync/
 .morpheus-patches.json
-morpheus.yaml
-*workspace*/
+workspace/
+projects/*/workspace/**
+!projects/*/workspace/
+!projects/*/workspace/tools/
+!projects/*/workspace/tools/*/
+!projects/*/workspace/tools/*/patches/
+!projects/*/workspace/tools/*/patches/**

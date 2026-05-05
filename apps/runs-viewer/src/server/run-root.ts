@@ -25,6 +25,28 @@ export interface ViewerWorkflowOption {
   category: string;
 }
 
+function listRepoConfigPaths(repoRoot: string): string[] {
+  const items: string[] = [];
+  const rootConfig = path.join(repoRoot, "morpheus.yaml");
+  if (fs.existsSync(rootConfig)) {
+    items.push(rootConfig);
+  }
+
+  const projectsRoot = path.join(repoRoot, "projects");
+  if (!fs.existsSync(projectsRoot) || !fs.statSync(projectsRoot).isDirectory()) {
+    return items;
+  }
+
+  for (const entry of fs.readdirSync(projectsRoot).sort((left, right) => left.localeCompare(right))) {
+    const candidate = path.join(projectsRoot, entry, "morpheus.yaml");
+    if (fs.existsSync(candidate)) {
+      items.push(candidate);
+    }
+  }
+
+  return items;
+}
+
 function explicitConfigPath(inputPath: string | null | undefined): string | null {
   if (!inputPath) {
     return null;
@@ -147,19 +169,16 @@ export function discoverViewerConfigs(options: {
   startDir: string;
   repoRoot: string;
 }): ViewerConfigOption[] {
-  const names = fs.readdirSync(options.repoRoot)
-    .filter((entry) => /^morpheus.*\.ya?ml$/i.test(entry))
-    .sort((left, right) => left.localeCompare(right));
-  const items = names.map((name) => {
-    const configPath = path.join(options.repoRoot, name);
+  const items = listRepoConfigPaths(options.repoRoot).map((configPath) => {
     const resolved = findRunRootForConfig({
       startDir: options.startDir,
       repoRoot: options.repoRoot,
       configPath,
     });
+    const relativeLabel = path.relative(options.repoRoot, configPath) || path.basename(configPath);
     return {
       id: configPath,
-      label: name,
+      label: relativeLabel,
       configPath,
       workspaceRoot: resolved.workspaceRoot,
       runRoot: resolved.runRoot,

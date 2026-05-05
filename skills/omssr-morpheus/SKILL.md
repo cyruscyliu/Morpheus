@@ -28,8 +28,9 @@ When operating in this repo:
 1. Run `pnpm --filter @morpheus/app build` if the CLI may be stale.
 2. Run `node apps/morpheus/dist/cli.js --help` or `./bin/morpheus --help`
    to confirm the live surface.
-3. Prefer `--json` for anything that may be consumed programmatically.
-4. Re-read existing state with `inspect` or `logs` before rerunning work.
+3. Prefer `--config projects/<project>/morpheus.yaml` over implicit discovery.
+4. Prefer `--json` for anything that may be consumed programmatically.
+5. Re-read existing state with `inspect` or `logs` before rerunning work.
 
 Minimal config:
 
@@ -38,6 +39,9 @@ workspace:
   root: ./workspace
 
 ```
+
+Project configs can live under `projects/<project>/morpheus.yaml`.
+The repo-root `morpheus.yaml` may be only a minimal CI/testing stub.
 
 ## Core Rules
 
@@ -65,6 +69,8 @@ workspace:
 - Keep patch inputs in managed workspace locations when possible, and point
   tool patch configuration at those managed paths or at repo-shipped patch
   directories when that is the intended source.
+- When this repo carries multiple projects, prefer project-owned managed patch
+  trees such as `projects/<project>/workspace/tools/<tool>/patches`.
 - When patch sets change, prefer resetting managed patch targets before
   reapplying patches so patch iteration stays consistent, unless a tool
   contract defines a different update strategy.

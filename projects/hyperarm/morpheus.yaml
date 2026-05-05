@@ -1,0 +1,739 @@
+workspace:
+  root: ./workspace
+
+remote:
+  ssh: debian@mcc96e5308801.dyn.epfl.ch
+  workspace:
+    root: /home/debian/hyperarm-workspace2
+
+tools:
+  buildroot:
+    mode: local
+    sync-morpheus: true
+    cli-contract: fetch,patch,build
+    build-version: 2025.02.12
+    reuse-build-dir: true
+    build-dir-key: arm64-dev
+    patch-dir: tools/buildroot/patches
+    defconfig: qemu_aarch64_virt_defconfig
+    make-args:
+      - -j$(nproc)
+    config-fragment:
+      - BR2_LINUX_KERNEL=y
+      - BR2_LINUX_KERNEL_CUSTOM_VERSION=y
+      - BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.16"
+      - BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
+      - BR2_TARGET_GENERIC_GETTY=y
+      - BR2_TARGET_GENERIC_GETTY_PORT="console"
+      - BR2_TARGET_ROOTFS_CPIO=y
+      - BR2_TARGET_ROOTFS_CPIO_GZIP=y
+      - BR2_ROOTFS_POST_IMAGE_SCRIPT=""
+      - BR2_ROOTFS_POST_SCRIPT_ARGS=""
+      - BR2_PACKAGE_PCIUTILS=y
+      - BR2_PACKAGE_DROPBEAR=y
+      - BR2_TARGET_GENERIC_ROOT_PASSWD="root"
+    artifacts:
+      - images/Image
+      - images/rootfs.cpio.gz
+  qemu:
+    mode: local
+    sync-morpheus: true
+    cli-contract: fetch,patch,build,exec
+    build-version: 8.2.7
+    reuse-build-dir: true
+    build-dir-key: qemu-8.2.7-aarch64-softmmu
+    patch-dir: tools/qemu/patches
+    target-list:
+      - aarch64-softmmu
+    artifacts:
+      - qemu-system-aarch64
+  microkit-sdk:
+    mode: local
+    cli-contract: fetch,patch,build
+    reuse-build-dir: true
+    build-dir-key: microkit-sdk-2.1.0
+    microkit-archive-url: https://github.com/seL4/microkit/archive/119044f9573674342cedb9694142cce7b832d2ff.tar.gz
+    toolchain-version: 12.3.rel1
+    patch-dir: tools/microkit-sdk/patches
+    boards: qemu_virt_aarch64
+    configs: debug,release
+    artifacts:
+      - sdk-dir
+      - toolchain-dir
+  llbic:
+    mode: remote
+    sync-morpheus: true
+    cli-contract: exec
+    arch: arm64
+    clang: 15
+    out-of-tree: true
+    sources: tools/llbic/src
+    output: tools/llbic/builds
+    conf: tools/llbic/sources.conf
+    artifacts:
+      - source-dir
+      - output-dir
+      - llbic-json
+      - bitcode-files
+      - llbic-log
+      - kernel-build-log
+  llcg:
+    mode: local
+    sync-morpheus: true
+    cli-contract: exec
+    arch: arm64
+    clang: 15
+    reuse-build-dir: true
+    build-dir-key: arm64-clang15
+    output: tools/llcg/builds
+    artifacts:
+      - output-dir
+      - manifest
+      - mutator_manifest
+      - source_dir
+      - source_list
+      - groups_file
+      - llbic_json
+      - all_bc_list
+      - bitcode_list
+      - kallgraph_text
+      - cg_dot
+      - cg_collapsed_dot
+      - cg_svg
+      - cg_pdf
+      - cg_collapsed_svg
+      - cg_collapsed_pdf
+      - log_file
+  libvmm:
+    mode: local
+    cli-contract: fetch,patch,build,exec
+    reuse-build-dir: true
+    build-dir-key: libvmm-2fd1d64d
+    git-ref: 2fd1d64d7805ad1647af6e2a832e4671d0d40297
+    board: qemu_virt_aarch64
+    example: virtio
+    patch-dir: tools/libvmm/patches
+    dependencies:
+      microkit-sdk:
+        tool: microkit-sdk
+        artifact: sdk-dir
+      toolchain-bin-dir:
+        tool: microkit-sdk
+        artifact: toolchain-dir
+    artifacts:
+      - libvmm-dir
+      - example-dir
+      - example-build-dir
+      - runtime-contract
+  sel4:
+    mode: local
+    cli-contract: fetch,patch,build
+    build-version: c0fc32450fb5e8460083b89a84d067249b109cfc
+    reuse-build-dir: true
+    build-dir-key: sel4-c0fc3245
+    archive-url: https://github.com/seL4/seL4/archive/c0fc32450fb5e8460083b89a84d067249b109cfc.tar.gz
+    patch-dir: tools/sel4/patches/fuzz-sel4
+    artifacts:
+      - source-dir
+  nvirsh:
+    mode: local
+    cli-contract: exec
+    target: sel4
+    name: sel4-dev
+    board: qemu_virt_aarch64
+    microkit-config: debug
+    runtime:
+      provider:
+        tool: libvmm
+        artifact: runtime-contract
+      action: qemu
+    dependencies:
+      qemu:
+        tool: qemu
+        artifact: qemu-system-aarch64
+      microkit-sdk:
+        tool: microkit-sdk
+        artifact: sdk-dir
+      toolchain-bin-dir:
+        tool: microkit-sdk
+        artifact: toolchain-dir
+      libvmm-dir:
+        tool: libvmm
+        artifact: libvmm-dir
+      kernel:
+        tool: buildroot
+        artifact: images/Image
+      initrd:
+        tool: buildroot
+        artifact: images/rootfs.cpio.gz
+
+workflows:
+  build-buildroot:
+    category: build
+    steps:
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/buildroot/patches"
+      - id: buildroot
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/buildroot/patches"
+  build-qemu:
+    category: build
+    steps:
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/qemu/patches"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+  build-microkit-sdk:
+    category: build
+    steps:
+      - id: microkit_sdk_fetch
+        tool: microkit-sdk
+        command: fetch
+      - id: microkit_sdk_patch
+        tool: microkit-sdk
+        command: patch
+        args:
+          - --source
+          - "{{steps.microkit_sdk_fetch.artifacts.sdk-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/microkit-sdk/patches"
+      - id: microkit_sdk_build
+        tool: microkit-sdk
+        command: build
+        args:
+          - --source
+          - "{{steps.microkit_sdk_patch.artifacts.sdk-dir.location}}"
+  build-libvmm:
+    category: build
+    steps:
+      - id: libvmm_fetch
+        tool: libvmm
+        command: fetch
+      - id: libvmm_patch
+        tool: libvmm
+        command: patch
+        args:
+          - --source
+          - "{{steps.libvmm_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/libvmm/patches"
+      - id: libvmm_build
+        tool: libvmm
+        command: build
+        args:
+          - --source
+          - "{{steps.libvmm_patch.artifacts.source-dir.location}}"
+  build-sel4:
+    category: build
+    steps:
+      - id: sel4_fetch
+        tool: sel4
+        command: fetch
+      - id: sel4_patch
+        tool: sel4
+        command: patch
+        args:
+          - --source
+          - "{{steps.sel4_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/sel4/patches/fuzz-sel4"
+      - id: sel4_build
+        tool: sel4
+        command: build
+        args:
+          - --source
+          - "{{steps.sel4_patch.artifacts.source-dir.location}}"
+  buildroot-qemu-local-run:
+    category: run
+    steps:
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/buildroot/patches"
+      - id: buildroot_build
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/buildroot/patches"
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/qemu/patches"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+      - id: qemu_run
+        tool: qemu
+        command: exec
+        args:
+          - --mode
+          - local
+          - --path
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+          - --kernel
+          - "{{steps.buildroot_build.artifacts.Image.location}}"
+          - --initrd
+          - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.location}}"
+          - --detach
+  nvirsh-sel4-runtime:
+    category: run
+    steps:
+      - id: microkit_sdk_fetch
+        tool: microkit-sdk
+        command: fetch
+      - id: microkit_sdk_patch
+        tool: microkit-sdk
+        command: patch
+        args:
+          - --source
+          - "{{steps.microkit_sdk_fetch.artifacts.sdk-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/microkit-sdk/patches"
+      - id: microkit_sdk_build
+        tool: microkit-sdk
+        command: build
+        args:
+          - --source
+          - "{{steps.microkit_sdk_patch.artifacts.sdk-dir.location}}"
+      - id: libvmm_fetch
+        tool: libvmm
+        command: fetch
+      - id: libvmm_patch
+        tool: libvmm
+        command: patch
+        args:
+          - --source
+          - "{{steps.libvmm_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/libvmm/patches"
+      - id: libvmm_build
+        tool: libvmm
+        command: build
+        args:
+          - --source
+          - "{{steps.libvmm_patch.artifacts.source-dir.location}}"
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/buildroot/patches"
+      - id: buildroot_build
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/buildroot/patches"
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/qemu/patches"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+      - id: nvirsh_exec
+        tool: nvirsh
+        command: exec
+        args:
+          - --name
+          - sel4-dev
+          - --microkit-sdk
+          - "{{steps.microkit_sdk_build.artifacts.sdk-dir.location}}"
+          - --toolchain
+          - "{{steps.microkit_sdk_build.artifacts.toolchain-dir.location}}"
+          - --libvmm-dir
+          - "{{steps.libvmm_build.artifacts.libvmm-dir.location}}"
+          - --runtime-contract
+          - "{{steps.libvmm_build.artifacts.runtime-contract.location}}"
+          - --board
+          - qemu_virt_aarch64
+          - --microkit-config
+          - debug
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+          - --kernel
+          - "{{steps.buildroot_build.artifacts.Image.location}}"
+          - --initrd
+          - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.location}}"
+          - --detach
+  nvirsh-sel4-runtime-trace:
+    category: run
+    steps:
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/buildroot/patches"
+      - id: buildroot_build
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/buildroot/patches"
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/qemu/patches"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+      - id: microkit_sdk_fetch
+        tool: microkit-sdk
+        command: fetch
+      - id: microkit_sdk_patch
+        tool: microkit-sdk
+        command: patch
+        args:
+          - --source
+          - "{{steps.microkit_sdk_fetch.artifacts.sdk-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/microkit-sdk/patches"
+      - id: microkit_sdk_build
+        tool: microkit-sdk
+        command: build
+        args:
+          - --source
+          - "{{steps.microkit_sdk_patch.artifacts.sdk-dir.location}}"
+      - id: libvmm_fetch
+        tool: libvmm
+        command: fetch
+      - id: libvmm_patch
+        tool: libvmm
+        command: patch
+        args:
+          - --source
+          - "{{steps.libvmm_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/libvmm/patches"
+      - id: libvmm_build
+        tool: libvmm
+        command: build
+        args:
+          - --source
+          - "{{steps.libvmm_patch.artifacts.source-dir.location}}"
+      - id: nvirsh_exec
+        tool: nvirsh
+        command: exec
+        args:
+          - --name
+          - sel4-dev-trace
+          - --microkit-sdk
+          - "{{steps.microkit_sdk_build.artifacts.sdk-dir.location}}"
+          - --toolchain
+          - "{{steps.microkit_sdk_build.artifacts.toolchain-dir.location}}"
+          - --libvmm-dir
+          - "{{steps.libvmm_build.artifacts.libvmm-dir.location}}"
+          - --runtime-contract
+          - "{{steps.libvmm_build.artifacts.runtime-contract.location}}"
+          - --board
+          - qemu_virt_aarch64
+          - --microkit-config
+          - debug
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+          - --kernel
+          - "{{steps.buildroot_build.artifacts.Image.location}}"
+          - --initrd
+          - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.location}}"
+          - --env
+          - MORPHEUS_QEMU_INJECT_VIRQ=42
+          - --env
+          - MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS=1000
+          - --qemu-arg
+          - enable=arm_mmio_el2_from_el1_write
+          - --qemu-arg
+          - enable=arm_mmio_el2_from_el1_read_request
+          - --qemu-arg
+          - enable=gicv3_inject_virq
+          - --qemu-arg
+          - enable=gicv3_inject_virq_skipped
+          - --detach
+  local-buildroot-qemu-runtime:
+    category: run
+    steps:
+      - id: buildroot_remote
+        tool: buildroot
+        command: build
+        args:
+          - --mode
+          - remote
+      - id: qemu_local
+        tool: qemu
+        command: build
+        args:
+          - --mode
+          - local
+          - --path
+          - "{{workspace.root}}/tools/qemu/builds/qemu-8.2.7-aarch64-softmmu/install/bin/qemu-system-aarch64"
+      - id: qemu_runtime_local
+        tool: qemu
+        command: exec
+        args:
+          - --mode
+          - local
+          - --path
+          - "{{steps.qemu_local.artifacts.qemu-system-aarch64.location}}"
+          - --kernel
+          - "{{steps.buildroot_remote.artifacts.Image.local_location}}"
+          - --initrd
+          - "{{steps.buildroot_remote.artifacts.rootfs-cpio-gz.local_location}}"
+          - --detach
+  hyperarm-kernel-callgraphs:
+    category: run
+    steps:
+      - id: llbic_6_18_16
+        tool: llbic
+        command: build
+        args: ["6.18.16"]
+      - id: net_mutator_6_18_16
+        tool: llcg
+        command: build
+        args:
+          - --mode
+          - remote
+          - genmutator
+          - interfaces
+          - --source-dir
+          - "{{steps.llbic_6_18_16.artifacts.source-dir.location}}"
+          - --interfaces
+          - networking
+      - id: storage_mutator_6_18_16
+        tool: llcg
+        command: build
+        args:
+          - --mode
+          - remote
+          - genmutator
+          - interfaces
+          - --source-dir
+          - "{{steps.llbic_6_18_16.artifacts.source-dir.location}}"
+          - --interfaces
+          - storage
+      - id: net_cg_6_18_16
+        tool: llcg
+        command: build
+        args:
+          - --mode
+          - remote
+          - run
+          - --llbic-json
+          - "{{steps.llbic_6_18_16.artifacts.llbic-json.location}}"
+          - --all-bc-list
+          - "{{steps.llbic_6_18_16.artifacts.bitcode-files.location}}"
+          - --filter
+          - "{{steps.net_mutator_6_18_16.artifacts.mutator_manifest.location}}"
+          - --scope-name
+          - networking-6.18.16
+      - id: storage_cg_6_18_16
+        tool: llcg
+        command: build
+        args:
+          - --mode
+          - remote
+          - run
+          - --llbic-json
+          - "{{steps.llbic_6_18_16.artifacts.llbic-json.location}}"
+          - --all-bc-list
+          - "{{steps.llbic_6_18_16.artifacts.bitcode-files.location}}"
+          - --filter
+          - "{{steps.storage_mutator_6_18_16.artifacts.mutator_manifest.location}}"
+          - --scope-name
+          - storage-6.18.16
+      - id: llbic_6_19_6
+        tool: llbic
+        command: build
+        args: ["6.19.6"]
+      - id: net_mutator_6_19_6
+        tool: llcg
+        command: build
+        args:
+          - --mode
+          - remote
+          - genmutator
+          - interfaces
+          - --source-dir
+          - "{{steps.llbic_6_19_6.artifacts.source-dir.location}}"
+          - --interfaces
+          - networking
+      - id: storage_mutator_6_19_6
+        tool: llcg
+        command: build
+        args:
+          - --mode
+          - remote
+          - genmutator
+          - interfaces
+          - --source-dir
+          - "{{steps.llbic_6_19_6.artifacts.source-dir.location}}"
+          - --interfaces
+          - storage
+      - id: net_cg_6_19_6
+        tool: llcg
+        command: build
+        args:
+          - --mode
+          - remote
+          - run
+          - --llbic-json
+          - "{{steps.llbic_6_19_6.artifacts.llbic-json.location}}"
+          - --all-bc-list
+          - "{{steps.llbic_6_19_6.artifacts.bitcode-files.location}}"
+          - --filter
+          - "{{steps.net_mutator_6_19_6.artifacts.mutator_manifest.location}}"
+          - --scope-name
+          - networking-6.19.6
+      - id: storage_cg_6_19_6
+        tool: llcg
+        command: build
+        args:
+          - --mode
+          - remote
+          - run
+          - --llbic-json
+          - "{{steps.llbic_6_19_6.artifacts.llbic-json.location}}"
+          - --all-bc-list
+          - "{{steps.llbic_6_19_6.artifacts.bitcode-files.location}}"
+          - --filter
+          - "{{steps.storage_mutator_6_19_6.artifacts.mutator_manifest.location}}"
+          - --scope-name
+          - storage-6.19.6
+      - id: llbic_7_0_rc3
+        tool: llbic
+        command: build
+        args: ["7.0-rc3"]
+      - id: net_mutator_7_0_rc3
+        tool: llcg
+        command: build
+        args:
+          - --mode
+          - remote
+          - genmutator
+          - interfaces
+          - --source-dir
+          - "{{steps.llbic_7_0_rc3.artifacts.source-dir.location}}"
+          - --interfaces
+          - networking
+      - id: storage_mutator_7_0_rc3
+        tool: llcg
+        command: build
+        args:
+          - --mode
+          - remote
+          - genmutator
+          - interfaces
+          - --source-dir
+          - "{{steps.llbic_7_0_rc3.artifacts.source-dir.location}}"
+          - --interfaces
+          - storage
+      - id: net_cg_7_0_rc3
+        tool: llcg
+        command: build
+        args:
+          - --mode
+          - remote
+          - run
+          - --llbic-json
+          - "{{steps.llbic_7_0_rc3.artifacts.llbic-json.location}}"
+          - --all-bc-list
+          - "{{steps.llbic_7_0_rc3.artifacts.bitcode-files.location}}"
+          - --filter
+          - "{{steps.net_mutator_7_0_rc3.artifacts.mutator_manifest.location}}"
+          - --scope-name
+          - networking-7.0-rc3
+      - id: storage_cg_7_0_rc3
+        tool: llcg
+        command: build
+        args:
+          - --mode
+          - remote
+          - run
+          - --llbic-json
+          - "{{steps.llbic_7_0_rc3.artifacts.llbic-json.location}}"
+          - --all-bc-list
+          - "{{steps.llbic_7_0_rc3.artifacts.bitcode-files.location}}"
+          - --filter
+          - "{{steps.storage_mutator_7_0_rc3.artifacts.mutator_manifest.location}}"
+          - --scope-name
+          - storage-7.0-rc3

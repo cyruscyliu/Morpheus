@@ -38,7 +38,7 @@ function usage() {
     "  outline-to-paper is Morpheus-managed.",
     "  Use Morpheus workflow commands instead of invoking this tool directly.",
     "  Example:",
-    "    node apps/morpheus/dist/cli.js workflow run --name outline-paper-sample --json",
+    "    node apps/morpheus/dist/cli.js --config projects/o2p/morpheus.yaml workflow run --name outline-paper-sample --json",
     "",
     "Run phases (for Morpheus-managed use):",
     "  outline-to-paper run --only-phase outline|revise|draft|edit|review",
@@ -1961,7 +1961,7 @@ async function main() {
   }
 
   let payload;
-  if (command === "run") {
+  if (command === "run" || command === "exec") {
     payload = await runCommand(flags);
   } else if (command === "inspect") {
     payload = inspectCommand(flags);

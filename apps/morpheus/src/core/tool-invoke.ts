@@ -1054,10 +1054,16 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   ) {
     fs.rmSync(path.dirname(legacyExecRunDir), { recursive: true, force: true });
   }
+  if (command === "exec" && tool === "nvirsh" && managedRunDir && !args.includes("--state-dir")) {
+    args.push("--state-dir", managedRunDir);
+  }
   const workflowStepCwd = command === "exec" && fs.existsSync(path.join(process.cwd(), "step.json"))
     ? process.cwd()
     : null;
   const childCwd = workflowStepCwd || managedRunDir || process.cwd();
+  if (command === "exec" && childCwd) {
+    fs.mkdirSync(childCwd, { recursive: true });
+  }
 
   const payload = remoteEnabled
     ? await executeRemoteTopLevelToolCommand(command, tool, args, effective, flags)

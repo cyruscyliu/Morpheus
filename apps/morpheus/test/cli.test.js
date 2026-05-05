@@ -232,6 +232,26 @@ test("config check can use explicit --config outside the config directory", () =
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("config-aware commands warn when config is discovered implicitly", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-warning-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["config", "check", "--json"], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stderr, /warning: using implicitly discovered config/);
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
 test("workflow commands are available through Morpheus", () => {
   const result = run(["workflow", "--help"]);
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -629,7 +649,7 @@ test("workflow remove stops lingering managed tool processes before deleting the
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 
-test("tool exec removes an active conflicting workspace-scoped runtime before launch", () => {
+test("tool exec rejects direct nvirsh execution outside a managed workflow", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-run-guard-project-"));
   const workspaceRoot = path.join(projectRoot, "workspace");
   const stateDir = path.join(workspaceRoot, "tmp", "nvirsh", "existing");
@@ -719,16 +739,18 @@ test("tool exec removes an active conflicting workspace-scoped runtime before la
     cwd: projectRoot,
     env: isolatedEnv(),
   });
-  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.status, 1, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout);
-  assert.equal(payload.status, "success");
-  assert.equal(fs.existsSync(stateDir), false);
+  assert.equal(payload.status, "error");
+  assert.equal(payload.error.code, "morpheus_error");
+  assert.match(payload.error.message, /managed only/);
+  assert.equal(fs.existsSync(stateDir), true);
 
   process.kill(holder.pid, "SIGKILL");
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
-test("tool exec surfaces detached nvirsh startup failures", () => {
+test("tool exec reports managed-only nvirsh constraint before detached launch", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-nvirsh-run-fails-fast-"));
   const workspaceRoot = path.join(projectRoot, "workspace");
   const depsDir = path.join(projectRoot, "deps");
@@ -808,10 +830,11 @@ test("tool exec surfaces detached nvirsh startup failures", () => {
     env: isolatedEnv(),
   });
 
-  assert.equal(result.status, 2, result.stderr || result.stdout);
+  assert.equal(result.status, 1, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim());
   assert.equal(payload.status, "error");
-  assert.equal(payload.exit_code, 2);
+  assert.equal(payload.error.code, "morpheus_error");
+  assert.match(payload.error.message, /managed only/);
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
@@ -1027,6 +1050,7 @@ test("workflow run records outline-to-paper artifacts for downstream reuse", () 
   fs.mkdirSync(path.dirname(outlinePath), { recursive: true });
   fs.writeFileSync(outlinePath, JSON.stringify({
     title: "Workflow Paper",
+    sections: [{ heading: "Introduction", claim_ids: ["c1"] }],
     claims: [{ claim_id: "c1", text: "Main claim" }],
   }));
   fs.writeFileSync(supportPath, JSON.stringify({
@@ -1076,7 +1100,7 @@ test("workflow run records outline-to-paper artifacts for downstream reuse", () 
 });
 
 test("workflow resume reuses workflow config path for nondefault workflow files", () => {
-  const configPath = path.join(repoRoot, "morpheus.o2p.yaml");
+  const configPath = path.join(repoRoot, "projects", "o2p", "morpheus.yaml");
   const first = run(["--config", configPath, "--json", "workflow", "run", "--name", "outline-paper-sample"], {
     cwd: repoRoot,
     env: isolatedEnv(),
@@ -1085,7 +1109,7 @@ test("workflow resume reuses workflow config path for nondefault workflow files"
   const firstPayload = JSON.parse(first.stdout.trim());
   const runId = firstPayload.details.id;
 
-  const resumed = run(["--json", "workflow", "resume", "--id", runId, "--workspace", path.join(repoRoot, "workspace-o2p")], {
+  const resumed = run(["--json", "workflow", "resume", "--id", runId, "--workspace", path.join(repoRoot, "projects", "o2p", "workspace")], {
     cwd: repoRoot,
     env: isolatedEnv(),
   });

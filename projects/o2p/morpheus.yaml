@@ -1,5 +1,5 @@
 workspace:
-  root: ./workspace-o2p
+  root: ./workspace
 
 tools:
   outline-to-paper:
@@ -16,7 +16,7 @@ workflows:
         command: exec
         args:
           - --outline
-          - "{{workspace.root}}/../tools/outline-to-paper/test/fixtures/outline.json"
+          - "{{workspace.root}}/../../../tools/outline-to-paper/test/fixtures/outline.json"
           - --template
           - acsac26
   outline-paper-phased:

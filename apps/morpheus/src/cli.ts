@@ -12,6 +12,7 @@ const { handleExecCommand } = require("./commands/exec");
 const { handleToolCommand } = require("./commands/tools");
 const { handleWorkflowCommand } = require("./commands/workflow");
 const { handleWorkspaceCommand } = require("./commands/workspace");
+const { findConfigPath } = require("./core/config");
 const { writeStdout, writeStdoutLine, writeStderrLine } = require("./core/io");
 
 function parseArgs(argv) {
@@ -51,15 +52,15 @@ function usage() {
   writeStdout(
     [
       "Usage:",
-      "  node apps/morpheus/dist/cli.js workspace create [--workspace DIR] [--json]",
-      "  node apps/morpheus/dist/cli.js workspace show [--workspace DIR] [--json]",
-      "  node apps/morpheus/dist/cli.js config check [--json]",
+      "  node apps/morpheus/dist/cli.js [--config PATH] workspace create [--workspace DIR] [--json]",
+      "  node apps/morpheus/dist/cli.js [--config PATH] workspace show [--workspace DIR] [--json]",
+      "  node apps/morpheus/dist/cli.js [--config PATH] config check [--json]",
       "  node apps/morpheus/dist/cli.js tool list [--json]",
-      "  node apps/morpheus/dist/cli.js workflow run --name WORKFLOW_NAME [--json]",
-      "  node apps/morpheus/dist/cli.js workflow inspect --id WORKFLOW_RUN_ID [--json]",
-      "  node apps/morpheus/dist/cli.js workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow] [--json]",
-      "  node apps/morpheus/dist/cli.js workflow stop --id WORKFLOW_RUN_ID [--json]",
-      "  node apps/morpheus/dist/cli.js workflow remove --id WORKFLOW_RUN_ID [--json]"
+      "  node apps/morpheus/dist/cli.js --config projects/<project>/morpheus.yaml workflow run --name WORKFLOW_NAME [--json]",
+      "  node apps/morpheus/dist/cli.js [--config PATH] workflow inspect --id WORKFLOW_RUN_ID [--json]",
+      "  node apps/morpheus/dist/cli.js [--config PATH] workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow] [--json]",
+      "  node apps/morpheus/dist/cli.js [--config PATH] workflow stop --id WORKFLOW_RUN_ID [--json]",
+      "  node apps/morpheus/dist/cli.js [--config PATH] workflow remove --id WORKFLOW_RUN_ID [--json]"
     ].join("\n") + "\n"
   );
 }
@@ -91,15 +92,24 @@ function stripGlobalFlags(argv) {
 async function main() {
   const rawArgv = process.argv.slice(2);
   const { positionals, flags } = parseArgs(rawArgv);
+  const explicitConfig = typeof flags.config === "string" ? String(flags.config) : null;
   if (flags.config && typeof flags.config === "string") {
     process.env.MORPHEUS_CONFIG = path.resolve(String(flags.config));
   }
   const argv = stripGlobalFlags(rawArgv);
   const command = positionals[0];
+  const configAwareCommands = new Set(["workspace", "config", "fetch", "patch", "build", "inspect", "logs", "exec", "workflow"]);
 
   if (!command || command === "help" || command === "--help") {
     usage();
     return 0;
+  }
+
+  if (!explicitConfig && !process.env.MORPHEUS_CONFIG && configAwareCommands.has(String(command))) {
+    const implicitConfig = findConfigPath(process.cwd());
+    if (implicitConfig) {
+      writeStderrLine(`warning: using implicitly discovered config ${implicitConfig}; pass --config explicitly`);
+    }
   }
 
   if (command === "workspace") {

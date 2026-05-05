@@ -97,7 +97,8 @@ workflow run.
 ## Notes
 
 - The `virtio` example expects `sdfgen` 0.26.*. This repo ships an upstreamable
-  patch at `tools/libvmm/patches/0001-add-requirements-for-sdfgen-0.26.patch`
-  that adds `requirements.txt` to the libvmm checkout.
+  patch in the managed workspace patch tree, for example
+  `projects/<project>/workspace/tools/libvmm/patches/...`, that adds
+  `requirements.txt` to the libvmm checkout.
 - Provisioning runs git non-interactively (so missing credentials should fail
   fast rather than hang).

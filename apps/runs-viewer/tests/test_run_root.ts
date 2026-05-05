@@ -44,12 +44,12 @@ test("findRunRoot honors MORPHEUS_CONFIG for nonstandard config filenames", () =
   const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-viewer-"));
   const repoRoot = path.join(baseDir, "repo");
   const startDir = path.join(repoRoot, "apps", "runs-viewer");
-  const workspaceDir = path.join(repoRoot, "my-o2p-workspace");
-  const configPath = path.join(repoRoot, "morpheus.o2p.yaml");
+  const workspaceDir = path.join(repoRoot, "projects", "o2p", "workspace");
+  const configPath = path.join(repoRoot, "projects", "o2p", "morpheus.yaml");
 
   writeFile(
     configPath,
-    ["workspace:", "  root: my-o2p-workspace", ""].join("\n"),
+    ["workspace:", "  root: ./workspace", ""].join("\n"),
   );
 
   const previous = process.env.MORPHEUS_CONFIG;

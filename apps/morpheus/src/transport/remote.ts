@@ -488,6 +488,20 @@ function stageLocalMorpheusRuntime() {
     });
   }
 
+  const projectsRoot = path.join(sourceRoot, "projects");
+  if (fs.existsSync(projectsRoot) && fs.statSync(projectsRoot).isDirectory()) {
+    for (const projectName of fs.readdirSync(projectsRoot)) {
+      const projectConfig = path.join(projectsRoot, projectName, "morpheus.yaml");
+      if (!fs.existsSync(projectConfig)) {
+        continue;
+      }
+      const relativePath = path.relative(sourceRoot, projectConfig);
+      const destinationPath = path.join(stageRoot, relativePath);
+      fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+      fs.cpSync(projectConfig, destinationPath);
+    }
+  }
+
   const toolsRoot = path.join(sourceRoot, "tools");
   if (fs.existsSync(toolsRoot)) {
     for (const toolName of fs.readdirSync(toolsRoot)) {

@@ -2,7 +2,7 @@
 name: buildroot
 description: Run Buildroot workflows, inspect build metadata, and validate the
   CLI with the smoke fixture. Use when the user wants to build with
-  Buildroot, inspect a prior build, or reason about the Buildroot CLI
+  Buildroot, inspect a prior build, or reason about the Buildroot tool
   contract.
 license: MIT
 compatibility: Designed for Codex CLI (or similar products)
@@ -10,13 +10,13 @@ compatibility: Designed for Codex CLI (or similar products)
 
 # buildroot Skill
 
-Use this skill when you need to work with the `buildroot` CLI in this repo.
+Use this skill when you need to work with the `buildroot` tool in this repo.
 
 ## Purpose
 
-`buildroot` is a Morpheus tool CLI for Buildroot workflows.
-It supports managed source fetch, builds, manifest inspection, cleanup, and
-explicit JSON output.
+`buildroot` is now migrating to a script-backed Morpheus tool model.
+`tool.json` is the contract.
+`scripts/` own fetch, patch, build, inspect, and logs behavior.
 Use Morpheus for workflow runs, inspection, logs, and artifact-oriented
 execution.
 
@@ -42,12 +42,11 @@ run-specific values.
 `tools/buildroot/tool.json` is the integration contract Morpheus reads.
 
 - `cli-contract` is `fetch,patch,build,inspect,logs`
-- `entry` is `dist/index.js`
 - `config.fields` defines accepted config names and aliases
 - `managed` declares managed source, downloads, build output, and artifact
   path templates
-- `commands.fetch` and `commands.build` tell Morpheus which flags are scalar,
-  repeatable, path-based, and aliased
+- `commands.*.script` tells Morpheus which shell step to run
+- `commands.*.result` defines summaries, artifacts, and stable details
 
 This descriptor is the source of truth for how Morpheus materializes workspace
 paths and forwards Buildroot options.
@@ -76,16 +75,14 @@ Every command supports `--json`, including `--help` and error cases.
 
 ## Smoke Test
 
-The repo includes a tiny fixture for fast validation of the CLI path.
-Use it when you want to confirm the command surface without downloading a real
-Buildroot release.
+The repo includes a tiny fixture for fast validation of the managed workflow
+path.
 
 ```bash
-pnpm --filter @morpheus/buildroot smoke
+node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name buildroot-build
 ```
 
-The smoke test verifies that `buildroot build` and `buildroot inspect` can
-produce and read a small artifact and manifest.
+This validates the real managed Buildroot workflow path.
 
 ## Feature List
 

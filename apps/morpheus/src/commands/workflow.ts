@@ -533,6 +533,22 @@ function stopWorkflowStepTool(step) {
     return null;
   }
 
+  if (!descriptor.entry) {
+    const command = process.execPath;
+    const args = [
+      path.join(repoRoot(), "apps", "morpheus", "dist", "cli.js"),
+      "stop",
+      "--tool",
+      step.tool,
+      "--json",
+    ];
+    return spawnSync(command, args, {
+      cwd: step.stepDir,
+      encoding: "utf8",
+      env: process.env,
+    });
+  }
+
   const entryPath = path.join(repoRoot(), descriptor.installRoot, descriptor.entry);
   const args = descriptor.runtime === "node"
     ? [entryPath, "stop", "--json"]

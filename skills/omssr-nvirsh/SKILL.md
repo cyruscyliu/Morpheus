@@ -13,12 +13,12 @@ Use this skill when you need to work with the `nvirsh` tool.
 
 ## Purpose
 
-`nvirsh` is a Morpheus-internal lifecycle CLI.
-It validates target prerequisites, records stable run state, launches from
-explicit runtime artifacts, and exposes stable inspect, logs, stop, and
-remove commands.
-Use Morpheus around it when workflow orchestration or dependency resolution
-matters.
+`nvirsh` now uses the script-backed Morpheus tool model for managed runtime
+lifecycle.
+`tool.json` is the contract.
+`scripts/` own exec, inspect, logs, and stop behavior.
+Use Morpheus around it for workflow orchestration, dependency resolution, and
+run-state lifecycle.
 
 ## Config Schema
 
@@ -41,13 +41,15 @@ paths for each workflow run.
 
 `tools/nvirsh/tool.json` is the Morpheus integration contract.
 
-- `cli-contract` is `exec,inspect,logs`
+- `cli-contract` is `exec,inspect,logs,stop`
 - `runGuard` prevents overlapping runs for the same target/runtime pair
 - `config.fields` defines accepted names and aliases
 - `inputs.run.dependencies` maps managed artifacts such as `qemu`,
   `microkit-sdk`, `toolchain-bin-dir`, `libvmm-dir`, `kernel`, and `initrd`
   into runtime flags
 - `inputs.run.config` maps workflow config onto runtime-provider flags
+- `commands.*.script` tells Morpheus which shell step to run
+- `commands.*.result` defines stable lifecycle output details
 
 Read the descriptor when you need to understand how Morpheus turns published
 artifacts into one concrete runtime invocation.
@@ -74,14 +76,13 @@ runtime state, inspection output, and logs metadata.
 
 ## Smoke Test
 
-Use the package smoke script for a fast CLI validation pass:
+Use the workflow smoke command for a fast managed validation pass:
 
 ```bash
-pnpm --filter @morpheus/nvirsh smoke
+node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name nvirsh-runtime
 ```
 
-The smoke test validates the managed runtime CLI path without requiring a full
-target workflow.
+This validates the real managed runtime workflow path.
 
 ## Feature List
 

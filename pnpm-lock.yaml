@@ -113,8 +113,6 @@ importers:
         specifier: ^4.20.3
         version: 4.21.0
 
-  tools/buildroot: {}
-
   tools/libvmm: {}
 
   tools/microkit-sdk: {}
@@ -122,8 +120,6 @@ importers:
   tools/nvirsh: {}
 
   tools/outline-to-paper: {}
-
-  tools/qemu: {}
 
   tools/sel4: {}
 

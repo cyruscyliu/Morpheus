@@ -22,22 +22,24 @@ function requireTool(name) {
 function verifyTool(name) {
   const definition = requireTool(name);
   const installRoot = path.join(repoRoot(), definition.installRoot);
-  const entrypoint = path.join(installRoot, definition.entry);
-  const wrapperPath = path.join(repoRoot(), "bin", name);
+  const entrypoint = definition.entry ? path.join(installRoot, definition.entry) : null;
+  const wrapperPath = definition.entry ? path.join(repoRoot(), "bin", name) : null;
   const issues = [];
 
   if (!fs.existsSync(installRoot)) {
     issues.push(`missing install root: ${definition.installRoot}`);
   }
-  if (!fs.existsSync(entrypoint)) {
+  if (entrypoint && !fs.existsSync(entrypoint)) {
     issues.push(`missing entrypoint: ${path.relative(repoRoot(), entrypoint)}`);
   }
-  if (!fs.existsSync(wrapperPath)) {
+  if (wrapperPath && !fs.existsSync(wrapperPath)) {
     issues.push(`missing wrapper: ${path.relative(repoRoot(), wrapperPath)}`);
   }
 
   let status = "valid";
-  if (!fs.existsSync(installRoot) || !fs.existsSync(entrypoint) || !fs.existsSync(wrapperPath)) {
+  if (!definition.entry) {
+    status = "scripted";
+  } else if (!fs.existsSync(installRoot) || !fs.existsSync(entrypoint) || !fs.existsSync(wrapperPath)) {
     status = "missing";
   } else if (issues.length > 0) {
     status = "invalid";
@@ -49,8 +51,8 @@ function verifyTool(name) {
     runtime: definition.runtime || null,
     descriptorPath: definition.descriptorPath,
     installRoot: path.relative(repoRoot(), installRoot),
-    entrypoint: path.relative(repoRoot(), entrypoint),
-    wrapper: path.relative(repoRoot(), wrapperPath),
+    entrypoint: entrypoint ? path.relative(repoRoot(), entrypoint) : null,
+    wrapper: wrapperPath ? path.relative(repoRoot(), wrapperPath) : null,
     issues
   };
 }

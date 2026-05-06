@@ -1,8 +1,7 @@
 {
   "name": "libvmm",
-  "runtime": "node",
+  "runtime": null,
   "cli-contract": "fetch,patch,build,exec,inspect,logs,stop",
-  "entry": "dist/index.js",
   "runGuard": {
     "scope": "workspace",
     "keyTemplate": "{provider.action}:{provider.example}"
@@ -11,6 +10,7 @@
     "fields": {
       "mode": { "aliases": ["mode"] },
       "source": { "aliases": ["source"], "path": true },
+      "seed-dir": { "aliases": ["seed-dir", "seedDir"], "path": true },
       "build-version": { "aliases": ["build-version", "buildVersion", "git-ref", "gitRef"] },
       "git-url": { "aliases": ["git-url", "gitUrl"] },
       "example": { "aliases": ["example"] },
@@ -31,8 +31,7 @@
   "inputs": {
     "build": {
       "dependencies": {
-        "microkit-sdk": { "flag": "microkit-sdk" },
-        "qemu": { "flag": "qemu" }
+        "microkit-sdk": { "flag": "microkit-sdk" }
       }
     },
     "run": {
@@ -59,6 +58,134 @@
         },
         "example-build-dir": {
           "pathTemplate": "tools/libvmm/builds/{buildDirKey}/source/examples/{example}/build"
+        }
+      },
+      "commands": {
+        "fetch": {
+          "requiredFlags": ["source"],
+          "scalarFlags": ["git-url", "seed-dir", "build-version"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/fetch.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "source": "tools/libvmm/builds/{buildDirKey}/source"
+          },
+          "result": {
+            "successSummary": "fetched managed libvmm source tree",
+            "reusedSummary": "reused managed libvmm source tree",
+            "artifact": {
+              "path": "libvmm-dir",
+              "locationTemplate": "{source}"
+            },
+            "details": {
+              "source": "{source}",
+              "build_version": { "fromFlag": "build-version" }
+            }
+          }
+        },
+        "patch": {
+          "requiredFlags": ["source", "patch-dir"],
+          "scalarFlags": ["patch-dir"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/patch.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "source": "tools/libvmm/builds/{buildDirKey}/source"
+          },
+          "result": {
+            "successSummary": "patched managed libvmm source tree",
+            "reusedSummary": "reused patched managed libvmm source tree",
+            "artifact": {
+              "path": "libvmm-dir",
+              "locationTemplate": "{source}"
+            },
+            "details": {
+              "source": "{source}",
+              "patch_dir": "{patch-dir}",
+              "log_file": "{source}/.morpheus-patches.log"
+            }
+          }
+        },
+        "build": {
+          "requiredFlags": ["source", "microkit-sdk"],
+          "scalarFlags": ["example", "board", "microkit-sdk", "toolchain-bin-dir", "seed-dir", "git-url", "build-version"],
+          "repeatableFlags": ["make-arg"],
+          "script": {
+            "path": "scripts/build.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "source": "tools/libvmm/builds/{buildDirKey}/source"
+          },
+          "result": {
+            "successSummary": "built managed libvmm example",
+            "details": {
+              "source": "{source}",
+              "example": { "fromFlag": "example" },
+              "microkit_sdk": "{microkit-sdk}",
+              "toolchain_bin_dir": { "fromFlag": "toolchain-bin-dir" }
+            }
+          }
+        },
+        "inspect": {
+          "requiredFlags": ["source"],
+          "scalarFlags": ["source"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/inspect.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "inspected managed libvmm source tree",
+            "artifact": {
+              "path": "libvmm-dir",
+              "locationTemplate": "{source}"
+            }
+          }
+        },
+        "logs": {
+          "requiredFlags": ["source"],
+          "scalarFlags": ["source"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/logs.sh",
+            "shell": "bash"
+          }
+        },
+        "exec": {
+          "requiredFlags": ["runtime-contract", "run-dir", "libvmm-dir", "microkit-sdk", "board", "kernel", "initrd", "qemu"],
+          "scalarFlags": ["runtime-contract", "run-dir", "libvmm-dir", "microkit-sdk", "board", "microkit-config", "kernel", "initrd", "qemu", "toolchain-bin-dir", "action"],
+          "repeatableFlags": ["qemu-arg"],
+          "script": {
+            "path": "scripts/exec.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "started local libvmm runtime",
+            "attachedSuccessSummary": "completed local libvmm runtime",
+            "errorSummary": "local libvmm runtime failed",
+            "details": {
+              "run_dir": "{run-dir}",
+              "manifest": "{run-dir}/manifest.json",
+              "log_file": "{run-dir}/stdout.log"
+            }
+          }
+        },
+        "stop": {
+          "requiredFlags": [],
+          "scalarFlags": ["run-dir"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/stop.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "stopped local libvmm runtime"
+          }
         }
       }
     }

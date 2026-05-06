@@ -1,0 +1,10 @@
+--- a/Makefile
++++ b/Makefile
+@@ -17,7 +17,7 @@ $(O)/images/$(TARGET_NAME).tar: $(O)/.config
+ 	@mkdir -p $(O)/images $(O)/target
+ 	@printf '%s\n' 'hello from minimal buildroot smoke target' > $(O)/target/hello.txt
+ 	@tar -cf $@ -C $(O)/target hello.txt
+-	@printf '%s\n' 'fake arm64 kernel image' > $(O)/images/Image
++	@printf '%s\n' 'patched fake arm64 kernel image' > $(O)/images/Image
+ 	@gzip -nc $(O)/target/hello.txt > $(O)/images/rootfs.cpio.gz
+ 	@printf '%s\n' 'built $(TARGET_NAME).tar' > $(O)/build.log

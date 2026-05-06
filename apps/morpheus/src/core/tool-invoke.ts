@@ -27,7 +27,6 @@ function parseToolArgs(argv) {
     "configure-arg",
     "make-arg",
     "env",
-    "path",
     "artifact",
     "config-fragment",
   ]);
@@ -210,6 +209,344 @@ function resolveManagedPathTemplate(workspace, descriptor, template, buildVersio
   );
 }
 
+function renderScriptTemplate(template, values) {
+  return String(template).replace(/\{([a-zA-Z0-9_-]+)\}/g, (_, key) => {
+    if (!Object.prototype.hasOwnProperty.call(values, key)) {
+      throw new Error(`missing template value: ${key}`);
+    }
+    const value = values[key];
+    if (value == null || value === "") {
+      throw new Error(`empty template value: ${key}`);
+    }
+    return String(value);
+  });
+}
+
+function scriptEnvPrefix(tool) {
+  return `MORPHEUS_${String(tool || "").replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").toUpperCase()}`;
+}
+
+function scriptedCommandSpec(descriptor, command) {
+  const spec = commandSpec(descriptor, command);
+  if (!spec || !spec.script || !spec.script.path) {
+    return null;
+  }
+  if (descriptor && descriptor.entry) {
+    return null;
+  }
+  return spec;
+}
+
+function scriptResultPath(cwd) {
+  return path.join(cwd, ".morpheus-script-result.json");
+}
+
+function scriptLogPath(cwd) {
+  return path.join(cwd, ".morpheus-script.log");
+}
+
+function parseScriptedArgs(args) {
+  const positionals = [];
+  const flags = {};
+  const booleanFlags = new Set(["json", "help", "detach"]);
+  const repeatableFlags = new Set([
+    "qemu-arg",
+    "target-list",
+    "configure-arg",
+    "make-arg",
+    "env",
+    "artifact",
+    "config-fragment",
+  ]);
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index];
+    if (!token.startsWith("--")) {
+      positionals.push(token);
+      continue;
+    }
+    const key = token.slice(2);
+    const next = args[index + 1];
+    if (repeatableFlags.has(key)) {
+      if (typeof next !== "string" || next.startsWith("--")) {
+        flags[key] = Array.isArray(flags[key]) ? [...flags[key]] : [];
+      } else {
+        const current = Array.isArray(flags[key]) ? flags[key] : [];
+        flags[key] = [...current, next];
+        index += 1;
+      }
+      continue;
+    }
+    if (!booleanFlags.has(key) && typeof next === "string" && !next.startsWith("--")) {
+      flags[key] = next;
+      index += 1;
+    } else {
+      flags[key] = true;
+    }
+  }
+  return {
+    command: positionals[0] || null,
+    flags,
+  };
+}
+
+function buildScriptValues(descriptor, tool, command, spec, flags) {
+  const managed = localManaged(descriptor) || {};
+  const buildVersion = flags["build-version"] || null;
+  const buildDirKey = flags["build-dir-key"] || "default";
+  const templateExtras = {
+    toolchainVersion: flags["toolchain-version"] || null,
+    example: flags.example || null,
+    tool,
+  };
+  const values = {
+    ...flags,
+  };
+  const pathTemplates = {
+    source: managed.sourceTemplate || null,
+    "downloads-dir": managed.downloadsDir || null,
+    "build-dir": managed.buildDirTemplate || null,
+    "install-dir": managed.installDirTemplate || null,
+    "run-dir": managed.execDirTemplate || null,
+  };
+  for (const [key, template] of Object.entries(pathTemplates)) {
+    if (values[key] || !template || !values.workspace) {
+      continue;
+    }
+    values[key] = resolveManagedPathTemplate(
+      values.workspace,
+      descriptor,
+      template,
+      buildVersion,
+      buildDirKey,
+      templateExtras,
+    );
+  }
+  const commandPathFlags = spec && spec.pathFlags ? spec.pathFlags : {};
+  for (const [key, template] of Object.entries(commandPathFlags)) {
+    if (values[key] || !values.workspace) {
+      continue;
+    }
+    if (typeof template !== "string" || !template) {
+      continue;
+    }
+    values[key] = resolveManagedPathTemplate(
+      values.workspace,
+      descriptor,
+      template,
+      buildVersion,
+      buildDirKey,
+      templateExtras,
+    );
+  }
+  return values;
+}
+
+function scriptResultDetails(command, spec, values, dynamicResult = {}) {
+  const detailsSpec = spec && spec.result && spec.result.details ? spec.result.details : {};
+  const details = {};
+  for (const [key, rawValue] of Object.entries(detailsSpec)) {
+    if (typeof rawValue === "string") {
+      details[key] = path.isAbsolute(rawValue)
+        ? rawValue
+        : renderScriptTemplate(rawValue, values);
+      continue;
+    }
+    if (rawValue && typeof rawValue === "object" && rawValue.fromFlag) {
+      details[key] = Object.prototype.hasOwnProperty.call(values, rawValue.fromFlag)
+        ? values[rawValue.fromFlag]
+        : null;
+    }
+  }
+  if (dynamicResult && dynamicResult.details && typeof dynamicResult.details === "object") {
+    Object.assign(details, dynamicResult.details);
+  }
+  return details;
+}
+
+function scriptResultArtifacts(spec, values, dynamicResult = {}) {
+  if (dynamicResult && Array.isArray(dynamicResult.artifacts) && dynamicResult.artifacts.length > 0) {
+    return dynamicResult.artifacts;
+  }
+  const artifact = spec && spec.result ? spec.result.artifact : null;
+  if (!artifact || !artifact.path || !artifact.locationTemplate) {
+    return [];
+  }
+  return [{
+    path: artifact.path,
+    location: renderScriptTemplate(artifact.locationTemplate, values),
+  }];
+}
+
+function scriptResultSummary(command, spec, dynamicResult = {}) {
+  if (dynamicResult && typeof dynamicResult.summary === "string" && dynamicResult.summary) {
+    return dynamicResult.summary;
+  }
+  const details = dynamicResult && dynamicResult.details && typeof dynamicResult.details === "object"
+    ? dynamicResult.details
+    : {};
+  if (details.reused && spec && spec.result && spec.result.reusedSummary) {
+    return spec.result.reusedSummary;
+  }
+  if (command === "exec" && details.detached === false && spec && spec.result && spec.result.attachedSuccessSummary) {
+    return spec.result.attachedSuccessSummary;
+  }
+  return spec && spec.result && spec.result.successSummary
+    ? spec.result.successSummary
+    : `completed ${command}`;
+}
+
+async function runScriptedToolStreaming(descriptor, args, options = {}) {
+  const parsed = parseScriptedArgs(args);
+  const command = parsed.command;
+  const spec = scriptedCommandSpec(descriptor, command);
+  if (!spec) {
+    throw new Error(`tool ${descriptor.name} does not implement scripted command ${command}`);
+  }
+  const tool = descriptor.name;
+  const childCwd = options.cwd || process.cwd();
+  const resultFile = scriptResultPath(childCwd);
+  const defaultLogFile = scriptLogPath(childCwd);
+  const prefix = scriptEnvPrefix(tool);
+  const rawValues = buildScriptValues(descriptor, tool, command, spec, {
+    ...parsed.flags,
+    workspace: options.workspace || parsed.flags.workspace || null,
+  });
+
+  for (const required of Array.isArray(spec.requiredFlags) ? spec.requiredFlags : []) {
+    if (rawValues[required] == null || rawValues[required] === "") {
+      throw new Error(`missing required flag: --${required}`);
+    }
+  }
+
+  const env = {
+    ...(options.env || process.env),
+    MORPHEUS_SCRIPT_RESULT_FILE: resultFile,
+    MORPHEUS_SCRIPT_LOG_FILE: defaultLogFile,
+    MORPHEUS_SCRIPT_WORKSPACE: rawValues.workspace || "",
+    [`${prefix}_RESULT_FILE`]: resultFile,
+    [`${prefix}_LOG_FILE`]: defaultLogFile,
+    [`${prefix}_WORKSPACE`]: rawValues.workspace || "",
+  };
+
+  for (const [key, value] of Object.entries(rawValues)) {
+    if (value == null || value === false) {
+      continue;
+    }
+    const envKey = `${prefix}_${String(key).replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").toUpperCase()}`;
+    if (Array.isArray(value)) {
+      const listFile = path.join(childCwd, `.morpheus-${String(key)}.txt`);
+      fs.writeFileSync(listFile, value.join("\n"), "utf8");
+      env[envKey] = value.join("\n");
+      env[`${envKey}_FILE`] = listFile;
+      continue;
+    }
+    env[envKey] = value === true ? "true" : String(value);
+  }
+
+  const resultSpec = spec.result || {};
+  const logFile = resultSpec.logFileTemplate
+    ? renderScriptTemplate(resultSpec.logFileTemplate, rawValues)
+    : defaultLogFile;
+  fs.rmSync(resultFile, { force: true });
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
+  fs.writeFileSync(logFile, "", "utf8");
+
+  const scriptPath = path.join(repoRoot(), descriptor.installRoot, spec.script.path);
+  const child = spawn(spec.script.shell || "bash", [scriptPath], {
+    cwd: childCwd,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  return await new Promise((resolve, reject) => {
+    let stdoutText = "";
+    let stderrText = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+
+    const emitChunk = (stream, chunk) => {
+      if (!chunk) {
+        return;
+      }
+      fs.appendFileSync(logFile, chunk, "utf8");
+      if (options.jsonMode && options.emitStream) {
+        writeStdoutLine(JSON.stringify({
+          command,
+          status: "stream",
+          exit_code: 0,
+          details: {
+            event: "log",
+            stream,
+            chunk,
+          },
+        }));
+        return;
+      }
+      if (stream === "stdout") {
+        writeStdout(chunk);
+      } else {
+        process.stderr.write(chunk);
+      }
+    };
+
+    child.stdout.on("data", (chunk) => {
+      stdoutText += chunk;
+      emitChunk("stdout", chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      stderrText += chunk;
+      emitChunk("stderr", chunk);
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      const exitCode = typeof code === "number" ? code : 1;
+      let dynamicResult = {};
+      if (fs.existsSync(resultFile)) {
+        try {
+          dynamicResult = JSON.parse(fs.readFileSync(resultFile, "utf8"));
+        } catch (error) {
+          return reject(error);
+        }
+      }
+      const details = scriptResultDetails(command, spec, rawValues, dynamicResult);
+      const artifacts = scriptResultArtifacts(spec, rawValues, dynamicResult);
+      if (artifacts.length > 0) {
+        details.artifacts = artifacts;
+      }
+      const payload = exitCode === 0
+        ? {
+            command,
+            status: "success",
+            exit_code: 0,
+            summary: scriptResultSummary(command, spec, dynamicResult),
+            details,
+          }
+        : {
+            command,
+            status: "error",
+            exit_code: exitCode,
+            summary: (resultSpec && resultSpec.errorSummary) || stderrText || stdoutText || `failed ${command}`,
+            details,
+            error: {
+              code: `${command}_failed`,
+              message: stderrText || stdoutText || `failed ${command}`,
+            },
+          };
+      if (resultSpec.manifestTemplate) {
+        const manifestPath = renderScriptTemplate(resultSpec.manifestTemplate, rawValues);
+        fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+        fs.writeFileSync(manifestPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+      }
+      resolve({
+        status: exitCode,
+        stdout: stdoutText,
+        stderr: stderrText,
+        toolPayload: payload,
+      });
+    });
+  });
+}
+
 function spawnTool(descriptor, args) {
   const entryPath = path.join(repoRoot(), descriptor.installRoot, descriptor.entry);
   if (descriptor.runtime === "node") {
@@ -225,6 +562,9 @@ function spawnTool(descriptor, args) {
 }
 
 async function runToolStreaming(descriptor, args, options = {}) {
+  if (!descriptor.entry) {
+    return await runScriptedToolStreaming(descriptor, args, options);
+  }
   const entryPath = path.join(repoRoot(), descriptor.installRoot, descriptor.entry);
   const childCwd = options.cwd || process.cwd();
   const child = descriptor.runtime === "node"
@@ -812,6 +1152,7 @@ function resolveInvocation(command, flags, options = {}) {
   const descriptor = readToolDescriptor(tool);
   const { flags: resolved } = applyConfigDefaults(
     {
+      ...flags,
       json: Boolean(flags.json),
       mode: flags.mode || (descriptorSupportsRemote(descriptor) ? null : "local"),
       tool,
@@ -979,7 +1320,7 @@ async function handleToolLifecycleCommand(command, argv, usage, options = {}) {
   const payload = normalizeArtifacts(remoteEnabled
     ? await executeRemoteTopLevelToolCommand(command, tool, args, resolved, flags)
     : parseToolPayload(
-      await runToolStreaming(descriptor, args, { jsonMode: Boolean(resolved.json) }),
+      await runToolStreaming(descriptor, args, { jsonMode: Boolean(resolved.json), workspace: resolved.workspace, emitStream: Boolean(process.env.MORPHEUS_EVENT_LOG_FILE) }),
       `failed to ${command} with tool ${tool}`
     ), command, resolved, descriptor);
 
@@ -1076,7 +1417,7 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   const payload = remoteEnabled
     ? await executeRemoteTopLevelToolCommand(command, tool, args, effective, flags)
     : parseToolPayload(
-      await runToolStreaming(descriptor, args, { jsonMode: Boolean(flags.json), env: process.env, cwd: childCwd }),
+      await runToolStreaming(descriptor, args, { jsonMode: Boolean(flags.json), env: process.env, cwd: childCwd, workspace: effective.workspace, emitStream: Boolean(process.env.MORPHEUS_EVENT_LOG_FILE) }),
       `failed to ${command} with tool ${tool}`
     );
 

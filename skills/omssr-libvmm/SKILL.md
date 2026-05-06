@@ -11,12 +11,9 @@ Use this skill when you need to work with the `libvmm` tool.
 
 ## Purpose
 
-`libvmm` provisions a libvmm git checkout and builds one of its examples given
-an existing Microkit SDK and toolchain. The checkout is treated as a stable
-workspace artifact so Morpheus-managed workflows can depend on it.
-
-The `libvmm` tool owns `git clone`, `git fetch`, and `git submodule update`.
-Morpheus only orchestrates execution and records runs.
+`libvmm` is migrating to a script-backed Morpheus tool model.
+`tool.json` is the contract.
+`scripts/` own fetch, patch, build, inspect, and logs behavior.
 
 ## Config Schema
 
@@ -46,6 +43,8 @@ workflow steps.
   tool flags for `build` and `run`
 - `managed.artifacts` defines stable artifact names such as `libvmm-dir`,
   `runtime-contract`, `example-dir`, and `example-build-dir`
+- `commands.*.script` tells Morpheus which shell step to run
+- `commands.*.result` defines summaries, artifacts, and stable details
 
 Read this descriptor first when you need to understand how Morpheus wires
 dependencies into libvmm.
@@ -71,14 +70,13 @@ progress or diagnostic output.
 
 ## Smoke Test
 
-Use the package smoke script for a fast validation pass:
+Use the workflow smoke command for a fast managed validation pass:
 
 ```bash
-pnpm --filter @morpheus/libvmm smoke
+node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name libvmm-build
 ```
 
-The smoke test validates the CLI path without requiring a full end-to-end
-workflow run.
+This validates the real managed libvmm workflow path.
 
 ## Feature List
 

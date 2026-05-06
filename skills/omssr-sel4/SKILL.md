@@ -14,10 +14,9 @@ Use this skill when you need to work with the `sel4` tool.
 
 ## Purpose
 
-`sel4` is a minimal CLI for source directory inspection, fetch, and managed
-builds. It validates the source directory, detects version metadata when
-available, and exposes a stable artifact record that Morpheus can pass to
-dependent tools such as `nvirsh`.
+`sel4` is now migrating to a script-backed Morpheus tool model.
+`tool.json` is the contract.
+`scripts/` own fetch, patch, build, inspect, and logs behavior.
 
 ## Config Schema
 
@@ -39,7 +38,8 @@ needs a specific seL4 version.
 - `cli-contract` is `fetch,patch,build,inspect,logs`
 - `config.fields` defines accepted names and aliases
 - `managed` defines downloads, source, and artifact path templates
-- `managed.artifacts` publishes the stable `source-dir` artifact
+- `commands.*.script` tells Morpheus which shell step to run
+- `commands.*.result` defines summaries, artifacts, and stable details
 
 This descriptor is the source of truth for how Morpheus resolves and records
 the managed seL4 source tree.
@@ -66,14 +66,13 @@ source artifacts and version metadata.
 
 ## Smoke Test
 
-Use the package smoke script for a fast CLI validation pass:
+Use the workflow smoke command for a fast managed validation pass:
 
 ```bash
-pnpm --filter @morpheus/sel4 smoke
+node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name sel4-build
 ```
 
-The smoke test validates the managed seL4 CLI path without requiring a full
-downstream workflow.
+This validates the real managed seL4 workflow path.
 
 ## Feature List
 

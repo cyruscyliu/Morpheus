@@ -1,0 +1,23 @@
+#!/usr/bin/env sh
+set -eu
+
+prefix=''
+target_list=''
+for arg in "$@"; do
+  case "$arg" in
+    --prefix=*) prefix="${arg#--prefix=}" ;;
+    --target-list=*) target_list="${arg#--target-list=}" ;;
+  esac
+done
+
+printf 'configuring qemu fixture target-list=%s\n' "${target_list}"
+
+cat > Makefile <<EOF
+all:
+	mkdir -p build-out
+	cp "${MORPHEUS_QEMU_SOURCE:-$MORPHEUS_V2_SOURCE}/target/trace.sh" build-out/qemu-system-aarch64
+	chmod +x build-out/qemu-system-aarch64
+install:
+	mkdir -p ${prefix}/bin
+	cp build-out/qemu-system-aarch64 ${prefix}/bin/qemu-system-aarch64
+EOF

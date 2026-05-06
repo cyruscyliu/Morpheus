@@ -1,12 +1,12 @@
 {
   "name": "sel4",
-  "runtime": "node",
+  "runtime": null,
   "cli-contract": "fetch,patch,build,inspect,logs",
-  "entry": "dist/index.js",
   "config": {
     "fields": {
       "mode": { "aliases": ["mode"] },
       "path": { "aliases": ["path", "source"], "path": true },
+      "seed-dir": { "aliases": ["seed-dir", "seedDir"], "path": true },
       "build-version": { "aliases": ["build-version", "buildVersion", "sel4-version", "sel4Version", "version"] },
       "archive-url": { "aliases": ["archive-url", "archiveUrl"] },
       "patch-dir": { "aliases": ["patch-dir", "patchDir"], "path": true },
@@ -24,6 +24,111 @@
       "artifacts": {
         "source-dir": {
           "pathTemplate": "tools/sel4/builds/{buildDirKey}/source"
+        }
+      },
+      "commands": {
+        "fetch": {
+          "requiredFlags": ["path"],
+          "scalarFlags": ["archive-url", "seed-dir", "build-version"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/fetch.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "path": "tools/sel4/builds/{buildDirKey}/source",
+            "source": "tools/sel4/builds/{buildDirKey}/source",
+            "downloads-dir": "tools/sel4/downloads"
+          },
+          "result": {
+            "successSummary": "fetched managed seL4 source tree",
+            "reusedSummary": "reused managed seL4 source tree",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{path}"
+            },
+            "details": {
+              "source": "{path}",
+              "downloads_dir": "{downloads-dir}",
+              "archive_url": { "fromFlag": "archive-url" },
+              "build_version": { "fromFlag": "build-version" }
+            }
+          }
+        },
+        "patch": {
+          "requiredFlags": ["path", "patch-dir"],
+          "scalarFlags": ["patch-dir"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/patch.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "path": "tools/sel4/builds/{buildDirKey}/source",
+            "source": "tools/sel4/builds/{buildDirKey}/source"
+          },
+          "result": {
+            "successSummary": "patched managed seL4 source tree",
+            "reusedSummary": "reused patched managed seL4 source tree",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{path}"
+            },
+            "details": {
+              "source": "{path}",
+              "patch_dir": "{patch-dir}",
+              "log_file": "{path}/.morpheus-patches.log"
+            }
+          }
+        },
+        "build": {
+          "requiredFlags": ["path"],
+          "scalarFlags": ["path", "seed-dir", "archive-url", "build-version"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/build.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "path": "tools/sel4/builds/{buildDirKey}/source",
+            "source": "tools/sel4/builds/{buildDirKey}/source"
+          },
+          "result": {
+            "successSummary": "prepared managed seL4 source tree",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{path}"
+            },
+            "details": {
+              "source": "{path}",
+              "build_version": { "fromFlag": "build-version" }
+            }
+          }
+        },
+        "inspect": {
+          "requiredFlags": ["path"],
+          "scalarFlags": ["path"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/inspect.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "inspected managed seL4 source tree",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{path}"
+            }
+          }
+        },
+        "logs": {
+          "requiredFlags": ["path"],
+          "scalarFlags": ["path"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/logs.sh",
+            "shell": "bash"
+          }
         }
       }
     }

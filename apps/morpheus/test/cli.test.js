@@ -917,6 +917,253 @@ test("workflow run resolves prior step artifacts in configured workflows", () =>
   fs.rmSync(env.MORPHEUS_WORK_ROOT, { recursive: true, force: true });
 });
 
+test("workflow run builds qemu through scripted fetch patch build steps", () => {
+  const workspaceRoot = path.join(repoRoot, "workspace");
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+
+  const result = run([
+    "--json",
+    "--config",
+    path.join(repoRoot, "morpheus.yaml"),
+    "workflow",
+    "run",
+    "--name",
+    "qemu-build",
+  ]);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.steps.length, 3);
+  assert.deepEqual(
+    payload.details.steps.map((step) => step.id),
+    ["qemu_fetch", "qemu_patch", "qemu_build"],
+  );
+
+  const executable = path.join(
+    workspaceRoot,
+    "tools",
+    "qemu",
+    "builds",
+    "default",
+    "install",
+    "bin",
+    "qemu-system-aarch64",
+  );
+  assert.equal(fs.existsSync(executable), true);
+  const built = spawnSync(executable, [], { encoding: "utf8" });
+  assert.match(built.stdout, /trace=patched/);
+
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
+test("workflow run builds buildroot through scripted fetch patch build steps", () => {
+  const workspaceRoot = path.join(repoRoot, "workspace");
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+
+  const result = run([
+    "--json",
+    "--config",
+    path.join(repoRoot, "morpheus.yaml"),
+    "workflow",
+    "run",
+    "--name",
+    "buildroot-build",
+  ]);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.steps.length, 3);
+  assert.deepEqual(
+    payload.details.steps.map((step) => step.id),
+    ["buildroot_fetch", "buildroot_patch", "buildroot_build"],
+  );
+
+  const image = path.join(
+    workspaceRoot,
+    "tools",
+    "buildroot",
+    "builds",
+    "default",
+    "output",
+    "images",
+    "Image",
+  );
+  const rootfs = path.join(
+    workspaceRoot,
+    "tools",
+    "buildroot",
+    "builds",
+    "default",
+    "output",
+    "images",
+    "rootfs.cpio.gz",
+  );
+  assert.equal(fs.existsSync(image), true);
+  assert.equal(fs.existsSync(rootfs), true);
+  assert.match(fs.readFileSync(image, "utf8"), /patched fake arm64 kernel image/);
+
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
+test("workflow run builds sel4 through scripted fetch patch build steps", () => {
+  const workspaceRoot = path.join(repoRoot, "workspace");
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+
+  const result = run([
+    "--json",
+    "--config",
+    path.join(repoRoot, "morpheus.yaml"),
+    "workflow",
+    "run",
+    "--name",
+    "sel4-build",
+  ]);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.steps.length, 3);
+  assert.deepEqual(
+    payload.details.steps.map((step) => step.id),
+    ["sel4_fetch", "sel4_patch", "sel4_build"],
+  );
+
+  const versionFile = path.join(
+    workspaceRoot,
+    "tools",
+    "sel4",
+    "builds",
+    "default",
+    "source",
+    "VERSION",
+  );
+  assert.equal(fs.existsSync(versionFile), true);
+  assert.match(fs.readFileSync(versionFile, "utf8"), /1\.0\.1-patched/);
+
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
+test("workflow run builds microkit-sdk through scripted fetch patch build steps", () => {
+  const workspaceRoot = path.join(repoRoot, "workspace");
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+
+  const result = run([
+    "--json",
+    "--config",
+    path.join(repoRoot, "morpheus.yaml"),
+    "workflow",
+    "run",
+    "--name",
+    "microkit-sdk-build",
+  ]);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.steps.length, 6);
+
+  const generated = path.join(
+    workspaceRoot,
+    "tools",
+    "microkit-sdk",
+    "builds",
+    "default",
+    "install",
+    "board",
+    "qemu_virt_aarch64",
+    "debug",
+    "include",
+    "kernel",
+    "gen_config.h",
+  );
+  const toolchain = path.join(
+    workspaceRoot,
+    "tools",
+    "microkit-sdk",
+    "deps",
+    "arm-gnu-toolchain-fixture",
+    "bin",
+    "aarch64-none-elf-gcc",
+  );
+  assert.equal(fs.existsSync(generated), true);
+  assert.equal(fs.existsSync(toolchain), true);
+
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
+test("workflow run builds libvmm through scripted fetch patch build steps", () => {
+  const workspaceRoot = path.join(repoRoot, "workspace");
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+
+  const result = run([
+    "--json",
+    "--config",
+    path.join(repoRoot, "morpheus.yaml"),
+    "workflow",
+    "run",
+    "--name",
+    "libvmm-build",
+  ]);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.steps.length, 9);
+
+  const contract = path.join(
+    workspaceRoot,
+    "tools",
+    "libvmm",
+    "builds",
+    "default",
+    "source",
+    "runtime-contract.json",
+  );
+  const guest = path.join(
+    workspaceRoot,
+    "tools",
+    "libvmm",
+    "builds",
+    "default",
+    "source",
+    "examples",
+    "virtio",
+    "build",
+    "guest.bin",
+  );
+  assert.equal(fs.existsSync(contract), true);
+  assert.equal(fs.existsSync(guest), true);
+
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
+test("workflow run starts nvirsh runtime through scripted exec chain", () => {
+  const workspaceRoot = path.join(repoRoot, "workspace");
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+
+  const result = run([
+    "--json",
+    "--config",
+    path.join(repoRoot, "morpheus.yaml"),
+    "workflow",
+    "run",
+    "--name",
+    "nvirsh-runtime",
+  ]);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+  assert.equal(payload.status, "success");
+  const stateManifest = path.join(
+    workspaceRoot,
+    "tmp",
+    "nvirsh",
+    "exec",
+    "manifest.json",
+  );
+  assert.equal(fs.existsSync(stateManifest), true);
+  const manifest = JSON.parse(fs.readFileSync(stateManifest, "utf8"));
+  assert.equal(manifest.tool, "nvirsh");
+
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
 test("workflow run writes failure events to canonical event log", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-events-fail-"));
   writeConfig(

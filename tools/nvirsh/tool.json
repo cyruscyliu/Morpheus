@@ -1,8 +1,7 @@
 {
   "name": "nvirsh",
-  "runtime": "node",
+  "runtime": null,
   "cli-contract": "exec,inspect,logs,stop",
-  "entry": "dist/index.js",
   "runGuard": {
     "scope": "workspace",
     "keyTemplate": "{target}:{runtime.provider.action}"
@@ -42,6 +41,63 @@
       },
       "config": {
         "runtime.provider": { "flag": "runtime-contract" }
+      }
+    }
+  },
+  "managed": {
+    "schemaVersion": 1,
+    "modes": ["local"],
+    "local": {
+      "execDirTemplate": "tmp/nvirsh/exec",
+      "commands": {
+        "exec": {
+          "requiredFlags": ["qemu", "microkit-sdk", "toolchain", "libvmm-dir", "kernel", "initrd"],
+          "scalarFlags": ["state-dir", "target", "name", "board", "qemu", "microkit-sdk", "microkit-version", "microkit-config", "toolchain", "libvmm-dir", "runtime-contract", "runtime-action", "kernel", "initrd"],
+          "repeatableFlags": ["qemu-arg", "env"],
+          "script": {
+            "path": "scripts/exec.sh",
+            "shell": "bash"
+          },
+          "details": {
+            "state_dir": "{state-dir}"
+          }
+        },
+        "inspect": {
+          "requiredFlags": [],
+          "scalarFlags": ["state-dir"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/inspect.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "inspected managed nvirsh state"
+          }
+        },
+        "logs": {
+          "requiredFlags": [],
+          "scalarFlags": ["state-dir"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/logs.sh",
+            "shell": "bash"
+          }
+        },
+        "stop": {
+          "requiredFlags": [],
+          "scalarFlags": ["state-dir"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/stop.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "stopped managed nvirsh state",
+            "details": {
+              "state_dir": "{state-dir}"
+            }
+          }
+        }
       }
     }
   }

@@ -1,12 +1,12 @@
 {
   "name": "microkit-sdk",
-  "runtime": "node",
+  "runtime": null,
   "cli-contract": "fetch,patch,build,inspect,logs",
-  "entry": "dist/index.js",
   "config": {
     "fields": {
       "mode": { "aliases": ["mode"] },
       "path": { "aliases": ["path", "source"], "path": true },
+      "seed-dir": { "aliases": ["seed-dir", "seedDir"], "path": true },
       "build-version": { "aliases": ["build-version", "buildVersion", "microkit-version", "microkitVersion"] },
       "archive-url": { "aliases": ["archive-url", "archiveUrl"] },
       "microkit-archive-url": { "aliases": ["microkit-archive-url", "microkitArchiveUrl"] },
@@ -53,18 +53,108 @@
       },
       "commands": {
         "fetch": {
+          "requiredFlags": ["path"],
+          "scalarFlags": ["archive-url", "microkit-archive-url", "seed-dir", "build-version"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/fetch.sh",
+            "shell": "bash"
+          },
           "pathFlags": {
+            "path": "tools/microkit-sdk/builds/{buildDirKey}/source",
             "source": "tools/microkit-sdk/builds/{buildDirKey}/source",
             "downloads-dir": "tools/microkit-sdk/downloads"
+          },
+          "result": {
+            "successSummary": "fetched managed Microkit SDK source tree",
+            "reusedSummary": "reused managed Microkit SDK source tree",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{path}"
+            },
+            "details": {
+              "source": "{path}",
+              "downloads_dir": "{downloads-dir}",
+              "archive_url": { "fromFlag": "archive-url" },
+              "build_version": { "fromFlag": "build-version" }
+            }
+          }
+        },
+        "patch": {
+          "requiredFlags": ["path", "patch-dir"],
+          "scalarFlags": ["patch-dir"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/patch.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "path": "tools/microkit-sdk/builds/{buildDirKey}/source",
+            "source": "tools/microkit-sdk/builds/{buildDirKey}/source"
+          },
+          "result": {
+            "successSummary": "patched managed Microkit SDK source tree",
+            "reusedSummary": "reused patched managed Microkit SDK source tree",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{path}"
+            },
+            "details": {
+              "source": "{path}",
+              "patch_dir": "{patch-dir}",
+              "log_file": "{path}/.morpheus-patches.log"
+            }
           }
         },
         "build": {
           "pathFlags": {
+            "path": "tools/microkit-sdk/builds/{buildDirKey}/source",
             "source": "tools/microkit-sdk/builds/{buildDirKey}/source",
             "downloads-dir": "tools/microkit-sdk/downloads",
-            "sel4": true
+            "sel4": true,
+            "toolchain-dir": "tools/microkit-sdk/deps/arm-gnu-toolchain-{toolchainVersion}"
           },
-          "scalarFlags": ["boards", "configs", "tool-target-triple", "toolchain-dir", "toolchain-prefix-aarch64"]
+          "requiredFlags": ["path", "sel4", "toolchain-dir"],
+          "scalarFlags": ["boards", "configs", "tool-target-triple", "toolchain-dir", "toolchain-prefix-aarch64", "archive-url", "microkit-archive-url", "seed-dir", "build-version"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/build.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "built managed Microkit SDK install tree",
+            "details": {
+              "source": "{path}",
+              "sel4": "{sel4}",
+              "toolchain_dir": "{toolchain-dir}",
+              "build_version": { "fromFlag": "build-version" }
+            }
+          }
+        },
+        "inspect": {
+          "requiredFlags": ["path"],
+          "scalarFlags": ["path"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/inspect.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "inspected managed Microkit SDK source tree",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{path}"
+            }
+          }
+        },
+        "logs": {
+          "requiredFlags": ["path"],
+          "scalarFlags": ["path"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/logs.sh",
+            "shell": "bash"
+          }
         }
       }
     }

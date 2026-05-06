@@ -19,7 +19,12 @@ PYTHON_BIN="${PYTHON_BIN:-/usr/bin/python3}"
 cd "${SOURCE_DIR}"
 
 if [ -n "${TOOLCHAIN_BIN_DIR}" ]; then
-  export PATH="${TOOLCHAIN_BIN_DIR}:${PATH}"
+  export PATH="${PATH}:/usr/sbin:${TOOLCHAIN_BIN_DIR}"
+fi
+
+REAL_TOOLCHAIN_BIN="${PWD}/arm-gnu-toolchain-12.3.rel1-x86_64-aarch64-none-elf/bin"
+if [ -d "${REAL_TOOLCHAIN_BIN}" ]; then
+  export PATH="${PATH}:/usr/sbin:${REAL_TOOLCHAIN_BIN}"
 fi
 
 ARGS=(

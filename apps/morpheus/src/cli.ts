@@ -9,6 +9,7 @@ const { handleInspectCommand } = require("./commands/inspect");
 const { handleLogsCommand } = require("./commands/logs");
 const { handlePatchCommand } = require("./commands/patch");
 const { handleExecCommand } = require("./commands/exec");
+const { handleStopCommand } = require("./commands/stop");
 const { handleToolCommand } = require("./commands/tools");
 const { handleWorkflowCommand } = require("./commands/workflow");
 const { handleWorkspaceCommand } = require("./commands/workspace");
@@ -98,7 +99,7 @@ async function main() {
   }
   const argv = stripGlobalFlags(rawArgv);
   const command = positionals[0];
-  const configAwareCommands = new Set(["workspace", "config", "fetch", "patch", "build", "inspect", "logs", "exec", "workflow"]);
+  const configAwareCommands = new Set(["workspace", "config", "fetch", "patch", "build", "inspect", "logs", "exec", "stop", "workflow"]);
 
   if (!command || command === "help" || command === "--help") {
     usage();
@@ -145,6 +146,10 @@ async function main() {
 
   if (command === "exec") {
     return handleExecCommand(argvWithoutCommand(argv, "exec"));
+  }
+
+  if (command === "stop") {
+    return handleStopCommand(argvWithoutCommand(argv, "stop"));
   }
 
   if (command === "tool") {

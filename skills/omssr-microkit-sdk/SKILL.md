@@ -14,10 +14,9 @@ Use this skill when you need to work with the `microkit-sdk` tool.
 
 ## Purpose
 
-`microkit-sdk` is a minimal CLI for SDK directory inspection, fetch, and
-managed builds. It validates the SDK directory, detects version metadata when
-available, and exposes a stable artifact record that Morpheus can pass to
-dependent tools such as `nvirsh`.
+`microkit-sdk` is now migrating to a script-backed Morpheus tool model.
+`tool.json` is the contract.
+`scripts/` own fetch, patch, build, inspect, and logs behavior.
 
 ## Config Schema
 
@@ -45,8 +44,8 @@ version-specific runs.
 - `config.fields` defines accepted config names and aliases
 - `managed` defines downloads, install, dependency, and artifact path
   templates
-- `managed.artifacts` publishes stable artifact names such as `sdk-dir` and
-  `toolchain-dir`
+- `commands.*.script` tells Morpheus which shell step to run
+- `commands.*.result` defines summaries, artifacts, and stable details
 
 This descriptor is the source of truth for how Morpheus resolves the SDK
 install tree and the companion toolchain artifact.
@@ -76,14 +75,13 @@ artifacts and version metadata.
 
 ## Smoke Test
 
-Use the package smoke script for a fast CLI validation pass:
+Use the workflow smoke command for a fast managed validation pass:
 
 ```bash
-pnpm --filter @morpheus/microkit-sdk smoke
+node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name microkit-sdk-build
 ```
 
-The smoke test validates the managed SDK CLI path without requiring a full SDK
-build.
+This validates the real managed Microkit SDK workflow path.
 
 ## Feature List
 

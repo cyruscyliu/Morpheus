@@ -1,0 +1,9 @@
+--- a/target/trace.sh
++++ b/target/trace.sh
+@@ -2,5 +2,5 @@
+ if [ "${1:-}" = "--version" ]; then
+   echo "qemu fixture 1.0"
+   exit 0
+ fi
+-echo "trace=base"
++echo "trace=patched"

@@ -11,14 +11,11 @@ Use this skill when you need to work with the `qemu` tool.
 
 ## Purpose
 
-`qemu` is a Morpheus-internal CLI for executable inspection and managed builds.
-It validates the binary, reads `--version`, and exposes a stable artifact
-record that Morpheus can pass to dependent tools such as `nvirsh`.
-Morpheus manages execution placement around that contract and can invoke
-`qemu run` after resolving the managed executable path.
-Managed build mode can fetch a QEMU release tarball, unpack it into the
-canonical managed source path from Morpheus config, stage the build copy, and
-build/install the executable itself.
+`qemu` is now migrating to a script-backed Morpheus tool model.
+`tool.json` is the contract.
+`scripts/` own fetch, patch, build, exec, inspect, and logs behavior.
+Morpheus owns managed path resolution, logging, artifacts, and workflow
+execution around that contract.
 Use `build-version` as the common selector when the tool needs to fetch QEMU
 source.
 
@@ -47,8 +44,8 @@ boot arguments or target selection.
 - `managed.artifactPath` names the primary executable artifact
 - `managed` defines managed source, downloads, build, install, and artifact
   path templates
-- `commands.fetch` and `commands.build` describe how Morpheus rewrites path
-  flags before invoking the tool
+- `commands.*.script` tells Morpheus which shell step to run
+- `commands.*.result` defines summaries, artifacts, and stable details
 
 This descriptor is the source of truth for how Morpheus locates and publishes
 `qemu-system-aarch64`.
@@ -56,7 +53,7 @@ This descriptor is the source of truth for how Morpheus locates and publishes
 ## How The Tool Works
 
 `qemu` can either inspect an existing executable or build one as a managed
-artifact.
+artifact through Morpheus-managed script execution.
 
 - `fetch` downloads and unpacks the requested source release
 - `patch` applies the configured patch tree
@@ -76,14 +73,13 @@ artifact and metadata inspection.
 
 ## Smoke Test
 
-Use the package smoke script for a fast CLI validation pass:
+Use the workflow smoke command for a fast managed validation pass:
 
 ```bash
-pnpm --filter @morpheus/qemu smoke
+node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name qemu-build
 ```
 
-The smoke test validates the managed QEMU CLI path without requiring a full
-workflow.
+This validates the real managed QEMU workflow path.
 
 ## Feature List
 

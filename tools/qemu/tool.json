@@ -1,8 +1,7 @@
 {
   "name": "qemu",
-  "runtime": "node",
-  "cli-contract": "fetch,patch,build,exec,inspect,logs",
-  "entry": "dist/index.js",
+  "runtime": null,
+  "cli-contract": "fetch,patch,build,exec,inspect,logs,stop",
   "runGuard": {
     "scope": "workspace",
     "keyTemplate": "run"
@@ -13,6 +12,7 @@
       "remote": { "aliases": ["remote"] },
       "source": { "aliases": ["source"], "path": true },
       "path": { "aliases": ["path", "executable"], "path": true },
+      "seed-dir": { "aliases": ["seed-dir", "seedDir"], "path": true },
       "patch-dir": { "aliases": ["patch-dir", "patchDir"], "path": true },
       "reuse-build-dir": { "aliases": ["reuse-build-dir", "reuseBuildDir"], "boolean": true },
       "build-dir-key": { "aliases": ["build-dir-key", "buildDirKey"] },
@@ -20,8 +20,12 @@
       "archive-url": { "aliases": ["archive-url", "archiveUrl"] },
       "target-list": { "aliases": ["target-list", "targetList"], "repeatable": true },
       "configure-arg": { "aliases": ["configure-arg", "configure-args", "configureArgs"], "repeatable": true },
+      "kernel": { "aliases": ["kernel"], "path": true },
+      "initrd": { "aliases": ["initrd"], "path": true },
+      "run-dir": { "aliases": ["run-dir", "runDir"], "path": true },
       "qemu-arg": { "aliases": ["qemu-arg", "qemu-args", "qemuArgs"], "repeatable": true },
       "append": { "aliases": ["append"] },
+      "detach": { "aliases": ["detach"], "boolean": true },
       "artifacts": { "aliases": ["artifacts"], "repeatable": true }
     }
   },
@@ -44,17 +48,157 @@
       },
       "commands": {
         "fetch": {
+          "requiredFlags": ["source"],
+          "scalarFlags": ["archive-url", "build-version", "seed-dir"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/fetch.sh",
+            "shell": "bash"
+          },
           "pathFlags": {
             "source": "tools/qemu/src/qemu-{buildVersion}",
             "downloads-dir": "tools/qemu/downloads"
+          },
+          "result": {
+            "successSummary": "fetched managed QEMU source tree",
+            "reusedSummary": "reused managed QEMU source tree",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{source}"
+            },
+            "details": {
+              "source": "{source}",
+              "downloads_dir": "{downloads-dir}",
+              "archive_url": { "fromFlag": "archive-url" },
+              "build_version": { "fromFlag": "build-version" }
+            }
+          }
+        },
+        "patch": {
+          "requiredFlags": ["source", "patch-dir"],
+          "scalarFlags": ["patch-dir", "build-version", "archive-url"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/patch.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "source": "tools/qemu/src/qemu-{buildVersion}"
+          },
+          "result": {
+            "successSummary": "patched managed QEMU source tree",
+            "reusedSummary": "reused patched managed QEMU source tree",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{source}"
+            },
+            "details": {
+              "source": "{source}",
+              "patch_dir": "{patch-dir}",
+              "log_file": "{source}/.morpheus-patches.log"
+            }
           }
         },
         "build": {
+          "requiredFlags": ["source", "build-dir", "install-dir"],
+          "scalarFlags": ["source", "build-dir", "install-dir", "archive-url", "build-version", "seed-dir"],
+          "repeatableFlags": ["target-list", "configure-arg"],
+          "script": {
+            "path": "scripts/build.sh",
+            "shell": "bash",
+            "cwdTemplate": "{build-dir}"
+          },
           "pathFlags": {
             "source": "tools/qemu/src/qemu-{buildVersion}",
             "downloads-dir": "tools/qemu/downloads",
             "build-dir": "tools/qemu/builds/{buildDirKey}/build",
             "install-dir": "tools/qemu/builds/{buildDirKey}/install"
+          },
+          "result": {
+            "successSummary": "built local QEMU executable",
+            "errorSummary": "local QEMU build failed",
+            "logFileTemplate": "{build-dir}/build.log",
+            "manifestTemplate": "{build-dir}/manifest.json",
+            "artifact": {
+              "path": "qemu-system-aarch64",
+              "locationTemplate": "{install-dir}/bin/qemu-system-aarch64"
+            },
+            "details": {
+              "source": "{source}",
+              "build_dir": "{build-dir}",
+              "install_dir": "{install-dir}",
+              "log_file": "{build-dir}/build.log",
+              "manifest": "{build-dir}/manifest.json",
+              "target_list": { "fromFlag": "target-list" },
+              "configure_args": { "fromFlag": "configure-arg" }
+            }
+          }
+        },
+        "exec": {
+          "requiredFlags": ["path", "kernel", "initrd"],
+          "scalarFlags": ["path", "kernel", "initrd", "run-dir", "append"],
+          "repeatableFlags": ["qemu-arg"],
+          "script": {
+            "path": "scripts/exec.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "run-dir": "tmp/qemu-run"
+          },
+          "result": {
+            "successSummary": "started local QEMU run",
+            "attachedSuccessSummary": "completed local QEMU run",
+            "errorSummary": "local QEMU run failed",
+            "details": {
+              "run_dir": "{run-dir}",
+              "log_file": "{run-dir}/stdout.log",
+              "manifest": "{run-dir}/manifest.json"
+            }
+          }
+        },
+        "inspect": {
+          "requiredFlags": ["path"],
+          "scalarFlags": ["path"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/inspect.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "inspected local QEMU executable",
+            "artifact": {
+              "path": "qemu-system-aarch64",
+              "locationTemplate": "{path}"
+            }
+          }
+        },
+        "logs": {
+          "requiredFlags": [],
+          "scalarFlags": ["build-dir", "run-dir", "source"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/logs.sh",
+            "shell": "bash"
+          }
+        },
+        "stop": {
+          "requiredFlags": [],
+          "scalarFlags": ["run-dir"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/stop.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "run-dir": "tmp/qemu-run"
+          },
+          "result": {
+            "successSummary": "stopped local QEMU run",
+            "details": {
+              "run_dir": "{run-dir}",
+              "manifest": "{run-dir}/manifest.json",
+              "log_file": "{run-dir}/stdout.log"
+            }
           }
         }
       }

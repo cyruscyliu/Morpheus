@@ -1,18 +1,19 @@
 {
   "name": "buildroot",
-  "runtime": "node",
+  "runtime": null,
   "cli-contract": "fetch,patch,build,inspect,logs",
-  "entry": "dist/index.js",
   "config": {
     "fields": {
       "mode": { "aliases": ["mode"] },
       "remote": { "aliases": ["remote"] },
       "source": { "aliases": ["source"], "path": true },
+      "seed-dir": { "aliases": ["seed-dir", "seedDir"], "path": true },
       "patch-dir": { "aliases": ["patch-dir", "patchDir"], "path": true },
       "reuse-build-dir": { "aliases": ["reuse-build-dir", "reuseBuildDir"], "boolean": true },
       "build-dir-key": { "aliases": ["build-dir-key", "buildDirKey"] },
       "build-version": { "aliases": ["build-version", "buildVersion", "buildroot-version", "buildrootVersion"] },
       "archive-url": { "aliases": ["archive-url", "archiveUrl"] },
+      "output": { "aliases": ["output"], "path": true },
       "defconfig": { "aliases": ["defconfig"] },
       "make-arg": { "aliases": ["make-arg", "make-args", "makeArgs"], "repeatable": true },
       "config-fragment": { "aliases": ["config-fragment", "configFragment"], "repeatable": true },
@@ -40,22 +41,106 @@
       "fetchFlags": ["archive-url", "downloads-dir"],
       "commands": {
         "fetch": {
-          "scalarFlags": ["archive-url"],
+          "requiredFlags": ["source"],
+          "scalarFlags": ["archive-url", "seed-dir", "build-version"],
           "repeatableFlags": [],
+          "script": {
+            "path": "scripts/fetch.sh",
+            "shell": "bash"
+          },
           "pathFlags": {
             "source": "tools/buildroot/src/buildroot-{buildVersion}",
             "downloads-dir": "tools/buildroot/downloads"
+          },
+          "result": {
+            "successSummary": "fetched managed Buildroot source tree",
+            "reusedSummary": "reused managed Buildroot source tree",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{source}"
+            },
+            "details": {
+              "source": "{source}",
+              "downloads_dir": "{downloads-dir}",
+              "archive_url": { "fromFlag": "archive-url" },
+              "build_version": { "fromFlag": "build-version" }
+            }
+          }
+        },
+        "patch": {
+          "requiredFlags": ["source", "patch-dir"],
+          "scalarFlags": ["patch-dir"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/patch.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "source": "tools/buildroot/src/buildroot-{buildVersion}"
+          },
+          "result": {
+            "successSummary": "patched managed Buildroot source tree",
+            "reusedSummary": "reused patched managed Buildroot source tree",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{source}"
+            },
+            "details": {
+              "source": "{source}",
+              "patch_dir": "{patch-dir}",
+              "log_file": "{source}/.morpheus-patches.log"
+            }
           }
         },
         "build": {
-          "scalarFlags": ["defconfig", "patch-dir"],
+          "requiredFlags": ["source", "output"],
+          "scalarFlags": ["defconfig", "patch-dir", "output", "seed-dir", "archive-url", "build-version"],
           "repeatableFlags": ["make-arg", "config-fragment", "env"],
+          "script": {
+            "path": "scripts/build.sh",
+            "shell": "bash",
+            "cwdTemplate": "{output}"
+          },
           "pathFlags": {
             "source": "tools/buildroot/src/buildroot-{buildVersion}",
-            "build-dir": "tools/buildroot/builds/{buildDirKey}/output"
+            "output": "tools/buildroot/builds/{buildDirKey}/output"
           },
-          "flagAliases": {
-            "build-dir": "output"
+          "result": {
+            "successSummary": "completed local Buildroot build",
+            "errorSummary": "local Buildroot build failed",
+            "logFileTemplate": "{output}/build.log",
+            "manifestTemplate": "{output}/manifest.json",
+            "details": {
+              "source": "{source}",
+              "output": "{output}",
+              "manifest": "{output}/manifest.json",
+              "log_file": "{output}/build.log",
+              "defconfig": { "fromFlag": "defconfig" },
+              "patch_dir": { "fromFlag": "patch-dir" },
+              "make_args": { "fromFlag": "make-arg" },
+              "config_fragments": { "fromFlag": "config-fragment" }
+            }
+          }
+        },
+        "inspect": {
+          "requiredFlags": [],
+          "scalarFlags": ["output", "manifest"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/inspect.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "inspected local build manifest"
+          }
+        },
+        "logs": {
+          "requiredFlags": [],
+          "scalarFlags": ["output", "source"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/logs.sh",
+            "shell": "bash"
           }
         }
       }

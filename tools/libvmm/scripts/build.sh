@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source_dir="${MORPHEUS_LIBVMM_SOURCE:?}"
+example="${MORPHEUS_LIBVMM_EXAMPLE:-virtio}"
+microkit_sdk="${MORPHEUS_LIBVMM_MICROKIT_SDK:?}"
+toolchain_bin_dir="${MORPHEUS_LIBVMM_TOOLCHAIN_BIN_DIR:-}"
+result_file="${MORPHEUS_LIBVMM_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
+seed_dir="${MORPHEUS_LIBVMM_SEED_DIR:-}"
+git_url="${MORPHEUS_LIBVMM_GIT_URL:-}"
+build_version="${MORPHEUS_LIBVMM_BUILD_VERSION:-}"
+example_dir="${source_dir}/examples/${example}"
+runtime_contract="${source_dir}/runtime-contract.json"
+
+if [ ! -f "${source_dir}/VERSION" ]; then
+  if [ -n "${seed_dir}" ] || [ -n "${git_url}" ]; then
+    "$(dirname "$0")/fetch.sh"
+  fi
+fi
+
+if [ ! -d "${example_dir}" ]; then
+  echo "missing example directory: ${example_dir}" >&2
+  exit 1
+fi
+
+if [ -n "${toolchain_bin_dir}" ]; then
+  export PATH="${PATH}:${toolchain_bin_dir}"
+fi
+
+make -C "${example_dir}" clean
+make -C "${example_dir}" all
+
+cat > "${runtime_contract}" <<EOF
+{
+  "schemaVersion": 1,
+  "kind": "libvmm-runtime-contract",
+  "provider": "libvmm",
+  "version": "$(tr -d '\n' < "${source_dir}/VERSION")",
+  "example": "${example}",
+  "exampleDir": "${example_dir}",
+  "defaultAction": "qemu",
+  "actions": {
+    "qemu": {
+      "command": "make",
+      "args": ["qemu"],
+      "cwd": "${example_dir}",
+      "requiredInputs": ["libvmm-dir", "microkit-sdk", "board", "kernel", "initrd", "qemu"],
+      "optionalInputs": ["microkit-config", "toolchain-bin-dir"],
+      "outputs": ["manifest", "log-file", "pid", "monitor-sock", "console-log"]
+    }
+  },
+  "defaults": {
+    "board": "qemu_virt_aarch64",
+    "microkitConfig": "debug"
+  }
+}
+EOF
+
+cat > "${result_file}" <<EOF
+{"details":{"built":true,"example":"${example}","microkit_sdk":"${microkit_sdk}","runtime_contract":"${runtime_contract}"}}
+EOF

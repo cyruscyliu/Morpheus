@@ -52,8 +52,13 @@ tools:
     patch-dir: tools/microkit-sdk/patches
     boards: qemu_virt_aarch64
     configs: debug,release
+    dependencies:
+      sel4:
+        tool: sel4
+        artifact: source-dir
     artifacts:
       - sdk-dir
+      - source-dir
       - toolchain-dir
   llbic:
     mode: remote
@@ -208,6 +213,17 @@ workflows:
   build-microkit-sdk:
     category: build
     steps:
+      - id: sel4_fetch
+        tool: sel4
+        command: fetch
+      - id: sel4_patch
+        tool: sel4
+        command: patch
+        args:
+          - --source
+          - "{{steps.sel4_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/sel4/patches/fuzz-sel4"
       - id: microkit_sdk_fetch
         tool: microkit-sdk
         command: fetch
@@ -216,7 +232,7 @@ workflows:
         command: patch
         args:
           - --source
-          - "{{steps.microkit_sdk_fetch.artifacts.sdk-dir.location}}"
+          - "{{steps.microkit_sdk_fetch.artifacts.source-dir.location}}"
           - --patch-dir
           - "{{workspace.root}}/tools/microkit-sdk/patches"
       - id: microkit_sdk_build
@@ -224,7 +240,13 @@ workflows:
         command: build
         args:
           - --source
-          - "{{steps.microkit_sdk_patch.artifacts.sdk-dir.location}}"
+          - "{{steps.microkit_sdk_patch.artifacts.source-dir.location}}"
+          - --sel4
+          - "{{steps.sel4_patch.artifacts.source-dir.location}}"
+          - --toolchain-dir
+          - "{{workspace.root}}/tools/microkit-sdk/deps/arm-gnu-toolchain-12.3.rel1"
+          - --toolchain-prefix-aarch64
+          - aarch64-none-elf
   build-libvmm:
     category: build
     steps:
@@ -320,6 +342,17 @@ workflows:
   nvirsh-sel4-runtime:
     category: run
     steps:
+      - id: sel4_fetch
+        tool: sel4
+        command: fetch
+      - id: sel4_patch
+        tool: sel4
+        command: patch
+        args:
+          - --source
+          - "{{steps.sel4_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/sel4/patches/fuzz-sel4"
       - id: microkit_sdk_fetch
         tool: microkit-sdk
         command: fetch
@@ -328,7 +361,7 @@ workflows:
         command: patch
         args:
           - --source
-          - "{{steps.microkit_sdk_fetch.artifacts.sdk-dir.location}}"
+          - "{{steps.microkit_sdk_fetch.artifacts.source-dir.location}}"
           - --patch-dir
           - "{{workspace.root}}/tools/microkit-sdk/patches"
       - id: microkit_sdk_build
@@ -336,7 +369,13 @@ workflows:
         command: build
         args:
           - --source
-          - "{{steps.microkit_sdk_patch.artifacts.sdk-dir.location}}"
+          - "{{steps.microkit_sdk_patch.artifacts.source-dir.location}}"
+          - --sel4
+          - "{{steps.sel4_patch.artifacts.source-dir.location}}"
+          - --toolchain-dir
+          - "{{workspace.root}}/tools/microkit-sdk/deps/arm-gnu-toolchain-12.3.rel1"
+          - --toolchain-prefix-aarch64
+          - aarch64-none-elf
       - id: libvmm_fetch
         tool: libvmm
         command: fetch
@@ -454,6 +493,17 @@ workflows:
         args:
           - --source
           - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+      - id: sel4_fetch
+        tool: sel4
+        command: fetch
+      - id: sel4_patch
+        tool: sel4
+        command: patch
+        args:
+          - --source
+          - "{{steps.sel4_fetch.artifacts.source-dir.location}}"
+          - --patch-dir
+          - "{{workspace.root}}/tools/sel4/patches/fuzz-sel4"
       - id: microkit_sdk_fetch
         tool: microkit-sdk
         command: fetch
@@ -462,7 +512,7 @@ workflows:
         command: patch
         args:
           - --source
-          - "{{steps.microkit_sdk_fetch.artifacts.sdk-dir.location}}"
+          - "{{steps.microkit_sdk_fetch.artifacts.source-dir.location}}"
           - --patch-dir
           - "{{workspace.root}}/tools/microkit-sdk/patches"
       - id: microkit_sdk_build
@@ -470,7 +520,13 @@ workflows:
         command: build
         args:
           - --source
-          - "{{steps.microkit_sdk_patch.artifacts.sdk-dir.location}}"
+          - "{{steps.microkit_sdk_patch.artifacts.source-dir.location}}"
+          - --sel4
+          - "{{steps.sel4_patch.artifacts.source-dir.location}}"
+          - --toolchain-dir
+          - "{{workspace.root}}/tools/microkit-sdk/deps/arm-gnu-toolchain-12.3.rel1"
+          - --toolchain-prefix-aarch64
+          - aarch64-none-elf
       - id: libvmm_fetch
         tool: libvmm
         command: fetch
@@ -520,6 +576,8 @@ workflows:
           - enable=arm_mmio_el2_from_el1_write
           - --qemu-arg
           - enable=arm_mmio_el2_from_el1_read_request
+          - --qemu-arg
+          - enable=arm_mmio_el2_from_el1_read_return
           - --qemu-arg
           - enable=gicv3_inject_virq
           - --qemu-arg

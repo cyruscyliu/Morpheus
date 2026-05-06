@@ -64,6 +64,9 @@ managed artifact.
 
 The main published outputs are the SDK directory itself and the matching
 toolchain directory that downstream tools consume.
+When board/config outputs are required, `build` may need an explicit `sel4`
+source input plus selected `boards` and `configs` so the SDK install tree
+contains `board/<board>/<config>/...` artifacts for downstream tools.
 
 ## JSON Contract
 

@@ -95,7 +95,7 @@
  static bool icv_access(CPUARMState *env, int hcr_flags)
  {
      /* Return true if this ICC_ register access should really be
-@@ -530,6 +570,87 @@
+@@ -530,6 +570,94 @@
      qemu_set_irq(cpu->gicv3_maintenance_interrupt, maintlevel);
  }
  
@@ -236,7 +236,7 @@
  gicv3_dist_read(uint64_t offset, uint64_t data, unsigned size, bool secure) "GICv3 distributor read: offset 0x%" PRIx64 " data 0x%" PRIx64 " size %u secure %d"
 --- a/target/arm/trace-events	2024-09-19 23:54:01.000000000 +0200
 +++ b/target/arm/trace-events	2026-05-05 09:00:00.000000000 +0200
-@@ -8,6 +8,12 @@
+@@ -8,7 +8,15 @@
  arm_gt_ctl_write(int timer, uint64_t value) "gt_ctl_write: timer %d value 0x%" PRIx64
  arm_gt_imask_toggle(int timer) "gt_ctl_write: timer %d IMASK toggle"
  arm_gt_cntvoff_write(uint64_t value) "gt_cntvoff_write: value 0x%" PRIx64
@@ -254,13 +254,10 @@
  kvm_arm_fixup_msi_route(uint64_t iova, uint64_t gpa) "MSI iova = 0x%"PRIx64" is translated into 0x%"PRIx64
 --- a/target/arm/helper.c	2024-09-19 23:54:00.000000000 +0200
 +++ b/target/arm/helper.c	2026-05-05 09:00:00.000000000 +0200
-@@ -11096,6 +11096,34 @@
- static bool syndrome_is_sync_extabt(uint32_t syndrome)
- {
-@@
+@@ -11092,6 +11092,43 @@
      }
  }
-+
+ 
 +static uint64_t arm_el2_fault_ipa(CPUARMState *env)
 +{
 +    uint64_t hpfar = env->cp15.hpfar_el2 & ~HPFAR_NS;
@@ -298,9 +295,25 @@
 +    }
 +}
 +
+ /* Handle exception entry to a target EL which is using AArch64 */
+ static void arm_cpu_do_interrupt_aarch64(CPUState *cs)
+ {
+@@ -11112,6 +11149,12 @@
+         aarch64_sve_change_el(env, cur_el, new_el, is_a64(env));
+     }
+ 
++    /*
++     * Emit the trap-path trace before EL2 software handles the access so the
++     * trace still exists when libvmm later rejects the MMIO operation.
++     */
++    trace_el1_to_el2_mmio_abort(env);
++
+     if (cur_el < new_el) {
+         /*
+          * Entry vector offset depends on whether the implemented EL
 --- a/target/arm/tcg/helper-a64.c	2024-09-19 23:54:00.000000000 +0200
 +++ b/target/arm/tcg/helper-a64.c	2026-05-05 09:30:00.000000000 +0200
-@@ -21,6 +21,14 @@
+@@ -27,9 +27,18 @@
  #include "qemu/main-loop.h"
  #include "qemu/bitops.h"
  #include "internals.h"
@@ -316,11 +329,20 @@
 +
 +    return ipa | (far & 0xfff);
 +}
-@@ -828,6 +829,27 @@
+ #include "qemu/int128.h"
+ #include "qemu/atomic128.h"
+ #include "fpu/softfloat.h"
+@@ -806,20 +815,43 @@
+     }
+ 
+     if (new_el == 1 && (arm_hcr_el2_eff(env) & HCR_TGE)) {
+         goto illegal_return;
+     }
+ 
      qemu_mutex_lock_iothread();
      arm_call_pre_el_change_hook(env_archcpu(env));
      qemu_mutex_unlock_iothread();
-+
+ 
 +    /*
 +     * Pair the EL1->EL2 read_request trace with the value visible in the
 +     * destination register immediately before the ERET back to EL1.
@@ -343,18 +365,23 @@
 +                                                    syndrome, value);
 +        }
 +    }
++
+     if (!return_to_aa64) {
+         env->aarch64 = false;
+         /* We do a raw CPSR write because aarch64_sync_64_to_32()
+          * will sort the register banks out for us, and we've already
+          * caught all the bad-mode cases in el_from_spsr().
+          */
+         cpsr_write_from_spsr_elx(env, spsr);
+         if (!arm_singlestep_active(env)) {
+             env->pstate &= ~PSTATE_SS;
+         }
+         aarch64_sync_64_to_32(env);
  
- /* Handle exception entry to a target EL which is using AArch64 */
- static void arm_cpu_do_interrupt_aarch64(CPUState *cs)
-@@ -11108,6 +11136,11 @@
-         aarch64_sve_change_el(env, cur_el, new_el, is_a64(env));
-     }
- 
-+    /*
-+     * Emit the trap-path trace before EL2 software handles the access so the
-+     * trace still exists when libvmm later rejects the MMIO operation.
-+     */
-+    trace_el1_to_el2_mmio_abort(env);
-     if (cur_el < new_el) {
-         /*
-          * Entry vector offset depends on whether the implemented EL
+         if (spsr & CPSR_T) {
+             env->regs[15] = new_pc & ~0x1;
+         } else {
+             env->regs[15] = new_pc & ~0x3;
+         }
+         helper_rebuild_hflags_a32(env, new_el);
+         qemu_log_mask(CPU_LOG_INT, "Exception return from AArch64 EL%d to "

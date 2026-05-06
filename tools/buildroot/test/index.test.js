@@ -84,6 +84,70 @@ test('local build smoke fixture produces an artifact and manifest', () => {
   fs.rmSync(patchDir, { recursive: true, force: true });
 });
 
+test('local build resets stale package patch state after a failed patched build', () => {
+  const fixture = path.resolve(process.cwd(), 'test/fixtures/minimal-buildroot');
+  const outDir = path.resolve(process.cwd(), '.tmp-test-out-retry');
+  const patchDir = path.resolve(process.cwd(), '.tmp-test-patches-retry');
+  const stalePatchStateDir = path.join(outDir, 'build', 'linux-headers-6.18.16');
+  const manifestPath = path.join(outDir, '.buildroot-cli', 'build.json');
+
+  fs.rmSync(outDir, { recursive: true, force: true });
+  fs.rmSync(patchDir, { recursive: true, force: true });
+  fs.mkdirSync(path.join(patchDir, 'linux'), { recursive: true });
+  fs.mkdirSync(path.join(patchDir, 'linux-headers'), { recursive: true });
+  fs.writeFileSync(path.join(patchDir, 'linux', 'kernel.fragment'), 'CONFIG_TEST_FRAGMENT=y\n');
+  fs.writeFileSync(path.join(patchDir, 'linux', 'linux.hash'), 'sha256  deadbeef  linux.tar.gz\n');
+  fs.writeFileSync(path.join(patchDir, 'linux-headers', 'linux-headers.hash'), 'sha256  deadbeef  linux.tar.gz\n');
+  fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+  fs.mkdirSync(stalePatchStateDir, { recursive: true });
+  fs.writeFileSync(path.join(stalePatchStateDir, '.applied_patches_list'), 'stale\n');
+  fs.writeFileSync(
+    manifestPath,
+    `${JSON.stringify({
+      id: 'previous-build',
+      mode: 'local',
+      createdAt: '2026-05-05T00:00:00.000Z',
+      updatedAt: '2026-05-05T00:00:00.000Z',
+      status: 'error',
+      command: 'build',
+      source: fixture,
+      output: outDir,
+      logFile: path.join(outDir, '.buildroot-cli', 'stdout.log'),
+      patchDir,
+      configFragments: [],
+      makeArgs: [],
+      env: {},
+      forwarded: [],
+      exitCode: 1,
+      errorMessage: 'previous failure',
+    }, null, 2)}\n`,
+  );
+
+  const result = spawnSync(process.execPath, [
+    bin,
+    '--json',
+    'build',
+    '--source',
+    fixture,
+    '--output',
+    outDir,
+    '--defconfig',
+    'qemu_x86_64_defconfig',
+    '--patch-dir',
+    patchDir,
+  ], { encoding: 'utf8', cwd: path.resolve(process.cwd()) });
+
+  assert.equal(result.status, 0, result.stdout || result.stderr);
+  assert.equal(fs.existsSync(path.join(stalePatchStateDir, '.applied_patches_list')), false);
+  assert.match(
+    fs.readFileSync(path.join(outDir, '.buildroot-cli', 'stdout.log'), 'utf8'),
+    /removed stale output\/build after failed patched build/,
+  );
+
+  fs.rmSync(outDir, { recursive: true, force: true });
+  fs.rmSync(patchDir, { recursive: true, force: true });
+});
+
 test('patch ignores package patch trees and non-patch inputs', () => {
   const fixture = path.resolve(process.cwd(), 'test/fixtures/minimal-buildroot');
   const patchDir = path.resolve(process.cwd(), '.tmp-test-buildroot-patch-tree');

@@ -352,6 +352,7 @@ function pathFlagSet() {
     "--initrd",
     "--qemu",
     "--microkit-sdk",
+    "--sel4",
     "--toolchain",
     "--libvmm-dir",
     "--contract",
@@ -865,6 +866,11 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
     if (effectivePaths[genericFlag]) {
       continue;
     }
+    if (resolved[genericFlag] != null) {
+      effectivePaths[genericFlag] = resolved[genericFlag];
+      continue;
+    }
+    if (typeof template === "string" && template) {
       effectivePaths[genericFlag] = resolveManagedPathTemplate(
         workspace,
         descriptor,
@@ -874,6 +880,7 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
         templateExtras
       );
     }
+  }
 
   const args = ["--json", command];
   if (effectivePaths.source) {
@@ -904,6 +911,7 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
     "defconfig",
     "qemu",
     "microkit-sdk",
+    "sel4",
     "toolchain-version",
     "toolchain",
     "libvmm-dir",

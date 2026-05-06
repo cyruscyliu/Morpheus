@@ -2,7 +2,8 @@
   "worktree": {
     "setup": [
       "pnpm install",
-      "pnpm --filter @morpheus/app build"
+      "pnpm --filter @morpheus/app build",
+      "pnpm run build:js-tools"
     ]
   },
   "scripts": {

@@ -35,13 +35,19 @@ export const COMMANDS = [
     name: 'build',
     summary: 'Materialize a managed Microkit SDK directory',
     usage: [
-      'microkit-sdk build --source DIR [--build-version VER] [--archive-url URL] [--downloads-dir DIR]',
+      'microkit-sdk build --source DIR [--build-version VER] [--archive-url URL] [--downloads-dir DIR] [--sel4 DIR] [--boards LIST] [--configs LIST] [--tool-target-triple TRIPLE] [--toolchain-dir DIR] [--toolchain-prefix-aarch64 PREFIX]',
     ],
     flags: [
       { name: '--source DIR', summary: 'Managed SDK directory' },
       { name: '--build-version VER', summary: 'SDK version to record in metadata' },
       { name: '--archive-url URL', summary: 'Archive URL to fetch when --source is missing' },
       { name: '--downloads-dir DIR', summary: 'Directory used to cache fetched archives' },
+      { name: '--sel4 DIR', summary: 'seL4 source directory used by build_sdk.py when materializing board SDK outputs' },
+      { name: '--boards LIST', summary: 'Comma-separated boards to build into the SDK install tree' },
+      { name: '--configs LIST', summary: 'Comma-separated configs to build into the SDK install tree' },
+      { name: '--tool-target-triple TRIPLE', summary: 'Rust target triple used when building the Microkit host tool' },
+      { name: '--toolchain-dir DIR', summary: 'Toolchain directory whose bin/ is prepended to PATH during SDK build' },
+      { name: '--toolchain-prefix-aarch64 PREFIX', summary: 'AArch64 GCC toolchain prefix forwarded to build_sdk.py' },
     ],
   },
   {

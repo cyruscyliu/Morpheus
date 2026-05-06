@@ -335,28 +335,125 @@ function resolveToolchainDir(flags: Record<string, unknown>, source: string) {
   return path.join(toolRootFromSource(source), 'deps', `arm-gnu-toolchain-${version}`);
 }
 
-function managedArtifacts(flags: Record<string, unknown>, source: string) {
-  const artifacts = [
-    {
-      path: 'sdk-dir',
-      location: source,
-    },
-    {
-      path: 'source-dir',
-      location: source,
-    },
-  ];
-  const toolchainDir = resolveToolchainDir(flags, source);
-  if (toolchainDir) {
-    artifacts.push({
-      path: 'toolchain-dir',
-      location: toolchainDir,
-    });
+function ensureManagedToolchainDir(source: string, toolchainDir: string | null) {
+  if (!toolchainDir) {
+    return null;
   }
-  return artifacts;
+  if (fs.existsSync(path.join(toolchainDir, 'bin', 'aarch64-none-elf-gcc'))) {
+    return toolchainDir;
+  }
+
+  const workspaceToolsIdx = source.indexOf('/workspace/tools/');
+  if (workspaceToolsIdx < 0) {
+    return toolchainDir;
+  }
+  const workspaceRoot = source.slice(0, workspaceToolsIdx + '/workspace'.length);
+  const legacyToolchainDir = path.join(
+    '/home/debian/Projects/Morpheus/projects/hyperarm/workspace/tools/microkit-sdk/deps',
+    path.basename(toolchainDir),
+  );
+  if (!fs.existsSync(path.join(legacyToolchainDir, 'bin', 'aarch64-none-elf-gcc'))) {
+    return toolchainDir;
+  }
+
+  fs.mkdirSync(path.dirname(toolchainDir), { recursive: true });
+  try {
+    fs.unlinkSync(toolchainDir);
+  } catch {}
+  try {
+    fs.rmSync(toolchainDir, { recursive: true, force: true });
+  } catch {}
+  fs.symlinkSync(legacyToolchainDir, toolchainDir);
+  appendToolLog(source, `toolchain linked legacy_dir=${legacyToolchainDir} managed_dir=${toolchainDir}`);
+  return toolchainDir;
 }
 
-async function buildDirectory(flags: Record<string, unknown>) {
+function detectRustHostTriple() {
+  const result = runCommand('rustc', ['-vV']);
+  if (result.status !== 0) {
+    return null;
+  }
+  const line = (result.stdout || '').split(/\r?\n/).find((item) => item.startsWith('host: '));
+  return line ? line.slice('host: '.length).trim() || null : null;
+}
+
+function scriptPath(name: string) {
+  return path.resolve(process.cwd(), 'scripts', name);
+}
+
+function ensureAarch64ToolchainShim(source: string, toolchainDir: string | null, toolchainPrefixAarch64: string | null) {
+  if (!toolchainDir || !toolchainPrefixAarch64 || toolchainPrefixAarch64 === 'aarch64-none-elf') {
+    return null;
+  }
+  const toolchainBinDir = path.join(toolchainDir, 'bin');
+  if (!fs.existsSync(toolchainBinDir)) {
+    return null;
+  }
+  const shimDir = path.join(source, '.morpheus-toolchain-shims', 'bin');
+  fs.mkdirSync(shimDir, { recursive: true });
+  for (const entry of fs.readdirSync(toolchainBinDir, { withFileTypes: true })) {
+    if (!entry.isFile() && !entry.isSymbolicLink()) {
+      continue;
+    }
+    if (!entry.name.startsWith(`${toolchainPrefixAarch64}-`)) {
+      continue;
+    }
+    const suffix = entry.name.slice(toolchainPrefixAarch64.length + 1);
+    const target = path.join(toolchainBinDir, entry.name);
+    const linkPath = path.join(shimDir, `aarch64-none-elf-${suffix}`);
+    try {
+      fs.unlinkSync(linkPath);
+    } catch {}
+    fs.symlinkSync(target, linkPath);
+  }
+  return shimDir;
+}
+
+function sdkInstallDir(source: string) {
+  return path.join(path.dirname(source), 'install');
+}
+
+function sdkBuildStatePath(installDir: string) {
+  return path.join(installDir, '.morpheus-sdk-build.json');
+}
+
+function readSdkBuildState(installDir: string) {
+  const statePath = sdkBuildStatePath(installDir);
+  if (!fs.existsSync(statePath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function writeSdkBuildState(installDir: string, state: unknown) {
+  fs.mkdirSync(installDir, { recursive: true });
+  fs.writeFileSync(sdkBuildStatePath(installDir), `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+}
+
+function splitCsvFlag(value: string | null) {
+  if (!value) {
+    return [];
+  }
+  return value.split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+function builtSdkMarker(installDir: string, boards: string[], configs: string[]) {
+  for (const board of boards) {
+    for (const config of configs) {
+      const marker = path.join(installDir, 'board', board, config, 'include', 'kernel', 'gen_config.h');
+      if (!fs.existsSync(marker)) {
+        return false;
+      }
+    }
+  }
+  return boards.length > 0 && configs.length > 0;
+}
+
+async function ensureSourceDirectory(flags: Record<string, unknown>) {
   const source = requirePathFlag(flags, 'source');
   const microkitVersion = buildVersionFlag(flags);
   const archiveUrl = optionalStringFlag(flags, 'archive-url')
@@ -364,30 +461,13 @@ async function buildDirectory(flags: Record<string, unknown>) {
 
   if (fileExists(source)) {
     const inspected = inspectDirectory({ path: source });
-    appendToolLog(source, 'build reused existing sdk directory');
-    const artifacts = managedArtifacts(flags, source);
-    const logFile = writeBuildLog(
-      source,
-      'reused existing managed Microkit SDK directory',
-      `source=${source}`,
-      `version=${microkitVersion || inspected.details.directory.version || ''}`,
-    );
     return {
-      command: 'build',
-      status: 'success',
-      exit_code: 0,
-      summary: 'reused managed Microkit SDK directory',
-      details: {
-        source,
-        fetched_source: false,
-        archive: null,
-        archive_url: archiveUrl,
-        microkit_version: microkitVersion || inspected.details.directory.version,
-        directory: inspected.details.directory,
-        artifact: inspected.details.artifact,
-        log_file: logFile,
-        artifacts,
-      },
+      source,
+      fetchedSource: false,
+      archivePath: null,
+      archiveUrl,
+      microkitVersion: microkitVersion || inspected.details.directory.version,
+      directory: inspected.details.directory,
     };
   }
 
@@ -419,18 +499,179 @@ async function buildDirectory(flags: Record<string, unknown>) {
   if (microkitVersion && !firstVersionLine(source)) {
     fs.writeFileSync(path.join(source, '.morpheus-version'), `${microkitVersion}\n`, 'utf8');
   }
-  appendToolLog(source, `build archive=${archivePath}`);
   const inspected = inspectDirectory({ path: source });
+  return {
+    source,
+    fetchedSource: true,
+    archivePath,
+    archiveUrl,
+    microkitVersion: microkitVersion || inspected.details.directory.version,
+    directory: inspected.details.directory,
+  };
+}
+
+function managedArtifacts(flags: Record<string, unknown>, source: string) {
+  const installDir = sdkInstallDir(source);
+  const artifacts = [
+    {
+      path: 'sdk-dir',
+      location: installDir,
+    },
+    {
+      path: 'source-dir',
+      location: source,
+    },
+  ];
+  const toolchainDir = ensureManagedToolchainDir(source, resolveToolchainDir(flags, source));
+  if (toolchainDir) {
+    artifacts.push({
+      path: 'toolchain-dir',
+      location: toolchainDir,
+    });
+  }
+  return artifacts;
+}
+
+async function buildDirectory(flags: Record<string, unknown>) {
+  const ensured = await ensureSourceDirectory(flags);
+  const source = ensured.source;
+  const installDir = sdkInstallDir(source);
+  const buildScript = path.join(source, 'build_sdk.py');
+  const sel4Dir = resolveOptionalPath(flags, 'sel4');
+  const boards = splitCsvFlag(optionalStringFlag(flags, 'boards'));
+  const configs = splitCsvFlag(optionalStringFlag(flags, 'configs'));
+  const toolchainDir = resolveToolchainDir(flags, source);
+  const toolchainPrefixAarch64 = optionalStringFlag(flags, 'toolchain-prefix-aarch64');
+  const toolTargetTriple = optionalStringFlag(flags, 'tool-target-triple') || detectRustHostTriple();
   const artifacts = managedArtifacts(flags, source);
+
+  if (!fileExists(buildScript) || !sel4Dir || boards.length === 0 || configs.length === 0) {
+    appendToolLog(source, 'build reused source tree as sdk directory');
+    const inspected = inspectDirectory({ path: source });
+    const logFile = writeBuildLog(
+      source,
+      'reused existing managed Microkit SDK directory',
+      `source=${source}`,
+      `version=${ensured.microkitVersion || ''}`,
+    );
+    return {
+      command: 'build',
+      status: 'success',
+      exit_code: 0,
+      summary: 'reused managed Microkit SDK directory',
+      details: {
+        source,
+        fetched_source: ensured.fetchedSource,
+        archive: ensured.archivePath,
+        archive_url: ensured.archiveUrl,
+        microkit_version: ensured.microkitVersion,
+        directory: inspected.details.directory,
+        artifact: inspected.details.artifact,
+        log_file: logFile,
+        artifacts: [
+          { path: 'sdk-dir', location: source },
+          { path: 'source-dir', location: source },
+          ...artifacts.filter((item) => item.path === 'toolchain-dir'),
+        ],
+      },
+    };
+  }
+
+  const buildState = {
+    microkitVersion: ensured.microkitVersion,
+    sel4Dir,
+    boards,
+    configs,
+    toolchainPrefixAarch64: toolchainPrefixAarch64 || null,
+    patchState: readPatchState(source),
+  };
+  const previousState = readSdkBuildState(installDir);
+  if (previousState && JSON.stringify(previousState) === JSON.stringify(buildState)
+    && builtSdkMarker(installDir, boards, configs)) {
+    appendToolLog(source, `build reused existing sdk install dir=${installDir}`);
+    const inspected = inspectDirectory({ path: installDir });
+    const logFile = writeBuildLog(
+      source,
+      'reused built managed Microkit SDK directory',
+      `source=${source}`,
+      `install=${installDir}`,
+      `version=${ensured.microkitVersion || ''}`,
+    );
+    return {
+      command: 'build',
+      status: 'success',
+      exit_code: 0,
+      summary: 'reused built managed Microkit SDK directory',
+      details: {
+        source,
+        fetched_source: ensured.fetchedSource,
+        archive: ensured.archivePath,
+        archive_url: ensured.archiveUrl,
+        microkit_version: ensured.microkitVersion,
+        directory: inspected.details.directory,
+        artifact: inspected.details.artifact,
+        log_file: logFile,
+        artifacts,
+      },
+    };
+  }
+
+  const toolchainShimDir = ensureAarch64ToolchainShim(source, toolchainDir, toolchainPrefixAarch64);
+  const env = {
+    ...process.env,
+    PATH: toolchainDir
+      ? [
+        ...(toolchainShimDir ? [toolchainShimDir] : []),
+        path.join(toolchainDir, 'bin'),
+        process.env.PATH || '',
+      ].filter(Boolean).join(path.delimiter)
+      : (process.env.PATH || ''),
+  };
+  removeDirectory(path.join(source, 'build'));
+  removeDirectory(path.join(source, 'release'));
+  const result = spawnSync(scriptPath('build-sdk.sh'), [
+    source,
+    sel4Dir,
+    boards.join(','),
+    configs.join(','),
+    toolchainDir ? path.join(toolchainDir, 'bin') : '',
+    toolchainPrefixAarch64 || '',
+    toolTargetTriple || '',
+  ], {
+    encoding: 'utf8',
+    cwd: source,
+    env: {
+      ...env,
+      PYTHON_BIN: '/usr/bin/python3',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (result.status !== 0) {
+    throw new CliError('build_failed', result.stderr || result.stdout || 'Failed to build Microkit SDK');
+  }
+
+  const builtDir = path.join(source, 'release', `microkit-sdk-${ensured.microkitVersion}`);
+  if (!fs.existsSync(builtDir)) {
+    throw new CliError('build_failed', `Missing built SDK directory: ${builtDir}`);
+  }
+
+  removeDirectory(installDir);
+  fs.mkdirSync(path.dirname(installDir), { recursive: true });
+  fs.cpSync(builtDir, installDir, { recursive: true });
+  writeSdkBuildState(installDir, buildState);
+  appendToolLog(source, `build install_dir=${installDir} sel4=${sel4Dir} boards=${boards.join(',')} configs=${configs.join(',')}`);
+  const inspected = inspectDirectory({ path: installDir });
   const logFile = writeBuildLog(
     source,
     'built managed Microkit SDK directory',
     `source=${source}`,
-    `archive=${archivePath}`,
-    `archive_url=${archiveUrl || ''}`,
-    `version=${microkitVersion || inspected.details.directory.version || ''}`,
+    `install=${installDir}`,
+    `archive=${ensured.archivePath || ''}`,
+    `archive_url=${ensured.archiveUrl || ''}`,
+    `version=${ensured.microkitVersion || ''}`,
+    result.stdout || '',
+    result.stderr || '',
   );
-
   return {
     command: 'build',
     status: 'success',
@@ -438,10 +679,10 @@ async function buildDirectory(flags: Record<string, unknown>) {
     summary: 'built managed Microkit SDK directory',
     details: {
       source,
-      fetched_source: true,
-      archive: archivePath,
-      archive_url: archiveUrl,
-      microkit_version: microkitVersion || inspected.details.directory.version,
+      fetched_source: ensured.fetchedSource,
+      archive: ensured.archivePath,
+      archive_url: ensured.archiveUrl,
+      microkit_version: ensured.microkitVersion,
       directory: inspected.details.directory,
       artifact: inspected.details.artifact,
       log_file: logFile,
@@ -451,13 +692,37 @@ async function buildDirectory(flags: Record<string, unknown>) {
 }
 
 async function fetchDirectory(flags: Record<string, unknown>) {
-  const result = await buildDirectory(flags);
+  const ensured = await ensureSourceDirectory(flags);
+  const artifacts = managedArtifacts(flags, ensured.source);
+  const logFile = writeBuildLog(
+    ensured.source,
+    ensured.fetchedSource ? 'fetched managed Microkit SDK source directory' : 'reused managed Microkit SDK source directory',
+    `source=${ensured.source}`,
+    `archive=${ensured.archivePath || ''}`,
+    `archive_url=${ensured.archiveUrl || ''}`,
+    `version=${ensured.microkitVersion || ''}`,
+  );
   return {
-    ...result,
     command: 'fetch',
-    summary: result.details.fetched_source
-      ? 'fetched managed Microkit SDK directory'
-      : 'reused managed Microkit SDK directory',
+    status: 'success',
+    exit_code: 0,
+    summary: ensured.fetchedSource
+      ? 'fetched managed Microkit SDK source directory'
+      : 'reused managed Microkit SDK source directory',
+    details: {
+      source: ensured.source,
+      fetched_source: ensured.fetchedSource,
+      archive: ensured.archivePath,
+      archive_url: ensured.archiveUrl,
+      microkit_version: ensured.microkitVersion,
+      directory: ensured.directory,
+      artifact: {
+        path: 'source-dir',
+        location: ensured.source,
+      },
+      log_file: logFile,
+      artifacts,
+    },
   };
 }
 

@@ -25,7 +25,7 @@ index ddab689..3859248 100644
  
  /*
   * Helpers.
-@@ -293,6 +300,92 @@
+@@ -293,6 +300,100 @@
  	return vring->use_map_api && (extra->addr != DMA_MAPPING_ERROR);
  }
  

@@ -135,6 +135,26 @@ function createBuildLogStreamer(context: CliContext, stage: string, logFile: str
   };
 }
 
+async function resetOutputBuildDirAfterFailedPatchedBuild(output: string, patchDir?: string): Promise<boolean> {
+  if (!patchDir) {
+    return false;
+  }
+
+  let previousManifest: BuildManifest;
+  try {
+    previousManifest = await readManifest(manifestPathForOutput(output));
+  } catch {
+    return false;
+  }
+
+  if (previousManifest.status !== 'error') {
+    return false;
+  }
+
+  await fs.rm(path.join(output, 'build'), { recursive: true, force: true });
+  return true;
+}
+
 async function applyBuildConfigInputs(
   context: CliContext,
   source: string,
@@ -328,9 +348,16 @@ export async function runLocalBuild(context: CliContext, options: LocalBuildOpti
   const id = generateBuildId();
   const manifestFile = manifestPathForOutput(output);
   const logFile = path.join(output, '.buildroot-cli', 'stdout.log');
+  const resetStalePackageBuildState = await resetOutputBuildDirAfterFailedPatchedBuild(output, patchDir);
   await fs.mkdir(output, { recursive: true });
   await fs.mkdir(path.dirname(logFile), { recursive: true });
   await fs.writeFile(logFile, '', 'utf8');
+  if (resetStalePackageBuildState) {
+    await appendLog(
+      logFile,
+      '[morpheus:buildroot] removed stale output/build after failed patched build\n',
+    );
+  }
 
   const manifest: BuildManifest = {
     id,

@@ -225,7 +225,14 @@ function applyPatches(source: string, patchDir: string, patchFiles: string[], lo
           fs.appendFileSync(logFile, 'already applied; skipping\n', 'utf8');
           continue;
         }
-        throw new CliError('patch_failed', `Failed to apply patch ${path.relative(patchDir, patchFile)} (see ${logFile})`);
+        const fallbackCheck = runCommand('patch', ['-d', source, '-p1', '-N', '--dry-run', '-i', patchFile], undefined);
+        fs.appendFileSync(logFile, fallbackCheck.stdout || '', 'utf8');
+        fs.appendFileSync(logFile, fallbackCheck.stderr || '', 'utf8');
+        if (fallbackCheck.status === 0) {
+          result = runCommand('patch', ['-d', source, '-p1', '-N', '-i', patchFile], undefined);
+        } else {
+          throw new CliError('patch_failed', `Failed to apply patch ${path.relative(patchDir, patchFile)} (see ${logFile})`);
+        }
       }
     } else {
       result = runCommand('patch', ['-d', source, '-p1', '-N', '-i', patchFile], undefined);

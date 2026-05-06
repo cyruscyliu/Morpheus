@@ -13,8 +13,10 @@
       "microkit-dir": { "aliases": ["microkit-dir", "microkitDir"], "path": true },
       "downloads-dir": { "aliases": ["downloads-dir", "downloadsDir"], "path": true },
       "patch-dir": { "aliases": ["patch-dir", "patchDir"], "path": true },
+      "sel4": { "aliases": ["sel4", "sel4-dir", "sel4Dir"], "path": true },
       "boards": { "aliases": ["boards"] },
       "configs": { "aliases": ["configs"] },
+      "tool-target-triple": { "aliases": ["tool-target-triple", "toolTargetTriple"] },
       "toolchain-dir": { "aliases": ["toolchain-dir", "toolchainDir"], "path": true },
       "toolchain-version": { "aliases": ["toolchain-version", "toolchainVersion"] },
       "toolchain-archive-url": { "aliases": ["toolchain-archive-url", "toolchainArchiveUrl"] },
@@ -25,15 +27,25 @@
       "artifacts": { "aliases": ["artifacts"], "repeatable": true }
     }
   },
+  "inputs": {
+    "build": {
+      "dependencies": {
+        "sel4": { "flag": "sel4" }
+      }
+    }
+  },
   "managed": {
     "schemaVersion": 1,
     "modes": ["local"],
     "local": {
-      "sourceTemplate": "tools/microkit-sdk/builds/{buildDirKey}/install",
+      "sourceTemplate": "tools/microkit-sdk/builds/{buildDirKey}/source",
       "downloadsDir": "tools/microkit-sdk/downloads",
       "artifacts": {
         "sdk-dir": {
           "pathTemplate": "tools/microkit-sdk/builds/{buildDirKey}/install"
+        },
+        "source-dir": {
+          "pathTemplate": "tools/microkit-sdk/builds/{buildDirKey}/source"
         },
         "toolchain-dir": {
           "pathTemplate": "tools/microkit-sdk/deps/arm-gnu-toolchain-{toolchainVersion}"
@@ -42,15 +54,17 @@
       "commands": {
         "fetch": {
           "pathFlags": {
-            "source": "tools/microkit-sdk/builds/{buildDirKey}/install",
+            "source": "tools/microkit-sdk/builds/{buildDirKey}/source",
             "downloads-dir": "tools/microkit-sdk/downloads"
           }
         },
         "build": {
           "pathFlags": {
-            "source": "tools/microkit-sdk/builds/{buildDirKey}/install",
-            "downloads-dir": "tools/microkit-sdk/downloads"
-          }
+            "source": "tools/microkit-sdk/builds/{buildDirKey}/source",
+            "downloads-dir": "tools/microkit-sdk/downloads",
+            "sel4": true
+          },
+          "scalarFlags": ["boards", "configs", "tool-target-triple", "toolchain-dir", "toolchain-prefix-aarch64"]
         }
       }
     }

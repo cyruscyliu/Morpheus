@@ -7,21 +7,9 @@
     ]
   },
   "scripts": {
-    "hyperarm-check": {
-      "command": "./bin/morpheus --config projects/hyperarm/morpheus.yaml config check --json"
-    },
-    "hyperarm-tools": {
-      "command": "./bin/morpheus --config projects/hyperarm/morpheus.yaml tool list --json"
-    },
-    "o2p-check": {
-      "command": "./bin/morpheus --config projects/o2p/morpheus.yaml config check --json"
-    },
-    "o2p-tools": {
-      "command": "./bin/morpheus --config projects/o2p/morpheus.yaml tool list --json"
-    },
-    "runs-viewer": {
+    "run-viewer": {
       "type": "service",
-      "command": "cd apps/runs-viewer && pnpm dev -- --hostname 127.0.0.1 --port $PASEO_PORT"
+      "command": "HOSTNAME=0.0.0.0 PORT=$PASEO_PORT pnpm --filter @morpheus/runs-viewer dev"
     }
   }
 }

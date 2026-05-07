@@ -417,15 +417,6 @@ function main() {
   assert.equal(results.libvmm.status, "success");
   assert.equal(results.libvmm.details.mode, "remote");
 
-  results.nvirsh = parseJsonResult(
-    run(["--json", "tool", "build", "--tool", "nvirsh"], {
-      cwd: projectRoot,
-      env,
-    }),
-    "remote nvirsh"
-  );
-  assert.equal(results.nvirsh.status, "success");
-  assert.equal(results.nvirsh.details.mode, "remote");
 
   results.llbic = parseJsonResult(
     run(
@@ -491,10 +482,6 @@ function main() {
   );
   assert.equal(
     fs.existsSync(path.join(projectRoot, "workflow-workspace", "tools", "libvmm", "_managed_tool")),
-    false
-  );
-  assert.equal(
-    fs.existsSync(path.join(projectRoot, "workflow-workspace", "tools", "nvirsh", "_managed_tool")),
     false
   );
 

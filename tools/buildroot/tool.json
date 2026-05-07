@@ -48,6 +48,11 @@
             "path": "scripts/fetch.sh",
             "shell": "bash"
           },
+          "fetch": {
+            "archive": {
+              "urlTemplate": "https://buildroot.org/downloads/buildroot-{buildVersion}.tar.gz"
+            }
+          },
           "pathFlags": {
             "source": "tools/buildroot/src/buildroot-{buildVersion}",
             "downloads-dir": "tools/buildroot/downloads"
@@ -75,6 +80,9 @@
             "path": "scripts/patch.sh",
             "shell": "bash"
           },
+          "patch": {
+            "strategies": ["source-tree", "buildroot-global-patch-dir"]
+          },
           "pathFlags": {
             "source": "tools/buildroot/src/buildroot-{buildVersion}"
           },
@@ -100,6 +108,9 @@
             "path": "scripts/build.sh",
             "shell": "bash",
             "cwdTemplate": "{output}"
+          },
+          "patch": {
+            "strategies": ["buildroot-global-patch-dir"]
           },
           "pathFlags": {
             "source": "tools/buildroot/src/buildroot-{buildVersion}",

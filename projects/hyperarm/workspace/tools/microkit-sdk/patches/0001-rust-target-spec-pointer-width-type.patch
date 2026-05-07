@@ -1,9 +1,7 @@
 diff --git a/initialiser/support/targets/aarch64-sel4-minimal.json b/initialiser/support/targets/aarch64-sel4-minimal.json
-index 40be37d..b1f0d7c 100644
 --- a/initialiser/support/targets/aarch64-sel4-minimal.json
 +++ b/initialiser/support/targets/aarch64-sel4-minimal.json
-@@ -27,5 +27,5 @@
-   "supported-sanitizers": [
+@@ -28,5 +28,5 @@
      "kcfi",
      "kernel-address"
    ],

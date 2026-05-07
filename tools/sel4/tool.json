@@ -35,6 +35,11 @@
             "path": "scripts/fetch.sh",
             "shell": "bash"
           },
+          "fetch": {
+            "archive": {
+              "urlTemplate": "https://github.com/seL4/seL4/archive/{buildVersion}.tar.gz"
+            }
+          },
           "pathFlags": {
             "path": "tools/sel4/builds/{buildDirKey}/source",
             "source": "tools/sel4/builds/{buildDirKey}/source",

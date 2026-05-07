@@ -51,6 +51,19 @@ run-specific values.
 This descriptor is the source of truth for how Morpheus materializes workspace
 paths and forwards Buildroot options.
 
+Important descriptor fields:
+
+- `config.fields.source`, `build-version`, `archive-url`:
+  source selection.
+- `config.fields.patch-dir`:
+  patch tree location.
+- `config.fields.reuse-build-dir`, `build-dir-key`:
+  stable managed build path policy.
+- `managed.local.sourceTemplate`, `buildDirTemplate`:
+  managed source and output locations.
+- `commands.build.pathFlags.build-dir` and `result.artifact`:
+  where the build writes and what it publishes.
+
 ## How The Tool Works
 
 Buildroot work is split into explicit stages.
@@ -79,10 +92,16 @@ The repo includes a tiny fixture for fast validation of the managed workflow
 path.
 
 ```bash
-node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name buildroot-build
+node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name buildroot-build-ci
 ```
 
 This validates the real managed Buildroot workflow path.
+
+For real project provisioning, prefer the repo-root bootstrap:
+
+```bash
+./install-dependencies.sh
+```
 
 ## Feature List
 

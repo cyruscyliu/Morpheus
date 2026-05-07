@@ -237,6 +237,25 @@ function scriptedCommandSpec(descriptor, command) {
   return spec;
 }
 
+function scriptedArchiveSpec(spec) {
+  return spec && spec.fetch && spec.fetch.archive
+    ? spec.fetch.archive
+    : (spec && spec.archive ? spec.archive : null);
+}
+
+function scriptedPatchStrategies(spec) {
+  if (!spec || !spec.patch) {
+    return [];
+  }
+  if (Array.isArray(spec.patch.strategies)) {
+    return spec.patch.strategies.map((entry) => String(entry)).filter(Boolean);
+  }
+  if (typeof spec.patch.strategy === "string" && spec.patch.strategy) {
+    return [spec.patch.strategy];
+  }
+  return [];
+}
+
 function scriptResultPath(cwd) {
   return path.join(cwd, ".morpheus-script-result.json");
 }
@@ -337,6 +356,20 @@ function buildScriptValues(descriptor, tool, command, spec, flags) {
       buildDirKey,
       templateExtras,
     );
+  }
+  const archive = scriptedArchiveSpec(spec);
+  const archiveFlag = archive && typeof archive.flag === "string" && archive.flag
+    ? archive.flag
+    : "archive-url";
+  if (!values[archiveFlag] && archive && typeof archive.urlTemplate === "string" && archive.urlTemplate) {
+    values[archiveFlag] = renderScriptTemplate(archive.urlTemplate, {
+      ...values,
+      buildVersion: buildVersion || "default",
+      buildDirKey,
+      tool,
+      toolchainVersion: templateExtras.toolchainVersion || "12.3.rel1",
+      example: templateExtras.example || "virtio",
+    });
   }
   return values;
 }
@@ -441,6 +474,12 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
       continue;
     }
     env[envKey] = value === true ? "true" : String(value);
+  }
+
+  const patchStrategies = scriptedPatchStrategies(spec);
+  if (patchStrategies.length > 0) {
+    env.MORPHEUS_SCRIPT_PATCH_STRATEGIES = patchStrategies.join(",");
+    env[`${prefix}_PATCH_STRATEGIES`] = patchStrategies.join(",");
   }
 
   const resultSpec = spec.result || {};
@@ -1253,6 +1292,7 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
     "qemu",
     "microkit-sdk",
     "sel4",
+    "reuse-build-dir",
     "toolchain-version",
     "toolchain",
     "libvmm-dir",
@@ -1352,6 +1392,12 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   );
   const toolCommand = command;
   const effective = resolveToolDependencies(resolved, toolCommand);
+  const workflowStepCwd = command === "exec" && fs.existsSync(path.join(process.cwd(), "step.json"))
+    ? process.cwd()
+    : null;
+  if (command === "exec" && workflowStepCwd && !effective["run-dir"]) {
+    effective["run-dir"] = path.join(workflowStepCwd, "runtime");
+  }
   if (command === "exec") {
     ensureNoWorkspaceRunConflict(tool, descriptor, effective);
   }
@@ -1403,12 +1449,6 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   ) {
     fs.rmSync(path.dirname(legacyExecRunDir), { recursive: true, force: true });
   }
-  if (command === "exec" && tool === "nvirsh" && managedRunDir && !args.includes("--state-dir")) {
-    args.push("--state-dir", managedRunDir);
-  }
-  const workflowStepCwd = command === "exec" && fs.existsSync(path.join(process.cwd(), "step.json"))
-    ? process.cwd()
-    : null;
   const childCwd = workflowStepCwd || managedRunDir || process.cwd();
   if (command === "exec" && childCwd) {
     fs.mkdirSync(childCwd, { recursive: true });

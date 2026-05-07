@@ -4,6 +4,7 @@ set -euo pipefail
 source_dir="${MORPHEUS_LIBVMM_SOURCE:?}"
 example="${MORPHEUS_LIBVMM_EXAMPLE:-virtio}"
 microkit_sdk="${MORPHEUS_LIBVMM_MICROKIT_SDK:?}"
+board="${MORPHEUS_LIBVMM_BOARD:-qemu_virt_aarch64}"
 toolchain_bin_dir="${MORPHEUS_LIBVMM_TOOLCHAIN_BIN_DIR:-}"
 result_file="${MORPHEUS_LIBVMM_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 seed_dir="${MORPHEUS_LIBVMM_SEED_DIR:-}"
@@ -11,8 +12,10 @@ git_url="${MORPHEUS_LIBVMM_GIT_URL:-}"
 build_version="${MORPHEUS_LIBVMM_BUILD_VERSION:-}"
 example_dir="${source_dir}/examples/${example}"
 runtime_contract="${source_dir}/runtime-contract.json"
+version_file="${source_dir}/VERSION"
+version=""
 
-if [ ! -f "${source_dir}/VERSION" ]; then
+if [ ! -d "${source_dir}" ]; then
   if [ -n "${seed_dir}" ] || [ -n "${git_url}" ]; then
     "$(dirname "$0")/fetch.sh"
   fi
@@ -27,15 +30,30 @@ if [ -n "${toolchain_bin_dir}" ]; then
   export PATH="${PATH}:${toolchain_bin_dir}"
 fi
 
+if [ -d "/usr/lib/llvm-19/bin" ]; then
+  export PATH="${PATH}:/usr/lib/llvm-19/bin"
+fi
+
+export MICROKIT_SDK="${microkit_sdk}"
+export MICROKIT_BOARD="${board}"
+
+if [ -f "${version_file}" ]; then
+  version="$(tr -d '\n' < "${version_file}")"
+elif [ -d "${source_dir}/.git" ]; then
+  version="$(git -C "${source_dir}" rev-parse HEAD)"
+else
+  version="${build_version}"
+fi
+
 make -C "${example_dir}" clean
-make -C "${example_dir}" all
+make -C "${example_dir}" -j4 all
 
 cat > "${runtime_contract}" <<EOF
 {
   "schemaVersion": 1,
   "kind": "libvmm-runtime-contract",
   "provider": "libvmm",
-  "version": "$(tr -d '\n' < "${source_dir}/VERSION")",
+  "version": "${version}",
   "example": "${example}",
   "exampleDir": "${example_dir}",
   "defaultAction": "qemu",

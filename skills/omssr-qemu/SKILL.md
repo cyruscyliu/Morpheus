@@ -50,6 +50,19 @@ boot arguments or target selection.
 This descriptor is the source of truth for how Morpheus locates and publishes
 `qemu-system-aarch64`.
 
+Important descriptor fields:
+
+- `config.fields.path`, `source`, `build-version`, `archive-url`:
+  executable or source selection.
+- `config.fields.reuse-build-dir`, `build-dir-key`:
+  stable managed build and install path policy.
+- `config.fields.run-dir`:
+  optional explicit runtime directory override.
+- `managed.local.buildDirTemplate`, `installDirTemplate`:
+  reusable build and install locations.
+- `commands.exec.result.details.run_dir`:
+  runtime state location recorded by Morpheus.
+
 ## How The Tool Works
 
 `qemu` can either inspect an existing executable or build one as a managed
@@ -62,8 +75,8 @@ artifact through Morpheus-managed script execution.
 - `exec` runs QEMU against prepared artifacts that Morpheus resolved earlier
 - `inspect` and `logs` re-read prior metadata and logs
 
-`nvirsh` should consume the published QEMU artifact instead of provisioning
-the binary itself.
+When `exec` runs inside a workflow step, the default runtime state now lives
+under that step directory rather than a shared workspace temp directory.
 
 ## JSON Contract
 
@@ -76,7 +89,7 @@ artifact and metadata inspection.
 Use the workflow smoke command for a fast managed validation pass:
 
 ```bash
-node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name qemu-build
+node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name qemu-build-ci
 ```
 
 This validates the real managed QEMU workflow path.

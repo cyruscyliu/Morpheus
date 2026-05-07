@@ -60,6 +60,12 @@
             "path": "scripts/fetch.sh",
             "shell": "bash"
           },
+          "fetch": {
+            "archive": {
+              "flag": "microkit-archive-url",
+              "urlTemplate": "https://github.com/seL4/microkit/archive/{buildVersion}.tar.gz"
+            }
+          },
           "pathFlags": {
             "path": "tools/microkit-sdk/builds/{buildDirKey}/source",
             "source": "tools/microkit-sdk/builds/{buildDirKey}/source",
@@ -115,7 +121,7 @@
             "toolchain-dir": "tools/microkit-sdk/deps/arm-gnu-toolchain-{toolchainVersion}"
           },
           "requiredFlags": ["path", "sel4", "toolchain-dir"],
-          "scalarFlags": ["boards", "configs", "tool-target-triple", "toolchain-dir", "toolchain-prefix-aarch64", "archive-url", "microkit-archive-url", "seed-dir", "build-version"],
+          "scalarFlags": ["boards", "configs", "tool-target-triple", "toolchain-dir", "toolchain-version", "toolchain-archive-url", "toolchain-prefix-aarch64", "archive-url", "microkit-archive-url", "seed-dir", "build-version"],
           "repeatableFlags": [],
           "script": {
             "path": "scripts/build.sh",

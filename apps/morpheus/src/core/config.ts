@@ -54,6 +54,57 @@ function findConfigPath(startDir, options = {}) {
   }
 }
 
+function repoRootConfigPath() {
+  return path.resolve(__dirname, "..", "..", "..", "..", "morpheus.yaml");
+}
+
+function mergeImportedWorkflows(configValue, filePath, options = {}) {
+  if (!filePath || !isPlainObject(configValue)) {
+    return configValue;
+  }
+  const imports = configValue.imports;
+  if (!isPlainObject(imports) || !imports.workflows) {
+    return configValue;
+  }
+  const requested = Array.isArray(imports.workflows)
+    ? imports.workflows
+    : [imports.workflows];
+  const importPath = repoRootConfigPath();
+  if (!fs.existsSync(importPath)) {
+    throw new Error("root morpheus.yaml not found for workflow imports");
+  }
+  const importedValue = yaml.parse(fs.readFileSync(importPath, "utf8")) || {};
+  const importedWorkflowsAll = isPlainObject(importedValue.workflows)
+    ? importedValue.workflows
+    : {};
+  const importedWorkflows = {};
+  for (const item of requested) {
+    const value = String(item || "").trim();
+    if (!value) {
+      continue;
+    }
+    const [scope, workflowName] = value.split(".", 2);
+    if (scope !== "root" || !workflowName) {
+      throw new Error(`unsupported workflow import reference: ${value}`);
+    }
+    if (String(workflowName).endsWith("-ci")) {
+      throw new Error(`cannot import ci workflow: ${value}`);
+    }
+    if (!Object.prototype.hasOwnProperty.call(importedWorkflowsAll, workflowName)) {
+      throw new Error(`imported workflow not found: ${value}`);
+    }
+    importedWorkflows[workflowName] = importedWorkflowsAll[workflowName];
+  }
+  const localWorkflows = isPlainObject(configValue.workflows) ? configValue.workflows : {};
+  return {
+    ...configValue,
+    workflows: {
+      ...importedWorkflows,
+      ...localWorkflows,
+    },
+  };
+}
+
 function loadConfig(startDir, options = {}) {
   const filePath = findConfigPath(startDir, options);
   if (!filePath) {
@@ -62,9 +113,10 @@ function loadConfig(startDir, options = {}) {
       value: {}
     };
   }
+  const parsed = yaml.parse(fs.readFileSync(filePath, "utf8")) || {};
   return {
     path: filePath,
-    value: yaml.parse(fs.readFileSync(filePath, "utf8")) || {}
+    value: mergeImportedWorkflows(parsed, filePath, options)
   };
 }
 

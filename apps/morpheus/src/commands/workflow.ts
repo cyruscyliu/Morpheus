@@ -485,6 +485,18 @@ function stopPid(pid) {
   spawnSync("kill", ["-KILL", String(pid)], { stdio: "ignore" });
 }
 
+function isRunningPid(pid) {
+  if (!pid || pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function toolSupportsCommand(descriptor, command) {
   const contract = String(descriptor && descriptor["cli-contract"] || "")
     .split(",")
@@ -506,6 +518,70 @@ function stepToolManifest(step) {
   } catch {
     return null;
   }
+}
+
+function reconcileStaleWorkflowRun(found) {
+  const workflow = readJson(found.manifestPath);
+  const steps = listWorkflowSteps(found.runDir);
+  if (workflow.status !== "running") {
+    return { workflow, steps };
+  }
+
+  const runnerPid = Number(workflow.runnerPid || 0);
+  const currentChildPid = Number(workflow.currentChildPid || 0);
+  const runnerAlive = isRunningPid(runnerPid);
+  const childAlive = isRunningPid(currentChildPid);
+  if (runnerAlive || childAlive) {
+    return { workflow, steps };
+  }
+
+  for (const step of steps) {
+    if (step.status === "running") {
+      updateWorkflowStep(step.stepDir, (current) => ({
+        ...current,
+        status: "error",
+        exitCode: current.exitCode == null ? 1 : current.exitCode,
+      }));
+    }
+  }
+
+  const updatedWorkflow = updateWorkflowRun(found.runDir, (current) => ({
+    ...current,
+    status: "error",
+    currentStepId: null,
+    currentChildPid: null,
+    runnerPid: null,
+    steps: Array.isArray(current.steps)
+      ? current.steps.map((entry) => (
+          entry.status === "running"
+            ? { ...entry, status: "error" }
+            : entry
+        ))
+      : [],
+  }));
+
+  fs.appendFileSync(
+    workflowEventLogPath(found.runDir),
+    `${JSON.stringify({
+      ts: new Date().toISOString(),
+      producer: "morpheus",
+      level: "error",
+      scope: "workflow",
+      event: "workflow.runner.stale",
+      workflow_id: updatedWorkflow.id,
+      data: {
+        runnerPid: runnerPid > 0 ? runnerPid : null,
+        currentChildPid: currentChildPid > 0 ? currentChildPid : null,
+        message: "workflow runner process disappeared before recording a terminal state",
+      },
+    })}\n`,
+    "utf8",
+  );
+
+  return {
+    workflow: updatedWorkflow,
+    steps: listWorkflowSteps(found.runDir),
+  };
 }
 
 function shouldStopWorkflowStepTool(step) {
@@ -1947,8 +2023,7 @@ async function handleWorkflowCommand(argv) {
     }
     const workspaceRoot = resolveWorkspaceRoot(flags);
     const found = findWorkflowRun(workspaceRoot, id);
-    const workflow = readJson(found.manifestPath);
-    const steps = listWorkflowSteps(found.runDir);
+    const { workflow, steps } = reconcileStaleWorkflowRun(found);
     const payload = {
       command: "workflow inspect",
       status: "success",

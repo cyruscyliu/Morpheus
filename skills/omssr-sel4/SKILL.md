@@ -44,6 +44,17 @@ needs a specific seL4 version.
 This descriptor is the source of truth for how Morpheus resolves and records
 the managed seL4 source tree.
 
+Important descriptor fields:
+
+- `config.fields.path`, `build-version`, `archive-url`:
+  source selection.
+- `config.fields.patch-dir`:
+  patch tree location.
+- `managed.local.sourceTemplate`:
+  stable managed source location.
+- `commands.fetch` and `commands.patch`:
+  the primary useful seL4 source preparation steps.
+
 ## How The Tool Works
 
 `sel4` manages seL4 source material as a reusable artifact for later
@@ -55,8 +66,9 @@ workflows.
 - `inspect` re-reads version and artifact metadata
 - `logs` re-reads prior execution logs
 
-`nvirsh` should consume the published source artifact instead of provisioning
-it directly.
+Downstream `microkit-sdk` workflows should usually consume the patched seL4
+source tree directly rather than requiring a separate explicit `sel4.build`
+workflow step.
 
 ## JSON Contract
 
@@ -69,7 +81,7 @@ source artifacts and version metadata.
 Use the workflow smoke command for a fast managed validation pass:
 
 ```bash
-node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name sel4-build
+node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name sel4-build-ci
 ```
 
 This validates the real managed seL4 workflow path.

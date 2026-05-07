@@ -42,6 +42,63 @@ workspace:
 
 Project configs can live under `projects/<project>/morpheus.yaml`.
 The repo-root `morpheus.yaml` may be only a minimal CI/testing stub.
+Projects may import shared workflows explicitly from the repo root config using
+references such as `root.buildroot-build`.
+
+## Config Schema
+
+Treat `morpheus.yaml` as the stable Morpheus config surface.
+The main field families are:
+
+- workspace selection:
+  `workspace.root`
+- tool policy:
+  `tools.<name>.*`
+- workflow definitions:
+  `workflows.<name>.*`
+- workflow imports:
+  `imports.workflows`
+- remote transport policy when used:
+  `remote.*`, `workspaces.*`
+
+Shared workflow imports are explicit.
+Project configs should import shared root workflows with references such as:
+
+```yaml
+imports:
+  workflows:
+    - root.buildroot-build
+    - root.qemu-build
+```
+
+Treat `tool.json` as the shared per-tool schema that Morpheus interprets.
+Important field families are:
+
+- tool identity:
+  `name`, `cli-contract`, `runtime`
+- run serialization:
+  `runGuard`
+- config field schema:
+  `config.fields`
+- dependency-to-flag mapping:
+  `inputs`
+- managed execution modes:
+  `managed.schemaVersion`, `managed.modes`
+- managed path templates:
+  `managed.local.sourceTemplate`, `downloadsDir`, `buildDirTemplate`,
+  `installDirTemplate`, `execDirTemplate`
+- published artifacts:
+  `managed.local.artifacts`
+- per-command wiring:
+  `managed.local.commands.<command>.requiredFlags`,
+  `scalarFlags`, `repeatableFlags`, `pathFlags`, `script`, `result`
+
+Operational rule:
+
+- `morpheus.yaml` owns management policy and workflow composition.
+- `tool.json` plus `scripts/` own tool behavior.
+- Morpheus should stay generic and resolve paths, dependencies, lifecycle, and
+  workflow state around the descriptor.
 
 ## Core Rules
 
@@ -66,6 +123,10 @@ The repo-root `morpheus.yaml` may be only a minimal CI/testing stub.
   `build`, and `exec`.
 - Treat `tools.<name>` in `morpheus.yaml` as management policy, not tool
   business logic.
+- Treat `imports.workflows` as an explicit workflow import list, not as an
+  ad hoc file include. Current shared workflow imports use `root.<name>`.
+- Treat root `*-ci` workflows as fixture or smoke workflows. Project configs
+  should import the non-`-ci` workflow names.
 - Keep patch inputs in managed workspace locations when possible, and point
   tool patch configuration at those managed paths or at repo-shipped patch
   directories when that is the intended source.
@@ -79,8 +140,26 @@ The repo-root `morpheus.yaml` may be only a minimal CI/testing stub.
   otherwise.
 - Tool CLIs should use the workspace paths Morpheus gives them instead of
   making up their own managed workspace directories.
+- Reusable fetched sources, build trees, and install artifacts belong under
+  `workspace/tools/...`.
+- Runtime state for `exec` commands should default to the workflow step tree
+  under `workspace/runs/<workflow-id>/steps/<step-id>/...`.
+- Treat `workspace/tmp/...` as scratch only, not as the canonical runtime
+  location for managed workflow execution.
 - Downstream workflows should depend on stable published artifacts rather than
   tool-private scratch files or intermediate prompt state.
+
+## Provisioning
+
+This repo now has a root bootstrap:
+
+```bash
+./install-dependencies.sh
+```
+
+It installs `pnpm` and then discovers and runs each
+`tools/*/scripts/install-dependencies.sh` sequentially.
+Use it before running real non-fixture workflows on a fresh host.
 
 ## Top-Level Morpheus Contract
 

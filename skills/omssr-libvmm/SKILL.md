@@ -49,6 +49,19 @@ workflow steps.
 Read this descriptor first when you need to understand how Morpheus wires
 dependencies into libvmm.
 
+Important descriptor fields:
+
+- `config.fields.git-url`, `build-version`:
+  upstream checkout selection.
+- `config.fields.example`, `board`:
+  example and board selection.
+- `config.fields.microkit-sdk`, `toolchain-bin-dir`:
+  required build dependencies.
+- `config.fields.qemu`, `kernel`, `initrd`, `run-dir`:
+  runtime inputs for `exec`.
+- `managed.artifacts.runtime-contract`:
+  the published runtime handoff contract.
+
 ## How The Tool Works
 
 `libvmm` provisions a checkout, optionally patches it, builds a selected
@@ -62,6 +75,9 @@ example, and can execute the resulting runtime flow when Morpheus asks for
 - `stop` terminates a recorded runtime run from its managed run directory
 - `inspect` and `logs` re-read prior state instead of repeating work
 
+The `virtio` example currently runs QEMU in text mode with `-serial mon:stdio`
+and `-nographic`.
+
 ## JSON Contract
 
 Prefer `--json` for automation.
@@ -73,7 +89,7 @@ progress or diagnostic output.
 Use the workflow smoke command for a fast managed validation pass:
 
 ```bash
-node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name libvmm-build
+node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name libvmm-build-ci
 ```
 
 This validates the real managed libvmm workflow path.

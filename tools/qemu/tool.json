@@ -55,6 +55,11 @@
             "path": "scripts/fetch.sh",
             "shell": "bash"
           },
+          "fetch": {
+            "archive": {
+              "urlTemplate": "https://download.qemu.org/qemu-{buildVersion}.tar.xz"
+            }
+          },
           "pathFlags": {
             "source": "tools/qemu/src/qemu-{buildVersion}",
             "downloads-dir": "tools/qemu/downloads"
@@ -142,9 +147,6 @@
             "path": "scripts/exec.sh",
             "shell": "bash"
           },
-          "pathFlags": {
-            "run-dir": "tmp/qemu-run"
-          },
           "result": {
             "successSummary": "started local QEMU run",
             "attachedSuccessSummary": "completed local QEMU run",
@@ -188,9 +190,6 @@
           "script": {
             "path": "scripts/stop.sh",
             "shell": "bash"
-          },
-          "pathFlags": {
-            "run-dir": "tmp/qemu-run"
           },
           "result": {
             "successSummary": "stopped local QEMU run",

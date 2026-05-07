@@ -50,6 +50,20 @@ version-specific runs.
 This descriptor is the source of truth for how Morpheus resolves the SDK
 install tree and the companion toolchain artifact.
 
+Important descriptor fields:
+
+- `config.fields.microkit-archive-url`, `build-version`:
+  source selection for the SDK tree.
+- `config.fields.sel4`:
+  patched seL4 source input consumed by `build`.
+- `config.fields.toolchain-dir`, `toolchain-version`,
+  `toolchain-archive-url`, `toolchain-prefix-aarch64`:
+  toolchain selection.
+- `config.fields.boards`, `configs`:
+  SDK output shape.
+- `managed.local.artifacts.sdk-dir`, `source-dir`, `toolchain-dir`:
+  the published artifact set.
+
 ## How The Tool Works
 
 `microkit-sdk` can inspect an existing SDK directory or produce one as a
@@ -66,6 +80,8 @@ toolchain directory that downstream tools consume.
 When board/config outputs are required, `build` may need an explicit `sel4`
 source input plus selected `boards` and `configs` so the SDK install tree
 contains `board/<board>/<config>/...` artifacts for downstream tools.
+The intended input is patched seL4 source, not a separate prebuilt seL4
+artifact.
 
 ## JSON Contract
 
@@ -78,7 +94,7 @@ artifacts and version metadata.
 Use the workflow smoke command for a fast managed validation pass:
 
 ```bash
-node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name microkit-sdk-build
+node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name microkit-sdk-build-ci
 ```
 
 This validates the real managed Microkit SDK workflow path.

@@ -7,6 +7,16 @@ result_file="${MORPHEUS_LIBVMM_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 log_file="${source_dir}/.morpheus-patches.log"
 state_file="${source_dir}/.morpheus-patches.json"
 
+detect_version() {
+  if [ -f "${source_dir}/VERSION" ]; then
+    tr -d '\n' < "${source_dir}/VERSION"
+  elif [ -d "${source_dir}/.git" ]; then
+    git -C "${source_dir}" rev-parse HEAD
+  else
+    printf '%s' ""
+  fi
+}
+
 if [ ! -d "${source_dir}" ]; then
   echo "missing source directory: ${source_dir}" >&2
   exit 1
@@ -31,7 +41,7 @@ EOF
 
 if [ -f "${state_file}" ] && grep -q "\"fingerprint\": \"${fingerprint}\"" "${state_file}"; then
   cat > "${result_file}" <<EOF
-{"details":{"reused":true,"applied":true,"fingerprint":"${fingerprint}","version":"$(tr -d '\n' < "${source_dir}/VERSION")"}}
+{"details":{"reused":true,"applied":true,"fingerprint":"${fingerprint}","version":"$(detect_version)"}}
 EOF
   exit 0
 fi
@@ -54,5 +64,5 @@ cat > "${state_file}" <<EOF
 EOF
 
 cat > "${result_file}" <<EOF
-{"details":{"applied":true,"fingerprint":"${fingerprint}","version":"$(tr -d '\n' < "${source_dir}/VERSION")"}}
+{"details":{"applied":true,"fingerprint":"${fingerprint}","version":"$(detect_version)"}}
 EOF

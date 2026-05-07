@@ -20,37 +20,30 @@ tools:
     seed-dir: ./tools/sel4/fixtures/minimal-sel4-src
     patch-dir: ./tools/sel4/patches/demo
 workflows:
-  nvirsh-runtime:
-    category: run
+  buildroot-build:
+    category: build
     steps:
       - id: buildroot_fetch
         tool: buildroot
         command: fetch
-        args:
-          - --build-version
-          - fixture
       - id: buildroot_patch
         tool: buildroot
         command: patch
         args:
           - --source
           - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
-      - id: buildroot_build
+      - id: buildroot
         tool: buildroot
         command: build
         args:
           - --source
           - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
-          - --build-dir-key
-          - default
-          - --defconfig
-          - qemu_aarch64_virt_defconfig
+  qemu-build:
+    category: build
+    steps:
       - id: qemu_fetch
         tool: qemu
         command: fetch
-        args:
-          - --build-version
-          - fixture
       - id: qemu_patch
         tool: qemu
         command: patch
@@ -63,166 +56,77 @@ workflows:
         args:
           - --source
           - "{{steps.qemu_patch.artifacts.source-dir.location}}"
-          - --build-dir-key
-          - default
-          - --target-list
-          - aarch64-softmmu
-      - id: sel4_fetch
-        tool: sel4
-        command: fetch
-        args:
-          - --build-version
-          - fixture
-      - id: sel4_patch
-        tool: sel4
-        command: patch
-        args:
-          - --path
-          - "{{steps.sel4_fetch.artifacts.source-dir.location}}"
-      - id: sel4_build
-        tool: sel4
-        command: build
-        args:
-          - --path
-          - "{{steps.sel4_patch.artifacts.source-dir.location}}"
-      - id: microkit_sdk_fetch
-        tool: microkit-sdk
-        command: fetch
-        args:
-          - --build-version
-          - fixture
-      - id: microkit_sdk_patch
-        tool: microkit-sdk
-        command: patch
-        args:
-          - --path
-          - "{{steps.microkit_sdk_fetch.artifacts.source-dir.location}}"
-      - id: microkit_sdk_build
-        tool: microkit-sdk
-        command: build
-        args:
-          - --path
-          - "{{steps.microkit_sdk_patch.artifacts.source-dir.location}}"
-          - --sel4
-          - "{{steps.sel4_build.artifacts.source-dir.location}}"
-          - --boards
-          - qemu_virt_aarch64
-          - --configs
-          - debug
-      - id: libvmm_fetch
-        tool: libvmm
-        command: fetch
-      - id: libvmm_patch
-        tool: libvmm
-        command: patch
-        args:
-          - --source
-          - "{{steps.libvmm_fetch.artifacts.libvmm-dir.location}}"
-      - id: libvmm_build
-        tool: libvmm
-        command: build
-        args:
-          - --source
-          - "{{steps.libvmm_patch.artifacts.libvmm-dir.location}}"
-          - --microkit-sdk
-          - "{{steps.microkit_sdk_build.artifacts.sdk-dir.location}}"
-          - --toolchain-bin-dir
-          - "{{steps.microkit_sdk_build.artifacts.toolchain-dir.location}}/bin"
-      - id: nvirsh_exec
-        tool: nvirsh
-        command: exec
-        args:
-          - --name
-          - sel4-dev
-          - --target
-          - sel4
-          - --qemu
-          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
-          - --microkit-sdk
-          - "{{steps.microkit_sdk_build.artifacts.sdk-dir.location}}"
-          - --microkit-version
-          - fixture
-          - --toolchain
-          - "{{steps.microkit_sdk_build.artifacts.toolchain-dir.location}}"
-          - --libvmm-dir
-          - "{{steps.libvmm_build.artifacts.libvmm-dir.location}}"
-          - --runtime-contract
-          - "{{steps.libvmm_build.artifacts.runtime-contract.location}}"
-          - --kernel
-          - "{{steps.buildroot_build.artifacts.Image.location}}"
-          - --initrd
-          - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.location}}"
-          - --detach
-  libvmm-build:
-    category: build
-    steps:
-      - id: sel4_fetch
-        tool: sel4
-        command: fetch
-        args:
-          - --build-version
-          - fixture
-      - id: sel4_patch
-        tool: sel4
-        command: patch
-        args:
-          - --path
-          - "{{steps.sel4_fetch.artifacts.source-dir.location}}"
-      - id: sel4_build
-        tool: sel4
-        command: build
-        args:
-          - --path
-          - "{{steps.sel4_patch.artifacts.source-dir.location}}"
-      - id: microkit_sdk_fetch
-        tool: microkit-sdk
-        command: fetch
-        args:
-          - --build-version
-          - fixture
-      - id: microkit_sdk_patch
-        tool: microkit-sdk
-        command: patch
-        args:
-          - --path
-          - "{{steps.microkit_sdk_fetch.artifacts.source-dir.location}}"
-      - id: microkit_sdk_build
-        tool: microkit-sdk
-        command: build
-        args:
-          - --path
-          - "{{steps.microkit_sdk_patch.artifacts.source-dir.location}}"
-          - --sel4
-          - "{{steps.sel4_build.artifacts.source-dir.location}}"
-          - --boards
-          - qemu_virt_aarch64
-          - --configs
-          - debug
-      - id: libvmm_fetch
-        tool: libvmm
-        command: fetch
-      - id: libvmm_patch
-        tool: libvmm
-        command: patch
-        args:
-          - --source
-          - "{{steps.libvmm_fetch.artifacts.libvmm-dir.location}}"
-      - id: libvmm_build
-        tool: libvmm
-        command: build
-        args:
-          - --source
-          - "{{steps.libvmm_patch.artifacts.libvmm-dir.location}}"
-          - --microkit-sdk
-          - "{{steps.microkit_sdk_build.artifacts.sdk-dir.location}}"
-          - --toolchain-bin-dir
-          - "{{steps.microkit_sdk_build.artifacts.toolchain-dir.location}}/bin"
   microkit-sdk-build:
     category: build
     steps:
       - id: sel4_fetch
         tool: sel4
         command: fetch
+      - id: sel4_patch
+        tool: sel4
+        command: patch
+        args:
+          - --source
+          - "{{steps.sel4_fetch.artifacts.source-dir.location}}"
+      - id: microkit_sdk_fetch
+        tool: microkit-sdk
+        command: fetch
+      - id: microkit_sdk_patch
+        tool: microkit-sdk
+        command: patch
+        args:
+          - --source
+          - "{{steps.microkit_sdk_fetch.artifacts.source-dir.location}}"
+      - id: microkit_sdk_build
+        tool: microkit-sdk
+        command: build
+        args:
+          - --source
+          - "{{steps.microkit_sdk_patch.artifacts.source-dir.location}}"
+          - --sel4
+          - "{{steps.sel4_patch.artifacts.source-dir.location}}"
+  libvmm-build:
+    category: build
+    steps:
+      - id: libvmm_fetch
+        tool: libvmm
+        command: fetch
+      - id: libvmm_patch
+        tool: libvmm
+        command: patch
+        args:
+          - --source
+          - "{{steps.libvmm_fetch.artifacts.libvmm-dir.location}}"
+      - id: libvmm_build
+        tool: libvmm
+        command: build
+        args:
+          - --source
+          - "{{steps.libvmm_patch.artifacts.libvmm-dir.location}}"
+  sel4-build:
+    category: build
+    steps:
+      - id: sel4_fetch
+        tool: sel4
+        command: fetch
+      - id: sel4_patch
+        tool: sel4
+        command: patch
+        args:
+          - --source
+          - "{{steps.sel4_fetch.artifacts.source-dir.location}}"
+      - id: sel4_build
+        tool: sel4
+        command: build
+        args:
+          - --source
+          - "{{steps.sel4_patch.artifacts.source-dir.location}}"
+  libvmm-build-ci:
+    category: build
+    steps:
+      - id: sel4_fetch
+        tool: sel4
+        command: fetch
         args:
           - --build-version
           - fixture
@@ -232,12 +136,6 @@ workflows:
         args:
           - --path
           - "{{steps.sel4_fetch.artifacts.source-dir.location}}"
-      - id: sel4_build
-        tool: sel4
-        command: build
-        args:
-          - --path
-          - "{{steps.sel4_patch.artifacts.source-dir.location}}"
       - id: microkit_sdk_fetch
         tool: microkit-sdk
         command: fetch
@@ -257,12 +155,70 @@ workflows:
           - --path
           - "{{steps.microkit_sdk_patch.artifacts.source-dir.location}}"
           - --sel4
-          - "{{steps.sel4_build.artifacts.source-dir.location}}"
+          - "{{steps.sel4_patch.artifacts.source-dir.location}}"
+          - --boards
+          - qemu_virt_aarch64
+          - --configs
+          - debug
+      - id: libvmm_fetch
+        tool: libvmm
+        command: fetch
+      - id: libvmm_patch
+        tool: libvmm
+        command: patch
+        args:
+          - --source
+          - "{{steps.libvmm_fetch.artifacts.libvmm-dir.location}}"
+      - id: libvmm_build
+        tool: libvmm
+        command: build
+        args:
+          - --source
+          - "{{steps.libvmm_patch.artifacts.libvmm-dir.location}}"
+          - --microkit-sdk
+          - "{{steps.microkit_sdk_build.artifacts.sdk-dir.location}}"
+          - --toolchain-bin-dir
+          - "{{steps.microkit_sdk_build.artifacts.toolchain-dir.location}}/bin"
+  microkit-sdk-build-ci:
+    category: build
+    steps:
+      - id: sel4_fetch
+        tool: sel4
+        command: fetch
+        args:
+          - --build-version
+          - fixture
+      - id: sel4_patch
+        tool: sel4
+        command: patch
+        args:
+          - --path
+          - "{{steps.sel4_fetch.artifacts.source-dir.location}}"
+      - id: microkit_sdk_fetch
+        tool: microkit-sdk
+        command: fetch
+        args:
+          - --build-version
+          - fixture
+      - id: microkit_sdk_patch
+        tool: microkit-sdk
+        command: patch
+        args:
+          - --path
+          - "{{steps.microkit_sdk_fetch.artifacts.source-dir.location}}"
+      - id: microkit_sdk_build
+        tool: microkit-sdk
+        command: build
+        args:
+          - --path
+          - "{{steps.microkit_sdk_patch.artifacts.source-dir.location}}"
+          - --sel4
+          - "{{steps.sel4_patch.artifacts.source-dir.location}}"
           - --boards
           - qemu_virt_aarch64
           - --configs
           - debug,release
-  sel4-build:
+  sel4-build-ci:
     category: build
     steps:
       - id: sel4_fetch
@@ -283,7 +239,7 @@ workflows:
         args:
           - --path
           - "{{steps.sel4_patch.artifacts.source-dir.location}}"
-  buildroot-build:
+  buildroot-build-ci:
     category: build
     steps:
       - id: buildroot_fetch
@@ -308,7 +264,7 @@ workflows:
           - default
           - --defconfig
           - qemu_aarch64_virt_defconfig
-  qemu-build:
+  qemu-build-ci:
     category: build
     steps:
       - id: qemu_fetch

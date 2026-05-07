@@ -11,11 +11,13 @@ initrd="${MORPHEUS_LIBVMM_INITRD:?}"
 qemu="${MORPHEUS_LIBVMM_QEMU:?}"
 toolchain_bin_dir="${MORPHEUS_LIBVMM_TOOLCHAIN_BIN_DIR:-}"
 microkit_config="${MORPHEUS_LIBVMM_MICROKIT_CONFIG:-debug}"
+env_file="${MORPHEUS_LIBVMM_ENV_FILE:-}"
 qemu_arg_file="${MORPHEUS_LIBVMM_QEMU_ARG_FILE:-}"
 detach="${MORPHEUS_LIBVMM_DETACH:-true}"
 result_file="${MORPHEUS_LIBVMM_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 manifest_file="${run_dir}/manifest.json"
 log_file="${run_dir}/stdout.log"
+qemu_wrapper="${run_dir}/qemu-wrapper.sh"
 example_dir="$(node -e "const fs=require('fs'); const m=JSON.parse(fs.readFileSync(process.argv[1],'utf8')); process.stdout.write(String(m.exampleDir||m.actions?.qemu?.cwd||''));" "${runtime_contract}")"
 
 mkdir -p "${run_dir}"
@@ -29,12 +31,42 @@ fi
 qemu_trace_args=""
 if [ -n "${qemu_arg_file}" ] && [ -s "${qemu_arg_file}" ]; then
   mapfile -t extra_args < "${qemu_arg_file}"
-  qemu_trace_args="${extra_args[*]}"
+  for trace_arg in "${extra_args[@]}"; do
+    [ -n "${trace_arg}" ] || continue
+    qemu_trace_args="${qemu_trace_args} -trace ${trace_arg}"
+  done
+  qemu_trace_args="${qemu_trace_args# }"
 fi
 
 if [ -n "${toolchain_bin_dir}" ]; then
   export PATH="${PATH}:${toolchain_bin_dir}"
 fi
+if [ -d "/usr/lib/llvm-19/bin" ]; then
+  export PATH="${PATH}:/usr/lib/llvm-19/bin"
+fi
+export PATH="${PATH}:/usr/sbin"
+
+if [ -n "${env_file}" ] && [ -s "${env_file}" ]; then
+  while IFS= read -r assignment || [ -n "${assignment}" ]; do
+    [ -n "${assignment}" ] || continue
+    export "${assignment}"
+  done < "${env_file}"
+fi
+
+cat > "${qemu_wrapper}" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+EOF
+if [ -n "${env_file}" ] && [ -s "${env_file}" ]; then
+  while IFS= read -r assignment || [ -n "${assignment}" ]; do
+    [ -n "${assignment}" ] || continue
+    printf 'export %q\n' "${assignment}" >> "${qemu_wrapper}"
+  done < "${env_file}"
+fi
+cat >> "${qemu_wrapper}" <<EOF
+exec "${qemu}" "\$@"
+EOF
+chmod +x "${qemu_wrapper}"
 
 make_cmd=(
   make
@@ -44,7 +76,7 @@ make_cmd=(
   "MICROKIT_CONFIG=${microkit_config}"
   "LINUX=${kernel}"
   "INITRD=${initrd}"
-  "QEMU=${qemu}"
+  "QEMU=${qemu_wrapper}"
 )
 
 if [ -n "${qemu_trace_args}" ]; then
@@ -56,6 +88,13 @@ make_cmd+=(qemu)
 if [ "${detach}" = "true" ]; then
   "${make_cmd[@]}" >> "${log_file}" 2>&1 &
   pid="$!"
+  sleep 1
+  if ! kill -0 "${pid}" 2>/dev/null; then
+    cat > "${result_file}" <<EOF
+{"command":"exec","status":"error","exit_code":1,"summary":"local libvmm runtime failed","error":{"code":"morpheus_error","message":"local libvmm runtime failed"}}
+EOF
+    exit 1
+  fi
   cat > "${manifest_file}" <<EOF
 {"tool":"libvmm","status":"running","runDir":"${run_dir}","logFile":"${log_file}","manifest":"${manifest_file}","pid":${pid},"launcherPid":null,"runnerPid":null,"board":"${board}","microkitSdk":"${microkit_sdk}","microkitConfig":"${microkit_config}","libvmmDir":"${libvmm_dir}","toolchainBinDir":"${toolchain_bin_dir}","exampleDir":"${example_dir}","control":{"type":"process","graceful_methods":["SIGTERM"]}}
 EOF

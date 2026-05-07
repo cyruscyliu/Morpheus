@@ -282,6 +282,116 @@ workflows:
           - --initrd
           - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.location}}"
           - --detach
+  buildroot-libvmm-runtime-trace:
+    category: run
+    steps:
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+      - id: buildroot_build
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+      - id: sel4_fetch
+        tool: sel4
+        command: fetch
+      - id: sel4_patch
+        tool: sel4
+        command: patch
+        args:
+          - --source
+          - "{{steps.sel4_fetch.artifacts.source-dir.location}}"
+      - id: microkit_sdk_fetch
+        tool: microkit-sdk
+        command: fetch
+      - id: microkit_sdk_patch
+        tool: microkit-sdk
+        command: patch
+        args:
+          - --source
+          - "{{steps.microkit_sdk_fetch.artifacts.source-dir.location}}"
+      - id: microkit_sdk_build
+        tool: microkit-sdk
+        command: build
+        args:
+          - --source
+          - "{{steps.microkit_sdk_patch.artifacts.source-dir.location}}"
+          - --sel4
+          - "{{steps.sel4_patch.artifacts.source-dir.location}}"
+      - id: libvmm_fetch
+        tool: libvmm
+        command: fetch
+      - id: libvmm_patch
+        tool: libvmm
+        command: patch
+        args:
+          - --source
+          - "{{steps.libvmm_fetch.artifacts.libvmm-dir.location}}"
+      - id: libvmm_build
+        tool: libvmm
+        command: build
+        args:
+          - --source
+          - "{{steps.libvmm_patch.artifacts.libvmm-dir.location}}"
+      - id: libvmm_exec
+        tool: libvmm
+        command: exec
+        args:
+          - --runtime-contract
+          - "{{steps.libvmm_build.artifacts.runtime-contract.location}}"
+          - --libvmm-dir
+          - "{{steps.libvmm_build.artifacts.libvmm-dir.location}}"
+          - --microkit-sdk
+          - "{{steps.microkit_sdk_build.artifacts.sdk-dir.location}}"
+          - --board
+          - qemu_virt_aarch64
+          - --microkit-config
+          - debug
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+          - --toolchain-bin-dir
+          - "{{steps.microkit_sdk_build.artifacts.toolchain-dir.location}}/bin"
+          - --kernel
+          - "{{steps.buildroot_build.artifacts.Image.location}}"
+          - --initrd
+          - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.location}}"
+          - --env
+          - MORPHEUS_QEMU_INJECT_VIRQ=42
+          - --env
+          - MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS=1000
+          - --qemu-arg
+          - enable=arm_mmio_el2_from_el1_write
+          - --qemu-arg
+          - enable=arm_mmio_el2_from_el1_read_request
+          - --qemu-arg
+          - enable=arm_mmio_el2_from_el1_read_return
+          - --qemu-arg
+          - enable=gicv3_inject_virq
+          - --qemu-arg
+          - enable=gicv3_inject_virq_skipped
   hyperarm-kernel-callgraphs:
     category: run
     steps:

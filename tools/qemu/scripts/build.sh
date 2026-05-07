@@ -13,6 +13,7 @@ seed_dir="${MORPHEUS_QEMU_SEED_DIR:-}"
 build_version="${MORPHEUS_QEMU_BUILD_VERSION:-}"
 artifact_path="${install_dir}/bin/qemu-system-aarch64"
 reuse_build_dir="${MORPHEUS_QEMU_REUSE_BUILD_DIR:-false}"
+needs_rebuild="true"
 
 if [ ! -x "${source_dir}/configure" ]; then
   if [ -n "${seed_dir}" ] || [ -n "${archive_url}" ] || [ -n "${build_version}" ]; then
@@ -30,19 +31,26 @@ if ! python3 -m venv --help >/dev/null 2>&1; then
   exit 1
 fi
 
-stage_dir="$(dirname "${build_dir}")/source"
-if [ "${reuse_build_dir}" = "true" ] && [ -f "${artifact_path}" ] && [ -f "${build_dir}/build.ninja" ] && [ -d "${stage_dir}" ]; then
-  cat > "${result_file}" <<EOF
-{"details":{"configured":true,"built":true,"installed":true,"reused":true,"staged_source":"${stage_dir}"}}
+if [ "${reuse_build_dir}" = "true" ] && [ -f "${artifact_path}" ] && [ -f "${build_dir}/build.ninja" ]; then
+  needs_rebuild="false"
+  if find "${source_dir}" -type f -newer "${artifact_path}" -print -quit | grep -q .; then
+    needs_rebuild="true"
+  fi
+  if [ -n "${target_list_file}" ] && [ -f "${target_list_file}" ] && [ "${target_list_file}" -nt "${artifact_path}" ]; then
+    needs_rebuild="true"
+  fi
+  if [ -n "${configure_arg_file}" ] && [ -f "${configure_arg_file}" ] && [ "${configure_arg_file}" -nt "${artifact_path}" ]; then
+    needs_rebuild="true"
+  fi
+  if [ "${needs_rebuild}" = "false" ]; then
+    cat > "${result_file}" <<EOF
+{"details":{"configured":true,"built":true,"installed":true,"reused":true,"source":"${source_dir}"}}
 EOF
-  exit 0
+    exit 0
+  fi
 fi
 
 mkdir -p "${build_dir}" "${install_dir}"
-
-if [ ! -d "${stage_dir}" ]; then
-  cp -R "${source_dir}" "${stage_dir}"
-fi
 
 cd "${build_dir}"
 
@@ -59,7 +67,7 @@ if [ -n "${configure_arg_file}" ] && [ -s "${configure_arg_file}" ]; then
 fi
 
 if [ ! -f "${build_dir}/build.ninja" ]; then
-  "${stage_dir}/configure" \
+  "${source_dir}/configure" \
     "--prefix=${install_dir}" \
     "${target_args[@]}" \
     "${configure_args[@]}"
@@ -69,5 +77,5 @@ make "-j${jobs}"
 make install
 
 cat > "${result_file}" <<EOF
-{"details":{"configured":true,"built":true,"installed":true,"staged_source":"${stage_dir}"}}
+{"details":{"configured":true,"built":true,"installed":true,"source":"${source_dir}"}}
 EOF

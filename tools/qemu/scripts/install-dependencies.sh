@@ -17,8 +17,11 @@ sudo apt-get install -y \
   python3-venv \
   "${PYTHON_PKG}-venv" \
   python3-pip \
+  python3-setuptools \
+  meson \
   ninja-build \
   pkg-config \
   build-essential \
   libglib2.0-dev \
-  libpixman-1-dev
+  libpixman-1-dev \
+  libslirp-dev

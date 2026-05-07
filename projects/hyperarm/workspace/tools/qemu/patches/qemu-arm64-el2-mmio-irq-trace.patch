@@ -166,7 +166,7 @@
 +        trace_gicv3_inject_virq_skipped(gicv3_redist_affid(cs), cs->inject_vintid,
 +                                        -1, 0);
 +        timer_mod(cs->inject_timer,
-+                  qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + cs->inject_period_ms);
++                  qemu_clock_get_ms(QEMU_CLOCK_REALTIME) + cs->inject_period_ms);
 +        return;
 +    }
 +
@@ -184,7 +184,7 @@
 +    }
 +
 +    timer_mod(cs->inject_timer,
-+              qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + cs->inject_period_ms);
++              qemu_clock_get_ms(QEMU_CLOCK_REALTIME) + cs->inject_period_ms);
 +}
 +
  static uint64_t icv_ap_read(CPUARMState *env, const ARMCPRegInfo *ri)
@@ -213,11 +213,12 @@
 +        cs->inject_group1ns = true;
 +        if (cs->inject_period_ms) {
 +            if (!cs->inject_timer) {
-+                cs->inject_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL,
++                cs->inject_timer = timer_new_ms(QEMU_CLOCK_REALTIME,
 +                                                gicv3_inject_virq_timer_cb, cs);
 +            }
 +            timer_mod(cs->inject_timer,
 +                      qemu_clock_get_ms(QEMU_CLOCK_REALTIME) + cs->inject_period_ms);
++            gicv3_inject_virq_timer_cb(cs);
 +        }
 +
          /*

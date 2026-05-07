@@ -19,6 +19,7 @@
       "linux": { "aliases": ["linux"], "path": true },
       "initrd": { "aliases": ["initrd"], "path": true },
       "qemu": { "aliases": ["qemu"], "path": true },
+      "env": { "aliases": ["env"], "repeatable": true },
       "toolchain-bin-dir": { "aliases": ["toolchain-bin-dir", "toolchainBinDir"], "path": true },
       "microkit-sdk": { "aliases": ["microkit-sdk", "microkitSdk"], "path": true },
       "make-arg": { "aliases": ["make-arg", "make-args", "makeArgs"], "repeatable": true },
@@ -159,7 +160,7 @@
         "exec": {
           "requiredFlags": ["runtime-contract", "run-dir", "libvmm-dir", "microkit-sdk", "board", "kernel", "initrd", "qemu"],
           "scalarFlags": ["runtime-contract", "run-dir", "libvmm-dir", "microkit-sdk", "board", "microkit-config", "kernel", "initrd", "qemu", "toolchain-bin-dir", "action"],
-          "repeatableFlags": ["qemu-arg"],
+          "repeatableFlags": ["qemu-arg", "env"],
           "script": {
             "path": "scripts/exec.sh",
             "shell": "bash"

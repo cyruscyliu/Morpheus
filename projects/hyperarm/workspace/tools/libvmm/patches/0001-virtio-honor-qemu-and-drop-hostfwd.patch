@@ -1,3 +1,27 @@
+diff --git a/examples/virtio/Makefile b/examples/virtio/Makefile
+index 3e06022..cb0b552 100644
+--- a/examples/virtio/Makefile
++++ b/examples/virtio/Makefile
+@@ -13,8 +13,8 @@ override MICROKIT_SDK := $(abspath $(MICROKIT_SDK))
+ 
+ # Both QEMU and Maaxboard uses the same guest device tree as the guest does not
+ # need to access any physical device. The only difference is that QEMU is GICv2 while
+-# the Maaxboard is GICv3. We apply a GIC overlay for the correct version on the board
+-# at build time.
++# the Maaxboard is GICv3. Morpheus runs QEMU with GICv3 as well so we use the
++# GICv3 overlay there too.
+ # TODO: we should probably determine this better if we have lots of supported platforms.
+ ifeq ($(strip $(MICROKIT_BOARD)), maaxboard)
+ 	export UART_DRIVER := imx
+@@ -30,7 +30,7 @@ else ifeq ($(strip $(MICROKIT_BOARD)), qemu_virt_aarch64)
+ 	export TIMER_DRIVER := arm
+ 	export BLK_DRIVER := virtio
+ 	export ETH_DRIVER := virtio
+-	export GIC_DT_OVERLAY := gic_v2_overlay.dts
++	export GIC_DT_OVERLAY := gic_v3_overlay.dts
+ 	QEMU := qemu-system-aarch64
+ 
+ 	export BLK_NUM_PART = 1
 diff --git a/examples/virtio/virtio.mk b/examples/virtio/virtio.mk
 index aee3f82..c02103a 100644
 --- a/examples/virtio/virtio.mk
@@ -12,7 +36,16 @@ index aee3f82..c02103a 100644
  PYTHON ?= python3
  
  LIBVMM_DOWNLOADS := https://trustworthy.systems/Downloads/libvmm/images/
-@@ -183,7 +184,8 @@
+@@ -177,14 +178,15 @@ qemu: $(IMAGE_FILE) blk_storage
+ 	[ ${MICROKIT_BOARD} = qemu_virt_aarch64 ]
+-	$(QEMU) -machine virt,virtualization=on,secure=off \
++	$(QEMU) -machine virt,virtualization=on,secure=off,gic-version=3 \
+ 			-cpu cortex-a53 \
+ 			-serial mon:stdio \
+ 			-device loader,file=$(IMAGE_FILE),addr=0x70000000,cpu-num=0 \
+ 			-m size=2G \
+ 			-nographic \
+ 			-global virtio-mmio.force-legacy=false \
  			-drive file=blk_storage,format=raw,if=none,id=drive0 \
  			-device virtio-blk-device,drive=drive0,id=virtblk0,num-queues=1 \
  			-device virtio-net-device,netdev=netdev0 \

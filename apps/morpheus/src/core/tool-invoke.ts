@@ -264,6 +264,13 @@ function scriptLogPath(cwd) {
   return path.join(cwd, ".morpheus-script.log");
 }
 
+function defaultScriptedCommandCwd(workspace, tool, command) {
+  if (!workspace) {
+    return process.cwd();
+  }
+  return path.join(workspace, "tmp", String(tool || "tool"), String(command || "command"));
+}
+
 function parseScriptedArgs(args) {
   const positionals = [];
   const flags = {};
@@ -436,14 +443,19 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
     throw new Error(`tool ${descriptor.name} does not implement scripted command ${command}`);
   }
   const tool = descriptor.name;
-  const childCwd = options.cwd || process.cwd();
-  const resultFile = scriptResultPath(childCwd);
-  const defaultLogFile = scriptLogPath(childCwd);
-  const prefix = scriptEnvPrefix(tool);
   const rawValues = buildScriptValues(descriptor, tool, command, spec, {
     ...parsed.flags,
     workspace: options.workspace || parsed.flags.workspace || null,
   });
+  const childCwd = options.cwd
+    || (
+      spec.script && spec.script.cwdTemplate
+        ? renderScriptTemplate(spec.script.cwdTemplate, rawValues)
+        : defaultScriptedCommandCwd(options.workspace || null, tool, command)
+    );
+  const resultFile = scriptResultPath(childCwd);
+  const defaultLogFile = scriptLogPath(childCwd);
+  const prefix = scriptEnvPrefix(tool);
 
   for (const required of Array.isArray(spec.requiredFlags) ? spec.requiredFlags : []) {
     if (rawValues[required] == null || rawValues[required] === "") {
@@ -487,6 +499,7 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
     ? renderScriptTemplate(resultSpec.logFileTemplate, rawValues)
     : defaultLogFile;
   fs.rmSync(resultFile, { force: true });
+  fs.mkdirSync(childCwd, { recursive: true });
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
   fs.writeFileSync(logFile, "", "utf8");
 

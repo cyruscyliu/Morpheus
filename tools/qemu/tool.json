@@ -25,6 +25,7 @@
       "run-dir": { "aliases": ["run-dir", "runDir"], "path": true },
       "qemu-arg": { "aliases": ["qemu-arg", "qemu-args", "qemuArgs"], "repeatable": true },
       "append": { "aliases": ["append"] },
+      "timeout-seconds": { "aliases": ["timeout-seconds", "timeoutSeconds"] },
       "detach": { "aliases": ["detach"], "boolean": true },
       "artifacts": { "aliases": ["artifacts"], "repeatable": true }
     }
@@ -141,7 +142,7 @@
         },
         "exec": {
           "requiredFlags": ["path", "kernel", "initrd"],
-          "scalarFlags": ["path", "kernel", "initrd", "run-dir", "append"],
+          "scalarFlags": ["path", "kernel", "initrd", "run-dir", "append", "timeout-seconds"],
           "repeatableFlags": ["qemu-arg"],
           "script": {
             "path": "scripts/exec.sh",

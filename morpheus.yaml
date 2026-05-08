@@ -13,6 +13,9 @@ tools:
     patch-dir: ./tools/microkit-sdk/patches/demo
     toolchain-version: fixture
     toolchain-prefix-aarch64: aarch64-none-elf
+  nqc2:
+    build-version: dev
+    build-dir-key: default
   qemu:
     seed-dir: ./tools/qemu/fixtures/minimal-qemu-src
     patch-dir: ./tools/qemu/patches/demo
@@ -32,7 +35,7 @@ workflows:
         args:
           - --source
           - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
-      - id: buildroot
+      - id: buildroot_build
         tool: buildroot
         command: build
         args:
@@ -56,6 +59,35 @@ workflows:
         args:
           - --source
           - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+  nqc2-build:
+    category: build
+    steps:
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+      - id: nqc2_fetch
+        tool: nqc2
+        command: fetch
+      - id: nqc2_build
+        tool: nqc2
+        command: build
+        args:
+          - --source
+          - "{{steps.nqc2_fetch.artifacts.source-dir.location}}"
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
   microkit-sdk-build:
     category: build
     steps:

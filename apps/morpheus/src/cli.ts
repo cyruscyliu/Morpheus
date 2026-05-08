@@ -9,6 +9,8 @@ const { handleInspectCommand } = require("./commands/inspect");
 const { handleLogsCommand } = require("./commands/logs");
 const { handlePatchCommand } = require("./commands/patch");
 const { handleExecCommand } = require("./commands/exec");
+const { handleGenhtmlCommand } = require("./commands/genhtml");
+const { handlePostprocessCommand } = require("./commands/postprocess");
 const { handleStopCommand } = require("./commands/stop");
 const { handleToolCommand } = require("./commands/tools");
 const { handleWorkflowCommand } = require("./commands/workflow");
@@ -99,7 +101,7 @@ async function main() {
   }
   const argv = stripGlobalFlags(rawArgv);
   const command = positionals[0];
-  const configAwareCommands = new Set(["workspace", "config", "fetch", "patch", "build", "inspect", "logs", "exec", "stop", "workflow"]);
+  const configAwareCommands = new Set(["workspace", "config", "fetch", "patch", "build", "inspect", "logs", "exec", "postprocess", "genhtml", "stop", "workflow"]);
 
   if (!command || command === "help" || command === "--help") {
     usage();
@@ -146,6 +148,14 @@ async function main() {
 
   if (command === "exec") {
     return handleExecCommand(argvWithoutCommand(argv, "exec"));
+  }
+
+  if (command === "postprocess") {
+    return handlePostprocessCommand(argvWithoutCommand(argv, "postprocess"));
+  }
+
+  if (command === "genhtml") {
+    return handleGenhtmlCommand(argvWithoutCommand(argv, "genhtml"));
   }
 
   if (command === "stop") {

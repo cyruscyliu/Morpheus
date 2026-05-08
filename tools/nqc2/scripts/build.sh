@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source_dir="${MORPHEUS_NQC2_SOURCE:?}"
+qemu_path="${MORPHEUS_NQC2_QEMU:-}"
+build_dir="${MORPHEUS_NQC2_BUILD_DIR:?}"
+install_dir="${MORPHEUS_NQC2_INSTALL_DIR:?}"
+trace_dir="${MORPHEUS_NQC2_TRACE_DIR:?}"
+build_version="${MORPHEUS_NQC2_BUILD_VERSION:-dev}"
+result_file="${MORPHEUS_NQC2_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+version_file="${source_dir}/VERSION"
+version="${build_version}"
+
+if [ -f "${version_file}" ]; then
+  version="$(tr -d '\n' < "${version_file}")"
+fi
+
+qemu_include_dir=""
+if [ -n "${qemu_path}" ] && [ -e "${qemu_path}" ]; then
+  qemu_install_dir="$(cd "$(dirname "${qemu_path}")/.." && pwd)"
+  if [ -f "${qemu_install_dir}/include/qemu-plugin.h" ]; then
+    qemu_include_dir="${qemu_install_dir}/include"
+  fi
+fi
+if [ -z "${qemu_include_dir}" ]; then
+  qemu_include_dir="${script_dir}"
+fi
+plugin_header="${qemu_include_dir}/qemu-plugin.h"
+plugin_out="${install_dir}/lib/nqc2/nqc2-plugin.so"
+cli_out="${install_dir}/bin/nqc2"
+manifest_file="${build_dir}/manifest.json"
+cli_src="${script_dir}/nqc2_postprocess.c"
+
+if [ ! -f "${plugin_header}" ]; then
+  echo "missing QEMU plugin header: ${plugin_header}" >&2
+  exit 1
+fi
+
+mkdir -p "${build_dir}" "${install_dir}/bin" "${install_dir}/lib/nqc2" "${trace_dir}"
+
+cc="${CC:-gcc}"
+"${cc}" \
+  -std=c11 \
+  -O2 \
+  -fPIC \
+  -fvisibility=hidden \
+  -shared \
+  -I"${qemu_include_dir}" \
+  "${script_dir}/nqc2_plugin.c" \
+  -o "${plugin_out}" \
+  -lpthread
+
+"${cc}" \
+  -std=c11 \
+  -O2 \
+  "${cli_src}" \
+  -o "${cli_out}"
+
+cat > "${manifest_file}" <<EOF
+{
+  "schemaVersion": 1,
+  "tool": "nqc2",
+  "version": "${version}",
+  "plugin": "${plugin_out}",
+  "cli": "${cli_out}",
+  "traceDir": "${trace_dir}",
+  "qemuInstallDir": "${qemu_install_dir:-}"
+}
+EOF
+
+cat > "${result_file}" <<EOF
+{
+  "details": {
+    "built": true,
+    "version": "${version}",
+    "plugin": "${plugin_out}",
+    "cli": "${cli_out}",
+    "trace_dir": "${trace_dir}",
+    "artifacts": [
+      { "path": "install-dir", "location": "${install_dir}" },
+      { "path": "nqc2", "location": "${cli_out}" },
+      { "path": "nqc2-plugin-so", "location": "${plugin_out}" },
+      { "path": "trace-dir", "location": "${trace_dir}" }
+    ]
+  }
+}
+EOF

@@ -16,7 +16,7 @@ if [ ! -d "${patch_dir}" ]; then
   exit 1
 fi
 
-patch_files="$(find "${patch_dir}" -type f \( -name '*.patch' -o -name '*.diff' \) | sort)"
+patch_files="$(find "${patch_dir}" -type f \( -name '*.patch' -o -name '*.diff' \) -print | LC_ALL=C awk 'BEGIN{ORS="\n"}{print}' | LC_ALL=C sort)"
 fingerprint="$(
   {
     printf '%s\n' "${patch_files}"

@@ -1,0 +1,168 @@
+{
+  "name": "nqc2",
+  "runtime": null,
+  "cli-contract": "fetch,build,postprocess,genhtml,inspect,logs",
+  "config": {
+    "fields": {
+      "mode": { "aliases": ["mode"] },
+      "remote": { "aliases": ["remote"] },
+      "source": { "aliases": ["source"], "path": true },
+      "seed-dir": { "aliases": ["seed-dir", "seedDir"], "path": true },
+      "reuse-build-dir": { "aliases": ["reuse-build-dir", "reuseBuildDir"], "boolean": true },
+      "build-dir-key": { "aliases": ["build-dir-key", "buildDirKey"] },
+      "build-version": { "aliases": ["build-version", "buildVersion"] },
+      "qemu": { "aliases": ["qemu"], "path": true },
+      "install-dir": { "aliases": ["install-dir", "installDir"], "path": true },
+      "build-dir": { "aliases": ["build-dir", "buildDir"], "path": true },
+      "trace-dir": { "aliases": ["trace-dir", "traceDir"], "path": true },
+      "trace": { "aliases": ["trace"], "path": true },
+      "elf": { "aliases": ["elf"], "path": true },
+      "trace-output": { "aliases": ["trace-output", "traceOutput"], "path": true },
+      "coverage-output": { "aliases": ["coverage-output", "coverageOutput"], "path": true },
+      "coverage-format": { "aliases": ["coverage-format", "coverageFormat"] },
+      "output": { "aliases": ["output"], "path": true },
+      "wait-seconds": { "aliases": ["wait-seconds", "waitSeconds"] },
+      "title": { "aliases": ["title"] },
+      "artifacts": { "aliases": ["artifacts"], "repeatable": true }
+    }
+  },
+  "managed": {
+    "schemaVersion": 1,
+    "modes": ["local", "remote"],
+    "local": {
+      "sourceTemplate": "tools/nqc2/src/nqc2-{buildVersion}",
+      "buildDirTemplate": "tools/nqc2/builds/{buildDirKey}/build",
+      "installDirTemplate": "tools/nqc2/builds/{buildDirKey}/install",
+      "artifacts": {
+        "source-dir": {
+          "pathTemplate": "tools/nqc2/src/nqc2-{buildVersion}"
+        },
+        "install-dir": {
+          "pathTemplate": "tools/nqc2/builds/{buildDirKey}/install"
+        },
+        "nqc2": {
+          "pathTemplate": "tools/nqc2/builds/{buildDirKey}/install/bin/nqc2"
+        },
+        "nqc2-plugin-so": {
+          "pathTemplate": "tools/nqc2/builds/{buildDirKey}/install/lib/nqc2/nqc2-plugin.so"
+        },
+        "trace-dir": {
+          "pathTemplate": "tools/nqc2/builds/{buildDirKey}/trace"
+        }
+      },
+      "commands": {
+        "fetch": {
+          "requiredFlags": ["source"],
+          "scalarFlags": ["seed-dir", "build-version"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/fetch.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "source": "tools/nqc2/src/nqc2-{buildVersion}"
+          },
+          "result": {
+            "successSummary": "prepared managed NQC2 source tree",
+            "reusedSummary": "reused managed NQC2 source tree",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{source}"
+            },
+            "details": {
+              "source": "{source}",
+              "build_version": { "fromFlag": "build-version" }
+            }
+          }
+        },
+        "build": {
+          "requiredFlags": ["source", "build-dir", "install-dir", "trace-dir"],
+          "scalarFlags": ["source", "qemu", "build-dir", "install-dir", "trace-dir", "build-version"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/build.sh",
+            "shell": "bash",
+            "cwdTemplate": "{build-dir}"
+          },
+          "pathFlags": {
+            "source": "tools/nqc2/src/nqc2-{buildVersion}",
+            "build-dir": "tools/nqc2/builds/{buildDirKey}/build",
+            "install-dir": "tools/nqc2/builds/{buildDirKey}/install",
+            "trace-dir": "tools/nqc2/builds/{buildDirKey}/trace"
+          },
+          "result": {
+            "successSummary": "built local NQC2 plugin and tooling",
+            "errorSummary": "local NQC2 build failed",
+            "manifestTemplate": "{build-dir}/manifest.json",
+            "details": {
+              "source": "{source}",
+              "build_dir": "{build-dir}",
+              "install_dir": "{install-dir}",
+              "trace_dir": "{trace-dir}",
+              "manifest": "{build-dir}/manifest.json"
+            }
+          }
+        },
+        "postprocess": {
+          "requiredFlags": ["install-dir", "trace"],
+          "scalarFlags": ["install-dir", "trace", "elf", "trace-output", "coverage-output", "coverage-format", "wait-seconds", "jobs"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/postprocess.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "processed NQC2 trace",
+            "errorSummary": "NQC2 trace processing failed",
+            "details": {
+              "trace": "{trace}",
+              "elf": { "fromFlag": "elf" },
+              "trace_output": { "fromFlag": "trace-output" },
+              "coverage_output": { "fromFlag": "coverage-output" },
+              "coverage_format": { "fromFlag": "coverage-format" }
+            }
+          }
+        },
+        "genhtml": {
+          "requiredFlags": ["install-dir", "coverage-output", "output"],
+          "scalarFlags": ["install-dir", "coverage-output", "output", "title"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/genhtml.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "generated NQC2 HTML report",
+            "errorSummary": "NQC2 HTML generation failed",
+            "details": {
+              "coverage_output": "{coverage-output}",
+              "output": "{output}",
+              "title": { "fromFlag": "title" }
+            }
+          }
+        },
+        "inspect": {
+          "requiredFlags": ["install-dir"],
+          "scalarFlags": ["install-dir"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/inspect.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "inspected local NQC2 build"
+          }
+        },
+        "logs": {
+          "requiredFlags": [],
+          "scalarFlags": ["build-dir", "trace-dir"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/logs.sh",
+            "shell": "bash"
+          }
+        }
+      }
+    }
+  }
+}

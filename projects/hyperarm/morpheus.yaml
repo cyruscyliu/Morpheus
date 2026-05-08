@@ -6,6 +6,7 @@ imports:
     - root.buildroot-build
     - root.qemu-build
     - root.microkit-sdk-build
+    - root.nqc2-build
     - root.libvmm-build
     - root.sel4-build
 
@@ -23,6 +24,7 @@ tools:
       - BR2_LINUX_KERNEL=y
       - BR2_LINUX_KERNEL_CUSTOM_VERSION=y
       - BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.16"
+      - BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(CONFIG_DIR)/../../../patches/linux/kernel.fragment"
       - BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
       - BR2_TARGET_GENERIC_GETTY=y
       - BR2_TARGET_GENERIC_GETTY_PORT="console"
@@ -36,6 +38,7 @@ tools:
     artifacts:
       - images/Image
       - images/rootfs.cpio.gz
+      - build/vmlinux
   qemu:
     mode: local
     build-version: 8.2.7
@@ -64,6 +67,11 @@ tools:
       - sdk-dir
       - source-dir
       - toolchain-dir
+  nqc2:
+    mode: local
+    build-version: dev
+    reuse-build-dir: true
+    build-dir-key: default
   llbic:
     mode: remote
     sync-morpheus: true
@@ -185,6 +193,105 @@ workflows:
           - --initrd
           - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.location}}"
           - --detach
+  buildroot-qemu-runtime-nqc2:
+    category: run
+    steps:
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+      - id: buildroot_build
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+      - id: nqc2_fetch
+        tool: nqc2
+        command: fetch
+      - id: nqc2_build
+        tool: nqc2
+        command: build
+        args:
+          - --source
+          - "{{steps.nqc2_fetch.artifacts.source-dir.location}}"
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+      - id: qemu_exec
+        tool: qemu
+        command: exec
+        args:
+          - --mode
+          - local
+          - --path
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+          - --kernel
+          - "{{steps.buildroot_build.artifacts.Image.location}}"
+          - --initrd
+          - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.location}}"
+          - --qemu-arg
+          - -plugin
+          - --qemu-arg
+          - "{{steps.nqc2_build.artifacts.nqc2-plugin-so.location}},trace=runtime/buildroot-qemu-runtime-nqc2.trace"
+          - --timeout-seconds
+          - "20"
+          - --detach
+      - id: nqc2_postprocess
+        tool: nqc2
+        command: postprocess
+        args:
+          - --install-dir
+          - "{{steps.nqc2_build.artifacts.install-dir.location}}"
+          - --trace
+          - "{{steps.qemu_exec.details.run_dir}}/buildroot-qemu-runtime-nqc2.trace"
+          - --elf
+          - "{{steps.buildroot_build.artifacts.vmlinux.location}}"
+          - --trace-output
+          - none
+          - --coverage-output
+          - "{{steps.qemu_exec.details.run_dir}}/buildroot-qemu-runtime-nqc2.info"
+          - --coverage-format
+          - lcov
+          - --wait-seconds
+          - "10"
+      - id: nqc2_genhtml
+        tool: nqc2
+        command: genhtml
+        args:
+          - --install-dir
+          - "{{steps.nqc2_build.artifacts.install-dir.location}}"
+          - --coverage-output
+          - "{{steps.qemu_exec.details.run_dir}}/buildroot-qemu-runtime-nqc2.info"
+          - --output
+          - "{{steps.qemu_exec.details.run_dir}}/html"
+          - --title
+          - Hyperarm NQC2 Coverage
+      - id: qemu_stop
+        tool: qemu
+        command: stop
+        args:
+          - --run-dir
+          - "{{steps.qemu_exec.details.run_dir}}"
   buildroot-libvmm-runtime:
     category: run
     steps:

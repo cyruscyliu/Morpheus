@@ -2,6 +2,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
+export PATH="${PATH}:${HOME}/.cargo/bin"
+
+if command -v apt-get >/dev/null 2>&1; then
+  sudo dpkg --configure -a || true
+  sudo apt-get -y --fix-broken install || true
+fi
 
 run_step() {
   local label="$1"

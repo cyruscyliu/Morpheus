@@ -1516,7 +1516,7 @@ async function runToolWorkflow({
     emitConsumedArtifactEvents(workflow, step, resolvedStep.relations);
 
     const args = (
-      ["fetch", "patch", "build", "inspect", "logs", "exec"].includes(toolCommand)
+      ["fetch", "patch", "build", "inspect", "logs", "exec", "postprocess", "genhtml"].includes(toolCommand)
     )
       ? [
           cliEntrypoint(),

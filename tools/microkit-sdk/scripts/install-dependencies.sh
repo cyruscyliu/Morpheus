@@ -5,12 +5,19 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="${1:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 RUSTUP_BIN="${RUSTUP_BIN:-rustup}"
+INSTALL_DOC_DEPS="${INSTALL_DOC_DEPS:-false}"
+
+export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
 
 cd "${ROOT_DIR}"
 
 if ! command -v cargo >/dev/null 2>&1; then
   curl https://sh.rustup.rs -sSf | sh -s -- -y
 fi
+
+# rustup installs into ~/.cargo/bin by default, but a non-login shell that
+# just ran the installer will not see that path until we export it explicitly.
+export PATH="${PATH}:${HOME}/.cargo/bin"
 
 "${RUSTUP_BIN}" target add x86_64-unknown-linux-musl
 "${RUSTUP_BIN}" component add rust-src --toolchain stable-x86_64-unknown-linux-gnu
@@ -19,6 +26,8 @@ fi
 "${RUSTUP_BIN}" component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu
 
 if command -v apt-get >/dev/null 2>&1; then
+  sudo dpkg --configure -a || true
+  sudo apt-get -y --fix-broken install || true
   PYTHON_PKG="$(python3 - <<'PY'
 import sys
 print(f"python{sys.version_info.major}.{sys.version_info.minor}")
@@ -29,12 +38,18 @@ PY
     build-essential git cmake ninja-build \
     device-tree-compiler libxml2-utils \
     clang libclang-dev \
-    pandoc texlive-latex-base texlive-latex-recommended \
-    texlive-fonts-recommended texlive-fonts-extra \
     "${PYTHON_PKG}" "${PYTHON_PKG}-venv" python3-yaml \
     qemu-system-arm qemu-system-misc qemu-system-x86 \
     gcc-riscv64-unknown-elf \
     gcc-x86-64-linux-gnu
+  if [ "${INSTALL_DOC_DEPS}" = "true" ]; then
+    sudo apt-get install -y \
+      pandoc \
+      texlive-latex-base \
+      texlive-latex-recommended \
+      texlive-fonts-recommended \
+      texlive-fonts-extra
+  fi
 fi
 
 for bin in cmake ninja cargo rustup; do

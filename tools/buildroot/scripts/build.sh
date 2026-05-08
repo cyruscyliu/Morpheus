@@ -13,6 +13,8 @@ archive_url="${MORPHEUS_BUILDROOT_ARCHIVE_URL:-}"
 build_version="${MORPHEUS_BUILDROOT_BUILD_VERSION:-}"
 patch_strategies="${MORPHEUS_BUILDROOT_PATCH_STRATEGIES:-${MORPHEUS_SCRIPT_PATCH_STRATEGIES:-source-tree}}"
 
+export PATH="${PATH}:/usr/sbin:/usr/bin:/sbin:/bin"
+
 if [ ! -f "${source_dir}/Makefile" ]; then
   if [ -n "${seed_dir}" ] || [ -n "${archive_url}" ] || [ -n "${build_version}" ]; then
     "$(dirname "$0")/fetch.sh"
@@ -24,7 +26,7 @@ if [ ! -f "${source_dir}/Makefile" ]; then
   exit 1
 fi
 
-if ! command -v file >/dev/null 2>&1; then
+if ! command -v file >/dev/null 2>&1 && [ ! -x /usr/bin/file ]; then
   echo "missing host dependency: file; run tools/buildroot/scripts/install-dependencies.sh" >&2
   exit 1
 fi
@@ -84,6 +86,29 @@ fi
 
 make -C "${source_dir}" "O=${output_dir}" "${make_args[@]}"
 
+# Buildroot keeps the symbol-rich kernel ELF under output/build/.
+# We discover it dynamically so the tool contract does not hardcode a
+# kernel-version-specific path.
+vmlinux_path="$(find "${output_dir}/build" -type f -name vmlinux | sort | head -n 1 || true)"
+kernel_image="${output_dir}/images/Image"
+initrd_image="${output_dir}/images/rootfs.cpio.gz"
+
+artifacts_json="$(
+  node -e '
+const fs = require("fs");
+const artifacts = [];
+const add = (artifactPath, location) => {
+  if (location && fs.existsSync(location)) {
+    artifacts.push({ path: artifactPath, location });
+  }
+};
+add("images/Image", process.argv[1]);
+add("images/rootfs.cpio.gz", process.argv[2]);
+add("build/vmlinux", process.argv[3]);
+process.stdout.write(JSON.stringify(artifacts));
+' "${kernel_image}" "${initrd_image}" "${vmlinux_path}"
+)"
+
 cat > "${result_file}" <<EOF
-{"details":{"built":true}}
+{"details":{"built":true},"artifacts":${artifacts_json}}
 EOF

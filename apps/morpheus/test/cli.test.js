@@ -379,6 +379,7 @@ test("workflow commands are available through Morpheus", () => {
   const result = run(["workflow", "--help"]);
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.equal(result.stderr, "");
+  assert.match(result.stdout, /^Commands:$/m);
   assert.match(result.stdout, /workflow list/);
   assert.match(result.stdout, /workflow run/);
   assert.match(result.stdout, /workflow inspect/);

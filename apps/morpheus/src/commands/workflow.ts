@@ -336,7 +336,7 @@ function resolveConfiguredWorkflow(name, explicitConfigPath = null) {
   const workflows = config && config.value && config.value.workflows ? config.value.workflows : {};
   const workflow = workflows && workflows[name] ? workflows[name] : null;
   if (!workflow) {
-    throw new Error(`unknown configured workflow: ${name}`);
+    throw new Error(`unknown configured workflow: ${name}; run 'morpheus workflow list' to inspect available workflows`);
   }
   if (!Array.isArray(workflow.steps) || workflow.steps.length === 0) {
     throw new Error(`configured workflow has no steps: ${name}`);
@@ -487,7 +487,7 @@ function findWorkflowRun(workspaceRoot, id) {
   const runDir = path.join(workflowRunsRoot(workspaceRoot), id);
   const manifestPath = workflowManifestPath(runDir);
   if (!fs.existsSync(manifestPath)) {
-    throw new Error(`workflow run not found: ${id}`);
+    throw new Error(`workflow run not found: ${id}; use 'morpheus workflow list' to start a run or 'morpheus workflow inspect --id <run-id>' with a valid id`);
   }
   return { runDir, manifestPath };
 }

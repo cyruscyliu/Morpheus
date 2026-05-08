@@ -444,6 +444,16 @@ test("workflow list prints a text table for configured workflows", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("workflow run missing configured workflow suggests workflow list", () => {
+  const result = run(["workflow", "run", "--name", "missing-workflow"], {
+    cwd: repoRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /unknown configured workflow: missing-workflow/);
+  assert.match(result.stderr, /morpheus workflow list/);
+});
+
 test("workflow stop marks a running workflow as stopped", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stop-"));
   const runId = "wf-stop-test";
@@ -601,6 +611,18 @@ test("workflow inspect reconciles stale running workflows with dead pids", () =>
   assert.equal(workflow.status, "error");
   assert.equal(step.status, "error");
   assert.equal(legacy.status, "error");
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
+test("workflow inspect missing run suggests valid follow-up commands", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-missing-run-"));
+  const result = run(["workflow", "inspect", "--id", "missing-run", "--workspace", workspaceRoot], {
+    cwd: workspaceRoot,
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /workflow run not found: missing-run/);
+  assert.match(result.stderr, /morpheus workflow list/);
+  assert.match(result.stderr, /morpheus workflow inspect --id <run-id>/);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 

@@ -104,6 +104,10 @@ function stepToolResultPath(stepDir) {
   return path.join(stepDir, "tool-result.json");
 }
 
+function relativeToCwd(targetPath) {
+  return path.relative(process.cwd(), targetPath);
+}
+
 function cliEntrypoint() {
   return path.join(repoRoot(), "apps", "morpheus", "dist", "cli.js");
 }
@@ -1775,8 +1779,8 @@ async function runToolWorkflow({
       id: updatedWorkflow.id,
       workflow: updatedWorkflow.workflow,
       workspace: updatedWorkflow.workspace,
-      run_dir: updatedWorkflow.runDir,
-      manifest: workflowManifestPath(updatedWorkflow.runDir),
+      run_dir: relativeToCwd(updatedWorkflow.runDir),
+      manifest: relativeToCwd(workflowManifestPath(updatedWorkflow.runDir)),
       steps: updatedWorkflow.steps,
       failed_step: workflowStatus === "success"
         ? null
@@ -1791,7 +1795,7 @@ async function runToolWorkflow({
             id: step.id,
             name: step.name,
             tool: (step.name || "").split(".")[0],
-            log_file: logFile,
+            log_file: relativeToCwd(logFile),
             log_tail: tailFile(logFile, 12000),
           };
         })()
@@ -2173,7 +2177,7 @@ async function handleWorkflowCommand(argv) {
         status: "success",
         exit_code: 0,
         summary: "printed workflow logs",
-        details: { id, step: stepId, log_file: logFile, bytes: Buffer.byteLength(content, "utf8") }
+        details: { id, step: stepId, log_file: relativeToCwd(logFile), bytes: Buffer.byteLength(content, "utf8") }
       }));
     } else {
       if (!flags.step) {

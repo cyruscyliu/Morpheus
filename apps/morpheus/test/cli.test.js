@@ -1632,6 +1632,44 @@ test("workspace show supports remote managed workspace lookup", () => {
   fs.rmSync(remoteRoot, { recursive: true, force: true });
 });
 
+test("workspace show prints a human-readable remote summary", () => {
+  const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-show-text-"));
+  const env = {
+    ...process.env,
+    ...makeFakeSshEnv(remoteRoot)
+  };
+
+  const create = run([
+    "workspace",
+    "create",
+    "--ssh",
+    "builder@example.com:2222",
+    "--workspace",
+    "/remote-workspace",
+    "--json"
+  ], { env });
+  assert.equal(create.status, 0, create.stderr || create.stdout);
+
+  const show = run([
+    "workspace",
+    "show",
+    "--ssh",
+    "builder@example.com:2222",
+    "--workspace",
+    "/remote-workspace"
+  ], { env });
+  assert.equal(show.status, 0, show.stderr || show.stdout);
+  assert.match(show.stdout, /^Remote workspace$/m);
+  assert.match(show.stdout, /^  ssh: builder@example\.com:2222$/m);
+  assert.match(show.stdout, /^  mode: remote$/m);
+  assert.match(show.stdout, /^  status: managed workspace ready$/m);
+  assert.match(show.stdout, /^  tools: .* \(present\)$/m);
+  assert.match(show.stdout, /^  runs: .* \(present\)$/m);
+  assert.match(show.stdout, /^  tmp: .* \(present\)$/m);
+
+  fs.rmSync(remoteRoot, { recursive: true, force: true });
+});
+
 test("tool config can provide buildroot defaults and expected artifacts", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-defaults-project-"));
   writeConfig(

@@ -252,6 +252,23 @@ function printWorkspaceHuman(summary) {
   }
 }
 
+function printNamedWorkspaceHuman(label, summary, extras = {}) {
+  const directories = Object.entries(summary.directories || {}).filter(([name]) => name !== "root");
+  const present = directories.filter(([, info]) => info.exists).length;
+  const total = directories.length;
+  const ready = total > 0 && present === total;
+  writeStdoutLine(label);
+  if (extras.ssh) {
+    writeStdoutLine(`  ssh: ${extras.ssh}`);
+  }
+  writeStdoutLine(`  root: ${summary.root}`);
+  writeStdoutLine(`  mode: ${summary.mode || "local"}`);
+  writeStdoutLine(`  status: ${ready ? "managed workspace ready" : "managed workspace not created yet"}`);
+  for (const [name, info] of directories) {
+    writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
+  }
+}
+
 function printCreateHuman(result) {
   writeStdoutLine(`Workspace created at ${result.root}`);
   writeStdoutLine(`  created: ${result.created.length}`);
@@ -281,17 +298,8 @@ function printHybridCreateHuman(result) {
 }
 
 function printHybridShowHuman(result) {
-  writeStdoutLine("Local workspace");
-  writeStdoutLine(`  root: ${result.local.root}`);
-  for (const [name, info] of Object.entries(result.local.directories)) {
-    writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
-  }
-  writeStdoutLine("Remote workspace");
-  writeStdoutLine(`  ssh: ${result.remote.ssh}`);
-  writeStdoutLine(`  root: ${result.remote.root}`);
-  for (const [name, info] of Object.entries(result.remote.directories)) {
-    writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
-  }
+  printNamedWorkspaceHuman("Local workspace", result.local);
+  printNamedWorkspaceHuman("Remote workspace", result.remote, { ssh: result.remote.ssh });
 }
 
 function handleWorkspaceCommand(argv) {
@@ -396,12 +404,7 @@ function handleWorkspaceCommand(argv) {
         writeStdoutLine(JSON.stringify(summary, null, 2));
         return 0;
       }
-      writeStdoutLine("Remote workspace");
-      writeStdoutLine(`  ssh: ${summary.ssh}`);
-      writeStdoutLine(`  root: ${summary.root}`);
-      for (const [name, info] of Object.entries(summary.directories)) {
-        writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
-      }
+      printNamedWorkspaceHuman("Remote workspace", summary, { ssh: summary.ssh });
       return 0;
     }
 

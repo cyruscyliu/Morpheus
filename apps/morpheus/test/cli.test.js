@@ -268,10 +268,77 @@ test("workflow commands are available through Morpheus", () => {
   const result = run(["workflow", "--help"]);
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.equal(result.stderr, "");
+  assert.match(result.stdout, /workflow list/);
   assert.match(result.stdout, /workflow run/);
   assert.match(result.stdout, /workflow inspect/);
   assert.match(result.stdout, /workflow stop/);
   assert.match(result.stdout, /workflow remove/);
+});
+
+test("workflow list discovers configured workflows in json", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-list-json-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "workflows:",
+      "  sample-build:",
+      "    category: build",
+      "    steps:",
+      "      - tool: qemu",
+      "        command: build",
+      "  sample-run:",
+      "    steps:",
+      "      - tool: qemu",
+      "        command: exec",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["workflow", "list", "--json"], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.stderr, "");
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.command, "workflow list");
+  assert.equal(payload.status, "success");
+  assert.deepEqual(
+    payload.details.workflows.map((workflow) => workflow.name),
+    ["sample-build", "sample-run"]
+  );
+  assert.equal(payload.details.workflows[0].category, "build");
+  assert.equal(payload.details.workflows[0].steps, 1);
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("workflow list prints a text table for configured workflows", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-list-text-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "workflows:",
+      "  alpha:",
+      "    steps:",
+      "      - tool: qemu",
+      "        command: exec",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["workflow", "list"], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.stderr, "");
+  assert.match(result.stdout, /^name\tcategory\tsteps\tconfig/m);
+  assert.match(result.stdout, /^alpha\trun\t1\tmorpheus\.yaml$/m);
+  fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
 test("workflow stop marks a running workflow as stopped", () => {

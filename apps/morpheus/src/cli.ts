@@ -59,6 +59,7 @@ function usage() {
       "  ./bin/morpheus [--config PATH] workspace show [--workspace DIR] [--json]",
       "  ./bin/morpheus [--config PATH] config check [--json]",
       "  ./bin/morpheus tool list [--json]",
+      "  ./bin/morpheus [--config PATH] workflow list [--json]",
       "  ./bin/morpheus --config projects/<project>/morpheus.yaml workflow run --name WORKFLOW_NAME [--json]",
       "  ./bin/morpheus [--config PATH] workflow resume --id WORKFLOW_RUN_ID [--from-step STEP_ID] [--one-step] [--json]",
       "  ./bin/morpheus [--config PATH] workflow inspect --id WORKFLOW_RUN_ID [--json]",
@@ -68,6 +69,7 @@ function usage() {
       "",
       "Start Here:",
       "  ./bin/morpheus tool list",
+      "  ./bin/morpheus --config projects/<project>/morpheus.yaml workflow list --json",
       "  ./bin/morpheus --config projects/<project>/morpheus.yaml config check --json",
       "  ./bin/morpheus --config projects/<project>/morpheus.yaml workflow run --name <workflow> --json",
       "",
@@ -108,11 +110,14 @@ async function main() {
   const { positionals, flags } = parseArgs(rawArgv);
   const explicitConfig = typeof flags.config === "string" ? String(flags.config) : null;
   const wantsHelp = Boolean(flags.help) || positionals[0] === "help" || rawArgv.includes("--help");
+  const command = positionals[0];
+  const subcommand = positionals[1];
+  const isWorkflowList = command === "workflow" && (subcommand === "list" || rawArgv.includes("list"));
+  const suppressImplicitConfigWarning = wantsHelp || isWorkflowList;
   if (flags.config && typeof flags.config === "string") {
     process.env.MORPHEUS_CONFIG = path.resolve(String(flags.config));
   }
   const argv = stripGlobalFlags(rawArgv);
-  const command = positionals[0];
   const configAwareCommands = new Set(["workspace", "config", "fetch", "patch", "build", "inspect", "logs", "exec", "postprocess", "genhtml", "stop", "workflow"]);
 
   if (!command || command === "help" || command === "--help") {
@@ -120,7 +125,7 @@ async function main() {
     return 0;
   }
 
-  if (!wantsHelp && !explicitConfig && !process.env.MORPHEUS_CONFIG && configAwareCommands.has(String(command))) {
+  if (!suppressImplicitConfigWarning && !explicitConfig && !process.env.MORPHEUS_CONFIG && configAwareCommands.has(String(command))) {
     const implicitConfig = findConfigPath(process.cwd());
     if (implicitConfig) {
       writeStderrLine(`warning: using implicitly discovered config ${implicitConfig}; pass --config explicitly`);

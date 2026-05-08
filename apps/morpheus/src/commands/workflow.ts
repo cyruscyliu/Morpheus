@@ -51,6 +51,7 @@ function parseWorkflowArgs(argv) {
 function workflowUsage() {
   return [
     "Usage:",
+    "  ./bin/morpheus [--config PATH] workflow list [--json]",
     "  ./bin/morpheus --config projects/<project>/morpheus.yaml workflow run --name WORKFLOW_NAME [--json]",
     "  ./bin/morpheus [--config PATH] workflow resume --id WORKFLOW_RUN_ID [--from-step STEP_ID] [--one-step] [--json]",
     "  ./bin/morpheus [--config PATH] workflow inspect --id WORKFLOW_RUN_ID [--json]",
@@ -59,6 +60,7 @@ function workflowUsage() {
     "  ./bin/morpheus [--config PATH] workflow remove --id WORKFLOW_RUN_ID [--json]",
     "",
     "Examples:",
+    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow list --json",
     "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow run --name qemu-build --json",
     "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow inspect --id <run-id> --json",
     "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow logs --id <run-id> --step <step-id>",
@@ -300,6 +302,33 @@ function resolveTemplateStepValue(context, stepId, stepPath) {
     return undefined;
   }
   return resolveArtifactTemplateValue(payload, stepPath, preferLocal);
+}
+
+function listConfiguredWorkflows(explicitConfigPath = null) {
+  const config = loadConfig(process.cwd(), { explicitPath: explicitConfigPath });
+  const workflows = config && config.value && config.value.workflows ? config.value.workflows : {};
+  const items = Object.entries(workflows)
+    .map(([name, workflow]) => {
+      const value = workflow && typeof workflow === "object" ? workflow : {};
+      const steps = Array.isArray(value.steps) ? value.steps : [];
+      return {
+        name,
+        category: value.category || "run",
+        steps: steps.length,
+        config: config.path ? path.relative(process.cwd(), config.path) || "morpheus.yaml" : null,
+      };
+    })
+    .sort((left, right) => left.name.localeCompare(right.name));
+  return {
+    command: "workflow list",
+    status: "success",
+    exit_code: 0,
+    summary: items.length === 0 ? "no configured workflows" : "listed configured workflows",
+    details: {
+      config: config.path ? path.relative(process.cwd(), config.path) || "morpheus.yaml" : null,
+      workflows: items,
+    }
+  };
 }
 
 function resolveConfiguredWorkflow(name, explicitConfigPath = null) {
@@ -1905,6 +1934,23 @@ async function handleWorkflowCommand(argv) {
   const subcommand = positionals[0];
   if (!subcommand || subcommand === "help" || subcommand === "--help") {
     writeStdoutLine(workflowUsage());
+    return 0;
+  }
+
+  if (subcommand === "list") {
+    const payload = listConfiguredWorkflows();
+    if (flags.json) {
+      writeStdoutLine(JSON.stringify(payload, null, 2));
+    } else if (payload.details.workflows.length === 0) {
+      writeStdoutLine("No configured workflows.");
+    } else {
+      writeStdoutLine([
+        "name\tcategory\tsteps\tconfig",
+        ...payload.details.workflows.map((workflow) => (
+          `${workflow.name}\t${workflow.category}\t${workflow.steps}\t${workflow.config || "-"}`
+        ))
+      ].join("\n"));
+    }
     return 0;
   }
 

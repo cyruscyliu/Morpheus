@@ -205,8 +205,20 @@ test("tool list discovers repo-local tools", () => {
   const payload = JSON.parse(result.stdout);
   assert.deepEqual(
     payload.tools.map((tool) => tool.name),
-    ["buildroot", "libvmm", "llbic", "llcg", "microkit-sdk", "outline-to-paper", "qemu", "sel4"]
+    ["buildroot", "libvmm", "llbic", "llcg", "microkit-sdk", "nqc2", "outline-to-paper", "qemu", "sel4"]
   );
+});
+
+test("tool list reports workflow-only tools without wrapper errors", () => {
+  const result = run(["tool", "list", "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  const buildroot = payload.tools.find((tool) => tool.name === "buildroot");
+  const llcg = payload.tools.find((tool) => tool.name === "llcg");
+  assert.equal(buildroot.verification.status, "workflow-only");
+  assert.deepEqual(buildroot.verification.issues, []);
+  assert.equal(llcg.verification.status, "ready");
+  assert.ok(!llcg.verification.issues.some((issue) => issue.includes("missing wrapper")));
 });
 
 test("config check can use explicit --config outside the config directory", () => {
@@ -255,6 +267,7 @@ test("config-aware commands warn when config is discovered implicitly", () => {
 test("workflow commands are available through Morpheus", () => {
   const result = run(["workflow", "--help"]);
   assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.stderr, "");
   assert.match(result.stdout, /workflow run/);
   assert.match(result.stdout, /workflow inspect/);
   assert.match(result.stdout, /workflow stop/);

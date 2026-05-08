@@ -51,12 +51,21 @@ function parseWorkflowArgs(argv) {
 function workflowUsage() {
   return [
     "Usage:",
-    "  node apps/morpheus/dist/cli.js --config projects/<project>/morpheus.yaml workflow run --name WORKFLOW_NAME [--json]",
-    "  node apps/morpheus/dist/cli.js [--config PATH] workflow resume --id WORKFLOW_RUN_ID [--from-step STEP_ID] [--one-step] [--json]",
-    "  node apps/morpheus/dist/cli.js [--config PATH] workflow inspect --id WORKFLOW_RUN_ID [--json]",
-    "  node apps/morpheus/dist/cli.js [--config PATH] workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow] [--json]",
-    "  node apps/morpheus/dist/cli.js [--config PATH] workflow stop --id WORKFLOW_RUN_ID [--json]",
-    "  node apps/morpheus/dist/cli.js [--config PATH] workflow remove --id WORKFLOW_RUN_ID [--json]"
+    "  ./bin/morpheus --config projects/<project>/morpheus.yaml workflow run --name WORKFLOW_NAME [--json]",
+    "  ./bin/morpheus [--config PATH] workflow resume --id WORKFLOW_RUN_ID [--from-step STEP_ID] [--one-step] [--json]",
+    "  ./bin/morpheus [--config PATH] workflow inspect --id WORKFLOW_RUN_ID [--json]",
+    "  ./bin/morpheus [--config PATH] workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow]",
+    "  ./bin/morpheus [--config PATH] workflow stop --id WORKFLOW_RUN_ID [--json]",
+    "  ./bin/morpheus [--config PATH] workflow remove --id WORKFLOW_RUN_ID [--json]",
+    "",
+    "Examples:",
+    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow run --name qemu-build --json",
+    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow inspect --id <run-id> --json",
+    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow logs --id <run-id> --step <step-id>",
+    "",
+    "Notes:",
+    "  - Pass --config explicitly for project workflows.",
+    "  - 'workflow logs --follow' streams text logs and does not support --json."
   ].join("\n");
 }
 

@@ -23,7 +23,6 @@ function verifyTool(name) {
   const definition = requireTool(name);
   const installRoot = path.join(repoRoot(), definition.installRoot);
   const entrypoint = definition.entry ? path.join(installRoot, definition.entry) : null;
-  const wrapperPath = definition.entry ? path.join(repoRoot(), "bin", name) : null;
   const issues = [];
 
   if (!fs.existsSync(installRoot)) {
@@ -32,14 +31,11 @@ function verifyTool(name) {
   if (entrypoint && !fs.existsSync(entrypoint)) {
     issues.push(`missing entrypoint: ${path.relative(repoRoot(), entrypoint)}`);
   }
-  if (wrapperPath && !fs.existsSync(wrapperPath)) {
-    issues.push(`missing wrapper: ${path.relative(repoRoot(), wrapperPath)}`);
-  }
 
-  let status = "valid";
+  let status = "ready";
   if (!definition.entry) {
-    status = "scripted";
-  } else if (!fs.existsSync(installRoot) || !fs.existsSync(entrypoint) || !fs.existsSync(wrapperPath)) {
+    status = "workflow-only";
+  } else if (!fs.existsSync(installRoot) || !fs.existsSync(entrypoint)) {
     status = "missing";
   } else if (issues.length > 0) {
     status = "invalid";
@@ -52,7 +48,7 @@ function verifyTool(name) {
     descriptorPath: definition.descriptorPath,
     installRoot: path.relative(repoRoot(), installRoot),
     entrypoint: entrypoint ? path.relative(repoRoot(), entrypoint) : null,
-    wrapper: wrapperPath ? path.relative(repoRoot(), wrapperPath) : null,
+    wrapper: null,
     issues
   };
 }
@@ -101,7 +97,11 @@ function extractToolSubcommand(argv) {
 function toolUsage() {
   return [
     "Usage:",
-    "  node apps/morpheus/dist/cli.js tool list [--json]"
+    "  ./bin/morpheus tool list [--json]",
+    "",
+    "Notes:",
+    "  - 'workflow-only' tools are managed through configured workflows.",
+    "  - 'ready' tools have a repo-local entrypoint available to Morpheus."
   ].join("\n");
 }
 
@@ -110,13 +110,18 @@ function formatToolListText(items) {
     return "No tools declared.";
   }
 
-  return items
-    .map((tool) => {
+  return [
+    "name\tstatus\tnote",
+    ...items.map((tool) => {
       const status = tool.verification.status;
-      const issues = tool.verification.issues.length > 0 ? `\t${tool.verification.issues.join("; ")}` : "";
-      return `${tool.name}\t${status}${issues}`;
+      const note = tool.verification.issues.length > 0
+        ? tool.verification.issues.join("; ")
+        : status === "workflow-only"
+          ? "run through 'morpheus workflow run'"
+          : "available to Morpheus";
+      return `${tool.name}\t${status}\t${note}`;
     })
-    .join("\n");
+  ].join("\n");
 }
 
 function printMaybeJson(value, flags) {

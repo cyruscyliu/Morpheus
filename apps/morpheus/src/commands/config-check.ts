@@ -22,7 +22,7 @@ const TOOL_PATH_KEYS = new Set([
 function usage() {
   return [
     "Usage:",
-    "  node apps/morpheus/dist/cli.js [--config PATH] config check [--json]"
+    "  ./bin/morpheus [--config PATH] config check [--json]"
   ].join("\n");
 }
 

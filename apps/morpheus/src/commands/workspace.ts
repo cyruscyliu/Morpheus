@@ -35,8 +35,8 @@ function parseWorkspaceArgs(argv) {
 function workspaceUsage() {
   return [
     "Usage:",
-    "  node apps/morpheus/dist/cli.js workspace create [--workspace DIR] [--json]",
-    "  node apps/morpheus/dist/cli.js workspace show [--workspace DIR] [--json]",
+    "  ./bin/morpheus workspace create [--workspace DIR] [--json]",
+    "  ./bin/morpheus workspace show [--workspace DIR] [--json]",
   ].join("\n");
 }
 

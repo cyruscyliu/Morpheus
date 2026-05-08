@@ -112,8 +112,9 @@ async function main() {
   const wantsHelp = Boolean(flags.help) || positionals[0] === "help" || rawArgv.includes("--help");
   const command = positionals[0];
   const subcommand = positionals[1];
-  const isWorkflowList = command === "workflow" && (subcommand === "list" || rawArgv.includes("list"));
-  const suppressImplicitConfigWarning = wantsHelp || isWorkflowList;
+  const isReadOnlyWorkspaceCommand = command === "workspace" && subcommand === "show";
+  const isReadOnlyWorkflowCommand = command === "workflow" && ["list", "inspect", "logs"].includes(String(subcommand || ""));
+  const suppressImplicitConfigWarning = wantsHelp || isReadOnlyWorkspaceCommand || isReadOnlyWorkflowCommand;
   if (flags.config && typeof flags.config === "string") {
     process.env.MORPHEUS_CONFIG = path.resolve(String(flags.config));
   }

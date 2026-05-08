@@ -132,6 +132,26 @@ test("workspace show prints a human-readable summary in text mode", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("workspace show does not warn when config is discovered implicitly", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-show-implicit-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["workspace", "show"], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.stderr, "");
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
 test("syncRemotePathToLocal replaces existing localized directories", () => {
   const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-sync-"));
   const sourceDir = path.join(remoteRoot, "qemu-8.2.7");
@@ -519,6 +539,62 @@ test("workflow inspect prints a human-readable summary in text mode", () => {
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 
+test("workflow inspect does not warn when config is discovered implicitly", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-inspect-implicit-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      ""
+    ].join("\n")
+  );
+  const workspaceRoot = path.join(projectRoot, "workflow-workspace");
+  const runId = "wf-inspect-implicit";
+  const runDir = path.join(workspaceRoot, "runs", runId);
+  const stepDir = path.join(runDir, "steps", "01-build");
+  fs.mkdirSync(stepDir, { recursive: true });
+  fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
+  fs.writeFileSync(path.join(stepDir, "step.json"), `${JSON.stringify({
+    id: "01-build",
+    name: "build",
+    status: "success",
+    stepDir,
+    logFile: path.join(stepDir, "stdout.log"),
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
+    id: runId,
+    workflow: "qemu-build",
+    category: "build",
+    status: "success",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    updatedAt: "2026-04-26T12:05:00.000Z",
+    workspace: workspaceRoot,
+    runDir,
+    currentStepId: null,
+    currentChildPid: null,
+    runnerPid: null,
+    steps: [{ id: "01-build", name: "build", stepDir, status: "success" }],
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
+    id: runId,
+    kind: "workflow",
+    category: "build",
+    status: "success",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    completedAt: "2026-04-26T12:05:00.000Z",
+    summary: { workflow: "qemu-build", category: "build" },
+  }, null, 2)}\n`);
+
+  const result = run(["workflow", "inspect", "--id", runId], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.stderr, "");
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
 test("workflow logs announces the selected default step in text mode", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-text-"));
   const runId = "wf-logs-text";
@@ -577,6 +653,62 @@ test("workflow logs announces the selected default step in text mode", () => {
   assert.match(result.stdout, /^Selected step: 01-fetch$/m);
   assert.match(result.stdout, /^fetch log$/m);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
+test("workflow logs does not warn when config is discovered implicitly", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-logs-implicit-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      ""
+    ].join("\n")
+  );
+  const workspaceRoot = path.join(projectRoot, "workflow-workspace");
+  const runId = "wf-logs-implicit";
+  const runDir = path.join(workspaceRoot, "runs", runId);
+  const stepDir = path.join(runDir, "steps", "01-fetch");
+  fs.mkdirSync(stepDir, { recursive: true });
+  fs.writeFileSync(path.join(stepDir, "stdout.log"), "fetch log\n", "utf8");
+  fs.writeFileSync(path.join(stepDir, "step.json"), `${JSON.stringify({
+    id: "01-fetch",
+    name: "fetch",
+    status: "success",
+    stepDir,
+    logFile: path.join(stepDir, "stdout.log"),
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
+    id: runId,
+    workflow: "qemu-build",
+    category: "build",
+    status: "success",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    updatedAt: "2026-04-26T12:05:00.000Z",
+    workspace: workspaceRoot,
+    runDir,
+    currentStepId: null,
+    currentChildPid: null,
+    runnerPid: null,
+    steps: [{ id: "01-fetch", name: "fetch", stepDir, status: "success" }],
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
+    id: runId,
+    kind: "workflow",
+    category: "build",
+    status: "success",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    completedAt: "2026-04-26T12:05:00.000Z",
+    summary: { workflow: "qemu-build", category: "build" },
+  }, null, 2)}\n`);
+
+  const result = run(["workflow", "logs", "--id", runId], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.stderr, "");
+  fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
 

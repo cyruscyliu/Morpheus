@@ -363,6 +363,18 @@ test("workflow commands are available through Morpheus", () => {
   assert.match(result.stdout, /workflow remove/);
 });
 
+test("top-level help groups commands for discovery", () => {
+  const result = run(["--help"]);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.stderr, "");
+  assert.match(result.stdout, /^Commands:$/m);
+  assert.match(result.stdout, /^  workspace create   Create a managed workspace layout\.$/m);
+  assert.match(result.stdout, /^  tool list          List declared tools and their readiness\.$/m);
+  assert.match(result.stdout, /^  workflow run       Start a configured workflow\.$/m);
+  assert.match(result.stdout, /^Examples:$/m);
+  assert.match(result.stdout, /^  \.\/bin\/morpheus workspace show$/m);
+});
+
 test("workflow list discovers configured workflows in json", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-list-json-"));
   writeConfig(

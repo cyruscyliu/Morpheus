@@ -270,9 +270,15 @@ function printNamedWorkspaceHuman(label, summary, extras = {}) {
 }
 
 function printCreateHuman(result) {
-  writeStdoutLine(`Workspace created at ${result.root}`);
+  writeStdoutLine("Workspace created");
   writeStdoutLine(`  created: ${result.created.length}`);
   writeStdoutLine(`  existing: ${result.existing.length}`);
+  writeStdoutLine(`  root: ${result.workspace.root}`);
+  writeStdoutLine(`  mode: ${result.workspace.mode || "local"}`);
+  writeStdoutLine("  status: managed workspace ready");
+  for (const [name, info] of Object.entries(result.workspace.directories).filter(([name]) => name !== "root")) {
+    writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
+  }
 }
 
 function aggregateWorkspaceResults(localResult, remoteResult) {
@@ -284,17 +290,14 @@ function aggregateWorkspaceResults(localResult, remoteResult) {
 }
 
 function printHybridCreateHuman(result) {
+  writeStdoutLine("Workspace created");
   writeStdoutLine("Local workspace");
-  writeStdoutLine(`  root: ${result.local.root}`);
-  for (const [name, info] of Object.entries(result.local.workspace.directories)) {
-    writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
-  }
+  writeStdoutLine(`  created: ${result.local.created.length}`);
+  writeStdoutLine(`  existing: ${result.local.existing.length}`);
+  printNamedWorkspaceHuman("Workspace", result.local.workspace);
   writeStdoutLine("Remote workspace");
-  writeStdoutLine(`  ssh: ${result.remote.ssh}`);
-  writeStdoutLine(`  root: ${result.remote.root}`);
-  for (const [name, info] of Object.entries(result.remote.workspace.directories)) {
-    writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
-  }
+  writeStdoutLine(`  created: ${result.remote.created.length}`);
+  printNamedWorkspaceHuman("Workspace", result.remote.workspace, { ssh: result.remote.ssh });
 }
 
 function printHybridShowHuman(result) {
@@ -352,9 +355,15 @@ function handleWorkspaceCommand(argv) {
         writeStdoutLine(JSON.stringify(result, null, 2));
         return 0;
       }
-      writeStdoutLine(`Remote workspace created at ${result.root}`);
-      writeStdoutLine(`  ssh: ${result.ssh}`);
+      writeStdoutLine("Workspace created");
       writeStdoutLine(`  created: ${result.created.length}`);
+      writeStdoutLine(`  root: ${result.workspace.root}`);
+      writeStdoutLine(`  ssh: ${result.ssh}`);
+      writeStdoutLine(`  mode: ${result.workspace.mode || "remote"}`);
+      writeStdoutLine("  status: managed workspace ready");
+      for (const [name, info] of Object.entries(result.workspace.directories).filter(([name]) => name !== "root")) {
+        writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
+      }
       return 0;
     }
 
@@ -364,9 +373,7 @@ function handleWorkspaceCommand(argv) {
         writeStdoutLine(JSON.stringify(result, null, 2));
         return 0;
       }
-      writeStdoutLine(`Workspace created at ${result.root}`);
-      writeStdoutLine(`  created: ${result.created.length}`);
-      writeStdoutLine(`  existing: ${result.existing.length}`);
+      printCreateHuman(result);
       return 0;
     }
 

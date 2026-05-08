@@ -1768,6 +1768,56 @@ test("workspace show prints a human-readable remote summary", () => {
   fs.rmSync(remoteRoot, { recursive: true, force: true });
 });
 
+test("workspace create prints a human-readable local summary", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-create-local-"));
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  const result = run([
+    "workspace",
+    "create",
+    "--workspace",
+    workspaceRoot
+  ]);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /^Workspace created$/m);
+  assert.match(result.stdout, /^  created: 4$/m);
+  assert.match(result.stdout, /^  existing: 0$/m);
+  assert.match(result.stdout, new RegExp(`^  root: ${workspaceRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m"));
+  assert.match(result.stdout, /^  mode: local$/m);
+  assert.match(result.stdout, /^  status: managed workspace ready$/m);
+  assert.match(result.stdout, /^  tools: .* \(present\)$/m);
+  assert.match(result.stdout, /^  runs: .* \(present\)$/m);
+  assert.match(result.stdout, /^  tmp: .* \(present\)$/m);
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
+test("workspace create prints a human-readable remote summary", () => {
+  const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-create-text-"));
+  const env = {
+    ...process.env,
+    ...makeFakeSshEnv(remoteRoot)
+  };
+
+  const create = run([
+    "workspace",
+    "create",
+    "--ssh",
+    "builder@example.com:2222",
+    "--workspace",
+    "/remote-workspace"
+  ], { env });
+  assert.equal(create.status, 0, create.stderr || create.stdout);
+  assert.match(create.stdout, /^Workspace created$/m);
+  assert.match(create.stdout, /^Remote workspace$/m);
+  assert.match(create.stdout, /^  ssh: builder@example\.com:2222$/m);
+  assert.match(create.stdout, /^  mode: remote$/m);
+  assert.match(create.stdout, /^  status: managed workspace ready$/m);
+  assert.match(create.stdout, /^  tools: .* \(present\)$/m);
+  assert.match(create.stdout, /^  runs: .* \(present\)$/m);
+  assert.match(create.stdout, /^  tmp: .* \(present\)$/m);
+
+  fs.rmSync(remoteRoot, { recursive: true, force: true });
+});
+
 test("tool config can provide buildroot defaults and expected artifacts", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-defaults-project-"));
   writeConfig(

@@ -2138,6 +2138,9 @@ async function handleWorkflowCommand(argv) {
       if (flags.json) {
         throw new Error("workflow logs does not support --json with --follow");
       }
+      if (!flags.step) {
+        writeStdoutLine(`Selected step: ${stepId}`);
+      }
       return await followLogFile(logFile);
     }
     const content = fs.readFileSync(logFile, "utf8");
@@ -2150,6 +2153,9 @@ async function handleWorkflowCommand(argv) {
         details: { id, step: stepId, log_file: logFile, bytes: Buffer.byteLength(content, "utf8") }
       }));
     } else {
+      if (!flags.step) {
+        writeStdoutLine(`Selected step: ${stepId}`);
+      }
       writeStdoutLine(content.trimEnd());
     }
     return 0;

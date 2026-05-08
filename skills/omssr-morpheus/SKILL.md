@@ -105,7 +105,8 @@ Operational rule:
 - Treat `--workspace` as the shared managed workspace root.
 - Treat run ids as the stable lookup key for managed run lifecycle commands.
 - Use `morpheus workflow run`, `morpheus workflow inspect`, and
-  `morpheus workflow logs` as the canonical execution surface.
+  `morpheus workflow resume`, and `morpheus workflow logs` as the canonical
+  execution surface.
 - Do not expect top-level `morpheus inspect` or `morpheus logs` aliases.
 - Use `morpheus workflow stop` and `morpheus workflow remove` for lifecycle
   actions.
@@ -172,6 +173,7 @@ morpheus workspace create
 morpheus workspace show
 morpheus config check
 morpheus workflow run
+morpheus workflow resume
 morpheus workflow inspect
 morpheus workflow logs
 morpheus workflow stop
@@ -312,6 +314,7 @@ Returned JSON:
 Primary lifecycle:
 
 - `workflow run`
+- `workflow resume`
 - `workflow inspect`
 - `workflow logs`
 
@@ -365,6 +368,41 @@ Returned JSON:
   "details": {
     "id": "wf-...",
     "manifest": {}
+  }
+}
+```
+
+### `workflow resume`
+
+Input:
+
+- Required workflow run id via `--id`
+- Optional `--from-step <step-id>`
+- Optional `--one-step`
+- Optional `--json`
+
+Behavior:
+
+- Resumes a non-running workflow run.
+- `--from-step` resumes from the named step and reuses prior successful steps
+  when their outputs are still valid.
+- `--one-step` limits the resume to exactly the selected next step.
+- `--from-step` and `--one-step` should be used together when rerunning one
+  specific step from an existing run.
+
+Returned JSON:
+
+```json
+{
+  "command": "workflow resume",
+  "status": "success",
+  "exit_code": 0,
+  "summary": "completed workflow run",
+  "details": {
+    "id": "wf-...",
+    "workspace": "<workspace>",
+    "run_dir": "<workspace>/runs/wf-...",
+    "manifest": "<workspace>/runs/wf-.../workflow.json"
   }
 }
 ```

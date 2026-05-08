@@ -60,6 +60,7 @@ function usage() {
       "  node apps/morpheus/dist/cli.js [--config PATH] config check [--json]",
       "  node apps/morpheus/dist/cli.js tool list [--json]",
       "  node apps/morpheus/dist/cli.js --config projects/<project>/morpheus.yaml workflow run --name WORKFLOW_NAME [--json]",
+      "  node apps/morpheus/dist/cli.js [--config PATH] workflow resume --id WORKFLOW_RUN_ID [--from-step STEP_ID] [--one-step] [--json]",
       "  node apps/morpheus/dist/cli.js [--config PATH] workflow inspect --id WORKFLOW_RUN_ID [--json]",
       "  node apps/morpheus/dist/cli.js [--config PATH] workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow] [--json]",
       "  node apps/morpheus/dist/cli.js [--config PATH] workflow stop --id WORKFLOW_RUN_ID [--json]",

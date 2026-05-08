@@ -1039,6 +1039,7 @@ static void build_exec_map(const char *elf_path, FileCoverageVec *files, AddrMap
     char *current_unit = NULL;
     char *current_unit_dir = NULL;
     char *last_token_path = NULL;
+    char *last_unit_path = NULL;
     size_t last_file_index = (size_t) -1;
     void *path_root = NULL;
     size_t decoded_rows = 0;
@@ -1095,7 +1096,11 @@ static void build_exec_map(const char *elf_path, FileCoverageVec *files, AddrMap
             continue;
         }
         decoded_rows += 1;
-        if (last_token_path && strcmp(last_token_path, file_buf) == 0) {
+        if (last_token_path &&
+            strcmp(last_token_path, file_buf) == 0 &&
+            ((current_unit == NULL && last_unit_path == NULL) ||
+             (current_unit != NULL && last_unit_path != NULL &&
+              strcmp(current_unit, last_unit_path) == 0))) {
             file_index = last_file_index;
         } else {
             if (file_buf[0] == '/') {
@@ -1137,7 +1142,9 @@ static void build_exec_map(const char *elf_path, FileCoverageVec *files, AddrMap
                 free(normalized);
             }
             free(last_token_path);
+            free(last_unit_path);
             last_token_path = xstrdup(file_buf);
+            last_unit_path = current_unit ? xstrdup(current_unit) : NULL;
             last_file_index = file_index;
         }
 
@@ -1158,6 +1165,7 @@ static void build_exec_map(const char *elf_path, FileCoverageVec *files, AddrMap
     free(current_unit);
     free(current_unit_dir);
     free(last_token_path);
+    free(last_unit_path);
     free(elf_dir);
 
     qsort(map->items, map->len, sizeof(*map->items), addr_map_addr_cmp);
@@ -1286,25 +1294,94 @@ static void parse_etrace_trace_lcov(const char *path, FileCoverageVec *files, co
     log_progress("parsed %zu raw trace records", count);
 }
 
-static void emit_lcov_from_files(const char *path, const FileCoverageVec *files)
+static void emit_lcov_from_files(const char *path, const char *elf_path, const FileCoverageVec *files)
 {
     FILE *fp = fopen(path, "w");
+    char *elf_dir = build_elf_dir(elf_path);
     if (!fp) {
         perror(path);
         exit(1);
     }
     for (size_t i = 0; i < files->len; i++) {
         unsigned int lh = 0;
-        fprintf(fp, "TN:\nSF:%s\n", files->items[i].path);
+        char *resolved_path = NULL;
+        FILE *source_fp = NULL;
+        uint64_t *line_counts = NULL;
+        size_t line_cap = 0;
+        size_t total_lines = 0;
+        int ch;
+
+        if (files->items[i].path[0] == '/') {
+            resolved_path = xstrdup(files->items[i].path);
+        } else if (asprintf(&resolved_path, "%s/%s", elf_dir, files->items[i].path) < 0) {
+            perror("asprintf");
+            exit(1);
+        }
+        source_fp = fopen(resolved_path, "r");
+        if (source_fp) {
+            while ((ch = fgetc(source_fp)) != EOF) {
+                if (ch == '\n') {
+                    total_lines += 1;
+                }
+            }
+            if (ferror(source_fp)) {
+                perror(resolved_path);
+                fclose(source_fp);
+                free(resolved_path);
+                exit(1);
+            }
+            if (fseek(source_fp, 0L, SEEK_END) != 0) {
+                perror(resolved_path);
+                fclose(source_fp);
+                free(resolved_path);
+                exit(1);
+            }
+            if (ftell(source_fp) > 0) {
+                int last_char;
+                if (fseek(source_fp, -1L, SEEK_END) != 0) {
+                    perror(resolved_path);
+                    fclose(source_fp);
+                    free(resolved_path);
+                    exit(1);
+                }
+                last_char = fgetc(source_fp);
+                if (last_char != '\n') {
+                    total_lines += 1;
+                }
+            }
+            fclose(source_fp);
+        }
         for (size_t j = 0; j < files->items[i].len; j++) {
-            if (files->items[i].counts[j] > 0) {
+            unsigned int line_no = files->items[i].lines[j];
+            if (line_no > total_lines) {
+                total_lines = line_no;
+            }
+        }
+        if (total_lines == 0) {
+            total_lines = 1;
+        }
+        line_cap = total_lines + 1;
+        line_counts = xcalloc(line_cap, sizeof(*line_counts));
+        for (size_t j = 0; j < files->items[i].len; j++) {
+            unsigned int line_no = files->items[i].lines[j];
+            if (line_no == 0 || line_no > total_lines) {
+                continue;
+            }
+            line_counts[line_no] = files->items[i].counts[j];
+        }
+        fprintf(fp, "TN:\nSF:%s\n", files->items[i].path);
+        for (size_t line_no = 1; line_no <= total_lines; line_no++) {
+            if (line_counts[line_no] > 0) {
                 lh += 1;
             }
-            fprintf(fp, "DA:%u,%" PRIu64 "\n", files->items[i].lines[j], files->items[i].counts[j]);
+            fprintf(fp, "DA:%zu,%" PRIu64 "\n", line_no, line_counts[line_no]);
         }
-        fprintf(fp, "LF:%zu\nLH:%u\nend_of_record\n", files->items[i].len, lh);
+        fprintf(fp, "LF:%zu\nLH:%u\nend_of_record\n", total_lines, lh);
+        free(line_counts);
+        free(resolved_path);
     }
     fclose(fp);
+    free(elf_dir);
 }
 
 static size_t clamp_jobs(size_t jobs);
@@ -2544,7 +2621,7 @@ static int do_postprocess(int argc, char **argv)
         log_progress("postprocess started");
         build_exec_map(args.elf, &files, &map);
         parse_etrace_trace_lcov(args.trace, &files, &map);
-        emit_lcov_from_files(args.coverage_output, &files);
+        emit_lcov_from_files(args.coverage_output, args.elf, &files);
         addr_map_free(&map);
         file_coverage_free(&files);
         log_progress("postprocess finished");

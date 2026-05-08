@@ -27,7 +27,7 @@ const {
 function parseWorkflowArgs(argv) {
   const positionals = [];
   const flags = {};
-  const booleanFlags = new Set(["json", "follow"]);
+  const booleanFlags = new Set(["json", "follow", "one-step"]);
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -52,7 +52,7 @@ function workflowUsage() {
   return [
     "Usage:",
     "  node apps/morpheus/dist/cli.js --config projects/<project>/morpheus.yaml workflow run --name WORKFLOW_NAME [--json]",
-    "  node apps/morpheus/dist/cli.js [--config PATH] workflow resume --id WORKFLOW_RUN_ID [--from-step STEP_ID] [--json]",
+    "  node apps/morpheus/dist/cli.js [--config PATH] workflow resume --id WORKFLOW_RUN_ID [--from-step STEP_ID] [--one-step] [--json]",
     "  node apps/morpheus/dist/cli.js [--config PATH] workflow inspect --id WORKFLOW_RUN_ID [--json]",
     "  node apps/morpheus/dist/cli.js [--config PATH] workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow] [--json]",
     "  node apps/morpheus/dist/cli.js [--config PATH] workflow stop --id WORKFLOW_RUN_ID [--json]",
@@ -1375,6 +1375,7 @@ async function runToolWorkflow({
   existingSteps = null,
   initialStepResults = null,
   startIndex = 0,
+  endIndex = null,
   resumeMeta = null,
   configPath = null,
 }) {
@@ -1470,7 +1471,8 @@ async function runToolWorkflow({
   const stepResults = initialStepResults ? { ...initialStepResults } : {};
   let activeStep = null;
   try {
-  for (let stepIndex = startIndex; stepIndex < createdSteps.length; stepIndex += 1) {
+  const stopIndex = endIndex == null ? createdSteps.length : Math.min(endIndex, createdSteps.length);
+  for (let stepIndex = startIndex; stepIndex < stopIndex; stepIndex += 1) {
     const step = createdSteps[stepIndex];
     activeStep = step;
     updateWorkflowRun(workflow.runDir, (current) => ({
@@ -1989,6 +1991,7 @@ async function handleWorkflowCommand(argv) {
     }
     const configured = resolveConfiguredWorkflow(String(workflow.workflow), workflow.configPath || null);
     const fromStep = flags["from-step"] ? String(flags["from-step"]) : null;
+    const oneStep = Boolean(flags["one-step"]);
     const plan = collectResumePlan(workspaceRoot, workflow, configured, fromStep);
     return await runToolWorkflow({
       steps: configured.steps.map((step, index) => ({
@@ -2009,8 +2012,9 @@ async function handleWorkflowCommand(argv) {
       existingSteps: plan.createdSteps,
       initialStepResults: plan.stepResults,
       startIndex: plan.startIndex,
+      endIndex: oneStep ? plan.startIndex + 1 : null,
       resumeMeta: {
-        mode: fromStep ? "from-step" : "resume",
+        mode: oneStep ? "single-step" : (fromStep ? "from-step" : "resume"),
         fromStep: fromStep || (configured.steps[plan.startIndex] && (configured.steps[plan.startIndex].id || configured.steps[plan.startIndex].name)) || null,
       },
     });

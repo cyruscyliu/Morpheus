@@ -111,8 +111,10 @@ test("workspace show returns JSON metadata", () => {
   });
   assert.equal(result.status, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
-  assert.equal(typeof payload.root, "string");
-  assert.equal(typeof payload.directories.runs.exists, "boolean");
+  assert.equal(payload.command, "workspace show");
+  assert.equal(payload.status, "success");
+  assert.equal(typeof payload.details.root, "string");
+  assert.equal(typeof payload.details.directories.runs.exists, "boolean");
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
@@ -291,9 +293,11 @@ test("tool list discovers repo-local tools", () => {
   const result = run(["tool", "list", "--json"]);
   assert.equal(result.status, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
-  assert.equal(typeof payload.tool_statuses.ready, "string");
+  assert.equal(payload.command, "tool list");
+  assert.equal(payload.status, "success");
+  assert.equal(typeof payload.details.tool_statuses.ready, "string");
   assert.deepEqual(
-    payload.tools.map((tool) => tool.name),
+    payload.details.tools.map((tool) => tool.name),
     ["buildroot", "libvmm", "llbic", "llcg", "microkit-sdk", "nqc2", "outline-to-paper", "qemu", "sel4"]
   );
 });
@@ -302,8 +306,8 @@ test("tool list reports workflow-only tools without wrapper errors", () => {
   const result = run(["tool", "list", "--json"]);
   assert.equal(result.status, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
-  const buildroot = payload.tools.find((tool) => tool.name === "buildroot");
-  const llcg = payload.tools.find((tool) => tool.name === "llcg");
+  const buildroot = payload.details.tools.find((tool) => tool.name === "buildroot");
+  const llcg = payload.details.tools.find((tool) => tool.name === "llcg");
   assert.equal(buildroot.verification.status, "workflow-only");
   assert.equal(buildroot.verification.note, "run through 'morpheus workflow run'");
   assert.deepEqual(buildroot.verification.issues, []);
@@ -1858,9 +1862,10 @@ test("workspace show supports remote managed workspace lookup", () => {
   ], { env });
   assert.equal(show.status, 0, show.stderr || show.stdout);
   const payload = JSON.parse(show.stdout);
-  assert.equal(payload.mode, "remote");
-  assert.equal(payload.directories.tools.exists, true);
-  assert.equal(payload.directories.runs.exists, true);
+  assert.equal(payload.command, "workspace show");
+  assert.equal(payload.details.mode, "remote");
+  assert.equal(payload.details.directories.tools.exists, true);
+  assert.equal(payload.details.directories.runs.exists, true);
 
   fs.rmSync(remoteRoot, { recursive: true, force: true });
 });

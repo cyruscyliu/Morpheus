@@ -190,11 +190,24 @@ async function handleToolCommand(argv) {
     });
     if (flags.json) {
       printMaybeJson({
-        tool_statuses: {
-          ready: "repo-local entrypoint is available to Morpheus",
-          "workflow-only": "tool is managed through configured workflows",
-          missing: "descriptor expects files that are not present",
-          invalid: "verification found issues that need attention"
+        command: "tool list",
+        status: "success",
+        exit_code: 0,
+        summary: items.length === 0 ? "no tools declared" : "listed declared tools",
+        details: {
+          tool_statuses: {
+            ready: "repo-local entrypoint is available to Morpheus",
+            "workflow-only": "tool is managed through configured workflows",
+            missing: "descriptor expects files that are not present",
+            invalid: "verification found issues that need attention"
+          },
+          tools: items.map((tool) => ({
+            ...tool,
+            verification: {
+              ...tool.verification,
+              note: verificationNote(tool.verification.status, tool.verification.issues)
+            }
+          }))
         },
         tools: items.map((tool) => ({
           ...tool,

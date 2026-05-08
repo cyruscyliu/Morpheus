@@ -325,6 +325,16 @@ function printHybridShowHuman(result) {
   printNamedWorkspaceHuman("Remote workspace", result.remote, { ssh: result.remote.ssh });
 }
 
+function workspaceJson(command, summary, details) {
+  return {
+    command,
+    status: "success",
+    exit_code: 0,
+    summary,
+    details,
+  };
+}
+
 function handleWorkspaceCommand(argv) {
   const { positionals, flags: parsedFlags } = parseWorkspaceArgs(argv);
   const subcommand = positionals[0];
@@ -359,7 +369,7 @@ function handleWorkspaceCommand(argv) {
       const remoteResult = createRemoteWorkspace(sshTarget, explicitWorkspace);
       const result = aggregateWorkspaceResults(localResult, remoteResult);
       if (flags.json) {
-        writeStdoutLine(JSON.stringify(result, null, 2));
+        writeStdoutLine(JSON.stringify(workspaceJson("workspace create", "created managed workspace layout", result), null, 2));
         return 0;
       }
       printHybridCreateHuman(result);
@@ -372,7 +382,7 @@ function handleWorkspaceCommand(argv) {
       }
       const result = createRemoteWorkspace(sshTarget, explicitWorkspace);
       if (flags.json) {
-        writeStdoutLine(JSON.stringify(result, null, 2));
+        writeStdoutLine(JSON.stringify(workspaceJson("workspace create", "created managed workspace layout", result), null, 2));
         return 0;
       }
       writeStdoutLine("Workspace created");
@@ -390,7 +400,7 @@ function handleWorkspaceCommand(argv) {
     if (explicitWorkspace) {
       const result = createManagedWorkspace(explicitWorkspace);
       if (flags.json) {
-        writeStdoutLine(JSON.stringify(result, null, 2));
+        writeStdoutLine(JSON.stringify(workspaceJson("workspace create", "created managed workspace layout", result), null, 2));
         return 0;
       }
       printCreateHuman(result);
@@ -399,7 +409,7 @@ function handleWorkspaceCommand(argv) {
 
     const result = createManagedWorkspace(configuredLocalWorkspace || workRoot());
     if (flags.json) {
-      writeStdoutLine(JSON.stringify(result, null, 2));
+      writeStdoutLine(JSON.stringify(workspaceJson("workspace create", "created managed workspace layout", result), null, 2));
       return 0;
     }
 
@@ -415,7 +425,7 @@ function handleWorkspaceCommand(argv) {
         remote: describeRemoteWorkspace(sshTarget, explicitWorkspace)
       };
       if (flags.json) {
-        writeStdoutLine(JSON.stringify(summary, null, 2));
+        writeStdoutLine(JSON.stringify(workspaceJson("workspace show", "inspected managed workspace layout", summary), null, 2));
         return 0;
       }
       printHybridShowHuman(summary);
@@ -428,7 +438,7 @@ function handleWorkspaceCommand(argv) {
       }
       const summary = describeRemoteWorkspace(sshTarget, explicitWorkspace);
       if (flags.json) {
-        writeStdoutLine(JSON.stringify(summary, null, 2));
+        writeStdoutLine(JSON.stringify(workspaceJson("workspace show", "inspected managed workspace layout", summary), null, 2));
         return 0;
       }
       printNamedWorkspaceHuman("Remote workspace", summary, { ssh: summary.ssh });
@@ -438,7 +448,7 @@ function handleWorkspaceCommand(argv) {
     if (explicitWorkspace) {
       const summary = describeManagedWorkspace(explicitWorkspace);
       if (flags.json) {
-        writeStdoutLine(JSON.stringify(summary, null, 2));
+        writeStdoutLine(JSON.stringify(workspaceJson("workspace show", "inspected managed workspace layout", summary), null, 2));
         return 0;
       }
       printWorkspaceHuman(summary);
@@ -447,7 +457,7 @@ function handleWorkspaceCommand(argv) {
 
     const summary = describeManagedWorkspace(configuredLocalWorkspace || workRoot());
     if (flags.json) {
-      writeStdoutLine(JSON.stringify(summary, null, 2));
+      writeStdoutLine(JSON.stringify(workspaceJson("workspace show", "inspected managed workspace layout", summary), null, 2));
       return 0;
     }
 

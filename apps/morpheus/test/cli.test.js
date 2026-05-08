@@ -105,16 +105,18 @@ raise SystemExit(result.returncode)
 
 test("workspace show returns JSON metadata", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-show-project-"));
+  const env = isolatedEnv();
   const result = run(["workspace", "show", "--json"], {
     cwd: projectRoot,
-    env: isolatedEnv()
+    env
   });
   assert.equal(result.status, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.command, "workspace show");
   assert.equal(payload.status, "success");
-  assert.equal(typeof payload.details.root, "string");
+  assert.equal(payload.details.root, path.relative(projectRoot, env.MORPHEUS_WORK_ROOT));
   assert.equal(typeof payload.details.directories.runs.exists, "boolean");
+  assert.equal(payload.details.directories.tools.path, path.relative(projectRoot, path.join(env.MORPHEUS_WORK_ROOT, "tools")));
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
@@ -296,6 +298,7 @@ test("tool list discovers repo-local tools", () => {
   assert.equal(payload.command, "tool list");
   assert.equal(payload.status, "success");
   assert.equal(typeof payload.details.tool_statuses.ready, "string");
+  assert.equal(Object.prototype.hasOwnProperty.call(payload, "tools"), false);
   assert.deepEqual(
     payload.details.tools.map((tool) => tool.name),
     ["buildroot", "libvmm", "llbic", "llcg", "microkit-sdk", "nqc2", "outline-to-paper", "qemu", "sel4"]
@@ -383,6 +386,7 @@ test("workflow commands are available through Morpheus", () => {
   const result = run(["workflow", "--help"]);
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.equal(result.stderr, "");
+  assert.match(result.stdout, /^Purpose:$/m);
   assert.match(result.stdout, /^Commands:$/m);
   assert.match(result.stdout, /workflow list/);
   assert.match(result.stdout, /workflow run/);
@@ -406,6 +410,7 @@ test("top-level help groups commands for discovery", () => {
 test("workspace help includes commands and examples", () => {
   const result = run(["workspace", "--help"]);
   assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /^Purpose:$/m);
   assert.match(result.stdout, /^Commands:$/m);
   assert.match(result.stdout, /^  workspace create   Create local or remote managed workspace directories\.$/m);
   assert.match(result.stdout, /^Examples:$/m);
@@ -416,6 +421,7 @@ test("config help includes purpose and examples", () => {
   const result = run(["config", "--help"]);
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(result.stdout, /^Purpose:$/m);
+  assert.match(result.stdout, /^Commands:$/m);
   assert.match(result.stdout, /^  Validate morpheus\.yaml and report config issues before running workflows\.$/m);
   assert.match(result.stdout, /^Examples:$/m);
 });
@@ -424,6 +430,7 @@ test("tool help includes purpose and examples", () => {
   const result = run(["tool", "--help"]);
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(result.stdout, /^Purpose:$/m);
+  assert.match(result.stdout, /^Commands:$/m);
   assert.match(result.stdout, /^  Inspect declared tools and whether Morpheus can use them directly or through workflows\.$/m);
   assert.match(result.stdout, /^Examples:$/m);
 });
@@ -651,10 +658,12 @@ test("workflow inspect reconciles stale running workflows with dead pids", () =>
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim());
   assert.equal(payload.status, "success");
-  assert.equal(payload.details.workflow.status, "error");
-  assert.equal(payload.details.workflow.runnerPid, null);
-  assert.equal(payload.details.workflow.currentChildPid, null);
+  assert.equal(payload.details.status, "error");
+  assert.equal(payload.details.runner_pid, null);
+  assert.equal(payload.details.current_child_pid, null);
+  assert.equal(payload.details.run_dir, path.join("runs", runId));
   assert.equal(payload.details.steps[0].status, "error");
+  assert.equal(payload.details.steps[0].step_dir, path.join("runs", runId, "steps", "01-build"));
 
   const workflow = JSON.parse(fs.readFileSync(path.join(runDir, "workflow.json"), "utf8"));
   const step = JSON.parse(fs.readFileSync(path.join(stepDir, "step.json"), "utf8"));

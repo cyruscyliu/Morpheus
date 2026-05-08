@@ -102,6 +102,9 @@ function toolUsage() {
     "Purpose:",
     "  Inspect declared tools and whether Morpheus can use them directly or through workflows.",
     "",
+    "Commands:",
+    "  tool list          List declared tools and their readiness.",
+    "",
     "Examples:",
     "  ./bin/morpheus tool list",
     "  ./bin/morpheus tool list --json",
@@ -208,14 +211,7 @@ async function handleToolCommand(argv) {
               note: verificationNote(tool.verification.status, tool.verification.issues)
             }
           }))
-        },
-        tools: items.map((tool) => ({
-          ...tool,
-          verification: {
-            ...tool.verification,
-            note: verificationNote(tool.verification.status, tool.verification.issues)
-          }
-        }))
+        }
       }, flags);
     } else {
       writeStdoutLine(formatToolListText(items));

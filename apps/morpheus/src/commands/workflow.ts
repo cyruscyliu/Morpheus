@@ -59,6 +59,9 @@ function workflowUsage() {
     "  ./bin/morpheus [--config PATH] workflow stop --id WORKFLOW_RUN_ID [--json]",
     "  ./bin/morpheus [--config PATH] workflow remove --id WORKFLOW_RUN_ID [--json]",
     "",
+    "Purpose:",
+    "  Discover, run, inspect, and manage Morpheus workflow runs.",
+    "",
     "Commands:",
     "  workflow list      List configured workflows.",
     "  workflow run       Start a configured workflow.",
@@ -106,6 +109,56 @@ function stepToolResultPath(stepDir) {
 
 function relativeToCwd(targetPath) {
   return path.relative(process.cwd(), targetPath);
+}
+
+function relativizeWorkflowRecord(workflow) {
+  if (!workflow || typeof workflow !== "object") {
+    return workflow;
+  }
+  return {
+    ...workflow,
+    workspace: typeof workflow.workspace === "string" ? relativeToCwd(workflow.workspace) : workflow.workspace,
+    runDir: typeof workflow.runDir === "string" ? relativeToCwd(workflow.runDir) : workflow.runDir,
+  };
+}
+
+function relativizeStepRecord(step) {
+  if (!step || typeof step !== "object") {
+    return step;
+  }
+  return {
+    ...step,
+    stepDir: typeof step.stepDir === "string" ? relativeToCwd(step.stepDir) : step.stepDir,
+    logFile: typeof step.logFile === "string" ? relativeToCwd(step.logFile) : step.logFile,
+  };
+}
+
+function normalizeWorkflowInspectDetails(workflow, steps) {
+  const workflowRecord = relativizeWorkflowRecord(workflow) || {};
+  return {
+    id: workflowRecord.id || null,
+    workflow: workflowRecord.workflow || null,
+    category: workflowRecord.category || null,
+    status: workflowRecord.status || null,
+    workspace: workflowRecord.workspace || null,
+    run_dir: workflowRecord.runDir || null,
+    current_step_id: workflowRecord.currentStepId || null,
+    current_child_pid: workflowRecord.currentChildPid == null ? null : workflowRecord.currentChildPid,
+    runner_pid: workflowRecord.runnerPid == null ? null : workflowRecord.runnerPid,
+    created_at: workflowRecord.createdAt || null,
+    updated_at: workflowRecord.updatedAt || null,
+    steps: steps.map((step) => {
+      const stepRecord = relativizeStepRecord(step) || {};
+      return {
+        id: stepRecord.id || null,
+        name: stepRecord.name || null,
+        status: stepRecord.status || null,
+        step_dir: stepRecord.stepDir || null,
+        log_file: stepRecord.logFile || null,
+        exit_code: stepRecord.exitCode == null ? null : stepRecord.exitCode,
+      };
+    }),
+  };
 }
 
 function cliEntrypoint() {
@@ -2131,7 +2184,7 @@ async function handleWorkflowCommand(argv) {
       status: "success",
       exit_code: 0,
       summary: "inspected workflow run",
-      details: { workflow, steps }
+      details: normalizeWorkflowInspectDetails(workflow, steps)
     };
     if (flags.json) {
       writeStdoutLine(JSON.stringify(payload));

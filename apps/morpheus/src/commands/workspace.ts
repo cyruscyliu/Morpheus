@@ -38,6 +38,9 @@ function workspaceUsage() {
     "  ./bin/morpheus workspace create [--workspace DIR] [--json]",
     "  ./bin/morpheus workspace show [--workspace DIR] [--json]",
     "",
+    "Purpose:",
+    "  Create and inspect Morpheus-managed local or remote workspace layouts.",
+    "",
     "Commands:",
     "  workspace create   Create local or remote managed workspace directories.",
     "  workspace show     Inspect local or remote managed workspace state.",
@@ -298,6 +301,60 @@ function aggregateWorkspaceResults(localResult, remoteResult) {
   };
 }
 
+function relativizeWorkspaceShape(shape) {
+  if (!shape || typeof shape !== "object") {
+    return shape;
+  }
+  const directories = {};
+  for (const [name, info] of Object.entries(shape.directories || {})) {
+    directories[name] = {
+      ...info,
+      path: typeof info.path === "string" ? toRelative(info.path) : info.path,
+    };
+  }
+  return {
+    ...shape,
+    root: typeof shape.root === "string" ? toRelative(shape.root) : shape.root,
+    directories,
+  };
+}
+
+function relativizeWorkspaceCreateResult(result) {
+  if (!result || typeof result !== "object") {
+    return result;
+  }
+  const relativizeEntries = (entries) => Array.isArray(entries)
+    ? entries.map((entry) => ({
+        ...entry,
+        path: typeof entry.path === "string" ? toRelative(entry.path) : entry.path,
+      }))
+    : entries;
+  return {
+    ...result,
+    root: typeof result.root === "string" ? toRelative(result.root) : result.root,
+    created: relativizeEntries(result.created),
+    existing: relativizeEntries(result.existing),
+    workspace: relativizeWorkspaceShape(result.workspace),
+  };
+}
+
+function workspaceJsonDetails(details) {
+  if (!details || typeof details !== "object") {
+    return details;
+  }
+  if (details.mode === "hybrid" && details.local && details.remote) {
+    return {
+      ...details,
+      local: relativizeWorkspaceCreateResult(details.local),
+      remote: details.remote,
+    };
+  }
+  if (Array.isArray(details.created) || Array.isArray(details.existing)) {
+    return details.mode === "remote" ? details : relativizeWorkspaceCreateResult(details);
+  }
+  return details.mode === "remote" ? details : relativizeWorkspaceShape(details);
+}
+
 function printHybridCreateHuman(result) {
   writeStdoutLine("Workspace created");
   writeStdoutLine("Local workspace");
@@ -331,7 +388,7 @@ function workspaceJson(command, summary, details) {
     status: "success",
     exit_code: 0,
     summary,
-    details,
+    details: workspaceJsonDetails(details),
   };
 }
 

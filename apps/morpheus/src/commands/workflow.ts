@@ -753,6 +753,7 @@ function stopWorkflowRun(workspaceRoot, id) {
     details: {
       id: updatedWorkflow.id,
       workflow: updatedWorkflow.workflow,
+      status: updatedWorkflow.status,
       run_dir: updatedWorkflow.runDir,
       stopped_child_pid: currentChildPid > 0 ? currentChildPid : null,
       stopped_runner_pid: runnerPid > 0 ? runnerPid : null,
@@ -794,6 +795,8 @@ function removeWorkflowRun(workspaceRoot, id) {
     summary: "removed workflow run",
     details: {
       id,
+      workflow: workflow.workflow,
+      status: "removed",
       run_dir: found.runDir,
     },
   };
@@ -1945,6 +1948,17 @@ function formatWorkflowInspectText(workflow, steps) {
   return lines.join("\n");
 }
 
+function formatWorkflowLifecycleText(payload) {
+  const details = payload && payload.details ? payload.details : {};
+  const lines = [
+    `${payload.summary}`,
+    `Run ID: ${details.id || "-"}`,
+    `Workflow: ${details.workflow || "-"}`,
+    `Status: ${details.status || "-"}`,
+  ];
+  return lines.join("\n");
+}
+
 async function handleWorkflowCommand(argv) {
   const { positionals, flags } = parseWorkflowArgs(argv);
   const subcommand = positionals[0];
@@ -2171,7 +2185,7 @@ async function handleWorkflowCommand(argv) {
     if (flags.json) {
       writeStdoutLine(JSON.stringify(payload));
     } else {
-      writeStdoutLine(`${payload.summary}: ${payload.details.id}`);
+      writeStdoutLine(formatWorkflowLifecycleText(payload));
     }
     return 0;
   }
@@ -2186,7 +2200,7 @@ async function handleWorkflowCommand(argv) {
     if (flags.json) {
       writeStdoutLine(JSON.stringify(payload));
     } else {
-      writeStdoutLine(`${payload.summary}: ${payload.details.id}`);
+      writeStdoutLine(formatWorkflowLifecycleText(payload));
     }
     return 0;
   }

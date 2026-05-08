@@ -103,12 +103,20 @@ function checkToolPaths(value) {
 }
 
 function formatText(result) {
+  const lines = [
+    "Config check",
+    `  config: ${result.details.config}`,
+    `  status: ${result.status === "success" ? "ok" : "error"}`,
+    `  summary: ${result.summary}`,
+  ];
   if (result.issues.length === 0) {
-    return `ok: ${result.summary}`;
+    return lines.join("\n");
   }
-  return result.issues
-    .map((issue) => `${issue.level}: ${issue.path}: ${issue.message}`)
-    .join("\n");
+  return [
+    ...lines,
+    "Issues:",
+    ...result.issues.map((issue) => `  ${issue.level}: ${issue.path}: ${issue.message}`)
+  ].join("\n");
 }
 
 function runConfigCheck() {

@@ -210,6 +210,32 @@ test("config check reports success for local and remote modes", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("config check prints a human-readable success summary", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-check-text-ok-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "tools:",
+      "  buildroot:",
+      "    mode: remote",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["config", "check"], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /^Config check$/m);
+  assert.match(result.stdout, /^  config: morpheus\.yaml$/m);
+  assert.match(result.stdout, /^  status: ok$/m);
+  assert.match(result.stdout, /^  summary: morpheus\.yaml passed validation$/m);
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
 test("config check rejects non-local-non-remote modes", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-check-bad-"));
   writeConfig(
@@ -232,6 +258,32 @@ test("config check rejects non-local-non-remote modes", () => {
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.status, "error");
   assert.equal(payload.details.issues[0].path, "tools.qemu.mode");
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("config check prints human-readable issues on failure", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-check-text-bad-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "tools:",
+      "  qemu:",
+      "    mode: build",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["config", "check"], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 1, result.stderr || result.stdout);
+  assert.match(result.stdout, /^Config check$/m);
+  assert.match(result.stdout, /^  status: error$/m);
+  assert.match(result.stdout, /^Issues:$/m);
+  assert.match(result.stdout, /^  error: tools\.qemu\.mode: invalid mode 'build', expected one of: local, remote$/m);
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 

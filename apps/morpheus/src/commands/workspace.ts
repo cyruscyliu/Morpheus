@@ -294,10 +294,21 @@ function printHybridCreateHuman(result) {
   writeStdoutLine("Local workspace");
   writeStdoutLine(`  created: ${result.local.created.length}`);
   writeStdoutLine(`  existing: ${result.local.existing.length}`);
-  printNamedWorkspaceHuman("Workspace", result.local.workspace);
+  writeStdoutLine(`  root: ${result.local.workspace.root}`);
+  writeStdoutLine(`  mode: ${result.local.workspace.mode || "local"}`);
+  writeStdoutLine("  status: managed workspace ready");
+  for (const [name, info] of Object.entries(result.local.workspace.directories).filter(([name]) => name !== "root")) {
+    writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
+  }
   writeStdoutLine("Remote workspace");
   writeStdoutLine(`  created: ${result.remote.created.length}`);
-  printNamedWorkspaceHuman("Workspace", result.remote.workspace, { ssh: result.remote.ssh });
+  writeStdoutLine(`  ssh: ${result.remote.ssh}`);
+  writeStdoutLine(`  root: ${result.remote.workspace.root}`);
+  writeStdoutLine(`  mode: ${result.remote.workspace.mode || "remote"}`);
+  writeStdoutLine("  status: managed workspace ready");
+  for (const [name, info] of Object.entries(result.remote.workspace.directories).filter(([name]) => name !== "root")) {
+    writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
+  }
 }
 
 function printHybridShowHuman(result) {

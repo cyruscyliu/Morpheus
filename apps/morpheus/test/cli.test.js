@@ -1807,7 +1807,8 @@ test("workspace create prints a human-readable remote summary", () => {
   ], { env });
   assert.equal(create.status, 0, create.stderr || create.stdout);
   assert.match(create.stdout, /^Workspace created$/m);
-  assert.match(create.stdout, /^Remote workspace$/m);
+  assert.match(create.stdout, /^  created: 4$/m);
+  assert.match(create.stdout, /^  root: \/remote-workspace$/m);
   assert.match(create.stdout, /^  ssh: builder@example\.com:2222$/m);
   assert.match(create.stdout, /^  mode: remote$/m);
   assert.match(create.stdout, /^  status: managed workspace ready$/m);

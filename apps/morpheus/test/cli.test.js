@@ -378,6 +378,31 @@ test("top-level help groups commands for discovery", () => {
   assert.match(result.stdout, /^  \.\/bin\/morpheus workspace show$/m);
 });
 
+test("workspace help includes commands and examples", () => {
+  const result = run(["workspace", "--help"]);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /^Commands:$/m);
+  assert.match(result.stdout, /^  workspace create   Create local or remote managed workspace directories\.$/m);
+  assert.match(result.stdout, /^Examples:$/m);
+  assert.match(result.stdout, /^  \.\/bin\/morpheus workspace show$/m);
+});
+
+test("config help includes purpose and examples", () => {
+  const result = run(["config", "--help"]);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /^Purpose:$/m);
+  assert.match(result.stdout, /^  Validate morpheus\.yaml and report config issues before running workflows\.$/m);
+  assert.match(result.stdout, /^Examples:$/m);
+});
+
+test("tool help includes purpose and examples", () => {
+  const result = run(["tool", "--help"]);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /^Purpose:$/m);
+  assert.match(result.stdout, /^  Inspect declared tools and whether Morpheus can use them directly or through workflows\.$/m);
+  assert.match(result.stdout, /^Examples:$/m);
+});
+
 test("workflow list discovers configured workflows in json", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-list-json-"));
   writeConfig(

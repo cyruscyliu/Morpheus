@@ -22,7 +22,14 @@ const TOOL_PATH_KEYS = new Set([
 function usage() {
   return [
     "Usage:",
-    "  ./bin/morpheus [--config PATH] config check [--json]"
+    "  ./bin/morpheus [--config PATH] config check [--json]",
+    "",
+    "Purpose:",
+    "  Validate morpheus.yaml and report config issues before running workflows.",
+    "",
+    "Examples:",
+    "  ./bin/morpheus config check",
+    "  ./bin/morpheus --config projects/<project>/morpheus.yaml config check --json"
   ].join("\n");
 }
 

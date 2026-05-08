@@ -99,6 +99,13 @@ function toolUsage() {
     "Usage:",
     "  ./bin/morpheus tool list [--json]",
     "",
+    "Purpose:",
+    "  Inspect declared tools and whether Morpheus can use them directly or through workflows.",
+    "",
+    "Examples:",
+    "  ./bin/morpheus tool list",
+    "  ./bin/morpheus tool list --json",
+    "",
     "Notes:",
     "  - 'workflow-only' tools are managed through configured workflows.",
     "  - 'ready' tools have a repo-local entrypoint available to Morpheus."

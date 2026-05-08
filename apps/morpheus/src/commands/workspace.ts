@@ -37,6 +37,15 @@ function workspaceUsage() {
     "Usage:",
     "  ./bin/morpheus workspace create [--workspace DIR] [--json]",
     "  ./bin/morpheus workspace show [--workspace DIR] [--json]",
+    "",
+    "Commands:",
+    "  workspace create   Create local or remote managed workspace directories.",
+    "  workspace show     Inspect local or remote managed workspace state.",
+    "",
+    "Examples:",
+    "  ./bin/morpheus workspace create --workspace ./workspace",
+    "  ./bin/morpheus workspace show",
+    "  ./bin/morpheus workspace show --ssh builder@example.com:2222 --workspace /remote-workspace",
   ].join("\n");
 }
 

@@ -767,7 +767,7 @@ function stopWorkflowRun(workspaceRoot, id) {
       id: updatedWorkflow.id,
       workflow: updatedWorkflow.workflow,
       status: updatedWorkflow.status,
-      run_dir: updatedWorkflow.runDir,
+      run_dir: relativeToCwd(updatedWorkflow.runDir),
       stopped_child_pid: currentChildPid > 0 ? currentChildPid : null,
       stopped_runner_pid: runnerPid > 0 ? runnerPid : null,
     },
@@ -810,7 +810,7 @@ function removeWorkflowRun(workspaceRoot, id) {
       id,
       workflow: workflow.workflow,
       status: "removed",
-      run_dir: found.runDir,
+      run_dir: relativeToCwd(found.runDir),
     },
   };
 }

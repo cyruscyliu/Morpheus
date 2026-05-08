@@ -548,6 +548,7 @@ test("workflow stop marks a running workflow as stopped", () => {
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim());
   assert.equal(payload.status, "success");
+  assert.equal(payload.details.run_dir, path.join("runs", runId));
   const workflow = JSON.parse(fs.readFileSync(path.join(runDir, "workflow.json"), "utf8"));
   const step = JSON.parse(fs.readFileSync(path.join(stepDir, "step.json"), "utf8"));
   assert.equal(workflow.status, "stopped");
@@ -1000,6 +1001,8 @@ test("workflow remove requires a prior stop and removes stopped workflow state",
     cwd: workspaceRoot,
   });
   assert.equal(removed.status, 0, removed.stderr || removed.stdout);
+  const removedPayload = JSON.parse(removed.stdout.trim());
+  assert.equal(removedPayload.details.run_dir, path.join("runs", runId));
   assert.equal(fs.existsSync(runDir), false);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });

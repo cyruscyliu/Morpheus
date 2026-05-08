@@ -272,6 +272,8 @@ workflows:
           - "{{steps.qemu_exec.details.run_dir}}/buildroot-qemu-runtime-nqc2.info"
           - --coverage-format
           - lcov
+          - --jobs
+          - "4"
           - --wait-seconds
           - "10"
       - id: nqc2_genhtml

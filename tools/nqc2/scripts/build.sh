@@ -40,6 +40,7 @@ fi
 mkdir -p "${build_dir}" "${install_dir}/bin" "${install_dir}/lib/nqc2" "${trace_dir}"
 
 cc="${CC:-gcc}"
+dw_flags="$(pkg-config --cflags --libs libdw libelf)"
 "${cc}" \
   -std=c11 \
   -O2 \
@@ -55,7 +56,8 @@ cc="${CC:-gcc}"
   -std=c11 \
   -O2 \
   "${cli_src}" \
-  -o "${cli_out}"
+  -o "${cli_out}" \
+  ${dw_flags}
 
 cat > "${manifest_file}" <<EOF
 {

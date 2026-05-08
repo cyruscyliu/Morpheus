@@ -20,6 +20,7 @@
       "trace-output": { "aliases": ["trace-output", "traceOutput"], "path": true },
       "coverage-output": { "aliases": ["coverage-output", "coverageOutput"], "path": true },
       "coverage-format": { "aliases": ["coverage-format", "coverageFormat"] },
+      "jobs": { "aliases": ["jobs"] },
       "output": { "aliases": ["output"], "path": true },
       "wait-seconds": { "aliases": ["wait-seconds", "waitSeconds"] },
       "title": { "aliases": ["title"] },

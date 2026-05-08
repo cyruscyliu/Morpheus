@@ -60,6 +60,8 @@ args=(
   --output-directory "${output_dir}"
   --title "${title}"
   --ignore-errors source
+  --ignore-errors inconsistent
+  --ignore-errors unsupported
   --synthesize-missing
 )
 if [ -n "${source_dir}" ]; then

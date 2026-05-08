@@ -105,6 +105,19 @@ function toolUsage() {
   ].join("\n");
 }
 
+function verificationNote(status, issues) {
+  if (Array.isArray(issues) && issues.length > 0) {
+    return issues.join("; ");
+  }
+  if (status === "workflow-only") {
+    return "run through 'morpheus workflow run'";
+  }
+  if (status === "ready") {
+    return "available to Morpheus";
+  }
+  return "inspect verification issues";
+}
+
 function formatToolListText(items) {
   if (items.length === 0) {
     return "No tools declared.";
@@ -114,11 +127,7 @@ function formatToolListText(items) {
     "name\tstatus\tnote",
     ...items.map((tool) => {
       const status = tool.verification.status;
-      const note = tool.verification.issues.length > 0
-        ? tool.verification.issues.join("; ")
-        : status === "workflow-only"
-          ? "run through 'morpheus workflow run'"
-          : "available to Morpheus";
+      const note = verificationNote(status, tool.verification.issues);
       return `${tool.name}\t${status}\t${note}`;
     })
   ].join("\n");
@@ -173,7 +182,21 @@ async function handleToolCommand(argv) {
       };
     });
     if (flags.json) {
-      printMaybeJson({ tools: items }, flags);
+      printMaybeJson({
+        tool_statuses: {
+          ready: "repo-local entrypoint is available to Morpheus",
+          "workflow-only": "tool is managed through configured workflows",
+          missing: "descriptor expects files that are not present",
+          invalid: "verification found issues that need attention"
+        },
+        tools: items.map((tool) => ({
+          ...tool,
+          verification: {
+            ...tool.verification,
+            note: verificationNote(tool.verification.status, tool.verification.issues)
+          }
+        }))
+      }, flags);
     } else {
       writeStdoutLine(formatToolListText(items));
     }

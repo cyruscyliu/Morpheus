@@ -1929,6 +1929,22 @@ function followLogFile(logFile) {
   });
 }
 
+function formatWorkflowInspectText(workflow, steps) {
+  const lines = [
+    `Workflow: ${workflow.workflow || "-"}`,
+    `Run ID: ${workflow.id || "-"}`,
+    `Status: ${workflow.status || "-"}`,
+    `Category: ${workflow.category || "-"}`,
+    `Current Step: ${workflow.currentStepId || "-"}`,
+    `Created: ${workflow.createdAt || "-"}`,
+    `Updated: ${workflow.updatedAt || "-"}`,
+    "Steps:",
+    "id\tstatus\tname",
+    ...steps.map((step) => `${step.id || "-"}\t${step.status || "-"}\t${step.name || "-"}`),
+  ];
+  return lines.join("\n");
+}
+
 async function handleWorkflowCommand(argv) {
   const { positionals, flags } = parseWorkflowArgs(argv);
   const subcommand = positionals[0];
@@ -2093,7 +2109,7 @@ async function handleWorkflowCommand(argv) {
     if (flags.json) {
       writeStdoutLine(JSON.stringify(payload));
     } else {
-      writeStdoutLine(payload.summary);
+      writeStdoutLine(formatWorkflowInspectText(workflow, steps));
     }
     return 0;
   }

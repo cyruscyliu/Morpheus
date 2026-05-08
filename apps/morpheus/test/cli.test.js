@@ -452,6 +452,57 @@ test("workflow inspect reconciles stale running workflows with dead pids", () =>
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 
+test("workflow inspect prints a human-readable summary in text mode", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-inspect-text-"));
+  const runId = "wf-inspect-text";
+  const runDir = path.join(workspaceRoot, "runs", runId);
+  const stepDir = path.join(runDir, "steps", "01-build");
+  fs.mkdirSync(stepDir, { recursive: true });
+  fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
+  fs.writeFileSync(path.join(stepDir, "step.json"), `${JSON.stringify({
+    id: "01-build",
+    name: "build",
+    status: "success",
+    stepDir,
+    logFile: path.join(stepDir, "stdout.log"),
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
+    id: runId,
+    workflow: "qemu-build",
+    category: "build",
+    status: "success",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    updatedAt: "2026-04-26T12:05:00.000Z",
+    workspace: workspaceRoot,
+    runDir,
+    currentStepId: null,
+    currentChildPid: null,
+    runnerPid: null,
+    steps: [{ id: "01-build", name: "build", stepDir, status: "success" }],
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
+    id: runId,
+    kind: "workflow",
+    category: "build",
+    status: "success",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    completedAt: "2026-04-26T12:05:00.000Z",
+    summary: { workflow: "qemu-build", category: "build" },
+  }, null, 2)}\n`);
+
+  const result = run(["workflow", "inspect", "--id", runId, "--workspace", workspaceRoot], {
+    cwd: workspaceRoot,
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /^Workflow: qemu-build$/m);
+  assert.match(result.stdout, /^Run ID: wf-inspect-text$/m);
+  assert.match(result.stdout, /^Status: success$/m);
+  assert.match(result.stdout, /^Current Step: -$/m);
+  assert.match(result.stdout, /^id\tstatus\tname$/m);
+  assert.match(result.stdout, /^01-build\tsuccess\tbuild$/m);
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
 
 test("workflow remove requires a prior stop and removes stopped workflow state", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-remove-"));

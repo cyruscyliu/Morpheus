@@ -239,9 +239,15 @@ PY
 }
 
 function printWorkspaceHuman(summary) {
+  const directories = Object.entries(summary.directories || {}).filter(([name]) => name !== "root");
+  const present = directories.filter(([, info]) => info.exists).length;
+  const total = directories.length;
+  const ready = total > 0 && present === total;
   writeStdoutLine("Workspace");
   writeStdoutLine(`  root: ${summary.root}`);
-  for (const [name, info] of Object.entries(summary.directories)) {
+  writeStdoutLine(`  mode: ${summary.mode || "local"}`);
+  writeStdoutLine(`  status: ${ready ? "managed workspace ready" : "managed workspace not created yet"}`);
+  for (const [name, info] of directories) {
     writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
   }
 }

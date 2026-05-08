@@ -116,6 +116,22 @@ test("workspace show returns JSON metadata", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("workspace show prints a human-readable summary in text mode", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-show-text-"));
+  const result = run(["workspace", "show"], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /^Workspace$/m);
+  assert.match(result.stdout, /^  mode: local$/m);
+  assert.match(result.stdout, /^  status: managed workspace not created yet$/m);
+  assert.match(result.stdout, /^  tools: .* \(missing\)$/m);
+  assert.match(result.stdout, /^  runs: .* \(missing\)$/m);
+  assert.match(result.stdout, /^  tmp: .* \(missing\)$/m);
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
 test("syncRemotePathToLocal replaces existing localized directories", () => {
   const remoteRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-remote-sync-"));
   const sourceDir = path.join(remoteRoot, "qemu-8.2.7");

@@ -27,6 +27,9 @@ function usage() {
     "Purpose:",
     "  Validate morpheus.yaml and report config issues before running workflows.",
     "",
+    "Commands:",
+    "  config check       Validate morpheus.yaml.",
+    "",
     "Examples:",
     "  ./bin/morpheus config check",
     "  ./bin/morpheus --config projects/<project>/morpheus.yaml config check --json"

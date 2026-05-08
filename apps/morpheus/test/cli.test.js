@@ -335,6 +335,26 @@ test("config check can use explicit --config outside the config directory", () =
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("config check does not warn when config is discovered implicitly", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-implicit-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["config", "check"], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.stderr, "");
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
 test("config-aware commands warn when config is discovered implicitly", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-warning-"));
   writeConfig(

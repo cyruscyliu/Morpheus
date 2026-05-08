@@ -121,8 +121,9 @@ async function main() {
   const command = positionals[0];
   const subcommand = positionals[1];
   const isReadOnlyWorkspaceCommand = command === "workspace" && subcommand === "show";
+  const isReadOnlyConfigCommand = command === "config" && subcommand === "check";
   const isReadOnlyWorkflowCommand = command === "workflow" && ["list", "inspect", "logs"].includes(String(subcommand || ""));
-  const suppressImplicitConfigWarning = wantsHelp || isReadOnlyWorkspaceCommand || isReadOnlyWorkflowCommand;
+  const suppressImplicitConfigWarning = wantsHelp || isReadOnlyWorkspaceCommand || isReadOnlyConfigCommand || isReadOnlyWorkflowCommand;
   if (flags.config && typeof flags.config === "string") {
     process.env.MORPHEUS_CONFIG = path.resolve(String(flags.config));
   }

@@ -29,8 +29,10 @@ fi
 plugin_header="${qemu_include_dir}/qemu-plugin.h"
 plugin_out="${install_dir}/lib/nqc2/nqc2-plugin.so"
 cli_out="${install_dir}/bin/nqc2"
+qemu_etrace_out="${install_dir}/bin/qemu-etrace"
 manifest_file="${build_dir}/manifest.json"
-cli_src="${script_dir}/nqc2_postprocess.c"
+qemu_etrace_repo="${build_dir}/qemu-etrace"
+qemu_etrace_url="https://github.com/edgarigl/qemu-etrace.git"
 
 if [ ! -f "${plugin_header}" ]; then
   echo "missing QEMU plugin header: ${plugin_header}" >&2
@@ -40,7 +42,6 @@ fi
 mkdir -p "${build_dir}" "${install_dir}/bin" "${install_dir}/lib/nqc2" "${trace_dir}"
 
 cc="${CC:-gcc}"
-dw_flags="$(pkg-config --cflags --libs libdw libelf)"
 "${cc}" \
   -std=c11 \
   -O2 \
@@ -52,12 +53,22 @@ dw_flags="$(pkg-config --cflags --libs libdw libelf)"
   -o "${plugin_out}" \
   -lpthread
 
-"${cc}" \
-  -std=c11 \
-  -O2 \
-  "${cli_src}" \
-  -o "${cli_out}" \
-  ${dw_flags}
+if [ ! -d "${qemu_etrace_repo}/.git" ]; then
+  rm -rf "${qemu_etrace_repo}"
+  git clone "${qemu_etrace_url}" "${qemu_etrace_repo}"
+fi
+
+make -C "${qemu_etrace_repo}" -j4
+
+install -m 0755 "${qemu_etrace_repo}/qemu-etrace" "${qemu_etrace_out}"
+cat > "${cli_out}" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+exec "${script_dir}/qemu-etrace" "$@"
+EOF
+chmod +x "${cli_out}"
 
 cat > "${manifest_file}" <<EOF
 {
@@ -66,6 +77,7 @@ cat > "${manifest_file}" <<EOF
   "version": "${version}",
   "plugin": "${plugin_out}",
   "cli": "${cli_out}",
+  "qemuEtrace": "${qemu_etrace_out}",
   "traceDir": "${trace_dir}",
   "qemuInstallDir": "${qemu_install_dir:-}"
 }
@@ -78,10 +90,12 @@ cat > "${result_file}" <<EOF
     "version": "${version}",
     "plugin": "${plugin_out}",
     "cli": "${cli_out}",
+    "qemu_etrace": "${qemu_etrace_out}",
     "trace_dir": "${trace_dir}",
     "artifacts": [
       { "path": "install-dir", "location": "${install_dir}" },
       { "path": "nqc2", "location": "${cli_out}" },
+      { "path": "qemu-etrace", "location": "${qemu_etrace_out}" },
       { "path": "nqc2-plugin-so", "location": "${plugin_out}" },
       { "path": "trace-dir", "location": "${trace_dir}" }
     ]

@@ -44,6 +44,9 @@
         "nqc2": {
           "pathTemplate": "tools/nqc2/builds/{buildDirKey}/install/bin/nqc2"
         },
+        "qemu-etrace": {
+          "pathTemplate": "tools/nqc2/builds/{buildDirKey}/install/bin/qemu-etrace"
+        },
         "nqc2-plugin-so": {
           "pathTemplate": "tools/nqc2/builds/{buildDirKey}/install/lib/nqc2/nqc2-plugin.so"
         },
@@ -92,7 +95,7 @@
             "trace-dir": "tools/nqc2/builds/{buildDirKey}/trace"
           },
           "result": {
-            "successSummary": "built local NQC2 plugin and tooling",
+            "successSummary": "built local NQC2 plugin and qemu-etrace backend",
             "errorSummary": "local NQC2 build failed",
             "manifestTemplate": "{build-dir}/manifest.json",
             "details": {

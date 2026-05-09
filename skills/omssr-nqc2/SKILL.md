@@ -1,9 +1,9 @@
 ---
 name: nqc2
-description: Build the NQC2 QEMU plugin and postprocess traces into LCOV and
-  HTML coverage reports through Morpheus-managed workflows. Use when the user
-  wants to build NQC2, inspect trace-processing behavior, or reason about the
-  NQC2 coverage pipeline.
+description: Build the NQC2 QEMU plugin and postprocess traces through a
+  qemu-etrace-backed LCOV/HTML pipeline in Morpheus-managed workflows. Use
+  when the user wants to build NQC2, inspect trace-processing behavior, or
+  reason about the NQC2 coverage pipeline.
 license: MIT
 compatibility: Designed for Codex CLI (or similar products)
 ---
@@ -55,7 +55,8 @@ trace, ELF, and output paths.
 - `config.fields` defines accepted names and aliases
 - `managed.local.sourceTemplate`, `buildDirTemplate`, `installDirTemplate`:
   managed source, build, and install locations
-- `managed.local.artifacts` defines the published plugin, CLI, and trace-dir
+- `managed.local.artifacts` defines the published plugin, qemu-etrace-backed
+  CLI wrapper, backend binary, and trace-dir
 - `commands.*.script` tells Morpheus which shell step to run
 - `commands.*.result` defines summaries, artifacts, and stable details
 
@@ -68,7 +69,9 @@ Important descriptor fields:
 - `managed.local.artifacts.nqc2-plugin-so`:
   plugin path for `qemu.exec`
 - `managed.local.artifacts.nqc2`:
-  installed CLI path for direct trace processing
+  installed compatibility wrapper path
+- `managed.local.artifacts.qemu-etrace`:
+  installed backend binary used for LCOV generation
 
 ## How The Tool Works
 
@@ -77,20 +80,21 @@ NQC2 work is split into explicit stages.
 - `fetch` prepares the managed source tree
 - `build` compiles:
   - the QEMU plugin
-  - the `nqc2` postprocess CLI
-- `postprocess` consumes a trace plus `vmlinux` and writes LCOV or textual
-  coverage output
+  - a local `qemu-etrace` checkout and binary
+- `postprocess` consumes a trace plus `vmlinux`, rewrites the trace info flag
+  for `qemu-etrace` compatibility, runs `qemu-etrace`, and normalizes LCOV
+  output for `genhtml`
 - `genhtml` renders the LCOV into HTML through `genhtml`
 - `inspect` and `logs` re-read prior metadata and logs
 
-The fast path for binary traces is:
+The current LCOV path is:
 
-1. load cached per-`vmlinux` metadata:
-   - exec-map cache
-   - function-range cache
-2. stream the trace through the hot overlap stage
-3. emit LCOV
-4. optionally render HTML
+1. build the NQC2 QEMU plugin
+2. clone and build `qemu-etrace`
+3. copy the trace and clear the TB-chaining info flag
+4. run `qemu-etrace` for LCOV
+5. normalize the LCOV
+6. optionally render HTML
 
 ## JSON Contract
 
@@ -109,9 +113,10 @@ tools/nqc2/scripts/install-dependencies.sh
 It installs:
 
 - `lcov`
-- `libdw-dev`
-- `libelf-dev`
-- `elfutils`
+- `binutils-dev`
+- `dwarfdump`
+- `libglib2.0-dev`
+- `libiberty-dev`
 
 For repo-wide host setup, prefer:
 
@@ -142,9 +147,9 @@ node apps/morpheus/dist/cli.js --config projects/<project>/morpheus.yaml workflo
 
 ## Feature List
 
-- managed plugin and CLI builds
-- streamed trace postprocessing for binary traces
-- cached metadata reuse per `vmlinux`
+- managed plugin and backend builds
+- qemu-etrace-backed LCOV generation
+- Morpheus-managed trace canonicalization before postprocess
 - LCOV generation
 - HTML coverage report generation
 
@@ -157,6 +162,7 @@ node apps/morpheus/dist/cli.js --config projects/<project>/morpheus.yaml workflo
 
 ## Current Caveat
 
-Function coverage is good enough for the current HTML workflow, but should still
-be treated as approximate rather than a formally exact source-level function
-universe.
+The authoritative LCOV backend is now `qemu-etrace`.
+The wrapper still normalizes its output for `genhtml`, so exact file/function
+totals should be treated as `qemu-etrace` semantics plus a thin compatibility
+layer rather than a source-native gcov build.

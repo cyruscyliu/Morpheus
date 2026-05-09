@@ -166,3 +166,29 @@ The authoritative LCOV backend is now `qemu-etrace`.
 The wrapper still normalizes its output for `genhtml`, so exact file/function
 totals should be treated as `qemu-etrace` semantics plus a thin compatibility
 layer rather than a source-native gcov build.
+
+## Memento
+
+Before this backend switch, `nqc2` carried a large custom C postprocessor for
+LCOV generation.
+That implementation received substantial optimization work:
+
+- direct `libdw` / `libelf` integration instead of shelling out
+- metadata caching per `vmlinux`
+- streamed trace handling
+- interval-based line metadata
+- parallel hot-path processing
+- `perf`-driven tuning
+- repeated sweep and scale evaluation on small, medium, and real traces
+
+In short, it was heavily vibed, optimized, and benchmarked.
+But the core problem was semantic, not just performance:
+
+- line coverage diverged badly from `qemu-etrace`
+- function coverage diverged even more
+- repeated fixes improved mechanics without restoring semantic trust
+
+The final conclusion was that an optimized but semantically wrong coverage
+engine was the wrong foundation.
+So the repo now keeps the NQC2 plugin, but uses `qemu-etrace` as the
+authoritative coverage backend.

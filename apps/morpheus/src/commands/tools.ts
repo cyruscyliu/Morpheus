@@ -23,7 +23,6 @@ function verifyTool(name) {
   const definition = requireTool(name);
   const installRoot = path.join(repoRoot(), definition.installRoot);
   const entrypoint = definition.entry ? path.join(installRoot, definition.entry) : null;
-  const wrapperPath = definition.entry ? path.join(repoRoot(), "bin", name) : null;
   const issues = [];
 
   if (!fs.existsSync(installRoot)) {
@@ -32,14 +31,11 @@ function verifyTool(name) {
   if (entrypoint && !fs.existsSync(entrypoint)) {
     issues.push(`missing entrypoint: ${path.relative(repoRoot(), entrypoint)}`);
   }
-  if (wrapperPath && !fs.existsSync(wrapperPath)) {
-    issues.push(`missing wrapper: ${path.relative(repoRoot(), wrapperPath)}`);
-  }
 
-  let status = "valid";
+  let status = "ready";
   if (!definition.entry) {
-    status = "scripted";
-  } else if (!fs.existsSync(installRoot) || !fs.existsSync(entrypoint) || !fs.existsSync(wrapperPath)) {
+    status = "workflow-only";
+  } else if (!fs.existsSync(installRoot) || !fs.existsSync(entrypoint)) {
     status = "missing";
   } else if (issues.length > 0) {
     status = "invalid";
@@ -52,7 +48,7 @@ function verifyTool(name) {
     descriptorPath: definition.descriptorPath,
     installRoot: path.relative(repoRoot(), installRoot),
     entrypoint: entrypoint ? path.relative(repoRoot(), entrypoint) : null,
-    wrapper: wrapperPath ? path.relative(repoRoot(), wrapperPath) : null,
+    wrapper: null,
     issues
   };
 }
@@ -101,8 +97,35 @@ function extractToolSubcommand(argv) {
 function toolUsage() {
   return [
     "Usage:",
-    "  node apps/morpheus/dist/cli.js tool list [--json]"
+    "  ./bin/morpheus tool list [--json]",
+    "",
+    "Purpose:",
+    "  Inspect declared tools and whether Morpheus can use them directly or through workflows.",
+    "",
+    "Commands:",
+    "  tool list          List declared tools and their readiness.",
+    "",
+    "Examples:",
+    "  ./bin/morpheus tool list",
+    "  ./bin/morpheus tool list --json",
+    "",
+    "Notes:",
+    "  - 'workflow-only' tools are managed through configured workflows.",
+    "  - 'ready' tools have a repo-local entrypoint available to Morpheus."
   ].join("\n");
+}
+
+function verificationNote(status, issues) {
+  if (Array.isArray(issues) && issues.length > 0) {
+    return issues.join("; ");
+  }
+  if (status === "workflow-only") {
+    return "run through 'morpheus workflow run'";
+  }
+  if (status === "ready") {
+    return "available to Morpheus";
+  }
+  return "inspect verification issues";
 }
 
 function formatToolListText(items) {
@@ -110,13 +133,14 @@ function formatToolListText(items) {
     return "No tools declared.";
   }
 
-  return items
-    .map((tool) => {
+  return [
+    "name\tstatus\tnote",
+    ...items.map((tool) => {
       const status = tool.verification.status;
-      const issues = tool.verification.issues.length > 0 ? `\t${tool.verification.issues.join("; ")}` : "";
-      return `${tool.name}\t${status}${issues}`;
+      const note = verificationNote(status, tool.verification.issues);
+      return `${tool.name}\t${status}\t${note}`;
     })
-    .join("\n");
+  ].join("\n");
 }
 
 function printMaybeJson(value, flags) {
@@ -168,7 +192,27 @@ async function handleToolCommand(argv) {
       };
     });
     if (flags.json) {
-      printMaybeJson({ tools: items }, flags);
+      printMaybeJson({
+        command: "tool list",
+        status: "success",
+        exit_code: 0,
+        summary: items.length === 0 ? "no tools declared" : "listed declared tools",
+        details: {
+          tool_statuses: {
+            ready: "repo-local entrypoint is available to Morpheus",
+            "workflow-only": "tool is managed through configured workflows",
+            missing: "descriptor expects files that are not present",
+            invalid: "verification found issues that need attention"
+          },
+          tools: items.map((tool) => ({
+            ...tool,
+            verification: {
+              ...tool.verification,
+              note: verificationNote(tool.verification.status, tool.verification.issues)
+            }
+          }))
+        }
+      }, flags);
     } else {
       writeStdoutLine(formatToolListText(items));
     }

@@ -35,8 +35,20 @@ function parseWorkspaceArgs(argv) {
 function workspaceUsage() {
   return [
     "Usage:",
-    "  node apps/morpheus/dist/cli.js workspace create [--workspace DIR] [--json]",
-    "  node apps/morpheus/dist/cli.js workspace show [--workspace DIR] [--json]",
+    "  ./bin/morpheus workspace create [--workspace DIR] [--json]",
+    "  ./bin/morpheus workspace show [--workspace DIR] [--json]",
+    "",
+    "Purpose:",
+    "  Create and inspect Morpheus-managed local or remote workspace layouts.",
+    "",
+    "Commands:",
+    "  workspace create   Create local or remote managed workspace directories.",
+    "  workspace show     Inspect local or remote managed workspace state.",
+    "",
+    "Examples:",
+    "  ./bin/morpheus workspace create --workspace ./workspace",
+    "  ./bin/morpheus workspace show",
+    "  ./bin/morpheus workspace show --ssh builder@example.com:2222 --workspace /remote-workspace",
   ].join("\n");
 }
 
@@ -239,17 +251,46 @@ PY
 }
 
 function printWorkspaceHuman(summary) {
+  const directories = Object.entries(summary.directories || {}).filter(([name]) => name !== "root");
+  const present = directories.filter(([, info]) => info.exists).length;
+  const total = directories.length;
+  const ready = total > 0 && present === total;
   writeStdoutLine("Workspace");
   writeStdoutLine(`  root: ${summary.root}`);
-  for (const [name, info] of Object.entries(summary.directories)) {
+  writeStdoutLine(`  mode: ${summary.mode || "local"}`);
+  writeStdoutLine(`  status: ${ready ? "managed workspace ready" : "managed workspace not created yet"}`);
+  for (const [name, info] of directories) {
+    writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
+  }
+}
+
+function printNamedWorkspaceHuman(label, summary, extras = {}) {
+  const directories = Object.entries(summary.directories || {}).filter(([name]) => name !== "root");
+  const present = directories.filter(([, info]) => info.exists).length;
+  const total = directories.length;
+  const ready = total > 0 && present === total;
+  writeStdoutLine(label);
+  if (extras.ssh) {
+    writeStdoutLine(`  ssh: ${extras.ssh}`);
+  }
+  writeStdoutLine(`  root: ${summary.root}`);
+  writeStdoutLine(`  mode: ${summary.mode || "local"}`);
+  writeStdoutLine(`  status: ${ready ? "managed workspace ready" : "managed workspace not created yet"}`);
+  for (const [name, info] of directories) {
     writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
   }
 }
 
 function printCreateHuman(result) {
-  writeStdoutLine(`Workspace created at ${result.root}`);
+  writeStdoutLine("Workspace created");
   writeStdoutLine(`  created: ${result.created.length}`);
   writeStdoutLine(`  existing: ${result.existing.length}`);
+  writeStdoutLine(`  root: ${result.workspace.root}`);
+  writeStdoutLine(`  mode: ${result.workspace.mode || "local"}`);
+  writeStdoutLine("  status: managed workspace ready");
+  for (const [name, info] of Object.entries(result.workspace.directories).filter(([name]) => name !== "root")) {
+    writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
+  }
 }
 
 function aggregateWorkspaceResults(localResult, remoteResult) {
@@ -260,32 +301,95 @@ function aggregateWorkspaceResults(localResult, remoteResult) {
   };
 }
 
+function relativizeWorkspaceShape(shape) {
+  if (!shape || typeof shape !== "object") {
+    return shape;
+  }
+  const directories = {};
+  for (const [name, info] of Object.entries(shape.directories || {})) {
+    directories[name] = {
+      ...info,
+      path: typeof info.path === "string" ? toRelative(info.path) : info.path,
+    };
+  }
+  return {
+    ...shape,
+    root: typeof shape.root === "string" ? toRelative(shape.root) : shape.root,
+    directories,
+  };
+}
+
+function relativizeWorkspaceCreateResult(result) {
+  if (!result || typeof result !== "object") {
+    return result;
+  }
+  const relativizeEntries = (entries) => Array.isArray(entries)
+    ? entries.map((entry) => ({
+        ...entry,
+        path: typeof entry.path === "string" ? toRelative(entry.path) : entry.path,
+      }))
+    : entries;
+  return {
+    ...result,
+    root: typeof result.root === "string" ? toRelative(result.root) : result.root,
+    created: relativizeEntries(result.created),
+    existing: relativizeEntries(result.existing),
+    workspace: relativizeWorkspaceShape(result.workspace),
+  };
+}
+
+function workspaceJsonDetails(details) {
+  if (!details || typeof details !== "object") {
+    return details;
+  }
+  if (details.mode === "hybrid" && details.local && details.remote) {
+    return {
+      ...details,
+      local: relativizeWorkspaceCreateResult(details.local),
+      remote: details.remote,
+    };
+  }
+  if (Array.isArray(details.created) || Array.isArray(details.existing)) {
+    return details.mode === "remote" ? details : relativizeWorkspaceCreateResult(details);
+  }
+  return details.mode === "remote" ? details : relativizeWorkspaceShape(details);
+}
+
 function printHybridCreateHuman(result) {
+  writeStdoutLine("Workspace created");
   writeStdoutLine("Local workspace");
-  writeStdoutLine(`  root: ${result.local.root}`);
-  for (const [name, info] of Object.entries(result.local.workspace.directories)) {
+  writeStdoutLine(`  created: ${result.local.created.length}`);
+  writeStdoutLine(`  existing: ${result.local.existing.length}`);
+  writeStdoutLine(`  root: ${result.local.workspace.root}`);
+  writeStdoutLine(`  mode: ${result.local.workspace.mode || "local"}`);
+  writeStdoutLine("  status: managed workspace ready");
+  for (const [name, info] of Object.entries(result.local.workspace.directories).filter(([name]) => name !== "root")) {
     writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
   }
   writeStdoutLine("Remote workspace");
+  writeStdoutLine(`  created: ${result.remote.created.length}`);
   writeStdoutLine(`  ssh: ${result.remote.ssh}`);
-  writeStdoutLine(`  root: ${result.remote.root}`);
-  for (const [name, info] of Object.entries(result.remote.workspace.directories)) {
+  writeStdoutLine(`  root: ${result.remote.workspace.root}`);
+  writeStdoutLine(`  mode: ${result.remote.workspace.mode || "remote"}`);
+  writeStdoutLine("  status: managed workspace ready");
+  for (const [name, info] of Object.entries(result.remote.workspace.directories).filter(([name]) => name !== "root")) {
     writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
   }
 }
 
 function printHybridShowHuman(result) {
-  writeStdoutLine("Local workspace");
-  writeStdoutLine(`  root: ${result.local.root}`);
-  for (const [name, info] of Object.entries(result.local.directories)) {
-    writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
-  }
-  writeStdoutLine("Remote workspace");
-  writeStdoutLine(`  ssh: ${result.remote.ssh}`);
-  writeStdoutLine(`  root: ${result.remote.root}`);
-  for (const [name, info] of Object.entries(result.remote.directories)) {
-    writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
-  }
+  printNamedWorkspaceHuman("Local workspace", result.local);
+  printNamedWorkspaceHuman("Remote workspace", result.remote, { ssh: result.remote.ssh });
+}
+
+function workspaceJson(command, summary, details) {
+  return {
+    command,
+    status: "success",
+    exit_code: 0,
+    summary,
+    details: workspaceJsonDetails(details),
+  };
 }
 
 function handleWorkspaceCommand(argv) {
@@ -322,7 +426,7 @@ function handleWorkspaceCommand(argv) {
       const remoteResult = createRemoteWorkspace(sshTarget, explicitWorkspace);
       const result = aggregateWorkspaceResults(localResult, remoteResult);
       if (flags.json) {
-        writeStdoutLine(JSON.stringify(result, null, 2));
+        writeStdoutLine(JSON.stringify(workspaceJson("workspace create", "created managed workspace layout", result), null, 2));
         return 0;
       }
       printHybridCreateHuman(result);
@@ -335,30 +439,34 @@ function handleWorkspaceCommand(argv) {
       }
       const result = createRemoteWorkspace(sshTarget, explicitWorkspace);
       if (flags.json) {
-        writeStdoutLine(JSON.stringify(result, null, 2));
+        writeStdoutLine(JSON.stringify(workspaceJson("workspace create", "created managed workspace layout", result), null, 2));
         return 0;
       }
-      writeStdoutLine(`Remote workspace created at ${result.root}`);
-      writeStdoutLine(`  ssh: ${result.ssh}`);
+      writeStdoutLine("Workspace created");
       writeStdoutLine(`  created: ${result.created.length}`);
+      writeStdoutLine(`  root: ${result.workspace.root}`);
+      writeStdoutLine(`  ssh: ${result.ssh}`);
+      writeStdoutLine(`  mode: ${result.workspace.mode || "remote"}`);
+      writeStdoutLine("  status: managed workspace ready");
+      for (const [name, info] of Object.entries(result.workspace.directories).filter(([name]) => name !== "root")) {
+        writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
+      }
       return 0;
     }
 
     if (explicitWorkspace) {
       const result = createManagedWorkspace(explicitWorkspace);
       if (flags.json) {
-        writeStdoutLine(JSON.stringify(result, null, 2));
+        writeStdoutLine(JSON.stringify(workspaceJson("workspace create", "created managed workspace layout", result), null, 2));
         return 0;
       }
-      writeStdoutLine(`Workspace created at ${result.root}`);
-      writeStdoutLine(`  created: ${result.created.length}`);
-      writeStdoutLine(`  existing: ${result.existing.length}`);
+      printCreateHuman(result);
       return 0;
     }
 
     const result = createManagedWorkspace(configuredLocalWorkspace || workRoot());
     if (flags.json) {
-      writeStdoutLine(JSON.stringify(result, null, 2));
+      writeStdoutLine(JSON.stringify(workspaceJson("workspace create", "created managed workspace layout", result), null, 2));
       return 0;
     }
 
@@ -374,7 +482,7 @@ function handleWorkspaceCommand(argv) {
         remote: describeRemoteWorkspace(sshTarget, explicitWorkspace)
       };
       if (flags.json) {
-        writeStdoutLine(JSON.stringify(summary, null, 2));
+        writeStdoutLine(JSON.stringify(workspaceJson("workspace show", "inspected managed workspace layout", summary), null, 2));
         return 0;
       }
       printHybridShowHuman(summary);
@@ -387,22 +495,17 @@ function handleWorkspaceCommand(argv) {
       }
       const summary = describeRemoteWorkspace(sshTarget, explicitWorkspace);
       if (flags.json) {
-        writeStdoutLine(JSON.stringify(summary, null, 2));
+        writeStdoutLine(JSON.stringify(workspaceJson("workspace show", "inspected managed workspace layout", summary), null, 2));
         return 0;
       }
-      writeStdoutLine("Remote workspace");
-      writeStdoutLine(`  ssh: ${summary.ssh}`);
-      writeStdoutLine(`  root: ${summary.root}`);
-      for (const [name, info] of Object.entries(summary.directories)) {
-        writeStdoutLine(`  ${name}: ${info.path} (${info.exists ? "present" : "missing"})`);
-      }
+      printNamedWorkspaceHuman("Remote workspace", summary, { ssh: summary.ssh });
       return 0;
     }
 
     if (explicitWorkspace) {
       const summary = describeManagedWorkspace(explicitWorkspace);
       if (flags.json) {
-        writeStdoutLine(JSON.stringify(summary, null, 2));
+        writeStdoutLine(JSON.stringify(workspaceJson("workspace show", "inspected managed workspace layout", summary), null, 2));
         return 0;
       }
       printWorkspaceHuman(summary);
@@ -411,7 +514,7 @@ function handleWorkspaceCommand(argv) {
 
     const summary = describeManagedWorkspace(configuredLocalWorkspace || workRoot());
     if (flags.json) {
-      writeStdoutLine(JSON.stringify(summary, null, 2));
+      writeStdoutLine(JSON.stringify(workspaceJson("workspace show", "inspected managed workspace layout", summary), null, 2));
       return 0;
     }
 

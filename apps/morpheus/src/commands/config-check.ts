@@ -22,7 +22,17 @@ const TOOL_PATH_KEYS = new Set([
 function usage() {
   return [
     "Usage:",
-    "  node apps/morpheus/dist/cli.js [--config PATH] config check [--json]"
+    "  ./bin/morpheus [--config PATH] config check [--json]",
+    "",
+    "Purpose:",
+    "  Validate morpheus.yaml and report config issues before running workflows.",
+    "",
+    "Commands:",
+    "  config check       Validate morpheus.yaml.",
+    "",
+    "Examples:",
+    "  ./bin/morpheus config check",
+    "  ./bin/morpheus --config projects/<project>/morpheus.yaml config check --json"
   ].join("\n");
 }
 
@@ -103,12 +113,20 @@ function checkToolPaths(value) {
 }
 
 function formatText(result) {
+  const lines = [
+    "Config check",
+    `  config: ${result.details.config}`,
+    `  status: ${result.status === "success" ? "ok" : "error"}`,
+    `  summary: ${result.summary}`,
+  ];
   if (result.issues.length === 0) {
-    return `ok: ${result.summary}`;
+    return lines.join("\n");
   }
-  return result.issues
-    .map((issue) => `${issue.level}: ${issue.path}: ${issue.message}`)
-    .join("\n");
+  return [
+    ...lines,
+    "Issues:",
+    ...result.issues.map((issue) => `  ${issue.level}: ${issue.path}: ${issue.message}`)
+  ].join("\n");
 }
 
 function runConfigCheck() {

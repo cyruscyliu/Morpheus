@@ -55,16 +55,36 @@ function usage() {
   writeStdout(
     [
       "Usage:",
-      "  node apps/morpheus/dist/cli.js [--config PATH] workspace create [--workspace DIR] [--json]",
-      "  node apps/morpheus/dist/cli.js [--config PATH] workspace show [--workspace DIR] [--json]",
-      "  node apps/morpheus/dist/cli.js [--config PATH] config check [--json]",
-      "  node apps/morpheus/dist/cli.js tool list [--json]",
-      "  node apps/morpheus/dist/cli.js --config projects/<project>/morpheus.yaml workflow run --name WORKFLOW_NAME [--json]",
-      "  node apps/morpheus/dist/cli.js [--config PATH] workflow resume --id WORKFLOW_RUN_ID [--from-step STEP_ID] [--one-step] [--json]",
-      "  node apps/morpheus/dist/cli.js [--config PATH] workflow inspect --id WORKFLOW_RUN_ID [--json]",
-      "  node apps/morpheus/dist/cli.js [--config PATH] workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow] [--json]",
-      "  node apps/morpheus/dist/cli.js [--config PATH] workflow stop --id WORKFLOW_RUN_ID [--json]",
-      "  node apps/morpheus/dist/cli.js [--config PATH] workflow remove --id WORKFLOW_RUN_ID [--json]"
+      "  ./bin/morpheus <command> [options]",
+      "",
+      "Commands:",
+      "  workspace create   Create a managed workspace layout.",
+      "  workspace show     Inspect local or remote workspace state.",
+      "  config check       Validate morpheus.yaml.",
+      "  tool list          List declared tools and their readiness.",
+      "  workflow list      List configured workflows.",
+      "  workflow run       Start a configured workflow.",
+      "  workflow resume    Resume a prior workflow run.",
+      "  workflow inspect   Inspect workflow state and steps.",
+      "  workflow logs      Print workflow step logs.",
+      "  workflow stop      Stop a running workflow.",
+      "  workflow remove    Remove a stopped workflow run.",
+      "",
+      "Start Here:",
+      "  ./bin/morpheus tool list",
+      "  ./bin/morpheus --config projects/<project>/morpheus.yaml workflow list --json",
+      "  ./bin/morpheus --config projects/<project>/morpheus.yaml config check --json",
+      "  ./bin/morpheus --config projects/<project>/morpheus.yaml workflow run --name <workflow> --json",
+      "",
+      "Examples:",
+      "  ./bin/morpheus workspace show",
+      "  ./bin/morpheus --config projects/<project>/morpheus.yaml workflow inspect --id <run-id> --json",
+      "  ./bin/morpheus --config projects/<project>/morpheus.yaml workflow logs --id <run-id> --step <step-id>",
+      "",
+      "Notes:",
+      "  - Prefer passing --config explicitly for workflow commands.",
+      "  - Use --json for machine-readable output.",
+      "  - Tool execution is workflow-first; start with 'workflow run'."
     ].join("\n") + "\n"
   );
 }
@@ -97,11 +117,17 @@ async function main() {
   const rawArgv = process.argv.slice(2);
   const { positionals, flags } = parseArgs(rawArgv);
   const explicitConfig = typeof flags.config === "string" ? String(flags.config) : null;
+  const wantsHelp = Boolean(flags.help) || positionals[0] === "help" || rawArgv.includes("--help");
+  const command = positionals[0];
+  const subcommand = positionals[1];
+  const isReadOnlyWorkspaceCommand = command === "workspace" && subcommand === "show";
+  const isReadOnlyConfigCommand = command === "config" && subcommand === "check";
+  const isReadOnlyWorkflowCommand = command === "workflow" && ["list", "inspect", "logs"].includes(String(subcommand || ""));
+  const suppressImplicitConfigWarning = wantsHelp || isReadOnlyWorkspaceCommand || isReadOnlyConfigCommand || isReadOnlyWorkflowCommand;
   if (flags.config && typeof flags.config === "string") {
     process.env.MORPHEUS_CONFIG = path.resolve(String(flags.config));
   }
   const argv = stripGlobalFlags(rawArgv);
-  const command = positionals[0];
   const configAwareCommands = new Set(["workspace", "config", "fetch", "patch", "build", "inspect", "logs", "exec", "postprocess", "genhtml", "stop", "workflow"]);
 
   if (!command || command === "help" || command === "--help") {
@@ -109,7 +135,7 @@ async function main() {
     return 0;
   }
 
-  if (!explicitConfig && !process.env.MORPHEUS_CONFIG && configAwareCommands.has(String(command))) {
+  if (!suppressImplicitConfigWarning && !explicitConfig && !process.env.MORPHEUS_CONFIG && configAwareCommands.has(String(command))) {
     const implicitConfig = findConfigPath(process.cwd());
     if (implicitConfig) {
       writeStderrLine(`warning: using implicitly discovered config ${implicitConfig}; pass --config explicitly`);

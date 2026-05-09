@@ -113,15 +113,7 @@ importers:
         specifier: ^4.20.3
         version: 4.21.0
 
-  tools/libvmm: {}
-
-  tools/microkit-sdk: {}
-
-  tools/nvirsh: {}
-
   tools/outline-to-paper: {}
-
-  tools/sel4: {}
 
 packages:
 

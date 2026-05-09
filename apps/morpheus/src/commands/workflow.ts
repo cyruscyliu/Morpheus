@@ -51,12 +51,35 @@ function parseWorkflowArgs(argv) {
 function workflowUsage() {
   return [
     "Usage:",
-    "  node apps/morpheus/dist/cli.js --config projects/<project>/morpheus.yaml workflow run --name WORKFLOW_NAME [--json]",
-    "  node apps/morpheus/dist/cli.js [--config PATH] workflow resume --id WORKFLOW_RUN_ID [--from-step STEP_ID] [--one-step] [--json]",
-    "  node apps/morpheus/dist/cli.js [--config PATH] workflow inspect --id WORKFLOW_RUN_ID [--json]",
-    "  node apps/morpheus/dist/cli.js [--config PATH] workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow] [--json]",
-    "  node apps/morpheus/dist/cli.js [--config PATH] workflow stop --id WORKFLOW_RUN_ID [--json]",
-    "  node apps/morpheus/dist/cli.js [--config PATH] workflow remove --id WORKFLOW_RUN_ID [--json]"
+    "  ./bin/morpheus [--config PATH] workflow list [--json]",
+    "  ./bin/morpheus --config projects/<project>/morpheus.yaml workflow run --name WORKFLOW_NAME [--json]",
+    "  ./bin/morpheus [--config PATH] workflow resume --id WORKFLOW_RUN_ID [--from-step STEP_ID] [--one-step] [--json]",
+    "  ./bin/morpheus [--config PATH] workflow inspect --id WORKFLOW_RUN_ID [--json]",
+    "  ./bin/morpheus [--config PATH] workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow]",
+    "  ./bin/morpheus [--config PATH] workflow stop --id WORKFLOW_RUN_ID [--json]",
+    "  ./bin/morpheus [--config PATH] workflow remove --id WORKFLOW_RUN_ID [--json]",
+    "",
+    "Purpose:",
+    "  Discover, run, inspect, and manage Morpheus workflow runs.",
+    "",
+    "Commands:",
+    "  workflow list      List configured workflows.",
+    "  workflow run       Start a configured workflow.",
+    "  workflow resume    Resume a previous workflow run.",
+    "  workflow inspect   Inspect workflow state and steps.",
+    "  workflow logs      Print logs for a workflow step.",
+    "  workflow stop      Stop a running workflow.",
+    "  workflow remove    Remove a stopped workflow run.",
+    "",
+    "Examples:",
+    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow list --json",
+    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow run --name qemu-build --json",
+    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow inspect --id <run-id> --json",
+    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow logs --id <run-id> --step <step-id>",
+    "",
+    "Notes:",
+    "  - Pass --config explicitly for project workflows.",
+    "  - 'workflow logs --follow' streams text logs and does not support --json."
   ].join("\n");
 }
 
@@ -82,6 +105,60 @@ function shellQuote(value) {
 
 function stepToolResultPath(stepDir) {
   return path.join(stepDir, "tool-result.json");
+}
+
+function relativeToCwd(targetPath) {
+  return path.relative(process.cwd(), targetPath);
+}
+
+function relativizeWorkflowRecord(workflow) {
+  if (!workflow || typeof workflow !== "object") {
+    return workflow;
+  }
+  return {
+    ...workflow,
+    workspace: typeof workflow.workspace === "string" ? relativeToCwd(workflow.workspace) : workflow.workspace,
+    runDir: typeof workflow.runDir === "string" ? relativeToCwd(workflow.runDir) : workflow.runDir,
+  };
+}
+
+function relativizeStepRecord(step) {
+  if (!step || typeof step !== "object") {
+    return step;
+  }
+  return {
+    ...step,
+    stepDir: typeof step.stepDir === "string" ? relativeToCwd(step.stepDir) : step.stepDir,
+    logFile: typeof step.logFile === "string" ? relativeToCwd(step.logFile) : step.logFile,
+  };
+}
+
+function normalizeWorkflowInspectDetails(workflow, steps) {
+  const workflowRecord = relativizeWorkflowRecord(workflow) || {};
+  return {
+    id: workflowRecord.id || null,
+    workflow: workflowRecord.workflow || null,
+    category: workflowRecord.category || null,
+    status: workflowRecord.status || null,
+    workspace: workflowRecord.workspace || null,
+    run_dir: workflowRecord.runDir || null,
+    current_step_id: workflowRecord.currentStepId || null,
+    current_child_pid: workflowRecord.currentChildPid == null ? null : workflowRecord.currentChildPid,
+    runner_pid: workflowRecord.runnerPid == null ? null : workflowRecord.runnerPid,
+    created_at: workflowRecord.createdAt || null,
+    updated_at: workflowRecord.updatedAt || null,
+    steps: steps.map((step) => {
+      const stepRecord = relativizeStepRecord(step) || {};
+      return {
+        id: stepRecord.id || null,
+        name: stepRecord.name || null,
+        status: stepRecord.status || null,
+        step_dir: stepRecord.stepDir || null,
+        log_file: stepRecord.logFile || null,
+        exit_code: stepRecord.exitCode == null ? null : stepRecord.exitCode,
+      };
+    }),
+  };
 }
 
 function cliEntrypoint() {
@@ -293,12 +370,39 @@ function resolveTemplateStepValue(context, stepId, stepPath) {
   return resolveArtifactTemplateValue(payload, stepPath, preferLocal);
 }
 
+function listConfiguredWorkflows(explicitConfigPath = null) {
+  const config = loadConfig(process.cwd(), { explicitPath: explicitConfigPath });
+  const workflows = config && config.value && config.value.workflows ? config.value.workflows : {};
+  const items = Object.entries(workflows)
+    .map(([name, workflow]) => {
+      const value = workflow && typeof workflow === "object" ? workflow : {};
+      const steps = Array.isArray(value.steps) ? value.steps : [];
+      return {
+        name,
+        category: value.category || "run",
+        steps: steps.length,
+        config: config.path ? path.relative(process.cwd(), config.path) || "morpheus.yaml" : null,
+      };
+    })
+    .sort((left, right) => left.name.localeCompare(right.name));
+  return {
+    command: "workflow list",
+    status: "success",
+    exit_code: 0,
+    summary: items.length === 0 ? "no configured workflows" : "listed configured workflows",
+    details: {
+      config: config.path ? path.relative(process.cwd(), config.path) || "morpheus.yaml" : null,
+      workflows: items,
+    }
+  };
+}
+
 function resolveConfiguredWorkflow(name, explicitConfigPath = null) {
   const config = loadConfig(process.cwd(), { explicitPath: explicitConfigPath });
   const workflows = config && config.value && config.value.workflows ? config.value.workflows : {};
   const workflow = workflows && workflows[name] ? workflows[name] : null;
   if (!workflow) {
-    throw new Error(`unknown configured workflow: ${name}`);
+    throw new Error(`unknown configured workflow: ${name}; run 'morpheus workflow list' to inspect available workflows`);
   }
   if (!Array.isArray(workflow.steps) || workflow.steps.length === 0) {
     throw new Error(`configured workflow has no steps: ${name}`);
@@ -449,7 +553,7 @@ function findWorkflowRun(workspaceRoot, id) {
   const runDir = path.join(workflowRunsRoot(workspaceRoot), id);
   const manifestPath = workflowManifestPath(runDir);
   if (!fs.existsSync(manifestPath)) {
-    throw new Error(`workflow run not found: ${id}`);
+    throw new Error(`workflow run not found: ${id}; use 'morpheus workflow list' to start a run or 'morpheus workflow inspect --id <run-id>' with a valid id`);
   }
   return { runDir, manifestPath };
 }
@@ -715,7 +819,8 @@ function stopWorkflowRun(workspaceRoot, id) {
     details: {
       id: updatedWorkflow.id,
       workflow: updatedWorkflow.workflow,
-      run_dir: updatedWorkflow.runDir,
+      status: updatedWorkflow.status,
+      run_dir: relativeToCwd(updatedWorkflow.runDir),
       stopped_child_pid: currentChildPid > 0 ? currentChildPid : null,
       stopped_runner_pid: runnerPid > 0 ? runnerPid : null,
     },
@@ -756,7 +861,9 @@ function removeWorkflowRun(workspaceRoot, id) {
     summary: "removed workflow run",
     details: {
       id,
-      run_dir: found.runDir,
+      workflow: workflow.workflow,
+      status: "removed",
+      run_dir: relativeToCwd(found.runDir),
     },
   };
 }
@@ -1725,8 +1832,8 @@ async function runToolWorkflow({
       id: updatedWorkflow.id,
       workflow: updatedWorkflow.workflow,
       workspace: updatedWorkflow.workspace,
-      run_dir: updatedWorkflow.runDir,
-      manifest: workflowManifestPath(updatedWorkflow.runDir),
+      run_dir: relativeToCwd(updatedWorkflow.runDir),
+      manifest: relativeToCwd(workflowManifestPath(updatedWorkflow.runDir)),
       steps: updatedWorkflow.steps,
       failed_step: workflowStatus === "success"
         ? null
@@ -1741,7 +1848,7 @@ async function runToolWorkflow({
             id: step.id,
             name: step.name,
             tool: (step.name || "").split(".")[0],
-            log_file: logFile,
+            log_file: relativeToCwd(logFile),
             log_tail: tailFile(logFile, 12000),
           };
         })()
@@ -1891,11 +1998,55 @@ function followLogFile(logFile) {
   });
 }
 
+function formatWorkflowInspectText(workflow, steps) {
+  const lines = [
+    `Workflow: ${workflow.workflow || "-"}`,
+    `Run ID: ${workflow.id || "-"}`,
+    `Status: ${workflow.status || "-"}`,
+    `Category: ${workflow.category || "-"}`,
+    `Current Step: ${workflow.currentStepId || "-"}`,
+    `Created: ${workflow.createdAt || "-"}`,
+    `Updated: ${workflow.updatedAt || "-"}`,
+    "Steps:",
+    "id\tstatus\tname",
+    ...steps.map((step) => `${step.id || "-"}\t${step.status || "-"}\t${step.name || "-"}`),
+  ];
+  return lines.join("\n");
+}
+
+function formatWorkflowLifecycleText(payload) {
+  const details = payload && payload.details ? payload.details : {};
+  const lines = [
+    `${payload.summary}`,
+    `Run ID: ${details.id || "-"}`,
+    `Workflow: ${details.workflow || "-"}`,
+    `Status: ${details.status || "-"}`,
+  ];
+  return lines.join("\n");
+}
+
 async function handleWorkflowCommand(argv) {
   const { positionals, flags } = parseWorkflowArgs(argv);
   const subcommand = positionals[0];
   if (!subcommand || subcommand === "help" || subcommand === "--help") {
     writeStdoutLine(workflowUsage());
+    return 0;
+  }
+
+  if (subcommand === "list") {
+    const payload = listConfiguredWorkflows();
+    if (flags.json) {
+      writeStdoutLine(JSON.stringify(payload, null, 2));
+    } else if (payload.details.workflows.length === 0) {
+      writeStdoutLine("No configured workflows.");
+    } else {
+      writeStdoutLine([
+        "name\tcategory\tsteps\tconfig",
+        ...payload.details.workflows.map((workflow) => (
+          `${workflow.name}\t${workflow.category}\t${workflow.steps}\t${workflow.config || "-"}`
+        ))
+      ].join("\n"));
+    }
     return 0;
   }
 
@@ -2033,12 +2184,12 @@ async function handleWorkflowCommand(argv) {
       status: "success",
       exit_code: 0,
       summary: "inspected workflow run",
-      details: { workflow, steps }
+      details: normalizeWorkflowInspectDetails(workflow, steps)
     };
     if (flags.json) {
       writeStdoutLine(JSON.stringify(payload));
     } else {
-      writeStdoutLine(payload.summary);
+      writeStdoutLine(formatWorkflowInspectText(workflow, steps));
     }
     return 0;
   }
@@ -2067,6 +2218,9 @@ async function handleWorkflowCommand(argv) {
       if (flags.json) {
         throw new Error("workflow logs does not support --json with --follow");
       }
+      if (!flags.step) {
+        writeStdoutLine(`Selected step: ${stepId}`);
+      }
       return await followLogFile(logFile);
     }
     const content = fs.readFileSync(logFile, "utf8");
@@ -2076,9 +2230,12 @@ async function handleWorkflowCommand(argv) {
         status: "success",
         exit_code: 0,
         summary: "printed workflow logs",
-        details: { id, step: stepId, log_file: logFile, bytes: Buffer.byteLength(content, "utf8") }
+        details: { id, step: stepId, log_file: relativeToCwd(logFile), bytes: Buffer.byteLength(content, "utf8") }
       }));
     } else {
+      if (!flags.step) {
+        writeStdoutLine(`Selected step: ${stepId}`);
+      }
       writeStdoutLine(content.trimEnd());
     }
     return 0;
@@ -2094,7 +2251,7 @@ async function handleWorkflowCommand(argv) {
     if (flags.json) {
       writeStdoutLine(JSON.stringify(payload));
     } else {
-      writeStdoutLine(`${payload.summary}: ${payload.details.id}`);
+      writeStdoutLine(formatWorkflowLifecycleText(payload));
     }
     return 0;
   }
@@ -2109,7 +2266,7 @@ async function handleWorkflowCommand(argv) {
     if (flags.json) {
       writeStdoutLine(JSON.stringify(payload));
     } else {
-      writeStdoutLine(`${payload.summary}: ${payload.details.id}`);
+      writeStdoutLine(formatWorkflowLifecycleText(payload));
     }
     return 0;
   }

@@ -9,10 +9,10 @@ coverage_output="${MORPHEUS_NQC2_COVERAGE_OUTPUT:-}"
 coverage_format="${MORPHEUS_NQC2_COVERAGE_FORMAT:-none}"
 wait_seconds="${MORPHEUS_NQC2_WAIT_SECONDS:-0}"
 result_file="${MORPHEUS_NQC2_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
-cli="${install_dir}/bin/qemu-etrace"
+cli="${install_dir}/bin/nqc2"
 
 if [ ! -x "${cli}" ]; then
-  echo "missing qemu-etrace CLI: ${cli}" >&2
+  echo "missing nqc2 CLI: ${cli}" >&2
   exit 1
 fi
 

@@ -112,6 +112,22 @@ function checkToolPaths(value) {
   return issues;
 }
 
+function checkCacheConfig(value) {
+  const issues = [];
+  const cache = value.cache;
+  if (!cache || typeof cache !== "object") {
+    return issues;
+  }
+  if (cache.root && !cache.namespace) {
+    issues.push({
+      level: "error",
+      path: "cache.namespace",
+      message: "cache.namespace is required when cache.root is configured"
+    });
+  }
+  return issues;
+}
+
 function formatText(result) {
   const lines = [
     "Config check",
@@ -135,6 +151,7 @@ function runConfigCheck() {
     throw new Error("could not find morpheus.yaml");
   }
   const issues = [
+    ...checkCacheConfig(config.value || {}),
     ...checkToolModes(config.value || {}),
     ...checkToolPaths(config.value || {}),
   ];

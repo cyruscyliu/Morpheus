@@ -9,6 +9,7 @@
     "build": "pnpm run build:apps && pnpm run build:js-tools",
     "build:apps": "pnpm --filter @morpheus/app build && pnpm --filter @morpheus/docs build && pnpm --filter @morpheus/runs-viewer build",
     "build:js-tools": "pnpm --filter @morpheus/outline-to-paper build",
+    "cache:enable": "node scripts/enable-cache.mjs",
     "dev:docs": "pnpm --filter @morpheus/docs dev",
     "dev:runs-viewer": "HOSTNAME=127.0.0.1 PORT=4174 pnpm --filter @morpheus/runs-viewer dev",
     "smoke:tool:buildroot": "node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name buildroot-build-ci",

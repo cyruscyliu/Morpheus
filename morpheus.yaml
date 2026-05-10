@@ -1,5 +1,11 @@
 workspace:
   root: ./workspace
+cache:
+  root: ~/.cache/morpheus
+  namespace: root
+  downloads: global
+  builds: global
+  src: global
 tools:
   buildroot:
     seed-dir: ./tools/buildroot/fixtures/minimal-buildroot

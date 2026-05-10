@@ -1,5 +1,6 @@
 // @ts-nocheck
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const yaml = require("yaml");
 const { logDebug } = require("./logger");
@@ -127,18 +128,49 @@ function configDir(configPath) {
   return path.dirname(configPath);
 }
 
-function resolveLocalPath(baseDir, inputPath) {
+function appRepoRoot() {
+  return path.resolve(__dirname, "..", "..", "..", "..");
+}
+
+function expandUserPath(inputPath) {
   if (!inputPath) {
     return inputPath;
   }
   const value = String(inputPath);
-  if (value.startsWith("~")) {
-    return value;
+  if (value === "~") {
+    return os.homedir();
   }
+  if (value.startsWith("~/")) {
+    return path.join(os.homedir(), value.slice(2));
+  }
+  return value;
+}
+
+function resolveLocalPath(baseDir, inputPath) {
+  if (!inputPath) {
+    return inputPath;
+  }
+  const value = expandUserPath(inputPath);
   if (path.isAbsolute(value)) {
     return value;
   }
   return path.resolve(baseDir, value);
+}
+
+function resolveCachePolicy(configValue, configPath, baseDir) {
+  if (!isPlainObject(configValue) || !isPlainObject(configValue.cache) || !configValue.cache.root) {
+    return null;
+  }
+  if (!configValue.cache.namespace) {
+    throw new Error("cache.namespace must be configured when cache.root is set");
+  }
+  return {
+    root: resolveLocalPath(baseDir, configValue.cache.root),
+    namespace: String(configValue.cache.namespace),
+    downloads: String(configValue.cache.downloads || "workspace"),
+    builds: String(configValue.cache.builds || "workspace"),
+    src: String(configValue.cache.src || "workspace"),
+  };
 }
 
 function resolveManagedToolPath(baseDir, workspaceRoot, toolName, inputPath) {
@@ -355,6 +387,14 @@ function applyConfigDefaults(flags, options) {
   const value = config.value || {};
   const baseDir = configDir(config.path);
   const next = { ...flags };
+  const cachePolicy = resolveCachePolicy(value, config.path, baseDir);
+  if (cachePolicy) {
+    next.__cache_root = cachePolicy.root;
+    next.__cache_namespace = cachePolicy.namespace;
+    next.__cache_downloads = cachePolicy.downloads;
+    next.__cache_builds = cachePolicy.builds;
+    next.__cache_src = cachePolicy.src;
+  }
   const allowGlobalRemote = Boolean(options && options.allowGlobalRemote);
   const allowToolDefaults = Boolean(options && options.allowToolDefaults);
   let workspaceEntry = null;

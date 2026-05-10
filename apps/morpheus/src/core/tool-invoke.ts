@@ -101,6 +101,45 @@ function templateValues(buildVersion, buildDirKey, extras = {}) {
   };
 }
 
+function cachePolicyFromResolved(resolved) {
+  if (!resolved || !resolved.__cache_root) {
+    return null;
+  }
+  return {
+    root: resolved.__cache_root,
+    namespace: resolved.__cache_namespace || "default",
+    downloads: resolved.__cache_downloads || "workspace",
+    builds: resolved.__cache_builds || "workspace",
+    src: resolved.__cache_src || "workspace",
+  };
+}
+
+function resolveManagedRelativePath(workspace, relativePath, cachePolicy) {
+  const relative = String(relativePath || "");
+  const normalized = relative.replace(/\\/g, "/");
+  if (cachePolicy && cachePolicy.root) {
+    const match = normalized.match(/^tools\/([^/]+)\/(src|downloads|builds)(\/.*)?$/);
+    if (match) {
+      const [, toolName, section, suffix = ""] = match;
+      const mode = section === "src"
+        ? cachePolicy.src
+        : (section === "downloads" ? cachePolicy.downloads : cachePolicy.builds);
+      if (mode === "global") {
+        const rest = suffix.replace(/^\/+/, "");
+        return path.join(
+          cachePolicy.root,
+          cachePolicy.namespace,
+          "tools",
+          toolName,
+          section,
+          rest,
+        );
+      }
+    }
+  }
+  return path.join(workspace, relative);
+}
+
 function localManaged(descriptor) {
   return descriptor.managed && descriptor.managed.local ? descriptor.managed.local : null;
 }
@@ -147,21 +186,25 @@ function forwardedFlagSpec(descriptor, command) {
   };
 }
 
-function defaultSourceDir(workspace, tool, descriptor, buildVersion, buildDirKey, extras = {}) {
+function defaultSourceDir(workspace, tool, descriptor, buildVersion, buildDirKey, extras = {}, cachePolicy = null) {
   const managed = localManaged(descriptor);
   if (managed && managed.sourceTemplate) {
-    return path.join(workspace, renderManagedTemplate(managed.sourceTemplate, templateValues(buildVersion || "default", buildDirKey || "default", extras)));
+    return resolveManagedRelativePath(
+      workspace,
+      renderManagedTemplate(managed.sourceTemplate, templateValues(buildVersion || "default", buildDirKey || "default", extras)),
+      cachePolicy,
+    );
   }
   const leaf = buildVersion ? `${tool}-${buildVersion}` : tool;
   return path.join(workspace, "tools", tool, "src", leaf);
 }
 
-function defaultDownloadsDir(workspace, tool, descriptor) {
+function defaultDownloadsDir(workspace, tool, descriptor, cachePolicy = null) {
   const managed = localManaged(descriptor);
   if (!managed || !managed.downloadsDir) {
     return null;
   }
-  return path.join(workspace, managed.downloadsDir);
+  return resolveManagedRelativePath(workspace, managed.downloadsDir, cachePolicy);
 }
 
 function defaultOutputDir(workspace, descriptor, buildVersion, buildDirKey, extras = {}) {
@@ -172,20 +215,28 @@ function defaultOutputDir(workspace, descriptor, buildVersion, buildDirKey, extr
   return path.join(workspace, renderManagedTemplate(managed.outputDirTemplate, templateValues(buildVersion || "default", buildDirKey || "default", extras)));
 }
 
-function defaultBuildDir(workspace, descriptor, buildVersion, buildDirKey, extras = {}) {
+function defaultBuildDir(workspace, descriptor, buildVersion, buildDirKey, extras = {}, cachePolicy = null) {
   const managed = localManaged(descriptor);
   if (!managed || !managed.buildDirTemplate) {
     return null;
   }
-  return path.join(workspace, renderManagedTemplate(managed.buildDirTemplate, templateValues(buildVersion || "default", buildDirKey || "default", extras)));
+  return resolveManagedRelativePath(
+    workspace,
+    renderManagedTemplate(managed.buildDirTemplate, templateValues(buildVersion || "default", buildDirKey || "default", extras)),
+    cachePolicy,
+  );
 }
 
-function defaultInstallDir(workspace, descriptor, buildVersion, buildDirKey, extras = {}) {
+function defaultInstallDir(workspace, descriptor, buildVersion, buildDirKey, extras = {}, cachePolicy = null) {
   const managed = localManaged(descriptor);
   if (!managed || !managed.installDirTemplate) {
     return null;
   }
-  return path.join(workspace, renderManagedTemplate(managed.installDirTemplate, templateValues(buildVersion || "default", buildDirKey || "default", extras)));
+  return resolveManagedRelativePath(
+    workspace,
+    renderManagedTemplate(managed.installDirTemplate, templateValues(buildVersion || "default", buildDirKey || "default", extras)),
+    cachePolicy,
+  );
 }
 
 function defaultExecRunDir(workspace, tool, descriptor, extras = {}) {
@@ -202,10 +253,11 @@ function defaultExecRunDir(workspace, tool, descriptor, extras = {}) {
   );
 }
 
-function resolveManagedPathTemplate(workspace, descriptor, template, buildVersion, buildDirKey, extras = {}) {
-  return path.join(
+function resolveManagedPathTemplate(workspace, descriptor, template, buildVersion, buildDirKey, extras = {}, cachePolicy = null) {
+  return resolveManagedRelativePath(
     workspace,
-    renderManagedTemplate(template, templateValues(buildVersion || "default", buildDirKey || "default", extras))
+    renderManagedTemplate(template, templateValues(buildVersion || "default", buildDirKey || "default", extras)),
+    cachePolicy,
   );
 }
 
@@ -324,6 +376,7 @@ function buildScriptValues(descriptor, tool, command, spec, flags) {
     example: flags.example || null,
     tool,
   };
+  const cachePolicy = cachePolicyFromResolved(flags);
   const values = {
     ...flags,
   };
@@ -345,6 +398,7 @@ function buildScriptValues(descriptor, tool, command, spec, flags) {
       buildVersion,
       buildDirKey,
       templateExtras,
+      cachePolicy,
     );
   }
   const commandPathFlags = spec && spec.pathFlags ? spec.pathFlags : {};
@@ -362,6 +416,7 @@ function buildScriptValues(descriptor, tool, command, spec, flags) {
       buildVersion,
       buildDirKey,
       templateExtras,
+      cachePolicy,
     );
   }
   const archive = scriptedArchiveSpec(spec);
@@ -474,6 +529,9 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
   };
 
   for (const [key, value] of Object.entries(rawValues)) {
+    if (key.startsWith("__")) {
+      continue;
+    }
     if (value == null || value === false) {
       continue;
     }
@@ -1024,13 +1082,15 @@ function canonicalLocalArtifactPath(tool, descriptor, resolved, artifact) {
     toolchainVersion: resolved["toolchain-version"] || null,
     example: resolved.example || null,
   };
+  const cachePolicy = cachePolicyFromResolved(resolved);
   return resolveManagedPathTemplate(
     resolved.workspace,
     descriptor,
     spec.pathTemplate,
     buildVersion,
     buildDirKey,
-    templateExtras
+    templateExtras,
+    cachePolicy,
   );
 }
 
@@ -1157,6 +1217,7 @@ function normalizeArtifacts(payload, command, resolved, descriptor) {
       toolchainVersion: resolved && resolved["toolchain-version"] ? resolved["toolchain-version"] : null,
       example: resolved && resolved.example ? resolved.example : null,
     };
+    const cachePolicy = cachePolicyFromResolved(resolved);
     if (managed && managed.artifacts && workspace) {
       for (const [artifactPath, spec] of Object.entries(managed.artifacts)) {
         if (!spec || typeof spec !== "object" || !spec.pathTemplate) {
@@ -1173,7 +1234,8 @@ function normalizeArtifacts(payload, command, resolved, descriptor) {
             spec.pathTemplate,
             buildVersion || "default",
             buildDirKey || "default",
-            templateExtras
+            templateExtras,
+            cachePolicy
           ),
         });
       }
@@ -1234,18 +1296,19 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
     toolchainVersion: resolved["toolchain-version"] || null,
     example: resolved.example || null,
   };
+  const cachePolicy = cachePolicyFromResolved(resolved);
   const spec = commandSpec(descriptor, command);
   const forwardSpec = forwardedFlagSpec(descriptor, command);
   const pathFlags = spec && spec.pathFlags ? spec.pathFlags : {};
   const flagAliases = spec && spec.flagAliases ? spec.flagAliases : {};
   const effectivePaths = {
-    source: resolved.source || defaultSourceDir(workspace, tool, descriptor, buildVersion, buildDirKey, templateExtras),
+    source: resolved.source || defaultSourceDir(workspace, tool, descriptor, buildVersion, buildDirKey, templateExtras, cachePolicy),
     "build-version": buildVersion,
   };
   const optionalManagedPathResolvers = {
-    "downloads-dir": () => resolved["downloads-dir"] || defaultDownloadsDir(workspace, tool, descriptor),
-    "build-dir": () => resolved["build-dir"] || defaultBuildDir(workspace, descriptor, buildVersion, buildDirKey, templateExtras),
-    "install-dir": () => resolved["install-dir"] || defaultInstallDir(workspace, descriptor, buildVersion, buildDirKey, templateExtras),
+    "downloads-dir": () => resolved["downloads-dir"] || defaultDownloadsDir(workspace, tool, descriptor, cachePolicy),
+    "build-dir": () => resolved["build-dir"] || defaultBuildDir(workspace, descriptor, buildVersion, buildDirKey, templateExtras, cachePolicy),
+    "install-dir": () => resolved["install-dir"] || defaultInstallDir(workspace, descriptor, buildVersion, buildDirKey, templateExtras, cachePolicy),
   };
   for (const [genericFlag, resolveValue] of Object.entries(optionalManagedPathResolvers)) {
     if (
@@ -1270,7 +1333,8 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
         template,
         buildVersion,
         buildDirKey,
-        templateExtras
+        templateExtras,
+        cachePolicy
       );
     }
   }

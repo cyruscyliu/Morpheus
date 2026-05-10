@@ -66,7 +66,28 @@ cat > "${cli_out}" <<'EOF'
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
-exec "${script_dir}/qemu-etrace" "$@"
+find_tool() {
+  local explicit="${1:-}"
+  shift || true
+  if [ -n "${explicit}" ]; then
+    printf '%s\n' "${explicit}"
+    return 0
+  fi
+  local candidate
+  for candidate in "$@"; do
+    if command -v "${candidate}" >/dev/null 2>&1; then
+      command -v "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+exec "${script_dir}/qemu-etrace" \
+  --dwarfdump "$(find_tool "${DWARFDUMP:-}" dwarfdump llvm-dwarfdump llvm-dwarfdump-19)" \
+  --nm "$(find_tool "${NM:-}" nm)" \
+  --objdump "$(find_tool "${OBJDUMP:-}" objdump llvm-objdump)" \
+  --addr2line "$(find_tool "${ADDR2LINE:-}" addr2line llvm-addr2line)" \
+  "$@"
 EOF
 chmod +x "${cli_out}"
 

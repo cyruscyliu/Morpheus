@@ -1,5 +1,11 @@
 workspace:
   root: ./workspace
+cache:
+  root: ~/.cache/morpheus
+  namespace: hyperarm
+  downloads: global
+  builds: global
+  src: global
 
 imports:
   workflows:
@@ -252,7 +258,8 @@ workflows:
           - --qemu-arg
           - -plugin
           - --qemu-arg
-          - "{{steps.nqc2_build.artifacts.nqc2-plugin-so.location}},trace=runtime/buildroot-qemu-runtime-nqc2.trace"
+          - "{{steps.nqc2_build.artifacts.nqc2-plugin-so.location}},trace=runti\
+            me/buildroot-qemu-runtime-nqc2.trace"
           - --timeout-seconds
           - "20"
           - --detach
@@ -263,13 +270,15 @@ workflows:
           - --install-dir
           - "{{steps.nqc2_build.artifacts.install-dir.location}}"
           - --trace
-          - "{{steps.qemu_exec.details.run_dir}}/buildroot-qemu-runtime-nqc2.trace"
+          - "{{steps.qemu_exec.details.run_dir}}/buildroot-qemu-runtime-nqc2.tr\
+            ace"
           - --elf
           - "{{steps.buildroot_build.artifacts.vmlinux.location}}"
           - --trace-output
           - none
           - --coverage-output
-          - "{{steps.qemu_exec.details.run_dir}}/buildroot-qemu-runtime-nqc2.info"
+          - "{{steps.qemu_exec.details.run_dir}}/buildroot-qemu-runtime-nqc2.in\
+            fo"
           - --coverage-format
           - lcov
           - --jobs
@@ -283,7 +292,8 @@ workflows:
           - --install-dir
           - "{{steps.nqc2_build.artifacts.install-dir.location}}"
           - --coverage-output
-          - "{{steps.qemu_exec.details.run_dir}}/buildroot-qemu-runtime-nqc2.info"
+          - "{{steps.qemu_exec.details.run_dir}}/buildroot-qemu-runtime-nqc2.in\
+            fo"
           - --output
           - "{{steps.qemu_exec.details.run_dir}}/html"
           - --title
@@ -507,7 +517,7 @@ workflows:
       - id: llbic_6_18_16
         tool: llbic
         command: build
-        args: ["6.18.16"]
+        args: [ "6.18.16" ]
       - id: net_mutator_6_18_16
         tool: llcg
         command: build
@@ -559,13 +569,14 @@ workflows:
           - --all-bc-list
           - "{{steps.llbic_6_18_16.artifacts.bitcode-files.location}}"
           - --filter
-          - "{{steps.storage_mutator_6_18_16.artifacts.mutator_manifest.location}}"
+          - "{{steps.storage_mutator_6_18_16.artifacts.mutator_manifest.locatio\
+            n}}"
           - --scope-name
           - storage-6.18.16
       - id: llbic_6_19_6
         tool: llbic
         command: build
-        args: ["6.19.6"]
+        args: [ "6.19.6" ]
       - id: net_mutator_6_19_6
         tool: llcg
         command: build
@@ -617,13 +628,14 @@ workflows:
           - --all-bc-list
           - "{{steps.llbic_6_19_6.artifacts.bitcode-files.location}}"
           - --filter
-          - "{{steps.storage_mutator_6_19_6.artifacts.mutator_manifest.location}}"
+          - "{{steps.storage_mutator_6_19_6.artifacts.mutator_manifest.location\
+            }}"
           - --scope-name
           - storage-6.19.6
       - id: llbic_7_0_rc3
         tool: llbic
         command: build
-        args: ["7.0-rc3"]
+        args: [ "7.0-rc3" ]
       - id: net_mutator_7_0_rc3
         tool: llcg
         command: build
@@ -675,6 +687,7 @@ workflows:
           - --all-bc-list
           - "{{steps.llbic_7_0_rc3.artifacts.bitcode-files.location}}"
           - --filter
-          - "{{steps.storage_mutator_7_0_rc3.artifacts.mutator_manifest.location}}"
+          - "{{steps.storage_mutator_7_0_rc3.artifacts.mutator_manifest.locatio\
+            n}}"
           - --scope-name
           - storage-7.0-rc3

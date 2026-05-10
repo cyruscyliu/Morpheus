@@ -1,44 +1,125 @@
 {
   "name": "pkvm-aarch64",
   "runtime": null,
-  "cli-contract": "fetch,build,exec,inspect,logs,stop",
+  "cli-contract": "fetch,build,exec,inspect,stop",
   "runGuard": {
     "scope": "workspace",
     "keyTemplate": "run"
   },
   "config": {
     "fields": {
-      "source": { "aliases": ["source"], "path": true },
-      "seed-dir": { "aliases": ["seed-dir", "seedDir"], "path": true },
-      "build-version": { "aliases": ["build-version", "buildVersion"] },
-      "git-url": { "aliases": ["git-url", "gitUrl"] },
-      "fetch-submodules": { "aliases": ["fetch-submodules", "fetchSubmodules"], "boolean": true },
-      "build-dir-key": { "aliases": ["build-dir-key", "buildDirKey"] },
-      "platform": { "aliases": ["platform"] },
-      "build-target": { "aliases": ["build-target", "buildTarget", "target"] },
-      "qemu": { "aliases": ["qemu"], "path": true },
-      "make-arg": { "aliases": ["make-arg", "make-args", "makeArgs"], "repeatable": true },
-      "timeout-seconds": { "aliases": ["timeout-seconds", "timeoutSeconds"] },
-      "detach": { "aliases": ["detach"], "boolean": true },
-      "run-dir": { "aliases": ["run-dir", "runDir"], "path": true },
-      "artifacts": { "aliases": ["artifacts"], "repeatable": true }
+      "source": {
+        "aliases": [
+          "source"
+        ],
+        "path": true
+      },
+      "seed-dir": {
+        "aliases": [
+          "seed-dir",
+          "seedDir"
+        ],
+        "path": true
+      },
+      "build-version": {
+        "aliases": [
+          "build-version",
+          "buildVersion"
+        ]
+      },
+      "git-url": {
+        "aliases": [
+          "git-url",
+          "gitUrl"
+        ]
+      },
+      "fetch-submodules": {
+        "aliases": [
+          "fetch-submodules",
+          "fetchSubmodules"
+        ],
+        "boolean": true
+      },
+      "build-dir-key": {
+        "aliases": [
+          "build-dir-key",
+          "buildDirKey"
+        ]
+      },
+      "platform": {
+        "aliases": [
+          "platform"
+        ]
+      },
+      "build-target": {
+        "aliases": [
+          "build-target",
+          "buildTarget",
+          "target"
+        ]
+      },
+      "qemu": {
+        "aliases": [
+          "qemu"
+        ],
+        "path": true
+      },
+      "make-arg": {
+        "aliases": [
+          "make-arg",
+          "make-args",
+          "makeArgs"
+        ],
+        "repeatable": true
+      },
+      "timeout-seconds": {
+        "aliases": [
+          "timeout-seconds",
+          "timeoutSeconds"
+        ]
+      },
+      "detach": {
+        "aliases": [
+          "detach"
+        ],
+        "boolean": true
+      },
+      "run-dir": {
+        "aliases": [
+          "run-dir",
+          "runDir"
+        ],
+        "path": true
+      },
+      "artifacts": {
+        "aliases": [
+          "artifacts"
+        ],
+        "repeatable": true
+      }
     }
   },
   "inputs": {
     "build": {
       "dependencies": {
-        "qemu": { "flag": "qemu" }
+        "qemu": {
+          "flag": "qemu"
+        }
       }
     },
     "exec": {
       "dependencies": {
-        "qemu": { "flag": "qemu" }
+        "qemu": {
+          "flag": "qemu"
+        }
       }
     }
   },
   "managed": {
     "schemaVersion": 1,
-    "modes": ["local"],
+    "modes": [
+      "local"
+    ],
     "local": {
       "sourceTemplate": "tools/pkvm-aarch64/src/pkvm-aarch64-{buildVersion}",
       "buildDirTemplate": "tools/pkvm-aarch64/builds/{buildDirKey}/build",
@@ -68,8 +149,15 @@
       },
       "commands": {
         "fetch": {
-          "requiredFlags": ["source"],
-          "scalarFlags": ["seed-dir", "build-version", "git-url", "fetch-submodules"],
+          "requiredFlags": [
+            "source"
+          ],
+          "scalarFlags": [
+            "seed-dir",
+            "build-version",
+            "git-url",
+            "fetch-submodules"
+          ],
           "repeatableFlags": [],
           "script": {
             "path": "scripts/fetch.sh",
@@ -87,15 +175,33 @@
             },
             "details": {
               "source": "{source}",
-              "build_version": { "fromFlag": "build-version" },
-              "git_url": { "fromFlag": "git-url" }
+              "build_version": {
+                "fromFlag": "build-version"
+              },
+              "git_url": {
+                "fromFlag": "git-url"
+              }
             }
           }
         },
         "build": {
-          "requiredFlags": ["source", "build-dir"],
-          "scalarFlags": ["source", "build-dir", "platform", "build-target", "qemu", "seed-dir", "build-version", "git-url"],
-          "repeatableFlags": ["make-arg"],
+          "requiredFlags": [
+            "source",
+            "build-dir"
+          ],
+          "scalarFlags": [
+            "source",
+            "build-dir",
+            "platform",
+            "build-target",
+            "qemu",
+            "seed-dir",
+            "build-version",
+            "git-url"
+          ],
+          "repeatableFlags": [
+            "make-arg"
+          ],
           "script": {
             "path": "scripts/build.sh",
             "shell": "bash",
@@ -108,7 +214,6 @@
           "result": {
             "successSummary": "built managed pKVM targets",
             "errorSummary": "managed pKVM build failed",
-            "logFileTemplate": "{build-dir}/build.log",
             "manifestTemplate": "{build-dir}/manifest.json",
             "artifact": {
               "path": "source-dir",
@@ -117,18 +222,36 @@
             "details": {
               "source": "{source}",
               "build_dir": "{build-dir}",
-              "build_target": { "fromFlag": "build-target" },
-              "platform": { "fromFlag": "platform" },
-              "qemu": { "fromFlag": "qemu" },
-              "log_file": "{build-dir}/build.log",
+              "build_target": {
+                "fromFlag": "build-target"
+              },
+              "platform": {
+                "fromFlag": "platform"
+              },
+              "qemu": {
+                "fromFlag": "qemu"
+              },
               "manifest": "{build-dir}/manifest.json"
             }
           }
         },
         "exec": {
-          "requiredFlags": ["source", "run-dir"],
-          "scalarFlags": ["source", "run-dir", "platform", "build-target", "qemu", "timeout-seconds", "detach"],
-          "repeatableFlags": ["make-arg"],
+          "requiredFlags": [
+            "source",
+            "run-dir"
+          ],
+          "scalarFlags": [
+            "source",
+            "run-dir",
+            "platform",
+            "build-target",
+            "qemu",
+            "timeout-seconds",
+            "detach"
+          ],
+          "repeatableFlags": [
+            "make-arg"
+          ],
           "script": {
             "path": "scripts/exec.sh",
             "shell": "bash",
@@ -150,13 +273,19 @@
               "run_dir": "{run-dir}",
               "log_file": "{run-dir}/stdout.log",
               "manifest": "{run-dir}/manifest.json",
-              "qemu": { "fromFlag": "qemu" }
+              "qemu": {
+                "fromFlag": "qemu"
+              }
             }
           }
         },
         "inspect": {
-          "requiredFlags": ["source"],
-          "scalarFlags": ["source"],
+          "requiredFlags": [
+            "source"
+          ],
+          "scalarFlags": [
+            "source"
+          ],
           "repeatableFlags": [],
           "script": {
             "path": "scripts/inspect.sh",
@@ -173,18 +302,11 @@
             }
           }
         },
-        "logs": {
-          "requiredFlags": [],
-          "scalarFlags": ["source", "build-dir", "run-dir"],
-          "repeatableFlags": [],
-          "script": {
-            "path": "scripts/logs.sh",
-            "shell": "bash"
-          }
-        },
         "stop": {
           "requiredFlags": [],
-          "scalarFlags": ["run-dir"],
+          "scalarFlags": [
+            "run-dir"
+          ],
           "repeatableFlags": [],
           "script": {
             "path": "scripts/stop.sh",

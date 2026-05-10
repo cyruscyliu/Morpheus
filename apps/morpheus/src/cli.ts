@@ -6,7 +6,6 @@ const { handleConfigCommand } = require("./commands/config-check");
 const { handleBuildCommand } = require("./commands/build");
 const { handleFetchCommand } = require("./commands/fetch");
 const { handleInspectCommand } = require("./commands/inspect");
-const { handleLogsCommand } = require("./commands/logs");
 const { handlePatchCommand } = require("./commands/patch");
 const { handleExecCommand } = require("./commands/exec");
 const { handleGenhtmlCommand } = require("./commands/genhtml");
@@ -131,7 +130,7 @@ async function main() {
     process.env.MORPHEUS_CONFIG = path.resolve(String(flags.config));
   }
   const argv = stripGlobalFlags(rawArgv);
-  const configAwareCommands = new Set(["workspace", "config", "fetch", "patch", "build", "inspect", "logs", "exec", "postprocess", "genhtml", "stop", "workflow"]);
+  const configAwareCommands = new Set(["workspace", "config", "fetch", "patch", "build", "inspect", "exec", "postprocess", "genhtml", "stop", "workflow"]);
 
   if (!command || command === "help" || command === "--help") {
     usage();
@@ -170,10 +169,6 @@ async function main() {
   // public surface.
   if (command === "inspect") {
     return handleInspectCommand(argvWithoutCommand(argv, "inspect"));
-  }
-
-  if (command === "logs") {
-    return handleLogsCommand(argvWithoutCommand(argv, "logs"));
   }
 
   if (command === "exec") {

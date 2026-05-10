@@ -1,38 +1,150 @@
 {
   "name": "qemu",
   "runtime": null,
-  "cli-contract": "fetch,patch,build,exec,inspect,logs,stop",
+  "cli-contract": "fetch,patch,build,exec,inspect,stop",
   "runGuard": {
     "scope": "workspace",
     "keyTemplate": "run"
   },
   "config": {
     "fields": {
-      "mode": { "aliases": ["mode"] },
-      "remote": { "aliases": ["remote"] },
-      "source": { "aliases": ["source"], "path": true },
-      "path": { "aliases": ["path", "executable"], "path": true },
-      "seed-dir": { "aliases": ["seed-dir", "seedDir"], "path": true },
-      "patch-dir": { "aliases": ["patch-dir", "patchDir"], "path": true },
-      "reuse-build-dir": { "aliases": ["reuse-build-dir", "reuseBuildDir"], "boolean": true },
-      "build-dir-key": { "aliases": ["build-dir-key", "buildDirKey"] },
-      "build-version": { "aliases": ["build-version", "buildVersion", "qemu-version", "qemuVersion"] },
-      "archive-url": { "aliases": ["archive-url", "archiveUrl"] },
-      "target-list": { "aliases": ["target-list", "targetList"], "repeatable": true },
-      "configure-arg": { "aliases": ["configure-arg", "configure-args", "configureArgs"], "repeatable": true },
-      "kernel": { "aliases": ["kernel"], "path": true },
-      "initrd": { "aliases": ["initrd"], "path": true },
-      "run-dir": { "aliases": ["run-dir", "runDir"], "path": true },
-      "qemu-arg": { "aliases": ["qemu-arg", "qemu-args", "qemuArgs"], "repeatable": true },
-      "append": { "aliases": ["append"] },
-      "timeout-seconds": { "aliases": ["timeout-seconds", "timeoutSeconds"] },
-      "detach": { "aliases": ["detach"], "boolean": true },
-      "artifacts": { "aliases": ["artifacts"], "repeatable": true }
+      "mode": {
+        "aliases": [
+          "mode"
+        ]
+      },
+      "remote": {
+        "aliases": [
+          "remote"
+        ]
+      },
+      "source": {
+        "aliases": [
+          "source"
+        ],
+        "path": true
+      },
+      "path": {
+        "aliases": [
+          "path",
+          "executable"
+        ],
+        "path": true
+      },
+      "seed-dir": {
+        "aliases": [
+          "seed-dir",
+          "seedDir"
+        ],
+        "path": true
+      },
+      "patch-dir": {
+        "aliases": [
+          "patch-dir",
+          "patchDir"
+        ],
+        "path": true
+      },
+      "reuse-build-dir": {
+        "aliases": [
+          "reuse-build-dir",
+          "reuseBuildDir"
+        ],
+        "boolean": true
+      },
+      "build-dir-key": {
+        "aliases": [
+          "build-dir-key",
+          "buildDirKey"
+        ]
+      },
+      "build-version": {
+        "aliases": [
+          "build-version",
+          "buildVersion",
+          "qemu-version",
+          "qemuVersion"
+        ]
+      },
+      "archive-url": {
+        "aliases": [
+          "archive-url",
+          "archiveUrl"
+        ]
+      },
+      "target-list": {
+        "aliases": [
+          "target-list",
+          "targetList"
+        ],
+        "repeatable": true
+      },
+      "configure-arg": {
+        "aliases": [
+          "configure-arg",
+          "configure-args",
+          "configureArgs"
+        ],
+        "repeatable": true
+      },
+      "kernel": {
+        "aliases": [
+          "kernel"
+        ],
+        "path": true
+      },
+      "initrd": {
+        "aliases": [
+          "initrd"
+        ],
+        "path": true
+      },
+      "run-dir": {
+        "aliases": [
+          "run-dir",
+          "runDir"
+        ],
+        "path": true
+      },
+      "qemu-arg": {
+        "aliases": [
+          "qemu-arg",
+          "qemu-args",
+          "qemuArgs"
+        ],
+        "repeatable": true
+      },
+      "append": {
+        "aliases": [
+          "append"
+        ]
+      },
+      "timeout-seconds": {
+        "aliases": [
+          "timeout-seconds",
+          "timeoutSeconds"
+        ]
+      },
+      "detach": {
+        "aliases": [
+          "detach"
+        ],
+        "boolean": true
+      },
+      "artifacts": {
+        "aliases": [
+          "artifacts"
+        ],
+        "repeatable": true
+      }
     }
   },
   "managed": {
     "schemaVersion": 1,
-    "modes": ["local", "remote"],
+    "modes": [
+      "local",
+      "remote"
+    ],
     "local": {
       "artifactPath": "qemu-system-aarch64",
       "sourceTemplate": "tools/qemu/src/qemu-{buildVersion}",
@@ -49,8 +161,14 @@
       },
       "commands": {
         "fetch": {
-          "requiredFlags": ["source"],
-          "scalarFlags": ["archive-url", "build-version", "seed-dir"],
+          "requiredFlags": [
+            "source"
+          ],
+          "scalarFlags": [
+            "archive-url",
+            "build-version",
+            "seed-dir"
+          ],
           "repeatableFlags": [],
           "script": {
             "path": "scripts/fetch.sh",
@@ -75,14 +193,25 @@
             "details": {
               "source": "{source}",
               "downloads_dir": "{downloads-dir}",
-              "archive_url": { "fromFlag": "archive-url" },
-              "build_version": { "fromFlag": "build-version" }
+              "archive_url": {
+                "fromFlag": "archive-url"
+              },
+              "build_version": {
+                "fromFlag": "build-version"
+              }
             }
           }
         },
         "patch": {
-          "requiredFlags": ["source", "patch-dir"],
-          "scalarFlags": ["patch-dir", "build-version", "archive-url"],
+          "requiredFlags": [
+            "source",
+            "patch-dir"
+          ],
+          "scalarFlags": [
+            "patch-dir",
+            "build-version",
+            "archive-url"
+          ],
           "repeatableFlags": [],
           "script": {
             "path": "scripts/patch.sh",
@@ -100,15 +229,28 @@
             },
             "details": {
               "source": "{source}",
-              "patch_dir": "{patch-dir}",
-              "log_file": "{source}/.morpheus-patches.log"
+              "patch_dir": "{patch-dir}"
             }
           }
         },
         "build": {
-          "requiredFlags": ["source", "build-dir", "install-dir"],
-          "scalarFlags": ["source", "build-dir", "install-dir", "archive-url", "build-version", "seed-dir"],
-          "repeatableFlags": ["target-list", "configure-arg"],
+          "requiredFlags": [
+            "source",
+            "build-dir",
+            "install-dir"
+          ],
+          "scalarFlags": [
+            "source",
+            "build-dir",
+            "install-dir",
+            "archive-url",
+            "build-version",
+            "seed-dir"
+          ],
+          "repeatableFlags": [
+            "target-list",
+            "configure-arg"
+          ],
           "script": {
             "path": "scripts/build.sh",
             "shell": "bash",
@@ -123,7 +265,6 @@
           "result": {
             "successSummary": "built local QEMU executable",
             "errorSummary": "local QEMU build failed",
-            "logFileTemplate": "{build-dir}/build.log",
             "manifestTemplate": "{build-dir}/manifest.json",
             "artifact": {
               "path": "qemu-system-aarch64",
@@ -133,17 +274,33 @@
               "source": "{source}",
               "build_dir": "{build-dir}",
               "install_dir": "{install-dir}",
-              "log_file": "{build-dir}/build.log",
               "manifest": "{build-dir}/manifest.json",
-              "target_list": { "fromFlag": "target-list" },
-              "configure_args": { "fromFlag": "configure-arg" }
+              "target_list": {
+                "fromFlag": "target-list"
+              },
+              "configure_args": {
+                "fromFlag": "configure-arg"
+              }
             }
           }
         },
         "exec": {
-          "requiredFlags": ["path", "kernel", "initrd"],
-          "scalarFlags": ["path", "kernel", "initrd", "run-dir", "append", "timeout-seconds"],
-          "repeatableFlags": ["qemu-arg"],
+          "requiredFlags": [
+            "path",
+            "kernel",
+            "initrd"
+          ],
+          "scalarFlags": [
+            "path",
+            "kernel",
+            "initrd",
+            "run-dir",
+            "append",
+            "timeout-seconds"
+          ],
+          "repeatableFlags": [
+            "qemu-arg"
+          ],
           "script": {
             "path": "scripts/exec.sh",
             "shell": "bash"
@@ -160,8 +317,12 @@
           }
         },
         "inspect": {
-          "requiredFlags": ["path"],
-          "scalarFlags": ["path"],
+          "requiredFlags": [
+            "path"
+          ],
+          "scalarFlags": [
+            "path"
+          ],
           "repeatableFlags": [],
           "script": {
             "path": "scripts/inspect.sh",
@@ -175,18 +336,11 @@
             }
           }
         },
-        "logs": {
-          "requiredFlags": [],
-          "scalarFlags": ["build-dir", "run-dir", "source"],
-          "repeatableFlags": [],
-          "script": {
-            "path": "scripts/logs.sh",
-            "shell": "bash"
-          }
-        },
         "stop": {
           "requiredFlags": [],
-          "scalarFlags": ["run-dir"],
+          "scalarFlags": [
+            "run-dir"
+          ],
           "repeatableFlags": [],
           "script": {
             "path": "scripts/stop.sh",

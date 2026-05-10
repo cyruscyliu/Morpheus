@@ -1,19 +1,47 @@
 {
   "name": "nvirsh",
   "runtime": null,
-  "cli-contract": "fetch,build,exec,inspect,logs,stop",
+  "cli-contract": "fetch,build,exec,inspect,stop",
   "config": {
     "fields": {
-      "source": { "aliases": ["source"], "path": true },
-      "build-version": { "aliases": ["build-version", "buildVersion", "profile"] },
-      "phase": { "aliases": ["phase"] },
-      "run-dir": { "aliases": ["run-dir", "runDir"], "path": true },
-      "build-dir-key": { "aliases": ["build-dir-key", "buildDirKey"] }
+      "source": {
+        "aliases": [
+          "source"
+        ],
+        "path": true
+      },
+      "build-version": {
+        "aliases": [
+          "build-version",
+          "buildVersion",
+          "profile"
+        ]
+      },
+      "phase": {
+        "aliases": [
+          "phase"
+        ]
+      },
+      "run-dir": {
+        "aliases": [
+          "run-dir",
+          "runDir"
+        ],
+        "path": true
+      },
+      "build-dir-key": {
+        "aliases": [
+          "build-dir-key",
+          "buildDirKey"
+        ]
+      }
     }
   },
   "managed": {
     "schemaVersion": 1,
-    "modes": ["local"],
+    "modes": [
+      "local"
+    ],
     "local": {
       "sourceTemplate": "tools/nvirsh/builds/{buildDirKey}/source",
       "buildDirTemplate": "tools/nvirsh/builds/{buildDirKey}/build",
@@ -32,8 +60,14 @@
       },
       "commands": {
         "fetch": {
-          "requiredFlags": ["source"],
-          "scalarFlags": ["source", "build-version", "build-dir-key"],
+          "requiredFlags": [
+            "source"
+          ],
+          "scalarFlags": [
+            "source",
+            "build-version",
+            "build-dir-key"
+          ],
           "repeatableFlags": [],
           "script": {
             "path": "scripts/fetch.sh",
@@ -49,14 +83,29 @@
             },
             "details": {
               "source": "{source}",
-              "profile": { "fromFlag": "build-version" },
-              "build_dir_key": { "fromFlag": "build-dir-key" }
+              "profile": {
+                "fromFlag": "build-version"
+              },
+              "build_dir_key": {
+                "fromFlag": "build-dir-key"
+              }
             }
           }
         },
         "build": {
-          "requiredFlags": ["source", "build-dir", "install-dir"],
-          "scalarFlags": ["source", "build-dir", "install-dir", "build-version", "build-dir-key", "phase"],
+          "requiredFlags": [
+            "source",
+            "build-dir",
+            "install-dir"
+          ],
+          "scalarFlags": [
+            "source",
+            "build-dir",
+            "install-dir",
+            "build-version",
+            "build-dir-key",
+            "phase"
+          ],
           "repeatableFlags": [],
           "pathFlags": {
             "source": "tools/nvirsh/builds/{buildDirKey}/source",
@@ -80,13 +129,27 @@
               "build_dir": "{build-dir}",
               "install_dir": "{install-dir}",
               "state_file": "{install-dir}/state.json",
-              "profile": { "fromFlag": "build-version" }
+              "profile": {
+                "fromFlag": "build-version"
+              }
             }
           }
         },
         "exec": {
-          "requiredFlags": ["source", "run-dir", "install-dir", "phase"],
-          "scalarFlags": ["source", "run-dir", "install-dir", "phase", "build-version", "build-dir-key"],
+          "requiredFlags": [
+            "source",
+            "run-dir",
+            "install-dir",
+            "phase"
+          ],
+          "scalarFlags": [
+            "source",
+            "run-dir",
+            "install-dir",
+            "phase",
+            "build-version",
+            "build-dir-key"
+          ],
           "repeatableFlags": [],
           "pathFlags": {
             "source": "tools/nvirsh/builds/{buildDirKey}/source",
@@ -109,8 +172,17 @@
           }
         },
         "inspect": {
-          "requiredFlags": ["source"],
-          "scalarFlags": ["source", "run-dir", "install-dir", "build-dir", "build-version", "build-dir-key"],
+          "requiredFlags": [
+            "source"
+          ],
+          "scalarFlags": [
+            "source",
+            "run-dir",
+            "install-dir",
+            "build-dir",
+            "build-version",
+            "build-dir-key"
+          ],
           "repeatableFlags": [],
           "pathFlags": {
             "source": "tools/nvirsh/builds/{buildDirKey}/source",
@@ -129,23 +201,15 @@
             }
           }
         },
-        "logs": {
-          "requiredFlags": [],
-          "scalarFlags": ["source", "run-dir", "build-dir", "install-dir", "build-version", "build-dir-key"],
-          "repeatableFlags": [],
-          "pathFlags": {
-            "source": "tools/nvirsh/builds/{buildDirKey}/source",
-            "install-dir": "tools/nvirsh/builds/{buildDirKey}/install",
-            "build-dir": "tools/nvirsh/builds/{buildDirKey}/build"
-          },
-          "script": {
-            "path": "scripts/logs.sh",
-            "shell": "bash"
-          }
-        },
         "stop": {
           "requiredFlags": [],
-          "scalarFlags": ["source", "run-dir", "install-dir", "build-version", "build-dir-key"],
+          "scalarFlags": [
+            "source",
+            "run-dir",
+            "install-dir",
+            "build-version",
+            "build-dir-key"
+          ],
           "repeatableFlags": [],
           "pathFlags": {
             "source": "tools/nvirsh/builds/{buildDirKey}/source",

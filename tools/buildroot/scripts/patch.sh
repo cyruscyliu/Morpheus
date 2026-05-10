@@ -4,7 +4,6 @@ set -euo pipefail
 source_dir="${MORPHEUS_BUILDROOT_SOURCE:?}"
 patch_dir="${MORPHEUS_BUILDROOT_PATCH_DIR:?}"
 result_file="${MORPHEUS_BUILDROOT_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
-log_file="${source_dir}/.morpheus-patches.log"
 state_file="${source_dir}/.morpheus-patches.json"
 patch_strategies="${MORPHEUS_BUILDROOT_PATCH_STRATEGIES:-${MORPHEUS_SCRIPT_PATCH_STRATEGIES:-source-tree}}"
 
@@ -61,17 +60,16 @@ EOF
   exit 0
 fi
 
-: > "${log_file}"
 if has_strategy "source-tree" && [ -n "${patch_files}" ]; then
   while IFS= read -r patch_file; do
     [ -n "${patch_file}" ] || continue
-    printf '>>> %s\n' "${patch_file#${patch_dir}/}" >> "${log_file}"
-    patch -d "${source_dir}" -p1 -N -i "${patch_file}" >> "${log_file}" 2>&1
+    printf '>>> %s\n' "${patch_file#${patch_dir}/}"
+    patch -d "${source_dir}" -p1 -N -i "${patch_file}"
   done <<EOF
 ${patch_files}
 EOF
 else
-  printf 'no direct buildroot source patches under %s\n' "${patch_dir}" >> "${log_file}"
+  printf 'no direct buildroot source patches under %s\n' "${patch_dir}"
 fi
 
 cat > "${state_file}" <<EOF

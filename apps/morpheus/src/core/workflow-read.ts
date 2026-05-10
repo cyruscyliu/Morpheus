@@ -204,18 +204,6 @@ function eventArtifactsConsumed(events) {
     .filter((entry) => typeof entry.from === "string" && typeof entry.to === "string");
 }
 
-function eventConsoleText(events, stepId = null) {
-  const text = events
-    .filter((entry) =>
-      entry
-      && (entry.event === "console.stdout" || entry.event === "console.stderr")
-      && (!stepId || entry.step_id === stepId),
-    )
-    .map((entry) => (entry.data && typeof entry.data.text === "string" ? entry.data.text : ""))
-    .join("");
-  return text ? text : null;
-}
-
 function workflowStepLogPaths(runDir, stepId) {
   const recordPath = path.join(runDir, "workflow.json");
   if (!fs.existsSync(recordPath)) {
@@ -380,13 +368,12 @@ function summarizeWorkflowFirst(runDir) {
     const stepId = String(entry.id || "");
     const stepDir = typeof entry.stepDir === "string" ? entry.stepDir : path.join(runDir, "steps", stepId);
     const manifest = readJsonIfExists(path.join(stepDir, "step.json"), null);
-    const eventLogText = eventConsoleText(events, stepId);
     const manifestArtifacts = normalizeArtifactsArray(manifest?.artifacts);
     const artifacts = manifestArtifacts.length > 0 ? manifestArtifacts : toolResultArtifacts(manifest);
     const hasLogs = workflowStepLogPaths(runDir, stepId).some((logFile) => fileHasLogContent(logFile));
-    const summary = normalizeStepSummary(entry, manifest, record.id || path.basename(runDir), stepId, hasLogs || Boolean(eventLogText), artifacts);
-    if (eventLogText) {
-      summary.logText = eventLogText;
+    const summary = normalizeStepSummary(entry, manifest, record.id || path.basename(runDir), stepId, hasLogs, artifacts);
+    if (hasLogs) {
+      summary.logText = loadWorkflowStepLogText(path.dirname(runDir), record.id || path.basename(runDir), stepId);
     }
     return { summary, manifest };
   });
@@ -535,12 +522,8 @@ function loadWorkflowLogText(workspaceRoot, runId) {
   }
   const runDir = path.join(workflowRunsRoot(workspaceRoot), runId);
   const sections = [];
-  const eventText = eventConsoleText(readRunEvents(runDir), null);
-  if (eventText) {
-    sections.push(["=== workflow.events ===", eventText.trimEnd()].join("\n"));
-  }
   const progressLog = readTextIfExists(path.join(runDir, "progress.jsonl")).trim();
-  if (!eventText && progressLog) {
+  if (progressLog) {
     sections.push(["=== workflow.progress ===", progressLog].join("\n"));
   }
 

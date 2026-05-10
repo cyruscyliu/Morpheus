@@ -3,7 +3,6 @@ set -euo pipefail
 
 profile_file="${MORPHEUS_NVIRSH_PROFILE_FILE:?}"
 run_dir="${MORPHEUS_NVIRSH_RUN_DIR:?}"
-log_file="${MORPHEUS_NVIRSH_LOG_FILE:?}"
 ssh_public_key="${MORPHEUS_NVIRSH_SSH_PUBLIC_KEY:-}"
 host_name="$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo host)"
 profile_name="$(node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(String(p.name||"nvirsh-l0"));' "${profile_file}")"
@@ -109,4 +108,4 @@ const payload = {
 fs.writeFileSync(outFile, `${JSON.stringify(payload, null, 2)}\n`);
 NODE
 
-printf '[nvirsh] l0 provisioned image=%s host=%s workspace=%s\n' "${profile_image}" "${host_name}" "${profile_workspace}" >> "${log_file}"
+printf '[nvirsh] l0 provisioned image=%s host=%s workspace=%s\n' "${profile_image}" "${host_name}" "${profile_workspace}"

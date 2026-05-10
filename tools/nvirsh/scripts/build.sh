@@ -8,8 +8,6 @@ profile_name="${MORPHEUS_NVIRSH_BUILD_VERSION:-default}"
 build_dir_key="${MORPHEUS_NVIRSH_BUILD_DIR_KEY:-${profile_name}}"
 result_file="${MORPHEUS_NVIRSH_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-log_file="${MORPHEUS_SCRIPT_LOG_FILE:-${MORPHEUS_NVIRSH_LOG_FILE:-${build_dir}/stdout.log}}"
-log_dir="$(dirname "${log_file}")"
 profile_file="${source_dir}/profile.json"
 state_file="${install_dir}/state.json"
 build_l0_dir="${build_dir}/l0"
@@ -22,8 +20,7 @@ if [ -f "${build_l0_dir}/l1.pid" ]; then
   fi
 fi
 rm -rf "${install_dir}/plan" "${build_l0_dir}" "${build_l1_dir}"
-mkdir -p "${build_dir}" "${install_dir}" "${build_l0_dir}" "${build_l1_dir}" "${log_dir}"
-: > "${log_file}"
+mkdir -p "${build_dir}" "${install_dir}" "${build_l0_dir}" "${build_l1_dir}"
 
 if [ ! -f "${profile_file}" ]; then
   echo "missing fetched profile source: ${profile_file}" >&2
@@ -248,8 +245,7 @@ run_profile_script() {
   MORPHEUS_NVIRSH_SOURCE="${source_dir}" \
   MORPHEUS_NVIRSH_PROFILE_NAME="${profile_name}" \
   MORPHEUS_NVIRSH_PHASE="build" \
-  MORPHEUS_NVIRSH_LOG_FILE="${log_file}" \
-  "${script_path}" >> "${log_file}" 2>&1
+  "${script_path}"
 }
 
 run_profile_script "l0.provisionScript"
@@ -271,7 +267,6 @@ l1_ssh_port="$(node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSy
 l2_cpu="$(profile_arg_value l2 -cpu)"
 l2_memory="$(profile_arg_value l2 -m)"
 l2_memory="${l2_memory:-1024}"
-l1_boot_log="${log_dir}/l1-boot.log"
 
 cat > "${build_l1_dir}/launch-l2.sh" <<EOF
 #!/usr/bin/env bash
@@ -317,7 +312,7 @@ chmod +x "${build_l1_dir}/provision-l1.sh"
   -drive file="${seed_image_path}",if=virtio,format=raw \
   -netdev user,id=net0,hostfwd=tcp::${l1_ssh_port}-:22 \
   -device virtio-net-pci,netdev=net0 \
-  >> "${l1_boot_log}" 2>&1 &
+  &
 qemu_pid="$!"
 echo "${qemu_pid}" > "${qemu_pid_file}"
 
@@ -341,7 +336,7 @@ if [ -n "${buildroot_output_dir}" ]; then
   copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${buildroot_output_dir}/rootfs.cpio.gz" "${guest_image_dir}/rootfs.cpio.gz"
 fi
 
-run_in_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${build_l1_dir}/provision-l1.sh" >> "${log_dir}/l1-provision.log" 2>&1
+run_in_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${build_l1_dir}/provision-l1.sh"
 
 node - "${profile_file}" "${state_file}" "${source_dir}" "${build_dir}" "${install_dir}" "${profile_name}" "${build_dir_key}" <<'NODE'
 const fs = require("fs");
@@ -350,10 +345,6 @@ const [profileFile, stateFile, sourceDir, buildDir, installDir, profileName, bui
 const profile = JSON.parse(fs.readFileSync(profileFile, "utf8"));
 const l0 = profile.l0 || {};
 const l1 = profile.l1 || {};
-const logFile = process.env.MORPHEUS_SCRIPT_LOG_FILE
-  || process.env.MORPHEUS_NVIRSH_LOG_FILE
-  || path.join(buildDir, "stdout.log");
-const logDir = path.dirname(logFile);
 const state = {
   schemaVersion: 1,
   tool: "nvirsh",
@@ -380,7 +371,7 @@ const state = {
       hostName: l0.hostName || null,
       workspace: l0.workspace || null,
       image: l0.image || null,
-      bootLog: path.join(logDir, "l1-boot.log"),
+      bootLog: null,
     },
     l1: {
       status: "prepared",
@@ -390,7 +381,7 @@ const state = {
       memoryMb: l1.memoryMb || null,
       cpus: l1.cpus || null,
       workspace: l0.workspace || null,
-      provisionLog: path.join(logDir, "l1-provision.log"),
+      provisionLog: null,
       launchScript: path.join(buildDir, "l1", "launch-l2.sh"),
     },
     l2: {
@@ -399,7 +390,7 @@ const state = {
       launcherArgs: profile.l2 && Array.isArray(profile.l2.launcherArgs) ? profile.l2.launcherArgs : [],
       kernel: profile.l2 && profile.l2.kernel ? profile.l2.kernel : null,
       initrd: profile.l2 && profile.l2.initrd ? profile.l2.initrd : null,
-      bootLog: path.join(logDir, "l2-boot.log"),
+      bootLog: null,
     }
   },
   phases: {

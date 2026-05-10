@@ -313,7 +313,7 @@ function scriptResultPath(cwd) {
 }
 
 function scriptLogPath(cwd) {
-  return path.join(cwd, ".morpheus-script.log");
+  return path.join(cwd, "stdout.log");
 }
 
 function defaultScriptedCommandCwd(workspace, tool, command) {
@@ -521,10 +521,8 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
   const env = {
     ...(options.env || process.env),
     MORPHEUS_SCRIPT_RESULT_FILE: resultFile,
-    MORPHEUS_SCRIPT_LOG_FILE: defaultLogFile,
     MORPHEUS_SCRIPT_WORKSPACE: rawValues.workspace || "",
     [`${prefix}_RESULT_FILE`]: resultFile,
-    [`${prefix}_LOG_FILE`]: defaultLogFile,
     [`${prefix}_WORKSPACE`]: rawValues.workspace || "",
   };
 

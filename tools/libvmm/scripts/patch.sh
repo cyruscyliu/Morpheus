@@ -4,7 +4,6 @@ set -euo pipefail
 source_dir="${MORPHEUS_LIBVMM_SOURCE:?}"
 patch_dir="${MORPHEUS_LIBVMM_PATCH_DIR:?}"
 result_file="${MORPHEUS_LIBVMM_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
-log_file="${source_dir}/.morpheus-patches.log"
 state_file="${source_dir}/.morpheus-patches.json"
 
 detect_version() {
@@ -46,11 +45,10 @@ EOF
   exit 0
 fi
 
-: > "${log_file}"
 while IFS= read -r patch_file; do
   [ -n "${patch_file}" ] || continue
-  printf '>>> %s\n' "${patch_file#${patch_dir}/}" >> "${log_file}"
-  patch -d "${source_dir}" -p1 -N -i "${patch_file}" >> "${log_file}" 2>&1
+  printf '>>> %s\n' "${patch_file#${patch_dir}/}"
+  patch -d "${source_dir}" -p1 -N -i "${patch_file}"
 done <<EOF
 ${patch_files}
 EOF

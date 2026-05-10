@@ -43,6 +43,9 @@
   same change unless the README is explicitly for standalone non-Morpheus use.
 - When changing `morpheus.yaml`, review the resolved workflow paths and step
   directories before committing.
+- Tool scripts must write only to stdout/stderr.
+- Morpheus owns log placement under `runs/steps/`; tools must not choose log
+  file paths.
 
 ## Commit Messages
 

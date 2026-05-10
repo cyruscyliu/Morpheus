@@ -9,7 +9,6 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 profile_dir="${script_dir}/../profiles/${profile_name}"
 profile_file="${source_dir}/profile.json"
 source_profile_file="${source_dir}/profile.json"
-log_file="${MORPHEUS_SCRIPT_LOG_FILE:-/dev/null}"
 
 mkdir -p "${source_dir}"
 
@@ -31,4 +30,4 @@ cat > "${result_file}" <<EOF
 {"details":{"source":"${source_dir}","profile":"${profile_name}","build_dir_key":"${build_dir_key}","reused":${reused}}}
 EOF
 
-printf '[nvirsh] fetched profile %s into %s\n' "${profile_name}" "${source_dir}" >> "${log_file}"
+printf '[nvirsh] fetched profile %s into %s\n' "${profile_name}" "${source_dir}"

@@ -3,7 +3,6 @@ set -euo pipefail
 
 profile_file="${MORPHEUS_NVIRSH_PROFILE_FILE:?}"
 run_dir="${MORPHEUS_NVIRSH_RUN_DIR:?}"
-log_file="${MORPHEUS_NVIRSH_LOG_FILE:?}"
 
 mkdir -p "${run_dir}/l1"
 
@@ -62,4 +61,4 @@ const payload = {
 fs.writeFileSync(outFile, `${JSON.stringify(payload, null, 2)}\n`);
 NODE
 
-printf '[nvirsh] l1 userspace provision artifacts written for %s\n' "$(node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(String((p.l0 && p.l0.workspace) || ""));' "${profile_file}")" >> "${log_file}"
+printf '[nvirsh] l1 userspace provision artifacts written for %s\n' "$(node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(String((p.l0 && p.l0.workspace) || ""));' "${profile_file}")"

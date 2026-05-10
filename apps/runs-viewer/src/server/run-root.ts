@@ -30,7 +30,6 @@ export interface ViewerWorkflowOption {
   id: string;
   name: string;
   category: string;
-  label: string;
   configPath: string | null;
 }
 
@@ -261,14 +260,12 @@ export function listConfiguredWorkflows(options: {
   configPath: string | null;
 }): ViewerWorkflowOption[] {
   const config = loadConfig(options.startDir, options.configPath);
-  const configLabel = config.path ? configDisplayLabel(config.path, requireWorkspaceRoot(config, config.path ? path.dirname(config.path) : options.startDir)) : "default";
   const workflows = config.value.workflows || {};
   return Object.entries(workflows)
     .map(([name, item]) => ({
       id: `${config.path || "default"}::${name}`,
       name,
       category: item && item.category ? String(item.category) : "run",
-      label: `${name}: ${configLabel}`,
       configPath: config.path,
     }))
     .sort((left, right) => left.name.localeCompare(right.name));

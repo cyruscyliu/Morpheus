@@ -85,7 +85,6 @@ export interface RunsIndexPayload {
     id: string;
     name: string;
     category: string;
-    label: string;
     configPath: string | null;
   }>;
   updatedAt: string;

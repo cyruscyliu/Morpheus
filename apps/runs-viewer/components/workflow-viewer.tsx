@@ -1457,7 +1457,7 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
                 >
                   {availableWorkflows.map((workflow) => (
                     <option key={workflow.id} value={workflow.id}>
-                      {workflow.label} · {workflow.category}
+                      {workflow.name} · {workflow.category}
                     </option>
                   ))}
                 </select>

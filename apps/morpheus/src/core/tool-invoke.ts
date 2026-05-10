@@ -528,6 +528,8 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
     [`${prefix}_WORKSPACE`]: rawValues.workspace || "",
   };
 
+  fs.mkdirSync(childCwd, { recursive: true });
+
   for (const [key, value] of Object.entries(rawValues)) {
     if (key.startsWith("__")) {
       continue;
@@ -557,7 +559,6 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
     ? renderScriptTemplate(resultSpec.logFileTemplate, rawValues)
     : defaultLogFile;
   fs.rmSync(resultFile, { force: true });
-  fs.mkdirSync(childCwd, { recursive: true });
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
   fs.writeFileSync(logFile, "", "utf8");
 

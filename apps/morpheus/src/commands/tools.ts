@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const { repoRoot } = require("../core/paths");
 const { listToolDescriptors, readToolDescriptor } = require("../core/tool-descriptor");
+const { validateToolDescriptor } = require("../core/tool-validator");
 const { writeStdoutLine } = require("../core/io");
 
 function listDeclaredTools() {
@@ -98,16 +99,19 @@ function toolUsage() {
   return [
     "Usage:",
     "  ./bin/morpheus tool list [--json]",
+    "  ./bin/morpheus tool validate --tool <name> [--json]",
     "",
     "Purpose:",
     "  Inspect declared tools and whether Morpheus can use them directly or through workflows.",
     "",
     "Commands:",
     "  tool list          List declared tools and their readiness.",
+    "  tool validate      Validate tools/<name>/tool.json against the descriptor schema.",
     "",
     "Examples:",
     "  ./bin/morpheus tool list",
     "  ./bin/morpheus tool list --json",
+    "  ./bin/morpheus tool validate --tool nvirsh --json",
     "",
     "Notes:",
     "  - 'workflow-only' tools are managed through configured workflows.",
@@ -217,6 +221,48 @@ async function handleToolCommand(argv) {
       writeStdoutLine(formatToolListText(items));
     }
     return 0;
+  }
+
+  if (subcommand === "validate") {
+    const tool = flags.tool;
+    if (!tool) {
+      throw new Error("tool validate requires --tool <name>");
+    }
+    const result = validateToolDescriptor(tool);
+    if (flags.json) {
+      printMaybeJson({
+        command: "tool validate",
+        status: result.ok ? "success" : "error",
+        exit_code: result.ok ? 0 : 1,
+        summary: result.ok
+          ? `validated ${tool} tool descriptor`
+          : `${tool} tool descriptor validation failed`,
+        details: {
+          tool: result.tool,
+          descriptor: result.descriptorPath,
+          checks: result.checks,
+          issues: result.issues,
+        },
+      }, flags);
+    } else if (result.ok) {
+      writeStdoutLine(
+        [
+          `validated ${tool} tool descriptor`,
+          ...result.checks.map((check) => `  [${check.status}] ${check.description}`),
+        ].join("\n")
+      );
+    } else {
+      writeStdoutLine(
+        [
+          `${tool} tool descriptor validation failed`,
+          ...result.checks.map((check) => {
+            const suffix = check.message ? `: ${check.message}` : "";
+            return `  [${check.status}] ${check.description}${suffix}`;
+          }),
+        ].join("\n")
+      );
+    }
+    return result.ok ? 0 : 1;
   }
 
   throw new Error(`unknown tool subcommand: ${subcommand}`);

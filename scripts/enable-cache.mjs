@@ -167,8 +167,8 @@ function main() {
   const cacheConfig = ensureCacheConfig(doc, configPath, repoRoot, flags);
   const workspaceRoot = resolveLocal(configDir, String(workspaceRootRaw));
   const cacheRoot = resolveLocal(configDir, String(cacheConfig.root));
-  const cacheToolsRoot = path.join(cacheRoot, namespace, "tools");
   const namespace = cacheConfig.namespace;
+  const cacheToolsRoot = path.join(cacheRoot, namespace, "tools");
   fs.writeFileSync(configPath, String(doc), "utf8");
 
   fs.mkdirSync(cacheToolsRoot, { recursive: true });

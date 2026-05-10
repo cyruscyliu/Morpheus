@@ -61,14 +61,10 @@ else
   make_args=(-j4)
 fi
 
-log_file="${build_dir}/build.log"
 manifest_file="${build_dir}/manifest.json"
 artifact_parent="${source_dir}"
 work_dir="${PWD}"
-
-: > "${log_file}"
 cd "${source_dir}"
-exec > >(tee -a "${log_file}") 2>&1
 
 # The upstream bootstrap initializes every declared submodule, including the
 # optional private pkvm-debug-tools repo. Point it at a local empty git repo so
@@ -158,7 +154,6 @@ fi
 cd "${work_dir}"
 
 if [ "${exit_code}" != "0" ]; then
-  tail -n 80 "${log_file}" >&2 || true
   exit "${exit_code}"
 fi
 
@@ -184,9 +179,9 @@ NODE
 )"
 
 cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"pkvm-aarch64","command":"build","status":"success","source":"${source_dir}","build_dir":"${build_dir}","build_target":"${build_target}","platform":"${platform}","log_file":"${log_file}"}
+{"schemaVersion":1,"tool":"pkvm-aarch64","command":"build","status":"success","source":"${source_dir}","build_dir":"${build_dir}","build_target":"${build_target}","platform":"${platform}"}
 EOF
 
 cat > "${result_file}" <<EOF
-{"details":{"built":true,"source":"${source_dir}","build_dir":"${build_dir}","build_target":"${build_target}","platform":"${platform}","log_file":"${log_file}","manifest":"${manifest_file}"},"artifacts":${artifacts_json}}
+{"details":{"built":true,"source":"${source_dir}","build_dir":"${build_dir}","build_target":"${build_target}","platform":"${platform}","manifest":"${manifest_file}"},"artifacts":${artifacts_json}}
 EOF

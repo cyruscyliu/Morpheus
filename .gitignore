@@ -33,6 +33,7 @@ tmp/
 .morpheus-sync/
 .morpheus-patches.json
 .morpheus-script-result.json
+.morpheus-script.log
 workspace/
 projects/*/workspace/**
 !projects/*/workspace/

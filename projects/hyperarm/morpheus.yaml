@@ -11,6 +11,7 @@ imports:
   workflows:
     - root.buildroot-build
     - root.qemu-build
+    - root.nvirsh-arm64-build
     - root.microkit-sdk-build
     - root.nqc2-build
     - root.libvmm-build
@@ -56,6 +57,12 @@ tools:
       - aarch64-softmmu
     artifacts:
       - qemu-system-aarch64
+  nvirsh:
+    mode: local
+    source: ../../tools/nvirsh/profiles/qemu-debian-arm
+    profile: qemu-debian-arm64
+    build-dir-key: qemu-debian-arm64
+    reuse-build-dir: true
   microkit-sdk:
     mode: local
     reuse-build-dir: true
@@ -216,6 +223,24 @@ workflows:
         args:
           - --run-dir
           - "{{steps.pkvm_exec.details.run_dir}}"
+  nvirsh-qemu-arm64-runtime:
+    category: run
+    steps:
+      - id: nvirsh_fetch
+        tool: nvirsh
+        command: fetch
+      - id: nvirsh_build
+        tool: nvirsh
+        command: build
+      - id: nvirsh_exec
+        tool: nvirsh
+        command: exec
+        attach: true
+        args:
+          - --phase
+          - launch
+          - --timeout-seconds
+          - "10"
   buildroot-qemu-runtime:
     category: run
     steps:

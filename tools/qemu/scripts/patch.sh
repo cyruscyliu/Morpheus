@@ -4,7 +4,6 @@ set -euo pipefail
 source_dir="${MORPHEUS_QEMU_SOURCE:?}"
 patch_dir="${MORPHEUS_QEMU_PATCH_DIR:?}"
 result_file="${MORPHEUS_QEMU_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
-log_file="${source_dir}/.morpheus-patches.log"
 state_file="${source_dir}/.morpheus-patches.json"
 
 if [ ! -d "${source_dir}" ]; then
@@ -36,11 +35,10 @@ EOF
   exit 0
 fi
 
-: > "${log_file}"
 while IFS= read -r patch_file; do
   [ -n "${patch_file}" ] || continue
-  printf '>>> %s\n' "${patch_file#${patch_dir}/}" >> "${log_file}"
-  patch -d "${source_dir}" -p1 -N -i "${patch_file}" >> "${log_file}" 2>&1
+  printf '>>> %s\n' "${patch_file#${patch_dir}/}"
+  patch -d "${source_dir}" -p1 -N -i "${patch_file}"
 done <<EOF
 ${patch_files}
 EOF

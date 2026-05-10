@@ -1,50 +1,158 @@
 {
   "name": "libvmm",
   "runtime": null,
-  "cli-contract": "fetch,patch,build,exec,inspect,logs,stop",
+  "cli-contract": "fetch,patch,build,exec,inspect,stop",
   "runGuard": {
     "scope": "workspace",
     "keyTemplate": "{provider.action}:{provider.example}"
   },
   "config": {
     "fields": {
-      "mode": { "aliases": ["mode"] },
-      "source": { "aliases": ["source"], "path": true },
-      "seed-dir": { "aliases": ["seed-dir", "seedDir"], "path": true },
-      "build-version": { "aliases": ["build-version", "buildVersion", "git-ref", "gitRef"] },
-      "git-url": { "aliases": ["git-url", "gitUrl"] },
-      "example": { "aliases": ["example"] },
-      "patch-dir": { "aliases": ["patch-dir", "patchDir"], "path": true },
-      "board": { "aliases": ["board"] },
-      "linux": { "aliases": ["linux"], "path": true },
-      "initrd": { "aliases": ["initrd"], "path": true },
-      "qemu": { "aliases": ["qemu"], "path": true },
-      "env": { "aliases": ["env"], "repeatable": true },
-      "toolchain-bin-dir": { "aliases": ["toolchain-bin-dir", "toolchainBinDir"], "path": true },
-      "microkit-sdk": { "aliases": ["microkit-sdk", "microkitSdk"], "path": true },
-      "make-arg": { "aliases": ["make-arg", "make-args", "makeArgs"], "repeatable": true },
-      "reuse-build-dir": { "aliases": ["reuse-build-dir", "reuseBuildDir"], "boolean": true },
-      "build-dir-key": { "aliases": ["build-dir-key", "buildDirKey"] },
-      "dependencies": { "aliases": ["dependencies"] },
-      "artifacts": { "aliases": ["artifacts"], "repeatable": true }
+      "mode": {
+        "aliases": [
+          "mode"
+        ]
+      },
+      "source": {
+        "aliases": [
+          "source"
+        ],
+        "path": true
+      },
+      "seed-dir": {
+        "aliases": [
+          "seed-dir",
+          "seedDir"
+        ],
+        "path": true
+      },
+      "build-version": {
+        "aliases": [
+          "build-version",
+          "buildVersion",
+          "git-ref",
+          "gitRef"
+        ]
+      },
+      "git-url": {
+        "aliases": [
+          "git-url",
+          "gitUrl"
+        ]
+      },
+      "example": {
+        "aliases": [
+          "example"
+        ]
+      },
+      "patch-dir": {
+        "aliases": [
+          "patch-dir",
+          "patchDir"
+        ],
+        "path": true
+      },
+      "board": {
+        "aliases": [
+          "board"
+        ]
+      },
+      "linux": {
+        "aliases": [
+          "linux"
+        ],
+        "path": true
+      },
+      "initrd": {
+        "aliases": [
+          "initrd"
+        ],
+        "path": true
+      },
+      "qemu": {
+        "aliases": [
+          "qemu"
+        ],
+        "path": true
+      },
+      "env": {
+        "aliases": [
+          "env"
+        ],
+        "repeatable": true
+      },
+      "toolchain-bin-dir": {
+        "aliases": [
+          "toolchain-bin-dir",
+          "toolchainBinDir"
+        ],
+        "path": true
+      },
+      "microkit-sdk": {
+        "aliases": [
+          "microkit-sdk",
+          "microkitSdk"
+        ],
+        "path": true
+      },
+      "make-arg": {
+        "aliases": [
+          "make-arg",
+          "make-args",
+          "makeArgs"
+        ],
+        "repeatable": true
+      },
+      "reuse-build-dir": {
+        "aliases": [
+          "reuse-build-dir",
+          "reuseBuildDir"
+        ],
+        "boolean": true
+      },
+      "build-dir-key": {
+        "aliases": [
+          "build-dir-key",
+          "buildDirKey"
+        ]
+      },
+      "dependencies": {
+        "aliases": [
+          "dependencies"
+        ]
+      },
+      "artifacts": {
+        "aliases": [
+          "artifacts"
+        ],
+        "repeatable": true
+      }
     }
   },
   "inputs": {
     "build": {
       "dependencies": {
-        "microkit-sdk": { "flag": "microkit-sdk" }
+        "microkit-sdk": {
+          "flag": "microkit-sdk"
+        }
       }
     },
     "run": {
       "dependencies": {
-        "microkit-sdk": { "flag": "microkit-sdk" },
-        "qemu": { "flag": "qemu" }
+        "microkit-sdk": {
+          "flag": "microkit-sdk"
+        },
+        "qemu": {
+          "flag": "qemu"
+        }
       }
     }
   },
   "managed": {
     "schemaVersion": 1,
-    "modes": ["local"],
+    "modes": [
+      "local"
+    ],
     "local": {
       "sourceTemplate": "tools/libvmm/builds/{buildDirKey}/source",
       "artifacts": {
@@ -63,8 +171,14 @@
       },
       "commands": {
         "fetch": {
-          "requiredFlags": ["source"],
-          "scalarFlags": ["git-url", "seed-dir", "build-version"],
+          "requiredFlags": [
+            "source"
+          ],
+          "scalarFlags": [
+            "git-url",
+            "seed-dir",
+            "build-version"
+          ],
           "repeatableFlags": [],
           "script": {
             "path": "scripts/fetch.sh",
@@ -82,13 +196,20 @@
             },
             "details": {
               "source": "{source}",
-              "build_version": { "fromFlag": "build-version" }
+              "build_version": {
+                "fromFlag": "build-version"
+              }
             }
           }
         },
         "patch": {
-          "requiredFlags": ["source", "patch-dir"],
-          "scalarFlags": ["patch-dir"],
+          "requiredFlags": [
+            "source",
+            "patch-dir"
+          ],
+          "scalarFlags": [
+            "patch-dir"
+          ],
           "repeatableFlags": [],
           "script": {
             "path": "scripts/patch.sh",
@@ -106,15 +227,27 @@
             },
             "details": {
               "source": "{source}",
-              "patch_dir": "{patch-dir}",
-              "log_file": "{source}/.morpheus-patches.log"
+              "patch_dir": "{patch-dir}"
             }
           }
         },
         "build": {
-          "requiredFlags": ["source", "microkit-sdk"],
-          "scalarFlags": ["example", "board", "microkit-sdk", "toolchain-bin-dir", "seed-dir", "git-url", "build-version"],
-          "repeatableFlags": ["make-arg"],
+          "requiredFlags": [
+            "source",
+            "microkit-sdk"
+          ],
+          "scalarFlags": [
+            "example",
+            "board",
+            "microkit-sdk",
+            "toolchain-bin-dir",
+            "seed-dir",
+            "git-url",
+            "build-version"
+          ],
+          "repeatableFlags": [
+            "make-arg"
+          ],
           "script": {
             "path": "scripts/build.sh",
             "shell": "bash"
@@ -126,15 +259,23 @@
             "successSummary": "built managed libvmm example",
             "details": {
               "source": "{source}",
-              "example": { "fromFlag": "example" },
+              "example": {
+                "fromFlag": "example"
+              },
               "microkit_sdk": "{microkit-sdk}",
-              "toolchain_bin_dir": { "fromFlag": "toolchain-bin-dir" }
+              "toolchain_bin_dir": {
+                "fromFlag": "toolchain-bin-dir"
+              }
             }
           }
         },
         "inspect": {
-          "requiredFlags": ["source"],
-          "scalarFlags": ["source"],
+          "requiredFlags": [
+            "source"
+          ],
+          "scalarFlags": [
+            "source"
+          ],
           "repeatableFlags": [],
           "script": {
             "path": "scripts/inspect.sh",
@@ -148,19 +289,34 @@
             }
           }
         },
-        "logs": {
-          "requiredFlags": ["source"],
-          "scalarFlags": ["source"],
-          "repeatableFlags": [],
-          "script": {
-            "path": "scripts/logs.sh",
-            "shell": "bash"
-          }
-        },
         "exec": {
-          "requiredFlags": ["runtime-contract", "run-dir", "libvmm-dir", "microkit-sdk", "board", "kernel", "initrd", "qemu"],
-          "scalarFlags": ["runtime-contract", "run-dir", "libvmm-dir", "microkit-sdk", "board", "microkit-config", "kernel", "initrd", "qemu", "toolchain-bin-dir", "action"],
-          "repeatableFlags": ["qemu-arg", "env"],
+          "requiredFlags": [
+            "runtime-contract",
+            "run-dir",
+            "libvmm-dir",
+            "microkit-sdk",
+            "board",
+            "kernel",
+            "initrd",
+            "qemu"
+          ],
+          "scalarFlags": [
+            "runtime-contract",
+            "run-dir",
+            "libvmm-dir",
+            "microkit-sdk",
+            "board",
+            "microkit-config",
+            "kernel",
+            "initrd",
+            "qemu",
+            "toolchain-bin-dir",
+            "action"
+          ],
+          "repeatableFlags": [
+            "qemu-arg",
+            "env"
+          ],
           "script": {
             "path": "scripts/exec.sh",
             "shell": "bash"
@@ -178,7 +334,9 @@
         },
         "stop": {
           "requiredFlags": [],
-          "scalarFlags": ["run-dir"],
+          "scalarFlags": [
+            "run-dir"
+          ],
           "repeatableFlags": [],
           "script": {
             "path": "scripts/stop.sh",

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "nvirsh profile",
+  "type": "object",
+  "required": ["name", "l0", "l1", "l2"],
+  "properties": {
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "l0": {
+      "type": "object",
+      "required": ["image"],
+      "properties": {
+        "image": { "type": "string" },
+        "workspace": { "type": "string" },
+        "provisionScript": { "type": "string" },
+        "sshPublicKey": { "type": "string" },
+        "hostName": { "type": "string" }
+      }
+    },
+    "l1": {
+      "type": "object",
+      "required": ["launcher"],
+      "properties": {
+        "repoUrl": { "type": "string" },
+        "repoBranch": { "type": "string" },
+        "launcher": { "type": "string" },
+        "launcherArgs": { "type": "array", "items": { "type": "string" } },
+        "provisionScript": { "type": "string" },
+        "replaceKernel": { "type": "boolean" },
+        "sshPort": { "type": "integer" }
+      }
+    },
+    "l2": {
+      "type": "object",
+      "required": ["launcher"],
+      "properties": {
+        "launcher": { "type": "string" },
+        "launcherArgs": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

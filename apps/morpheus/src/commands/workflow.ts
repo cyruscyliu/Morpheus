@@ -9,6 +9,8 @@ const { readToolDescriptor } = require("../core/tool-descriptor");
 const { repoRoot } = require("../core/paths");
 const { writeStdoutLine } = require("../core/io");
 const { emitEvent, withEventContext, withLogFile } = require("../core/logger");
+const { runConfigCheck } = require("./config-check");
+const { validateToolDescriptor } = require("../core/tool-validator");
 const {
   parseSshTarget,
   syncRemotePathToLocal,
@@ -192,20 +194,16 @@ function resolvePreferredStepLogFile(step) {
   if (!step || typeof step !== "object") {
     return null;
   }
-  const fallback = step.logFile || (step.stepDir ? path.join(step.stepDir, "stdout.log") : null);
   const candidate = step
     && step.toolResult
     && step.toolResult.details
     && typeof step.toolResult.details.log_file === "string"
       ? step.toolResult.details.log_file
       : null;
-  if (!candidate) {
-    return fallback;
-  }
-  if (isWithinDir(step.stepDir, candidate)) {
+  if (candidate && isWithinDir(step.stepDir, candidate)) {
     return candidate;
   }
-  return fallback;
+  return step.logFile || (step.stepDir ? path.join(step.stepDir, "stdout.log") : null);
 }
 
 function resolveWorkspaceRoot(flags) {
@@ -1112,20 +1110,6 @@ function writeStepLogLine(stepLogFile, line) {
   process.stderr.write(`${text}\n`);
 }
 
-function emitConsoleEvent(channel, text, eventContext) {
-  if (!text) {
-    return;
-  }
-  emitEvent(channel, {
-    text,
-  }, {
-    scope: "step",
-    workflowId: eventContext.workflowId || null,
-    stepId: eventContext.stepId || null,
-    tool: eventContext.tool || null,
-  });
-}
-
 function processToolStdoutLine(rawLine, stepLogFile, state, eventContext) {
   const line = String(rawLine || "").trim();
   if (!line) {
@@ -1137,7 +1121,6 @@ function processToolStdoutLine(rawLine, stepLogFile, state, eventContext) {
     parsed = JSON.parse(line);
   } catch {
     writeStepLogLine(stepLogFile, rawLine);
-    emitConsoleEvent("console.stdout", `${rawLine}\n`, eventContext);
     return;
   }
 
@@ -1150,12 +1133,10 @@ function processToolStdoutLine(rawLine, stepLogFile, state, eventContext) {
     if (typeof parsed.details.chunk === "string") {
       fs.appendFileSync(stepLogFile, parsed.details.chunk, "utf8");
       process.stderr.write(parsed.details.chunk);
-      emitConsoleEvent("console.stdout", parsed.details.chunk, eventContext);
       return;
     }
     if (typeof parsed.details.line === "string") {
       writeStepLogLine(stepLogFile, parsed.details.line);
-      emitConsoleEvent("console.stdout", `${parsed.details.line}\n`, eventContext);
       return;
     }
   }
@@ -1290,19 +1271,11 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
     const attach = Boolean(options.attach);
     const eventContext = options.eventContext || {};
     const childCwd = options.cwd || process.cwd();
-    // `attach` is narrowly scoped to terminal attachment for interactive tools.
-    // Non-attached steps remain the default managed workflow execution path.
-    const child = attach
-      ? spawn(process.execPath, args, {
-          cwd: childCwd,
-          env,
-          stdio: "inherit",
-        })
-      : spawn(process.execPath, args, {
-          cwd: childCwd,
-          env,
-          stdio: ["ignore", "pipe", "pipe"],
-        });
+    const child = spawn(process.execPath, args, {
+      cwd: childCwd,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     if (typeof onSpawn === "function") {
       onSpawn(child.pid);
     }
@@ -1316,27 +1289,6 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
       stepId: eventContext.stepId || null,
       tool: eventContext.tool || null,
     });
-
-    if (attach) {
-      child.on("error", reject);
-      child.on("close", (code) => {
-        emitEvent("step.process.exited", {
-          pid: child.pid || null,
-          exit_code: typeof code === "number" ? code : 1,
-        }, {
-          scope: "step",
-          workflowId: eventContext.workflowId || null,
-          stepId: eventContext.stepId || null,
-          tool: eventContext.tool || null,
-        });
-        resolve({
-          status: typeof code === "number" ? code : 1,
-          stderr: "",
-          toolPayload: null,
-        });
-      });
-      return;
-    }
 
     let stdoutBuffer = "";
     let stdoutText = "";
@@ -1359,7 +1311,6 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
     child.stderr.on("data", (chunk) => {
       stderrText += chunk;
       fs.appendFileSync(stepLogFile, chunk, "utf8");
-      emitConsoleEvent("console.stderr", String(chunk), eventContext);
       process.stderr.write(chunk);
     });
 
@@ -1597,6 +1548,33 @@ function workflowStepStatusFromResult(result, toolPayload, attach) {
   return result.status === 0 ? "success" : "error";
 }
 
+function runWorkflowBuildPreflight(steps) {
+  const configResult = runConfigCheck();
+  if (configResult.exit_code !== 0) {
+    const firstError = Array.isArray(configResult.issues)
+      ? configResult.issues.find((issue) => issue.level !== "warn")
+      : null;
+    throw new Error(firstError
+      ? `build preflight failed: ${firstError.path}: ${firstError.message}`
+      : "build preflight failed");
+  }
+
+  const toolNames = new Set(
+    (Array.isArray(steps) ? steps : [])
+      .map((step) => (step && step.tool ? String(step.tool) : ""))
+      .filter(Boolean)
+  );
+  for (const toolName of toolNames) {
+    const result = validateToolDescriptor(toolName);
+    if (!result.ok) {
+      const firstIssue = Array.isArray(result.issues) ? result.issues[0] : null;
+      throw new Error(firstIssue
+        ? `build preflight failed for ${toolName}: ${firstIssue.path}: ${firstIssue.message}`
+        : `build preflight failed for ${toolName}`);
+    }
+  }
+}
+
 async function runToolWorkflow({
   steps,
   workflowName,
@@ -1612,6 +1590,9 @@ async function runToolWorkflow({
   resumeMeta = null,
   configPath = null,
 }) {
+  if (category === "build") {
+    runWorkflowBuildPreflight(steps);
+  }
   const workflow = existingWorkflow || createWorkflowRun(workspaceRoot, workflowName, { category, configPath });
   return await withLogFile(workflowEventLogPath(workflow.runDir), async () => withEventContext({
     workflow_id: workflow.id,
@@ -1791,12 +1772,6 @@ async function runToolWorkflow({
       stepId: step.id,
       tool: step.tool,
     });
-    fs.appendFileSync(
-      step.logFile,
-      `\n[morpheus:workflow] step ${step.id} (${step.tool}) argv=${JSON.stringify(args.slice(1))}\n`,
-      "utf8"
-    );
-
     const result = await runWorkflowChild(
       args,
       step.logFile,
@@ -1804,6 +1779,7 @@ async function runToolWorkflow({
         ...process.env,
         ...(configPath ? { MORPHEUS_CONFIG: configPath } : {}),
         MORPHEUS_EVENT_LOG_FILE: workflowEventLogPath(workflow.runDir),
+        MORPHEUS_STEP_ATTACH: attach ? "true" : "false",
         MORPHEUS_EVENT_CONTEXT: JSON.stringify({
           workflow_id: workflow.id,
           step_id: step.id,
@@ -1895,7 +1871,7 @@ async function runToolWorkflow({
       }));
       fs.appendFileSync(
         activeStep.logFile,
-        `\n[morpheus:workflow] ${lastStderr}\n`,
+        `\n${lastStderr}\n`,
         "utf8",
       );
       updateWorkflowRun(workflow.runDir, (current) => ({

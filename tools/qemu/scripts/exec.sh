@@ -10,11 +10,9 @@ qemu_arg_file="${MORPHEUS_QEMU_QEMU_ARG_FILE:-}"
 timeout_seconds="${MORPHEUS_QEMU_TIMEOUT_SECONDS:-0}"
 detach="${MORPHEUS_QEMU_DETACH:-}"
 result_file="${MORPHEUS_QEMU_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
-log_file="${run_dir}/stdout.log"
 manifest_file="${run_dir}/manifest.json"
 
 mkdir -p "${run_dir}"
-: > "${log_file}"
 
 args=(
   "-machine" "virt,virtualization=on,gic-version=3"
@@ -32,7 +30,7 @@ if [ -n "${qemu_arg_file}" ] && [ -s "${qemu_arg_file}" ]; then
 fi
 
 if [ "${detach}" = "true" ]; then
-  "${qemu_path}" "${args[@]}" >> "${log_file}" 2>&1 &
+  "${qemu_path}" "${args[@]}" &
   pid="$!"
   timeout_pid=""
   if [ "${timeout_seconds}" != "0" ]; then
@@ -46,7 +44,7 @@ if [ "${detach}" = "true" ]; then
     timeout_pid="$!"
   fi
   cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"qemu","command":"exec","status":"running","run_dir":"${run_dir}","log_file":"${log_file}","pid":${pid},"timeout_pid":${timeout_pid:-null},"timeout_seconds":${timeout_seconds},"detached":true}
+{"schemaVersion":1,"tool":"qemu","command":"exec","status":"running","run_dir":"${run_dir}","log_file":"${run_dir}/stdout.log","pid":${pid},"timeout_pid":${timeout_pid:-null},"timeout_seconds":${timeout_seconds},"detached":true}
 EOF
   cat > "${result_file}" <<EOF
 {"details":{"pid":${pid},"detached":true}}
@@ -56,14 +54,14 @@ fi
 
 exit_code=0
 if [ "${timeout_seconds}" != "0" ]; then
-  timeout --preserve-status "${timeout_seconds}s" "${qemu_path}" "${args[@]}" >> "${log_file}" 2>&1 || exit_code="$?"
+  timeout --preserve-status "${timeout_seconds}s" "${qemu_path}" "${args[@]}" || exit_code="$?"
 else
-  "${qemu_path}" "${args[@]}" >> "${log_file}" 2>&1 || exit_code="$?"
+  "${qemu_path}" "${args[@]}" || exit_code="$?"
 fi
 
 if [ "${exit_code}" = "124" ]; then
   cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"qemu","command":"exec","status":"timeout","run_dir":"${run_dir}","log_file":"${log_file}","pid":null,"timeout_seconds":${timeout_seconds},"detached":false}
+{"schemaVersion":1,"tool":"qemu","command":"exec","status":"timeout","run_dir":"${run_dir}","log_file":"${run_dir}/stdout.log","pid":null,"timeout_seconds":${timeout_seconds},"detached":false}
 EOF
   cat > "${result_file}" <<EOF
 {"command":"exec","status":"error","exit_code":124,"summary":"local QEMU run timed out","error":{"code":"qemu_timeout","message":"local QEMU run timed out"}}
@@ -76,7 +74,7 @@ if [ "${exit_code}" != "0" ]; then
 fi
 
 cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"qemu","command":"exec","status":"success","run_dir":"${run_dir}","log_file":"${log_file}","pid":null,"detached":false}
+{"schemaVersion":1,"tool":"qemu","command":"exec","status":"success","run_dir":"${run_dir}","log_file":"${run_dir}/stdout.log","pid":null,"detached":false}
 EOF
 cat > "${result_file}" <<EOF
 {"details":{"pid":null,"detached":false}}

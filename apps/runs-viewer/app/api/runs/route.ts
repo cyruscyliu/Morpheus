@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { resolveViewerContext } from "@/src/server/context";
-import { listRunSummariesWithTotal } from "@/src/server/morpheus-client";
+import { listRunSummariesWithTotal } from "@/src/server/workspace-runs-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export function GET(request: Request): NextResponse {
   const url = new URL(request.url);
   const context = resolveViewerContext(url.searchParams.get("config"));
-  const result = listRunSummariesWithTotal(context, {
+  const result = listRunSummariesWithTotal(context.runRoot, {
     limit: url.searchParams.get("limit"),
     offset: url.searchParams.get("offset"),
   });

@@ -123,6 +123,37 @@ test("loadRunDetail returns steps, kinds, and graph metadata", () => {
   assert.equal(loadStepLogText(runRoot, legacyId, "step-001-build"), "hello\n");
 });
 
+test("loadStepLogText includes sibling script logs", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-store-script-log-"));
+  const runRoot = path.join(workspaceRoot, "runs");
+  const workflowId = "wf-script-log";
+  const workflowDir = path.join(runRoot, workflowId);
+  const stepDir = path.join(workflowDir, "steps", "01-step");
+
+  writeJson(path.join(workflowDir, "workflow.json"), {
+    id: workflowId,
+    workflow: "qemu-build",
+    category: "build",
+    status: "success",
+    createdAt: "2026-04-23T11:00:00.000Z",
+    updatedAt: "2026-04-23T11:05:00.000Z",
+    steps: [{ id: "01-step", name: "step", stepDir, status: "success" }],
+  });
+  writeJson(path.join(stepDir, "step.json"), {
+    id: "01-step",
+    name: "step",
+    status: "success",
+    logFile: path.join(stepDir, "stdout.log"),
+  });
+  writeText(path.join(stepDir, "stdout.log"), "stdout\n");
+  writeText(path.join(stepDir, ".morpheus-script.log"), "script\n");
+
+  const logText = loadStepLogText(runRoot, workflowId, "01-step") || "";
+  assert.match(logText, /stdout/);
+  assert.match(logText, /script/);
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
 test("workflow-first step artifacts fall back to tool result details", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-runs-store-"));
   const runRoot = path.join(workspaceRoot, "runs");
@@ -482,33 +513,8 @@ test("workflow-first step logs can be reconstructed from canonical events", () =
     kind: "tool",
     status: "success",
   });
-  writeText(
-    path.join(workflowDir, "events.jsonl"),
-    [
-      JSON.stringify({
-        ts: "2026-05-01T08:00:10.000Z",
-        producer: "morpheus",
-        level: "info",
-        scope: "step",
-        event: "console.stdout",
-        workflow_id: workflowId,
-        step_id: "01-step",
-        tool: "step",
-        data: { text: "hello\n" },
-      }),
-      JSON.stringify({
-        ts: "2026-05-01T08:00:11.000Z",
-        producer: "morpheus",
-        level: "info",
-        scope: "step",
-        event: "console.stderr",
-        workflow_id: workflowId,
-        step_id: "01-step",
-        tool: "step",
-        data: { text: "warn\n" },
-      }),
-    ].join("\n") + "\n",
-  );
+  writeText(path.join(workflowDir, "steps", "01-step", "stdout.log"), "hello\n");
+  writeText(path.join(workflowDir, "steps", "01-step", "stderr.log"), "warn\n");
 
   assert.equal(loadStepLogText(runRoot, workflowId, "01-step"), "hello\nwarn\n");
 });

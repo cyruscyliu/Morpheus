@@ -22,11 +22,12 @@ sudo apt-get install -y \
   ninja-build \
   pkg-config \
   build-essential \
+  cloud-image-utils \
   libglib2.0-dev \
   libpixman-1-dev \
   libslirp-dev
 
-for bin in pkg-config meson ninja; do
+for bin in pkg-config meson ninja cloud-localds; do
   if ! command -v "${bin}" >/dev/null 2>&1; then
     echo "failed to provision required host binary: ${bin}" >&2
     exit 1

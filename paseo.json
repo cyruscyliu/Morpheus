@@ -9,7 +9,7 @@
   "scripts": {
     "run-viewer": {
       "type": "service",
-      "command": "HOSTNAME=0.0.0.0 PORT=$PASEO_PORT pnpm --filter @morpheus/runs-viewer dev"
+      "command": "HOSTNAME=0.0.0.0 PORT=${PASEO_RUN_VIEWER_PORT:-8081} pnpm --filter @morpheus/runs-viewer dev"
     }
   }
 }

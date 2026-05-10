@@ -308,10 +308,6 @@ function withConfigQuery(input: string, configPath: string | null): string {
   return `${input}${separator}config=${encodeURIComponent(configPath)}`;
 }
 
-function nextGraphTab(currentTab: InspectionTab): InspectionTab {
-  return currentTab === "overview" ? "log" : currentTab;
-}
-
 function nextStepInspectionTab(
   step: RunStepSummary | null,
   currentTab: "overview" | "log" | "artifacts",
@@ -524,17 +520,49 @@ function buildGraphLayout(
 
   optimizeLayerOrdering();
 
+  const maxLayerIndex = Math.max(...layerEntries.map(([layer]) => layer), 0);
+  const layerGapExtras = new Array<number>(Math.max(maxLayerIndex, 0)).fill(0);
+  const layerOffsets = new Map<number, number>();
+  const labelGapFloor = 64;
+  const labelGapCeiling = 220;
+
+  for (const edge of edges) {
+    const sourceLayer = layerMap.get(edge.source);
+    const targetLayer = layerMap.get(edge.target);
+    const label = formatGraphEdge(edge);
+    if (sourceLayer == null || targetLayer == null || !label) {
+      continue;
+    }
+    if (targetLayer <= sourceLayer) {
+      continue;
+    }
+    const extraGap = Math.max(
+      0,
+      Math.min(labelGapCeiling, Math.max(labelGapFloor, label.length * 6)) - colGap,
+    );
+    for (let layer = sourceLayer; layer < targetLayer; layer += 1) {
+      layerGapExtras[layer] = Math.max(layerGapExtras[layer] || 0, extraGap);
+    }
+  }
+
+  let accumulatedExtraGap = 0;
+  for (let layer = 0; layer <= maxLayerIndex; layer += 1) {
+    layerOffsets.set(layer, accumulatedExtraGap);
+    accumulatedExtraGap += layerGapExtras[layer] || 0;
+  }
+
   const positioned: PositionedGraphNode[] = [];
 
-  const maxColumns = Math.max(...layerEntries.map(([, items]) => items.length), 1);
-  const contentWidth = maxColumns * nodeWidth + Math.max(maxColumns - 1, 0) * colGap;
+  const layerCount = Math.max(layerEntries.length, 1);
+  const maxRows = Math.max(...layerEntries.map(([, items]) => items.length), 1);
+  const contentHeight = maxRows * nodeHeight + Math.max(maxRows - 1, 0) * rowGap;
 
   for (const [layer, items] of layerEntries) {
-    const layerWidth = items.length * nodeWidth + Math.max(items.length - 1, 0) * colGap;
-    const startX = paddingX + (contentWidth - layerWidth) / 2;
-    const y = paddingY + layer * (nodeHeight + rowGap);
+    const x = paddingX + layer * (nodeWidth + colGap) + (layerOffsets.get(layer) || 0);
+    const layerHeight = items.length * nodeHeight + Math.max(items.length - 1, 0) * rowGap;
+    const startY = paddingY + (contentHeight - layerHeight) / 2;
     items.forEach((node, index) => {
-      const x = startX + index * (nodeWidth + colGap);
+      const y = startY + index * (nodeHeight + rowGap);
       positioned.push({
         ...node,
         x,
@@ -548,9 +576,12 @@ function buildGraphLayout(
   }
 
   const nodeMap = new Map(positioned.map((node) => [node.id, node]));
-  const maxLayer = Math.max(...layerEntries.map(([layer]) => layer), 0);
-  const width = paddingX * 2 + contentWidth;
-  const height = paddingY * 2 + (maxLayer + 1) * nodeHeight + maxLayer * rowGap;
+  const width =
+    paddingX * 2
+    + layerCount * nodeWidth
+    + Math.max(layerCount - 1, 0) * colGap
+    + accumulatedExtraGap;
+  const height = paddingY * 2 + contentHeight;
 
   return { width, height, nodes: positioned, nodeMap };
 }
@@ -1197,7 +1228,7 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, configPath, refreshActiveEvents, refreshActiveLog, selectedRunId]);
+  }, [configPath, refreshActiveEvents, refreshActiveLog, selectedRunId]);
 
   useEffect(() => {
     if (!selectedRunId) {
@@ -1645,7 +1676,6 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
                         setEventFilter("all");
                         setEventStepFilter("all");
                         setEventQuery("");
-                        setActiveTab((current) => nextGraphTab(current));
                       }}
                     >
                     <div
@@ -1720,9 +1750,6 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
                               setSelectedStepId(node.id);
                               if (activeTab === "events") {
                                 setEventStepFilter(node.id);
-                              }
-                              if (activeTab === "overview") {
-                                setActiveTab("log");
                               }
                             }}
                             style={{

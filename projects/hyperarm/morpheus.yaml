@@ -14,6 +14,7 @@ imports:
     - root.microkit-sdk-build
     - root.nqc2-build
     - root.libvmm-build
+    - root.pkvm-aarch64-build
     - root.sel4-build
 
 tools:
@@ -50,7 +51,7 @@ tools:
     build-version: 8.2.7
     reuse-build-dir: true
     build-dir-key: qemu-8.2.7-aarch64-softmmu
-    patch-dir: tools/qemu/patches
+    patch-dir: tools/qemu/patches/empty
     target-list:
       - aarch64-softmmu
     artifacts:
@@ -122,6 +123,10 @@ tools:
       - cg_collapsed_svg
       - cg_collapsed_pdf
       - log_file
+  pkvm-aarch64:
+    mode: local
+    build-dir-key: pkvm-aarch64-main
+    git-url: https://github.com/vrosendahl/pkvm-aarch64.git
   libvmm:
     mode: local
     reuse-build-dir: true
@@ -153,6 +158,64 @@ tools:
     artifacts:
       - source-dir
 workflows:
+  pkvm-aarch64-runtime:
+    category: run
+    steps:
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+      - id: pkvm_fetch
+        tool: pkvm-aarch64
+        command: fetch
+      - id: pkvm_build_all
+        tool: pkvm-aarch64
+        command: build
+        args:
+          - --source
+          - "{{steps.pkvm_fetch.artifacts.source-dir.location}}"
+          - --build-target
+          - all
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+      - id: pkvm_build_guest2host
+        tool: pkvm-aarch64
+        command: build
+        args:
+          - --source
+          - "{{steps.pkvm_fetch.artifacts.source-dir.location}}"
+          - --build-target
+          - guest2host
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+      - id: pkvm_exec
+        tool: pkvm-aarch64
+        command: exec
+        args:
+          - --source
+          - "{{steps.pkvm_fetch.artifacts.source-dir.location}}"
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+          - --timeout-seconds
+          - "20"
+          - --detach
+      - id: pkvm_stop
+        tool: pkvm-aarch64
+        command: stop
+        args:
+          - --run-dir
+          - "{{steps.pkvm_exec.details.run_dir}}"
   buildroot-qemu-runtime:
     category: run
     steps:

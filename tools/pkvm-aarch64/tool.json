@@ -1,0 +1,200 @@
+{
+  "name": "pkvm-aarch64",
+  "runtime": null,
+  "cli-contract": "fetch,build,exec,inspect,logs,stop",
+  "runGuard": {
+    "scope": "workspace",
+    "keyTemplate": "run"
+  },
+  "config": {
+    "fields": {
+      "source": { "aliases": ["source"], "path": true },
+      "seed-dir": { "aliases": ["seed-dir", "seedDir"], "path": true },
+      "build-version": { "aliases": ["build-version", "buildVersion"] },
+      "git-url": { "aliases": ["git-url", "gitUrl"] },
+      "fetch-submodules": { "aliases": ["fetch-submodules", "fetchSubmodules"], "boolean": true },
+      "build-dir-key": { "aliases": ["build-dir-key", "buildDirKey"] },
+      "platform": { "aliases": ["platform"] },
+      "build-target": { "aliases": ["build-target", "buildTarget", "target"] },
+      "qemu": { "aliases": ["qemu"], "path": true },
+      "make-arg": { "aliases": ["make-arg", "make-args", "makeArgs"], "repeatable": true },
+      "timeout-seconds": { "aliases": ["timeout-seconds", "timeoutSeconds"] },
+      "detach": { "aliases": ["detach"], "boolean": true },
+      "run-dir": { "aliases": ["run-dir", "runDir"], "path": true },
+      "artifacts": { "aliases": ["artifacts"], "repeatable": true }
+    }
+  },
+  "inputs": {
+    "build": {
+      "dependencies": {
+        "qemu": { "flag": "qemu" }
+      }
+    },
+    "exec": {
+      "dependencies": {
+        "qemu": { "flag": "qemu" }
+      }
+    }
+  },
+  "managed": {
+    "schemaVersion": 1,
+    "modes": ["local"],
+    "local": {
+      "sourceTemplate": "tools/pkvm-aarch64/src/pkvm-aarch64-{buildVersion}",
+      "buildDirTemplate": "tools/pkvm-aarch64/builds/{buildDirKey}/build",
+      "execDirTemplate": "runs/pkvm-aarch64/{buildDirKey}",
+      "artifacts": {
+        "source-dir": {
+          "pathTemplate": "tools/pkvm-aarch64/src/pkvm-aarch64-{buildVersion}"
+        },
+        "build-dir": {
+          "pathTemplate": "tools/pkvm-aarch64/builds/{buildDirKey}/build"
+        },
+        "run-dir": {
+          "pathTemplate": "runs/pkvm-aarch64/{buildDirKey}"
+        },
+        "host-image": {
+          "pathTemplate": "tools/pkvm-aarch64/src/pkvm-aarch64-{buildVersion}/images/host/ubuntuhost.qcow2"
+        },
+        "guest-image": {
+          "pathTemplate": "tools/pkvm-aarch64/src/pkvm-aarch64-{buildVersion}/images/guest/ubuntuguest.qcow2"
+        },
+        "host-kernel": {
+          "pathTemplate": "tools/pkvm-aarch64/src/pkvm-aarch64-{buildVersion}/linux-host/arch/arm64/boot/Image"
+        },
+        "guest-kernel": {
+          "pathTemplate": "tools/pkvm-aarch64/src/pkvm-aarch64-{buildVersion}/linux/arch/arm64/boot/Image"
+        }
+      },
+      "commands": {
+        "fetch": {
+          "requiredFlags": ["source"],
+          "scalarFlags": ["seed-dir", "build-version", "git-url", "fetch-submodules"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/fetch.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "source": "tools/pkvm-aarch64/src/pkvm-aarch64-{buildVersion}"
+          },
+          "result": {
+            "successSummary": "fetched managed pKVM source tree",
+            "reusedSummary": "reused managed pKVM source tree",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{source}"
+            },
+            "details": {
+              "source": "{source}",
+              "build_version": { "fromFlag": "build-version" },
+              "git_url": { "fromFlag": "git-url" }
+            }
+          }
+        },
+        "build": {
+          "requiredFlags": ["source", "build-dir"],
+          "scalarFlags": ["source", "build-dir", "platform", "build-target", "qemu", "seed-dir", "build-version", "git-url"],
+          "repeatableFlags": ["make-arg"],
+          "script": {
+            "path": "scripts/build.sh",
+            "shell": "bash",
+            "cwdTemplate": "{source}"
+          },
+          "pathFlags": {
+            "source": "tools/pkvm-aarch64/src/pkvm-aarch64-{buildVersion}",
+            "build-dir": "tools/pkvm-aarch64/builds/{buildDirKey}/build"
+          },
+          "result": {
+            "successSummary": "built managed pKVM targets",
+            "errorSummary": "managed pKVM build failed",
+            "logFileTemplate": "{build-dir}/build.log",
+            "manifestTemplate": "{build-dir}/manifest.json",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{source}"
+            },
+            "details": {
+              "source": "{source}",
+              "build_dir": "{build-dir}",
+              "build_target": { "fromFlag": "build-target" },
+              "platform": { "fromFlag": "platform" },
+              "qemu": { "fromFlag": "qemu" },
+              "log_file": "{build-dir}/build.log",
+              "manifest": "{build-dir}/manifest.json"
+            }
+          }
+        },
+        "exec": {
+          "requiredFlags": ["source", "run-dir"],
+          "scalarFlags": ["source", "run-dir", "platform", "build-target", "qemu", "timeout-seconds", "detach"],
+          "repeatableFlags": ["make-arg"],
+          "script": {
+            "path": "scripts/exec.sh",
+            "shell": "bash",
+            "cwdTemplate": "{source}"
+          },
+          "pathFlags": {
+            "source": "tools/pkvm-aarch64/src/pkvm-aarch64-{buildVersion}",
+            "run-dir": "runs/pkvm-aarch64/{buildDirKey}"
+          },
+          "result": {
+            "successSummary": "started local pKVM run",
+            "attachedSuccessSummary": "completed local pKVM run",
+            "errorSummary": "local pKVM run failed",
+            "artifact": {
+              "path": "run-dir",
+              "locationTemplate": "{run-dir}"
+            },
+            "details": {
+              "run_dir": "{run-dir}",
+              "log_file": "{run-dir}/stdout.log",
+              "manifest": "{run-dir}/manifest.json",
+              "qemu": { "fromFlag": "qemu" }
+            }
+          }
+        },
+        "inspect": {
+          "requiredFlags": ["source"],
+          "scalarFlags": ["source"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/inspect.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "source": "tools/pkvm-aarch64/src/pkvm-aarch64-{buildVersion}"
+          },
+          "result": {
+            "successSummary": "inspected managed pKVM source tree",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{source}"
+            }
+          }
+        },
+        "logs": {
+          "requiredFlags": [],
+          "scalarFlags": ["source", "build-dir", "run-dir"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/logs.sh",
+            "shell": "bash"
+          }
+        },
+        "stop": {
+          "requiredFlags": [],
+          "scalarFlags": ["run-dir"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/stop.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "stopped local pKVM run"
+          }
+        }
+      }
+    }
+  }
+}

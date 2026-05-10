@@ -126,10 +126,11 @@ function relativizeStepRecord(step) {
   if (!step || typeof step !== "object") {
     return step;
   }
+  const preferredLogFile = resolvePreferredStepLogFile(step);
   return {
     ...step,
     stepDir: typeof step.stepDir === "string" ? relativeToCwd(step.stepDir) : step.stepDir,
-    logFile: typeof step.logFile === "string" ? relativeToCwd(step.logFile) : step.logFile,
+    logFile: typeof preferredLogFile === "string" ? relativeToCwd(preferredLogFile) : preferredLogFile,
   };
 }
 
@@ -163,6 +164,35 @@ function normalizeWorkflowInspectDetails(workflow, steps) {
 
 function cliEntrypoint() {
   return path.join(repoRoot(), "apps", "morpheus", "dist", "cli.js");
+}
+
+function isWithinDir(parentDir, candidatePath) {
+  if (!parentDir || !candidatePath) {
+    return false;
+  }
+  const parent = path.resolve(parentDir);
+  const candidate = path.resolve(candidatePath);
+  return candidate === parent || candidate.startsWith(`${parent}${path.sep}`);
+}
+
+function resolvePreferredStepLogFile(step) {
+  if (!step || typeof step !== "object") {
+    return null;
+  }
+  const fallback = step.logFile || (step.stepDir ? path.join(step.stepDir, "stdout.log") : null);
+  const candidate = step
+    && step.toolResult
+    && step.toolResult.details
+    && typeof step.toolResult.details.log_file === "string"
+      ? step.toolResult.details.log_file
+      : null;
+  if (!candidate) {
+    return fallback;
+  }
+  if (isWithinDir(step.stepDir, candidate)) {
+    return candidate;
+  }
+  return fallback;
 }
 
 function resolveWorkspaceRoot(flags) {
@@ -1625,7 +1655,7 @@ async function runToolWorkflow({
     emitConsumedArtifactEvents(workflow, step, resolvedStep.relations);
 
     const args = (
-      ["fetch", "patch", "build", "inspect", "logs", "exec", "postprocess", "genhtml"].includes(toolCommand)
+      ["fetch", "patch", "build", "inspect", "logs", "exec", "stop", "postprocess", "genhtml"].includes(toolCommand)
     )
       ? [
           cliEntrypoint(),
@@ -2210,7 +2240,7 @@ async function handleWorkflowCommand(argv) {
     if (!step) {
       throw new Error(`workflow logs could not resolve step: ${stepId}`);
     }
-    const logFile = step.logFile || path.join(step.stepDir, "stdout.log");
+    const logFile = resolvePreferredStepLogFile(step) || path.join(step.stepDir, "stdout.log");
     if (!fs.existsSync(logFile)) {
       throw new Error(`missing log file: ${path.relative(process.cwd(), logFile)}`);
     }

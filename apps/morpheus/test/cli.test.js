@@ -301,7 +301,7 @@ test("tool list discovers repo-local tools", () => {
   assert.equal(Object.prototype.hasOwnProperty.call(payload, "tools"), false);
   assert.deepEqual(
     payload.details.tools.map((tool) => tool.name),
-    ["buildroot", "libvmm", "llbic", "llcg", "microkit-sdk", "nqc2", "outline-to-paper", "qemu", "sel4"]
+    ["buildroot", "libvmm", "llbic", "llcg", "microkit-sdk", "nqc2", "outline-to-paper", "pkvm-aarch64", "qemu", "sel4"]
   );
 });
 

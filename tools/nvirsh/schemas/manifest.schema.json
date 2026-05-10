@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "nvirsh manifest",
+  "type": "object",
+  "required": ["schemaVersion", "tool", "profile", "status", "phases"],
+  "properties": {
+    "schemaVersion": { "type": "integer" },
+    "tool": { "const": "nvirsh" },
+    "profile": { "type": "string" },
+    "status": { "type": "string" },
+    "currentPhase": { "type": ["string", "null"] },
+    "buildVersion": { "type": ["string", "null"] },
+    "source": { "type": ["string", "null"] },
+    "buildDir": { "type": ["string", "null"] },
+    "installDir": { "type": ["string", "null"] },
+    "runDir": { "type": ["string", "null"] },
+    "runtime": {
+      "type": "object",
+      "properties": {
+        "pid": { "type": ["integer", "null"] }
+      }
+    },
+    "phases": {
+      "type": "object",
+      "properties": {
+        "boot": { "type": "string" },
+        "provision": { "type": "string" },
+        "nested-launch": { "type": "string" },
+        "ready": { "type": "string" }
+      }
+    }
+  }
+}

@@ -27,6 +27,10 @@ tools:
     patch-dir: ./tools/qemu/patches/demo
   pkvm-aarch64:
     git-url: https://github.com/vrosendahl/pkvm-aarch64.git
+  nvirsh:
+    source: ./tools/nvirsh/profiles/qemu-debian-arm
+    profile: qemu-debian-arm64
+    build-dir-key: qemu-debian-arm64
   sel4:
     seed-dir: ./tools/sel4/fixtures/minimal-sel4-src
     patch-dir: ./tools/sel4/patches/demo
@@ -67,6 +71,15 @@ workflows:
         args:
           - --source
           - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+  nvirsh-arm64-build:
+    category: build
+    steps:
+      - id: nvirsh_fetch
+        tool: nvirsh
+        command: fetch
+      - id: nvirsh_build
+        tool: nvirsh
+        command: build
   nqc2-build:
     category: build
     steps:

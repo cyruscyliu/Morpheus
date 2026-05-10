@@ -301,7 +301,7 @@ test("tool list discovers repo-local tools", () => {
   assert.equal(Object.prototype.hasOwnProperty.call(payload, "tools"), false);
   assert.deepEqual(
     payload.details.tools.map((tool) => tool.name),
-    ["buildroot", "libvmm", "llbic", "llcg", "microkit-sdk", "nqc2", "outline-to-paper", "pkvm-aarch64", "qemu", "sel4"]
+    ["buildroot", "libvmm", "llbic", "llcg", "microkit-sdk", "nqc2", "nvirsh", "outline-to-paper", "pkvm-aarch64", "qemu", "sel4"]
   );
 });
 
@@ -311,12 +311,15 @@ test("tool list reports workflow-only tools without wrapper errors", () => {
   const payload = JSON.parse(result.stdout);
   const buildroot = payload.details.tools.find((tool) => tool.name === "buildroot");
   const llcg = payload.details.tools.find((tool) => tool.name === "llcg");
+  const nvirsh = payload.details.tools.find((tool) => tool.name === "nvirsh");
   assert.equal(buildroot.verification.status, "workflow-only");
   assert.equal(buildroot.verification.note, "run through 'morpheus workflow run'");
   assert.deepEqual(buildroot.verification.issues, []);
   assert.equal(llcg.verification.status, "ready");
   assert.equal(llcg.verification.note, "available to Morpheus");
   assert.ok(!llcg.verification.issues.some((issue) => issue.includes("missing wrapper")));
+  assert.equal(nvirsh.verification.status, "workflow-only");
+  assert.equal(nvirsh.verification.note, "run through 'morpheus workflow run'");
 });
 
 test("config check can use explicit --config outside the config directory", () => {

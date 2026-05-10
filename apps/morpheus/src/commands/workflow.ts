@@ -1804,6 +1804,7 @@ async function runToolWorkflow({
         ...process.env,
         ...(configPath ? { MORPHEUS_CONFIG: configPath } : {}),
         MORPHEUS_EVENT_LOG_FILE: workflowEventLogPath(workflow.runDir),
+        MORPHEUS_STEP_ATTACH: attach ? "true" : "false",
         MORPHEUS_EVENT_CONTEXT: JSON.stringify({
           workflow_id: workflow.id,
           step_id: step.id,

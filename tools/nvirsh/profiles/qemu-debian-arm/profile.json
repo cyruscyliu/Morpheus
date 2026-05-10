@@ -1,0 +1,41 @@
+{
+  "name": "qemu-debian-arm64",
+  "description": "Debian arm64 nested virtualization profile using Buildroot outputs.",
+  "l0": {
+    "image": "https://cdimage.debian.org/images/cloud/bookworm/latest/debian-12-nocloud-arm64.qcow2",
+    "workspace": "workspace",
+    "provisionScript": "l0-provision.sh",
+    "sshPublicKey": ""
+  },
+  "l1": {
+    "launcher": "qemu-system-aarch64",
+    "launcherArgs": [
+      "-machine",
+      "virt,virtualization=on",
+      "-cpu",
+      "host",
+      "-m",
+      "8192",
+      "-smp",
+      "4",
+      "-netdev",
+      "user,id=u1,hostfwd=tcp::2222-:22"
+    ],
+    "provisionScript": "l1-provision.sh",
+    "replaceKernel": false,
+    "sshPort": 2222
+  },
+  "l2": {
+    "launcher": "qemu-system-aarch64",
+    "launcherArgs": [
+      "-machine",
+      "virt,virtualization=on",
+      "-cpu",
+      "host",
+      "-kernel",
+      "{buildroot:images/Image}",
+      "-initrd",
+      "{buildroot:images/rootfs.cpio.gz}"
+    ]
+  }
+}

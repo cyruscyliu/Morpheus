@@ -26,6 +26,8 @@
 - Treat repo-local tool CLIs as Morpheus-internal execution surfaces.
 - Do not invoke repo-local tools directly from the agent shell.
 - Run tools only through `morpheus workflow ...`.
+- Prefer resuming an existing workflow run over creating a new run when the
+  same work can continue safely.
 - Never add tool-specific behavior to Morpheus.
 - Keep Morpheus generic and move tool-specific logic into `tools/<tool>/`.
 - Keep global cache enablement transparent to tools.

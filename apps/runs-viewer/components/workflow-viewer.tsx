@@ -1463,10 +1463,6 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
                 </select>
               </label>
             ) : null}
-            <div className="workflow-topbar-chip">
-              <span className="workflow-topbar-label">Updated</span>
-              <span>{updatedAt ? formatTimestamp(updatedAt) : "-"}</span>
-            </div>
             {availableWorkflows.length > 0 ? (
               <Button
                 disabled={runWorkflowLoading || !selectedWorkflowId}

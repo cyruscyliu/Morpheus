@@ -1,6 +1,6 @@
 import { WorkflowViewer } from "@/components/workflow-viewer";
 import { resolveViewerContext } from "@/src/server/context";
-import { listRunSummariesWithTotal } from "@/src/server/morpheus-client";
+import { listRunSummariesWithTotal } from "@/src/server/workspace-runs-store";
 
 export default async function Page({
   searchParams,
@@ -9,7 +9,7 @@ export default async function Page({
 }) {
   const resolvedSearchParams = await searchParams;
   const context = resolveViewerContext(resolvedSearchParams.config || null);
-  const initialRuns = listRunSummariesWithTotal(context, {});
+  const initialRuns = listRunSummariesWithTotal(context.runRoot, {});
 
   return (
     <WorkflowViewer

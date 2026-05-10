@@ -169,14 +169,6 @@ export function loadRunLogText(
     return null;
   }
   const sections: string[] = [];
-  const events = loadRunEvents(context, runId) || [];
-  const eventText = events
-    .filter((entry) => entry && (entry.event === "console.stdout" || entry.event === "console.stderr"))
-    .map((entry) => (entry.data && typeof entry.data.text === "string" ? entry.data.text : ""))
-    .join("");
-  if (eventText.trim()) {
-    sections.push(["=== workflow.events ===", eventText.trimEnd()].join("\n"));
-  }
 
   for (const step of detail.steps || []) {
     const stepLog = loadStepLogText(context, runId, step.id);

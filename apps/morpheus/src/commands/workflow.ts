@@ -23,6 +23,13 @@ const {
   workflowRunsRoot,
   stepToolRunDir,
 } = require("../core/workflow-runs");
+const {
+  listWorkflowRuns,
+  loadWorkflowDetail,
+  loadWorkflowEvents,
+  loadWorkflowLogText,
+  loadWorkflowStepLogText,
+} = require("../core/workflow-read");
 
 function parseWorkflowArgs(argv) {
   const positionals = [];
@@ -51,10 +58,12 @@ function parseWorkflowArgs(argv) {
 function workflowUsage() {
   return [
     "Usage:",
+    "  ./bin/morpheus [--config PATH] workflow runs [--limit N] [--offset N] [--json]",
     "  ./bin/morpheus [--config PATH] workflow list [--json]",
     "  ./bin/morpheus --config projects/<project>/morpheus.yaml workflow run --name WORKFLOW_NAME [--json]",
     "  ./bin/morpheus [--config PATH] workflow resume --id WORKFLOW_RUN_ID [--from-step STEP_ID] [--one-step] [--json]",
     "  ./bin/morpheus [--config PATH] workflow inspect --id WORKFLOW_RUN_ID [--json]",
+    "  ./bin/morpheus [--config PATH] workflow events --id WORKFLOW_RUN_ID [--json]",
     "  ./bin/morpheus [--config PATH] workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow]",
     "  ./bin/morpheus [--config PATH] workflow stop --id WORKFLOW_RUN_ID [--json]",
     "  ./bin/morpheus [--config PATH] workflow remove --id WORKFLOW_RUN_ID [--json]",
@@ -63,18 +72,22 @@ function workflowUsage() {
     "  Discover, run, inspect, and manage Morpheus workflow runs.",
     "",
     "Commands:",
+    "  workflow runs      List managed workflow runs.",
     "  workflow list      List configured workflows.",
     "  workflow run       Start a configured workflow.",
     "  workflow resume    Resume a previous workflow run.",
     "  workflow inspect   Inspect workflow state and steps.",
+    "  workflow events    Print workflow events for a run.",
     "  workflow logs      Print logs for a workflow step.",
     "  workflow stop      Stop a running workflow.",
     "  workflow remove    Remove a stopped workflow run.",
     "",
     "Examples:",
+    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow runs --json",
     "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow list --json",
     "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow run --name qemu-build --json",
     "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow inspect --id <run-id> --json",
+    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow events --id <run-id> --json",
     "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow logs --id <run-id> --step <step-id>",
     "",
     "Notes:",
@@ -423,6 +436,89 @@ function listConfiguredWorkflows(explicitConfigPath = null) {
     details: {
       config: config.path ? path.relative(process.cwd(), config.path) || "morpheus.yaml" : null,
       workflows: items,
+    }
+  };
+}
+
+function listManagedWorkflowRuns(workspaceRoot, flags) {
+  const payload = listWorkflowRuns(workspaceRoot, {
+    limit: flags.limit,
+    offset: flags.offset,
+  });
+  return {
+    command: "workflow runs",
+    status: "success",
+    exit_code: 0,
+    summary: payload.runs.length === 0 ? "no workflow runs" : "listed workflow runs",
+    details: {
+      run_root: relativeToCwd(workflowRunsRoot(workspaceRoot)),
+      workspace: path.resolve(process.cwd(), workspaceRoot),
+      runs: payload.runs.map((run) => ({
+        id: run.id,
+        kind: run.kind,
+        format: run.format,
+        category: run.category,
+        workflowName: run.workflowName,
+        status: run.status,
+        createdAt: run.createdAt,
+        completedAt: run.completedAt,
+        changeName: run.changeName,
+        stepCount: run.stepCount,
+        runDir: run.runDir ? relativeToCwd(run.runDir) : run.runDir,
+      })),
+      total: payload.total,
+      offset: payload.offset,
+      limit: payload.limit,
+    }
+  };
+}
+
+function eventPayloadForRun(workspaceRoot, id) {
+  const events = loadWorkflowEvents(workspaceRoot, id);
+  if (!events) {
+    throw new Error(`workflow run not found: ${id}; use 'morpheus workflow list' to start a run or 'morpheus workflow inspect --id <run-id>' with a valid id`);
+  }
+  return {
+    command: "workflow events",
+    status: "success",
+    exit_code: 0,
+    summary: "listed workflow events",
+    details: {
+      id,
+      events,
+    }
+  };
+}
+
+function inspectPayloadForRun(workspaceRoot, id) {
+  const detail = loadWorkflowDetail(workspaceRoot, id);
+  if (!detail) {
+    throw new Error(`workflow run not found: ${id}; use 'morpheus workflow list' to start a run or 'morpheus workflow inspect --id <run-id>' with a valid id`);
+  }
+  return {
+    command: "workflow inspect",
+    status: "success",
+    exit_code: 0,
+    summary: "inspected workflow run",
+    details: {
+      id: detail.id,
+      kind: detail.kind,
+      format: detail.format,
+      category: detail.category,
+      workflowName: detail.workflowName,
+      status: detail.status,
+      createdAt: detail.createdAt,
+      completedAt: detail.completedAt,
+      changeName: detail.changeName,
+      stepCount: detail.stepCount,
+      runDir: detail.runDir ? relativeToCwd(detail.runDir) : detail.runDir,
+      graph: detail.graph,
+      steps: detail.steps.map((step) => ({
+        ...step,
+        stepDir: step.stepDir ? relativeToCwd(step.stepDir) : step.stepDir,
+        logUrl: step.logUrl || null,
+        artifacts: Array.isArray(step.artifacts) ? step.artifacts : [],
+      })),
     }
   };
 }
@@ -2063,6 +2159,24 @@ async function handleWorkflowCommand(argv) {
     return 0;
   }
 
+  if (subcommand === "runs") {
+    const workspaceRoot = resolveWorkspaceRoot(flags);
+    const payload = listManagedWorkflowRuns(workspaceRoot, flags);
+    if (flags.json) {
+      writeStdoutLine(JSON.stringify(payload, null, 2));
+    } else if (payload.details.runs.length === 0) {
+      writeStdoutLine("No workflow runs.");
+    } else {
+      writeStdoutLine([
+        "id\tworkflow\tcategory\tstatus\tcreated\tsteps",
+        ...payload.details.runs.map((run) => (
+          `${run.id}\t${run.workflowName || "-"}\t${run.category}\t${run.status}\t${run.createdAt || "-"}\t${run.stepCount}`
+        )),
+      ].join("\n"));
+    }
+    return 0;
+  }
+
   if (subcommand === "list") {
     const payload = listConfiguredWorkflows();
     if (flags.json) {
@@ -2208,18 +2322,40 @@ async function handleWorkflowCommand(argv) {
     }
     const workspaceRoot = resolveWorkspaceRoot(flags);
     const found = findWorkflowRun(workspaceRoot, id);
-    const { workflow, steps } = reconcileStaleWorkflowRun(found);
-    const payload = {
-      command: "workflow inspect",
-      status: "success",
-      exit_code: 0,
-      summary: "inspected workflow run",
-      details: normalizeWorkflowInspectDetails(workflow, steps)
-    };
+    reconcileStaleWorkflowRun(found);
+    const payload = inspectPayloadForRun(workspaceRoot, id);
     if (flags.json) {
-      writeStdoutLine(JSON.stringify(payload));
+      writeStdoutLine(JSON.stringify(payload, null, 2));
     } else {
-      writeStdoutLine(formatWorkflowInspectText(workflow, steps));
+      const detail = payload.details;
+      writeStdoutLine(formatWorkflowInspectText({
+        workflow: detail.workflowName,
+        id: detail.id,
+        status: detail.status,
+        category: detail.category,
+        currentStepId: null,
+        createdAt: detail.createdAt,
+        updatedAt: detail.completedAt || detail.createdAt,
+      }, detail.steps));
+    }
+    return 0;
+  }
+
+  if (subcommand === "events") {
+    const id = flags.id;
+    if (!id) {
+      throw new Error("workflow events requires --id WORKFLOW_RUN_ID");
+    }
+    const workspaceRoot = resolveWorkspaceRoot(flags);
+    const found = findWorkflowRun(workspaceRoot, id);
+    reconcileStaleWorkflowRun(found);
+    const payload = eventPayloadForRun(workspaceRoot, id);
+    if (flags.json) {
+      writeStdoutLine(JSON.stringify(payload, null, 2));
+    } else if (payload.details.events.length === 0) {
+      writeStdoutLine("No workflow events.");
+    } else {
+      writeStdoutLine(payload.details.events.map((entry) => JSON.stringify(entry)).join("\n"));
     }
     return 0;
   }
@@ -2253,7 +2389,9 @@ async function handleWorkflowCommand(argv) {
       }
       return await followLogFile(logFile);
     }
-    const content = fs.readFileSync(logFile, "utf8");
+    const content = flags.step
+      ? (loadWorkflowStepLogText(workspaceRoot, id, stepId) || "")
+      : (loadWorkflowStepLogText(workspaceRoot, id, stepId) || "");
     if (flags.json) {
       writeStdoutLine(JSON.stringify({
         command: "workflow logs",

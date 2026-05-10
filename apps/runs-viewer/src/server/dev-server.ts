@@ -7,7 +7,12 @@ import chokidar from "chokidar";
 
 import { findRunRoot } from "./run-root";
 import { debounce } from "./debounce";
-import { loadRunDetail, loadRunEvents, loadStepLogText, listRunSummariesWithTotal } from "./runs-store";
+import {
+  loadRunDetail,
+  loadRunEvents,
+  loadStepLogText,
+  listRunSummariesWithTotal,
+} from "./morpheus-client";
 import { isSafeId } from "./validate";
 
 export interface RunsViewerServer {
@@ -104,6 +109,11 @@ export function createRunsViewerServer(options: Options): RunsViewerServer {
   const repoRoot = path.resolve(process.cwd(), "..", "..");
   const runRootInfo = findRunRoot({ startDir: process.cwd(), repoRoot });
   const { runRoot } = runRootInfo;
+  const cliContext = {
+    repoRoot,
+    workspaceRoot: runRootInfo.workspaceRoot,
+    configPath: runRootInfo.configPath,
+  };
   const sseClients = new Set<ServerResponse>();
 
   const broadcastWatcherEvent = debounce((filePath: string) => {
@@ -207,7 +217,7 @@ export function createRunsViewerServer(options: Options): RunsViewerServer {
           notFound(res);
           return true;
         }
-        const detail = loadRunDetail(runRoot, runId);
+        const detail = loadRunDetail(cliContext, runId);
         if (!detail) {
           notFound(res);
           return true;
@@ -232,7 +242,7 @@ export function createRunsViewerServer(options: Options): RunsViewerServer {
           notFound(res);
           return true;
         }
-        const detail = loadRunDetail(runRoot, runId);
+        const detail = loadRunDetail(cliContext, runId);
         if (!detail) {
           notFound(res);
           return true;
@@ -257,7 +267,7 @@ export function createRunsViewerServer(options: Options): RunsViewerServer {
           notFound(res);
           return true;
         }
-        const detail = loadRunDetail(runRoot, runId);
+        const detail = loadRunDetail(cliContext, runId);
         if (!detail) {
           notFound(res);
           return true;
@@ -311,7 +321,7 @@ export function createRunsViewerServer(options: Options): RunsViewerServer {
     }
 
     if (url.pathname === "/api/runs") {
-      const result = listRunSummariesWithTotal(runRoot, {
+      const result = listRunSummariesWithTotal(cliContext, {
         limit: url.searchParams.get("limit"),
         offset: url.searchParams.get("offset"),
       });
@@ -335,7 +345,7 @@ export function createRunsViewerServer(options: Options): RunsViewerServer {
         notFound(res);
         return true;
       }
-      const detail = loadRunDetail(runRoot, runId);
+      const detail = loadRunDetail(cliContext, runId);
       if (!detail) {
         notFound(res);
         return true;
@@ -351,7 +361,7 @@ export function createRunsViewerServer(options: Options): RunsViewerServer {
         notFound(res);
         return true;
       }
-      const events = loadRunEvents(runRoot, runId);
+      const events = loadRunEvents(cliContext, runId);
       if (events == null) {
         notFound(res);
         return true;
@@ -368,7 +378,7 @@ export function createRunsViewerServer(options: Options): RunsViewerServer {
         notFound(res);
         return true;
       }
-      const logText = loadStepLogText(runRoot, runId, stepId);
+      const logText = loadStepLogText(cliContext, runId, stepId);
       if (logText == null) {
         notFound(res);
         return true;

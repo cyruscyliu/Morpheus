@@ -62,10 +62,12 @@ function usage() {
       "  workspace show     Inspect local or remote workspace state.",
       "  config check       Validate morpheus.yaml.",
       "  tool list          List declared tools and their readiness.",
+      "  workflow runs      List managed workflow runs.",
       "  workflow list      List configured workflows.",
       "  workflow run       Start a configured workflow.",
       "  workflow resume    Resume a prior workflow run.",
       "  workflow inspect   Inspect workflow state and steps.",
+      "  workflow events    Print workflow events.",
       "  workflow logs      Print workflow step logs.",
       "  workflow stop      Stop a running workflow.",
       "  workflow remove    Remove a stopped workflow run.",
@@ -74,6 +76,7 @@ function usage() {
       "  ./bin/morpheus tool list",
       "  ./bin/morpheus --config projects/<project>/morpheus.yaml workflow list --json",
       "  ./bin/morpheus --config projects/<project>/morpheus.yaml config check --json",
+      "  ./bin/morpheus --config projects/<project>/morpheus.yaml workflow runs --json",
       "  ./bin/morpheus --config projects/<project>/morpheus.yaml workflow run --name <workflow> --json",
       "",
       "Examples:",
@@ -122,7 +125,7 @@ async function main() {
   const subcommand = positionals[1];
   const isReadOnlyWorkspaceCommand = command === "workspace" && subcommand === "show";
   const isReadOnlyConfigCommand = command === "config" && subcommand === "check";
-  const isReadOnlyWorkflowCommand = command === "workflow" && ["list", "inspect", "logs"].includes(String(subcommand || ""));
+  const isReadOnlyWorkflowCommand = command === "workflow" && ["list", "runs", "inspect", "events", "logs"].includes(String(subcommand || ""));
   const suppressImplicitConfigWarning = wantsHelp || isReadOnlyWorkspaceCommand || isReadOnlyConfigCommand || isReadOnlyWorkflowCommand;
   if (flags.config && typeof flags.config === "string") {
     process.env.MORPHEUS_CONFIG = path.resolve(String(flags.config));

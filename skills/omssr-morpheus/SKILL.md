@@ -118,6 +118,9 @@ Operational rule:
 - Treat Morpheus as the owner of workflow ids, logs, and published artifact
   records.
 - Treat internal tool CLIs as Morpheus-internal only.
+- Treat run-viewer and similar clients as Morpheus-CLI consumers first; they
+  should read workflow runs, events, inspect data, and logs through Morpheus
+  JSON commands rather than reconstructing `workspace/runs/...` directly.
 - Do not invoke internal tool CLIs directly from the agent shell.
 - Treat `tool.json` as the tool contract schema: tools must implement
   `inspect` and `logs`, and may optionally implement `fetch`, `patch`,

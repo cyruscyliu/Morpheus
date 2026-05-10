@@ -9,7 +9,7 @@ import {
   listRunSummariesWithTotal,
   loadRunDetail,
   loadStepLogText,
-} from "../src/server/runs-store.js";
+} from "../src/server/workspace-runs-store.js";
 
 function writeJson(filePath: string, value: unknown): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });

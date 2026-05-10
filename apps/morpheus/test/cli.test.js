@@ -342,6 +342,49 @@ test("config check can use explicit --config outside the config directory", () =
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("workflow imports resolve root morpheus.yaml relative to the selected config file", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-root-import-"));
+  const projectConfigDir = path.join(projectRoot, "projects", "hyperarm");
+  fs.mkdirSync(projectConfigDir, { recursive: true });
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "workflows:",
+      "  nvirsh-arm64-build:",
+      "    category: build",
+      "    steps:",
+      "      - tool: qemu",
+      "        command: build",
+      ""
+    ].join("\n")
+  );
+  writeConfig(
+    projectConfigDir,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      "imports:",
+      "  workflows:",
+      "    - root.nvirsh-arm64-build",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["--config", path.join(projectConfigDir, "morpheus.yaml"), "workflow", "list", "--json"], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.deepEqual(
+    payload.details.workflows.map((workflow) => workflow.name),
+    ["nvirsh-arm64-build"],
+  );
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
 test("config check does not warn when config is discovered implicitly", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-implicit-"));
   writeConfig(
@@ -389,8 +432,10 @@ test("workflow commands are available through Morpheus", () => {
   assert.match(result.stdout, /^Purpose:$/m);
   assert.match(result.stdout, /^Commands:$/m);
   assert.match(result.stdout, /workflow list/);
+  assert.match(result.stdout, /workflow runs/);
   assert.match(result.stdout, /workflow run/);
   assert.match(result.stdout, /workflow inspect/);
+  assert.match(result.stdout, /workflow events/);
   assert.match(result.stdout, /workflow stop/);
   assert.match(result.stdout, /workflow remove/);
 });
@@ -658,12 +703,14 @@ test("workflow inspect reconciles stale running workflows with dead pids", () =>
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim());
   assert.equal(payload.status, "success");
+  assert.equal(payload.command, "workflow inspect");
+  assert.equal(payload.details.id, runId);
   assert.equal(payload.details.status, "error");
-  assert.equal(payload.details.runner_pid, null);
-  assert.equal(payload.details.current_child_pid, null);
-  assert.equal(payload.details.run_dir, path.join("runs", runId));
+  assert.equal(payload.details.runDir, path.join("runs", runId));
+  assert.equal(payload.details.workflowName, "tool-buildroot");
+  assert.equal(payload.details.graph.nodes.length, 1);
   assert.equal(payload.details.steps[0].status, "error");
-  assert.equal(payload.details.steps[0].step_dir, path.join("runs", runId, "steps", "01-build"));
+  assert.equal(payload.details.steps[0].name, "build");
 
   const workflow = JSON.parse(fs.readFileSync(path.join(runDir, "workflow.json"), "utf8"));
   const step = JSON.parse(fs.readFileSync(path.join(stepDir, "step.json"), "utf8"));
@@ -671,6 +718,110 @@ test("workflow inspect reconciles stale running workflows with dead pids", () =>
   assert.equal(workflow.status, "error");
   assert.equal(step.status, "error");
   assert.equal(legacy.status, "error");
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
+test("workflow runs lists managed workflow runs in json", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-runs-json-"));
+  const runId = "wf-runs-json";
+  const runDir = path.join(workspaceRoot, "runs", runId);
+  const stepDir = path.join(runDir, "steps", "01-build");
+  fs.mkdirSync(stepDir, { recursive: true });
+  fs.writeFileSync(path.join(stepDir, "stdout.log"), "ok\n", "utf8");
+  fs.writeFileSync(path.join(stepDir, "step.json"), `${JSON.stringify({
+    id: "01-build",
+    name: "build",
+    status: "success",
+    stepDir,
+    logFile: path.join(stepDir, "stdout.log"),
+    artifacts: [{ path: "out", location: path.join(stepDir, "artifacts", "out") }],
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
+    id: runId,
+    workflow: "qemu-build",
+    category: "build",
+    status: "success",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    updatedAt: "2026-04-26T12:05:00.000Z",
+    workspace: workspaceRoot,
+    runDir,
+    currentStepId: null,
+    currentChildPid: null,
+    runnerPid: null,
+    steps: [{ id: "01-build", name: "build", stepDir, status: "success" }],
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
+    id: runId,
+    kind: "workflow",
+    category: "build",
+    status: "success",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    completedAt: "2026-04-26T12:05:00.000Z",
+    summary: { workflow: "qemu-build", category: "build" },
+  }, null, 2)}\n`);
+
+  const result = run(["workflow", "runs", "--workspace", workspaceRoot, "--json"], {
+    cwd: workspaceRoot,
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.command, "workflow runs");
+  assert.equal(payload.details.total, 1);
+  assert.equal(payload.details.runs[0].id, runId);
+  assert.equal(payload.details.runs[0].workflowName, "qemu-build");
+  assert.equal(payload.details.runs[0].stepCount, 1);
+  assert.ok(!("graph" in payload.details.runs[0]));
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
+test("workflow events returns canonical event records in json", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-events-json-"));
+  const runId = "wf-events-json";
+  const runDir = path.join(workspaceRoot, "runs", runId);
+  fs.mkdirSync(runDir, { recursive: true });
+  fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
+    id: runId,
+    workflow: "qemu-build",
+    category: "build",
+    status: "success",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    updatedAt: "2026-04-26T12:05:00.000Z",
+    workspace: workspaceRoot,
+    runDir,
+    steps: [],
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
+    id: runId,
+    kind: "workflow",
+    category: "build",
+    status: "success",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    completedAt: "2026-04-26T12:05:00.000Z",
+    summary: { workflow: "qemu-build", category: "build" },
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "events.jsonl"), [
+    JSON.stringify({
+      ts: "2026-04-26T12:01:00.000Z",
+      producer: "morpheus",
+      level: "info",
+      scope: "workflow",
+      event: "workflow.started",
+      workflow_id: runId,
+      step_id: null,
+      tool: null,
+      data: { message: "started" },
+    }),
+  ].join("\n") + "\n");
+
+  const result = run(["workflow", "events", "--id", runId, "--workspace", workspaceRoot, "--json"], {
+    cwd: workspaceRoot,
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.command, "workflow events");
+  assert.equal(payload.details.id, runId);
+  assert.equal(payload.details.events.length, 1);
+  assert.equal(payload.details.events[0].event, "workflow.started");
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 

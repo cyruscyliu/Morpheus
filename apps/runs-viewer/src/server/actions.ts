@@ -2,8 +2,8 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-import { loadRunDetail } from "./runs-store";
 import { resolveViewerContext } from "./context";
+import { loadRunDetail } from "./morpheus-client";
 
 export interface ActionResult {
   statusCode: number;
@@ -28,7 +28,7 @@ function workflowManifestForRun(runRoot: string, runId: string): { configPath?: 
 
 export function stopWorkflowRun(runId: string, selectedConfigPath?: string | null): ActionResult {
   const context = resolveViewerContext(selectedConfigPath);
-  const detail = loadRunDetail(context.runRoot, runId);
+  const detail = loadRunDetail(context, runId);
   if (!detail) {
     return { statusCode: 404, body: { summary: "workflow run not found" } };
   }
@@ -75,7 +75,7 @@ export function resumeWorkflowRun(
   selectedConfigPath?: string | null,
 ): ActionResult {
   const context = resolveViewerContext(selectedConfigPath);
-  const detail = loadRunDetail(context.runRoot, runId);
+  const detail = loadRunDetail(context, runId);
   if (!detail) {
     return { statusCode: 404, body: { summary: "workflow run not found" } };
   }
@@ -118,7 +118,7 @@ export function resumeWorkflowRun(
 
 export function removeWorkflowRun(runId: string, selectedConfigPath?: string | null): ActionResult {
   const context = resolveViewerContext(selectedConfigPath);
-  const detail = loadRunDetail(context.runRoot, runId);
+  const detail = loadRunDetail(context, runId);
   if (!detail) {
     return { statusCode: 404, body: { summary: "workflow run not found" } };
   }

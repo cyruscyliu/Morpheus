@@ -55,7 +55,20 @@ function findConfigPath(startDir, options = {}) {
   }
 }
 
-function repoRootConfigPath() {
+function importedRootConfigPath(filePath) {
+  const selectedConfigPath = path.resolve(filePath);
+  let current = path.dirname(selectedConfigPath);
+  while (true) {
+    const candidate = path.join(current, "morpheus.yaml");
+    if (fs.existsSync(candidate) && path.resolve(candidate) !== selectedConfigPath) {
+      return candidate;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
   return path.resolve(__dirname, "..", "..", "..", "..", "morpheus.yaml");
 }
 
@@ -70,7 +83,7 @@ function mergeImportedWorkflows(configValue, filePath, options = {}) {
   const requested = Array.isArray(imports.workflows)
     ? imports.workflows
     : [imports.workflows];
-  const importPath = repoRootConfigPath();
+  const importPath = importedRootConfigPath(filePath);
   if (!fs.existsSync(importPath)) {
     throw new Error("root morpheus.yaml not found for workflow imports");
   }

@@ -240,6 +240,37 @@ test("config check prints a human-readable success summary", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("config check warns on workflows that hardcode run dirs", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-check-warn-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "workflows:",
+      "  sample-run:",
+      "    category: run",
+      "    steps:",
+      "      - tool: nvirsh",
+      "        command: exec",
+      "        args:",
+      "          - --run-dir",
+      "          - ./runs/nvirsh",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["config", "check", "--json"], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "success");
+  assert.ok(payload.details.issues.some((issue) => issue.level === "warn" && issue.path.includes("workflows.sample-run")));
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
 test("config check rejects non-local-non-remote modes", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-check-bad-"));
   writeConfig(

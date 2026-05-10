@@ -142,6 +142,24 @@ function uniquePaths(values) {
   return [...new Set(values.filter(Boolean))];
 }
 
+function stepSiblingLogPaths(stepDir) {
+  if (!fs.existsSync(stepDir)) {
+    return [];
+  }
+  return fs
+    .readdirSync(stepDir)
+    .filter((name) => name.endsWith(".log"))
+    .map((name) => path.join(stepDir, name))
+    .filter((filePath) => {
+      try {
+        return fs.statSync(filePath).isFile();
+      } catch {
+        return false;
+      }
+    })
+    .sort((left, right) => path.basename(left).localeCompare(path.basename(right)));
+}
+
 function normalizeArtifactsArray(value) {
   if (!Array.isArray(value)) {
     return [];
@@ -213,6 +231,7 @@ function workflowStepLogPaths(runDir, stepId) {
     manifest && typeof manifest.logFile === "string"
       ? manifest.logFile
       : path.join(resolvedStepDir, "stdout.log"),
+    ...stepSiblingLogPaths(resolvedStepDir),
   ];
 
   const managedRunManifest = readJsonIfExists(path.join(resolvedStepDir, "run", "manifest.json"), null);
@@ -483,10 +502,6 @@ function loadWorkflowStepLogText(workspaceRoot, runId, stepId) {
   }
 
   if (kind === "workflow-first") {
-    const eventText = eventConsoleText(readRunEvents(runDir), stepId);
-    if (eventText) {
-      return eventText;
-    }
     const parts = workflowStepLogPaths(runDir, stepId)
       .map((logFile) => ({ logFile, text: readTextIfExists(logFile).trimEnd() }))
       .filter((entry) => entry.text);

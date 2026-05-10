@@ -2,7 +2,7 @@
   "name": "qemu-debian-arm64",
   "description": "Debian arm64 nested virtualization profile using Buildroot outputs.",
   "l0": {
-    "image": "https://cdimage.debian.org/images/cloud/bookworm/latest/debian-12-nocloud-arm64.qcow2",
+    "image": "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-arm64.qcow2",
     "workspace": "workspace",
     "provisionScript": "l0-provision.sh",
     "sshPublicKey": ""
@@ -13,7 +13,7 @@
       "-machine",
       "virt,virtualization=on",
       "-cpu",
-      "host",
+      "cortex-a57",
       "-m",
       "8192",
       "-smp",
@@ -31,7 +31,9 @@
       "-machine",
       "virt,virtualization=on",
       "-cpu",
-      "host",
+      "cortex-a57",
+      "-m",
+      "1024",
       "-kernel",
       "{buildroot:images/Image}",
       "-initrd",

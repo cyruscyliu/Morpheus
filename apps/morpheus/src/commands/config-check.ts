@@ -128,6 +128,31 @@ function checkCacheConfig(value) {
   return issues;
 }
 
+function checkWorkflowRunDirs(value) {
+  const issues = [];
+  const workflows = value.workflows;
+  if (!workflows || typeof workflows !== "object") {
+    return issues;
+  }
+  for (const [workflowName, workflow] of Object.entries(workflows)) {
+    const steps = Array.isArray(workflow && workflow.steps) ? workflow.steps : [];
+    for (let index = 0; index < steps.length; index += 1) {
+      const step = steps[index] || {};
+      const args = Array.isArray(step.args) ? step.args : [];
+      const runDirIndex = args.findIndex((item) => item === "--run-dir");
+      if (runDirIndex < 0 || !args[runDirIndex + 1]) {
+        continue;
+      }
+      issues.push({
+        level: "warn",
+        path: `workflows.${workflowName}.steps.${index}.args`,
+        message: "workflow step sets --run-dir; prefer the step-local runtime directory unless an override is required"
+      });
+    }
+  }
+  return issues;
+}
+
 function formatText(result) {
   const lines = [
     "Config check",
@@ -138,10 +163,18 @@ function formatText(result) {
   if (result.issues.length === 0) {
     return lines.join("\n");
   }
+  const warnings = result.issues.filter((issue) => issue.level === "warn");
+  const errors = result.issues.filter((issue) => issue.level !== "warn");
   return [
     ...lines,
-    "Issues:",
-    ...result.issues.map((issue) => `  ${issue.level}: ${issue.path}: ${issue.message}`)
+    ...(warnings.length > 0 ? [
+      "Warnings:",
+      ...warnings.map((issue) => `  warn: ${issue.path}: ${issue.message}`),
+    ] : []),
+    ...(errors.length > 0 ? [
+      "Issues:",
+      ...errors.map((issue) => `  ${issue.level}: ${issue.path}: ${issue.message}`)
+    ] : [])
   ].join("\n");
 }
 
@@ -154,14 +187,16 @@ function runConfigCheck() {
     ...checkCacheConfig(config.value || {}),
     ...checkToolModes(config.value || {}),
     ...checkToolPaths(config.value || {}),
+    ...checkWorkflowRunDirs(config.value || {}),
   ];
+  const hasErrors = issues.some((issue) => issue.level !== "warn");
   return {
     command: "config check",
-    status: issues.length === 0 ? "success" : "error",
-    exit_code: issues.length === 0 ? 0 : 1,
-    summary: issues.length === 0
-      ? "morpheus.yaml passed validation"
-      : "morpheus.yaml validation failed",
+    status: hasErrors ? "error" : "success",
+    exit_code: hasErrors ? 1 : 0,
+    summary: hasErrors
+      ? "morpheus.yaml validation failed"
+      : (issues.length > 0 ? "morpheus.yaml passed validation with warnings" : "morpheus.yaml passed validation"),
     details: {
       config: path.relative(process.cwd(), config.path) || "morpheus.yaml",
       allowed_tool_modes: ALLOWED_TOOL_MODES,

@@ -62,7 +62,11 @@ chpasswd:
   list: |
     ${VM_USER}:${VM_PASSWORD}
   expire: false
-package_update: false
+package_update: true
+packages:
+  - openssh-server
+runcmd:
+  - [ systemctl, enable, --now, ssh ]
 CLOUDCFG
 
 cat > "${META_DATA}" <<METADATA

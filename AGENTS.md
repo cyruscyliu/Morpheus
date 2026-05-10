@@ -41,6 +41,8 @@
 - Do not expose repo-local tool CLIs as top-level wrappers in `bin/`.
 - When updating a tool, update its skill and `tools/<tool>/README.md` in the
   same change unless the README is explicitly for standalone non-Morpheus use.
+- When changing `morpheus.yaml`, review the resolved workflow paths and step
+  directories before committing.
 
 ## Commit Messages
 
@@ -52,6 +54,8 @@
   the stable Morpheus-managed layout.
 - Treat `~/.cache/morpheus/<namespace>/tools/...` as the stable global cache
   layout when cache is enabled.
+- Write workflow and tool logs under `<workspace>/runs/steps/`; do not add
+  new log files under tool build or install directories.
 
 ## Skills-First Docs
 

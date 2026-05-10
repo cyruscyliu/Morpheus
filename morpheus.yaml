@@ -31,6 +31,7 @@ tools:
     source: ./tools/nvirsh/profiles/qemu-debian-arm
     profile: qemu-debian-arm64
     build-dir-key: qemu-debian-arm64
+    reuse-build-dir: true
   sel4:
     seed-dir: ./tools/sel4/fixtures/minimal-sel4-src
     patch-dir: ./tools/sel4/patches/demo

@@ -9,6 +9,8 @@ const { readToolDescriptor } = require("../core/tool-descriptor");
 const { repoRoot } = require("../core/paths");
 const { writeStdoutLine } = require("../core/io");
 const { emitEvent, withEventContext, withLogFile } = require("../core/logger");
+const { runConfigCheck } = require("./config-check");
+const { validateToolDescriptor } = require("../core/tool-validator");
 const {
   parseSshTarget,
   syncRemotePathToLocal,
@@ -192,20 +194,16 @@ function resolvePreferredStepLogFile(step) {
   if (!step || typeof step !== "object") {
     return null;
   }
-  const fallback = step.logFile || (step.stepDir ? path.join(step.stepDir, "stdout.log") : null);
   const candidate = step
     && step.toolResult
     && step.toolResult.details
     && typeof step.toolResult.details.log_file === "string"
       ? step.toolResult.details.log_file
       : null;
-  if (!candidate) {
-    return fallback;
-  }
-  if (isWithinDir(step.stepDir, candidate)) {
+  if (candidate && isWithinDir(step.stepDir, candidate)) {
     return candidate;
   }
-  return fallback;
+  return step.logFile || (step.stepDir ? path.join(step.stepDir, "stdout.log") : null);
 }
 
 function resolveWorkspaceRoot(flags) {
@@ -1597,6 +1595,33 @@ function workflowStepStatusFromResult(result, toolPayload, attach) {
   return result.status === 0 ? "success" : "error";
 }
 
+function runWorkflowBuildPreflight(steps) {
+  const configResult = runConfigCheck();
+  if (configResult.exit_code !== 0) {
+    const firstError = Array.isArray(configResult.issues)
+      ? configResult.issues.find((issue) => issue.level !== "warn")
+      : null;
+    throw new Error(firstError
+      ? `build preflight failed: ${firstError.path}: ${firstError.message}`
+      : "build preflight failed");
+  }
+
+  const toolNames = new Set(
+    (Array.isArray(steps) ? steps : [])
+      .map((step) => (step && step.tool ? String(step.tool) : ""))
+      .filter(Boolean)
+  );
+  for (const toolName of toolNames) {
+    const result = validateToolDescriptor(toolName);
+    if (!result.ok) {
+      const firstIssue = Array.isArray(result.issues) ? result.issues[0] : null;
+      throw new Error(firstIssue
+        ? `build preflight failed for ${toolName}: ${firstIssue.path}: ${firstIssue.message}`
+        : `build preflight failed for ${toolName}`);
+    }
+  }
+}
+
 async function runToolWorkflow({
   steps,
   workflowName,
@@ -1612,6 +1637,9 @@ async function runToolWorkflow({
   resumeMeta = null,
   configPath = null,
 }) {
+  if (category === "build") {
+    runWorkflowBuildPreflight(steps);
+  }
   const workflow = existingWorkflow || createWorkflowRun(workspaceRoot, workflowName, { category, configPath });
   return await withLogFile(workflowEventLogPath(workflow.runDir), async () => withEventContext({
     workflow_id: workflow.id,
@@ -1803,6 +1831,7 @@ async function runToolWorkflow({
       {
         ...process.env,
         ...(configPath ? { MORPHEUS_CONFIG: configPath } : {}),
+        MORPHEUS_SCRIPT_LOG_FILE: step.logFile,
         MORPHEUS_EVENT_LOG_FILE: workflowEventLogPath(workflow.runDir),
         MORPHEUS_STEP_ATTACH: attach ? "true" : "false",
         MORPHEUS_EVENT_CONTEXT: JSON.stringify({

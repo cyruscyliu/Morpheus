@@ -772,11 +772,10 @@ export function WorkflowViewer({
   const [refreshLoading, setRefreshLoading] = useState(false);
   const [workspaceRoot] = useState(initialWorkspaceRoot);
   const [configPath] = useState(initialConfigPath);
-  const [configLabel] = useState(initialConfigLabel);
   const [availableConfigs] = useState(initialAvailableConfigs);
   const [availableWorkflows] = useState(initialAvailableWorkflows);
-  const [selectedWorkflowName, setSelectedWorkflowName] = useState<string>(
-    initialAvailableWorkflows[0]?.name || "",
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>(
+    initialAvailableWorkflows[0]?.id || "",
   );
   const [runWorkflowLoading, setRunWorkflowLoading] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(() =>
@@ -964,20 +963,21 @@ export function WorkflowViewer({
   }
 
   async function onRunWorkflow(): Promise<void> {
-    if (!selectedWorkflowName) {
+    const selectedWorkflow = availableWorkflows.find((workflow) => workflow.id === selectedWorkflowId) || null;
+    if (!selectedWorkflow) {
       return;
     }
     setActionError(null);
     setRunWorkflowLoading(true);
     try {
       const existingIds = new Set(summaries.map((summary) => summary.id));
-      await postJson(withConfigQuery("/api/workflows/run", configPath), { name: selectedWorkflowName });
+      await postJson(withConfigQuery("/api/workflows/run", selectedWorkflow.configPath || configPath), { name: selectedWorkflow.name });
       for (let attempt = 0; attempt < 12; attempt += 1) {
         const payload = await fetchJson<RunsIndexPayload>(withConfigQuery("/api/runs", configPath));
         setSummaries(payload.runs);
         setTotalRuns(payload.totalRuns);
         setUpdatedAt(payload.updatedAt);
-        const nextRun = payload.runs.find((summary) => !existingIds.has(summary.id) && summary.workflowName === selectedWorkflowName);
+        const nextRun = payload.runs.find((summary) => !existingIds.has(summary.id) && summary.workflowName === selectedWorkflow.name);
         if (nextRun) {
           setSelectedRunId(nextRun.id);
           break;
@@ -1446,28 +1446,18 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
                 ))}
               </select>
             </label>
-            <div className="workflow-topbar-chip" title={workspaceRoot}>
-              <span className="workflow-topbar-label">Active</span>
-              <span>{formatPathLabel(workspaceRoot)}</span>
-            </div>
-            {configPath ? (
-              <div className="workflow-topbar-chip" title={configPath}>
-                <span className="workflow-topbar-label">Config</span>
-                <span>{configLabel}</span>
-              </div>
-            ) : null}
             {availableWorkflows.length > 0 ? (
               <label className="workflow-topbar-chip">
                 <span className="workflow-topbar-label">Workflow</span>
                 <select
                   aria-label="Select workflow"
                   className="workflow-topbar-select"
-                  onChange={(event) => setSelectedWorkflowName(event.target.value)}
-                  value={selectedWorkflowName}
+                  onChange={(event) => setSelectedWorkflowId(event.target.value)}
+                  value={selectedWorkflowId}
                 >
                   {availableWorkflows.map((workflow) => (
-                    <option key={workflow.name} value={workflow.name}>
-                      {workflow.name} · {workflow.category}
+                    <option key={workflow.id} value={workflow.id}>
+                      {workflow.label} · {workflow.category}
                     </option>
                   ))}
                 </select>
@@ -1479,7 +1469,7 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
             </div>
             {availableWorkflows.length > 0 ? (
               <Button
-                disabled={runWorkflowLoading || !selectedWorkflowName}
+                disabled={runWorkflowLoading || !selectedWorkflowId}
                 onClick={() => void onRunWorkflow()}
                 variant="outline"
               >

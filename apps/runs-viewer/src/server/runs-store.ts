@@ -31,10 +31,10 @@ interface LoadOptions {
 interface RunRelationRecord {
   kind?: string;
   from?: string;
-  to?: string;
+  to?: string | null;
   artifactPath?: string;
-  consumedAs?: string;
-  artifactLocation?: string;
+  consumedAs?: string | null;
+  artifactLocation?: string | null;
 }
 
 interface WorkflowDetailStepRecord {
@@ -42,7 +42,7 @@ interface WorkflowDetailStepRecord {
   manifest: any;
 }
 
-interface RunEventRecord {
+interface StoredRunEventRecord {
   ts?: string;
   level?: string;
   scope?: string;
@@ -152,8 +152,8 @@ function readJsonLinesIfExists(filePath: string): any[] {
     .filter((entry) => entry !== null);
 }
 
-function readRunEvents(runDir: string): RunEventRecord[] {
-  const canonical = readJsonLinesIfExists(path.join(runDir, "events.jsonl")) as RunEventRecord[];
+function readRunEvents(runDir: string): StoredRunEventRecord[] {
+  const canonical = readJsonLinesIfExists(path.join(runDir, "events.jsonl")) as StoredRunEventRecord[];
   if (canonical.length > 0) {
     return canonical;
   }
@@ -258,7 +258,7 @@ function uniquePaths(values: string[]): string[] {
   return [...new Set(values.filter((value) => Boolean(value)))];
 }
 
-function eventArtifactsConsumed(events: RunEventRecord[]): RunRelationRecord[] {
+function eventArtifactsConsumed(events: StoredRunEventRecord[]): RunRelationRecord[] {
   return events
     .filter((entry) => entry && entry.event === "artifact.consumed" && entry.step_id)
     .map((entry) => ({
@@ -272,7 +272,7 @@ function eventArtifactsConsumed(events: RunEventRecord[]): RunRelationRecord[] {
     .filter((entry) => typeof entry.from === "string" && typeof entry.to === "string");
 }
 
-function eventConsoleText(events: RunEventRecord[], stepId?: string | null): string | null {
+function eventConsoleText(events: StoredRunEventRecord[], stepId?: string | null): string | null {
   const text = events
     .filter((entry) =>
       entry
@@ -888,7 +888,7 @@ export function loadRunLogText(runRoot: string, runId: string): string | null {
   return sections.join("\n\n");
 }
 
-export function loadRunEvents(runRoot: string, runId: string): RunEventRecord[] | null {
+export function loadRunEvents(runRoot: string, runId: string): StoredRunEventRecord[] | null {
   if (!isSafeId(runId)) {
     return null;
   }

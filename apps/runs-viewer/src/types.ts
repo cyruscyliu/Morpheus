@@ -82,8 +82,11 @@ export interface RunsIndexPayload {
     runRoot: string;
   }>;
   availableWorkflows: Array<{
+    id: string;
     name: string;
     category: string;
+    label: string;
+    configPath: string | null;
   }>;
   updatedAt: string;
   runs: RunSummary[];

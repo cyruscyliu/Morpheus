@@ -121,6 +121,9 @@ pnpm dev:runs-viewer
 
 Then open `http://127.0.0.1:4174`.
 
+When launching the run viewer through Paseo, set `RUN_VIEWER_PORT` to override
+the default `8081`.
+
 Project configs live under `projects/<project>/morpheus.yaml`.
 The root `morpheus.yaml` is intentionally minimal and exists only as a default
 CI/testing stub.

@@ -10,6 +10,7 @@ version_file="${source_dir}/VERSION"
 mkdir -p "$(dirname "${source_dir}")"
 
 if [ -f "${version_file}" ]; then
+  printf '[nqc2] reuse source %s version=%s\n' "${source_dir}" "$(tr -d '\n' < "${version_file}")"
   cat > "${result_file}" <<EOF
 {"details":{"reused":true,"fetched_source":false,"build_version":"${build_version}","version":"$(tr -d '\n' < "${version_file}")"}}
 EOF
@@ -24,6 +25,7 @@ if [ -n "${seed_dir}" ] && [ -d "${seed_dir}" ]; then
 fi
 
 printf '%s\n' "${build_version}" > "${version_file}"
+printf '[nqc2] prepared source %s version=%s\n' "${source_dir}" "${build_version}"
 
 cat > "${result_file}" <<EOF
 {"details":{"fetched_source":true,"build_version":"${build_version}","version":"${build_version}"}}

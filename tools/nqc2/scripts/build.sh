@@ -8,6 +8,7 @@ install_dir="${MORPHEUS_NQC2_INSTALL_DIR:?}"
 trace_dir="${MORPHEUS_NQC2_TRACE_DIR:?}"
 build_version="${MORPHEUS_NQC2_BUILD_VERSION:-dev}"
 result_file="${MORPHEUS_NQC2_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
+reuse_build_dir="${MORPHEUS_NQC2_REUSE_BUILD_DIR:-false}"
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 version_file="${source_dir}/VERSION"
 version="${build_version}"
@@ -37,6 +38,36 @@ qemu_etrace_url="https://github.com/edgarigl/qemu-etrace.git"
 if [ ! -f "${plugin_header}" ]; then
   echo "missing QEMU plugin header: ${plugin_header}" >&2
   exit 1
+fi
+
+if [ "${reuse_build_dir}" = "true" ] && [ -f "${manifest_file}" ] && [ -x "${cli_out}" ] && [ -x "${qemu_etrace_out}" ] && [ -f "${plugin_out}" ]; then
+  if [ -d "${qemu_etrace_repo}" ] && make -C "${qemu_etrace_repo}" -q >/dev/null 2>&1; then
+    if [ "${plugin_out}" -nt "${manifest_file}" ] || [ "${cli_out}" -nt "${manifest_file}" ] || [ "${qemu_etrace_out}" -nt "${manifest_file}" ]; then
+      : 
+    else
+      cat > "${result_file}" <<EOF
+{
+  "details": {
+    "built": true,
+    "version": "${version}",
+    "plugin": "${plugin_out}",
+    "cli": "${cli_out}",
+    "qemu_etrace": "${qemu_etrace_out}",
+    "trace_dir": "${trace_dir}",
+    "reused": true,
+    "artifacts": [
+      { "path": "install-dir", "location": "${install_dir}" },
+      { "path": "nqc2", "location": "${cli_out}" },
+      { "path": "qemu-etrace", "location": "${qemu_etrace_out}" },
+      { "path": "nqc2-plugin-so", "location": "${plugin_out}" },
+      { "path": "trace-dir", "location": "${trace_dir}" }
+    ]
+  }
+}
+EOF
+      exit 0
+    fi
+  fi
 fi
 
 mkdir -p "${build_dir}" "${install_dir}/bin" "${install_dir}/lib/nqc2" "${trace_dir}"
@@ -113,6 +144,7 @@ cat > "${result_file}" <<EOF
     "cli": "${cli_out}",
     "qemu_etrace": "${qemu_etrace_out}",
     "trace_dir": "${trace_dir}",
+    "reused": false,
     "artifacts": [
       { "path": "install-dir", "location": "${install_dir}" },
       { "path": "nqc2", "location": "${cli_out}" },

@@ -10,12 +10,53 @@ result_file="${MORPHEUS_NVIRSH_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 qemu="${MORPHEUS_NVIRSH_QEMU:?}"
 firmware="${MORPHEUS_NVIRSH_FIRMWARE:?}"
 buildroot_output_dir="${MORPHEUS_NVIRSH_BUILDROOT_OUTPUT_DIR:?}"
+reuse_build_dir="${MORPHEUS_NVIRSH_REUSE_BUILD_DIR:-false}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 profile_file="${source_dir}/profile.json"
 state_file="${install_dir}/state.json"
 build_l0_dir="${build_dir}/l0"
 build_l1_dir="${build_dir}/l1"
 l1_console_log="${install_dir}/l1-console.log"
+
+state_matches_build() {
+  local state_path="$1"
+  node - "${state_path}" "${profile_name}" "${build_dir_key}" "${source_dir}" "${build_dir}" "${install_dir}" <<'NODE'
+const fs = require("fs");
+const [statePath, profileName, buildDirKey, sourceDir, buildDir, installDir] = process.argv.slice(2);
+try {
+  const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+  const matches =
+    state
+    && state.tool === "nvirsh"
+    && state.profile === profileName
+    && state.buildDirKey === buildDirKey
+    && state.source === sourceDir
+    && state.buildDir === buildDir
+    && state.installDir === installDir
+    && state.status === "prepared"
+    && state.currentPhase === "prepared"
+    && state.phases
+    && state.phases.build === "success";
+  process.exit(matches ? 0 : 1);
+} catch {
+  process.exit(1);
+}
+NODE
+}
+
+if [ "${reuse_build_dir}" = "true" ] && [ -f "${state_file}" ]; then
+  if state_matches_build "${state_file}" \
+    && [ -x "${build_l1_dir}/launch-l2.sh" ] \
+    && [ -f "${build_l0_dir}/base-image.qcow2" ] \
+    && [ -f "${build_l0_dir}/overlay.qcow2" ] \
+    && [ -f "${build_l0_dir}/seed.img" ]; then
+    cat > "${result_file}" <<EOF
+{"details":{"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}","state_file":"${state_file}","profile":"${profile_name}","reused":true}}
+EOF
+    printf '[nvirsh] reused prepared build tree for %s\n' "${profile_name}"
+    exit 0
+  fi
+fi
 
 if [ -f "${build_l0_dir}/l1.pid" ]; then
   old_pid="$(cat "${build_l0_dir}/l1.pid" 2>/dev/null || true)"

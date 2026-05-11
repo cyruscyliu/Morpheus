@@ -271,6 +271,7 @@
             "archive-url",
             "microkit-archive-url",
             "seed-dir",
+            "reuse-build-dir",
             "build-version"
           ],
           "repeatableFlags": [],

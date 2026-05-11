@@ -175,7 +175,7 @@ export function loadRunLogText(
     if (!stepLog || !stepLog.trim()) {
       continue;
     }
-    sections.push([`=== ${step.name || step.id} (${step.status}) ===`, stepLog.trimEnd()].join("\n"));
+    sections.push(stepLog.trimEnd());
   }
 
   return sections.join("\n\n");

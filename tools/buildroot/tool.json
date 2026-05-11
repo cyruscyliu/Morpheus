@@ -215,6 +215,7 @@
             "output",
             "seed-dir",
             "archive-url",
+            "reuse-build-dir",
             "build-version"
           ],
           "repeatableFlags": [

@@ -41,6 +41,19 @@
           "phase"
         ]
       },
+      "reuse-build-dir": {
+        "aliases": [
+          "reuse-build-dir",
+          "reuseBuildDir"
+        ],
+        "boolean": true
+      },
+      "detach": {
+        "aliases": [
+          "detach"
+        ],
+        "boolean": true
+      },
       "run-dir": {
         "aliases": [
           "run-dir",
@@ -139,6 +152,7 @@
             "qemu",
             "firmware",
             "buildroot-output-dir",
+            "reuse-build-dir",
             "build-version",
             "build-dir-key",
             "phase"
@@ -186,6 +200,7 @@
             "run-dir",
             "install-dir",
             "phase",
+            "detach",
             "build-version",
             "build-dir-key"
           ],

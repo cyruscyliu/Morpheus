@@ -165,7 +165,7 @@ workflows:
         args:
           - --source
           - "{{steps.libvmm_patch.artifacts.libvmm-dir.location}}"
-  sel4-build:
+  sel4-fetch-patch:
     category: build
     steps:
       - id: sel4_fetch
@@ -177,12 +177,6 @@ workflows:
         args:
           - --source
           - "{{steps.sel4_fetch.artifacts.source-dir.location}}"
-      - id: sel4_build
-        tool: sel4
-        command: build
-        args:
-          - --source
-          - "{{steps.sel4_patch.artifacts.source-dir.location}}"
   libvmm-build-ci:
     category: build
     steps:
@@ -280,7 +274,7 @@ workflows:
           - qemu_virt_aarch64
           - --configs
           - debug,release
-  sel4-build-ci:
+  sel4-fetch-patch-ci:
     category: build
     steps:
       - id: sel4_fetch
@@ -295,12 +289,6 @@ workflows:
         args:
           - --path
           - "{{steps.sel4_fetch.artifacts.source-dir.location}}"
-      - id: sel4_build
-        tool: sel4
-        command: build
-        args:
-          - --path
-          - "{{steps.sel4_patch.artifacts.source-dir.location}}"
   buildroot-build-ci:
     category: build
     steps:

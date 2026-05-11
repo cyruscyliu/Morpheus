@@ -27,6 +27,13 @@
           "buildVersion"
         ]
       },
+      "reuse-build-dir": {
+        "aliases": [
+          "reuse-build-dir",
+          "reuseBuildDir"
+        ],
+        "boolean": true
+      },
       "git-url": {
         "aliases": [
           "git-url",
@@ -191,6 +198,7 @@
             "qemu",
             "seed-dir",
             "build-version",
+            "reuse-build-dir",
             "git-url"
           ],
           "repeatableFlags": [

@@ -15,9 +15,11 @@ seed_dir="${MORPHEUS_MICROKIT_SDK_SEED_DIR:-}"
 archive_url="${MORPHEUS_MICROKIT_SDK_ARCHIVE_URL:-${MORPHEUS_MICROKIT_SDK_MICROKIT_ARCHIVE_URL:-}}"
 build_version="${MORPHEUS_MICROKIT_SDK_BUILD_VERSION:-}"
 install_dir="$(dirname "${source_dir}")/install"
+reuse_build_dir="${MORPHEUS_MICROKIT_SDK_REUSE_BUILD_DIR:-false}"
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 tool_root="$(cd "${script_dir}/.." && pwd)"
 downloads_dir="$(dirname "${toolchain_dir}")/../downloads"
+build_marker="${install_dir}/.morpheus-build.json"
 venv_python=""
 venv_site_packages=""
 
@@ -104,6 +106,32 @@ if [ -z "${sel4_dir}" ] || [ ! -d "${sel4_dir}" ]; then
   exit 1
 fi
 
+if [ "${reuse_build_dir}" = "true" ] && [ -f "${build_marker}" ]; then
+  if node - "${build_marker}" "${sel4_dir}" "${boards}" "${configs}" "${toolchain_dir}" "${toolchain_version}" "${toolchain_prefix}" <<'NODE'
+const fs = require("fs");
+const [markerFile, sel4Dir, boards, configs, toolchainDir, toolchainVersion, toolchainPrefix] = process.argv.slice(2);
+try {
+  const marker = JSON.parse(fs.readFileSync(markerFile, "utf8"));
+  const matches = marker
+    && marker.sel4 === sel4Dir
+    && marker.boards === boards
+    && marker.configs === configs
+    && marker.toolchainDir === toolchainDir
+    && marker.toolchainVersion === toolchainVersion
+    && marker.toolchainPrefix === toolchainPrefix;
+  process.exit(matches ? 0 : 1);
+} catch {
+  process.exit(1);
+}
+NODE
+  then
+    cat > "${result_file}" <<EOF
+{"details":{"built":true,"install_dir":"${install_dir}","version":"${version}","reused":true}}
+EOF
+    exit 0
+  fi
+fi
+
 echo "[microkit] source_dir=${source_dir}" >&2
 echo "[microkit] sel4_dir=${sel4_dir}" >&2
 echo "[microkit] toolchain_dir=${toolchain_dir}" >&2
@@ -149,6 +177,17 @@ echo "[microkit] pre-build environment ready" >&2
 version="$(tr -d '\n' < "${source_dir}/VERSION")"
 cp -R "${source_dir}/release/microkit-sdk-${version}" "${install_dir}"
 
+cat > "${build_marker}" <<EOF
+{
+  "sel4": "${sel4_dir}",
+  "boards": "${boards}",
+  "configs": "${configs}",
+  "toolchainDir": "${toolchain_dir}",
+  "toolchainVersion": "${toolchain_version}",
+  "toolchainPrefix": "${toolchain_prefix}"
+}
+EOF
+
 cat > "${result_file}" <<EOF
-{"details":{"built":true,"install_dir":"${install_dir}","version":"${version}"}}
+{"details":{"built":true,"install_dir":"${install_dir}","version":"${version}","reused":false}}
 EOF

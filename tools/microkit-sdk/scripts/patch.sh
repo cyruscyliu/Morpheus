@@ -29,6 +29,7 @@ EOF
 )"
 
 if [ -f "${state_file}" ] && grep -q "\"fingerprint\": \"${fingerprint}\"" "${state_file}"; then
+  printf '[microkit-sdk] reuse patch state %s fingerprint=%s\n' "${patch_dir}" "${fingerprint}"
   cat > "${result_file}" <<EOF
 {"details":{"reused":true,"applied":true,"fingerprint":"${fingerprint}","version":"$(tr -d '\n' < "${source_dir}/VERSION")"}}
 EOF
@@ -51,6 +52,7 @@ cat > "${state_file}" <<EOF
 }
 EOF
 
+printf '[microkit-sdk] applied patches from %s fingerprint=%s\n' "${patch_dir}" "${fingerprint}"
 cat > "${result_file}" <<EOF
 {"details":{"applied":true,"fingerprint":"${fingerprint}","version":"$(tr -d '\n' < "${source_dir}/VERSION")"}}
 EOF

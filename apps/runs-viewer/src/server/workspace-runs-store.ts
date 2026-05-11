@@ -870,7 +870,7 @@ export function loadRunLogText(runRoot: string, runId: string): string | null {
   const runDir = path.join(runRoot, runId);
   const progressLog = readTextIfExists(path.join(runDir, "progress.jsonl")).trim();
   if (progressLog) {
-    sections.push(["=== workflow.progress ===", progressLog].join("\n"));
+    sections.push(progressLog);
   }
 
   for (const step of detail.steps) {
@@ -878,9 +878,7 @@ export function loadRunLogText(runRoot: string, runId: string): string | null {
     if (!stepLog || !stepLog.trim()) {
       continue;
     }
-    sections.push(
-      [`=== ${step.name || step.id} (${step.status}) ===`, stepLog.trimEnd()].join("\n"),
-    );
+    sections.push(stepLog.trimEnd());
   }
 
   return sections.join("\n\n");

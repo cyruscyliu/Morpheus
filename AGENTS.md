@@ -30,6 +30,9 @@
   same work can continue safely.
 - Never add tool-specific behavior to Morpheus.
 - Keep Morpheus generic and move tool-specific logic into `tools/<tool>/`.
+- Respect `reuse-build-dir: true` in tool build scripts.
+- Do not delete managed build or install trees when reuse is enabled unless
+  the script first proves the tree is stale or incompatible.
 - Keep global cache enablement transparent to tools.
 - Prefer explicit `cache.namespace` values in `morpheus.yaml`.
 - When cache is enabled, Morpheus may create only the `patches` symlink bridge

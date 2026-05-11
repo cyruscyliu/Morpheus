@@ -11,6 +11,7 @@ build_version="${MORPHEUS_QEMU_BUILD_VERSION:-}"
 mkdir -p "$(dirname "${source_dir}")"
 
 if [ -x "${source_dir}/configure" ]; then
+  printf '[qemu] reuse source %s version=%s\n' "${source_dir}" "${build_version}"
   cat > "${result_file}" <<EOF
 {"details":{"reused":true,"fetched_source":false,"build_version":"${build_version}"}}
 EOF
@@ -53,6 +54,7 @@ if [ -n "${archive_url}" ]; then
   rm -rf "${source_dir}"
   mv "${first_dir}" "${source_dir}"
   rm -rf "${extract_root}"
+  printf '[qemu] fetched source %s from %s version=%s\n' "${source_dir}" "${archive_path}" "${build_version}"
   cat > "${result_file}" <<EOF
 {"details":{"fetched_source":true,"archive":"${archive_path}","build_version":"${build_version}"}}
 EOF

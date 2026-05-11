@@ -524,7 +524,7 @@ function loadWorkflowLogText(workspaceRoot, runId) {
   const sections = [];
   const progressLog = readTextIfExists(path.join(runDir, "progress.jsonl")).trim();
   if (progressLog) {
-    sections.push(["=== workflow.progress ===", progressLog].join("\n"));
+    sections.push(progressLog);
   }
 
   for (const step of detail.steps) {
@@ -532,9 +532,7 @@ function loadWorkflowLogText(workspaceRoot, runId) {
     if (!stepLog || !stepLog.trim()) {
       continue;
     }
-    sections.push(
-      [`=== ${step.name || step.id} (${step.status}) ===`, stepLog.trimEnd()].join("\n"),
-    );
+    sections.push(stepLog.trimEnd());
   }
 
   return sections.join("\n\n");

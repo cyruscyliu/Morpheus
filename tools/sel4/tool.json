@@ -1,7 +1,7 @@
 {
   "name": "sel4",
   "runtime": null,
-  "cli-contract": "fetch,patch,build,inspect",
+  "cli-contract": "fetch,patch,inspect",
   "config": {
     "fields": {
       "mode": {
@@ -153,39 +153,6 @@
             "details": {
               "source": "{path}",
               "patch_dir": "{patch-dir}"
-            }
-          }
-        },
-        "build": {
-          "requiredFlags": [
-            "path"
-          ],
-          "scalarFlags": [
-            "path",
-            "seed-dir",
-            "archive-url",
-            "build-version"
-          ],
-          "repeatableFlags": [],
-          "script": {
-            "path": "scripts/build.sh",
-            "shell": "bash"
-          },
-          "pathFlags": {
-            "path": "tools/sel4/builds/{buildDirKey}/source",
-            "source": "tools/sel4/builds/{buildDirKey}/source"
-          },
-          "result": {
-            "successSummary": "prepared managed seL4 source tree",
-            "artifact": {
-              "path": "source-dir",
-              "locationTemplate": "{path}"
-            },
-            "details": {
-              "source": "{path}",
-              "build_version": {
-                "fromFlag": "build-version"
-              }
             }
           }
         },

@@ -11,6 +11,7 @@ build_version="${MORPHEUS_BUILDROOT_BUILD_VERSION:-}"
 mkdir -p "$(dirname "${source_dir}")"
 
 if [ -f "${source_dir}/Makefile" ]; then
+  printf '[buildroot] reuse source %s version=%s\n' "${source_dir}" "${build_version}"
   cat > "${result_file}" <<EOF
 {"details":{"reused":true,"fetched_source":false,"build_version":"${build_version}"}}
 EOF
@@ -20,6 +21,7 @@ fi
 if [ -n "${seed_dir}" ]; then
   rm -rf "${source_dir}"
   cp -R "${seed_dir}" "${source_dir}"
+  printf '[buildroot] seeded source %s from %s version=%s\n' "${source_dir}" "${seed_dir}" "${build_version}"
   cat > "${result_file}" <<EOF
 {"details":{"fetched_source":true,"seed_dir":"${seed_dir}","build_version":"${build_version}"}}
 EOF
@@ -49,6 +51,7 @@ if [ -n "${archive_url}" ]; then
   rm -rf "${source_dir}"
   mv "${first_dir}" "${source_dir}"
   rm -rf "${extract_root}"
+  printf '[buildroot] fetched source %s from %s version=%s\n' "${source_dir}" "${archive_path}" "${build_version}"
   cat > "${result_file}" <<EOF
 {"details":{"fetched_source":true,"archive":"${archive_path}","build_version":"${build_version}"}}
 EOF

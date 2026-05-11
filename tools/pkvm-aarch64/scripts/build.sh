@@ -11,6 +11,7 @@ result_file="${MORPHEUS_PKVM_AARCH64_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:
 seed_dir="${MORPHEUS_PKVM_AARCH64_SEED_DIR:-}"
 build_version="${MORPHEUS_PKVM_AARCH64_BUILD_VERSION:-}"
 git_url="${MORPHEUS_PKVM_AARCH64_GIT_URL:-https://github.com/vrosendahl/pkvm-aarch64.git}"
+reuse_build_dir="${MORPHEUS_PKVM_AARCH64_REUSE_BUILD_DIR:-false}"
 
 export PATH="${PATH}:/usr/sbin:/usr/bin:/sbin:/bin"
 
@@ -61,9 +62,86 @@ else
   make_args=(-j4)
 fi
 
+pkvm_jobs=4
+for index in "${!make_args[@]}"; do
+  arg="${make_args[$index]}"
+  case "${arg}" in
+    -j[0-9]*)
+      pkvm_jobs="${arg#-j}"
+      ;;
+    -j)
+      next_index=$((index + 1))
+      if [ "${next_index}" -lt "${#make_args[@]}" ] && [[ "${make_args[$next_index]}" =~ ^[0-9]+$ ]]; then
+        pkvm_jobs="${make_args[$next_index]}"
+      fi
+      ;;
+  esac
+done
+
 manifest_file="${build_dir}/manifest.json"
 artifact_parent="${source_dir}"
 work_dir="${PWD}"
+
+check_target_up_to_date() {
+  local target="$1"
+  local rc=0
+  set +e
+  make -C "${source_dir}" "PLATFORM=${platform}" -q "${target}" >/dev/null 2>&1
+  rc="$?"
+  return "${rc}"
+}
+
+reuse_ready=false
+if [ "${reuse_build_dir}" = "true" ] && [ -f "${manifest_file}" ]; then
+  reuse_targets=()
+  if [ "${build_target}" = "all" ]; then
+    reuse_targets=(tools qemu-user host-kernel ubuntu-template hostimage guest-kernel guestimage)
+  else
+    reuse_targets=(tools "${build_target}")
+  fi
+  reuse_ready=true
+  for target in "${reuse_targets[@]}"; do
+    set +e
+    check_target_up_to_date "${target}"
+    rc="$?"
+    set -e
+    if [ "${rc}" = "0" ]; then
+      continue
+    fi
+    if [ "${rc}" = "1" ]; then
+      reuse_ready=false
+      break
+    fi
+    exit "${rc}"
+  done
+  if [ "${reuse_ready}" = "true" ]; then
+    artifacts_json="$(
+      node - "${artifact_parent}" "${build_dir}" <<'NODE'
+const fs = require("fs");
+const path = require("path");
+const source = process.argv[2];
+const buildDir = process.argv[3];
+const candidates = [
+  ["source-dir", source],
+  ["build-dir", buildDir],
+  ["host-image", path.join(source, "images", "host", "ubuntuhost.qcow2")],
+  ["guest-image", path.join(source, "images", "guest", "ubuntuguest.qcow2")],
+  ["host-kernel", path.join(source, "linux-host", "arch", "arm64", "boot", "Image")],
+  ["guest-kernel", path.join(source, "linux", "arch", "arm64", "boot", "Image")],
+];
+const artifacts = candidates
+  .filter(([, location]) => location && fs.existsSync(location))
+  .map(([pathName, location]) => ({ path: pathName, location }));
+process.stdout.write(JSON.stringify(artifacts));
+NODE
+)"
+    cat > "${result_file}" <<EOF
+{"details":{"built":true,"source":"${source_dir}","build_dir":"${build_dir}","build_target":"${build_target}","platform":"${platform}","manifest":"${manifest_file}","reused":true},"artifacts":${artifacts_json}}
+EOF
+    exit 0
+  fi
+fi
+
 cd "${source_dir}"
 
 # The upstream bootstrap initializes every declared submodule, including the
@@ -87,7 +165,7 @@ git config submodule.fetchJobs 4 || true
 run_target() {
   local target="$1"
   local rc=0
-  make "PLATFORM=${platform}" "${make_args[@]}" "${target}" || rc="$?"
+  make "PLATFORM=${platform}" "NJOBS=${pkvm_jobs}" "${make_args[@]}" "${target}" || rc="$?"
   return "${rc}"
 }
 
@@ -125,7 +203,6 @@ exit_code=0
 prepare_sources || exit_code="$?"
 if [ "${exit_code}" != "0" ]; then
   cd "${work_dir}"
-  tail -n 80 "${log_file}" >&2 || true
   exit "${exit_code}"
 fi
 
@@ -183,5 +260,5 @@ cat > "${manifest_file}" <<EOF
 EOF
 
 cat > "${result_file}" <<EOF
-{"details":{"built":true,"source":"${source_dir}","build_dir":"${build_dir}","build_target":"${build_target}","platform":"${platform}","manifest":"${manifest_file}"},"artifacts":${artifacts_json}}
+{"details":{"built":true,"source":"${source_dir}","build_dir":"${build_dir}","build_target":"${build_target}","platform":"${platform}","manifest":"${manifest_file}","reused":false},"artifacts":${artifacts_json}}
 EOF

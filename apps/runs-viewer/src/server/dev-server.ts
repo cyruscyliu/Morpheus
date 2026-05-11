@@ -64,6 +64,52 @@ function writeSse(res: ServerResponse, event: string, data?: unknown): void {
   res.write("\n");
 }
 
+function looksLikeJsonEnvelope(value: string): boolean {
+  const trimmed = value.trim();
+  return trimmed.startsWith("{") && trimmed.includes('"command"') && trimmed.includes('"status"');
+}
+
+function summarizeProcessOutput(result: { stdout?: string; stderr?: string }, fallback: string): string {
+  const candidates = [String(result.stderr || "").trim(), String(result.stdout || "").trim()];
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(candidate);
+      if (typeof parsed === "string" && parsed.trim()) {
+        if (!looksLikeJsonEnvelope(parsed)) {
+          return parsed.trim();
+        }
+      }
+      if (parsed && typeof parsed === "object") {
+        const parsedObject = parsed as Record<string, unknown>;
+        const summary = typeof parsedObject.summary === "string"
+          ? String(parsedObject.summary).trim()
+          : "";
+        if (summary && !looksLikeJsonEnvelope(summary)) {
+          return summary;
+        }
+        const parsedError = parsedObject.error && typeof parsedObject.error === "object"
+          ? (parsedObject.error as Record<string, unknown>)
+          : null;
+        const message = parsedError && typeof parsedError.message === "string"
+          ? String(parsedError.message).trim()
+          : "";
+        if (message && !looksLikeJsonEnvelope(message)) {
+          return message;
+        }
+      }
+    } catch {
+      const firstLine = candidate.split(/\r?\n/).find((line) => line.trim())?.trim() || "";
+      if (firstLine && !looksLikeJsonEnvelope(firstLine)) {
+        return firstLine;
+      }
+    }
+  }
+  return fallback;
+}
+
 function runIdFromWatcherPath(runRoot: string, filePath: string): string | null {
   const relative = path.relative(runRoot, filePath);
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
@@ -159,7 +205,7 @@ export function createRunsViewerServer(options: Options): RunsViewerServer {
         ok: false,
         body: {
           status: "error",
-          summary: (result.stderr || result.stdout || "failed to stop workflow").trim(),
+          summary: summarizeProcessOutput(result, "failed to stop workflow"),
         },
       };
     }
@@ -192,7 +238,7 @@ export function createRunsViewerServer(options: Options): RunsViewerServer {
         ok: false,
         body: {
           status: "error",
-          summary: (result.stderr || result.stdout || "failed to resume workflow").trim(),
+          summary: summarizeProcessOutput(result, "failed to resume workflow"),
         },
       };
     }

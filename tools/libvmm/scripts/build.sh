@@ -14,6 +14,7 @@ example_dir="${source_dir}/examples/${example}"
 runtime_contract="${source_dir}/runtime-contract.json"
 version_file="${source_dir}/VERSION"
 version=""
+reuse_build_dir="${MORPHEUS_LIBVMM_REUSE_BUILD_DIR:-false}"
 
 if [ ! -d "${source_dir}" ]; then
   if [ -n "${seed_dir}" ] || [ -n "${git_url}" ]; then
@@ -45,7 +46,13 @@ else
   version="${build_version}"
 fi
 
-make -C "${example_dir}" clean
+if [ "${reuse_build_dir}" = "true" ] && [ -f "${runtime_contract}" ] && make -C "${example_dir}" -q all >/dev/null 2>&1; then
+  cat > "${result_file}" <<EOF
+{"details":{"built":true,"example":"${example}","microkit_sdk":"${microkit_sdk}","runtime_contract":"${runtime_contract}","reused":true}}
+EOF
+  exit 0
+fi
+
 make -C "${example_dir}" -j4 all
 
 cat > "${runtime_contract}" <<EOF
@@ -75,5 +82,5 @@ cat > "${runtime_contract}" <<EOF
 EOF
 
 cat > "${result_file}" <<EOF
-{"details":{"built":true,"example":"${example}","microkit_sdk":"${microkit_sdk}","runtime_contract":"${runtime_contract}"}}
+{"details":{"built":true,"example":"${example}","microkit_sdk":"${microkit_sdk}","runtime_contract":"${runtime_contract}","reused":false}}
 EOF

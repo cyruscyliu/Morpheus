@@ -244,6 +244,7 @@
             "board",
             "microkit-sdk",
             "toolchain-bin-dir",
+            "reuse-build-dir",
             "seed-dir",
             "git-url",
             "build-version"

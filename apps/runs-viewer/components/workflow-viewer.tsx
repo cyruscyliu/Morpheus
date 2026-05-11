@@ -587,28 +587,31 @@ function buildGraphLayout(
 }
 
 function edgePath(source: PositionedGraphNode, target: PositionedGraphNode): string {
+  const edgeInset = 12;
   const horizontalGap = Math.abs(target.centerX - source.centerX);
   const verticalGap = Math.abs(target.centerY - source.centerY);
 
   if (verticalGap < 12) {
     const leftToRight = target.centerX >= source.centerX;
-    const startX = leftToRight ? source.x + source.width : source.x;
+    const startX = leftToRight ? source.x + source.width + edgeInset : source.x - edgeInset;
     const endX = leftToRight ? target.x : target.x + target.width;
+    const adjustedEndX = leftToRight ? endX - edgeInset : endX + edgeInset;
     const startY = source.centerY;
     const endY = target.centerY;
     const direction = leftToRight ? 1 : -1;
     const delta = Math.max(horizontalGap / 2, 40);
-    return `M ${startX} ${startY} C ${startX + delta * direction} ${startY}, ${endX - delta * direction} ${endY}, ${endX} ${endY}`;
+    return `M ${startX} ${startY} C ${startX + delta * direction} ${startY}, ${adjustedEndX - delta * direction} ${endY}, ${adjustedEndX} ${endY}`;
   }
 
   const topToBottom = target.centerY >= source.centerY;
   const startX = source.centerX;
-  const startY = topToBottom ? source.y + source.height : source.y;
+  const startY = topToBottom ? source.y + source.height + edgeInset : source.y - edgeInset;
   const endX = target.centerX;
   const endY = topToBottom ? target.y : target.y + target.height;
+  const adjustedEndY = topToBottom ? endY - edgeInset : endY + edgeInset;
   const direction = topToBottom ? 1 : -1;
   const delta = Math.max(verticalGap / 2, 40);
-  return `M ${startX} ${startY} C ${startX} ${startY + delta * direction}, ${endX} ${endY - delta * direction}, ${endX} ${endY}`;
+  return `M ${startX} ${startY} C ${startX} ${startY + delta * direction}, ${endX} ${adjustedEndY - delta * direction}, ${endX} ${adjustedEndY}`;
 }
 
 function edgeLabelPosition(source: PositionedGraphNode, target: PositionedGraphNode): { x: number; y: number } {

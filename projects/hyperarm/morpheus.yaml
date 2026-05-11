@@ -16,7 +16,7 @@ imports:
     - root.nqc2-build
     - root.libvmm-build
     - root.pkvm-aarch64-build
-    - root.sel4-build
+    - root.sel4-fetch-patch
 
 tools:
   buildroot:
@@ -243,10 +243,10 @@ workflows:
       - id: nvirsh_exec
         tool: nvirsh
         command: exec
-        attach: true
         args:
           - --phase
           - launch
+          - --detach
         timeout-seconds: 10
       - id: nvirsh_stop
         tool: nvirsh

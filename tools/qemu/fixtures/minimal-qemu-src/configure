@@ -15,7 +15,7 @@ printf 'configuring qemu fixture target-list=%s\n' "${target_list}"
 cat > Makefile <<EOF
 all:
 	mkdir -p build-out
-	cp "${MORPHEUS_QEMU_SOURCE:-$MORPHEUS_V2_SOURCE}/target/trace.sh" build-out/qemu-system-aarch64
+	cp "${MORPHEUS_QEMU_SOURCE}/target/trace.sh" build-out/qemu-system-aarch64
 	chmod +x build-out/qemu-system-aarch64
 install:
 	mkdir -p ${prefix}/bin

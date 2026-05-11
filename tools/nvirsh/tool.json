@@ -10,6 +10,25 @@
         ],
         "path": true
       },
+      "qemu": {
+        "aliases": [
+          "qemu"
+        ],
+        "path": true
+      },
+      "firmware": {
+        "aliases": [
+          "firmware"
+        ],
+        "path": true
+      },
+      "buildroot-output-dir": {
+        "aliases": [
+          "buildroot-output-dir",
+          "buildrootOutputDir"
+        ],
+        "path": true
+      },
       "build-version": {
         "aliases": [
           "build-version",
@@ -34,6 +53,18 @@
           "build-dir-key",
           "buildDirKey"
         ]
+      }
+    }
+  },
+  "inputs": {
+    "build": {
+      "dependencies": {
+        "qemu": {
+          "flag": "qemu"
+        },
+        "buildroot": {
+          "flag": "buildroot-output-dir"
+        }
       }
     }
   },
@@ -96,12 +127,18 @@
           "requiredFlags": [
             "source",
             "build-dir",
-            "install-dir"
+            "install-dir",
+            "qemu",
+            "firmware",
+            "buildroot-output-dir"
           ],
           "scalarFlags": [
             "source",
             "build-dir",
             "install-dir",
+            "qemu",
+            "firmware",
+            "buildroot-output-dir",
             "build-version",
             "build-dir-key",
             "phase"
@@ -110,7 +147,9 @@
           "pathFlags": {
             "source": "tools/nvirsh/builds/{buildDirKey}/source",
             "build-dir": "tools/nvirsh/builds/{buildDirKey}/build",
-            "install-dir": "tools/nvirsh/builds/{buildDirKey}/install"
+            "install-dir": "tools/nvirsh/builds/{buildDirKey}/install",
+            "qemu": "tools/qemu/builds/{buildDirKey}/install/bin/qemu-system-aarch64",
+            "buildroot-output-dir": "tools/buildroot/builds/{buildDirKey}/output"
           },
           "script": {
             "path": "scripts/build.sh",

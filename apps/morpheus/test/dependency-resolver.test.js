@@ -6,6 +6,7 @@ const path = require("node:path");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const dependencyResolver = require("../dist/core/dependency-resolver.js");
+const { applyConfigDefaults } = require("../dist/core/config.js");
 
 function tempDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -188,6 +189,93 @@ test("resolveToolDependencies rejects global cache configs without a namespace",
         "build",
       );
     }, /cache\.namespace must be configured when cache\.root is set/);
+  });
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("resolveToolDependencies projects nvirsh runtime inputs through Morpheus", () => {
+  const projectRoot = tempDir("morpheus-resolve-nvirsh-");
+  const workspaceRoot = path.join(projectRoot, "workspace");
+  fs.mkdirSync(workspaceRoot, { recursive: true });
+  const configPath = writeConfig(projectRoot, [
+    "workspace:",
+    "  root: ./workspace",
+    "cache:",
+    "  root: ~/.cache/morpheus",
+    "  namespace: hyperarm",
+    "  downloads: global",
+    "  builds: global",
+    "  src: global",
+    "tools:",
+    "  qemu:",
+    "    build-version: 8.2.7",
+    "    build-dir-key: qemu-8.2.7-aarch64-softmmu",
+    "  buildroot:",
+    "    build-version: 2025.02.12",
+    "    build-dir-key: arm64-dev",
+    "  nvirsh:",
+    "    build-dir-key: qemu-debian-arm64",
+    "    dependencies:",
+    "      qemu:",
+    "        tool: qemu",
+    "        artifact: qemu-system-aarch64",
+    "      buildroot:",
+    "        tool: buildroot",
+    "        artifact: output-dir",
+    "",
+  ]);
+
+  withConfig(configPath, () => {
+    const nvirsh = dependencyResolver.resolveToolDependencies(
+      {
+        tool: "nvirsh",
+        workspace: workspaceRoot,
+        localWorkspace: workspaceRoot,
+        json: true,
+      },
+      "build",
+    );
+
+    assert.equal(
+      nvirsh.qemu,
+      "/root/.cache/morpheus/hyperarm/tools/qemu/builds/qemu-8.2.7-aarch64-softmmu/install/bin/qemu-system-aarch64",
+    );
+    assert.equal(
+      nvirsh["buildroot-output-dir"],
+      "/root/.cache/morpheus/hyperarm/tools/buildroot/builds/arm64-dev/output",
+    );
+  });
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("applyConfigDefaults resolves nvirsh firmware path from config", () => {
+  const projectRoot = tempDir("morpheus-nvirsh-firmware-");
+  const workspaceRoot = path.join(projectRoot, "workspace");
+  fs.mkdirSync(workspaceRoot, { recursive: true });
+  const configPath = writeConfig(projectRoot, [
+    "workspace:",
+    "  root: ./workspace",
+    "tools:",
+    "  nvirsh:",
+    "    firmware: /usr/share/qemu-efi-aarch64/QEMU_EFI.fd",
+    "",
+  ]);
+
+  withConfig(configPath, () => {
+    const resolved = applyConfigDefaults(
+      {
+        tool: "nvirsh",
+        workspace: workspaceRoot,
+      },
+      { allowToolDefaults: true },
+    );
+
+    assert.equal(
+      resolved.flags.firmware,
+      "/usr/share/qemu-efi-aarch64/QEMU_EFI.fd",
+    );
   });
 
   fs.rmSync(projectRoot, { recursive: true, force: true });

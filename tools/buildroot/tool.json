@@ -109,6 +109,9 @@
         "source-dir": {
           "pathTemplate": "tools/buildroot/src/buildroot-{buildVersion}"
         },
+        "output-dir": {
+          "pathTemplate": "tools/buildroot/builds/{buildDirKey}/output"
+        },
         "images/Image": {
           "pathTemplate": "tools/buildroot/builds/{buildDirKey}/output/images/Image"
         },

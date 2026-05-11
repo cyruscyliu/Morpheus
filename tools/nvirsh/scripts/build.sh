@@ -7,11 +7,16 @@ install_dir="${MORPHEUS_NVIRSH_INSTALL_DIR:?}"
 profile_name="${MORPHEUS_NVIRSH_BUILD_VERSION:-default}"
 build_dir_key="${MORPHEUS_NVIRSH_BUILD_DIR_KEY:-${profile_name}}"
 result_file="${MORPHEUS_NVIRSH_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
+qemu="${MORPHEUS_NVIRSH_QEMU:?}"
+firmware="${MORPHEUS_NVIRSH_FIRMWARE:?}"
+buildroot_output_dir="${MORPHEUS_NVIRSH_BUILDROOT_OUTPUT_DIR:?}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 profile_file="${source_dir}/profile.json"
 state_file="${install_dir}/state.json"
 build_l0_dir="${build_dir}/l0"
 build_l1_dir="${build_dir}/l1"
+log_file="${PWD}/stdout.log"
+l1_console_log="${install_dir}/l1-console.log"
 
 if [ -f "${build_l0_dir}/l1.pid" ]; then
   old_pid="$(cat "${build_l0_dir}/l1.pid" 2>/dev/null || true)"
@@ -21,6 +26,7 @@ if [ -f "${build_l0_dir}/l1.pid" ]; then
 fi
 rm -rf "${install_dir}/plan" "${build_l0_dir}" "${build_l1_dir}"
 mkdir -p "${build_dir}" "${install_dir}" "${build_l0_dir}" "${build_l1_dir}"
+: > "${l1_console_log}"
 
 if [ ! -f "${profile_file}" ]; then
   echo "missing fetched profile source: ${profile_file}" >&2
@@ -46,91 +52,12 @@ for (let index = 0; index < args.length - 1; index += 1) {
 NODE
 }
 
-workspace_root="$(
-  node - "${MORPHEUS_CONFIG:-}" <<'NODE'
-const fs = require("fs");
-const yaml = require("yaml");
-const configPath = process.argv[2];
-if (!configPath || !fs.existsSync(configPath)) {
-  process.stdout.write("");
-  process.exit(0);
-}
-const config = yaml.parse(fs.readFileSync(configPath, "utf8")) || {};
-process.stdout.write(String(config.workspace && config.workspace.root ? config.workspace.root : ""));
-NODE
-)"
-workspace_root="${workspace_root:-$(pwd)}"
-workspace_root="$(python3 - <<'PY' "$workspace_root"
-import os, sys, pathlib
-p = pathlib.Path(sys.argv[1])
-print(str(p if p.is_absolute() else pathlib.Path.cwd() / p))
-PY
-)"
-
-buildroot_key="$(
-  node - "${MORPHEUS_CONFIG:-}" <<'NODE'
-const fs = require("fs");
-const yaml = require("yaml");
-const configPath = process.argv[2];
-if (!configPath || !fs.existsSync(configPath)) {
-  process.stdout.write("arm64-dev");
-  process.exit(0);
-}
-const config = yaml.parse(fs.readFileSync(configPath, "utf8")) || {};
-process.stdout.write(String(config.tools && config.tools.buildroot && config.tools.buildroot["build-dir-key"] ? config.tools.buildroot["build-dir-key"] : "arm64-dev"));
-NODE
-)"
-cache_namespace="$(
-  node - "${MORPHEUS_CONFIG:-}" <<'NODE'
-const fs = require("fs");
-const yaml = require("yaml");
-const configPath = process.argv[2];
-if (!configPath || !fs.existsSync(configPath)) {
-  process.stdout.write("hyperarm");
-  process.exit(0);
-}
-const config = yaml.parse(fs.readFileSync(configPath, "utf8")) || {};
-process.stdout.write(String(config.cache && config.cache.namespace ? config.cache.namespace : "hyperarm"));
-NODE
-)"
-
 generate_ssh_key() {
   local keyfile="${build_l0_dir}/id_ed25519"
   if [ ! -f "${keyfile}" ]; then
     ssh-keygen -q -t ed25519 -N '' -f "${keyfile}" >/dev/null
   fi
   cat "${keyfile}.pub"
-}
-
-resolve_qemu_binary() {
-  local candidate
-  candidate="$(command -v qemu-system-aarch64 || true)"
-  if [ -x "${candidate}" ]; then
-    printf '%s' "${candidate}"
-    return 0
-  fi
-  candidate="$(
-    find "${HOME}/.cache/morpheus/${cache_namespace}/tools/qemu/builds" -path '*/install/bin/qemu-system-aarch64' -type f 2>/dev/null | sort | tail -n 1
-  )"
-  if [ -x "${candidate}" ]; then
-    printf '%s' "${candidate}"
-    return 0
-  fi
-  echo "missing qemu-system-aarch64 binary" >&2
-  exit 1
-}
-
-resolve_firmware() {
-  local candidate
-  candidate="$(
-    find /usr/share -type f \( -name 'QEMU_EFI.fd' -o -name 'AAVMF_CODE.fd' \) | sort | tail -n 1
-  )"
-  if [ -f "${candidate}" ]; then
-    printf '%s' "${candidate}"
-    return 0
-  fi
-  echo "missing arm64 UEFI firmware" >&2
-  exit 1
 }
 
 wait_for_ssh() {
@@ -251,9 +178,6 @@ run_profile_script() {
 run_profile_script "l0.provisionScript"
 run_profile_script "l1.provisionScript"
 
-qemu_bin="$(resolve_qemu_binary)"
-firmware_bin="$(resolve_firmware)"
-guest_qemu="/root/qemu-system-aarch64"
 guest_image_dir="/root/nvirsh-images"
 guest_launch="/root/launch-l2.sh"
 base_image_path="${build_l0_dir}/base-image.qcow2"
@@ -271,8 +195,8 @@ l2_memory="${l2_memory:-1024}"
 cat > "${build_l1_dir}/launch-l2.sh" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-guest_qemu="\$(command -v qemu-system-aarch64 || true)"
-if [ -z "\${guest_qemu}" ]; then
+guest_qemu="/usr/bin/qemu-system-aarch64"
+if [ ! -x "\${guest_qemu}" ]; then
   echo "missing qemu-system-aarch64 in l1" >&2
   exit 1
 fi
@@ -293,7 +217,7 @@ set -euo pipefail
 if [ -x /root/install-dependencies.sh ]; then
   bash /root/install-dependencies.sh
 fi
-if ! command -v qemu-system-aarch64 >/dev/null 2>&1; then
+if [ ! -x /usr/bin/qemu-system-aarch64 ]; then
   sudo apt-get install -y qemu-system-arm
 fi
 mkdir -p /root/nvirsh-images
@@ -301,18 +225,18 @@ chmod 0755 /root/launch-l2.sh
 EOF
 chmod +x "${build_l1_dir}/provision-l1.sh"
 
-"${qemu_bin}" \
+"${qemu}" \
   -machine virt,virtualization=on,gic-version=3 \
   -cpu "${l1_cpu}" \
   -m "${l1_memory}" \
   -smp "${l1_cpus}" \
   -nographic \
-  -bios "${firmware_bin}" \
+  -bios "${firmware}" \
   -drive file="${overlay_image_path}",if=virtio,format=qcow2 \
   -drive file="${seed_image_path}",if=virtio,format=raw \
   -netdev user,id=net0,hostfwd=tcp::${l1_ssh_port}-:22 \
   -device virtio-net-pci,netdev=net0 \
-  &
+  >> "${l1_console_log}" 2>&1 < /dev/null &
 qemu_pid="$!"
 echo "${qemu_pid}" > "${qemu_pid_file}"
 
@@ -324,17 +248,9 @@ wait_for_guest_command "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${qemu_pid
 
 copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${build_l1_dir}/install-dependencies.sh" "/root/install-dependencies.sh"
 copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${build_l1_dir}/launch-l2.sh" "${guest_launch}"
-buildroot_output_dir=""
-if [ -d "${workspace_root}/tools/buildroot/builds/${buildroot_key}/output/images" ]; then
-  buildroot_output_dir="${workspace_root}/tools/buildroot/builds/${buildroot_key}/output/images"
-elif [ -d "${HOME}/.cache/morpheus/${cache_namespace}/tools/buildroot/builds/${buildroot_key}/output/images" ]; then
-  buildroot_output_dir="${HOME}/.cache/morpheus/${cache_namespace}/tools/buildroot/builds/${buildroot_key}/output/images"
-fi
-if [ -n "${buildroot_output_dir}" ]; then
-  ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "mkdir -p ${guest_image_dir}"
-  copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${buildroot_output_dir}/Image" "${guest_image_dir}/Image"
-  copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${buildroot_output_dir}/rootfs.cpio.gz" "${guest_image_dir}/rootfs.cpio.gz"
-fi
+ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "mkdir -p ${guest_image_dir}"
+copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${buildroot_output_dir}/Image" "${guest_image_dir}/Image"
+copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${buildroot_output_dir}/rootfs.cpio.gz" "${guest_image_dir}/rootfs.cpio.gz"
 
 run_in_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${build_l1_dir}/provision-l1.sh"
 
@@ -371,7 +287,7 @@ const state = {
       hostName: l0.hostName || null,
       workspace: l0.workspace || null,
       image: l0.image || null,
-      bootLog: null,
+      bootLog: path.join(installDir, "l1-console.log"),
     },
     l1: {
       status: "prepared",

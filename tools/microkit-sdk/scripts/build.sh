@@ -2,7 +2,7 @@
 set -euo pipefail
 
 source_dir="${MORPHEUS_MICROKIT_SDK_PATH:-${MORPHEUS_MICROKIT_SDK_SOURCE:?}}"
-sel4_dir="${MORPHEUS_MICROKIT_SDK_SEL4:?}"
+sel4_dir="${MORPHEUS_MICROKIT_SDK_SEL4:-}"
 boards="${MORPHEUS_MICROKIT_SDK_BOARDS:-qemu_virt_aarch64}"
 configs="${MORPHEUS_MICROKIT_SDK_CONFIGS:-debug}"
 tool_target_triple="${MORPHEUS_MICROKIT_SDK_TOOL_TARGET_TRIPLE:-}"
@@ -17,9 +17,7 @@ build_version="${MORPHEUS_MICROKIT_SDK_BUILD_VERSION:-}"
 install_dir="$(dirname "${source_dir}")/install"
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 tool_root="$(cd "${script_dir}/.." && pwd)"
-real_toolchain_bin="${PWD}/arm-gnu-toolchain-12.3.rel1-x86_64-aarch64-none-elf/bin"
 downloads_dir="$(dirname "${toolchain_dir}")/../downloads"
-workspace_root="${MORPHEUS_MICROKIT_SDK_WORKSPACE:-${MORPHEUS_SCRIPT_WORKSPACE:-}}"
 venv_python=""
 venv_site_packages=""
 
@@ -45,7 +43,7 @@ default_toolchain_archive_url() {
 
 ensure_toolchain() {
   local gcc_path="${toolchain_dir}/bin/${toolchain_prefix}-gcc"
-  if [ -x "${gcc_path}" ] || [ -x "${real_toolchain_bin}/${toolchain_prefix}-gcc" ]; then
+  if [ -x "${gcc_path}" ]; then
     return 0
   fi
 
@@ -101,24 +99,32 @@ if [ ! -f "${source_dir}/VERSION" ]; then
   exit 1
 fi
 
+if [ -z "${sel4_dir}" ] || [ ! -d "${sel4_dir}" ]; then
+  echo "missing Microkit seL4 source tree: set MORPHEUS_MICROKIT_SDK_SEL4" >&2
+  exit 1
+fi
+
+echo "[microkit] source_dir=${source_dir}" >&2
+echo "[microkit] sel4_dir=${sel4_dir}" >&2
+echo "[microkit] toolchain_dir=${toolchain_dir}" >&2
+
 rm -rf "${install_dir}"
 mkdir -p "${toolchain_dir}/bin"
 allow_fixture_toolchain=false
 if [ -n "${seed_dir}" ]; then
   allow_fixture_toolchain=true
 fi
+echo "[microkit] ensuring toolchain" >&2
 ensure_toolchain
+echo "[microkit] toolchain ready" >&2
+
+if [ -d "${source_dir}/build" ]; then
+  echo "[microkit] clearing stale SDK build tree" >&2
+  rm -rf "${source_dir}/build"
+fi
 
 export PATH="${PATH}:/usr/sbin:${toolchain_dir}/bin"
-if [ -d "${real_toolchain_bin}" ]; then
-  export PATH="${PATH}:/usr/sbin:${real_toolchain_bin}"
-fi
-if [ -n "${workspace_root}" ]; then
-  qemu_bin_dir="$(find "${workspace_root}/tools/qemu/builds" -path '*/install/bin' -type d 2>/dev/null | head -n 1)"
-  if [ -n "${qemu_bin_dir}" ]; then
-    export PATH="${PATH}:${qemu_bin_dir}"
-  fi
-fi
+echo "[microkit] pre-build environment ready" >&2
 
 (
   cd "${source_dir}"
@@ -128,7 +134,8 @@ fi
   if [ -n "${venv_site_packages}" ]; then
     export PYTHONPATH="${venv_site_packages}${PYTHONPATH:+:${PYTHONPATH}}"
   fi
-  "${script_dir}/build-sdk.sh" \
+  echo "[microkit] invoking build-sdk.sh" >&2
+  bash -x "${script_dir}/build-sdk.sh" \
     "${source_dir}" \
     "${sel4_dir}" \
     "${boards}" \
@@ -136,6 +143,7 @@ fi
     "${toolchain_dir}/bin" \
     "${toolchain_prefix}" \
     "${tool_target_triple}"
+  echo "[microkit] build-sdk.sh completed" >&2
 )
 
 version="$(tr -d '\n' < "${source_dir}/VERSION")"

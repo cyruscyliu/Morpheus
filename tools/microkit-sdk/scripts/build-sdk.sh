@@ -46,11 +46,6 @@ if [ -n "${TOOLCHAIN_BIN_DIR}" ]; then
   export PATH="${PATH}:/usr/sbin:${TOOLCHAIN_BIN_DIR}"
 fi
 
-REAL_TOOLCHAIN_BIN="${PWD}/arm-gnu-toolchain-12.3.rel1-x86_64-aarch64-none-elf/bin"
-if [ -d "${REAL_TOOLCHAIN_BIN}" ]; then
-  export PATH="${PATH}:/usr/sbin:${REAL_TOOLCHAIN_BIN}"
-fi
-
 if [ -z "${LIBCLANG_PATH:-}" ]; then
   libclang_dir="$(find /usr/lib /usr/lib64 -path '*/libclang.so' -printf '%h\n' 2>/dev/null | head -n 1)"
   if [ -n "${libclang_dir}" ]; then

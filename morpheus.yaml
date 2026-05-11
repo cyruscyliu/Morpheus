@@ -32,6 +32,14 @@ tools:
     profile: qemu-debian-arm64
     build-dir-key: qemu-debian-arm64
     reuse-build-dir: true
+    firmware: /usr/share/qemu-efi-aarch64/QEMU_EFI.fd
+    dependencies:
+      qemu:
+        tool: qemu
+        artifact: qemu-system-aarch64
+      buildroot:
+        tool: buildroot
+        artifact: output-dir
   sel4:
     seed-dir: ./tools/sel4/fixtures/minimal-sel4-src
     patch-dir: ./tools/sel4/patches/demo

@@ -327,5 +327,4 @@ NODE
 cat > "${result_file}" <<EOF
 {"details":{"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}","state_file":"${state_file}","profile":"${profile_name}","reused":false}}
 EOF
-
-printf '[nvirsh] prepared l1 runtime and l2 launch script for %s\n' "${profile_name}" >> "${log_file}"
+printf '[nvirsh] prepared l1 runtime and l2 launch script for %s\n' "${profile_name}"

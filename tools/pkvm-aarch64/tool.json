@@ -72,12 +72,6 @@
         ],
         "repeatable": true
       },
-      "timeout-seconds": {
-        "aliases": [
-          "timeout-seconds",
-          "timeoutSeconds"
-        ]
-      },
       "detach": {
         "aliases": [
           "detach"
@@ -246,7 +240,6 @@
             "platform",
             "build-target",
             "qemu",
-            "timeout-seconds",
             "detach"
           ],
           "repeatableFlags": [

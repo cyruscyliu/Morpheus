@@ -70,7 +70,7 @@ tools:
         artifact: qemu-system-aarch64
       buildroot:
         tool: buildroot
-        artifact: output-dir
+        artifact: images-dir
   microkit-sdk:
     mode: local
     reuse-build-dir: true
@@ -140,6 +140,7 @@ tools:
       - log_file
   pkvm-aarch64:
     mode: local
+    reuse-build-dir: true
     build-dir-key: pkvm-aarch64-main
     git-url: https://github.com/vrosendahl/pkvm-aarch64.git
   libvmm:
@@ -222,9 +223,8 @@ workflows:
           - "{{steps.pkvm_fetch.artifacts.source-dir.location}}"
           - --qemu
           - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
-          - --timeout-seconds
-          - "20"
           - --detach
+        timeout-seconds: 10
       - id: pkvm_stop
         tool: pkvm-aarch64
         command: stop
@@ -247,8 +247,13 @@ workflows:
         args:
           - --phase
           - launch
-          - --timeout-seconds
-          - "10"
+        timeout-seconds: 10
+      - id: nvirsh_stop
+        tool: nvirsh
+        command: stop
+        args:
+          - --run-dir
+          - "{{steps.nvirsh_exec.details.run_dir}}"
   buildroot-qemu-runtime:
     category: run
     steps:
@@ -295,6 +300,13 @@ workflows:
           - --initrd
           - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.location}}"
           - --detach
+        timeout-seconds: 10
+      - id: qemu_stop
+        tool: qemu
+        command: stop
+        args:
+          - --run-dir
+          - "{{steps.qemu_exec.details.run_dir}}"
   buildroot-qemu-runtime-nqc2:
     category: run
     steps:
@@ -356,9 +368,8 @@ workflows:
           - --qemu-arg
           - "{{steps.nqc2_build.artifacts.nqc2-plugin-so.location}},trace=runti\
             me/buildroot-qemu-runtime-nqc2.trace"
-          - --timeout-seconds
-          - "20"
           - --detach
+        timeout-seconds: 10
       - id: nqc2_postprocess
         tool: nqc2
         command: postprocess
@@ -497,6 +508,13 @@ workflows:
           - --initrd
           - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.location}}"
           - --detach
+        timeout-seconds: 10
+      - id: libvmm_stop
+        tool: libvmm
+        command: stop
+        args:
+          - --run-dir
+          - "{{steps.libvmm_exec.details.run_dir}}"
   buildroot-libvmm-runtime-trace:
     category: run
     steps:
@@ -607,6 +625,13 @@ workflows:
           - enable=gicv3_inject_virq
           - --qemu-arg
           - enable=gicv3_inject_virq_skipped
+        timeout-seconds: 10
+      - id: libvmm_stop
+        tool: libvmm
+        command: stop
+        args:
+          - --run-dir
+          - "{{steps.libvmm_exec.details.run_dir}}"
   hyperarm-kernel-callgraphs:
     category: run
     steps:

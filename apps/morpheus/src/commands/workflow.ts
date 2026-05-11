@@ -107,6 +107,10 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function readJsonIfExists(filePath, fallback = null) {
   if (!filePath || !fs.existsSync(filePath)) {
     return fallback;
@@ -1633,7 +1637,8 @@ async function runToolWorkflow({
     name: created.name,
     toolArgv: steps[index] && steps[index].toolArgv ? steps[index].toolArgv : [],
     toolCommand: steps[index] && steps[index].toolCommand ? steps[index].toolCommand : "build",
-      attach: Boolean(steps[index] && steps[index].attach),
+    attach: Boolean(steps[index] && steps[index].attach),
+    timeoutSeconds: Number(steps[index] && (steps[index]["timeout-seconds"] || steps[index].timeoutSeconds) || 0),
   }));
 
   emitEvent("workflow.created", {
@@ -1857,6 +1862,19 @@ async function runToolWorkflow({
     if (status !== "success") {
       workflowStatus = "error";
       break;
+    }
+
+    if (spec && Number(spec.timeoutSeconds || 0) > 0) {
+      emitEvent("step.waiting", {
+        name: step.name,
+        timeout_seconds: Number(spec.timeoutSeconds || 0),
+      }, {
+        scope: "step",
+        workflowId: workflow.id,
+        stepId: step.id,
+        tool: step.tool,
+      });
+      await sleep(Number(spec.timeoutSeconds || 0) * 1000);
     }
   }
   } catch (error) {

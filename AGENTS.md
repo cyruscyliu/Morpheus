@@ -46,6 +46,10 @@
 - Tool scripts must write only to stdout/stderr.
 - Morpheus owns log placement under `runs/steps/`; tools must not choose log
   file paths.
+- Tool scripts must not implement their own runtime timeouts.
+- Tool scripts must not resolve managed workspace, cache, or artifact paths.
+- Tool scripts may only consume Morpheus-provided flags and env vars for
+  managed paths.
 
 ## Commit Messages
 

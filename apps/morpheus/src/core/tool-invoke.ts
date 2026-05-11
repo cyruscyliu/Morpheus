@@ -556,22 +556,28 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
   const logFile = resultSpec.logFileTemplate
     ? renderScriptTemplate(resultSpec.logFileTemplate, rawValues)
     : defaultLogFile;
+  const detachedExec = command === "exec" && (rawValues.detach === true || rawValues.detach === "true");
   fs.rmSync(resultFile, { force: true });
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
   fs.writeFileSync(logFile, "", "utf8");
 
   const scriptPath = path.join(repoRoot(), descriptor.installRoot, spec.script.path);
+  const logFd = detachedExec ? fs.openSync(logFile, "a") : null;
   const child = spawn(spec.script.shell || "bash", [scriptPath], {
     cwd: childCwd,
     env,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: detachedExec
+      ? ["ignore", logFd, logFd]
+      : ["ignore", "pipe", "pipe"],
   });
 
   return await new Promise((resolve, reject) => {
     let stdoutText = "";
     let stderrText = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
+    if (!detachedExec) {
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
+    }
 
     const emitChunk = (stream, chunk) => {
       if (!chunk) {
@@ -598,16 +604,23 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
       }
     };
 
-    child.stdout.on("data", (chunk) => {
-      stdoutText += chunk;
-      emitChunk("stdout", chunk);
-    });
-    child.stderr.on("data", (chunk) => {
-      stderrText += chunk;
-      emitChunk("stderr", chunk);
-    });
+    if (!detachedExec) {
+      child.stdout.on("data", (chunk) => {
+        stdoutText += chunk;
+        emitChunk("stdout", chunk);
+      });
+      child.stderr.on("data", (chunk) => {
+        stderrText += chunk;
+        emitChunk("stderr", chunk);
+      });
+    }
     child.on("error", reject);
     child.on("close", (code) => {
+      if (logFd != null) {
+        try {
+          fs.closeSync(logFd);
+        } catch {}
+      }
       const exitCode = typeof code === "number" ? code : 1;
       let dynamicResult = {};
       if (fs.existsSync(resultFile)) {
@@ -634,11 +647,11 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
             command,
             status: "error",
             exit_code: exitCode,
-            summary: (resultSpec && resultSpec.errorSummary) || stderrText || stdoutText || `failed ${command}`,
+            summary: (resultSpec && resultSpec.errorSummary) || stderrText || stdoutText || fs.readFileSync(logFile, "utf8") || `failed ${command}`,
             details,
             error: {
               code: `${command}_failed`,
-              message: stderrText || stdoutText || `failed ${command}`,
+              message: stderrText || stdoutText || fs.readFileSync(logFile, "utf8") || `failed ${command}`,
             },
           };
       if (resultSpec.manifestTemplate) {

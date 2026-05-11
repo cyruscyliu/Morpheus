@@ -119,12 +119,6 @@
           "append"
         ]
       },
-      "timeout-seconds": {
-        "aliases": [
-          "timeout-seconds",
-          "timeoutSeconds"
-        ]
-      },
       "detach": {
         "aliases": [
           "detach"
@@ -295,8 +289,7 @@
             "kernel",
             "initrd",
             "run-dir",
-            "append",
-            "timeout-seconds"
+            "append"
           ],
           "repeatableFlags": [
             "qemu-arg"

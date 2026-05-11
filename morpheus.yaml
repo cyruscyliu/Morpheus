@@ -39,7 +39,7 @@ tools:
         artifact: qemu-system-aarch64
       buildroot:
         tool: buildroot
-        artifact: output-dir
+        artifact: images-dir
   sel4:
     seed-dir: ./tools/sel4/fixtures/minimal-sel4-src
     patch-dir: ./tools/sel4/patches/demo

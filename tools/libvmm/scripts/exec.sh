@@ -94,7 +94,7 @@ EOF
     exit 1
   fi
   cat > "${manifest_file}" <<EOF
-{"tool":"libvmm","status":"running","runDir":"${run_dir}","logFile":"${run_dir}/stdout.log","manifest":"${manifest_file}","pid":${pid},"launcherPid":null,"runnerPid":null,"board":"${board}","microkitSdk":"${microkit_sdk}","microkitConfig":"${microkit_config}","libvmmDir":"${libvmm_dir}","toolchainBinDir":"${toolchain_bin_dir}","exampleDir":"${example_dir}","control":{"type":"process","graceful_methods":["SIGTERM"]}}
+{"tool":"libvmm","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","pid":${pid},"launcherPid":null,"runnerPid":null,"board":"${board}","microkitSdk":"${microkit_sdk}","microkitConfig":"${microkit_config}","libvmmDir":"${libvmm_dir}","toolchainBinDir":"${toolchain_bin_dir}","exampleDir":"${example_dir}","control":{"type":"process","graceful_methods":["SIGTERM"]}}
 EOF
   cat > "${result_file}" <<EOF
 {"details":{"pid":${pid},"detached":true}}
@@ -104,7 +104,7 @@ fi
 
 "${make_cmd[@]}"
 cat > "${manifest_file}" <<EOF
-{"tool":"libvmm","status":"success","runDir":"${run_dir}","logFile":"${run_dir}/stdout.log","manifest":"${manifest_file}","pid":null,"launcherPid":null,"runnerPid":null,"board":"${board}","microkitSdk":"${microkit_sdk}","microkitConfig":"${microkit_config}","libvmmDir":"${libvmm_dir}","toolchainBinDir":"${toolchain_bin_dir}","exampleDir":"${example_dir}"}
+{"tool":"libvmm","status":"success","runDir":"${run_dir}","manifest":"${manifest_file}","pid":null,"launcherPid":null,"runnerPid":null,"board":"${board}","microkitSdk":"${microkit_sdk}","microkitConfig":"${microkit_config}","libvmmDir":"${libvmm_dir}","toolchainBinDir":"${toolchain_bin_dir}","exampleDir":"${example_dir}"}
 EOF
 cat > "${result_file}" <<EOF
 {"details":{"pid":null,"detached":false}}

@@ -112,6 +112,9 @@
         "output-dir": {
           "pathTemplate": "tools/buildroot/builds/{buildDirKey}/output"
         },
+        "images-dir": {
+          "pathTemplate": "tools/buildroot/builds/{buildDirKey}/output/images"
+        },
         "images/Image": {
           "pathTemplate": "tools/buildroot/builds/{buildDirKey}/output/images/Image"
         },

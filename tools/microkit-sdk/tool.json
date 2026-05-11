@@ -256,13 +256,15 @@
           },
           "requiredFlags": [
             "path",
-            "toolchain-dir"
+            "toolchain-dir",
+            "sel4"
           ],
           "scalarFlags": [
             "boards",
             "configs",
             "tool-target-triple",
             "toolchain-dir",
+            "sel4",
             "toolchain-version",
             "toolchain-archive-url",
             "toolchain-prefix-aarch64",

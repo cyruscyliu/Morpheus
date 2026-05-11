@@ -41,7 +41,7 @@ if [ "${detach}" = "true" ]; then
   (
     cd "${source_dir}"
     "${make_cmd[@]}"
-  ) &
+  ) < /dev/null &
   pid="$!"
   timeout_pid=""
   if [ "${timeout_seconds}" != "0" ]; then

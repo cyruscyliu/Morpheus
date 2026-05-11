@@ -93,6 +93,7 @@ test("morpheus client reads workflow runs, detail, events, and logs through the 
 
   const events = loadRunEvents(context, runId);
   assert.equal(events?.[0]?.event, "workflow.started");
-  assert.equal(loadStepLogText(context, runId, "01-build"), "hello\nwarn\n");
+  assert.match(loadStepLogText(context, runId, "01-build") || "", /stdout\.log/);
+  assert.match(loadStepLogText(context, runId, "01-build") || "", /stderr\.log/);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });

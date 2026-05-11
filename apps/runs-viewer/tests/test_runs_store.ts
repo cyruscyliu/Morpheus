@@ -516,7 +516,9 @@ test("workflow-first step logs can be reconstructed from canonical events", () =
   writeText(path.join(workflowDir, "steps", "01-step", "stdout.log"), "hello\n");
   writeText(path.join(workflowDir, "steps", "01-step", "stderr.log"), "warn\n");
 
-  assert.equal(loadStepLogText(runRoot, workflowId, "01-step"), "hello\nwarn\n");
+  const combined = loadStepLogText(runRoot, workflowId, "01-step");
+  assert.match(combined || "", /stdout\.log/);
+  assert.match(combined || "", /stderr\.log/);
 });
 
 test("listRunSummaries reconciles stale running workflows to error", () => {

@@ -84,7 +84,7 @@ fi
 make_cmd+=(qemu)
 
 if [ "${detach}" = "true" ]; then
-  "${make_cmd[@]}" &
+  "${make_cmd[@]}" < /dev/null &
   pid="$!"
   sleep 1
   if ! kill -0 "${pid}" 2>/dev/null; then

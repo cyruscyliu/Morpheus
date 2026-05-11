@@ -73,6 +73,9 @@
     ],
     "local": {
       "sourceTemplate": "tools/sel4/builds/{buildDirKey}/source",
+      "buildDirTemplate": "tools/sel4/builds/{buildDirKey}/build",
+      "installDirTemplate": "tools/sel4/builds/{buildDirKey}/install",
+      "outputDirTemplate": "tools/sel4/builds/{buildDirKey}/output",
       "downloadsDir": "tools/sel4/downloads",
       "artifacts": {
         "source-dir": {

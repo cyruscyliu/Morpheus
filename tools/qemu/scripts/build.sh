@@ -6,6 +6,8 @@ build_dir="${MORPHEUS_QEMU_BUILD_DIR:?}"
 install_dir="${MORPHEUS_QEMU_INSTALL_DIR:?}"
 target_list_file="${MORPHEUS_QEMU_TARGET_LIST_FILE:-}"
 configure_arg_file="${MORPHEUS_QEMU_CONFIGURE_ARG_FILE:-}"
+target_list_raw="${MORPHEUS_QEMU_TARGET_LIST:-}"
+configure_arg_raw="${MORPHEUS_QEMU_CONFIGURE_ARG:-}"
 jobs="${MORPHEUS_QEMU_JOBS:-4}"
 result_file="${MORPHEUS_QEMU_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 archive_url="${MORPHEUS_QEMU_ARCHIVE_URL:-}"
@@ -14,6 +16,34 @@ build_version="${MORPHEUS_QEMU_BUILD_VERSION:-}"
 artifact_path="${install_dir}/bin/qemu-system-aarch64"
 reuse_build_dir="${MORPHEUS_QEMU_REUSE_BUILD_DIR:-false}"
 needs_rebuild="true"
+use_system_meson="${MORPHEUS_QEMU_USE_SYSTEM_MESON:-1}"
+
+stale_target_list_config() {
+  local config_host_mak="$1"
+  local expected_targets="$2"
+  [ -f "${config_host_mak}" ] || return 1
+  [ -n "${expected_targets}" ] || return 1
+  local configured_targets=""
+  configured_targets="$(sed -n 's/^TARGET_DIRS=//p' "${config_host_mak}" | head -n 1)"
+  [ -n "${configured_targets}" ] || return 1
+  [ "${configured_targets}" = "${expected_targets}" ] && return 1
+  return 0
+}
+
+stale_meson_build_tree() {
+  local build_root="$1"
+  local candidate=""
+  for candidate in \
+    "${build_root}/build.ninja" \
+    "${build_root}/build.ninja.stamp" \
+    "${build_root}/config-host.mak"; do
+    [ -f "${candidate}" ] || continue
+    if grep -q '/pyvenv/bin/' "${candidate}"; then
+      return 0
+    fi
+  done
+  return 1
+}
 
 if [ ! -x "${source_dir}/configure" ]; then
   if [ -n "${seed_dir}" ] || [ -n "${archive_url}" ] || [ -n "${build_version}" ]; then
@@ -26,9 +56,58 @@ if [ ! -x "${source_dir}/configure" ]; then
   exit 1
 fi
 
-if ! python3 -m venv --help >/dev/null 2>&1; then
-  echo "python3 venv support is missing; run tools/qemu/scripts/install-dependencies.sh" >&2
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 is required; run tools/qemu/scripts/install-dependencies.sh" >&2
   exit 1
+fi
+
+if ! command -v meson >/dev/null 2>&1; then
+  echo "meson is required; run tools/qemu/scripts/install-dependencies.sh" >&2
+  exit 1
+fi
+
+if [ -f "${build_dir}/build.ninja" ] && grep -q "/pyvenv/bin/" "${build_dir}/build.ninja"; then
+  if [ ! -x "${build_dir}/pyvenv/bin/meson" ] || [ ! -x "${build_dir}/pyvenv/bin/python3" ]; then
+    rm -rf "${build_dir}" "${install_dir}"
+  fi
+fi
+
+if stale_meson_build_tree "${build_dir}"; then
+  rm -rf "${build_dir}" "${install_dir}"
+fi
+
+mkdir -p "${build_dir}" "${install_dir}"
+
+cd "${build_dir}"
+
+target_args=()
+if [ -n "${target_list_file}" ] && [ -s "${target_list_file}" ]; then
+  mapfile -t target_list < "${target_list_file}"
+elif [ -n "${target_list_raw}" ]; then
+  mapfile -t target_list <<< "${target_list_raw}"
+else
+  target_list=()
+fi
+if [ "${#target_list[@]}" -gt 0 ]; then
+  target_csv="$(IFS=,; echo "${target_list[*]}")"
+  target_space="$(IFS=' '; echo "${target_list[*]}")"
+  target_args=("--target-list=${target_csv}")
+else
+  target_space=""
+fi
+
+configure_args=()
+if [ -n "${configure_arg_file}" ] && [ -s "${configure_arg_file}" ]; then
+  mapfile -t configure_args < "${configure_arg_file}"
+elif [ -n "${configure_arg_raw}" ]; then
+  mapfile -t configure_args <<< "${configure_arg_raw}"
+fi
+
+if stale_target_list_config "${build_dir}/config-host.mak" "${target_space}"; then
+  cd /
+  rm -rf "${build_dir}" "${install_dir}"
+  mkdir -p "${build_dir}" "${install_dir}"
+  cd "${build_dir}"
 fi
 
 if [ "${reuse_build_dir}" = "true" ] && [ -f "${artifact_path}" ] && [ -f "${build_dir}/build.ninja" ]; then
@@ -50,21 +129,7 @@ EOF
   fi
 fi
 
-mkdir -p "${build_dir}" "${install_dir}"
-
-cd "${build_dir}"
-
-target_args=()
-if [ -n "${target_list_file}" ] && [ -s "${target_list_file}" ]; then
-  mapfile -t target_list < "${target_list_file}"
-  target_csv="$(IFS=,; echo "${target_list[*]}")"
-  target_args=("--target-list=${target_csv}")
-fi
-
-configure_args=()
-if [ -n "${configure_arg_file}" ] && [ -s "${configure_arg_file}" ]; then
-  mapfile -t configure_args < "${configure_arg_file}"
-fi
+export MORPHEUS_QEMU_USE_SYSTEM_MESON="${use_system_meson}"
 
 if [ ! -f "${build_dir}/build.ninja" ]; then
   "${source_dir}/configure" \
@@ -73,8 +138,20 @@ if [ ! -f "${build_dir}/build.ninja" ]; then
     "${configure_args[@]}"
 fi
 
-make "-j${jobs}"
-make install
+if [ -f "${build_dir}/build.ninja" ]; then
+  if ! command -v ninja >/dev/null 2>&1; then
+    echo "ninja is required for QEMU builds that generate build.ninja" >&2
+    exit 1
+  fi
+  ninja "-j${jobs}"
+  ninja install
+elif [ -f "${build_dir}/Makefile" ]; then
+  make "-j${jobs}"
+  make install
+else
+  echo "QEMU configure did not generate build.ninja or Makefile in ${build_dir}" >&2
+  exit 1
+fi
 
 cat > "${result_file}" <<EOF
 {"details":{"configured":true,"built":true,"installed":true,"source":"${source_dir}"}}

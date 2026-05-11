@@ -30,7 +30,7 @@ if [ -n "${qemu_arg_file}" ] && [ -s "${qemu_arg_file}" ]; then
 fi
 
 if [ "${detach}" = "true" ]; then
-  "${qemu_path}" "${args[@]}" &
+  "${qemu_path}" "${args[@]}" < /dev/null &
   pid="$!"
   timeout_pid=""
   if [ "${timeout_seconds}" != "0" ]; then

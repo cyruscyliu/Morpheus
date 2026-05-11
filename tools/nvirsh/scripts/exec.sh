@@ -7,6 +7,7 @@ install_dir="${MORPHEUS_NVIRSH_INSTALL_DIR:?}"
 profile_name="${MORPHEUS_NVIRSH_BUILD_VERSION:-default}"
 build_dir_key="${MORPHEUS_NVIRSH_BUILD_DIR_KEY:-${profile_name}}"
 phase="${MORPHEUS_NVIRSH_PHASE:?}"
+timeout_seconds="${MORPHEUS_NVIRSH_TIMEOUT_SECONDS:-0}"
 result_file="${MORPHEUS_NVIRSH_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 profile_file="${source_dir}/profile.json"
 state_file="${install_dir}/state.json"
@@ -50,10 +51,18 @@ launch_cmd="bash -lc $(printf '%q' "/root/launch-l2.sh")"
 printf '[nvirsh] exec launching l2 from l1\n'
 "${ssh_base[@]}" "test -x /root/launch-l2.sh"
 
-if [ "${attach_mode}" = "true" ]; then
-  "${ssh_base[@]}" -tt "${launch_cmd}"
-else
-  "${ssh_base[@]}" -tt "${launch_cmd}"
+set +e
+"${ssh_base[@]}" -tt "${launch_cmd}" < /dev/null &
+launch_pid="$!"
+set -e
+
+if [ "${timeout_seconds}" != "0" ]; then
+  (
+    sleep "${timeout_seconds}"
+    if kill -0 "${launch_pid}" 2>/dev/null; then
+      kill "${launch_pid}" 2>/dev/null || true
+    fi
+  ) >/dev/null 2>&1 &
 fi
 
 node - "${state_file}" "${profile_file}" "${run_dir}/manifest.json" "${source_dir}" "${run_dir}" "${install_dir}" "${profile_name}" "${build_dir_key}" <<'NODE'
@@ -99,5 +108,6 @@ fs.writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
 NODE
 
 cat > "${result_file}" <<EOF
-{"details":{"run_dir":"${run_dir}","log_file":"${run_dir}/stdout.log","manifest":"${run_dir}/manifest.json","phase":"${phase}","profile":"${profile_name}","pid":${runtime_pid}}}
+{"details":{"run_dir":"${run_dir}","log_file":"${run_dir}/stdout.log","manifest":"${run_dir}/manifest.json","phase":"${phase}","profile":"${profile_name}","pid":${launch_pid}}}
 EOF
+printf '[nvirsh] exec launched l2 from l1 pid=%s\n' "${launch_pid}"

@@ -15,7 +15,6 @@ profile_file="${source_dir}/profile.json"
 state_file="${install_dir}/state.json"
 build_l0_dir="${build_dir}/l0"
 build_l1_dir="${build_dir}/l1"
-log_file="${PWD}/stdout.log"
 l1_console_log="${install_dir}/l1-console.log"
 
 if [ -f "${build_l0_dir}/l1.pid" ]; then

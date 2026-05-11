@@ -15,6 +15,17 @@ patch_strategies="${MORPHEUS_BUILDROOT_PATCH_STRATEGIES:-${MORPHEUS_SCRIPT_PATCH
 
 export PATH="${PATH}:/usr/sbin:/usr/bin:/sbin:/bin"
 
+stale_host_fakeroot() {
+  local fakeroot_bin="$1"
+  local expected_host_dir="$2"
+  [ -f "${fakeroot_bin}" ] || return 1
+  local configured_prefix=""
+  configured_prefix="$(sed -n 's/^FAKEROOT_PREFIX=//p' "${fakeroot_bin}" | head -n 1)"
+  [ -n "${configured_prefix}" ] || return 1
+  [ "${configured_prefix}" = "${expected_host_dir}" ] && return 1
+  return 0
+}
+
 if [ ! -f "${source_dir}/Makefile" ]; then
   if [ -n "${seed_dir}" ] || [ -n "${archive_url}" ] || [ -n "${build_version}" ]; then
     "$(dirname "$0")/fetch.sh"
@@ -48,6 +59,12 @@ EOF
 fi
 
 mkdir -p "${output_dir}"
+
+host_dir="${output_dir}/host"
+if stale_host_fakeroot "${host_dir}/bin/fakeroot" "${host_dir}"; then
+  rm -rf "${output_dir}"
+  mkdir -p "${output_dir}"
+fi
 
 if [ -n "${defconfig}" ]; then
   make -C "${source_dir}" "O=${output_dir}" "${defconfig}"

@@ -1,0 +1,40 @@
+--- a/configure	2024-09-19 21:54:00.000000000 +0000
++++ b/configure	2026-05-11 05:51:21.475918286 +0000
+@@ -928,6 +928,17 @@
+ # Resolve PATH
+ python="$(command -v "$python")"
+ 
++use_system_meson="${MORPHEUS_QEMU_USE_SYSTEM_MESON:-0}"
++
++if test "$use_system_meson" = "1" ; then
++    if ! command -v meson >/dev/null 2>&1; then
++        error_exit "System meson not found in PATH"
++    fi
++    meson="$(command -v meson)"
++    echo "using system meson at '$meson'"
++    docs=disabled
++else
++
+ # Create a Python virtual environment using our configured python.
+ # The stdout of this script will be the location of a symlink that
+ # points to the configured Python.
+@@ -970,9 +981,11 @@
+ # *exclusively*.
+ 
+ meson="$(cd pyvenv/bin; pwd)/meson"
++fi
+ 
+ # Conditionally ensure Sphinx is installed.
+ 
++if test "$use_system_meson" != "1" ; then
+ mkvenv_online_flag=""
+ if test "$download" = "enabled" ; then
+     mkvenv_online_flag=" --online"
+@@ -992,6 +1005,7 @@
+         docs=enabled
+     fi
+ fi
++fi
+ 
+ # Probe for ninja
+ 

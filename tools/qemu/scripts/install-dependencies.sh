@@ -6,16 +6,9 @@ if ! command -v apt-get >/dev/null 2>&1; then
   exit 1
 fi
 
-PYTHON_PKG="$(python3 - <<'PY'
-import sys
-print(f"python{sys.version_info.major}.{sys.version_info.minor}")
-PY
-)"
-
 sudo apt-get update
 sudo apt-get install -y \
-  python3-venv \
-  "${PYTHON_PKG}-venv" \
+  python3 \
   python3-pip \
   python3-setuptools \
   meson \

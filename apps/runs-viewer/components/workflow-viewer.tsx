@@ -672,7 +672,7 @@ async function postJson<T>(input: string, body?: unknown): Promise<T> {
 }
 
 function renderWorkflowLogHtml(logText: string): string {
-  const lines = logText.replace(/\r\n/g, "\n").split("\n");
+  const lines = normalizeTerminalLogText(logText).split("\n");
   const items = lines
     .filter((line, index, values) => !(index === values.length - 1 && line === ""))
     .map((line, index) => {

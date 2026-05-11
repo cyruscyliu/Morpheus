@@ -155,6 +155,9 @@
     ],
     "local": {
       "sourceTemplate": "tools/libvmm/builds/{buildDirKey}/source",
+      "buildDirTemplate": "tools/libvmm/builds/{buildDirKey}/build",
+      "installDirTemplate": "tools/libvmm/builds/{buildDirKey}/install",
+      "outputDirTemplate": "tools/libvmm/builds/{buildDirKey}/output",
       "artifacts": {
         "libvmm-dir": {
           "pathTemplate": "tools/libvmm/builds/{buildDirKey}/source"

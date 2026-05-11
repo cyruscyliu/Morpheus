@@ -1,6 +1,6 @@
 // @ts-nocheck
 const path = require("path");
-const { loadConfig, configDir, resolveLocalPath } = require("./config");
+const { loadConfig, configDir, resolveLocalPath, resolveCachePolicy } = require("./config");
 const { readToolDescriptor, renderManagedTemplate } = require("./tool-descriptor");
 
 function workspaceRoot(flags) {
@@ -14,7 +14,7 @@ function configuredTool(name) {
   return {
     baseDir: configDir(config.path),
     item,
-    config: value,
+    config,
   };
 }
 
@@ -24,6 +24,31 @@ function toolBuildVersion(item) {
 
 function toolBuildDirKey(item, fallback = "default") {
   return item && (item["build-dir-key"] || item.buildDirKey || null) || fallback;
+}
+
+function cachePolicyForConfig(config) {
+  if (!config || !config.path) {
+    return null;
+  }
+  return resolveCachePolicy(config.value || {}, config.path, configDir(config.path));
+}
+
+function resolveManagedArtifactPath(rootDir, relativePath, cachePolicy) {
+  const normalized = String(relativePath || "").replace(/\\/g, "/");
+  if (cachePolicy && cachePolicy.root) {
+    const match = normalized.match(/^tools\/([^/]+)\/(src|downloads|builds)(\/.*)?$/);
+    if (match) {
+      const [, toolName, section, suffix = ""] = match;
+      const mode = section === "src"
+        ? cachePolicy.src
+        : (section === "downloads" ? cachePolicy.downloads : cachePolicy.builds);
+      if (mode === "global") {
+        const rest = suffix.replace(/^\/+/, "");
+        return path.join(cachePolicy.root, cachePolicy.namespace, "tools", toolName, section, rest);
+      }
+    }
+  }
+  return path.join(rootDir, normalized);
 }
 
 function managedPath(template, values, rootDir) {
@@ -46,7 +71,7 @@ function descriptorTemplateValues(tool, item, descriptor) {
 }
 
 function artifactPathForTool(tool, artifact, rootDir) {
-  const { item } = configuredTool(tool);
+  const { item, config } = configuredTool(tool);
   const descriptor = readToolDescriptor(tool);
   const managed = descriptor.managed && descriptor.managed.local ? descriptor.managed.local : null;
   if (!managed || !managed.artifacts || !managed.artifacts[artifact]) {
@@ -57,7 +82,12 @@ function artifactPathForTool(tool, artifact, rootDir) {
     return resolveLocalPath(process.cwd(), artifactSpec.path);
   }
   if (artifactSpec.pathTemplate) {
-    return managedPath(artifactSpec.pathTemplate, descriptorTemplateValues(tool, item, descriptor), rootDir);
+    const cachePolicy = cachePolicyForConfig(config);
+    return resolveManagedArtifactPath(
+      rootDir,
+      renderManagedTemplate(artifactSpec.pathTemplate, descriptorTemplateValues(tool, item, descriptor)),
+      cachePolicy,
+    );
   }
   return null;
 }

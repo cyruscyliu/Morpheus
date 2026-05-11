@@ -102,12 +102,12 @@ function templateValues(buildVersion, buildDirKey, extras = {}) {
 }
 
 function cachePolicyFromResolved(resolved) {
-  if (!resolved || !resolved.__cache_root) {
+  if (!resolved || !resolved.__cache_root || !resolved.__cache_namespace) {
     return null;
   }
   return {
     root: resolved.__cache_root,
-    namespace: resolved.__cache_namespace || "default",
+    namespace: resolved.__cache_namespace,
     downloads: resolved.__cache_downloads || "workspace",
     builds: resolved.__cache_builds || "workspace",
     src: resolved.__cache_src || "workspace",

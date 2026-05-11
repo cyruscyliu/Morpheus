@@ -524,5 +524,6 @@ module.exports = {
   findConfigPath,
   loadConfig,
   RESERVED_MANAGED_TOOL_CONFIG_KEYS,
-  resolveLocalPath
+  resolveLocalPath,
+  resolveCachePolicy
 };

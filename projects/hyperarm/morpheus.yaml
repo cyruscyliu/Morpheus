@@ -64,7 +64,7 @@ tools:
     build-dir-key: libafl-main
     build-version: b32557c8ae7e2300657de06382f2761f831c1963
     git-url: https://github.com/AFLplusplus/LibAFL.git
-    patch-dir: tools/libafl/patches
+    patch-dir: tools/libafl/patches/overlay
     artifacts:
       - source-dir
       - crate-dir

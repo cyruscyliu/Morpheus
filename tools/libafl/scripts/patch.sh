@@ -6,6 +6,7 @@ patch_dir="${MORPHEUS_LIBAFL_PATCH_DIR:?}"
 result_file="${MORPHEUS_LIBAFL_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 state_file="${source_dir}/.morpheus-libafl-nesting.json"
 crate_dir="${source_dir}/crates/libafl_nesting"
+example_dir="${source_dir}/fuzzers/full_system/qemu_nesting"
 workspace_toml="${source_dir}/Cargo.toml"
 
 mkdir -p "$(dirname "${result_file}")"
@@ -40,8 +41,11 @@ EOF
 fi
 
 rm -rf "${crate_dir}"
+rm -rf "${example_dir}"
 mkdir -p "${source_dir}/crates"
-cp -R "${patch_dir}/overlay/crates/libafl_nesting" "${crate_dir}"
+mkdir -p "${source_dir}/fuzzers/full_system"
+cp -R "${patch_dir}/crates/libafl_nesting" "${crate_dir}"
+cp -R "${patch_dir}/fuzzers/full_system/qemu_nesting" "${example_dir}"
 
 node - "${workspace_toml}" <<'NODE'
 const fs = require('fs');
@@ -71,5 +75,5 @@ cat > "${state_file}" <<EOF
 EOF
 
 cat > "${result_file}" <<EOF
-{"details":{"applied":true,"fingerprint":"${fingerprint}","crate_dir":"${crate_dir}"}}
+{"details":{"applied":true,"fingerprint":"${fingerprint}","crate_dir":"${crate_dir}","example_dir":"${example_dir}"}}
 EOF

@@ -1,6 +1,6 @@
 // @ts-nocheck
 const path = require("path");
-const { loadConfig } = require("../core/config");
+const { loadConfig, configDir, resolveLocalPath } = require("../core/config");
 const { writeStdoutLine } = require("../core/io");
 
 const ALLOWED_TOOL_MODES = ["local", "remote"];
@@ -22,15 +22,20 @@ const TOOL_PATH_KEYS = new Set([
 function usage() {
   return [
     "Usage:",
+    "  ./bin/morpheus [--config PATH] config show [--json]",
     "  ./bin/morpheus [--config PATH] config check [--json]",
     "",
     "Purpose:",
     "  Validate morpheus.yaml and report config issues before running workflows.",
+    "  Use 'config show' to inspect the resolved config, workspace, and run-root.",
     "",
     "Commands:",
+    "  config show        Show resolved config, workspace, and run-root details.",
     "  config check       Validate morpheus.yaml.",
     "",
     "Examples:",
+    "  ./bin/morpheus config show",
+    "  ./bin/morpheus --config projects/<project>/morpheus.yaml config show --json",
     "  ./bin/morpheus config check",
     "  ./bin/morpheus --config projects/<project>/morpheus.yaml config check --json"
   ].join("\n");
@@ -178,6 +183,36 @@ function formatText(result) {
   ].join("\n");
 }
 
+function runConfigShow() {
+  const config = loadConfig(process.cwd());
+  if (!config.path) {
+    throw new Error("could not find morpheus.yaml");
+  }
+  const baseDir = configDir(config.path);
+  const workspaceRoot = config.value && config.value.workspace && config.value.workspace.root
+    ? resolveLocalPath(baseDir, config.value.workspace.root)
+    : null;
+  if (!workspaceRoot) {
+    throw new Error("workspace.root must be configured in Morpheus config");
+  }
+  const workflows = config.value && config.value.workflows && typeof config.value.workflows === "object"
+    ? config.value.workflows
+    : {};
+  return {
+    command: "config show",
+    status: "success",
+    exit_code: 0,
+    summary: "resolved morpheus config",
+    details: {
+      config: path.relative(process.cwd(), config.path) || "morpheus.yaml",
+      config_path: config.path,
+      workspace_root: workspaceRoot,
+      run_root: path.join(workspaceRoot, "runs"),
+      workflow_count: Object.keys(workflows).length,
+    },
+  };
+}
+
 function runConfigCheck() {
   const config = loadConfig(process.cwd());
   if (!config.path) {
@@ -229,20 +264,29 @@ function handleConfigCommand(argv) {
     writeStdoutLine(usage());
     return 0;
   }
-  if (subcommand !== "check") {
+  if (subcommand !== "check" && subcommand !== "show") {
     throw new Error(`unknown config command: ${subcommand}`);
   }
-  const result = runConfigCheck();
+  const result = subcommand === "show" ? runConfigShow() : runConfigCheck();
   if (json) {
     printJson(result);
   } else {
-    writeStdoutLine(formatText(result));
+    writeStdoutLine(subcommand === "show"
+      ? [
+          "Config show",
+          `  config: ${result.details.config}`,
+          `  workspace_root: ${result.details.workspace_root}`,
+          `  run_root: ${result.details.run_root}`,
+          `  workflow_count: ${result.details.workflow_count}`,
+        ].join("\n")
+      : formatText(result));
   }
   return result.exit_code;
 }
 
 module.exports = {
   ALLOWED_TOOL_MODES,
+  runConfigShow,
   runConfigCheck,
   handleConfigCommand
 };

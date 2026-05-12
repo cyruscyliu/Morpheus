@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { resolveViewerContext } from "@/src/server/context";
-import { loadStepLogText } from "@/src/server/workspace-runs-store";
+import { loadStepLogText } from "@/src/server/morpheus-client";
 import { isSafeId } from "@/src/server/validate";
 
 export const runtime = "nodejs";
@@ -19,7 +19,7 @@ export async function GET(
   }
   const url = new URL(request.url);
   const context = resolveViewerContext(url.searchParams.get("config"));
-  const logText = loadStepLogText(context.runRoot, runId, stepId);
+  const logText = loadStepLogText(context, runId, stepId);
   if (logText == null) {
     return new NextResponse("not found\n", { status: 404 });
   }

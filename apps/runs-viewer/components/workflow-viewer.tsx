@@ -906,12 +906,53 @@ function fallbackLayoutGraph(
     return null;
   }
 
+  const artifactEdges = edges.filter((edge) => edge.kind === "artifact");
+  const incomingByNode = new Map<string, RunGraphEdge[]>();
+  const outgoingByNode = new Map<string, RunGraphEdge[]>();
+  for (const node of nodes) {
+    incomingByNode.set(node.id, []);
+    outgoingByNode.set(node.id, []);
+  }
+  for (const edge of artifactEdges) {
+    incomingByNode.get(edge.target)?.push(edge);
+    outgoingByNode.get(edge.source)?.push(edge);
+  }
+
+  function portKey(edge: RunGraphEdge): string {
+    return encodeURIComponent(formatGraphEdge(edge) || edge.label || edge.artifactPath || edge.id);
+  }
+
+  function portLabel(edge: RunGraphEdge): string {
+    return formatPathLabel(formatGraphEdge(edge) || edge.label || edge.artifactPath || "artifact");
+  }
+
+  function groupPorts(list: RunGraphEdge[]): Array<{ key: string; label: string; title: string | null; edges: RunGraphEdge[] }> {
+    const groups = new Map<string, { key: string; label: string; title: string | null; edges: RunGraphEdge[] }>();
+    for (const edge of list) {
+      const key = portKey(edge);
+      const existing = groups.get(key);
+      if (existing) {
+        existing.edges.push(edge);
+        continue;
+      }
+      groups.set(key, {
+        key,
+        label: portLabel(edge),
+        title: formatGraphEdge(edge) || edge.label || edge.artifactPath || null,
+        edges: [edge],
+      });
+    }
+    return [...groups.values()];
+  }
+
   const baseWidth = 420;
   const gapX = 120;
   const gapY = 180;
   const positioned: PositionedGraphNode[] = nodes.map((node, index) => {
     const width = 420;
     const height = 120;
+    const inputGroups = groupPorts(incomingByNode.get(node.id) || []);
+    const outputGroups = groupPorts(outgoingByNode.get(node.id) || []);
     return {
       ...node,
       stepOrder: index + 1,
@@ -922,8 +963,24 @@ function fallbackLayoutGraph(
       centerX: index * (baseWidth + gapX) + width / 2,
       centerY: (index % 2 === 0 ? 0 : gapY) + height / 2,
       ports: {
-        inputs: [],
-        outputs: [],
+        inputs: inputGroups.map((entry, portIndex) => ({
+          id: `artifact-in:${entry.key}`,
+          kind: "artifact-in" as const,
+          label: entry.label,
+          title: entry.title,
+          side: "left" as const,
+          x: 0,
+          y: inputGroups.length <= 1 ? 56 : 40 + portIndex * 24,
+        })),
+        outputs: outputGroups.map((entry, portIndex) => ({
+          id: `artifact-out:${entry.key}`,
+          kind: "artifact-out" as const,
+          label: entry.label,
+          title: entry.title,
+          side: "right" as const,
+          x: width,
+          y: outputGroups.length <= 1 ? 56 : 40 + portIndex * 24,
+        })),
         sequenceIn: null,
         sequenceOut: null,
       },
@@ -939,13 +996,23 @@ function fallbackLayoutGraph(
       if (!source || !target) {
         return [];
       }
+      const sourceHandle = `artifact-out:${portKey(edge)}`;
+      const targetHandle = `artifact-in:${portKey(edge)}`;
+      const sourcePort = source.ports.outputs.find((port) => port.id === sourceHandle) || null;
+      const targetPort = target.ports.inputs.find((port) => port.id === targetHandle) || null;
+      const sourcePoint = sourcePort
+        ? { x: source.x + sourcePort.x, y: source.y + sourcePort.y }
+        : { x: source.x + source.width, y: source.y + source.height / 2 };
+      const targetPoint = targetPort
+        ? { x: target.x + targetPort.x, y: target.y + targetPort.y }
+        : { x: target.x, y: target.y + target.height / 2 };
       return [{
         ...edge,
-        sourceHandle: null,
-        targetHandle: null,
+        sourceHandle,
+        targetHandle,
         points: [
-          { x: source.x + source.width, y: source.y + source.height / 2 },
-          { x: target.x, y: target.y + target.height / 2 },
+          sourcePoint,
+          targetPoint,
         ],
       }];
     });

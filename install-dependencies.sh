@@ -29,9 +29,16 @@ run_step "pnpm" \
 
 while IFS= read -r installer; do
   [ -n "${installer}" ] || continue
-  tool_dir="$(cd "$(dirname "${installer}")/.." && pwd)"
-  tool_name="$(basename "${tool_dir}")"
-  run_step "${tool_name} dependencies" "${installer}" "${tool_dir}"
+  case "${installer}" in
+    */scripts/install-dependencies.sh)
+      component_dir="$(cd "$(dirname "${installer}")/.." && pwd)"
+      ;;
+    *)
+      component_dir="$(cd "$(dirname "${installer}")" && pwd)"
+      ;;
+  esac
+  component_name="$(basename "${component_dir}")"
+  run_step "${component_name} dependencies" "${installer}" "${component_dir}"
 done <<EOF
-$(find "${ROOT_DIR}/tools" -maxdepth 3 -type f -name 'install-dependencies.sh' | sort)
+$(find "${ROOT_DIR}/tools" "${ROOT_DIR}/apps" -maxdepth 3 -type f -name 'install-dependencies.sh' | sort)
 EOF

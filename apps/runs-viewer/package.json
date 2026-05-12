@@ -5,14 +5,16 @@
   "type": "module",
   "scripts": {
     "build": "next build",
-    "dev": "sh -c 'next dev --hostname \"${HOSTNAME:-127.0.0.1}\" --port \"${PORT:-4174}\"'",
+    "dev": "sh -c 'WATCHPACK_POLLING=\"${WATCHPACK_POLLING:-true}\" CHOKIDAR_USEPOLLING=\"${CHOKIDAR_USEPOLLING:-1}\" next dev --hostname \"${HOSTNAME:-127.0.0.1}\" --port \"${PORT:-4174}\"'",
     "lint": "pnpm exec tsc -p tsconfig.json --noEmit",
     "test": "pnpm exec node --import tsx --test tests/*.ts"
   },
   "dependencies": {
+    "@xyflow/react": "^12.10.2",
     "chokidar": "^4.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "elkjs": "^0.11.1",
     "lucide-react": "^0.511.0",
     "next": "^15.3.2",
     "react": "^19.1.0",

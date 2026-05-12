@@ -22,8 +22,10 @@ test("Workflow Viewer uses Next.js app routes and three-region shell", () => {
   assert.match(viewerTsx, /workflow-list-shell/);
   assert.match(viewerTsx, /workflow-graph-shell/);
   assert.match(viewerTsx, /workflow-bottom-shell/);
-  assert.match(viewerTsx, /workflow-graph-svg/);
-  assert.match(viewerTsx, /edgePath/);
+  assert.match(viewerTsx, /ReactFlow/);
+  assert.match(viewerTsx, /elkjs/);
+  assert.match(viewerTsx, /workflow-flow-node/);
+  assert.match(viewerTsx, /workflow-flow-node-main/);
   assert.match(viewerTsx, /Overview/);
   assert.match(viewerTsx, /inspection-tab-log/);
   assert.match(viewerTsx, /inspection-tab-events/);
@@ -38,7 +40,10 @@ test("Workflow Viewer uses Next.js app routes and three-region shell", () => {
   assert.match(packageJson, /"next"/);
   assert.match(packageJson, /"react"/);
   assert.match(packageJson, /"tailwindcss"/);
+  assert.match(packageJson, /"@xyflow\/react"/);
+  assert.match(packageJson, /"elkjs"/);
   assert.match(globalsCss, /\.workflow-topbar/);
   assert.match(globalsCss, /\.workflow-middle-shell/);
   assert.match(globalsCss, /\.workflow-bottom-shell/);
+  assert.match(globalsCss, /\.workflow-flow-node/);
 });

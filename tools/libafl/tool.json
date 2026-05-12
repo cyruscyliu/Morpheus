@@ -166,12 +166,22 @@
             "successSummary": "patched managed LibAFL source tree",
             "reusedSummary": "reused patched managed LibAFL source tree",
             "artifact": {
-              "path": "crate-dir",
-              "locationTemplate": "{source}/crates/libafl_nesting"
+              "path": "source-dir",
+              "locationTemplate": "{source}"
             },
             "details": {
               "source": "{source}",
-              "patch_dir": "{patch-dir}"
+              "patch_dir": "{patch-dir}",
+              "artifacts": [
+                {
+                  "path": "source-dir",
+                  "location": "{source}"
+                },
+                {
+                  "path": "crate-dir",
+                  "location": "{source}/crates/libafl_nesting"
+                }
+              ]
             }
           }
         },

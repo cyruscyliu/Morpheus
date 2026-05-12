@@ -100,7 +100,7 @@ workflows:
         command: build
         args:
           - --source
-          - "{{steps.libafl_fetch.artifacts.source-dir.location}}"
+          - "{{steps.libafl_patch.artifacts.source-dir.location}}"
   nvirsh-arm64-build:
     category: build
     steps:

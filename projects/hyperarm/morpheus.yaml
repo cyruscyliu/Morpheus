@@ -11,6 +11,7 @@ imports:
   workflows:
     - root.buildroot-build
     - root.qemu-build
+    - root.libafl-build
     - root.nvirsh-arm64-build
     - root.microkit-sdk-build
     - root.nqc2-build
@@ -57,6 +58,19 @@ tools:
       - aarch64-softmmu
     artifacts:
       - qemu-system-aarch64
+  libafl:
+    mode: local
+    reuse-build-dir: true
+    build-dir-key: libafl-main
+    build-version: b32557c8ae7e2300657de06382f2761f831c1963
+    git-url: https://github.com/AFLplusplus/LibAFL.git
+    patch-dir: tools/libafl/patches
+    artifacts:
+      - source-dir
+      - crate-dir
+      - qemu-bridge-dir
+      - qemu-bridge-lib
+      - guest-stub-binary
   nvirsh:
     mode: local
     source: ../../tools/nvirsh/profiles/qemu-debian-arm

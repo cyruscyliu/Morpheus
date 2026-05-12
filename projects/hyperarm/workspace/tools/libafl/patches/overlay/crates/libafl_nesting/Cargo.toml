@@ -1,0 +1,38 @@
+[package]
+name = "libafl_nesting"
+version.workspace = true
+authors = ["Qiang Liu <cyruscyliu@gmail.com>"]
+description = "Structured nested fuzzing support for LibAFL"
+repository = "https://github.com/AFLplusplus/LibAFL/"
+edition = "2024"
+license.workspace = true
+readme = "./README.md"
+keywords = ["fuzzing", "testing", "security", "nested-virtualization"]
+categories = ["development-tools::testing", "os"]
+
+[features]
+default = ["std"]
+std = ["libafl_bolts/std", "libafl/std"]
+qemu-bridge-aarch64 = [
+  "std",
+  "dep:libafl_qemu",
+  "libafl_qemu/aarch64",
+  "libafl_qemu/shared",
+  "libafl_qemu/systemmode"
+]
+
+[dependencies]
+libafl = { workspace = true, default-features = false }
+libafl_bolts = { workspace = true, default-features = false }
+libafl_qemu = { workspace = true, default-features = false, optional = true }
+serde = { workspace = true, default-features = false, features = ["alloc"] }
+
+[dev-dependencies]
+static_assertions = { workspace = true }
+
+[[bin]]
+name = "libafl_nesting_stub"
+path = "src/bin/libafl_nesting_stub.rs"
+
+[lints]
+workspace = true

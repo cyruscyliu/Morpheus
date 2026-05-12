@@ -1,0 +1,253 @@
+{
+  "name": "libafl",
+  "runtime": null,
+  "cli-contract": "fetch,patch,build,inspect,install-dependencies",
+  "config": {
+    "fields": {
+      "mode": {
+        "aliases": [
+          "mode"
+        ]
+      },
+      "source": {
+        "aliases": [
+          "source"
+        ],
+        "path": true
+      },
+      "seed-dir": {
+        "aliases": [
+          "seed-dir",
+          "seedDir"
+        ],
+        "path": true
+      },
+      "build-version": {
+        "aliases": [
+          "build-version",
+          "buildVersion",
+          "git-ref",
+          "gitRef"
+        ]
+      },
+      "git-url": {
+        "aliases": [
+          "git-url",
+          "gitUrl"
+        ]
+      },
+      "patch-dir": {
+        "aliases": [
+          "patch-dir",
+          "patchDir"
+        ],
+        "path": true
+      },
+      "reuse-build-dir": {
+        "aliases": [
+          "reuse-build-dir",
+          "reuseBuildDir"
+        ],
+        "boolean": true
+      },
+      "build-dir-key": {
+        "aliases": [
+          "build-dir-key",
+          "buildDirKey"
+        ]
+      },
+      "cargo-arg": {
+        "aliases": [
+          "cargo-arg",
+          "cargo-args",
+          "cargoArgs"
+        ],
+        "repeatable": true
+      },
+      "artifacts": {
+        "aliases": [
+          "artifacts"
+        ],
+        "repeatable": true
+      }
+    }
+  },
+  "managed": {
+    "schemaVersion": 1,
+    "modes": [
+      "local"
+    ],
+    "local": {
+      "sourceTemplate": "tools/libafl/builds/{buildDirKey}/source",
+      "buildDirTemplate": "tools/libafl/builds/{buildDirKey}/build",
+      "installDirTemplate": "tools/libafl/builds/{buildDirKey}/install",
+      "artifacts": {
+        "source-dir": {
+          "pathTemplate": "tools/libafl/builds/{buildDirKey}/source"
+        },
+        "crate-dir": {
+          "pathTemplate": "tools/libafl/builds/{buildDirKey}/source/crates/libafl_nesting"
+        },
+        "qemu-bridge-dir": {
+          "pathTemplate": "tools/libafl/builds/{buildDirKey}/build/qemu-libafl-bridge"
+        },
+        "qemu-bridge-lib": {
+          "pathTemplate": "tools/libafl/builds/{buildDirKey}/install/lib/libqemu-system-aarch64.so"
+        },
+        "guest-stub-binary": {
+          "pathTemplate": "tools/libafl/builds/{buildDirKey}/install/bin/libafl_nesting_stub"
+        }
+      },
+      "commands": {
+        "install-dependencies": {
+          "requiredFlags": [],
+          "scalarFlags": [],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/install-dependencies.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "installed libafl build dependencies"
+          }
+        },
+        "fetch": {
+          "requiredFlags": [
+            "source"
+          ],
+          "scalarFlags": [
+            "git-url",
+            "seed-dir",
+            "build-version"
+          ],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/fetch.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "source": "tools/libafl/builds/{buildDirKey}/source"
+          },
+          "result": {
+            "successSummary": "fetched managed LibAFL source tree",
+            "reusedSummary": "reused managed LibAFL source tree",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{source}"
+            },
+            "details": {
+              "source": "{source}",
+              "build_version": {
+                "fromFlag": "build-version"
+              },
+              "git_url": {
+                "fromFlag": "git-url"
+              }
+            }
+          }
+        },
+        "patch": {
+          "requiredFlags": [
+            "source",
+            "patch-dir"
+          ],
+          "scalarFlags": [
+            "patch-dir"
+          ],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/patch.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "source": "tools/libafl/builds/{buildDirKey}/source"
+          },
+          "result": {
+            "successSummary": "patched managed LibAFL source tree",
+            "reusedSummary": "reused patched managed LibAFL source tree",
+            "artifact": {
+              "path": "crate-dir",
+              "locationTemplate": "{source}/crates/libafl_nesting"
+            },
+            "details": {
+              "source": "{source}",
+              "patch_dir": "{patch-dir}"
+            }
+          }
+        },
+        "build": {
+          "requiredFlags": [
+            "source",
+            "build-dir",
+            "install-dir"
+          ],
+          "scalarFlags": [
+            "source",
+            "build-dir",
+            "install-dir",
+            "patch-dir",
+            "reuse-build-dir",
+            "build-version",
+            "git-url",
+            "seed-dir"
+          ],
+          "repeatableFlags": [
+            "cargo-arg"
+          ],
+          "script": {
+            "path": "scripts/build.sh",
+            "shell": "bash",
+            "cwdTemplate": "{build-dir}"
+          },
+          "pathFlags": {
+            "source": "tools/libafl/builds/{buildDirKey}/source",
+            "build-dir": "tools/libafl/builds/{buildDirKey}/build",
+            "install-dir": "tools/libafl/builds/{buildDirKey}/install"
+          },
+          "result": {
+            "successSummary": "built local libafl_nesting guest stub",
+            "reusedSummary": "reused local libafl_nesting guest stub build",
+            "artifact": {
+              "path": "guest-stub-binary",
+              "locationTemplate": "{install-dir}/bin/libafl_nesting_stub"
+            },
+            "details": {
+              "source": "{source}",
+              "build_dir": "{build-dir}",
+              "install_dir": "{install-dir}"
+            }
+          }
+        },
+        "inspect": {
+          "requiredFlags": [
+            "source"
+          ],
+          "scalarFlags": [
+            "source",
+            "build-dir",
+            "install-dir",
+            "build-version",
+            "git-url"
+          ],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/inspect.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "source": "tools/libafl/builds/{buildDirKey}/source",
+            "build-dir": "tools/libafl/builds/{buildDirKey}/build",
+            "install-dir": "tools/libafl/builds/{buildDirKey}/install"
+          },
+          "result": {
+            "successSummary": "inspected managed LibAFL nesting build",
+            "artifact": {
+              "path": "crate-dir",
+              "locationTemplate": "{source}/crates/libafl_nesting"
+            }
+          }
+        }
+      }
+    }
+  }
+}

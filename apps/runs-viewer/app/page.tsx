@@ -5,7 +5,7 @@ import { listRunSummariesWithTotal } from "@/src/server/morpheus-client";
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ config?: string }>;
+  searchParams: Promise<{ config?: string; runId?: string }>;
 }) {
   const resolvedSearchParams = await searchParams;
   const context = resolveViewerContext(resolvedSearchParams.config || null);
@@ -21,6 +21,7 @@ export default async function Page({
       initialConfigLabel={context.configLabel}
       initialAvailableConfigs={context.availableConfigs}
       initialAvailableWorkflows={context.availableWorkflows}
+      initialSelectedRunId={resolvedSearchParams.runId || null}
     />
   );
 }

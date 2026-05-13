@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Check, Copy } from "lucide-react";
 import {
   Background,
@@ -45,6 +45,7 @@ interface PositionedGraphNode extends RunGraphNode {
   y: number;
   width: number;
   height: number;
+  railWidth: number;
   centerX: number;
   centerY: number;
   ports: {
@@ -86,7 +87,13 @@ interface WorkflowFlowNodeData extends Record<string, unknown> {
 }
 
 type WorkflowFlowNodeType = Node<WorkflowFlowNodeData, "workflow">;
-type WorkflowFlowEdgeType = Edge<{ edge: RoutedGraphEdge }, "workflowEdge">;
+type WorkflowFlowEdgeType = Edge<{
+  edge: RoutedGraphEdge;
+  stroke: string;
+  strokeWidth: number;
+  strokeDasharray?: string;
+  opacity: number;
+}, "workflowEdge">;
 
 function WorkflowFlowNode({ data, selected }: NodeProps<WorkflowFlowNodeType>) {
   const { node, onSelect } = data;
@@ -100,8 +107,20 @@ function WorkflowFlowNode({ data, selected }: NodeProps<WorkflowFlowNodeType>) {
         onSelect(node.id);
       }}
       type="button"
+      style={{
+        ["--rail-width" as any]: `${node.railWidth}px`,
+      } as CSSProperties}
     >
       <div className="workflow-flow-node-ports is-left">
+        {node.ports.sequenceIn ? (
+          <Handle
+            className="workflow-flow-handle is-sequence is-hidden"
+            id={node.ports.sequenceIn.id}
+            position={Position.Left}
+            style={{ top: `${node.ports.sequenceIn.y}px` }}
+            type="target"
+          />
+        ) : null}
         {inputPorts.map((port) => (
           <div
             className="workflow-flow-node-port is-input"
@@ -154,6 +173,15 @@ function WorkflowFlowNode({ data, selected }: NodeProps<WorkflowFlowNodeType>) {
             <span className="workflow-flow-node-port-label">{port.label || "output"}</span>
           </div>
         ))}
+        {node.ports.sequenceOut ? (
+          <Handle
+            className="workflow-flow-handle is-sequence is-hidden"
+            id={node.ports.sequenceOut.id}
+            position={Position.Right}
+            style={{ top: `${node.ports.sequenceOut.y}px` }}
+            type="source"
+          />
+        ) : null}
       </div>
       {selected ? <span className="sr-only">Selected</span> : null}
     </button>
@@ -179,8 +207,6 @@ function WorkflowFlowEdge({ data, markerEnd }: EdgeProps<WorkflowFlowEdgeType>) 
   const edge = data?.edge;
   const points = edge?.points || [];
   const path = polylinePath(points);
-  const isArtifact = edge?.kind === "artifact";
-  const stroke = isArtifact ? "#0f766e" : "#9a8d7a";
 
   if (!path) {
     return null;
@@ -191,10 +217,10 @@ function WorkflowFlowEdge({ data, markerEnd }: EdgeProps<WorkflowFlowEdgeType>) 
       markerEnd={markerEnd}
       path={path}
       style={{
-        stroke,
-        strokeWidth: isArtifact ? 2.5 : 1.75,
-        strokeDasharray: isArtifact ? undefined : "7 6",
-        opacity: edge?.inferred ? 0.5 : isArtifact ? 0.92 : 0.75,
+        stroke: data?.stroke,
+        strokeWidth: data?.strokeWidth,
+        strokeDasharray: data?.strokeDasharray,
+        opacity: data?.opacity,
       }}
     />
   );
@@ -533,6 +559,10 @@ async function layoutGraph(
     return null;
   }
 
+  if (nodes.length > 10) {
+    return fallbackLayoutGraph(nodes, edges);
+  }
+
   const minNodeWidth = 340;
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const nodeOrderById = new Map(nodes.map((node, index) => [node.id, index + 1]));
@@ -567,9 +597,10 @@ async function layoutGraph(
     return "artifact";
   }
 
-  function artifactPortKey(edge: RunGraphEdge): string {
+  function artifactPortKey(edge: RunGraphEdge, direction: "in" | "out"): string {
     const value = formatGraphEdge(edge) || edge.label || edge.artifactPath || edge.id;
-    return encodeURIComponent(value);
+    const owner = direction === "out" ? edge.source : `${edge.source}->${edge.target}`;
+    return encodeURIComponent(`${owner}:${value}`);
   }
 
   function groupedArtifactPorts(nodeId: string, direction: "in" | "out"): Array<{
@@ -583,7 +614,7 @@ async function layoutGraph(
       : (outgoingArtifactEdgesByNode.get(nodeId) || []);
     const groups = new Map<string, { key: string; label: string; title: string | null; edges: RunGraphEdge[] }>();
     for (const edge of sourceEdges) {
-      const key = artifactPortKey(edge);
+      const key = artifactPortKey(edge, direction);
       const existing = groups.get(key);
       if (existing) {
         existing.edges.push(edge);
@@ -642,8 +673,7 @@ async function layoutGraph(
     return Math.max(96, contentHeight, railHeight);
   }
 
-  function nodeWidthFor(node: RunGraphNode): number {
-    const title = stepDisplayName(node);
+  function railWidthFor(node: RunGraphNode): number {
     const incomingLabels = groupedArtifactPorts(node.id, "in").map((entry) => entry.label);
     const outgoingLabels = groupedArtifactPorts(node.id, "out").map((entry) => entry.label);
     const longestRailLabel = Math.max(
@@ -651,13 +681,18 @@ async function layoutGraph(
       ...incomingLabels.map((label) => label.length),
       ...outgoingLabels.map((label) => label.length),
     );
+    return Math.max(92, Math.min(180, longestRailLabel * 7 + 34));
+  }
+
+  function nodeWidthFor(node: RunGraphNode): number {
+    const title = stepDisplayName(node);
     const parameterText = Array.isArray(node.parameters) ? node.parameters.join(" · ") : "";
     const centerWidth = Math.max(
       150,
       title.length * 9 + 56,
       parameterText.length > 0 ? parameterText.length * 7 + 32 : 0,
     );
-    const railWidth = Math.max(92, Math.min(148, longestRailLabel * 7 + 28));
+    const railWidth = railWidthFor(node);
     return Math.max(minNodeWidth, centerWidth + railWidth * 2);
   }
 
@@ -672,6 +707,8 @@ async function layoutGraph(
       "elk.spacing.nodeNode": "56",
       "elk.spacing.edgeNode": "20",
       "elk.layered.spacing.edgeEdgeBetweenLayers": "16",
+      "elk.separateConnectedComponents": "true",
+      "elk.spacing.componentComponent": "120",
       "elk.layered.considerModelOrder": "NODES_AND_EDGES",
       "elk.layered.mergeEdges": "false",
       "elk.portAlignment.default": "CENTER",
@@ -734,11 +771,11 @@ async function layoutGraph(
     edges: edges.map((edge) => {
       const sourceHandle =
         edge.kind === "artifact"
-          ? `artifact-out:${artifactPortKey(edge)}`
+          ? `artifact-out:${artifactPortKey(edge, "out")}`
           : `${edge.id}:sequence-out`;
       const targetHandle =
         edge.kind === "artifact"
-          ? `artifact-in:${artifactPortKey(edge)}`
+          ? `artifact-in:${artifactPortKey(edge, "in")}`
           : `${edge.id}:sequence-in`;
       return {
         id: edge.id,
@@ -775,6 +812,7 @@ async function layoutGraph(
     const model = nodeById.get(node.id);
     const resolvedWidth = node.width || (model ? nodeWidthFor(model) : minNodeWidth);
     const resolvedHeight = node.height || (model ? nodeHeightFor(model, resolvedWidth) : 96);
+    const resolvedRailWidth = model ? railWidthFor(model) : 92;
     const inputGroups = groupedArtifactPorts(node.id, "in");
     const outputGroups = groupedArtifactPorts(node.id, "out");
     const sequenceInEdge = incomingSequenceEdgesByNode.get(node.id)?.[0] || null;
@@ -851,6 +889,7 @@ async function layoutGraph(
       y: node.y || 0,
       width: resolvedWidth,
       height: resolvedHeight,
+      railWidth: resolvedRailWidth,
       centerX: (node.x || 0) + resolvedWidth / 2,
       centerY: (node.y || 0) + resolvedHeight / 2,
       ports: {
@@ -880,15 +919,47 @@ async function layoutGraph(
       ...original,
       sourceHandle:
         original.kind === "artifact"
-          ? `artifact-out:${artifactPortKey(original)}`
+          ? `artifact-out:${artifactPortKey(original, "out")}`
           : `${original.id}:sequence-out`,
       targetHandle:
         original.kind === "artifact"
-          ? `artifact-in:${artifactPortKey(original)}`
+          ? `artifact-in:${artifactPortKey(original, "in")}`
           : `${original.id}:sequence-in`,
       points,
     }];
   });
+
+  if (routedEdges.length === 0 && edges.length > 0) {
+    return fallbackLayoutGraph(nodes, edges);
+  }
+
+  function hasNodeOverlap(items: PositionedGraphNode[]): boolean {
+    for (let index = 0; index < items.length; index += 1) {
+      const left = items[index];
+      if (!left) {
+        continue;
+      }
+      for (let inner = index + 1; inner < items.length; inner += 1) {
+        const right = items[inner];
+        if (!right) {
+          continue;
+        }
+        const separated =
+          left.x + left.width + 8 <= right.x
+          || right.x + right.width + 8 <= left.x
+          || left.y + left.height + 8 <= right.y
+          || right.y + right.height + 8 <= left.y;
+        if (!separated) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  if (hasNodeOverlap(positioned)) {
+    return fallbackLayoutGraph(nodes, edges);
+  }
 
   return {
     width: result.width || 0,
@@ -907,6 +978,7 @@ function fallbackLayoutGraph(
   }
 
   const artifactEdges = edges.filter((edge) => edge.kind === "artifact");
+  const sequenceEdges = edges.filter((edge) => edge.kind === "sequence");
   const incomingByNode = new Map<string, RunGraphEdge[]>();
   const outgoingByNode = new Map<string, RunGraphEdge[]>();
   for (const node of nodes) {
@@ -918,18 +990,22 @@ function fallbackLayoutGraph(
     outgoingByNode.get(edge.source)?.push(edge);
   }
 
-  function portKey(edge: RunGraphEdge): string {
-    return encodeURIComponent(formatGraphEdge(edge) || edge.label || edge.artifactPath || edge.id);
+  function portKey(edge: RunGraphEdge, direction: "in" | "out"): string {
+    const owner = direction === "out" ? edge.source : `${edge.source}->${edge.target}`;
+    return encodeURIComponent(`${owner}:${formatGraphEdge(edge) || edge.label || edge.artifactPath || edge.id}`);
   }
 
   function portLabel(edge: RunGraphEdge): string {
     return formatPathLabel(formatGraphEdge(edge) || edge.label || edge.artifactPath || "artifact");
   }
 
-  function groupPorts(list: RunGraphEdge[]): Array<{ key: string; label: string; title: string | null; edges: RunGraphEdge[] }> {
+  function groupPorts(
+    list: RunGraphEdge[],
+    direction: "in" | "out",
+  ): Array<{ key: string; label: string; title: string | null; edges: RunGraphEdge[] }> {
     const groups = new Map<string, { key: string; label: string; title: string | null; edges: RunGraphEdge[] }>();
     for (const edge of list) {
-      const key = portKey(edge);
+      const key = portKey(edge, direction);
       const existing = groups.get(key);
       if (existing) {
         existing.edges.push(edge);
@@ -945,23 +1021,35 @@ function fallbackLayoutGraph(
     return [...groups.values()];
   }
 
-  const baseWidth = 420;
-  const gapX = 120;
-  const gapY = 180;
-  const positioned: PositionedGraphNode[] = nodes.map((node, index) => {
-    const width = 420;
+  const sequenceOnly = artifactEdges.length === 0 && sequenceEdges.length > 0;
+  const gapX = sequenceOnly ? 72 : 120;
+  const gapY = sequenceOnly ? 0 : 180;
+  const rows = sequenceOnly ? 1 : nodes.length > 12 ? 3 : nodes.length > 7 ? 2 : 1;
+  const baseNodes: PositionedGraphNode[] = nodes.map((node, index) => {
+    const title = stepDisplayName(node);
+    const parameterText = Array.isArray(node.parameters) ? node.parameters.join(" · ") : "";
+    const width = Math.max(320, title.length * 10 + Math.max(120, parameterText.length * 7 + 40) + 120);
     const height = 120;
-    const inputGroups = groupPorts(incomingByNode.get(node.id) || []);
-    const outputGroups = groupPorts(outgoingByNode.get(node.id) || []);
+    const inputGroups = groupPorts(incomingByNode.get(node.id) || [], "in");
+    const outputGroups = groupPorts(outgoingByNode.get(node.id) || [], "out");
+    const sequenceIn = edges.find((edge) => edge.kind === "sequence" && edge.target === node.id) || null;
+    const sequenceOut = edges.find((edge) => edge.kind === "sequence" && edge.source === node.id) || null;
+    const longestRailLabel = Math.max(
+      0,
+      ...inputGroups.map((entry) => entry.label.length),
+      ...outputGroups.map((entry) => entry.label.length),
+    );
+    const railWidth = Math.max(92, Math.min(180, longestRailLabel * 7 + 34));
     return {
       ...node,
       stepOrder: index + 1,
-      x: index * (baseWidth + gapX),
-      y: index % 2 === 0 ? 0 : gapY,
+      x: 0,
+      y: sequenceOnly ? 120 : (index % rows) * gapY,
       width,
       height,
-      centerX: index * (baseWidth + gapX) + width / 2,
-      centerY: (index % 2 === 0 ? 0 : gapY) + height / 2,
+      railWidth,
+      centerX: width / 2,
+      centerY: (sequenceOnly ? 120 : (index % rows) * gapY) + height / 2,
       ports: {
         inputs: inputGroups.map((entry, portIndex) => ({
           id: `artifact-in:${entry.key}`,
@@ -981,25 +1069,66 @@ function fallbackLayoutGraph(
           x: width,
           y: outputGroups.length <= 1 ? 56 : 40 + portIndex * 24,
         })),
-        sequenceIn: null,
-        sequenceOut: null,
+        sequenceIn: sequenceIn ? {
+          id: `${sequenceIn.id}:sequence-in`,
+          kind: "sequence-in" as const,
+          label: null,
+          title: null,
+          side: "left" as const,
+          x: 0,
+          y: height / 2,
+        } : null,
+        sequenceOut: sequenceOut ? {
+          id: `${sequenceOut.id}:sequence-out`,
+          kind: "sequence-out" as const,
+          label: null,
+          title: null,
+          side: "right" as const,
+          x: width,
+          y: height / 2,
+        } : null,
       },
     };
   });
+  const positioned: PositionedGraphNode[] = [];
+  for (let index = 0; index < baseNodes.length; index += 1) {
+    const node = baseNodes[index];
+    if (!node) {
+      continue;
+    }
+    if (index === 0) {
+      positioned.push(node);
+      continue;
+    }
+    const row = sequenceOnly ? 0 : index % rows;
+    const prevInRow = positioned.filter((item, itemIndex) => itemIndex < index && (sequenceOnly ? 0 : itemIndex % rows) === row).at(-1);
+    const x = prevInRow ? prevInRow.x + prevInRow.width + gapX : 0;
+    const y = sequenceOnly ? 120 : node.y;
+    positioned.push({
+      ...node,
+      x,
+      y,
+      centerX: x + node.width / 2,
+      centerY: y + node.height / 2,
+    });
+  }
 
   const byId = new Map(positioned.map((node) => [node.id, node]));
-  const routedEdges: RoutedGraphEdge[] = edges
-    .filter((edge) => edge.kind === "artifact")
+  const routedEdges: RoutedGraphEdge[] = [...artifactEdges, ...sequenceEdges]
     .flatMap((edge) => {
       const source = byId.get(edge.source);
       const target = byId.get(edge.target);
       if (!source || !target) {
         return [];
       }
-      const sourceHandle = `artifact-out:${portKey(edge)}`;
-      const targetHandle = `artifact-in:${portKey(edge)}`;
-      const sourcePort = source.ports.outputs.find((port) => port.id === sourceHandle) || null;
-      const targetPort = target.ports.inputs.find((port) => port.id === targetHandle) || null;
+      const sourceHandle = edge.kind === "artifact"
+        ? `artifact-out:${portKey(edge, "out")}`
+        : `${edge.id}:sequence-out`;
+      const targetHandle = edge.kind === "artifact"
+        ? `artifact-in:${portKey(edge, "in")}`
+        : `${edge.id}:sequence-in`;
+      const sourcePort = sourceHandle ? (source.ports.outputs.find((port) => port.id === sourceHandle) || null) : null;
+      const targetPort = targetHandle ? (target.ports.inputs.find((port) => port.id === targetHandle) || null) : null;
       const sourcePoint = sourcePort
         ? { x: source.x + sourcePort.x, y: source.y + sourcePort.y }
         : { x: source.x + source.width, y: source.y + source.height / 2 };
@@ -1018,8 +1147,8 @@ function fallbackLayoutGraph(
     });
 
   return {
-    width: positioned[positioned.length - 1] ? (positioned[positioned.length - 1]!.x + positioned[positioned.length - 1]!.width) : 0,
-    height: gapY + 200,
+    width: positioned.length > 0 ? Math.max(...positioned.map((node) => node.x + node.width)) + 80 : 0,
+    height: sequenceOnly ? 320 : rows * gapY + 200,
     nodes: positioned,
     edges: routedEdges,
   };
@@ -1132,6 +1261,7 @@ interface WorkflowViewerProps {
   initialConfigLabel: string;
   initialAvailableConfigs: RunsIndexPayload["availableConfigs"];
   initialAvailableWorkflows: RunsIndexPayload["availableWorkflows"];
+  initialSelectedRunId: string | null;
 }
 
 export function WorkflowViewer({
@@ -1143,6 +1273,7 @@ export function WorkflowViewer({
   initialConfigLabel,
   initialAvailableConfigs,
   initialAvailableWorkflows,
+  initialSelectedRunId,
 }: WorkflowViewerProps) {
   const [summaries, setSummaries] = useState<RunSummary[]>(initialSummaries);
   const [totalRuns, setTotalRuns] = useState(initialTotalRuns);
@@ -1157,7 +1288,7 @@ export function WorkflowViewer({
   );
   const [runWorkflowLoading, setRunWorkflowLoading] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(() =>
-    normalizeSelectedRunId(initialSummaries, null),
+    normalizeSelectedRunId(initialSummaries, initialSelectedRunId),
   );
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<InspectionTab>("overview");
@@ -1190,10 +1321,13 @@ export function WorkflowViewer({
   const logRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeLogRequestIdRef = useRef(0);
+  const activeDetailRequestIdRef = useRef(0);
   const loadedLogRunIdRef = useRef<string | null>(null);
   const selectedStepIdRef = useRef<string | null>(null);
   const selectedRunIdRef = useRef<string | null>(null);
   const activeTabRef = useRef<InspectionTab>("overview");
+  const runDetailCacheRef = useRef(new Map<string, RunDetail>());
+  const graphLayoutCacheRef = useRef(new Map<string, GraphLayout>());
 
   const selectedSummary = summaries.find((summary) => summary.id === selectedRunId) || null;
   const selectedRunCopyId = selectedSummary?.id || null;
@@ -1522,25 +1656,45 @@ export function WorkflowViewer({
     [configPath],
   );
 
-  async function refreshRunDetail(runId: string): Promise<void> {
-    setDetailLoading(true);
+  async function refreshRunDetail(runId: string, options: { background?: boolean } = {}): Promise<void> {
+    const requestId = activeDetailRequestIdRef.current + 1;
+    activeDetailRequestIdRef.current = requestId;
+    const background = Boolean(options.background);
+    if (!background) {
+      setDetailLoading(true);
+    }
     try {
       const detail = await loadWorkflowDetail(runId, configPath);
+      if (activeDetailRequestIdRef.current !== requestId) {
+        return;
+      }
+      if (selectedRunIdRef.current !== runId) {
+        return;
+      }
+      runDetailCacheRef.current.set(runId, detail);
       setRunDetail(detail);
     } catch {
+      if (activeDetailRequestIdRef.current !== requestId) {
+        return;
+      }
+      if (selectedRunIdRef.current !== runId) {
+        return;
+      }
       setRunDetail(null);
     } finally {
-      setDetailLoading(false);
+      if (!background && activeDetailRequestIdRef.current === requestId) {
+        setDetailLoading(false);
+      }
     }
   }
 
-function scheduleDetailRefresh(runId: string, delayMs: number): void {
+  function scheduleDetailRefresh(runId: string, delayMs: number): void {
     if (detailRefreshTimerRef.current) {
       clearTimeout(detailRefreshTimerRef.current);
     }
     detailRefreshTimerRef.current = setTimeout(() => {
       detailRefreshTimerRef.current = null;
-      void refreshRunDetail(runId);
+      void refreshRunDetail(runId, { background: true });
     }, delayMs);
   }
 
@@ -1581,6 +1735,21 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
   }, [summaries]);
 
   useEffect(() => {
+    if (typeof window === "undefined" || summaries.length === 0) {
+      return;
+    }
+    const url = new URL(window.location.href);
+    const requestedRunId = url.searchParams.get("runId");
+    if (!requestedRunId) {
+      return;
+    }
+    if (!summaries.some((summary) => summary.id === requestedRunId)) {
+      return;
+    }
+    setSelectedRunId((current) => (current === requestedRunId ? current : requestedRunId));
+  }, [summaries]);
+
+  useEffect(() => {
     setSelectedStepId(null);
     setActiveTab("overview");
     setEventFilter("all");
@@ -1589,7 +1758,21 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
   }, [selectedRunId]);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const url = new URL(window.location.href);
+    if (selectedRunId) {
+      url.searchParams.set("runId", selectedRunId);
+    } else {
+      url.searchParams.delete("runId");
+    }
+    window.history.replaceState(null, "", url.toString());
+  }, [selectedRunId]);
+
+  useEffect(() => {
     if (!selectedRunId) {
+      activeDetailRequestIdRef.current += 1;
       loadedLogRunIdRef.current = null;
       setLogError(null);
       setLogLoading(false);
@@ -1601,40 +1784,24 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
       setDetailLoading(false);
       return;
     }
-    let cancelled = false;
+    activeDetailRequestIdRef.current += 1;
+    const cachedDetail = runDetailCacheRef.current.get(selectedRunId) || null;
     loadedLogRunIdRef.current = null;
     setLogError(null);
     setWorkflowLogText("");
     setEventLog([]);
     setEventError(null);
-    setRunDetail(null);
+    setRunDetail(cachedDetail);
     setLogLoading(activeTab === "log");
     setEventLoading(activeTab === "events");
-    setDetailLoading(true);
-    void loadWorkflowDetail(selectedRunId, configPath)
-      .then((detail) => {
-        if (cancelled) {
-          return;
-        }
-        setRunDetail(detail);
-        setDetailLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) {
-          return;
-        }
-        setRunDetail(null);
-        setDetailLoading(false);
-      });
+    setDetailLoading(!cachedDetail);
+    void refreshRunDetail(selectedRunId);
     if (activeTab === "log") {
       void refreshActiveLog(selectedRunId, null);
     }
     if (activeTab === "events") {
       void refreshActiveEvents(selectedRunId);
     }
-    return () => {
-      cancelled = true;
-    };
   }, [configPath, refreshActiveEvents, refreshActiveLog, selectedRunId]);
 
   useEffect(() => {
@@ -1671,6 +1838,53 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
     setEventStepFilter("all");
     setActiveTab("overview");
   }, [runDetail, selectedStepId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function prefetchVisibleRuns(): Promise<void> {
+      const selectedIndex = summaries.findIndex((summary) => summary.id === selectedRunIdRef.current);
+      const candidateRuns = summaries
+        .filter((summary, index) => index !== selectedIndex)
+        .slice(0, 3);
+      for (const summary of candidateRuns) {
+        if (cancelled) {
+          return;
+        }
+        if (!summary?.id || runDetailCacheRef.current.has(summary.id)) {
+          continue;
+        }
+        try {
+          const detail = await loadWorkflowDetail(summary.id, configPath);
+          if (cancelled) {
+            return;
+          }
+          runDetailCacheRef.current.set(summary.id, detail);
+          if (!graphLayoutCacheRef.current.has(summary.id) && detail.graph.nodes.length > 0) {
+            const layout = await layoutGraph(detail.graph.nodes, detail.graph.edges);
+            const nextLayout = layout || fallbackLayoutGraph(detail.graph.nodes, detail.graph.edges);
+            if (cancelled) {
+              return;
+            }
+            if (nextLayout) {
+              graphLayoutCacheRef.current.set(summary.id, nextLayout);
+            }
+          }
+          if (selectedRunIdRef.current === summary.id) {
+            startTransition(() => {
+              setRunDetail((current) => current || detail);
+              setGraphLayout((current) => current || graphLayoutCacheRef.current.get(summary.id) || null);
+            });
+          }
+        } catch {
+          // Ignore background prefetch failures; foreground load handles user-facing state.
+        }
+      }
+    }
+    void prefetchVisibleRuns();
+    return () => {
+      cancelled = true;
+    };
+  }, [configPath, summaries]);
 
   async function refreshSummaries(): Promise<void> {
     await refreshRunsIndex(configPath, setSummaries, setTotalRuns, setUpdatedAt);
@@ -1797,6 +2011,7 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
     () => graphEdges.filter((edge) => edge.kind === "artifact"),
     [graphEdges],
   );
+  const renderSequenceEdges = graphArtifactEdges.length === 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -1806,18 +2021,28 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
       return;
     }
 
-    setGraphLayout(null);
-    setGraphLayoutLoading(true);
+    const runId = selectedRunIdRef.current;
+    const cachedLayout = runId ? graphLayoutCacheRef.current.get(runId) || null : null;
+    setGraphLayout(cachedLayout);
+    setGraphLayoutLoading(!cachedLayout);
     void layoutGraph(graphNodes, graphEdges)
       .then((layout) => {
         if (!cancelled) {
-          setGraphLayout(layout || fallbackLayoutGraph(graphNodes, graphEdges));
+          const nextLayout = layout || fallbackLayoutGraph(graphNodes, graphEdges);
+          if (runId && nextLayout) {
+            graphLayoutCacheRef.current.set(runId, nextLayout);
+          }
+          setGraphLayout(nextLayout);
           setGraphLayoutLoading(false);
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setGraphLayout(fallbackLayoutGraph(graphNodes, graphEdges));
+          const nextLayout = fallbackLayoutGraph(graphNodes, graphEdges);
+          if (runId && nextLayout) {
+            graphLayoutCacheRef.current.set(runId, nextLayout);
+          }
+          setGraphLayout(nextLayout);
           setGraphLayoutLoading(false);
         }
       });
@@ -1858,10 +2083,20 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
   const flowEdges = useMemo<WorkflowFlowEdgeType[]>(
     () => (
       (graphLayout?.edges || [])
-        .filter((edge) => edge.kind === "artifact")
+        .filter((edge) => edge.kind === "artifact" || (renderSequenceEdges && edge.kind === "sequence"))
         .map((edge) => {
         const isArtifact = edge.kind === "artifact";
-        const stroke = isArtifact ? "#0f766e" : "#9a8d7a";
+        const prominentSequence = renderSequenceEdges && edge.kind === "sequence";
+        const stroke = isArtifact ? "#0f766e" : prominentSequence ? "#6f6558" : "#9a8d7a";
+        const strokeWidth = isArtifact ? 2.5 : prominentSequence ? 2.25 : 1.75;
+        const strokeDasharray = isArtifact ? undefined : prominentSequence ? "10 6" : "7 6";
+        const opacity = edge.inferred
+          ? (prominentSequence ? 0.9 : 0.5)
+          : isArtifact
+            ? 0.92
+            : prominentSequence
+              ? 0.9
+              : 0.75;
         return {
           id: edge.id,
           source: edge.source,
@@ -1870,7 +2105,13 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
           targetHandle: edge.targetHandle || undefined,
           type: "workflowEdge",
           zIndex: 0,
-          data: { edge },
+          data: {
+            edge,
+            stroke,
+            strokeWidth,
+            strokeDasharray,
+            opacity,
+          },
           markerEnd: {
             type: MarkerType.ArrowClosed,
             color: stroke,
@@ -1878,7 +2119,7 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
         };
       })
     ),
-    [graphLayout?.edges],
+    [graphLayout?.edges, renderSequenceEdges],
   );
 
   useEffect(() => {

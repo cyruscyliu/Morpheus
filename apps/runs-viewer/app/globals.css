@@ -388,7 +388,7 @@ code {
   border: 1px solid rgb(var(--border) / 0.75);
   border-radius: 14px;
   background: rgb(var(--card) / 0.98);
-  padding: 0 92px;
+  padding: 0 var(--rail-width, 92px);
   text-align: left;
   box-shadow: none;
   transition: border-color 120ms ease, background-color 120ms ease;
@@ -423,18 +423,22 @@ code {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .workflow-flow-node-header-title strong {
   min-width: 0;
+  flex: 1 1 auto;
   white-space: normal;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .workflow-flow-node-order {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
   min-width: 24px;
   height: 24px;
   padding: 0 6px;
@@ -468,7 +472,7 @@ code {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 92px;
+  width: var(--rail-width, 92px);
   border-color: rgb(var(--border) / 0.65);
   background: rgb(var(--muted) / 0.28);
 }
@@ -488,7 +492,7 @@ code {
   display: flex;
   align-items: center;
   gap: 6px;
-  max-width: 92px;
+  max-width: var(--rail-width, 92px);
   color: rgb(var(--muted-foreground));
   font-size: 0.72rem;
   line-height: 1.2;
@@ -509,7 +513,7 @@ code {
 
 .workflow-flow-node-port-label {
   display: inline-block;
-  max-width: 64px;
+  max-width: calc(var(--rail-width, 92px) - 28px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -536,6 +540,11 @@ code {
   height: 10px;
   border: 2px solid rgb(var(--card));
   background: rgb(var(--primary));
+}
+
+.workflow-flow-handle.is-sequence.is-hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .workflow-graph-flow .react-flow__edges,

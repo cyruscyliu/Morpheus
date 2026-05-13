@@ -4,7 +4,7 @@
   "version": "0.4.1",
   "type": "module",
   "scripts": {
-    "build": "sh -c 'rm -rf .next && next build'",
+    "build": "sh -c 'rm -rf .next && next build && mkdir -p .next/standalone/apps/runs-viewer/.next && rm -rf .next/standalone/apps/runs-viewer/.next/static && cp -R .next/static .next/standalone/apps/runs-viewer/.next/static'",
     "dev": "sh -c 'rm -rf .next && WATCHPACK_POLLING=\"${WATCHPACK_POLLING:-true}\" CHOKIDAR_USEPOLLING=\"${CHOKIDAR_USEPOLLING:-1}\" next dev --hostname \"${HOSTNAME:-127.0.0.1}\" --port \"${PORT:-4174}\"'",
     "lint": "pnpm exec tsc -p tsconfig.json --noEmit",
     "test": "pnpm exec node --import tsx --test tests/*.ts"

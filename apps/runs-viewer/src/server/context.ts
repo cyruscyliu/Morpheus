@@ -1,4 +1,5 @@
 import path from "node:path";
+import fs from "node:fs";
 
 import {
   type ViewerConfigOption,
@@ -16,8 +17,25 @@ export interface ViewerContext {
   availableWorkflows: ViewerWorkflowOption[];
 }
 
+function resolveRepoRoot(startDir: string): string {
+  let current = path.resolve(startDir);
+  while (true) {
+    const pnpmLock = path.join(current, "pnpm-lock.yaml");
+    const morpheusApp = path.join(current, "apps", "morpheus");
+    const runsViewerApp = path.join(current, "apps", "runs-viewer");
+    if (fs.existsSync(pnpmLock) && fs.existsSync(morpheusApp) && fs.existsSync(runsViewerApp)) {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return path.resolve(startDir, "..", "..");
+    }
+    current = parent;
+  }
+}
+
 export function resolveViewerContext(selectedConfigPath?: string | null): ViewerContext {
-  const repoRoot = path.resolve(process.cwd(), "..", "..");
+  const repoRoot = resolveRepoRoot(process.cwd());
   const bootstrapContext = {
     repoRoot,
     configPath: selectedConfigPath || null,

@@ -24,6 +24,21 @@ interface ConfigShowResult {
   runRoot: string;
 }
 
+const workflowJsonCache = new Map<string, any>();
+const configJsonCache = new Map<string, any>();
+
+function cacheKey(
+  context: Pick<ViewerContext, "repoRoot" | "configPath" | "workspaceRoot">,
+  args: string[],
+): string {
+  return JSON.stringify({
+    repoRoot: context.repoRoot,
+    configPath: context.configPath || null,
+    workspaceRoot: context.workspaceRoot,
+    args,
+  });
+}
+
 function cliInvocation(repoRoot: string): { command: string; args: string[] } {
   const distCli = path.join(repoRoot, "apps", "morpheus", "dist", "cli.js");
   if (fs.existsSync(distCli)) {
@@ -37,6 +52,10 @@ function runWorkflowJson(
   context: Pick<ViewerContext, "repoRoot" | "configPath" | "workspaceRoot">,
   args: string[],
 ): any {
+  const key = cacheKey(context, args);
+  if (workflowJsonCache.has(key)) {
+    return workflowJsonCache.get(key);
+  }
   const cli = cliInvocation(context.repoRoot);
   const result = spawnSync(
     cli.command,
@@ -66,6 +85,7 @@ function runWorkflowJson(
       : (result.stderr || result.stdout || "morpheus command failed").trim();
     throw new Error(summary);
   }
+  workflowJsonCache.set(key, payload);
   return payload;
 }
 
@@ -98,6 +118,10 @@ function runConfigJson(
   context: Pick<ViewerContext, "repoRoot" | "configPath" | "workspaceRoot">,
   args: string[],
 ): any {
+  const key = cacheKey(context, ["config", ...args]);
+  if (configJsonCache.has(key)) {
+    return configJsonCache.get(key);
+  }
   const cli = cliInvocation(context.repoRoot);
   const result = spawnSync(
     cli.command,
@@ -126,6 +150,7 @@ function runConfigJson(
       : (result.stderr || result.stdout || "morpheus command failed").trim();
     throw new Error(summary);
   }
+  configJsonCache.set(key, payload);
   return payload;
 }
 

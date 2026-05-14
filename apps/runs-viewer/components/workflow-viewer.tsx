@@ -1663,6 +1663,7 @@ interface WorkflowViewerProps {
   initialAvailableConfigs: RunsIndexPayload["availableConfigs"];
   initialAvailableWorkflows: RunsIndexPayload["availableWorkflows"];
   initialSelectedRunId: string | null;
+  initialRunDetail: RunDetail | null;
 }
 
 export function WorkflowViewer({
@@ -1675,6 +1676,7 @@ export function WorkflowViewer({
   initialAvailableConfigs,
   initialAvailableWorkflows,
   initialSelectedRunId,
+  initialRunDetail,
 }: WorkflowViewerProps) {
   const [summaries, setSummaries] = useState<RunSummary[]>(initialSummaries);
   const [totalRuns, setTotalRuns] = useState(initialTotalRuns);
@@ -1702,7 +1704,7 @@ export function WorkflowViewer({
   const [eventFilter, setEventFilter] = useState("all");
   const [eventStepFilter, setEventStepFilter] = useState("all");
   const [eventQuery, setEventQuery] = useState("");
-  const [runDetail, setRunDetail] = useState<RunDetail | null>(null);
+  const [runDetail, setRunDetail] = useState<RunDetail | null>(initialRunDetail);
   const [detailLoading, setDetailLoading] = useState(false);
   const [graphLayout, setGraphLayout] = useState<GraphLayout | null>(null);
   const [graphLayoutLoading, setGraphLayoutLoading] = useState(false);
@@ -1728,7 +1730,13 @@ export function WorkflowViewer({
   const selectedStepIdRef = useRef<string | null>(null);
   const selectedRunIdRef = useRef<string | null>(null);
   const activeTabRef = useRef<InspectionTab>("overview");
-  const runDetailCacheRef = useRef(new Map<string, RunDetail>());
+  const runDetailCacheRef = useRef(
+    new Map<string, RunDetail>(
+      initialRunDetail && initialSelectedRunId
+        ? [[initialSelectedRunId, initialRunDetail]]
+        : [],
+    ),
+  );
   const graphLayoutCacheRef = useRef(new Map<string, GraphLayout>());
 
   const selectedSummary = summaries.find((summary) => summary.id === selectedRunId) || null;
@@ -2197,7 +2205,7 @@ export function WorkflowViewer({
     setLogLoading(activeTab === "log");
     setEventLoading(activeTab === "events");
     setDetailLoading(!cachedDetail);
-    void refreshRunDetail(selectedRunId);
+    void refreshRunDetail(selectedRunId, cachedDetail ? { background: true } : {});
     if (activeTab === "log") {
       void refreshActiveLog(selectedRunId, null);
     }

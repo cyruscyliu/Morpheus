@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { resolveViewerContext } from "@/src/server/context";
+import { resolveReadContext } from "@/src/server/context";
 import { loadRunDetail } from "@/src/server/morpheus-client";
 import { isSafeId } from "@/src/server/validate";
 
@@ -17,7 +17,7 @@ export async function GET(
     return new NextResponse("not found\n", { status: 404 });
   }
   const url = new URL(request.url);
-  const context = resolveViewerContext(url.searchParams.get("config"));
+  const context = resolveReadContext(url.searchParams.get("config"));
   const detail = loadRunDetail(context, runId);
   if (!detail) {
     return new NextResponse("not found\n", { status: 404 });

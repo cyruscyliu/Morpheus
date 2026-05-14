@@ -17,52 +17,91 @@ export interface ViewerContext {
   availableWorkflows: ViewerWorkflowOption[];
 }
 
+export interface ViewerReadContext {
+  repoRoot: string;
+  runRoot: string;
+  workspaceRoot: string;
+  configPath: string | null;
+}
+
+const repoRootCache = new Map<string, string>();
+const readContextCache = new Map<string, ViewerReadContext>();
+const viewerContextCache = new Map<string, ViewerContext>();
+
 function resolveRepoRoot(startDir: string): string {
+  const cached = repoRootCache.get(startDir);
+  if (cached) {
+    return cached;
+  }
   let current = path.resolve(startDir);
   while (true) {
     const pnpmLock = path.join(current, "pnpm-lock.yaml");
     const morpheusApp = path.join(current, "apps", "morpheus");
     const runsViewerApp = path.join(current, "apps", "runs-viewer");
     if (fs.existsSync(pnpmLock) && fs.existsSync(morpheusApp) && fs.existsSync(runsViewerApp)) {
+      repoRootCache.set(startDir, current);
       return current;
     }
     const parent = path.dirname(current);
     if (parent === current) {
-      return path.resolve(startDir, "..", "..");
+      const fallback = path.resolve(startDir, "..", "..");
+      repoRootCache.set(startDir, fallback);
+      return fallback;
     }
     current = parent;
   }
 }
 
-export function resolveViewerContext(selectedConfigPath?: string | null): ViewerContext {
+export function resolveReadContext(selectedConfigPath?: string | null): ViewerReadContext {
   const repoRoot = resolveRepoRoot(process.cwd());
+  const cacheId = JSON.stringify({ repoRoot, selectedConfigPath: selectedConfigPath || null });
+  const cached = readContextCache.get(cacheId);
+  if (cached) {
+    return cached;
+  }
   const bootstrapContext = {
     repoRoot,
     configPath: selectedConfigPath || null,
     workspaceRoot: process.cwd(),
   };
   const initialConfigInfo = loadConfigContext(bootstrapContext);
-  const initialContext = {
+  const resolved = {
     repoRoot,
+    runRoot: initialConfigInfo.runRoot,
     configPath: initialConfigInfo.configPath,
     workspaceRoot: initialConfigInfo.workspaceRoot,
   };
+  readContextCache.set(cacheId, resolved);
+  return resolved;
+}
+
+export function resolveViewerContext(selectedConfigPath?: string | null): ViewerContext {
+  const initialContext = resolveReadContext(selectedConfigPath);
+  const cacheId = JSON.stringify({
+    repoRoot: initialContext.repoRoot,
+    configPath: initialContext.configPath || null,
+    workspaceRoot: initialContext.workspaceRoot,
+  });
+  const cached = viewerContextCache.get(cacheId);
+  if (cached) {
+    return cached;
+  }
   const availableConfigs = listViewerConfigs(initialContext);
   const requested = selectedConfigPath
     ? availableConfigs.find((item) => item.configPath === selectedConfigPath)?.configPath || selectedConfigPath
-    : availableConfigs[0]?.configPath || initialConfigInfo.configPath || null;
+    : availableConfigs[0]?.configPath || initialContext.configPath || null;
   const runRootInfo = loadConfigContext({
-    repoRoot,
+    repoRoot: initialContext.repoRoot,
     configPath: requested,
     workspaceRoot: initialContext.workspaceRoot,
   });
   const availableWorkflows = listConfiguredWorkflows({
-    repoRoot,
+    repoRoot: initialContext.repoRoot,
     configPath: runRootInfo.configPath,
     workspaceRoot: runRootInfo.workspaceRoot,
   });
-  return {
-    repoRoot,
+  const resolved = {
+    repoRoot: initialContext.repoRoot,
     runRoot: runRootInfo.runRoot,
     workspaceRoot: runRootInfo.workspaceRoot,
     configPath: runRootInfo.configPath,
@@ -71,4 +110,6 @@ export function resolveViewerContext(selectedConfigPath?: string | null): Viewer
     availableConfigs,
     availableWorkflows,
   };
+  viewerContextCache.set(cacheId, resolved);
+  return resolved;
 }

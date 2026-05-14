@@ -379,6 +379,29 @@ code {
     linear-gradient(180deg, rgb(var(--muted) / 0.22) 0%, rgb(var(--card) / 0.9) 100%);
 }
 
+.workflow-static-graph {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  background:
+    radial-gradient(circle at top left, rgb(var(--card) / 0.72) 0, transparent 36%),
+    linear-gradient(180deg, rgb(var(--muted) / 0.22) 0%, rgb(var(--card) / 0.9) 100%);
+}
+
+.workflow-static-graph-canvas {
+  position: relative;
+}
+
+.workflow-static-edge-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.workflow-static-node {
+  position: absolute;
+  cursor: default;
+}
+
 .workflow-graph-flow .react-flow__renderer,
 .workflow-graph-flow .react-flow__pane,
 .workflow-graph-flow .react-flow__viewport {

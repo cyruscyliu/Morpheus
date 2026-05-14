@@ -1,24 +1,18 @@
 "use client";
 
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import dynamic from "next/dynamic";
 import { Check, Copy } from "lucide-react";
-import {
-  Background,
-  Controls,
-  BaseEdge,
-  Handle,
-  MarkerType,
-  Position,
-  ReactFlow,
-  type Edge,
-  type EdgeProps,
-  type Node,
-  type NodeProps,
-  type NodeTypes,
-} from "@xyflow/react";
-import ELK from "elkjs/lib/elk.bundled.js";
 
 import { Button } from "@/components/ui/button";
+import type {
+  GraphLayout,
+  GraphLayoutPresetId,
+  GraphPortSide,
+  GraphPortSpec,
+  PositionedGraphNode,
+  RoutedGraphEdge,
+} from "@/src/lib/graph-layout";
 import type {
   RunDetail,
   RunEventRecord,
@@ -39,69 +33,16 @@ interface AnsiState {
   fg: string | null;
 }
 
-interface PositionedGraphNode extends RunGraphNode {
-  stepOrder: number | null;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  railWidth: number;
-  centerX: number;
-  centerY: number;
-  ports: {
-    inputs: GraphPortSpec[];
-    outputs: GraphPortSpec[];
-    sequenceIn: GraphPortSpec | null;
-    sequenceOut: GraphPortSpec | null;
-  };
-}
-
-interface RoutedGraphEdge extends RunGraphEdge {
-  sourceHandle: string | null;
-  targetHandle: string | null;
-  points: Array<{ x: number; y: number }>;
-}
-
-interface GraphLayout {
-  width: number;
-  height: number;
-  nodes: PositionedGraphNode[];
-  edges: RoutedGraphEdge[];
-}
-
-type GraphLayoutPresetId = "compact" | "balanced" | "spacious";
-
 interface GraphLayoutPreset {
   id: GraphLayoutPresetId;
   label: string;
   options: Record<string, string>;
 }
 
-type GraphPortSide = "left" | "right" | "top" | "bottom";
-
-interface GraphPortSpec {
-  id: string;
-  kind: "artifact-in" | "artifact-out" | "sequence-in" | "sequence-out";
-  label: string | null;
-  title: string | null;
-  side: GraphPortSide;
-  x: number;
-  y: number;
-}
-
 interface WorkflowFlowNodeData extends Record<string, unknown> {
   node: PositionedGraphNode;
   onSelect: (stepId: string) => void;
 }
-
-type WorkflowFlowNodeType = Node<WorkflowFlowNodeData, "workflow">;
-type WorkflowFlowEdgeType = Edge<{
-  edge: RoutedGraphEdge;
-  stroke: string;
-  strokeWidth: number;
-  strokeDasharray?: string;
-  opacity: number;
-}, "workflowEdge">;
 
 const GRAPH_LAYOUT_PRESETS: GraphLayoutPreset[] = [
   {
@@ -160,103 +101,6 @@ const GRAPH_LAYOUT_PRESETS: GraphLayoutPreset[] = [
   },
 ];
 
-function WorkflowFlowNode({ data, selected }: NodeProps<WorkflowFlowNodeType>) {
-  const { node, onSelect } = data;
-  const inputPorts = node.ports.inputs;
-  const outputPorts = node.ports.outputs;
-
-  return (
-    <button
-      className={`workflow-flow-node is-${node.status}${selected ? " is-selected" : ""}`}
-      onClick={() => {
-        onSelect(node.id);
-      }}
-      type="button"
-      style={{
-        ["--rail-width" as any]: `${node.railWidth}px`,
-      } as CSSProperties}
-    >
-      <div className="workflow-flow-node-ports is-left">
-        {node.ports.sequenceIn ? (
-          <Handle
-            className="workflow-flow-handle is-sequence is-hidden"
-            id={node.ports.sequenceIn.id}
-            position={Position.Left}
-            style={{ top: `${node.ports.sequenceIn.y}px` }}
-            type="target"
-          />
-        ) : null}
-        {inputPorts.map((port) => (
-          <div
-            className="workflow-flow-node-port is-input"
-            key={port.id}
-            style={{ top: `${port.y}px` }}
-            title={port.title || undefined}
-          >
-            <span className="workflow-flow-node-port-label">{port.label || "input"}</span>
-            <Handle
-              className="workflow-flow-handle"
-              id={port.id}
-              position={Position.Left}
-              style={{ top: "50%", transform: "translateY(-50%)" }}
-              type="target"
-            />
-          </div>
-        ))}
-      </div>
-      <div className="workflow-flow-node-main">
-        <div className="workflow-flow-node-header">
-          <div className="workflow-flow-node-header-title">
-            {node.stepOrder != null ? (
-              <span className="workflow-flow-node-order">{node.stepOrder}</span>
-            ) : null}
-            <strong>{stepDisplayName(node)}</strong>
-          </div>
-        </div>
-        <div className="workflow-flow-node-body">
-          {Array.isArray(node.parameters) && node.parameters.length > 0 ? (
-            <span className="workflow-graph-node-param">{node.parameters.join(" · ")}</span>
-          ) : null}
-          <span className={`workflow-status-text is-${node.status}`}>{node.status}</span>
-        </div>
-      </div>
-      <div className="workflow-flow-node-ports is-right">
-        {outputPorts.map((port) => (
-          <div
-            className="workflow-flow-node-port is-output"
-            key={port.id}
-            style={{ top: `${port.y}px` }}
-            title={port.title || undefined}
-          >
-            <Handle
-              className="workflow-flow-handle"
-              id={port.id}
-              position={Position.Right}
-              style={{ top: "50%", transform: "translateY(-50%)" }}
-              type="source"
-            />
-            <span className="workflow-flow-node-port-label">{port.label || "output"}</span>
-          </div>
-        ))}
-        {node.ports.sequenceOut ? (
-          <Handle
-            className="workflow-flow-handle is-sequence is-hidden"
-            id={node.ports.sequenceOut.id}
-            position={Position.Right}
-            style={{ top: `${node.ports.sequenceOut.y}px` }}
-            type="source"
-          />
-        ) : null}
-      </div>
-      {selected ? <span className="sr-only">Selected</span> : null}
-    </button>
-  );
-}
-
-const workflowFlowNodeTypes = {
-  workflow: WorkflowFlowNode,
-} satisfies NodeTypes;
-
 function polylinePath(points: Array<{ x: number; y: number }>): string {
   if (points.length === 0) {
     return "";
@@ -268,32 +112,94 @@ function polylinePath(points: Array<{ x: number; y: number }>): string {
   return `M ${first.x} ${first.y} ${rest.map((point) => `L ${point.x} ${point.y}`).join(" ")}`;
 }
 
-function WorkflowFlowEdge({ data, markerEnd }: EdgeProps<WorkflowFlowEdgeType>) {
-  const edge = data?.edge;
-  const points = edge?.points || [];
-  const path = polylinePath(points);
+const WorkflowInteractiveGraph = dynamic(
+  () => import("@/components/workflow-interactive-graph").then((mod) => mod.WorkflowInteractiveGraph),
+  { ssr: false },
+);
 
-  if (!path) {
-    return null;
-  }
-
+function WorkflowStaticPreview({ layout }: { layout: GraphLayout }) {
   return (
-    <BaseEdge
-      markerEnd={markerEnd}
-      path={path}
-      style={{
-        stroke: data?.stroke,
-        strokeWidth: data?.strokeWidth,
-        strokeDasharray: data?.strokeDasharray,
-        opacity: data?.opacity,
-      }}
-    />
+    <div className="workflow-static-graph">
+      <div
+        className="workflow-static-graph-canvas"
+        style={{ width: `${layout.width}px`, height: `${layout.height}px` }}
+      >
+        <svg
+          aria-hidden="true"
+          className="workflow-static-edge-layer"
+          height={layout.height}
+          viewBox={`0 0 ${layout.width} ${layout.height}`}
+          width={layout.width}
+        >
+          {layout.edges.map((edge) => (
+            <path
+              d={polylinePath(edge.points)}
+              fill="none"
+              key={edge.id}
+              stroke={edge.kind === "artifact" ? "#0f766e" : "#6f6558"}
+              strokeDasharray={edge.kind === "artifact" ? undefined : "10 6"}
+              strokeWidth={edge.kind === "artifact" ? 2.5 : 2.25}
+            />
+          ))}
+        </svg>
+        {layout.nodes.map((node) => (
+          <div
+            className="workflow-flow-node workflow-static-node"
+            key={node.id}
+            style={{
+              left: `${node.x}px`,
+              top: `${node.y}px`,
+              width: `${node.width}px`,
+              height: `${node.height}px`,
+              ["--rail-width" as any]: `${node.railWidth}px`,
+            } as CSSProperties}
+          >
+            <div className="workflow-flow-node-ports is-left">
+              {node.ports.inputs.map((port) => (
+                <div
+                  className="workflow-flow-node-port is-input"
+                  key={port.id}
+                  style={{ top: `${port.y}px` }}
+                  title={port.title || undefined}
+                >
+                  <span className="workflow-flow-node-port-label">{port.label || "input"}</span>
+                </div>
+              ))}
+            </div>
+            <div className="workflow-flow-node-main">
+              <div className="workflow-flow-node-header">
+                <div className="workflow-flow-node-header-title">
+                  {node.stepOrder != null ? (
+                    <span className="workflow-flow-node-order">{node.stepOrder}</span>
+                  ) : null}
+                  <strong>{stepDisplayName(node)}</strong>
+                </div>
+              </div>
+              <div className="workflow-flow-node-body">
+                {Array.isArray(node.parameters) && node.parameters.length > 0 ? (
+                  <span className="workflow-graph-node-param">{node.parameters.join(" · ")}</span>
+                ) : null}
+                <span className={`workflow-status-text is-${node.status}`}>{node.status}</span>
+              </div>
+            </div>
+            <div className="workflow-flow-node-ports is-right">
+              {node.ports.outputs.map((port) => (
+                <div
+                  className="workflow-flow-node-port is-output"
+                  key={port.id}
+                  style={{ top: `${port.y}px` }}
+                  title={port.title || undefined}
+                >
+                  <span className="workflow-flow-node-port-label">{port.label || "output"}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
-
-const workflowFlowEdgeTypes = {
-  workflowEdge: WorkflowFlowEdge,
-};
 
 function ansiStateClassNames(state: AnsiState): string {
   const classes = ["log-seg"];
@@ -1292,6 +1198,7 @@ async function layoutGraph(
   };
 
   async function runElkLayout(layoutOptions: Record<string, string>): Promise<GraphLayout | null> {
+    const { default: ELK } = await import("elkjs/lib/elk.bundled.js");
     const elk = new ELK();
     const graph = {
       id: "workflow",
@@ -1664,6 +1571,7 @@ interface WorkflowViewerProps {
   initialAvailableWorkflows: RunsIndexPayload["availableWorkflows"];
   initialSelectedRunId: string | null;
   initialRunDetail: RunDetail | null;
+  initialGraphLayout: GraphLayout | null;
 }
 
 export function WorkflowViewer({
@@ -1677,6 +1585,7 @@ export function WorkflowViewer({
   initialAvailableWorkflows,
   initialSelectedRunId,
   initialRunDetail,
+  initialGraphLayout,
 }: WorkflowViewerProps) {
   const [summaries, setSummaries] = useState<RunSummary[]>(initialSummaries);
   const [totalRuns, setTotalRuns] = useState(initialTotalRuns);
@@ -1706,9 +1615,11 @@ export function WorkflowViewer({
   const [eventQuery, setEventQuery] = useState("");
   const [runDetail, setRunDetail] = useState<RunDetail | null>(initialRunDetail);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [graphLayout, setGraphLayout] = useState<GraphLayout | null>(null);
+  const [graphLayout, setGraphLayout] = useState<GraphLayout | null>(initialGraphLayout);
   const [graphLayoutLoading, setGraphLayoutLoading] = useState(false);
   const [graphLayoutPreset, setGraphLayoutPreset] = useState<GraphLayoutPresetId>("balanced");
+  const [mountInteractiveGraph, setMountInteractiveGraph] = useState(false);
+  const [graphInteractiveReady, setGraphInteractiveReady] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [copiedRunId, setCopiedRunId] = useState<string | null>(null);
   const [stopLoadingRunIds, setStopLoadingRunIds] = useState<string[]>([]);
@@ -1737,7 +1648,13 @@ export function WorkflowViewer({
         : [],
     ),
   );
-  const graphLayoutCacheRef = useRef(new Map<string, GraphLayout>());
+  const graphLayoutCacheRef = useRef(
+    new Map<string, GraphLayout>(
+      initialGraphLayout && initialSelectedRunId
+        ? [[graphLayoutCacheKey(initialSelectedRunId, "balanced"), initialGraphLayout]]
+        : [],
+    ),
+  );
 
   const selectedSummary = summaries.find((summary) => summary.id === selectedRunId) || null;
   const selectedRunCopyId = selectedSummary?.id || null;
@@ -2141,6 +2058,10 @@ export function WorkflowViewer({
   }, [activeTab]);
 
   useEffect(() => {
+    setMountInteractiveGraph(true);
+  }, []);
+
+  useEffect(() => {
     setSelectedRunId((current) => normalizeSelectedRunId(summaries, current));
   }, [summaries]);
 
@@ -2458,76 +2379,6 @@ export function WorkflowViewer({
     };
   }, [graphEdges, graphLayoutPreset, graphNodes]);
 
-  const flowNodes = useMemo<WorkflowFlowNodeType[]>(
-    () => (
-      graphLayout?.nodes.map((node) => ({
-        id: node.id,
-        type: "workflow",
-        position: { x: node.x, y: node.y },
-        selected: selectedStepId === node.id,
-        zIndex: 1,
-        draggable: false,
-        style: {
-          width: node.width,
-          height: node.height,
-        },
-        sourcePosition: Position.Right,
-        targetPosition: Position.Left,
-        data: {
-          node,
-          onSelect: (stepId: string) => {
-            setSelectedStepId(stepId);
-            if (activeTabRef.current === "events") {
-              setEventStepFilter(stepId);
-            }
-          },
-        },
-      })) || []
-    ),
-    [graphLayout?.nodes, selectedStepId],
-  );
-  const flowEdges = useMemo<WorkflowFlowEdgeType[]>(
-    () => (
-      (graphLayout?.edges || [])
-        .filter((edge) => edge.kind === "artifact" || (renderSequenceEdges && edge.kind === "sequence"))
-        .map((edge) => {
-        const isArtifact = edge.kind === "artifact";
-        const prominentSequence = renderSequenceEdges && edge.kind === "sequence";
-        const stroke = isArtifact ? "#0f766e" : prominentSequence ? "#6f6558" : "#9a8d7a";
-        const strokeWidth = isArtifact ? 2.5 : prominentSequence ? 2.25 : 1.75;
-        const strokeDasharray = isArtifact ? undefined : prominentSequence ? "10 6" : "7 6";
-        const opacity = edge.inferred
-          ? (prominentSequence ? 0.9 : 0.5)
-          : isArtifact
-            ? 0.92
-            : prominentSequence
-              ? 0.9
-              : 0.75;
-        return {
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          sourceHandle: edge.sourceHandle || undefined,
-          targetHandle: edge.targetHandle || undefined,
-          type: "workflowEdge",
-          zIndex: 0,
-          data: {
-            edge,
-            stroke,
-            strokeWidth,
-            strokeDasharray,
-            opacity,
-          },
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            color: stroke,
-          },
-        };
-      })
-    ),
-    [graphLayout?.edges, renderSequenceEdges],
-  );
-
   useEffect(() => {
     const events = new EventSource(withConfigQuery("/api/events", configPath));
     events.addEventListener("runs-changed", () => {
@@ -2794,36 +2645,30 @@ export function WorkflowViewer({
                 ) : !graphLayout ? (
                   <div className="workflow-empty-state">No graph nodes available.</div>
                 ) : (
-                    <ReactFlow<WorkflowFlowNodeType, WorkflowFlowEdgeType>
-                    key={`${selectedRunId || "workflow-graph"}:${graphLayoutPreset}`}
-                    className="workflow-graph-flow"
-                    colorMode="light"
-                    defaultEdgeOptions={{ type: "workflowEdge" }}
-                    edgeTypes={workflowFlowEdgeTypes}
-                    edges={flowEdges}
-                    fitView
-                    fitViewOptions={{ padding: 0.12, includeHiddenNodes: false, minZoom: 0.45 }}
-                    maxZoom={1.5}
-                    minZoom={0.45}
-                    nodeTypes={workflowFlowNodeTypes}
-                    nodes={flowNodes}
-                    nodesConnectable={false}
-                    nodesDraggable={false}
-                    nodesFocusable={false}
-                    onPaneClick={() => {
-                      setSelectedStepId(null);
-                      setEventFilter("all");
-                      setEventStepFilter("all");
-                      setEventQuery("");
-                    }}
-                    panOnScroll
-                    panOnDrag
-                    selectionOnDrag={false}
-                    zoomOnDoubleClick={false}
-                  >
-                    <Background gap={26} size={1} />
-                    <Controls position="bottom-right" showInteractive={false} />
-                  </ReactFlow>
+                  <>
+                    {!graphInteractiveReady ? <WorkflowStaticPreview layout={graphLayout} /> : null}
+                    {mountInteractiveGraph ? (
+                      <WorkflowInteractiveGraph
+                        graphLayout={graphLayout}
+                        key={`${selectedRunId || "workflow-graph"}:${graphLayoutPreset}`}
+                        onPaneReset={() => {
+                          setSelectedStepId(null);
+                          setEventFilter("all");
+                          setEventStepFilter("all");
+                          setEventQuery("");
+                        }}
+                        onReady={() => setGraphInteractiveReady(true)}
+                        onSelectStep={(stepId) => {
+                          setSelectedStepId(stepId);
+                          if (activeTabRef.current === "events") {
+                            setEventStepFilter(stepId);
+                          }
+                        }}
+                        renderSequenceEdges={renderSequenceEdges}
+                        selectedStepId={selectedStepId}
+                      />
+                    ) : null}
+                  </>
                 )}
               </div>
             </section>

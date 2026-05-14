@@ -1,4 +1,5 @@
 import { WorkflowViewer } from "@/components/workflow-viewer";
+import { buildInitialGraphLayout } from "@/src/lib/graph-layout";
 import { resolveViewerContext } from "@/src/server/context";
 import { listRunSummariesWithTotal, loadRunDetail } from "@/src/server/morpheus-client";
 import { type RunSummary } from "@/src/types";
@@ -28,6 +29,9 @@ export default async function Page({
   const initialRunDetail = initialSelectedRunId
     ? loadRunDetail(context, initialSelectedRunId)
     : null;
+  const initialGraphLayout = initialRunDetail
+    ? buildInitialGraphLayout(initialRunDetail.graph.nodes, initialRunDetail.graph.edges)
+    : null;
 
   return (
     <WorkflowViewer
@@ -41,6 +45,7 @@ export default async function Page({
       initialAvailableWorkflows={context.availableWorkflows}
       initialSelectedRunId={initialSelectedRunId}
       initialRunDetail={initialRunDetail}
+      initialGraphLayout={initialGraphLayout}
     />
   );
 }

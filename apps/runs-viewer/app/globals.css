@@ -196,6 +196,37 @@ code {
   flex-wrap: wrap;
 }
 
+.workflow-layout-presets {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid rgb(var(--border) / 0.85);
+  border-radius: 999px;
+  background: rgb(var(--muted) / 0.6);
+}
+
+.workflow-layout-preset {
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: rgb(var(--muted-foreground));
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.workflow-layout-preset:hover {
+  color: rgb(var(--foreground));
+}
+
+.workflow-layout-preset.is-active {
+  background: rgb(var(--primary) / 0.14);
+  color: rgb(var(--foreground));
+}
+
 .workflow-pane-tabs {
   gap: 0;
   border-bottom: 1px solid rgb(var(--border) / 0.8);

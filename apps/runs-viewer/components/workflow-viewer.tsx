@@ -1,9 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import dynamic from "next/dynamic";
 import { Check, Copy } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import type {
+  GraphLayout,
+  GraphLayoutPresetId,
+  GraphPortSide,
+  GraphPortSpec,
+  PositionedGraphNode,
+  RoutedGraphEdge,
+} from "@/src/lib/graph-layout";
 import type {
   RunDetail,
   RunEventRecord,
@@ -24,25 +33,172 @@ interface AnsiState {
   fg: string | null;
 }
 
-interface PositionedGraphNode extends RunGraphNode {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  centerX: number;
-  centerY: number;
+interface GraphLayoutPreset {
+  id: GraphLayoutPresetId;
+  label: string;
+  options: Record<string, string>;
 }
 
-interface GraphLayout {
-  width: number;
-  height: number;
-  nodes: PositionedGraphNode[];
-  nodeMap: Map<string, PositionedGraphNode>;
+interface WorkflowFlowNodeData extends Record<string, unknown> {
+  node: PositionedGraphNode;
+  onSelect: (stepId: string) => void;
 }
 
-interface GraphRow {
-  items: RunGraphNode[];
-  width: number;
+const GRAPH_LAYOUT_PRESETS: GraphLayoutPreset[] = [
+  {
+    id: "compact",
+    label: "Compact",
+    options: {
+      "elk.algorithm": "layered",
+      "elk.direction": "RIGHT",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "84",
+      "elk.spacing.nodeNode": "48",
+      "elk.spacing.edgeNode": "28",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "18",
+      "elk.separateConnectedComponents": "true",
+      "elk.spacing.componentComponent": "120",
+      "elk.layered.considerModelOrder": "NODES_AND_EDGES",
+      "elk.layered.mergeEdges": "false",
+      "elk.portAlignment.default": "CENTER",
+    },
+  },
+  {
+    id: "balanced",
+    label: "Balanced",
+    options: {
+      "elk.algorithm": "layered",
+      "elk.direction": "RIGHT",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "112",
+      "elk.spacing.nodeNode": "72",
+      "elk.spacing.edgeNode": "36",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "24",
+      "elk.separateConnectedComponents": "true",
+      "elk.spacing.componentComponent": "144",
+      "elk.layered.considerModelOrder": "NODES_AND_EDGES",
+      "elk.layered.mergeEdges": "false",
+      "elk.portAlignment.default": "CENTER",
+    },
+  },
+  {
+    id: "spacious",
+    label: "Spacious",
+    options: {
+      "elk.algorithm": "layered",
+      "elk.direction": "RIGHT",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "148",
+      "elk.spacing.nodeNode": "96",
+      "elk.spacing.edgeNode": "52",
+      "elk.layered.spacing.edgeEdgeBetweenLayers": "32",
+      "elk.separateConnectedComponents": "true",
+      "elk.spacing.componentComponent": "180",
+      "elk.layered.considerModelOrder": "NODES_AND_EDGES",
+      "elk.layered.mergeEdges": "false",
+      "elk.portAlignment.default": "CENTER",
+    },
+  },
+];
+
+function polylinePath(points: Array<{ x: number; y: number }>): string {
+  if (points.length === 0) {
+    return "";
+  }
+  const [first, ...rest] = points;
+  if (!first) {
+    return "";
+  }
+  return `M ${first.x} ${first.y} ${rest.map((point) => `L ${point.x} ${point.y}`).join(" ")}`;
+}
+
+const WorkflowInteractiveGraph = dynamic(
+  () => import("@/components/workflow-interactive-graph").then((mod) => mod.WorkflowInteractiveGraph),
+  { ssr: false },
+);
+
+function WorkflowStaticPreview({ layout }: { layout: GraphLayout }) {
+  return (
+    <div className="workflow-static-graph">
+      <div
+        className="workflow-static-graph-canvas"
+        style={{ width: `${layout.width}px`, height: `${layout.height}px` }}
+      >
+        <svg
+          aria-hidden="true"
+          className="workflow-static-edge-layer"
+          height={layout.height}
+          viewBox={`0 0 ${layout.width} ${layout.height}`}
+          width={layout.width}
+        >
+          {layout.edges.map((edge) => (
+            <path
+              d={polylinePath(edge.points)}
+              fill="none"
+              key={edge.id}
+              stroke={edge.kind === "artifact" ? "#0f766e" : "#6f6558"}
+              strokeDasharray={edge.kind === "artifact" ? undefined : "10 6"}
+              strokeWidth={edge.kind === "artifact" ? 2.5 : 2.25}
+            />
+          ))}
+        </svg>
+        {layout.nodes.map((node) => (
+          <div
+            className="workflow-flow-node workflow-static-node"
+            key={node.id}
+            style={{
+              left: `${node.x}px`,
+              top: `${node.y}px`,
+              width: `${node.width}px`,
+              height: `${node.height}px`,
+              ["--rail-width" as any]: `${node.railWidth}px`,
+            } as CSSProperties}
+          >
+            <div className="workflow-flow-node-ports is-left">
+              {node.ports.inputs.map((port) => (
+                <div
+                  className="workflow-flow-node-port is-input"
+                  key={port.id}
+                  style={{ top: `${port.y}px` }}
+                  title={port.title || undefined}
+                >
+                  <span className="workflow-flow-node-port-label">{port.label || "input"}</span>
+                </div>
+              ))}
+            </div>
+            <div className="workflow-flow-node-main">
+              <div className="workflow-flow-node-header">
+                <div className="workflow-flow-node-header-title">
+                  {node.stepOrder != null ? (
+                    <span className="workflow-flow-node-order">{node.stepOrder}</span>
+                  ) : null}
+                  <strong>{stepDisplayName(node)}</strong>
+                </div>
+              </div>
+              <div className="workflow-flow-node-body">
+                {Array.isArray(node.parameters) && node.parameters.length > 0 ? (
+                  <span className="workflow-graph-node-param">{node.parameters.join(" · ")}</span>
+                ) : null}
+                <span className={`workflow-status-text is-${node.status}`}>{node.status}</span>
+              </div>
+            </div>
+            <div className="workflow-flow-node-ports is-right">
+              {node.ports.outputs.map((port) => (
+                <div
+                  className="workflow-flow-node-port is-output"
+                  key={port.id}
+                  style={{ top: `${port.y}px` }}
+                  title={port.title || undefined}
+                >
+                  <span className="workflow-flow-node-port-label">{port.label || "output"}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function ansiStateClassNames(state: AnsiState): string {
@@ -278,19 +434,6 @@ function formatGraphEdge(edge: RunGraphEdge): string | null {
   return "artifact";
 }
 
-function toolFamily(step: RunStepSummary | RunGraphNode): string {
-  const rawName = String(step.name || "").trim().toLowerCase();
-  if (rawName.includes(".")) {
-    return rawName.split(".")[0] || rawName;
-  }
-  const rawId = String(step.id || "").trim().toLowerCase();
-  const match = rawId.match(/^([a-z0-9]+(?:[-_][a-z0-9]+)*)[-_.]/);
-  if (match && match[1]) {
-    return match[1];
-  }
-  return rawId;
-}
-
 function formatPathLabel(value: string | null | undefined): string {
   if (!value) {
     return "-";
@@ -379,246 +522,940 @@ function applyOptimisticWorkflowRunState(
   };
 }
 
-function buildGraphLayout(
+async function layoutGraph(
   nodes: RunGraphNode[],
   edges: RunGraphEdge[],
-  viewportWidth: number,
-): GraphLayout | null {
+  presetId: GraphLayoutPresetId,
+): Promise<GraphLayout | null> {
   if (nodes.length === 0) {
     return null;
   }
 
-  const nodeWidth = 220;
-  const nodeHeight = 88;
-  const colGap = 40;
-  const rowGap = 92;
-  const paddingX = 32;
-  const paddingY = 24;
+  const minNodeWidth = 340;
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const primaryEdges = edges.filter((edge) => {
-    const source = nodeById.get(edge.source);
-    const target = nodeById.get(edge.target);
-    if (!source || !target) {
-      return false;
-    }
-    const sameTool = toolFamily(source) === toolFamily(target);
-    if (sameTool) {
-      return edge.kind === "sequence";
-    }
-    return edge.kind === "artifact";
-  });
-  const primaryNodeIds = new Set<string>();
-  for (const edge of primaryEdges) {
-    primaryNodeIds.add(edge.source);
-    primaryNodeIds.add(edge.target);
-  }
-  const fallbackSequenceEdges = edges.filter((edge) =>
-    edge.kind === "sequence"
-    && (!primaryNodeIds.has(edge.source) || !primaryNodeIds.has(edge.target)),
-  );
-  const layoutEdges = [...primaryEdges, ...fallbackSequenceEdges];
+  const nodeOrderById = new Map(nodes.map((node, index) => [node.id, index + 1]));
+  const incomingArtifactEdgesByNode = new Map<string, RunGraphEdge[]>();
+  const outgoingArtifactEdgesByNode = new Map<string, RunGraphEdge[]>();
+  const incomingSequenceEdgesByNode = new Map<string, RunGraphEdge[]>();
+  const outgoingSequenceEdgesByNode = new Map<string, RunGraphEdge[]>();
 
-  const layerMap = new Map<string, number>();
   for (const node of nodes) {
-    layerMap.set(node.id, 0);
+    incomingArtifactEdgesByNode.set(node.id, []);
+    outgoingArtifactEdgesByNode.set(node.id, []);
+    incomingSequenceEdgesByNode.set(node.id, []);
+    outgoingSequenceEdgesByNode.set(node.id, []);
   }
 
-  for (let pass = 0; pass < nodes.length; pass += 1) {
-    let changed = false;
-    for (const edge of layoutEdges) {
-      const sourceLayer = layerMap.get(edge.source);
-      const targetLayer = layerMap.get(edge.target);
-      if (sourceLayer == null || targetLayer == null) {
+  for (const edge of edges) {
+    if (edge.kind === "artifact") {
+      outgoingArtifactEdgesByNode.get(edge.source)?.push(edge);
+      incomingArtifactEdgesByNode.get(edge.target)?.push(edge);
+    } else {
+      outgoingSequenceEdgesByNode.get(edge.source)?.push(edge);
+      incomingSequenceEdgesByNode.get(edge.target)?.push(edge);
+    }
+  }
+
+  function artifactPortLabel(edge: RunGraphEdge): string {
+    const label = formatGraphEdge(edge);
+    if (label) {
+      return formatPathLabel(label);
+    }
+    return "artifact";
+  }
+
+  function artifactPortKey(edge: RunGraphEdge, direction: "in" | "out"): string {
+    const value = formatGraphEdge(edge) || edge.label || edge.artifactPath || edge.id;
+    const owner = direction === "out" ? edge.source : `${edge.source}->${edge.target}`;
+    return encodeURIComponent(`${owner}:${value}`);
+  }
+
+  function groupedArtifactPorts(nodeId: string, direction: "in" | "out"): Array<{
+    key: string;
+    label: string;
+    title: string | null;
+    edges: RunGraphEdge[];
+  }> {
+    const sourceEdges = direction === "in"
+      ? (incomingArtifactEdgesByNode.get(nodeId) || [])
+      : (outgoingArtifactEdgesByNode.get(nodeId) || []);
+    const groups = new Map<string, { key: string; label: string; title: string | null; edges: RunGraphEdge[] }>();
+    for (const edge of sourceEdges) {
+      const key = artifactPortKey(edge, direction);
+      const existing = groups.get(key);
+      if (existing) {
+        existing.edges.push(edge);
         continue;
       }
-      const nextLayer = sourceLayer + 1;
-      if (nextLayer > targetLayer) {
-        layerMap.set(edge.target, nextLayer);
-        changed = true;
+      groups.set(key, {
+        key,
+        label: artifactPortLabel(edge),
+        title: formatGraphEdge(edge) || edge.label || edge.artifactPath || null,
+        edges: [edge],
+      });
+    }
+    return [...groups.values()];
+  }
+
+  function buildPort(
+    key: string,
+    label: string | null,
+    title: string | null,
+    kind: GraphPortSpec["kind"],
+    side: GraphPortSide,
+    index: number,
+    total: number,
+  ): GraphPortSpec {
+    const id = `${kind}:${key}`;
+    const y = total <= 1 ? 0 : 28 + index * 24;
+    return {
+      id,
+      kind,
+      label,
+      title,
+      side,
+      x: 0,
+      y,
+    };
+  }
+
+  function nodeHeightFor(node: RunGraphNode, width: number): number {
+    const nodeId = node.id;
+    const inputCount = groupedArtifactPorts(nodeId, "in").length;
+    const outputCount = groupedArtifactPorts(nodeId, "out").length;
+    const sequenceCount = Math.max(
+      (incomingSequenceEdgesByNode.get(nodeId)?.length || 0) > 0 ? 1 : 0,
+      (outgoingSequenceEdgesByNode.get(nodeId)?.length || 0) > 0 ? 1 : 0,
+    );
+    const portRows = Math.max(inputCount, outputCount) + sequenceCount;
+    const centerWidth = Math.max(140, width - 184);
+    const title = stepDisplayName(node);
+    const parameterText = Array.isArray(node.parameters) ? node.parameters.join(" · ") : "";
+    const titleLines = Math.max(1, Math.ceil((title.length * 9) / centerWidth));
+    const parameterLines = parameterText ? Math.max(1, Math.ceil((parameterText.length * 7) / centerWidth)) : 0;
+    const headerHeight = 22 + titleLines * 20;
+    const bodyHeight = parameterLines > 0 ? 20 + parameterLines * 18 : 18;
+    const contentHeight = headerHeight + bodyHeight + 20;
+    const railHeight = 50 + portRows * 24;
+    return Math.max(96, contentHeight, railHeight);
+  }
+
+  function railWidthFor(node: RunGraphNode): number {
+    const incomingLabels = groupedArtifactPorts(node.id, "in").map((entry) => entry.label);
+    const outgoingLabels = groupedArtifactPorts(node.id, "out").map((entry) => entry.label);
+    const longestRailLabel = Math.max(
+      0,
+      ...incomingLabels.map((label) => label.length),
+      ...outgoingLabels.map((label) => label.length),
+    );
+    return Math.max(92, Math.min(180, longestRailLabel * 7 + 34));
+  }
+
+  function nodeWidthFor(node: RunGraphNode): number {
+    const title = stepDisplayName(node);
+    const parameterText = Array.isArray(node.parameters) ? node.parameters.join(" · ") : "";
+    const centerWidth = Math.max(
+      150,
+      title.length * 9 + 56,
+      parameterText.length > 0 ? parameterText.length * 7 + 32 : 0,
+    );
+    const railWidth = railWidthFor(node);
+    return Math.max(minNodeWidth, centerWidth + railWidth * 2);
+  }
+
+  function countNodeOverlaps(items: PositionedGraphNode[]): number {
+    let count = 0;
+    for (let index = 0; index < items.length; index += 1) {
+      const left = items[index];
+      if (!left) {
+        continue;
+      }
+      for (let inner = index + 1; inner < items.length; inner += 1) {
+        const right = items[inner];
+        if (!right) {
+          continue;
+        }
+        const separated =
+          left.x + left.width + 8 <= right.x
+          || right.x + right.width + 8 <= left.x
+          || left.y + left.height + 8 <= right.y
+          || right.y + right.height + 8 <= left.y;
+        if (!separated) {
+          count += 1;
+        }
       }
     }
-    if (!changed) {
-      break;
+    return count;
+  }
+
+  function segmentIntersectsNode(
+    start: { x: number; y: number },
+    end: { x: number; y: number },
+    node: PositionedGraphNode,
+  ): boolean {
+    const padding = 6;
+    const left = node.x - padding;
+    const right = node.x + node.width + padding;
+    const top = node.y - padding;
+    const bottom = node.y + node.height + padding;
+
+    if (start.x === end.x) {
+      const x = start.x;
+      if (x <= left || x >= right) {
+        return false;
+      }
+      const minY = Math.min(start.y, end.y);
+      const maxY = Math.max(start.y, end.y);
+      return maxY > top && minY < bottom;
     }
+
+    if (start.y === end.y) {
+      const y = start.y;
+      if (y <= top || y >= bottom) {
+        return false;
+      }
+      const minX = Math.min(start.x, end.x);
+      const maxX = Math.max(start.x, end.x);
+      return maxX > left && minX < right;
+    }
+
+    return false;
   }
 
-  const grouped = new Map<number, RunGraphNode[]>();
-  for (const node of nodes) {
-    const layer = layerMap.get(node.id) || 0;
-    const items = grouped.get(layer) || [];
-    items.push(node);
-    grouped.set(layer, items);
+  function countEdgeNodeOverlaps(
+    layoutNodes: PositionedGraphNode[],
+    layoutEdges: RoutedGraphEdge[],
+  ): number {
+    const nodesById = new Map(layoutNodes.map((node) => [node.id, node]));
+    let count = 0;
+    for (const edge of layoutEdges) {
+      for (let index = 1; index < edge.points.length; index += 1) {
+        const start = edge.points[index - 1];
+        const end = edge.points[index];
+        if (!start || !end) {
+          continue;
+        }
+        for (const node of layoutNodes) {
+          if (node.id === edge.source || node.id === edge.target) {
+            continue;
+          }
+          if (!nodesById.has(node.id)) {
+            continue;
+          }
+          if (segmentIntersectsNode(start, end, node)) {
+            count += 1;
+          }
+        }
+      }
+    }
+    return count;
   }
 
-  const incoming = new Map<string, string[]>();
-  const outgoing = new Map<string, string[]>();
-  for (const node of nodes) {
-    incoming.set(node.id, []);
-    outgoing.set(node.id, []);
-  }
-  for (const edge of edges) {
-    incoming.get(edge.target)?.push(edge.source);
-    outgoing.get(edge.source)?.push(edge.target);
+  function countSegmentOverlapsForPoints(
+    layoutNodes: PositionedGraphNode[],
+    edge: RunGraphEdge,
+    points: Array<{ x: number; y: number }>,
+  ): number {
+    let count = 0;
+    for (let index = 1; index < points.length; index += 1) {
+      const start = points[index - 1];
+      const end = points[index];
+      if (!start || !end) {
+        continue;
+      }
+      for (const node of layoutNodes) {
+        if (node.id === edge.source || node.id === edge.target) {
+          continue;
+        }
+        if (segmentIntersectsNode(start, end, node)) {
+          count += 1;
+        }
+      }
+    }
+    return count;
   }
 
-  const layerEntries = [...grouped.entries()]
-    .sort((left, right) => left[0] - right[0])
-    .map(([layer, items]) => [layer, [...items]] as [number, RunGraphNode[]]);
+  function edgeSourceHandleId(edge: RunGraphEdge): string {
+    return edge.kind === "artifact"
+      ? `artifact-out:${artifactPortKey(edge, "out")}`
+      : `${edge.id}:sequence-out`;
+  }
 
-  function nodeCenterForLayerRefs(ids: string[], layerIndexMap: Map<string, number>): number | null {
-    const positions = ids
-      .map((id) => layerIndexMap.get(id))
-      .filter((value): value is number => value != null);
-    if (positions.length === 0) {
+  function edgeTargetHandleId(edge: RunGraphEdge): string {
+    return edge.kind === "artifact"
+      ? `artifact-in:${artifactPortKey(edge, "in")}`
+      : `${edge.id}:sequence-in`;
+  }
+
+  function resolveEdgeEndpoints(
+    layoutNodes: PositionedGraphNode[],
+    edge: RunGraphEdge,
+  ): {
+    sourceHandle: string;
+    targetHandle: string;
+    sourcePoint: { x: number; y: number };
+    targetPoint: { x: number; y: number };
+  } | null {
+    const nodesById = new Map(layoutNodes.map((node) => [node.id, node]));
+    const sourceNode = nodesById.get(edge.source);
+    const targetNode = nodesById.get(edge.target);
+    if (!sourceNode || !targetNode) {
       return null;
     }
-    return positions.reduce((sum, value) => sum + value, 0) / positions.length;
+    const sourceHandle = edgeSourceHandleId(edge);
+    const targetHandle = edgeTargetHandleId(edge);
+    const sourcePort = edge.kind === "artifact"
+      ? sourceNode.ports.outputs.find((port) => port.id === sourceHandle) || null
+      : sourceNode.ports.sequenceOut;
+    const targetPort = edge.kind === "artifact"
+      ? targetNode.ports.inputs.find((port) => port.id === targetHandle) || null
+      : targetNode.ports.sequenceIn;
+    const sourcePoint = sourcePort
+      ? { x: sourceNode.x + sourcePort.x, y: sourceNode.y + sourcePort.y }
+      : { x: sourceNode.x + sourceNode.width, y: sourceNode.y + sourceNode.height / 2 };
+    const targetPoint = targetPort
+      ? { x: targetNode.x + targetPort.x, y: targetNode.y + targetPort.y }
+      : { x: targetNode.x, y: targetNode.y + targetNode.height / 2 };
+    return { sourceHandle, targetHandle, sourcePoint, targetPoint };
   }
 
-  function optimizeLayerOrdering(): void {
-    for (let pass = 0; pass < 4; pass += 1) {
-      for (let index = 1; index < layerEntries.length; index += 1) {
-        const prevLayer = layerEntries[index - 1]?.[1] || [];
-        const currentLayer = layerEntries[index]?.[1] || [];
-        const prevIndexMap = new Map(prevLayer.map((node, nodeIndex) => [node.id, nodeIndex]));
-        currentLayer.sort((left, right) => {
-          const leftScore = nodeCenterForLayerRefs(incoming.get(left.id) || [], prevIndexMap);
-          const rightScore = nodeCenterForLayerRefs(incoming.get(right.id) || [], prevIndexMap);
-          if (leftScore == null && rightScore == null) {
-            return left.id.localeCompare(right.id);
-          }
-          if (leftScore == null) {
-            return 1;
-          }
-          if (rightScore == null) {
-            return -1;
-          }
-          return leftScore - rightScore;
-        });
+  function compressPolyline(points: Array<{ x: number; y: number }>): Array<{ x: number; y: number }> {
+    const compact: Array<{ x: number; y: number }> = [];
+    for (const point of points) {
+      const last = compact.at(-1);
+      if (last && last.x === point.x && last.y === point.y) {
+        continue;
       }
-      for (let index = layerEntries.length - 2; index >= 0; index -= 1) {
-        const nextLayer = layerEntries[index + 1]?.[1] || [];
-        const currentLayer = layerEntries[index]?.[1] || [];
-        const nextIndexMap = new Map(nextLayer.map((node, nodeIndex) => [node.id, nodeIndex]));
-        currentLayer.sort((left, right) => {
-          const leftScore = nodeCenterForLayerRefs(outgoing.get(left.id) || [], nextIndexMap);
-          const rightScore = nodeCenterForLayerRefs(outgoing.get(right.id) || [], nextIndexMap);
-          if (leftScore == null && rightScore == null) {
-            return left.id.localeCompare(right.id);
-          }
-          if (leftScore == null) {
-            return 1;
-          }
-          if (rightScore == null) {
-            return -1;
-          }
-          return leftScore - rightScore;
-        });
+      compact.push(point);
+      if (compact.length < 3) {
+        continue;
+      }
+      const c = compact.at(-1);
+      const b = compact.at(-2);
+      const a = compact.at(-3);
+      if (!a || !b || !c) {
+        continue;
+      }
+      const sameVertical = a.x === b.x && b.x === c.x;
+      const sameHorizontal = a.y === b.y && b.y === c.y;
+      if (sameVertical || sameHorizontal) {
+        compact.splice(compact.length - 2, 1);
       }
     }
+    return compact;
   }
 
-  optimizeLayerOrdering();
-
-  const maxLayerIndex = Math.max(...layerEntries.map(([layer]) => layer), 0);
-  const layerGapExtras = new Array<number>(Math.max(maxLayerIndex, 0)).fill(0);
-  const layerOffsets = new Map<number, number>();
-  const labelGapFloor = 64;
-  const labelGapCeiling = 220;
-
-  for (const edge of edges) {
-    const sourceLayer = layerMap.get(edge.source);
-    const targetLayer = layerMap.get(edge.target);
-    const label = formatGraphEdge(edge);
-    if (sourceLayer == null || targetLayer == null || !label) {
-      continue;
+  function applyHandleClearance(
+    points: Array<{ x: number; y: number }>,
+    edgeKind: RunGraphEdge["kind"],
+  ): Array<{ x: number; y: number }> {
+    if (points.length < 2) {
+      return points;
     }
-    if (targetLayer <= sourceLayer) {
-      continue;
+    const clearance = 18;
+    const first = points[0];
+    const last = points[points.length - 1];
+    if (!first || !last) {
+      return points;
     }
-    const extraGap = Math.max(
-      0,
-      Math.min(labelGapCeiling, Math.max(labelGapFloor, label.length * 6)) - colGap,
-    );
-    for (let layer = sourceLayer; layer < targetLayer; layer += 1) {
-      layerGapExtras[layer] = Math.max(layerGapExtras[layer] || 0, extraGap);
+    const middle = points.slice(1, -1);
+    if (edgeKind === "artifact") {
+      return compressPolyline([
+        first,
+        { x: first.x + clearance, y: first.y },
+        ...middle,
+        { x: last.x - clearance, y: last.y },
+        last,
+      ]);
     }
+    return compressPolyline([
+      first,
+      { x: first.x, y: first.y + clearance },
+      ...middle,
+      { x: last.x, y: last.y - clearance },
+      last,
+    ]);
   }
 
-  let accumulatedExtraGap = 0;
-  for (let layer = 0; layer <= maxLayerIndex; layer += 1) {
-    layerOffsets.set(layer, accumulatedExtraGap);
-    accumulatedExtraGap += layerGapExtras[layer] || 0;
-  }
-
-  const positioned: PositionedGraphNode[] = [];
-
-  const layerCount = Math.max(layerEntries.length, 1);
-  const maxRows = Math.max(...layerEntries.map(([, items]) => items.length), 1);
-  const contentHeight = maxRows * nodeHeight + Math.max(maxRows - 1, 0) * rowGap;
-
-  for (const [layer, items] of layerEntries) {
-    const x = paddingX + layer * (nodeWidth + colGap) + (layerOffsets.get(layer) || 0);
-    const layerHeight = items.length * nodeHeight + Math.max(items.length - 1, 0) * rowGap;
-    const startY = paddingY + (contentHeight - layerHeight) / 2;
-    items.forEach((node, index) => {
-      const y = startY + index * (nodeHeight + rowGap);
-      positioned.push({
-        ...node,
-        x,
-        y,
-        width: nodeWidth,
-        height: nodeHeight,
-        centerX: x + nodeWidth / 2,
-        centerY: y + nodeHeight / 2,
+  function rerouteEdgeAroundBlockers(
+    layoutNodes: PositionedGraphNode[],
+    edge: RunGraphEdge,
+    points: Array<{ x: number; y: number }>,
+  ): Array<{ x: number; y: number }> {
+    const compactPoints = compressPolyline(points);
+    if (countSegmentOverlapsForPoints(layoutNodes, edge, compactPoints) === 0) {
+      return compactPoints;
+    }
+    const endpoints = resolveEdgeEndpoints(layoutNodes, edge);
+    if (!endpoints) {
+      return compactPoints;
+    }
+    const { sourcePoint, targetPoint } = endpoints;
+    const blockers = layoutNodes.filter((node) => {
+      if (node.id === edge.source || node.id === edge.target) {
+        return false;
+      }
+      return compactPoints.some((point, index) => {
+        if (index === 0) {
+          return false;
+        }
+        const previous = compactPoints[index - 1];
+        return previous ? segmentIntersectsNode(previous, point, node) : false;
       });
     });
+    if (blockers.length === 0) {
+      return compactPoints;
+    }
+
+    const margin = 32;
+    const aboveY = Math.min(...blockers.map((node) => node.y)) - margin;
+    const belowY = Math.max(...blockers.map((node) => node.y + node.height)) + margin;
+    const blockerLeft = Math.min(...blockers.map((node) => node.x)) - margin;
+    const blockerRight = Math.max(...blockers.map((node) => node.x + node.width)) + margin;
+    const sourceLeadX = sourcePoint.x <= targetPoint.x ? sourcePoint.x + 18 : sourcePoint.x - 18;
+    const targetLeadX = sourcePoint.x <= targetPoint.x ? targetPoint.x - 18 : targetPoint.x + 18;
+    const sourceLeadY = sourcePoint.y <= targetPoint.y ? sourcePoint.y + 18 : sourcePoint.y - 18;
+    const targetLeadY = sourcePoint.y <= targetPoint.y ? targetPoint.y - 18 : targetPoint.y + 18;
+
+    const candidates = edge.kind === "artifact"
+      ? [
+          [
+            sourcePoint,
+            { x: sourceLeadX, y: sourcePoint.y },
+            { x: blockerLeft, y: sourcePoint.y },
+            { x: blockerLeft, y: aboveY },
+            { x: blockerRight, y: aboveY },
+            { x: blockerRight, y: targetPoint.y },
+            { x: targetLeadX, y: targetPoint.y },
+            targetPoint,
+          ],
+          [
+            sourcePoint,
+            { x: sourceLeadX, y: sourcePoint.y },
+            { x: blockerLeft, y: sourcePoint.y },
+            { x: blockerLeft, y: belowY },
+            { x: blockerRight, y: belowY },
+            { x: blockerRight, y: targetPoint.y },
+            { x: targetLeadX, y: targetPoint.y },
+            targetPoint,
+          ],
+        ]
+      : [
+          [
+            sourcePoint,
+            { x: sourcePoint.x, y: sourceLeadY },
+            { x: sourcePoint.x - 32, y: sourceLeadY },
+            { x: sourcePoint.x - 32, y: targetLeadY },
+            { x: targetPoint.x, y: targetLeadY },
+            targetPoint,
+          ],
+          [
+            sourcePoint,
+            { x: sourcePoint.x, y: sourceLeadY },
+            { x: sourcePoint.x + 32, y: sourceLeadY },
+            { x: sourcePoint.x + 32, y: targetLeadY },
+            { x: targetPoint.x, y: targetLeadY },
+            targetPoint,
+          ],
+        ];
+
+    function polylineLength(candidate: Array<{ x: number; y: number }>): number {
+      let length = 0;
+      for (let index = 1; index < candidate.length; index += 1) {
+        const prev = candidate[index - 1];
+        const next = candidate[index];
+        if (!prev || !next) {
+          continue;
+        }
+        length += Math.abs(next.x - prev.x) + Math.abs(next.y - prev.y);
+      }
+      return length;
+    }
+
+    let best = compactPoints;
+    let bestScore =
+      countSegmentOverlapsForPoints(layoutNodes, edge, compactPoints) * 100000
+      + polylineLength(compactPoints)
+      + compactPoints.length * 8;
+    for (const candidate of candidates) {
+      const routed = compressPolyline(candidate);
+      const overlapCount = countSegmentOverlapsForPoints(layoutNodes, edge, routed);
+      const score = overlapCount * 100000 + polylineLength(routed) + routed.length * 8;
+      if (score < bestScore) {
+        best = routed;
+        bestScore = score;
+      }
+    }
+    return best;
   }
 
-  const nodeMap = new Map(positioned.map((node) => [node.id, node]));
-  const width =
-    paddingX * 2
-    + layerCount * nodeWidth
-    + Math.max(layerCount - 1, 0) * colGap
-    + accumulatedExtraGap;
-  const height = paddingY * 2 + contentHeight;
-
-  return { width, height, nodes: positioned, nodeMap };
-}
-
-function edgePath(source: PositionedGraphNode, target: PositionedGraphNode): string {
-  const edgeInset = 12;
-  const horizontalGap = Math.abs(target.centerX - source.centerX);
-  const verticalGap = Math.abs(target.centerY - source.centerY);
-
-  if (verticalGap < 12) {
-    const leftToRight = target.centerX >= source.centerX;
-    const startX = leftToRight ? source.x + source.width + edgeInset : source.x - edgeInset;
-    const endX = leftToRight ? target.x : target.x + target.width;
-    const adjustedEndX = leftToRight ? endX - edgeInset : endX + edgeInset;
-    const startY = source.centerY;
-    const endY = target.centerY;
-    const direction = leftToRight ? 1 : -1;
-    const delta = Math.max(horizontalGap / 2, 40);
-    return `M ${startX} ${startY} C ${startX + delta * direction} ${startY}, ${adjustedEndX - delta * direction} ${endY}, ${adjustedEndX} ${endY}`;
+  function synthesizeEdgeRoute(
+    layoutNodes: PositionedGraphNode[],
+    edge: RunGraphEdge,
+    laneIndex: number,
+  ): RoutedGraphEdge | null {
+    const endpoints = resolveEdgeEndpoints(layoutNodes, edge);
+    if (!endpoints) {
+      return null;
+    }
+    const { sourceHandle, targetHandle, sourcePoint, targetPoint } = endpoints;
+    const laneOffset = 36 + laneIndex * 14;
+    const leftToRight = sourcePoint.x <= targetPoint.x;
+    const midX = leftToRight
+      ? Math.max(sourcePoint.x + laneOffset, Math.round((sourcePoint.x + targetPoint.x) / 2))
+      : Math.max(sourcePoint.x, targetPoint.x) + laneOffset;
+    const points = compressPolyline([
+      sourcePoint,
+      { x: sourcePoint.x + 20, y: sourcePoint.y },
+      { x: midX, y: sourcePoint.y },
+      { x: midX, y: targetPoint.y },
+      { x: targetPoint.x - 20, y: targetPoint.y },
+      targetPoint,
+    ]);
+    return {
+      ...edge,
+      sourceHandle,
+      targetHandle,
+      points: rerouteEdgeAroundBlockers(
+        layoutNodes,
+        edge,
+        applyHandleClearance(points, edge.kind),
+      ),
+    };
   }
 
-  const topToBottom = target.centerY >= source.centerY;
-  const startX = source.centerX;
-  const startY = topToBottom ? source.y + source.height + edgeInset : source.y - edgeInset;
-  const endX = target.centerX;
-  const endY = topToBottom ? target.y : target.y + target.height;
-  const adjustedEndY = topToBottom ? endY - edgeInset : endY + edgeInset;
-  const direction = topToBottom ? 1 : -1;
-  const delta = Math.max(verticalGap / 2, 40);
-  return `M ${startX} ${startY} C ${startX} ${startY + delta * direction}, ${endX} ${adjustedEndY - delta * direction}, ${endX} ${adjustedEndY}`;
-}
+  function buildStaticLayoutGraph(): GraphLayout | null {
+    if (nodes.length === 0) {
+      return null;
+    }
 
-function edgeLabelPosition(source: PositionedGraphNode, target: PositionedGraphNode): { x: number; y: number } {
-  return {
-    x: (source.centerX + target.centerX) / 2,
-    y: (source.centerY + target.centerY) / 2 - 8,
+    const dependencyEdges = edges.length > 0 ? edges : [];
+    const indegree = new Map<string, number>();
+    const outgoing = new Map<string, RunGraphEdge[]>();
+    for (const node of nodes) {
+      indegree.set(node.id, 0);
+      outgoing.set(node.id, []);
+    }
+    for (const edge of dependencyEdges) {
+      indegree.set(edge.target, (indegree.get(edge.target) || 0) + 1);
+      outgoing.get(edge.source)?.push(edge);
+    }
+
+    const queue = nodes
+      .filter((node) => (indegree.get(node.id) || 0) === 0)
+      .map((node) => node.id);
+    const levelById = new Map<string, number>();
+    for (const node of nodes) {
+      levelById.set(node.id, 0);
+    }
+
+    while (queue.length > 0) {
+      const nodeId = queue.shift();
+      if (!nodeId) {
+        continue;
+      }
+      const level = levelById.get(nodeId) || 0;
+      for (const edge of outgoing.get(nodeId) || []) {
+        levelById.set(edge.target, Math.max(levelById.get(edge.target) || 0, level + 1));
+        indegree.set(edge.target, (indegree.get(edge.target) || 1) - 1);
+        if ((indegree.get(edge.target) || 0) === 0) {
+          queue.push(edge.target);
+        }
+      }
+    }
+
+    const nodesByLevel = new Map<number, RunGraphNode[]>();
+    for (const node of nodes) {
+      const level = levelById.get(node.id) || 0;
+      const bucket = nodesByLevel.get(level) || [];
+      bucket.push(node);
+      nodesByLevel.set(level, bucket);
+    }
+
+    const sortedLevels = [...nodesByLevel.keys()].sort((left, right) => left - right);
+    const columnWidths = new Map<number, number>();
+    for (const level of sortedLevels) {
+      const width = Math.max(...(nodesByLevel.get(level) || []).map((node) => nodeWidthFor(node)));
+      columnWidths.set(level, width);
+    }
+
+    const columnX = new Map<number, number>();
+    let currentX = 0;
+    for (const level of sortedLevels) {
+      columnX.set(level, currentX);
+      currentX += (columnWidths.get(level) || minNodeWidth) + 140;
+    }
+
+    const positioned: PositionedGraphNode[] = [];
+    for (const level of sortedLevels) {
+      const columnNodes = (nodesByLevel.get(level) || [])
+        .slice()
+        .sort((left, right) => (nodeOrderById.get(left.id) || 0) - (nodeOrderById.get(right.id) || 0));
+      let currentY = 0;
+      for (const node of columnNodes) {
+        const width = nodeWidthFor(node);
+        const height = nodeHeightFor(node, width);
+        const railWidth = railWidthFor(node);
+        const inputGroups = groupedArtifactPorts(node.id, "in");
+        const outputGroups = groupedArtifactPorts(node.id, "out");
+        const sequenceInEdge = incomingSequenceEdgesByNode.get(node.id)?.[0] || null;
+        const sequenceOutEdge = outgoingSequenceEdgesByNode.get(node.id)?.[0] || null;
+        const x = columnX.get(level) || 0;
+        const y = currentY;
+        positioned.push({
+          id: node.id,
+          name: node.name ?? null,
+          kind: node.kind ?? null,
+          status: node.status ?? "unknown",
+          artifactCount: node.artifactCount ?? 0,
+          parameters: node.parameters,
+          stepOrder: nodeOrderById.get(node.id) ?? null,
+          x,
+          y,
+          width,
+          height,
+          railWidth,
+          centerX: x + width / 2,
+          centerY: y + height / 2,
+          ports: {
+            inputs: inputGroups.map((entry, index) => ({
+              id: `artifact-in:${entry.key}`,
+              kind: "artifact-in" as const,
+              label: entry.label,
+              title: entry.title,
+              side: "left" as const,
+              x: 0,
+              y: inputGroups.length <= 1 ? 56 : 40 + index * 24,
+            })),
+            outputs: outputGroups.map((entry, index) => ({
+              id: `artifact-out:${entry.key}`,
+              kind: "artifact-out" as const,
+              label: entry.label,
+              title: entry.title,
+              side: "right" as const,
+              x: width,
+              y: outputGroups.length <= 1 ? 56 : 40 + index * 24,
+            })),
+            sequenceIn: sequenceInEdge
+              ? {
+                  id: `${sequenceInEdge.id}:sequence-in`,
+                  kind: "sequence-in" as const,
+                  label: null,
+                  title: formatGraphEdge(sequenceInEdge) || null,
+                  side: "top" as const,
+                  x: width / 2,
+                  y: 0,
+                }
+              : null,
+            sequenceOut: sequenceOutEdge
+              ? {
+                  id: `${sequenceOutEdge.id}:sequence-out`,
+                  kind: "sequence-out" as const,
+                  label: null,
+                  title: formatGraphEdge(sequenceOutEdge) || null,
+                  side: "bottom" as const,
+                  x: width / 2,
+                  y: height,
+                }
+              : null,
+          },
+        });
+        currentY += height + 72;
+      }
+    }
+
+    const routedEdges = edges
+      .map((edge, index) => synthesizeEdgeRoute(positioned, edge, index % 12))
+      .filter((edge): edge is RoutedGraphEdge => edge != null);
+
+    return {
+      width: positioned.length > 0 ? Math.max(...positioned.map((node) => node.x + node.width)) + 80 : 0,
+      height: positioned.length > 0 ? Math.max(...positioned.map((node) => node.y + node.height)) + 80 : 0,
+      nodes: positioned,
+      edges: routedEdges,
+    };
+  }
+
+  type ElkLayoutResult = {
+    width?: number;
+    height?: number;
+    children?: Array<{
+      id: string;
+      x?: number;
+      y?: number;
+      width?: number;
+      height?: number;
+      ports?: Array<{ id: string; x?: number; y?: number }>;
+    }>;
+    edges?: Array<{
+      id: string;
+      sections?: Array<{
+        startPoint: { x: number; y: number };
+        bendPoints?: Array<{ x: number; y: number }>;
+        endPoint: { x: number; y: number };
+      }>;
+    }>;
   };
+
+  async function runElkLayout(layoutOptions: Record<string, string>): Promise<GraphLayout | null> {
+    const { default: ELK } = await import("elkjs/lib/elk.bundled.js");
+    const elk = new ELK();
+    const graph = {
+      id: "workflow",
+      layoutOptions,
+      children: nodes.map((node) => {
+        const nodeWidth = nodeWidthFor(node);
+        const inputGroups = groupedArtifactPorts(node.id, "in");
+        const outputGroups = groupedArtifactPorts(node.id, "out");
+        const sequenceInEdge = incomingSequenceEdgesByNode.get(node.id)?.[0] || null;
+        const sequenceOutEdge = outgoingSequenceEdgesByNode.get(node.id)?.[0] || null;
+        const inputPorts = inputGroups.map((entry, index) =>
+          buildPort(entry.key, entry.label, entry.title, "artifact-in", "left", index, inputGroups.length));
+        const outputPorts = outputGroups.map((entry, index) =>
+          buildPort(entry.key, entry.label, entry.title, "artifact-out", "right", index, outputGroups.length));
+        const sequenceInPort = sequenceInEdge
+          ? buildPort(sequenceInEdge.id, null, null, "sequence-in", "top", 0, 1)
+          : null;
+        const sequenceOutPort = sequenceOutEdge
+          ? buildPort(sequenceOutEdge.id, null, null, "sequence-out", "bottom", 0, 1)
+          : null;
+        return {
+          id: node.id,
+          width: nodeWidth,
+          height: nodeHeightFor(node, nodeWidth),
+          layoutOptions: {
+            "elk.portConstraints": "FIXED_SIDE",
+          },
+          ports: [
+            ...inputPorts.map((port) => ({
+              id: port.id,
+              layoutOptions: {
+                "elk.port.side": "WEST",
+              },
+            })),
+            ...outputPorts.map((port) => ({
+              id: port.id,
+              layoutOptions: {
+                "elk.port.side": "EAST",
+              },
+            })),
+            ...(sequenceInPort
+              ? [{
+                  id: sequenceInPort.id,
+                  layoutOptions: {
+                    "elk.port.side": "NORTH",
+                  },
+                }]
+              : []),
+            ...(sequenceOutPort
+              ? [{
+                  id: sequenceOutPort.id,
+                  layoutOptions: {
+                    "elk.port.side": "SOUTH",
+                  },
+                }]
+              : []),
+          ],
+        };
+      }),
+      edges: edges.map((edge) => {
+        const sourceHandle =
+          edge.kind === "artifact"
+            ? `artifact-out:${artifactPortKey(edge, "out")}`
+            : `${edge.id}:sequence-out`;
+        const targetHandle =
+          edge.kind === "artifact"
+            ? `artifact-in:${artifactPortKey(edge, "in")}`
+            : `${edge.id}:sequence-in`;
+        return {
+          id: edge.id,
+          sources: [sourceHandle],
+          targets: [targetHandle],
+          layoutOptions: {
+            "elk.edgeRouting": "ORTHOGONAL",
+          },
+        };
+      }),
+    };
+
+    const result = await elk.layout(graph) as ElkLayoutResult;
+    const positioned: PositionedGraphNode[] = (result.children || []).map((node) => {
+      const model = nodeById.get(node.id);
+      const resolvedWidth = node.width || (model ? nodeWidthFor(model) : minNodeWidth);
+      const resolvedHeight = node.height || (model ? nodeHeightFor(model, resolvedWidth) : 96);
+      const resolvedRailWidth = model ? railWidthFor(model) : 92;
+      const inputGroups = groupedArtifactPorts(node.id, "in");
+      const outputGroups = groupedArtifactPorts(node.id, "out");
+      const sequenceInEdge = incomingSequenceEdgesByNode.get(node.id)?.[0] || null;
+      const sequenceOutEdge = outgoingSequenceEdgesByNode.get(node.id)?.[0] || null;
+      const resultPorts = new Map(
+        (node.ports || []).map((port, index) => [
+          port.id,
+          {
+            x: typeof port.x === "number" ? port.x : null,
+            y: typeof port.y === "number" ? port.y : null,
+            index,
+          },
+        ]),
+      );
+      const inputPorts = inputGroups.map((entry, index) => {
+        const portId = `artifact-in:${entry.key}`;
+        const position = resultPorts.get(portId);
+        const fallbackY = inputGroups.length <= 1 ? 56 : 40 + index * 24;
+        return {
+          id: portId,
+          kind: "artifact-in" as const,
+          label: entry.label,
+          title: entry.title,
+          side: "left" as const,
+          x: 0,
+          y: position?.y ?? fallbackY,
+        };
+      });
+      const outputPorts = outputGroups.map((entry, index) => {
+        const portId = `artifact-out:${entry.key}`;
+        const position = resultPorts.get(portId);
+        const fallbackY = outputGroups.length <= 1 ? 56 : 40 + index * 24;
+        return {
+          id: portId,
+          kind: "artifact-out" as const,
+          label: entry.label,
+          title: entry.title,
+          side: "right" as const,
+          x: resolvedWidth,
+          y: position?.y ?? fallbackY,
+        };
+      });
+      const sequenceInPort = sequenceInEdge
+        ? {
+            id: `${sequenceInEdge.id}:sequence-in`,
+            kind: "sequence-in" as const,
+            label: null,
+            title: formatGraphEdge(sequenceInEdge) || null,
+            side: "top" as const,
+            x: resolvedWidth / 2,
+            y: resultPorts.get(`${sequenceInEdge.id}:sequence-in`)?.y ?? 0,
+          }
+        : null;
+      const sequenceOutPort = sequenceOutEdge
+        ? {
+            id: `${sequenceOutEdge.id}:sequence-out`,
+            kind: "sequence-out" as const,
+            label: null,
+            title: formatGraphEdge(sequenceOutEdge) || null,
+            side: "bottom" as const,
+            x: resolvedWidth / 2,
+            y: resultPorts.get(`${sequenceOutEdge.id}:sequence-out`)?.y ?? resolvedHeight,
+          }
+        : null;
+      return {
+        id: node.id,
+        name: model?.name ?? null,
+        kind: model?.kind ?? null,
+        status: model?.status ?? "unknown",
+        artifactCount: model?.artifactCount ?? 0,
+        parameters: model?.parameters,
+        stepOrder: nodeOrderById.get(node.id) ?? null,
+        x: node.x || 0,
+        y: node.y || 0,
+        width: resolvedWidth,
+        height: resolvedHeight,
+        railWidth: resolvedRailWidth,
+        centerX: (node.x || 0) + resolvedWidth / 2,
+        centerY: (node.y || 0) + resolvedHeight / 2,
+        ports: {
+          inputs: inputPorts,
+          outputs: outputPorts,
+          sequenceIn: sequenceInPort,
+          sequenceOut: sequenceOutPort,
+        },
+      };
+    });
+    const edgeMap = new Map(edges.map((edge) => [edge.id, edge]));
+    const routedEdges = new Map<string, RoutedGraphEdge>();
+    for (const edge of result.edges || []) {
+      const original = edgeMap.get(edge.id);
+      const sections = edge.sections || [];
+      if (!original || sections.length === 0) {
+        continue;
+      }
+      const points: Array<{ x: number; y: number }> = [];
+      for (const section of sections) {
+        points.push(section.startPoint);
+        if (Array.isArray(section.bendPoints)) {
+          points.push(...section.bendPoints);
+        }
+        points.push(section.endPoint);
+      }
+      routedEdges.set(edge.id, {
+        ...original,
+        sourceHandle: edgeSourceHandleId(original),
+        targetHandle: edgeTargetHandleId(original),
+        points: rerouteEdgeAroundBlockers(
+          positioned,
+          original,
+          applyHandleClearance(compressPolyline(points), original.kind),
+        ),
+      });
+    }
+    for (let index = 0; index < edges.length; index += 1) {
+      const edge = edges[index];
+      if (!edge || routedEdges.has(edge.id)) {
+        continue;
+      }
+      const synthesized = synthesizeEdgeRoute(positioned, edge, index % 12);
+      if (synthesized) {
+        routedEdges.set(edge.id, synthesized);
+      }
+    }
+
+    return {
+      width: result.width || 0,
+      height: result.height || 0,
+      nodes: positioned,
+      edges: [...routedEdges.values()],
+    };
+  }
+
+  const selectedPreset = GRAPH_LAYOUT_PRESETS.find((preset) => preset.id === presetId)
+    || GRAPH_LAYOUT_PRESETS[1]
+    || null;
+  if (!selectedPreset) {
+    return null;
+  }
+
+  const remainingPresets = GRAPH_LAYOUT_PRESETS.filter((preset) => preset.id !== selectedPreset.id);
+  const layoutAttempts = [selectedPreset, ...remainingPresets];
+
+  let bestLayout: GraphLayout | null = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const preset of layoutAttempts) {
+    let candidate: GraphLayout | null = null;
+    try {
+      candidate = await runElkLayout(preset.options);
+    } catch {
+      candidate = null;
+    }
+    if (!candidate) {
+      continue;
+    }
+    const nodeOverlapCount = countNodeOverlaps(candidate.nodes);
+    const edgeNodeOverlapCount = countEdgeNodeOverlaps(candidate.nodes, candidate.edges);
+    const score = nodeOverlapCount * 1000 + edgeNodeOverlapCount;
+    if (score < bestScore) {
+      bestScore = score;
+      bestLayout = candidate;
+    }
+    if (nodeOverlapCount === 0 && edgeNodeOverlapCount === 0) {
+      return candidate;
+    }
+  }
+
+  if (bestLayout) {
+    return bestLayout;
+  }
+
+  return buildStaticLayoutGraph();
 }
 
 async function fetchJson<T>(input: string): Promise<T> {
@@ -686,6 +1523,10 @@ function renderWorkflowLogHtml(logText: string): string {
   return `<div class="log-viewer"><ul class="log-lines">${items}</ul></div>`;
 }
 
+function graphLayoutCacheKey(runId: string, presetId: GraphLayoutPresetId): string {
+  return `${runId}:${presetId}`;
+}
+
 async function loadWorkflowLog(runId: string, configPath: string | null): Promise<string> {
   return await fetchText(withConfigQuery(`/api/runs/${encodeURIComponent(runId)}/log`, configPath));
 }
@@ -728,6 +1569,9 @@ interface WorkflowViewerProps {
   initialConfigLabel: string;
   initialAvailableConfigs: RunsIndexPayload["availableConfigs"];
   initialAvailableWorkflows: RunsIndexPayload["availableWorkflows"];
+  initialSelectedRunId: string | null;
+  initialRunDetail: RunDetail | null;
+  initialGraphLayout: GraphLayout | null;
 }
 
 export function WorkflowViewer({
@@ -739,6 +1583,9 @@ export function WorkflowViewer({
   initialConfigLabel,
   initialAvailableConfigs,
   initialAvailableWorkflows,
+  initialSelectedRunId,
+  initialRunDetail,
+  initialGraphLayout,
 }: WorkflowViewerProps) {
   const [summaries, setSummaries] = useState<RunSummary[]>(initialSummaries);
   const [totalRuns, setTotalRuns] = useState(initialTotalRuns);
@@ -753,7 +1600,7 @@ export function WorkflowViewer({
   );
   const [runWorkflowLoading, setRunWorkflowLoading] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(() =>
-    normalizeSelectedRunId(initialSummaries, null),
+    normalizeSelectedRunId(initialSummaries, initialSelectedRunId),
   );
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<InspectionTab>("overview");
@@ -766,16 +1613,19 @@ export function WorkflowViewer({
   const [eventFilter, setEventFilter] = useState("all");
   const [eventStepFilter, setEventStepFilter] = useState("all");
   const [eventQuery, setEventQuery] = useState("");
-  const [runDetail, setRunDetail] = useState<RunDetail | null>(null);
+  const [runDetail, setRunDetail] = useState<RunDetail | null>(initialRunDetail);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [graphLayout, setGraphLayout] = useState<GraphLayout | null>(initialGraphLayout);
+  const [graphLayoutLoading, setGraphLayoutLoading] = useState(false);
+  const [graphLayoutPreset, setGraphLayoutPreset] = useState<GraphLayoutPresetId>("balanced");
+  const [mountInteractiveGraph, setMountInteractiveGraph] = useState(false);
+  const [graphInteractiveReady, setGraphInteractiveReady] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [copiedRunId, setCopiedRunId] = useState<string | null>(null);
   const [stopLoadingRunIds, setStopLoadingRunIds] = useState<string[]>([]);
   const [removeLoadingRunIds, setRemoveLoadingRunIds] = useState<string[]>([]);
   const [resumeLoadingRunIds, setResumeLoadingRunIds] = useState<string[]>([]);
   const [rerunLoadingStepId, setRerunLoadingStepId] = useState<string | null>(null);
-  const [graphViewportWidth, setGraphViewportWidth] = useState(0);
-  const graphBodyRef = useRef<HTMLDivElement | null>(null);
   const tabRefs = useRef<Record<InspectionTab, HTMLButtonElement | null>>({
     overview: null,
     log: null,
@@ -786,10 +1636,25 @@ export function WorkflowViewer({
   const logRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeLogRequestIdRef = useRef(0);
+  const activeDetailRequestIdRef = useRef(0);
   const loadedLogRunIdRef = useRef<string | null>(null);
   const selectedStepIdRef = useRef<string | null>(null);
   const selectedRunIdRef = useRef<string | null>(null);
   const activeTabRef = useRef<InspectionTab>("overview");
+  const runDetailCacheRef = useRef(
+    new Map<string, RunDetail>(
+      initialRunDetail && initialSelectedRunId
+        ? [[initialSelectedRunId, initialRunDetail]]
+        : [],
+    ),
+  );
+  const graphLayoutCacheRef = useRef(
+    new Map<string, GraphLayout>(
+      initialGraphLayout && initialSelectedRunId
+        ? [[graphLayoutCacheKey(initialSelectedRunId, "balanced"), initialGraphLayout]]
+        : [],
+    ),
+  );
 
   const selectedSummary = summaries.find((summary) => summary.id === selectedRunId) || null;
   const selectedRunCopyId = selectedSummary?.id || null;
@@ -1118,25 +1983,45 @@ export function WorkflowViewer({
     [configPath],
   );
 
-  async function refreshRunDetail(runId: string): Promise<void> {
-    setDetailLoading(true);
+  async function refreshRunDetail(runId: string, options: { background?: boolean } = {}): Promise<void> {
+    const requestId = activeDetailRequestIdRef.current + 1;
+    activeDetailRequestIdRef.current = requestId;
+    const background = Boolean(options.background);
+    if (!background) {
+      setDetailLoading(true);
+    }
     try {
       const detail = await loadWorkflowDetail(runId, configPath);
+      if (activeDetailRequestIdRef.current !== requestId) {
+        return;
+      }
+      if (selectedRunIdRef.current !== runId) {
+        return;
+      }
+      runDetailCacheRef.current.set(runId, detail);
       setRunDetail(detail);
     } catch {
+      if (activeDetailRequestIdRef.current !== requestId) {
+        return;
+      }
+      if (selectedRunIdRef.current !== runId) {
+        return;
+      }
       setRunDetail(null);
     } finally {
-      setDetailLoading(false);
+      if (!background && activeDetailRequestIdRef.current === requestId) {
+        setDetailLoading(false);
+      }
     }
   }
 
-function scheduleDetailRefresh(runId: string, delayMs: number): void {
+  function scheduleDetailRefresh(runId: string, delayMs: number): void {
     if (detailRefreshTimerRef.current) {
       clearTimeout(detailRefreshTimerRef.current);
     }
     detailRefreshTimerRef.current = setTimeout(() => {
       detailRefreshTimerRef.current = null;
-      void refreshRunDetail(runId);
+      void refreshRunDetail(runId, { background: true });
     }, delayMs);
   }
 
@@ -1173,7 +2058,26 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
   }, [activeTab]);
 
   useEffect(() => {
+    setMountInteractiveGraph(true);
+  }, []);
+
+  useEffect(() => {
     setSelectedRunId((current) => normalizeSelectedRunId(summaries, current));
+  }, [summaries]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || summaries.length === 0) {
+      return;
+    }
+    const url = new URL(window.location.href);
+    const requestedRunId = url.searchParams.get("runId");
+    if (!requestedRunId) {
+      return;
+    }
+    if (!summaries.some((summary) => summary.id === requestedRunId)) {
+      return;
+    }
+    setSelectedRunId((current) => (current === requestedRunId ? current : requestedRunId));
   }, [summaries]);
 
   useEffect(() => {
@@ -1185,7 +2089,21 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
   }, [selectedRunId]);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const url = new URL(window.location.href);
+    if (selectedRunId) {
+      url.searchParams.set("runId", selectedRunId);
+    } else {
+      url.searchParams.delete("runId");
+    }
+    window.history.replaceState(null, "", url.toString());
+  }, [selectedRunId]);
+
+  useEffect(() => {
     if (!selectedRunId) {
+      activeDetailRequestIdRef.current += 1;
       loadedLogRunIdRef.current = null;
       setLogError(null);
       setLogLoading(false);
@@ -1197,40 +2115,24 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
       setDetailLoading(false);
       return;
     }
-    let cancelled = false;
+    activeDetailRequestIdRef.current += 1;
+    const cachedDetail = runDetailCacheRef.current.get(selectedRunId) || null;
     loadedLogRunIdRef.current = null;
     setLogError(null);
     setWorkflowLogText("");
     setEventLog([]);
     setEventError(null);
-    setRunDetail(null);
+    setRunDetail(cachedDetail);
     setLogLoading(activeTab === "log");
     setEventLoading(activeTab === "events");
-    setDetailLoading(true);
-    void loadWorkflowDetail(selectedRunId, configPath)
-      .then((detail) => {
-        if (cancelled) {
-          return;
-        }
-        setRunDetail(detail);
-        setDetailLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) {
-          return;
-        }
-        setRunDetail(null);
-        setDetailLoading(false);
-      });
+    setDetailLoading(!cachedDetail);
+    void refreshRunDetail(selectedRunId, cachedDetail ? { background: true } : {});
     if (activeTab === "log") {
       void refreshActiveLog(selectedRunId, null);
     }
     if (activeTab === "events") {
       void refreshActiveEvents(selectedRunId);
     }
-    return () => {
-      cancelled = true;
-    };
   }, [configPath, refreshActiveEvents, refreshActiveLog, selectedRunId]);
 
   useEffect(() => {
@@ -1267,6 +2169,53 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
     setEventStepFilter("all");
     setActiveTab("overview");
   }, [runDetail, selectedStepId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function prefetchVisibleRuns(): Promise<void> {
+      const selectedIndex = summaries.findIndex((summary) => summary.id === selectedRunIdRef.current);
+      const candidateRuns = summaries
+        .filter((summary, index) => index !== selectedIndex)
+        .slice(0, 3);
+      for (const summary of candidateRuns) {
+        if (cancelled) {
+          return;
+        }
+        if (!summary?.id || runDetailCacheRef.current.has(summary.id)) {
+          continue;
+        }
+        try {
+          const detail = await loadWorkflowDetail(summary.id, configPath);
+          if (cancelled) {
+            return;
+          }
+          runDetailCacheRef.current.set(summary.id, detail);
+          const cacheKey = graphLayoutCacheKey(summary.id, graphLayoutPreset);
+          if (!graphLayoutCacheRef.current.has(cacheKey) && detail.graph.nodes.length > 0) {
+            const nextLayout = await layoutGraph(detail.graph.nodes, detail.graph.edges, graphLayoutPreset);
+            if (cancelled) {
+              return;
+            }
+            if (nextLayout) {
+              graphLayoutCacheRef.current.set(cacheKey, nextLayout);
+            }
+          }
+          if (selectedRunIdRef.current === summary.id) {
+            startTransition(() => {
+              setRunDetail((current) => current || detail);
+              setGraphLayout((current) => current || graphLayoutCacheRef.current.get(cacheKey) || null);
+            });
+          }
+        } catch {
+          // Ignore background prefetch failures; foreground load handles user-facing state.
+        }
+      }
+    }
+    void prefetchVisibleRuns();
+    return () => {
+      cancelled = true;
+    };
+  }, [configPath, graphLayoutPreset, summaries]);
 
   async function refreshSummaries(): Promise<void> {
     await refreshRunsIndex(configPath, setSummaries, setTotalRuns, setUpdatedAt);
@@ -1389,41 +2338,46 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
 
   const graphNodes = runDetail?.graph.nodes || [];
   const graphEdges = runDetail?.graph.edges || [];
-  const graphSequenceEdges = useMemo(
-    () => graphEdges.filter((edge) => edge.kind === "sequence"),
-    [graphEdges],
-  );
   const graphArtifactEdges = useMemo(
     () => graphEdges.filter((edge) => edge.kind === "artifact"),
     [graphEdges],
   );
-  const graphLayout = useMemo(
-    () => buildGraphLayout(graphNodes, graphEdges, graphViewportWidth),
-    [graphEdges, graphNodes, graphViewportWidth],
-  );
+  const renderSequenceEdges = graphArtifactEdges.length === 0;
 
   useEffect(() => {
-    const graphBody = graphBodyRef.current;
-    if (!graphBody) {
+    let cancelled = false;
+    if (graphNodes.length === 0) {
+      setGraphLayout(null);
+      setGraphLayoutLoading(false);
       return;
     }
 
-    const updateWidth = () => {
-      setGraphViewportWidth(graphBody.clientWidth);
-    };
-
-    updateWidth();
-    const resizeObserver = new ResizeObserver(() => {
-      updateWidth();
-    });
-    resizeObserver.observe(graphBody);
-    window.addEventListener("resize", updateWidth);
+    const runId = selectedRunIdRef.current;
+    const cacheKey = runId ? graphLayoutCacheKey(runId, graphLayoutPreset) : null;
+    const cachedLayout = cacheKey ? graphLayoutCacheRef.current.get(cacheKey) || null : null;
+    setGraphLayout(cachedLayout);
+    setGraphLayoutLoading(!cachedLayout);
+    void layoutGraph(graphNodes, graphEdges, graphLayoutPreset)
+      .then((layout) => {
+        if (!cancelled) {
+          if (runId && cacheKey && layout) {
+            graphLayoutCacheRef.current.set(cacheKey, layout);
+          }
+          setGraphLayout(layout);
+          setGraphLayoutLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setGraphLayout(null);
+          setGraphLayoutLoading(false);
+        }
+      });
 
     return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener("resize", updateWidth);
+      cancelled = true;
     };
-  }, []);
+  }, [graphEdges, graphLayoutPreset, graphNodes]);
 
   useEffect(() => {
     const events = new EventSource(withConfigQuery("/api/events", configPath));
@@ -1604,6 +2558,23 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
                   ) : null}
                 </div>
                 <div className="workflow-pane-actions">
+                  <div
+                    aria-label="Graph layout presets"
+                    className="workflow-layout-presets"
+                    role="group"
+                  >
+                    {GRAPH_LAYOUT_PRESETS.map((preset) => (
+                      <button
+                        className={`workflow-layout-preset${graphLayoutPreset === preset.id ? " is-active" : ""}`}
+                        key={preset.id}
+                        onClick={() => setGraphLayoutPreset(preset.id)}
+                        title={`Use ${preset.label.toLowerCase()} ELK layout`}
+                        type="button"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
                   {selectedStep ? (
                     <Button
                       onClick={() => {
@@ -1661,7 +2632,7 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
                   ) : null}
                 </div>
               </div>
-              <div className="workflow-graph-body" ref={graphBodyRef}>
+              <div className="workflow-graph-body">
                 {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
                 {!selectedRunId ? (
                   <div className="workflow-empty-state">No workflow selected.</div>
@@ -1669,116 +2640,35 @@ function scheduleDetailRefresh(runId: string, delayMs: number): void {
                   <div className="workflow-empty-state">Loading workflow…</div>
                 ) : !runDetail ? (
                   <div className="workflow-empty-state">No workflow detail available.</div>
+                ) : graphLayoutLoading ? (
+                  <div className="workflow-empty-state">Laying out workflow…</div>
                 ) : !graphLayout ? (
                   <div className="workflow-empty-state">No graph nodes available.</div>
                 ) : (
-                    <div
-                      className="workflow-graph-scroll"
-                      onClick={() => {
-                        setSelectedStepId(null);
-                        setEventFilter("all");
-                        setEventStepFilter("all");
-                        setEventQuery("");
-                      }}
-                    >
-                    <div
-                      className="workflow-graph-canvas"
-                      style={{ height: `${graphLayout.height}px`, width: `${graphLayout.width}px` }}
-                    >
-                      <svg
-                        className="workflow-graph-svg"
-                        height={graphLayout.height}
-                        viewBox={`0 0 ${graphLayout.width} ${graphLayout.height}`}
-                        width={graphLayout.width}
-                      >
-                        <defs>
-                          <marker
-                            id="workflow-arrow-sequence"
-                            markerHeight="8"
-                            markerWidth="8"
-                            orient="auto-start-reverse"
-                            refX="7"
-                            refY="4"
-                          >
-                            <path d="M0,0 L8,4 L0,8 z" fill="#9a8d7a" />
-                          </marker>
-                          <marker
-                            id="workflow-arrow-artifact"
-                            markerHeight="8"
-                            markerWidth="8"
-                            orient="auto-start-reverse"
-                            refX="7"
-                            refY="4"
-                          >
-                            <path d="M0,0 L8,4 L0,8 z" fill="#0f766e" />
-                          </marker>
-                        </defs>
-                        {[...graphSequenceEdges, ...graphArtifactEdges].map((edge) => {
-                          const source = graphLayout.nodeMap.get(edge.source);
-                          const target = graphLayout.nodeMap.get(edge.target);
-                          if (!source || !target) {
-                            return null;
+                  <>
+                    {!graphInteractiveReady ? <WorkflowStaticPreview layout={graphLayout} /> : null}
+                    {mountInteractiveGraph ? (
+                      <WorkflowInteractiveGraph
+                        graphLayout={graphLayout}
+                        key={`${selectedRunId || "workflow-graph"}:${graphLayoutPreset}`}
+                        onPaneReset={() => {
+                          setSelectedStepId(null);
+                          setEventFilter("all");
+                          setEventStepFilter("all");
+                          setEventQuery("");
+                        }}
+                        onReady={() => setGraphInteractiveReady(true)}
+                        onSelectStep={(stepId) => {
+                          setSelectedStepId(stepId);
+                          if (activeTabRef.current === "events") {
+                            setEventStepFilter(stepId);
                           }
-                          const label = formatGraphEdge(edge);
-                          const labelPosition = edgeLabelPosition(source, target);
-                          return (
-                            <g key={edge.id}>
-                              <path
-                                className={`workflow-graph-path is-${edge.kind}${edge.inferred ? " is-inferred" : ""}`}
-                                d={edgePath(source, target)}
-                                markerEnd={`url(#workflow-arrow-${edge.kind})`}
-                              />
-                              {label ? (
-                                <text
-                                  className={`workflow-graph-path-label is-${edge.kind}`}
-                                  textAnchor="middle"
-                                  x={labelPosition.x}
-                                  y={labelPosition.y}
-                                >
-                                  {label}
-                                </text>
-                              ) : null}
-                            </g>
-                          );
-                        })}
-                      </svg>
-                      {graphLayout.nodes.map((node) => {
-                        const isSelected = selectedStepId === node.id;
-                        return (
-                          <button
-                            className={`workflow-graph-node is-${node.status}${isSelected ? " is-selected" : ""}`}
-                            key={node.id}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setSelectedStepId(node.id);
-                              if (activeTab === "events") {
-                                setEventStepFilter(node.id);
-                              }
-                            }}
-                            style={{
-                              height: `${node.height}px`,
-                              left: `${node.x}px`,
-                              top: `${node.y}px`,
-                              width: `${node.width}px`,
-                            }}
-                            type="button"
-                          >
-                            <div className="workflow-graph-node-top">
-                              <strong>{stepDisplayName(node)}</strong>
-                              <span className={`workflow-status-text is-${node.status}`}>{node.status}</span>
-                            </div>
-                            <div className="workflow-graph-node-meta">
-                              <span>{node.kind || "step"}</span>
-                              {Array.isArray(node.parameters) && node.parameters.length > 0 ? (
-                                <span className="workflow-graph-node-param">{node.parameters.join(" · ")}</span>
-                              ) : null}
-                              <span>{node.artifactCount} artifacts</span>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                        }}
+                        renderSequenceEdges={renderSequenceEdges}
+                        selectedStepId={selectedStepId}
+                      />
+                    ) : null}
+                  </>
                 )}
               </div>
             </section>

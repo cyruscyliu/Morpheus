@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { spawn, spawnSync } = require("child_process");
-const { applyConfigDefaults, loadConfig } = require("../core/config");
+const { applyConfigDefaults, loadConfig, configDir, resolveLocalPath } = require("../core/config");
 const { parseToolArgs } = require("../core/tool-invoke");
 const { readToolDescriptor } = require("../core/tool-descriptor");
 const { repoRoot } = require("../core/paths");
@@ -418,6 +418,7 @@ function resolveTemplateStepValue(context, stepId, stepPath) {
 function listConfiguredWorkflows(explicitConfigPath = null) {
   const config = loadConfig(process.cwd(), { explicitPath: explicitConfigPath });
   const workflows = config && config.value && config.value.workflows ? config.value.workflows : {};
+  const baseDir = configDir(config.path);
   const items = Object.entries(workflows)
     .map(([name, workflow]) => {
       const value = workflow && typeof workflow === "object" ? workflow : {};
@@ -430,6 +431,118 @@ function listConfiguredWorkflows(explicitConfigPath = null) {
       };
     })
     .sort((left, right) => left.name.localeCompare(right.name));
+
+  function gitBranchLabel(workspaceRoot) {
+    const result = spawnSync("git", ["-C", workspaceRoot, "rev-parse", "--abbrev-ref", "HEAD"], {
+      encoding: "utf8",
+    });
+    if (result.status !== 0) {
+      return null;
+    }
+    const value = String(result.stdout || "").trim();
+    if (!value || value === "HEAD") {
+      return null;
+    }
+    return value;
+  }
+
+  function parseGitWorktreeList(output) {
+    const records = [];
+    let currentRoot = null;
+    let currentBranch = null;
+
+    const flush = () => {
+      if (!currentRoot) {
+        return;
+      }
+      records.push({ root: currentRoot, branch: currentBranch });
+      currentRoot = null;
+      currentBranch = null;
+    };
+
+    for (const rawLine of String(output || "").split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line) {
+        flush();
+        continue;
+      }
+      if (line.startsWith("worktree ")) {
+        flush();
+        currentRoot = line.slice("worktree ".length).trim();
+        continue;
+      }
+      if (line.startsWith("branch refs/heads/")) {
+        currentBranch = line.slice("branch refs/heads/".length).trim() || null;
+        continue;
+      }
+      if (line === "branch HEAD") {
+        currentBranch = null;
+      }
+    }
+
+    flush();
+    return records;
+  }
+
+  function relativeConfigName(configPath, worktreeRoot) {
+    const relative = path.relative(worktreeRoot, configPath);
+    if (!relative || relative.startsWith("..")) {
+      return path.basename(configPath);
+    }
+    return relative;
+  }
+
+  function configDisplayLabel(configPath, worktreeRoot, branchHint = null) {
+    const branch = branchHint || gitBranchLabel(worktreeRoot);
+    const configName = relativeConfigName(configPath, worktreeRoot);
+    return branch ? `${branch}:${configName}` : configName;
+  }
+
+  function findViewerConfigs() {
+    const result = spawnSync("git", ["-C", repoRoot(), "worktree", "list", "--porcelain"], {
+      encoding: "utf8",
+    });
+    if (result.status !== 0) {
+      return [];
+    }
+    return parseGitWorktreeList(String(result.stdout || ""))
+      .flatMap((item) => {
+        const configPaths = [path.join(item.root, "morpheus.yaml")];
+        const projectsRoot = path.join(item.root, "projects");
+        if (fs.existsSync(projectsRoot) && fs.statSync(projectsRoot).isDirectory()) {
+          for (const entry of fs.readdirSync(projectsRoot).sort((left, right) => left.localeCompare(right))) {
+            configPaths.push(path.join(projectsRoot, entry, "morpheus.yaml"));
+          }
+        }
+        return configPaths
+          .filter((configPath) => fs.existsSync(configPath))
+          .map((configPath) => {
+            const itemConfig = loadConfig(process.cwd(), { explicitPath: configPath });
+            const itemBaseDir = configDir(itemConfig.path);
+            const workspaceRoot =
+              itemConfig.value
+              && itemConfig.value.workspace
+              && itemConfig.value.workspace.root
+                ? resolveLocalPath(itemBaseDir, itemConfig.value.workspace.root)
+                : null;
+            return {
+              id: configPath,
+              label: configDisplayLabel(configPath, item.root, item.branch),
+              configPath,
+              workspaceRoot,
+              runRoot: workspaceRoot ? path.join(workspaceRoot, "runs") : null,
+            };
+          });
+      })
+      .filter((item) => item.workspaceRoot && item.runRoot)
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }
+
+  const currentWorkspaceRoot =
+    config.value && config.value.workspace && config.value.workspace.root
+      ? resolveLocalPath(baseDir, config.value.workspace.root)
+      : null;
+  const configs = findViewerConfigs();
   return {
     command: "workflow list",
     status: "success",
@@ -437,7 +550,10 @@ function listConfiguredWorkflows(explicitConfigPath = null) {
     summary: items.length === 0 ? "no configured workflows" : "listed configured workflows",
     details: {
       config: config.path ? path.relative(process.cwd(), config.path) || "morpheus.yaml" : null,
+      config_path: config.path || null,
+      workspace_root: currentWorkspaceRoot || null,
       workflows: items,
+      configs,
     }
   };
 }

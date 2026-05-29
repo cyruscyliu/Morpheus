@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 
 import type { RunDetail, RunEventRecord, RunSummary } from "../types";
 import type { ViewerContext } from "./context";
+import type { ViewerConfigOption, ViewerWorkflowOption } from "./run-root";
 
 interface ListOptions {
   limit?: string | null;
@@ -15,6 +16,27 @@ interface ListRunsResult {
   total: number;
   offset: number;
   limit: number;
+}
+
+interface ConfigShowResult {
+  configPath: string | null;
+  workspaceRoot: string;
+  runRoot: string;
+}
+
+const workflowJsonCache = new Map<string, any>();
+const configJsonCache = new Map<string, any>();
+
+function cacheKey(
+  context: Pick<ViewerContext, "repoRoot" | "configPath" | "workspaceRoot">,
+  args: string[],
+): string {
+  return JSON.stringify({
+    repoRoot: context.repoRoot,
+    configPath: context.configPath || null,
+    workspaceRoot: context.workspaceRoot,
+    args,
+  });
 }
 
 function cliInvocation(repoRoot: string): { command: string; args: string[] } {
@@ -30,6 +52,10 @@ function runWorkflowJson(
   context: Pick<ViewerContext, "repoRoot" | "configPath" | "workspaceRoot">,
   args: string[],
 ): any {
+  const key = cacheKey(context, args);
+  if (workflowJsonCache.has(key)) {
+    return workflowJsonCache.get(key);
+  }
   const cli = cliInvocation(context.repoRoot);
   const result = spawnSync(
     cli.command,
@@ -59,6 +85,7 @@ function runWorkflowJson(
       : (result.stderr || result.stdout || "morpheus command failed").trim();
     throw new Error(summary);
   }
+  workflowJsonCache.set(key, payload);
   return payload;
 }
 
@@ -87,6 +114,46 @@ function runWorkflowText(
   return String(result.stdout || "");
 }
 
+function runConfigJson(
+  context: Pick<ViewerContext, "repoRoot" | "configPath" | "workspaceRoot">,
+  args: string[],
+): any {
+  const key = cacheKey(context, ["config", ...args]);
+  if (configJsonCache.has(key)) {
+    return configJsonCache.get(key);
+  }
+  const cli = cliInvocation(context.repoRoot);
+  const result = spawnSync(
+    cli.command,
+    [
+      ...cli.args,
+      ...(context.configPath ? ["--config", String(context.configPath)] : []),
+      "--json",
+      "config",
+      ...args,
+    ],
+    {
+      cwd: context.repoRoot,
+      encoding: "utf8",
+    },
+  );
+  const text = String(result.stdout || "").trim() || String(result.stderr || "").trim();
+  let payload: any = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    payload = null;
+  }
+  if (result.status !== 0) {
+    const summary = payload && typeof payload.summary === "string"
+      ? payload.summary
+      : (result.stderr || result.stdout || "morpheus command failed").trim();
+    throw new Error(summary);
+  }
+  configJsonCache.set(key, payload);
+  return payload;
+}
+
 export function listRunSummariesWithTotal(
   context: Pick<ViewerContext, "repoRoot" | "configPath" | "workspaceRoot">,
   options: ListOptions = {},
@@ -106,6 +173,53 @@ export function listRunSummariesWithTotal(
     offset: typeof details.offset === "number" ? details.offset : 0,
     limit: typeof details.limit === "number" ? details.limit : 200,
   };
+}
+
+export function listConfiguredWorkflows(
+  context: Pick<ViewerContext, "repoRoot" | "configPath" | "workspaceRoot">,
+): ViewerWorkflowOption[] {
+  const payload = runWorkflowJson(context, ["workflow", "list"]);
+  const details = payload && payload.details ? payload.details : {};
+  const workflows = Array.isArray(details.workflows) ? details.workflows : [];
+  return workflows
+    .map((workflow: any) => ({
+      id: `${context.configPath || "default"}::${String(workflow?.name || "")}`,
+      name: String(workflow?.name || ""),
+      category: workflow && workflow.category ? String(workflow.category) : "run",
+      configPath: context.configPath,
+    }))
+    .filter((workflow: ViewerWorkflowOption) => workflow.name.length > 0)
+    .sort((left: ViewerWorkflowOption, right: ViewerWorkflowOption) => left.name.localeCompare(right.name));
+}
+
+export function loadConfigContext(
+  context: Pick<ViewerContext, "repoRoot" | "configPath" | "workspaceRoot">,
+): ConfigShowResult {
+  const payload = runConfigJson(context, ["show"]);
+  const details = payload && payload.details ? payload.details : {};
+  return {
+    configPath: typeof details.config_path === "string" ? details.config_path : null,
+    workspaceRoot: String(details.workspace_root || context.workspaceRoot),
+    runRoot: String(details.run_root || path.join(context.workspaceRoot, "runs")),
+  };
+}
+
+export function listViewerConfigs(
+  context: Pick<ViewerContext, "repoRoot" | "configPath" | "workspaceRoot">,
+): ViewerConfigOption[] {
+  const payload = runWorkflowJson(context, ["workflow", "list"]);
+  const details = payload && payload.details ? payload.details : {};
+  const configs = Array.isArray(details.configs) ? details.configs : [];
+  return configs
+    .map((config: any) => ({
+      id: String(config?.id || config?.configPath || ""),
+      label: String(config?.label || ""),
+      configPath: config && typeof config.configPath === "string" ? config.configPath : null,
+      workspaceRoot: String(config?.workspaceRoot || ""),
+      runRoot: String(config?.runRoot || ""),
+    }))
+    .filter((config: ViewerConfigOption) => config.id.length > 0 && config.label.length > 0)
+    .sort((left: ViewerConfigOption, right: ViewerConfigOption) => left.label.localeCompare(right.label));
 }
 
 export function loadRunDetail(

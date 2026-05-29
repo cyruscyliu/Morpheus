@@ -9,6 +9,9 @@ profile_name="${MORPHEUS_NVIRSH_BUILD_VERSION:-default}"
 build_dir_key="${MORPHEUS_NVIRSH_BUILD_DIR_KEY:-${profile_name}}"
 result_file="${MORPHEUS_NVIRSH_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 
+guest_trace_out="${install_dir}/guest-nqc2.trace"
+guest_qemu_trace_out="${install_dir}/guest-qemu-trace.log"
+
 manifest_file=""
 if [ -n "${run_dir}" ] && [ -f "${run_dir}/manifest.json" ]; then
   manifest_file="${run_dir}/manifest.json"
@@ -23,10 +26,35 @@ if [ ! -f "${manifest_file}" ]; then
   exit 1
 fi
 
-node - "${manifest_file}" "${source_dir}" "${run_dir}" "${build_dir}" "${install_dir}" "${profile_name}" "${build_dir_key}" "${result_file}" <<'NODE'
-const fs = require("fs");
-const [manifestFile, sourceDir, runDir, buildDir, installDir, profileName, buildDirKey, resultFile] = process.argv.slice(2);
-const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf8"));
+extract_guest_file() {
+  local overlay="$1"
+  local guest_path="$2"
+  local output_path="$3"
+  local tmp_raw tmp_part
+  tmp_raw="$(mktemp --tmpdir nvirsh-overlay-XXXXXX.raw)"
+  tmp_part="$(mktemp --tmpdir nvirsh-rootfs-XXXXXX.img)"
+  cleanup() {
+    rm -f "${tmp_raw}" "${tmp_part}"
+  }
+  trap cleanup RETURN
+  qemu-img convert -O raw "${overlay}" "${tmp_raw}" >/dev/null 2>&1
+  dd if="${tmp_raw}" of="${tmp_part}" bs=512 skip=262144 count=6027264 status=none
+  if debugfs -R "cat ${guest_path}" "${tmp_part}" > "${output_path}" 2>/dev/null; then
+    return 0
+  fi
+  rm -f "${output_path}"
+  return 1
+}
+
+if [ -n "${build_dir}" ] && [ -f "${build_dir}/l0/overlay.qcow2" ]; then
+  extract_guest_file "${build_dir}/l0/overlay.qcow2" "/root/morpheus-nqc2.trace" "${guest_trace_out}" || true
+  extract_guest_file "${build_dir}/l0/overlay.qcow2" "/root/morpheus-qemu-trace.log" "${guest_qemu_trace_out}" || true
+fi
+
+node - "${manifest_file}" "${source_dir}" "${run_dir}" "${build_dir}" "${install_dir}" "${profile_name}" "${build_dir_key}" "${result_file}" "${guest_trace_out}" "${guest_qemu_trace_out}" <<'NODE'
+const fs = require('fs');
+const [manifestFile, sourceDir, runDir, buildDir, installDir, profileName, buildDirKey, resultFile, guestTraceOut, guestQemuTraceOut] = process.argv.slice(2);
+const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
 const details = {
   profile: profileName,
   build_dir_key: buildDirKey,
@@ -35,11 +63,17 @@ const details = {
   install_dir: installDir || null,
   run_dir: runDir || null,
   manifest: manifestFile,
-  status: manifest.status || "unknown",
+  status: manifest.status || 'unknown',
   current_phase: manifest.currentPhase || null,
   runtime_pid: manifest.runtime && manifest.runtime.pid != null ? manifest.runtime.pid : null,
   phases: manifest.phases || null,
-  layered_state: manifest.layeredState || null
+  layered_state: manifest.layeredState || null,
+  guest_nqc2_trace: fs.existsSync(guestTraceOut) ? guestTraceOut : null,
+  guest_qemu_trace_log: fs.existsSync(guestQemuTraceOut) ? guestQemuTraceOut : null,
 };
-fs.writeFileSync(resultFile, `${JSON.stringify({ details }, null, 2)}\n`);
+const artifacts = [
+  ...(fs.existsSync(guestTraceOut) ? [{ path: 'guest-nqc2-trace', location: guestTraceOut }] : []),
+  ...(fs.existsSync(guestQemuTraceOut) ? [{ path: 'guest-qemu-trace-log', location: guestQemuTraceOut }] : []),
+];
+fs.writeFileSync(resultFile, `${JSON.stringify({ details, artifacts }, null, 2)}\n`);
 NODE

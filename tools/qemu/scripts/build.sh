@@ -17,6 +17,7 @@ artifact_path="${install_dir}/bin/qemu-system-aarch64"
 reuse_build_dir="${MORPHEUS_QEMU_REUSE_BUILD_DIR:-false}"
 needs_rebuild="true"
 use_system_meson="${MORPHEUS_QEMU_USE_SYSTEM_MESON:-1}"
+configure_signature_file="${build_dir}/.morpheus-configure-signature"
 
 stale_target_list_config() {
   local config_host_mak="$1"
@@ -103,7 +104,26 @@ elif [ -n "${configure_arg_raw}" ]; then
   mapfile -t configure_args <<< "${configure_arg_raw}"
 fi
 
+configure_signature="$(
+  {
+    printf 'target_space=%s\n' "${target_space}"
+    printf 'use_system_meson=%s\n' "${use_system_meson}"
+    printf 'configure_args<<EOF\n'
+    printf '%s\n' "${configure_args[@]}"
+    printf 'EOF\n'
+  } | sha256sum | awk '{print $1}'
+)"
+
 if stale_target_list_config "${build_dir}/config-host.mak" "${target_space}"; then
+  cd /
+  rm -rf "${build_dir}" "${install_dir}"
+  mkdir -p "${build_dir}" "${install_dir}"
+  cd "${build_dir}"
+fi
+
+if [ -f "${build_dir}/build.ninja" ] && \
+   { [ ! -f "${configure_signature_file}" ] || \
+     [ "$(cat "${configure_signature_file}")" != "${configure_signature}" ]; }; then
   cd /
   rm -rf "${build_dir}" "${install_dir}"
   mkdir -p "${build_dir}" "${install_dir}"
@@ -136,6 +156,7 @@ if [ ! -f "${build_dir}/build.ninja" ]; then
     "--prefix=${install_dir}" \
     "${target_args[@]}" \
     "${configure_args[@]}"
+  printf '%s\n' "${configure_signature}" > "${configure_signature_file}"
 fi
 
 if [ -f "${build_dir}/build.ninja" ]; then

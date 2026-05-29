@@ -163,6 +163,9 @@
         },
         "trace-dir": {
           "pathTemplate": "tools/nqc2/builds/{buildDirKey}/trace"
+        },
+        "nqc2-plugin-so-aarch64": {
+          "pathTemplate": "tools/nqc2/builds/{buildDirKey}/install/lib/nqc2/nqc2-plugin-aarch64.so"
         }
       },
       "commands": {

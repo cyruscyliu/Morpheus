@@ -1893,7 +1893,8 @@ async function runToolWorkflow({
       stepId: step.id,
       tool: step.tool,
     });
-    const result = await runWorkflowChild(
+    let stepChildPid = 0;
+    const executionPromise = runWorkflowChild(
       args,
       step.logFile,
       {
@@ -1908,6 +1909,7 @@ async function runToolWorkflow({
         }),
       },
       (childPid) => {
+        stepChildPid = Number(childPid || 0);
         updateWorkflowRun(workflow.runDir, (current) => ({
           ...current,
           currentStepId: step.id,
@@ -1916,6 +1918,27 @@ async function runToolWorkflow({
       },
       { attach, cwd: step.stepDir, eventContext: { workflowId: workflow.id, stepId: step.id, tool: step.tool } },
     );
+    const result = spec && Number(spec.timeoutSeconds || 0) > 0
+      ? await Promise.race([
+          executionPromise,
+          (async () => {
+            await sleep(Number(spec.timeoutSeconds || 0) * 1000);
+            emitEvent("step.timeout", {
+              workflow: workflow.id,
+              step: step.id,
+              tool: step.tool,
+              timeout_seconds: Number(spec.timeoutSeconds || 0),
+            }, {
+              scope: "step",
+              workflowId: workflow.id,
+              stepId: step.id,
+              tool: step.tool,
+            });
+            stopPid(stepChildPid);
+            throw new Error(`workflow step timed out after ${Number(spec.timeoutSeconds || 0)} seconds`);
+          })(),
+        ])
+      : await executionPromise;
     let toolPayload = attach
       ? attachedWorkflowStepPayload(step, toolCommand, result)
       : result.toolPayload;
@@ -1980,18 +2003,6 @@ async function runToolWorkflow({
       break;
     }
 
-    if (spec && Number(spec.timeoutSeconds || 0) > 0) {
-      emitEvent("step.waiting", {
-        name: step.name,
-        timeout_seconds: Number(spec.timeoutSeconds || 0),
-      }, {
-        scope: "step",
-        workflowId: workflow.id,
-        stepId: step.id,
-        tool: step.tool,
-      });
-      await sleep(Number(spec.timeoutSeconds || 0) * 1000);
-    }
   }
   } catch (error) {
     workflowStatus = "error";
@@ -2328,6 +2339,7 @@ async function handleWorkflowCommand(argv) {
             toolArgv: Array.isArray(step.args) ? step.args : [],
             toolCommand: step.command || "exec",
             attach: Boolean(step.attach),
+            timeoutSeconds: Number(step["timeout-seconds"] || step.timeoutSeconds || 0),
           })),
           workflowName: String(flags.name),
           workspaceRoot,
@@ -2353,6 +2365,7 @@ async function handleWorkflowCommand(argv) {
           toolArgv: Array.isArray(step.args) ? step.args : [],
           toolCommand: step.command || "exec",
           attach: Boolean(step.attach),
+          timeoutSeconds: Number(step["timeout-seconds"] || step.timeoutSeconds || 0),
         })),
         workflowName: String(flags.name),
         workspaceRoot,
@@ -2406,6 +2419,7 @@ async function handleWorkflowCommand(argv) {
         toolArgv: Array.isArray(step.args) ? step.args : [],
         toolCommand: step.command || "exec",
         attach: Boolean(step.attach),
+        timeoutSeconds: Number(step["timeout-seconds"] || step.timeoutSeconds || 0),
       })),
       workflowName: String(workflow.workflow),
       workspaceRoot,

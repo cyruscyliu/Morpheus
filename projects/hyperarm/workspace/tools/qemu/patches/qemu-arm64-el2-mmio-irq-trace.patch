@@ -202,7 +202,7 @@
  }
  
  static const ARMCPRegInfo gicv3_cpuif_reginfo[] = {
-@@ -2854,6 +2980,20 @@
+@@ -2854,6 +2980,21 @@
          if (cs->prebits == 8) {
              cs->prebits--;
          }

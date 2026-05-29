@@ -29,6 +29,7 @@ if [ -z "${qemu_include_dir}" ]; then
 fi
 plugin_header="${qemu_include_dir}/qemu-plugin.h"
 plugin_out="${install_dir}/lib/nqc2/nqc2-plugin.so"
+guest_plugin_out="${install_dir}/lib/nqc2/nqc2-plugin-aarch64.so"
 cli_out="${install_dir}/bin/nqc2"
 qemu_etrace_out="${install_dir}/bin/qemu-etrace"
 manifest_file="${build_dir}/manifest.json"
@@ -40,7 +41,7 @@ if [ ! -f "${plugin_header}" ]; then
   exit 1
 fi
 
-if [ "${reuse_build_dir}" = "true" ] && [ -f "${manifest_file}" ] && [ -x "${cli_out}" ] && [ -x "${qemu_etrace_out}" ] && [ -f "${plugin_out}" ]; then
+if [ "${reuse_build_dir}" = "true" ] && [ -f "${manifest_file}" ] && [ -x "${cli_out}" ] && [ -x "${qemu_etrace_out}" ] && [ -f "${plugin_out}" ] && [ -f "${guest_plugin_out}" ]; then
   if [ -d "${qemu_etrace_repo}" ] && make -C "${qemu_etrace_repo}" -q >/dev/null 2>&1; then
     if [ "${plugin_out}" -nt "${manifest_file}" ] || [ "${cli_out}" -nt "${manifest_file}" ] || [ "${qemu_etrace_out}" -nt "${manifest_file}" ]; then
       : 
@@ -60,6 +61,7 @@ if [ "${reuse_build_dir}" = "true" ] && [ -f "${manifest_file}" ] && [ -x "${cli
       { "path": "nqc2", "location": "${cli_out}" },
       { "path": "qemu-etrace", "location": "${qemu_etrace_out}" },
       { "path": "nqc2-plugin-so", "location": "${plugin_out}" },
+      { "path": "nqc2-plugin-so-aarch64", "location": "${guest_plugin_out}" },
       { "path": "trace-dir", "location": "${trace_dir}" }
     ]
   }
@@ -82,6 +84,17 @@ cc="${CC:-gcc}"
   -I"${qemu_include_dir}" \
   "${script_dir}/nqc2_plugin.c" \
   -o "${plugin_out}" \
+  -lpthread
+
+aarch64-linux-gnu-gcc \
+  -std=c11 \
+  -O2 \
+  -fPIC \
+  -fvisibility=hidden \
+  -shared \
+  -I"${qemu_include_dir}" \
+  "${script_dir}/nqc2_plugin.c" \
+  -o "${guest_plugin_out}" \
   -lpthread
 
 if [ ! -d "${qemu_etrace_repo}/.git" ]; then
@@ -130,6 +143,7 @@ cat > "${manifest_file}" <<EOF
   "plugin": "${plugin_out}",
   "cli": "${cli_out}",
   "qemuEtrace": "${qemu_etrace_out}",
+  "guestPlugin": "${guest_plugin_out}",
   "traceDir": "${trace_dir}",
   "qemuInstallDir": "${qemu_install_dir:-}"
 }
@@ -150,6 +164,7 @@ cat > "${result_file}" <<EOF
       { "path": "nqc2", "location": "${cli_out}" },
       { "path": "qemu-etrace", "location": "${qemu_etrace_out}" },
       { "path": "nqc2-plugin-so", "location": "${plugin_out}" },
+      { "path": "nqc2-plugin-so-aarch64", "location": "${guest_plugin_out}" },
       { "path": "trace-dir", "location": "${trace_dir}" }
     ]
   }

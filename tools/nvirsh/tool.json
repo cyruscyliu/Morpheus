@@ -66,6 +66,34 @@
           "build-dir-key",
           "buildDirKey"
         ]
+      },
+      "guest-stub": {
+        "aliases": [
+          "guest-stub",
+          "guestStub"
+        ],
+        "path": true
+      },
+      "guest-qemu-source": {
+        "aliases": [
+          "guest-qemu-source",
+          "guestQemuSource"
+        ],
+        "path": true
+      },
+      "guest-nqc2-source": {
+        "aliases": [
+          "guest-nqc2-source",
+          "guestNqc2Source"
+        ],
+        "path": true
+      },
+      "guest-nqc2-plugin": {
+        "aliases": [
+          "guest-nqc2-plugin",
+          "guestNqc2Plugin"
+        ],
+        "path": true
       }
     }
   },
@@ -77,6 +105,18 @@
         },
         "buildroot": {
           "flag": "buildroot-output-dir"
+        },
+        "libafl": {
+          "flag": "guest-stub"
+        },
+        "qemu-source": {
+          "flag": "guest-qemu-source"
+        },
+        "nqc2-source": {
+          "flag": "guest-nqc2-source"
+        },
+        "nqc2-plugin": {
+          "flag": "guest-nqc2-plugin"
         }
       }
     }
@@ -100,6 +140,12 @@
         },
         "run-manifest": {
           "pathTemplate": "tools/nvirsh/runs/{buildDirKey}/manifest.json"
+        },
+        "guest-nqc2-trace": {
+          "pathTemplate": "tools/nvirsh/builds/{buildDirKey}/install/guest-nqc2.trace"
+        },
+        "guest-qemu-trace-log": {
+          "pathTemplate": "tools/nvirsh/builds/{buildDirKey}/install/guest-qemu-trace.log"
         }
       },
       "commands": {
@@ -152,6 +198,10 @@
             "qemu",
             "firmware",
             "buildroot-output-dir",
+            "guest-stub",
+            "guest-qemu-source",
+            "guest-nqc2-source",
+            "guest-nqc2-plugin",
             "reuse-build-dir",
             "build-version",
             "build-dir-key",

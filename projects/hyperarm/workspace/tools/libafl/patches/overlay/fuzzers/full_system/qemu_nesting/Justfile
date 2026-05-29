@@ -1,9 +1,8 @@
 import "../../../just/libafl-qemu.just"
 
-ARCH := env("ARCH", "arm")
+ARCH := env("ARCH", "aarch64")
 FUZZER_NAME := "qemu_nesting"
-KERNEL := env("KERNEL")
-INITRD := env("INITRD")
+STUB := env("STUB")
 
 build:
     cargo build \
@@ -13,13 +12,4 @@ build:
         --target-dir {{ TARGET_DIR }}
 
 run: (build)
-    {{ BUILD_DIR / "qemu_nesting" }} \
-        -machine virt,virtualization=on,gic-version=3 \
-        -cpu cortex-a57 \
-        -m 1024 \
-        -monitor null \
-        -kernel {{ KERNEL }} \
-        -initrd {{ INITRD }} \
-        -serial null \
-        -nographic \
-        -append "console=ttyAMA0 rdinit=/bin/sh"
+    STUB={{ STUB }} {{ BUILD_DIR / "qemu_nesting" }}

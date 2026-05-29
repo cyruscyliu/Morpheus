@@ -53,9 +53,16 @@ tools:
     build-version: 8.2.7
     reuse-build-dir: true
     build-dir-key: qemu-8.2.7-aarch64-softmmu
-    patch-dir: tools/qemu/patches/empty
+    patch-dir: tools/qemu/patches
     target-list:
       - aarch64-softmmu
+    configure-arg:
+      - --disable-docs
+      - --disable-tools
+      - --disable-cap-ng
+      - --disable-virtfs
+      - --disable-guest-agent
+      - --disable-guest-agent-msi
     artifacts:
       - qemu-system-aarch64
   libafl:
@@ -108,6 +115,7 @@ tools:
     build-version: dev
     reuse-build-dir: true
     build-dir-key: default
+    seed-dir: ../../tools/nqc2/scripts
   llbic:
     mode: remote
     sync-morpheus: true
@@ -188,6 +196,75 @@ tools:
     artifacts:
       - source-dir
 workflows:
+  nvirsh-aarch64-libafl-nesting-fuzzing:
+    category: run
+    steps:
+      - id: libafl_fetch
+        tool: libafl
+        command: fetch
+      - id: libafl_patch
+        tool: libafl
+        command: patch
+        args:
+          - --source
+          - "{{steps.libafl_fetch.artifacts.source-dir.location}}"
+      - id: libafl_build
+        tool: libafl
+        command: build
+        args:
+          - --source
+          - "{{steps.libafl_patch.artifacts.source-dir.location}}"
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+      - id: nqc2_fetch
+        tool: nqc2
+        command: fetch
+      - id: nqc2_build
+        tool: nqc2
+        command: build
+        args:
+          - --source
+          - "{{steps.nqc2_fetch.artifacts.source-dir.location}}"
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+      - id: nvirsh_fetch
+        tool: nvirsh
+        command: fetch
+      - id: nvirsh_build
+        tool: nvirsh
+        command: build
+        args:
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+          - --guest-stub
+          - "{{steps.libafl_build.artifacts.guest-stub-binary.location}}"
+          - --guest-qemu-source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+          - --guest-nqc2-plugin
+          - "{{steps.nqc2_build.artifacts.nqc2-plugin-so-aarch64.location}}"
+      - id: libafl_exec
+        tool: libafl
+        command: exec
+        args:
+          - --detach
+          - --source
+          - "{{steps.libafl_patch.artifacts.source-dir.location}}"
+          - --nvirsh-state
+          - "{{steps.nvirsh_build.artifacts.prepared-state.location}}"
+        timeout-seconds: 5
   pkvm-aarch64-runtime:
     category: run
     steps:

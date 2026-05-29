@@ -1,10 +1,9 @@
 //! A systemmode nesting fuzzer using qemu and libafl_nesting.
-#[cfg(all(target_os = "linux", feature = "breakpoint"))]
+#[cfg(target_os = "linux")]
 mod fuzzer_breakpoint;
 
 #[cfg(target_os = "linux")]
 pub fn main() {
-    #[cfg(feature = "breakpoint")]
     fuzzer_breakpoint::fuzz();
 }
 

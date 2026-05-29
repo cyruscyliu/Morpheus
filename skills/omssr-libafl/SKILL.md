@@ -16,7 +16,7 @@ source tree, patching in `libafl_nesting`, and building the guest stub plus
 patched `qemu-libafl-bridge` coverage backend artifacts.
 
 `tool.json` is the contract.
-`scripts/` own fetch, patch, build, and inspect behavior.
+`scripts/` own fetch, patch, build, exec, and inspect behavior.
 Morpheus owns managed path resolution, artifacts, logging, and workflow
 execution.
 
@@ -29,6 +29,7 @@ The descriptor accepts these field families:
 - patching: `patch-dir`
 - build reuse: `reuse-build-dir`, `build-dir-key`
 - build passthrough: `cargo-arg`
+- runtime handoff: `nvirsh-state`, `run-dir`, `detach`
 - artifact publication: `artifacts`
 
 Keep durable defaults in shared config and use workflow args only when the
@@ -38,7 +39,7 @@ build needs to vary.
 
 `tools/libafl/tool.json` is the Morpheus integration contract.
 
-- `cli-contract` is `fetch,patch,build,inspect,install-dependencies`
+- `cli-contract` is `fetch,patch,build,exec,inspect`
 - `config.fields` defines accepted flags and aliases
 - `managed.local.sourceTemplate`, `buildDirTemplate`, and `installDirTemplate`
   define managed paths
@@ -56,6 +57,8 @@ Important descriptor fields:
   overlay source for `libafl_nesting`.
 - `config.fields.cargo-arg`:
   additional cargo build flags.
+- `config.fields.nvirsh-state`, `run-dir`, `detach`:
+  prepared nested-stack runtime inputs for host-side fuzzing.
 - `managed.artifacts.qemu-bridge-lib`:
   installed patched QEMU bridge shared library.
 - `managed.artifacts.guest-stub-binary`:
@@ -72,12 +75,13 @@ the guest stub artifact.
   updates the workspace manifest
 - `build` compiles `libafl_nesting_stub` with the `qemu-bridge-aarch64`
   feature, which in turn builds the patched `qemu-libafl-bridge` backend
+- `exec` launches the installed `qemu_nesting` host-side fuzzer against a
+  prepared `nvirsh` image and uses the installed guest stub ELF for
+  breakpoint symbol resolution
 - `inspect` reports managed source and built artifact locations
-- `install-dependencies` installs the host packages needed to fetch and build
-  LibAFL
 
-This tool has no runtime `exec` phase.
-It only produces build artifacts for later runtime integration.
+The current `exec` phase only launches the guest stub in L1.
+It does not yet provide a full host-side nested fuzzing controller.
 
 ## JSON Contract
 
@@ -96,6 +100,7 @@ managed fetch, patch, and build sequence.
 - managed `libafl_nesting` overlay application
 - guest stub artifact build
 - patched `qemu-libafl-bridge` shared-library build
+- host-side `qemu_nesting` launch against prepared `nvirsh` state
 - stable artifact publication for later runtime integration
 
 ## Potential To-Do List

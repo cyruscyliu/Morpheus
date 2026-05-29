@@ -7,11 +7,10 @@ authors = [
 edition = "2021"
 
 [features]
-default = ["std", "breakpoint", "arm"]
+default = ["std", "aarch64"]
 std = []
 
-arm = ["libafl_qemu/arm"]
-breakpoint = []
+aarch64 = ["libafl_qemu/aarch64"]
 
 [profile.release]
 incremental = true
@@ -28,3 +27,6 @@ libafl_qemu = { path = "../../../crates/libafl_qemu", default-features = false, 
 ] }
 libafl_nesting = { path = "../../../crates/libafl_nesting" }
 env_logger = "0.11.5"
+
+[build-dependencies]
+libafl_qemu_build = { path = "../../../crates/libafl_qemu/libafl_qemu_build" }

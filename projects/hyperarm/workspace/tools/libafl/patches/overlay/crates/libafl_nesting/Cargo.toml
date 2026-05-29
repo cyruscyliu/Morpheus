@@ -25,6 +25,7 @@ qemu-bridge-aarch64 = [
 libafl = { workspace = true, default-features = false }
 libafl_bolts = { workspace = true, default-features = false }
 libafl_qemu = { workspace = true, default-features = false, optional = true }
+libvharness_sys = { workspace = true, features = ["aarch64"] }
 serde = { workspace = true, default-features = false, features = ["alloc"] }
 
 [dev-dependencies]

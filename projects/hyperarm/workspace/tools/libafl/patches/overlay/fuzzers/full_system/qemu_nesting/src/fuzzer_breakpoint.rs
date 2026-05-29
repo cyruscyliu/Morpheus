@@ -4,13 +4,11 @@ use std::{env, path::PathBuf, process};
 use libafl::{
     corpus::{Corpus, InMemoryCorpus, OnDiskCorpus},
     events::{EventConfig, launcher::Launcher},
-    executors::ExitKind,
     feedback_or, feedback_or_fast,
     feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
     fuzzer::{Fuzzer, StdFuzzer},
     generators::Generator,
     monitors::MultiMonitor,
-    mutators::scheduled::{StdScheduledMutator, havoc_mutations::havoc_mutations},
     observers::{CanTrack, HitcountsMapObserver, TimeObserver, VariableMapObserver},
     schedulers::{IndexesLenTimeMinimizerScheduler, QueueScheduler},
     stages::{CalibrationStage, StdMutationalStage},
@@ -25,13 +23,9 @@ use libafl_bolts::{
     shmem::{ShMemProvider, StdShMemProvider},
     tuples::tuple_list,
 };
-use libafl_nesting::{ScenarioGenerator, ScenarioInput};
+use libafl_nesting::{ScenarioGenerator, ScenarioInput, ScenarioMutator};
 use libafl_qemu::{
-    GuestPhysAddr, GuestReg, InputLocation, QemuMemoryChunk, breakpoint::Breakpoint,
-    command::{EndCommand, StartCommand},
-    elf::EasyElf,
-    emu::Emulator,
-    executor::QemuExecutor,
+    QemuSnapshotManager, emu::Emulator, executor::QemuExecutor,
     modules::edges::StdEdgeCoverageModule,
 };
 use libafl_targets::{EDGES_MAP_DEFAULT_SIZE, MAX_EDGES_FOUND, edges_map_mut_ptr};
@@ -42,32 +36,12 @@ pub fn fuzz() {
     env_logger::init();
 
     let timeout = Duration::from_secs(3);
-    let broker_port = 1341;
+    let broker_port = env::var("BROKER_PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(1341);
     let cores = Cores::from_cmdline("1").unwrap();
     let objective_dir = PathBuf::from("./crashes");
-
-    let mut elf_buffer = Vec::new();
-    let elf = EasyElf::from_file(
-        env::var("KERNEL").expect("KERNEL env not set"),
-        &mut elf_buffer,
-    )
-    .unwrap();
-
-    let input_addr = elf
-        .resolve_symbol(
-            &env::var("FUZZ_INPUT").unwrap_or_else(|_| "FUZZ_INPUT".to_owned()),
-            0,
-        )
-        .expect("Symbol or env FUZZ_INPUT not found") as GuestPhysAddr;
-    let main_addr = elf
-        .resolve_symbol("main", 0)
-        .expect("Symbol main not found");
-    let breakpoint = elf
-        .resolve_symbol(
-            &env::var("BREAKPOINT").unwrap_or_else(|_| "BREAKPOINT".to_owned()),
-            0,
-        )
-        .expect("Symbol or env BREAKPOINT not found");
 
     let mut run_client = |state: Option<_>, mut mgr, _client_description| {
         let args: Vec<String> = env::args().collect();
@@ -95,35 +69,8 @@ pub fn fuzz() {
         let mut emu = Emulator::builder()
             .qemu_parameters(args)
             .modules(modules)
+            .snapshot_manager(QemuSnapshotManager::default())
             .build()?;
-
-        let qemu = emu.qemu();
-
-        emu.add_breakpoint(
-            Breakpoint::with_command(
-                main_addr,
-                StartCommand::new(InputLocation::new(
-                    qemu,
-                    &QemuMemoryChunk::phys(
-                        input_addr,
-                        unsafe { MAX_INPUT_SIZE } as GuestReg,
-                        qemu.cpu_from_index(0).unwrap(),
-                    ),
-                    None,
-                ))
-                .into(),
-                true,
-            ),
-            true,
-        );
-        emu.add_breakpoint(
-            Breakpoint::with_command(
-                breakpoint,
-                EndCommand::new(Some(ExitKind::Ok)).into(),
-                false,
-            ),
-            true,
-        );
 
         unsafe {
             emu.start().unwrap();
@@ -156,7 +103,7 @@ pub fn fuzz() {
             IndexesLenTimeMinimizerScheduler::new(&edges_observer, QueueScheduler::new());
         let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
 
-        let mutator = StdScheduledMutator::new(havoc_mutations());
+        let mutator = ScenarioMutator::default();
         let calibration_feedback = MaxMapFeedback::new(&edges_observer);
         let mut stages = tuple_list!(
             StdMutationalStage::new(mutator),

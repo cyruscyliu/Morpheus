@@ -3,8 +3,8 @@
 This folder contains a minimal AArch64 `virt` system-mode nesting example using
 `libafl_nesting` on top of `libafl_qemu`.
 
-This example assumes you already have an external guest image or kernel that
-contains a userspace fuzzing stub with exported symbols such as:
+This example assumes you already have a guest image that auto-runs a userspace
+fuzzing stub with exported symbols such as:
 
 - `main`
 - `FUZZ_INPUT`
@@ -19,28 +19,19 @@ The first cut is intentionally simple:
 
 ## Prerequisite
 
-You need a runnable AArch64 `virt` guest image or kernel and initrd that export
-the stub symbols the host resolves.
+You need a runnable AArch64 `virt` guest image whose boot-time userspace launches
+the stub.
 
 ## Build
 
 ```bash
-cargo build --profile release --features std,breakpoint,arm
+cargo build --profile release --features std,breakpoint,aarch64
 ```
 
 ## Run
 
 ```bash
-KERNEL=/path/to/Image \
-INITRD=/path/to/rootfs.cpio.gz \
+STUB=/path/to/libafl_nesting_stub \
 ./target/release/qemu_nesting \
-  -machine virt,virtualization=on,gic-version=3 \
-  -cpu cortex-a57 \
-  -m 1024 \
-  -nographic \
-  -kernel /path/to/Image \
-  -initrd /path/to/rootfs.cpio.gz \
-  -append "console=ttyAMA0 rdinit=/bin/sh" \
-  -monitor null \
-  -serial null
+  <qemu-system-aarch64 arguments for the prepared image>
 ```

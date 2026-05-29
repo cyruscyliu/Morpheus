@@ -1,0 +1,221 @@
+--- a/hw/virtio/trace-events
++++ b/hw/virtio/trace-events
+@@ -97,6 +97,7 @@
+ # virtio-mmio.c
+ virtio_mmio_read(uint64_t offset) "virtio_mmio_read offset 0x%" PRIx64
+ virtio_mmio_write_offset(uint64_t offset, uint64_t value) "virtio_mmio_write offset 0x%" PRIx64 " value 0x%" PRIx64
++virtio_mmio_fuzz_read(uint64_t offset, uint64_t base, uint64_t fuzzed, unsigned size, uint64_t cursor) "virtio_mmio_fuzz_read offset 0x%" PRIx64 " base 0x%" PRIx64 " fuzzed 0x%" PRIx64 " size %u cursor %" PRIu64
+ virtio_mmio_guest_page(uint64_t size, int shift) "guest page size 0x%" PRIx64 " shift %d"
+ virtio_mmio_queue_write(uint64_t value, int max_size) "mmio_queue write 0x%" PRIx64 " max %d"
+ virtio_mmio_setting_irq(int level) "virtio_mmio setting IRQ %d"
+--- a/hw/virtio/virtio-mmio.c
++++ b/hw/virtio/virtio-mmio.c
+@@ -21,6 +21,7 @@
+ 
+ #include "qemu/osdep.h"
+ #include "standard-headers/linux/virtio_mmio.h"
++#include "standard-headers/linux/virtio_ids.h"
+ #include "hw/irq.h"
+ #include "hw/qdev-properties.h"
+ #include "hw/sysbus.h"
+@@ -35,6 +36,82 @@
+ #include "qemu/log.h"
+ #include "trace.h"
+ 
++#define MORPHEUS_QEMU_INPUT_PATH_ENV "MORPHEUS_QEMU_INPUT_PATH"
++
++typedef struct MorpheusVirtIOMMIOFuzzState {
++    bool initialized;
++    bool enabled;
++    uint8_t *data;
++    gsize len;
++    uint64_t cursor;
++} MorpheusVirtIOMMIOFuzzState;
++
++static MorpheusVirtIOMMIOFuzzState morpheus_virtio_mmio_fuzz;
++
++static void morpheus_virtio_mmio_fuzz_init(void)
++{
++    const char *path = NULL;
++
++    if (morpheus_virtio_mmio_fuzz.initialized) {
++        return;
++    }
++
++    morpheus_virtio_mmio_fuzz.initialized = true;
++    path = g_getenv(MORPHEUS_QEMU_INPUT_PATH_ENV);
++    if (!path || !*path) {
++        return;
++    }
++
++    if (!g_file_get_contents(path, (gchar **)&morpheus_virtio_mmio_fuzz.data,
++                             &morpheus_virtio_mmio_fuzz.len, NULL)) {
++        return;
++    }
++
++    morpheus_virtio_mmio_fuzz.enabled = morpheus_virtio_mmio_fuzz.len > 0;
++}
++
++static bool morpheus_virtio_mmio_should_fuzz(VirtIODevice *vdev)
++{
++    morpheus_virtio_mmio_fuzz_init();
++    return morpheus_virtio_mmio_fuzz.enabled &&
++           vdev &&
++           vdev->device_id == VIRTIO_ID_NET;
++}
++
++static uint64_t morpheus_virtio_mmio_next(unsigned size)
++{
++    uint64_t value = 0;
++    unsigned i;
++
++    if (!morpheus_virtio_mmio_fuzz.len) {
++        return 0;
++    }
++
++    for (i = 0; i < size; i++) {
++        value |= ((uint64_t)morpheus_virtio_mmio_fuzz
++                  .data[morpheus_virtio_mmio_fuzz.cursor %
++                        morpheus_virtio_mmio_fuzz.len]) << (i * 8);
++        morpheus_virtio_mmio_fuzz.cursor++;
++    }
++
++    return value;
++}
++
++static uint64_t morpheus_virtio_mmio_fuzz_mix(hwaddr offset, uint64_t base,
++                                              unsigned size, bool keep_nonzero)
++{
++    uint64_t mask = size >= 8 ? UINT64_MAX : ((1ULL << (size * 8)) - 1);
++    uint64_t fuzz = morpheus_virtio_mmio_next(size);
++    uint64_t fuzzed = (base ^ fuzz) & mask;
++
++    if (keep_nonzero && base != 0 && fuzzed == 0) {
++        fuzzed = base & mask;
++    }
++    trace_virtio_mmio_fuzz_read(offset, base, fuzzed, size,
++                                morpheus_virtio_mmio_fuzz.cursor);
++    return fuzzed;
++}
++
+ static bool virtio_mmio_ioeventfd_enabled(DeviceState *d)
+ {
+     VirtIOMMIOProxy *proxy = VIRTIO_MMIO(d);
+@@ -116,27 +193,43 @@
+     if (offset >= VIRTIO_MMIO_CONFIG) {
+         offset -= VIRTIO_MMIO_CONFIG;
+         if (proxy->legacy) {
++            uint64_t value;
+             switch (size) {
+             case 1:
+-                return virtio_config_readb(vdev, offset);
++                value = virtio_config_readb(vdev, offset);
++                break;
+             case 2:
+-                return virtio_config_readw(vdev, offset);
++                value = virtio_config_readw(vdev, offset);
++                break;
+             case 4:
+-                return virtio_config_readl(vdev, offset);
++                value = virtio_config_readl(vdev, offset);
++                break;
+             default:
+                 abort();
+             }
++            return morpheus_virtio_mmio_should_fuzz(vdev)
++                ? morpheus_virtio_mmio_fuzz_mix(VIRTIO_MMIO_CONFIG + offset,
++                                                value, size, false)
++                : value;
+         } else {
++            uint64_t value;
+             switch (size) {
+             case 1:
+-                return virtio_config_modern_readb(vdev, offset);
++                value = virtio_config_modern_readb(vdev, offset);
++                break;
+             case 2:
+-                return virtio_config_modern_readw(vdev, offset);
++                value = virtio_config_modern_readw(vdev, offset);
++                break;
+             case 4:
+-                return virtio_config_modern_readl(vdev, offset);
++                value = virtio_config_modern_readl(vdev, offset);
++                break;
+             default:
+                 abort();
+             }
++            return morpheus_virtio_mmio_should_fuzz(vdev)
++                ? morpheus_virtio_mmio_fuzz_mix(VIRTIO_MMIO_CONFIG + offset,
++                                                value, size, false)
++                : value;
+         }
+     }
+     if (size != 4) {
+@@ -158,23 +251,27 @@
+         return vdev->device_id;
+     case VIRTIO_MMIO_VENDOR_ID:
+         return VIRT_VENDOR;
+-    case VIRTIO_MMIO_DEVICE_FEATURES:
++    case VIRTIO_MMIO_DEVICE_FEATURES: {
++        uint64_t value;
+         if (proxy->legacy) {
+-            if (proxy->host_features_sel) {
+-                return 0;
+-            } else {
+-                return vdev->host_features;
+-            }
++            value = proxy->host_features_sel ? 0 : vdev->host_features;
+         } else {
+             VirtioDeviceClass *vdc = VIRTIO_DEVICE_GET_CLASS(vdev);
+-            return (vdev->host_features & ~vdc->legacy_features)
++            value = (vdev->host_features & ~vdc->legacy_features)
+                 >> (32 * proxy->host_features_sel);
+         }
++        return morpheus_virtio_mmio_should_fuzz(vdev)
++            ? morpheus_virtio_mmio_fuzz_mix(offset, value, size, false)
++            : value;
++    }
+     case VIRTIO_MMIO_QUEUE_NUM_MAX:
+-        if (!virtio_queue_get_num(vdev, vdev->queue_sel)) {
+-            return 0;
+-        }
+-        return VIRTQUEUE_MAX_SIZE;
++        return morpheus_virtio_mmio_should_fuzz(vdev)
++            ? morpheus_virtio_mmio_fuzz_mix(
++                  offset,
++                  virtio_queue_get_num(vdev, vdev->queue_sel) ? VIRTQUEUE_MAX_SIZE : 0,
++                  size,
++                  true)
++            : (virtio_queue_get_num(vdev, vdev->queue_sel) ? VIRTQUEUE_MAX_SIZE : 0);
+     case VIRTIO_MMIO_QUEUE_PFN:
+         if (!proxy->legacy) {
+             qemu_log_mask(LOG_GUEST_ERROR,
+@@ -195,9 +292,14 @@
+         }
+         return proxy->vqs[vdev->queue_sel].enabled;
+     case VIRTIO_MMIO_INTERRUPT_STATUS:
+-        return qatomic_read(&vdev->isr);
++        return morpheus_virtio_mmio_should_fuzz(vdev)
++            ? morpheus_virtio_mmio_fuzz_mix(offset, qatomic_read(&vdev->isr),
++                                            size, false)
++            : qatomic_read(&vdev->isr);
+     case VIRTIO_MMIO_STATUS:
+-        return vdev->status;
++        return morpheus_virtio_mmio_should_fuzz(vdev)
++            ? morpheus_virtio_mmio_fuzz_mix(offset, vdev->status, size, false)
++            : vdev->status;
+     case VIRTIO_MMIO_CONFIG_GENERATION:
+         if (proxy->legacy) {
+             qemu_log_mask(LOG_GUEST_ERROR,
+@@ -206,7 +308,10 @@
+                           __func__, offset);
+             return 0;
+         }
+-        return vdev->generation;
++        return morpheus_virtio_mmio_should_fuzz(vdev)
++            ? morpheus_virtio_mmio_fuzz_mix(offset, vdev->generation,
++                                            size, false)
++            : vdev->generation;
+    case VIRTIO_MMIO_SHM_LEN_LOW:
+    case VIRTIO_MMIO_SHM_LEN_HIGH:
+         /*

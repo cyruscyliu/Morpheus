@@ -36,6 +36,10 @@ EOF
   exit 0
 fi
 
+printf '[qemu] patch fingerprint changed, refetching clean source before apply\n'
+rm -rf "${source_dir}"
+"$(dirname "$0")/fetch.sh"
+
 while IFS= read -r patch_file; do
   [ -n "${patch_file}" ] || continue
   printf '>>> %s\n' "${patch_file#${patch_dir}/}"

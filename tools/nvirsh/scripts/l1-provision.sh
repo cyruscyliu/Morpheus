@@ -15,18 +15,10 @@ if ! command -v apt-get >/dev/null 2>&1; then
   exit 1
 fi
 
-PYTHON_PKG="$(python3 - <<'PY'
-import sys
-print(f"python{sys.version_info.major}.{sys.version_info.minor}")
-PY
-)"
+export DEBIAN_FRONTEND=noninteractive
 
 sudo apt-get update
-sudo apt-get install -y \
-  python3-venv \
-  "${PYTHON_PKG}-venv" \
-  python3-pip \
-  python3-setuptools \
+sudo apt-get install -y --no-install-recommends \
   meson \
   ninja-build \
   pkg-config \
@@ -34,6 +26,9 @@ sudo apt-get install -y \
   libglib2.0-dev \
   libpixman-1-dev \
   libslirp-dev
+
+sudo apt-get clean
+sudo rm -rf /var/lib/apt/lists/*
 
 for bin in pkg-config meson ninja; do
   if ! command -v "${bin}" >/dev/null 2>&1; then

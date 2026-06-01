@@ -1,6 +1,6 @@
 # Morpheus
 
-[![Version](https://img.shields.io/badge/version-0.4.1-blue.svg)](#)
+[![Version](https://img.shields.io/badge/version-0.4.2-blue.svg)](#)
 [![Buildroot](https://img.shields.io/badge/tool-buildroot-6aa84f.svg)](#)
 [![QEMU](https://img.shields.io/badge/tool-qemu-3d85c6.svg)](#)
 [![Microkit SDK](https://img.shields.io/badge/tool-microkit--sdk-e69138.svg)](#)

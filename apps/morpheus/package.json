@@ -1,7 +1,7 @@
 {
   "name": "@morpheus/app",
   "private": true,
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Morpheus management CLI for workspace metadata, tools, and runs",
   "type": "commonjs",
   "scripts": {

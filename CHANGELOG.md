@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.4.2
+
+- Added managed `libafl` support for nested QEMU VM fuzzing, including:
+  - a script-backed `tools/libafl` descriptor and skill
+  - Hyperarm workflows for LibAFL nested fuzzing orchestration
+  - guest stub and patched `qemu-libafl-bridge` build artifacts
+  - nested fuzzing overlay sources under the Hyperarm workspace patches tree
+- Upgraded the runs-viewer around a Morpheus-CLI-backed data path and a new
+  interactive graph stack, including:
+  - faster graph startup and cached graph layout/loading
+  - improved edge routing and workflow graph rendering stability
+  - workflow launching through the app API
+  - cleaner error summaries in the viewer so raw JSON envelopes no longer fill
+    workflow and inspector panes
+- Hardened Morpheus-managed path and cache handling:
+  - moved more path resolution into Morpheus/config
+  - tightened global cache namespace and managed path resolution
+  - improved `reuse-build-dir` behavior across managed build scripts
+  - clarified the tool-script contract in `AGENTS.md`
+- Improved nested runtime and workflow support:
+  - added managed `nvirsh` nested runtime workflows and tighter logging/checks
+  - centralized Morpheus ownership of workflow logs
+  - improved workflow detail and runtime-state reconciliation in the viewer
+- Bumped workspace package versions from `0.4.1` to `0.4.2`.
+
 ## 0.4.1
 
 - Switched `tools/nqc2` coverage postprocessing from the custom C

@@ -1,7 +1,7 @@
 {
   "name": "@morpheus/runs-viewer",
   "private": true,
-  "version": "0.4.1",
+  "version": "0.4.2",
   "type": "module",
   "scripts": {
     "build": "sh -c 'rm -rf .next && next build && mkdir -p .next/standalone/apps/runs-viewer/.next && rm -rf .next/standalone/apps/runs-viewer/.next/static && cp -R .next/static .next/standalone/apps/runs-viewer/.next/static'",

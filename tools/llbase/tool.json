@@ -1,0 +1,158 @@
+{
+  "name": "llbase",
+  "runtime": null,
+  "cli-contract": "build,inspect",
+  "config": {
+    "fields": {
+      "mode": {
+        "aliases": [
+          "mode"
+        ]
+      },
+      "source": {
+        "aliases": [
+          "source",
+          "path"
+        ],
+        "path": true
+      },
+      "output": {
+        "aliases": [
+          "output"
+        ],
+        "path": true
+      },
+      "target": {
+        "aliases": [
+          "target"
+        ],
+        "path": true
+      },
+      "family": {
+        "aliases": [
+          "family"
+        ]
+      },
+      "clang-version": {
+        "aliases": [
+          "clang-version",
+          "clangVersion"
+        ]
+      },
+      "image-tag": {
+        "aliases": [
+          "image-tag",
+          "imageTag"
+        ]
+      },
+      "prepare-irdumper": {
+        "aliases": [
+          "prepare-irdumper",
+          "prepareIrdumper"
+        ],
+        "boolean": true
+      },
+      "build-image": {
+        "aliases": [
+          "build-image",
+          "buildImage"
+        ],
+        "boolean": true
+      },
+      "build-dir-key": {
+        "aliases": [
+          "build-dir-key",
+          "buildDirKey"
+        ]
+      },
+      "artifacts": {
+        "aliases": [
+          "artifacts"
+        ],
+        "repeatable": true
+      }
+    }
+  },
+  "managed": {
+    "schemaVersion": 1,
+    "modes": [
+      "local"
+    ],
+    "local": {
+      "sourceTemplate": "tools/llbase/source",
+      "outputDirTemplate": "tools/llbase/builds/{buildDirKey}/output",
+      "artifacts": {
+        "source-dir": {
+          "pathTemplate": "tools/llbase/source"
+        },
+        "output-dir": {
+          "pathTemplate": "tools/llbase/builds/{buildDirKey}/output"
+        },
+        "runtime-helper": {
+          "pathTemplate": "tools/llbase/source/scripts/runtime.sh"
+        },
+        "runtime-contract": {
+          "pathTemplate": "tools/llbase/builds/{buildDirKey}/output/runtime-contract.json"
+        }
+      },
+      "commands": {
+        "build": {
+          "requiredFlags": [
+            "source",
+            "output"
+          ],
+          "scalarFlags": [
+            "source",
+            "output",
+            "family",
+            "clang-version",
+            "image-tag",
+            "prepare-irdumper",
+            "build-image"
+          ],
+          "repeatableFlags": [],
+          "pathFlags": {
+            "source": "tools/llbase",
+            "output": "tools/llbase/builds/{buildDirKey}/output"
+          },
+          "script": {
+            "path": "scripts/build.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "prepared llbase runtime contract",
+            "errorSummary": "llbase runtime contract build failed",
+            "manifestTemplate": "{output}/manifest.json",
+            "artifact": {
+              "path": "runtime-contract",
+              "locationTemplate": "{output}/runtime-contract.json"
+            },
+            "details": {
+              "source": "{source}",
+              "output": "{output}",
+              "family": {
+                "fromFlag": "family"
+              }
+            }
+          }
+        },
+        "inspect": {
+          "requiredFlags": [
+            "target"
+          ],
+          "scalarFlags": [
+            "target"
+          ],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/inspect.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "inspected llbase runtime contract"
+          }
+        }
+      }
+    }
+  }
+}

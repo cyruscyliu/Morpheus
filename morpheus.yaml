@@ -7,6 +7,18 @@ cache:
   builds: global
   src: global
 tools:
+  llbase:
+    mode: local
+    source: ./tools/llbase
+    output: tools/llbase/builds/latest/output
+    build-dir-key: latest
+    family: latest
+    build-image: true
+    artifacts:
+      - source-dir
+      - output-dir
+      - runtime-helper
+      - runtime-contract
   buildroot:
     seed-dir: ./tools/buildroot/fixtures/minimal-buildroot
     patch-dir: ./tools/buildroot/patches/demo
@@ -47,6 +59,12 @@ tools:
     seed-dir: ./tools/sel4/fixtures/minimal-sel4-src
     patch-dir: ./tools/sel4/patches/demo
 workflows:
+  llbase-build:
+    category: build
+    steps:
+      - id: llbase_build
+        tool: llbase
+        command: build
   buildroot-build:
     category: build
     steps:

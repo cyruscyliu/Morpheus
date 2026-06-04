@@ -13,7 +13,8 @@ tools:
     output: tools/llbase/builds/latest/output
     build-dir-key: latest
     family: latest
-    build-image: true
+    pull-image: true
+    build-image: false
     artifacts:
       - source-dir
       - output-dir

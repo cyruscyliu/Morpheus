@@ -47,6 +47,10 @@ Build the runtime contract:
   --json
 ```
 
+By default this resolves and pulls the published GHCR image metadata for the
+selected family. Keep local image builds as an explicit debugging path with
+`--build-image`.
+
 Inspect an existing contract:
 
 ```bash

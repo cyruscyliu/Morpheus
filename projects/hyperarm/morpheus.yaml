@@ -116,16 +116,31 @@ tools:
     reuse-build-dir: true
     build-dir-key: default
     seed-dir: ../../tools/nqc2/scripts
+  llbase:
+    mode: local
+    source: ../../tools/llbase
+    output: tools/llbase/builds
+    build-dir-key: latest
+    family: latest
+    pull-image: true
+    build-image: false
+    artifacts:
+      - source-dir
+      - output-dir
+      - runtime-contract
   llbic:
     mode: remote
     sync-morpheus: true
-    cli-contract: exec
     arch: arm64
     clang: 15
     out-of-tree: true
-    sources: tools/llbic/src
+    source: tools/llbic/src
     output: tools/llbic/builds
     conf: tools/llbic/sources.conf
+    dependencies:
+      llbase:
+        tool: llbase
+        artifact: runtime-contract
     artifacts:
       - source-dir
       - output-dir
@@ -136,12 +151,15 @@ tools:
   llcg:
     mode: local
     sync-morpheus: true
-    cli-contract: exec
     arch: arm64
     clang: 15
     reuse-build-dir: true
     build-dir-key: arm64-clang15
     output: tools/llcg/builds
+    dependencies:
+      llbase:
+        tool: llbase
+        artifact: runtime-contract
     artifacts:
       - output-dir
       - manifest
@@ -726,17 +744,20 @@ workflows:
   hyperarm-kernel-callgraphs:
     category: run
     steps:
+      - id: llbase_latest
+        tool: llbase
+        command: build
       - id: llbic_6_18_16
         tool: llbic
         command: build
-        args: [ "6.18.16" ]
+        args: [ "--build-version", "6.18.16" ]
       - id: net_mutator_6_18_16
         tool: llcg
         command: build
         args:
           - --mode
           - remote
-          - genmutator
+          - --generator
           - interfaces
           - --source-dir
           - "{{steps.llbic_6_18_16.artifacts.source-dir.location}}"
@@ -748,7 +769,7 @@ workflows:
         args:
           - --mode
           - remote
-          - genmutator
+          - --generator
           - interfaces
           - --source-dir
           - "{{steps.llbic_6_18_16.artifacts.source-dir.location}}"
@@ -756,11 +777,10 @@ workflows:
           - storage
       - id: net_cg_6_18_16
         tool: llcg
-        command: build
+        command: exec
         args:
           - --mode
           - remote
-          - run
           - --llbic-json
           - "{{steps.llbic_6_18_16.artifacts.llbic-json.location}}"
           - --all-bc-list
@@ -771,11 +791,10 @@ workflows:
           - networking-6.18.16
       - id: storage_cg_6_18_16
         tool: llcg
-        command: build
+        command: exec
         args:
           - --mode
           - remote
-          - run
           - --llbic-json
           - "{{steps.llbic_6_18_16.artifacts.llbic-json.location}}"
           - --all-bc-list
@@ -788,14 +807,14 @@ workflows:
       - id: llbic_6_19_6
         tool: llbic
         command: build
-        args: [ "6.19.6" ]
+        args: [ "--build-version", "6.19.6" ]
       - id: net_mutator_6_19_6
         tool: llcg
         command: build
         args:
           - --mode
           - remote
-          - genmutator
+          - --generator
           - interfaces
           - --source-dir
           - "{{steps.llbic_6_19_6.artifacts.source-dir.location}}"
@@ -807,7 +826,7 @@ workflows:
         args:
           - --mode
           - remote
-          - genmutator
+          - --generator
           - interfaces
           - --source-dir
           - "{{steps.llbic_6_19_6.artifacts.source-dir.location}}"
@@ -815,11 +834,10 @@ workflows:
           - storage
       - id: net_cg_6_19_6
         tool: llcg
-        command: build
+        command: exec
         args:
           - --mode
           - remote
-          - run
           - --llbic-json
           - "{{steps.llbic_6_19_6.artifacts.llbic-json.location}}"
           - --all-bc-list
@@ -830,11 +848,10 @@ workflows:
           - networking-6.19.6
       - id: storage_cg_6_19_6
         tool: llcg
-        command: build
+        command: exec
         args:
           - --mode
           - remote
-          - run
           - --llbic-json
           - "{{steps.llbic_6_19_6.artifacts.llbic-json.location}}"
           - --all-bc-list
@@ -847,14 +864,14 @@ workflows:
       - id: llbic_7_0_rc3
         tool: llbic
         command: build
-        args: [ "7.0-rc3" ]
+        args: [ "--build-version", "7.0-rc3" ]
       - id: net_mutator_7_0_rc3
         tool: llcg
         command: build
         args:
           - --mode
           - remote
-          - genmutator
+          - --generator
           - interfaces
           - --source-dir
           - "{{steps.llbic_7_0_rc3.artifacts.source-dir.location}}"
@@ -866,7 +883,7 @@ workflows:
         args:
           - --mode
           - remote
-          - genmutator
+          - --generator
           - interfaces
           - --source-dir
           - "{{steps.llbic_7_0_rc3.artifacts.source-dir.location}}"
@@ -874,11 +891,10 @@ workflows:
           - storage
       - id: net_cg_7_0_rc3
         tool: llcg
-        command: build
+        command: exec
         args:
           - --mode
           - remote
-          - run
           - --llbic-json
           - "{{steps.llbic_7_0_rc3.artifacts.llbic-json.location}}"
           - --all-bc-list
@@ -889,11 +905,10 @@ workflows:
           - networking-7.0-rc3
       - id: storage_cg_7_0_rc3
         tool: llcg
-        command: build
+        command: exec
         args:
           - --mode
           - remote
-          - run
           - --llbic-json
           - "{{steps.llbic_7_0_rc3.artifacts.llbic-json.location}}"
           - --all-bc-list

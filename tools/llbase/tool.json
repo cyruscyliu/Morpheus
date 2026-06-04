@@ -59,6 +59,13 @@
         ],
         "boolean": true
       },
+      "pull-image": {
+        "aliases": [
+          "pull-image",
+          "pullImage"
+        ],
+        "boolean": true
+      },
       "build-dir-key": {
         "aliases": [
           "build-dir-key",
@@ -107,6 +114,7 @@
             "family",
             "clang-version",
             "image-tag",
+            "pull-image",
             "prepare-irdumper",
             "build-image"
           ],

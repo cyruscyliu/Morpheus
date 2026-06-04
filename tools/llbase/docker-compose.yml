@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    image: ghcr.io/jianxiaoyitech/llbase:latest
+    image: ghcr.io/cyruscyliu/llbase:latest
     user: "${UID:-1000}:${GID:-1000}"
     stdin_open: true
     tty: true
@@ -14,7 +14,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.mid
-    image: ghcr.io/jianxiaoyitech/llbase:mid
+    image: ghcr.io/cyruscyliu/llbase:mid
     user: "${UID:-1000}:${GID:-1000}"
     stdin_open: true
     tty: true
@@ -24,7 +24,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.legacy
-    image: ghcr.io/jianxiaoyitech/llbase:legacy
+    image: ghcr.io/cyruscyliu/llbase:legacy
     user: "${UID:-1000}:${GID:-1000}"
     stdin_open: true
     tty: true

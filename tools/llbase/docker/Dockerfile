@@ -110,7 +110,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends sudo file \
       && useradd -m -s /bin/bash llbase \
       && echo "llbase ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/llbase
 
-LABEL org.opencontainers.image.source="https://github.com/jianxiaoyitech/llbase"
+LABEL org.opencontainers.image.source="https://github.com/cyruscyliu/Morpheus"
 LABEL org.opencontainers.image.description="Shared LLVM/Linux runtime image (latest: 6.x/7.x toolchains)"
 
 USER llbase

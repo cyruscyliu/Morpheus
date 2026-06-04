@@ -2,9 +2,11 @@ name: Publish llbase Images
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "tools/llbase/**"
+      - ".github/workflows/publish-llbase-images.yml"
   push:
-    branches:
-      - main
     paths:
       - "tools/llbase/**"
       - ".github/workflows/publish-llbase-images.yml"
@@ -44,7 +46,7 @@ jobs:
         with:
           context: ./tools/llbase
           file: ./${{ matrix.dockerfile }}
-          push: true
+          push: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/llbase:${{ matrix.family }}
             ghcr.io/${{ github.repository_owner }}/llbase:${{ github.sha }}-${{ matrix.family }}

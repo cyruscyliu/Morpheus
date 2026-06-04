@@ -42,7 +42,7 @@ fi
 if [ "${build_image}" = "true" ]; then
   for selected_family in "${selected_families[@]}"; do
     dockerfile="docker/Dockerfile"
-    resolved_tag="${image_tag:-ghcr.io/jianxiaoyitech/llbase:${selected_family}}"
+    resolved_tag="${image_tag:-ghcr.io/cyruscyliu/llbase:${selected_family}}"
     case "${selected_family}" in
       latest) dockerfile="docker/Dockerfile" ;;
       mid) dockerfile="docker/Dockerfile.mid" ;;
@@ -54,7 +54,7 @@ if [ "${build_image}" = "true" ]; then
 elif [ "${pull_image}" = "true" ]; then
   if docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1; then
     for selected_family in "${selected_families[@]}"; do
-      resolved_tag="${image_tag:-ghcr.io/jianxiaoyitech/llbase:${selected_family}}"
+      resolved_tag="${image_tag:-ghcr.io/cyruscyliu/llbase:${selected_family}}"
       echo "[llbase] docker pull family=${selected_family} tag=${resolved_tag}" >&2
       "${docker_runner[@]}" pull "${resolved_tag}"
     done
@@ -86,17 +86,17 @@ const prepareIrdumper = String(prepareIrdumperArg || "false") === "true";
 const irdumperRoot = path.resolve(irdumperRootArg);
 const images = {
   latest: {
-    image: imageTagArg || "ghcr.io/jianxiaoyitech/llbase:latest",
+    image: imageTagArg || "ghcr.io/cyruscyliu/llbase:latest",
     dockerfile: path.join(sourceDir, "docker", "Dockerfile"),
     clang_versions: [14, 15, 16, 18],
   },
   mid: {
-    image: imageTagArg || "ghcr.io/jianxiaoyitech/llbase:mid",
+    image: imageTagArg || "ghcr.io/cyruscyliu/llbase:mid",
     dockerfile: path.join(sourceDir, "docker", "Dockerfile.mid"),
     clang_versions: [8, 9, 10, 11, 12],
   },
   legacy: {
-    image: imageTagArg || "ghcr.io/jianxiaoyitech/llbase:legacy",
+    image: imageTagArg || "ghcr.io/cyruscyliu/llbase:legacy",
     dockerfile: path.join(sourceDir, "docker", "Dockerfile.legacy"),
     clang_versions: ["6.0", 7, 8],
   },

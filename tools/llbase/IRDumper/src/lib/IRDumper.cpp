@@ -46,6 +46,14 @@ PreservedAnalyses IRDumper::run(Module &M, ModuleAnalysisManager &) {
 llvm::PassPluginLibraryInfo getIRDumperPluginInfo() {
 	return {LLVM_PLUGIN_API_VERSION, "IRDumper", LLVM_VERSION_STRING,
 		[](PassBuilder &PB) {
+			PB.registerOptimizerLastEPCallback(
+					[](llvm::ModulePassManager &PM, llvm::OptimizationLevel) {
+					PM.addPass(IRDumper());
+					});
+			PB.registerPipelineStartEPCallback(
+					[](llvm::ModulePassManager &PM, llvm::OptimizationLevel) {
+					PM.addPass(IRDumper());
+					});
 			PB.registerPipelineParsingCallback(
 					[](StringRef Name, llvm::ModulePassManager &PM,
 						ArrayRef<llvm::PassBuilder::PipelineElement>) {

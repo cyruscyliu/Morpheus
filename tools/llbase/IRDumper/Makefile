@@ -4,10 +4,12 @@ SRC_BUILD := ${CUR_DIR}/build
 
 # Use system LLVM (managed by update-alternatives) by default.
 # Override with: make LLVM_BUILD=/path/to/llvm/prefix dumper
-LLVM_BUILD ?= $(shell llvm-config --prefix)
+LLVM_CONFIG ?= $(shell command -v llvm-config 2>/dev/null || true)
+LLVM_BUILD ?= $(if $(LLVM_CONFIG),$(shell $(LLVM_CONFIG) --prefix),/usr/lib/llvm-18)
 
 # Auto-detect C++ standard: LLVM >= 15 requires C++17, older uses C++14
-LLVM_MAJOR := $(shell llvm-config --version | cut -d. -f1)
+LLVM_CONFIG_BIN := $(if $(wildcard $(LLVM_BUILD)/bin/llvm-config),$(LLVM_BUILD)/bin/llvm-config,$(LLVM_CONFIG))
+LLVM_MAJOR := $(shell $(LLVM_CONFIG_BIN) --version | cut -d. -f1)
 CXX_STD := $(shell [ "$(LLVM_MAJOR)" -ge 15 ] 2>/dev/null && echo c++17 || echo c++14)
 
 NPROC ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)

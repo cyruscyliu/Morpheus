@@ -76,14 +76,6 @@ docker build -f docker/Dockerfile.mid -t ghcr.io/cyruscyliu/llbase:mid .
 docker build -f docker/Dockerfile.legacy -t ghcr.io/cyruscyliu/llbase:legacy .
 ```
 
-Or use Compose:
-
-```bash
-docker compose build llbase
-docker compose build llbase-mid
-docker compose build llbase-legacy
-```
-
 Images are published to GHCR by the repo workflow that builds and publishes:
 
 - `ghcr.io/cyruscyliu/llbase:latest`

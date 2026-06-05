@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/runtime.sh"
+
 source_dir="${MORPHEUS_LLBASE_SOURCE:?}"
 output_dir="${MORPHEUS_LLBASE_OUTPUT:?}"
 family="${MORPHEUS_LLBASE_FAMILY:-all}"
@@ -13,6 +15,11 @@ result_file="${MORPHEUS_LLBASE_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 contract_path="${output_dir}/runtime-contract.json"
 irdumper_root="${output_dir}/irdumper"
 
+running_on_gvisor=false
+if llbase_is_gvisor; then
+  running_on_gvisor=true
+fi
+
 mkdir -p "${output_dir}"
 
 if [ ! -d "${source_dir}/docker" ]; then
@@ -23,6 +30,11 @@ fi
 docker_runner=(docker)
 if ! docker info >/dev/null 2>&1 && sudo docker info >/dev/null 2>&1; then
   docker_runner=(sudo docker)
+fi
+
+docker_available=false
+if docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1; then
+  docker_available=true
 fi
 
 selected_families=()
@@ -40,6 +52,10 @@ if [ -n "${image_tag}" ] && [ "${#selected_families[@]}" -ne 1 ]; then
 fi
 
 if [ "${build_image}" = "true" ]; then
+  if [ "${running_on_gvisor}" = "true" ]; then
+    echo "[llbase] gVisor host detected; local llbase image build is not supported through udocker" >&2
+    exit 1
+  fi
   for selected_family in "${selected_families[@]}"; do
     dockerfile="docker/Dockerfile"
     resolved_tag="${image_tag:-ghcr.io/cyruscyliu/llbase:${selected_family}}"
@@ -52,14 +68,21 @@ if [ "${build_image}" = "true" ]; then
     "${docker_runner[@]}" build -f "${source_dir}/${dockerfile}" -t "${resolved_tag}" "${source_dir}"
   done
 elif [ "${pull_image}" = "true" ]; then
-  if docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1; then
+  if [ "${running_on_gvisor}" = "true" ]; then
     for selected_family in "${selected_families[@]}"; do
       resolved_tag="${image_tag:-ghcr.io/cyruscyliu/llbase:${selected_family}}"
-      echo "[llbase] docker pull family=${selected_family} tag=${resolved_tag}" >&2
-      "${docker_runner[@]}" pull "${resolved_tag}"
+      llbase_udocker_pull_image "${resolved_tag}"
     done
   else
-    echo "[llbase] skipping image pull because no usable docker daemon is available" >&2
+  if [ "${docker_available}" != "true" ]; then
+    echo "[llbase] pull-image=true but no usable docker daemon is available" >&2
+    exit 1
+  fi
+  for selected_family in "${selected_families[@]}"; do
+    resolved_tag="${image_tag:-ghcr.io/cyruscyliu/llbase:${selected_family}}"
+    echo "[llbase] docker pull family=${selected_family} tag=${resolved_tag}" >&2
+    "${docker_runner[@]}" pull "${resolved_tag}"
+  done
   fi
 fi
 

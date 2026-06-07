@@ -11,7 +11,7 @@ tools:
     mode: local
     source: ./tools/llbase
     build-dir-key: latest
-    family: latest
+    family: all
     pull-image: false
     build-image: true
     artifacts:

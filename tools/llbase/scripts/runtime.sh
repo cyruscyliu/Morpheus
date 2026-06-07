@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
 
-llbase_is_gvisor() {
-  grep -qi 'gvisor' /proc/sys/kernel/osrelease 2>/dev/null || \
-    grep -qi 'gvisor' /proc/version 2>/dev/null
-}
-
 llbase_prepare_runtime() {
   local contract_path="$1"
   local kernel_version="${2:-}"
@@ -129,130 +124,11 @@ llbase_docker_runner() {
   printf '%s\n' docker
 }
 
-llbase_udocker_bin() {
-  local candidate=""
-
-  for candidate in \
-    "${LLBASE_UDOCKER_BIN:-}" \
-    /usr/local/bin/udocker-llbase \
-    /usr/local/lib/llbase-udocker-venv/bin/udocker \
-    /tmp/udocker-venv/bin/udocker \
-    "$(command -v udocker 2>/dev/null || true)"; do
-    [ -n "${candidate}" ] || continue
-    [ -x "${candidate}" ] || continue
-    printf '%s\n' "${candidate}"
-    return 0
-  done
-
-  return 1
-}
-
-llbase_udocker_home() {
-  printf '%s\n' "${LLBASE_UDOCKER_HOME:-/var/tmp/llbase-udocker-home}"
-}
-
-llbase_udocker_init() {
-  local udocker_bin=""
-  local udocker_home=""
-
-  udocker_bin="$(llbase_udocker_bin)" || {
-    echo "llbase udocker backend requested but no udocker binary is available" >&2
-    return 1
-  }
-  udocker_home="$(llbase_udocker_home)"
-  mkdir -p "${udocker_home}"
-
-  if [ ! -d "${udocker_home}/.udocker" ]; then
-    HOME="${udocker_home}" "${udocker_bin}" --allow-root install >/dev/null
-  fi
-}
-
-llbase_udocker_image_name() {
-  local image="$1"
-  local image_hash=""
-
-  image_hash="$(printf '%s' "${image}" | sha256sum | cut -c1-16)"
-  printf 'llbase-%s\n' "${image_hash}"
-}
-
-llbase_udocker_pull_image() {
-  local image="$1"
-  local udocker_bin=""
-  local udocker_home=""
-
-  llbase_udocker_init
-  udocker_bin="$(llbase_udocker_bin)"
-  udocker_home="$(llbase_udocker_home)"
-  echo "[llbase] udocker pull image=${image}" >&2
-  HOME="${udocker_home}" "${udocker_bin}" --allow-root pull "${image}"
-}
-
-llbase_exec_in_udocker() {
-  local workdir="$1"
-  local image="$2"
-  shift 2
-
-  local -a mount_inputs=()
-  while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do
-    mount_inputs+=("$1")
-    shift
-  done
-  [ "$#" -gt 0 ] || {
-    echo "llbase_exec_in_udocker requires -- before the command" >&2
-    return 1
-  }
-  shift
-
-  llbase_udocker_init
-
-  local udocker_bin=""
-  local udocker_home=""
-  local container_name=""
-  local mount_root=""
-  local -A seen=()
-  local -a udocker_cmd=()
-
-  udocker_bin="$(llbase_udocker_bin)"
-  udocker_home="$(llbase_udocker_home)"
-  container_name="$(llbase_udocker_image_name "${image}")"
-
-  if ! HOME="${udocker_home}" "${udocker_bin}" --allow-root inspect "${container_name}" >/dev/null 2>&1; then
-    HOME="${udocker_home}" "${udocker_bin}" --allow-root create --name="${container_name}" "${image}" >/dev/null
-  fi
-  HOME="${udocker_home}" "${udocker_bin}" --allow-root setup --execmode=P1 "${container_name}" >/dev/null 2>&1 || true
-
-  udocker_cmd=(
-    env "HOME=${udocker_home}"
-    "${udocker_bin}" --allow-root run
-    --workdir="${workdir}"
-    --nobanner
-  )
-
-  for candidate in "${mount_inputs[@]}"; do
-    mount_root="$(llbase_mount_path "${candidate}")"
-    [ -n "${mount_root}" ] || continue
-    if [ -n "${seen[${mount_root}]:-}" ]; then
-      continue
-    fi
-    seen["${mount_root}"]=1
-    mkdir -p "${mount_root}"
-    udocker_cmd+=("--volume=${mount_root}:${mount_root}")
-  done
-
-  udocker_cmd+=("${container_name}")
-  udocker_cmd+=("$@")
-  "${udocker_cmd[@]}"
-}
-
 llbase_exec_in_container() {
   local workdir="$1"
   shift
 
   local image="${LLBASE_RUNTIME_IMAGE:?}"
-  if llbase_is_gvisor; then
-    llbase_exec_in_udocker "${workdir}" "${image}" "$@"
-    return $?
-  fi
   local runner_text
   runner_text="$(llbase_docker_runner)"
   local -a runner=()

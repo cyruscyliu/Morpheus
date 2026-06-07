@@ -15,11 +15,6 @@ result_file="${MORPHEUS_LLBASE_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 contract_path="${output_dir}/runtime-contract.json"
 irdumper_root="${output_dir}/irdumper"
 
-running_on_gvisor=false
-if llbase_is_gvisor; then
-  running_on_gvisor=true
-fi
-
 mkdir -p "${output_dir}"
 
 if [ ! -d "${source_dir}/docker" ]; then
@@ -52,8 +47,8 @@ if [ -n "${image_tag}" ] && [ "${#selected_families[@]}" -ne 1 ]; then
 fi
 
 if [ "${build_image}" = "true" ]; then
-  if [ "${running_on_gvisor}" = "true" ]; then
-    echo "[llbase] gVisor host detected; local llbase image build is not supported through udocker" >&2
+  if [ "${docker_available}" != "true" ]; then
+    echo "[llbase] build-image=true but no usable docker daemon is available" >&2
     exit 1
   fi
   for selected_family in "${selected_families[@]}"; do
@@ -65,15 +60,9 @@ if [ "${build_image}" = "true" ]; then
       legacy) dockerfile="docker/Dockerfile.legacy" ;;
     esac
     echo "[llbase] docker build family=${selected_family} tag=${resolved_tag}" >&2
-    "${docker_runner[@]}" build -f "${source_dir}/${dockerfile}" -t "${resolved_tag}" "${source_dir}"
+    env DOCKER_BUILDKIT=0 "${docker_runner[@]}" build -f "${source_dir}/${dockerfile}" -t "${resolved_tag}" "${source_dir}"
   done
 elif [ "${pull_image}" = "true" ]; then
-  if [ "${running_on_gvisor}" = "true" ]; then
-    for selected_family in "${selected_families[@]}"; do
-      resolved_tag="${image_tag:-ghcr.io/cyruscyliu/llbase:${selected_family}}"
-      llbase_udocker_pull_image "${resolved_tag}"
-    done
-  else
   if [ "${docker_available}" != "true" ]; then
     echo "[llbase] pull-image=true but no usable docker daemon is available" >&2
     exit 1
@@ -83,7 +72,6 @@ elif [ "${pull_image}" = "true" ]; then
     echo "[llbase] docker pull family=${selected_family} tag=${resolved_tag}" >&2
     "${docker_runner[@]}" pull "${resolved_tag}"
   done
-  fi
 fi
 
 if [ "${prepare_irdumper}" = "true" ]; then

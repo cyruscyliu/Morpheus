@@ -47,9 +47,8 @@ Build the runtime contract:
   --json
 ```
 
-By default this resolves and pulls the published GHCR image metadata for the
-selected family. Keep local image builds as an explicit debugging path with
-`--build-image`.
+By default this resolves image metadata for the selected family. Use
+`--build-image` when you want to build the local Docker image directly.
 
 Inspect an existing contract:
 
@@ -75,12 +74,6 @@ docker build -f docker/Dockerfile -t ghcr.io/cyruscyliu/llbase:latest .
 docker build -f docker/Dockerfile.mid -t ghcr.io/cyruscyliu/llbase:mid .
 docker build -f docker/Dockerfile.legacy -t ghcr.io/cyruscyliu/llbase:legacy .
 ```
-
-Images are published to GHCR by the repo workflow that builds and publishes:
-
-- `ghcr.io/cyruscyliu/llbase:latest`
-- `ghcr.io/cyruscyliu/llbase:mid`
-- `ghcr.io/cyruscyliu/llbase:legacy`
 
 ## How llbic and llcg Use It
 

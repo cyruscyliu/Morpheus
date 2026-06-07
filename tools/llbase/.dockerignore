@@ -1,0 +1,23 @@
+# Keep Docker build contexts small on virtiofs-backed worktrees.
+.git
+.gitignore
+.gitattributes
+
+# Generated build outputs and caches.
+**/build
+**/build/**
+**/target
+**/target/**
+**/.cache
+**/.cache/**
+**/__pycache__
+**/__pycache__/**
+**/*.pyc
+**/*.pyo
+
+# Local/editor/runtime noise.
+.DS_Store
+*.swp
+*.swo
+*.tmp
+*.log

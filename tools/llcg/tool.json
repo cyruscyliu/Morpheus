@@ -1,6 +1,265 @@
 {
   "name": "llcg",
-  "runtime": "exec",
-  "cli-contract": "exec,inspect",
-  "entry": "bin/llcg"
+  "runtime": null,
+  "cli-contract": "build,exec,inspect,logs",
+  "config": {
+    "fields": {
+      "mode": {
+        "aliases": [
+          "mode"
+        ]
+      },
+      "build-dir-key": {
+        "aliases": [
+          "build-dir-key",
+          "buildDirKey"
+        ]
+      },
+      "output": {
+        "aliases": [
+          "output"
+        ],
+        "path": true
+      },
+      "target": {
+        "aliases": [
+          "target"
+        ],
+        "path": true
+      },
+      "clang": {
+        "aliases": [
+          "clang"
+        ]
+      },
+      "arch": {
+        "aliases": [
+          "arch"
+        ]
+      },
+      "generator": {
+        "aliases": [
+          "generator"
+        ]
+      },
+      "llbase-contract": {
+        "aliases": [
+          "llbase-contract",
+          "llbaseContract"
+        ],
+        "path": true
+      },
+      "source-dir": {
+        "aliases": [
+          "source-dir",
+          "sourceDir"
+        ],
+        "path": true
+      },
+      "interfaces": {
+        "aliases": [
+          "interfaces"
+        ]
+      },
+      "file": {
+        "aliases": [
+          "file"
+        ],
+        "repeatable": true
+      },
+      "scope-name": {
+        "aliases": [
+          "scope-name",
+          "scopeName"
+        ]
+      },
+      "bitcode-list": {
+        "aliases": [
+          "bitcode-list",
+          "bitcodeList"
+        ],
+        "path": true
+      },
+      "llbic-json": {
+        "aliases": [
+          "llbic-json",
+          "llbicJson"
+        ],
+        "path": true
+      },
+      "all-bc-list": {
+        "aliases": [
+          "all-bc-list",
+          "allBcList"
+        ],
+        "path": true
+      },
+      "filter": {
+        "aliases": [
+          "filter"
+        ],
+        "repeatable": true,
+        "path": true
+      },
+      "artifacts": {
+        "aliases": [
+          "artifacts"
+        ],
+        "repeatable": true
+      }
+    }
+  },
+  "inputs": {
+    "build": {
+      "dependencies": {
+        "llbase": {
+          "flag": "llbase-contract"
+        }
+      }
+    },
+    "exec": {
+      "dependencies": {
+        "llbase": {
+          "flag": "llbase-contract"
+        },
+        "llbic": {
+          "flag": "llbic-json"
+        },
+        "llbic-bitcode": {
+          "flag": "all-bc-list"
+        }
+      }
+    }
+  },
+  "managed": {
+    "schemaVersion": 1,
+    "modes": [
+      "local",
+      "remote"
+    ],
+    "local": {
+      "sourceTemplate": "tools/llcg/src",
+      "buildDirTemplate": "tools/llcg/build",
+      "outputDirTemplate": "tools/llcg/builds/{buildDirKey}/output",
+      "artifacts": {
+        "output-dir": {
+          "pathTemplate": "tools/llcg/builds/{buildDirKey}/output"
+        },
+        "manifest": {
+          "pathTemplate": "tools/llcg/builds/{buildDirKey}/output/llcg-manifest.json"
+        }
+      },
+      "commands": {
+        "build": {
+          "requiredFlags": [
+            "output",
+            "generator",
+            "source-dir",
+            "llbase-contract"
+          ],
+          "scalarFlags": [
+            "output",
+            "generator",
+            "source-dir",
+            "interfaces",
+            "scope-name",
+            "arch",
+            "llbase-contract"
+          ],
+          "repeatableFlags": [
+            "file"
+          ],
+          "pathFlags": {
+            "output": "tools/llcg/mutators/{buildDirKey}/output"
+          },
+          "script": {
+            "path": "scripts/build.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "generated llcg mutator artifacts",
+            "errorSummary": "llcg mutator generation failed",
+            "manifestTemplate": "{output}/manifest.json",
+            "artifact": {
+              "path": "output-dir",
+              "locationTemplate": "{output}"
+            },
+            "details": {
+              "output": "{output}"
+            }
+          }
+        },
+        "exec": {
+          "requiredFlags": [
+            "output",
+            "clang",
+            "llbase-contract"
+          ],
+          "scalarFlags": [
+            "output",
+            "clang",
+            "bitcode-list",
+            "llbic-json",
+            "all-bc-list",
+            "scope-name",
+            "llbase-contract"
+          ],
+          "repeatableFlags": [
+            "filter"
+          ],
+          "pathFlags": {
+            "output": "tools/llcg/builds/{buildDirKey}/output"
+          },
+          "script": {
+            "path": "scripts/exec.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "generated llcg callgraph artifacts",
+            "errorSummary": "llcg callgraph generation failed",
+            "manifestTemplate": "{output}/manifest.json",
+            "artifact": {
+              "path": "manifest",
+              "locationTemplate": "{output}/llcg-manifest.json"
+            },
+            "details": {
+              "output": "{output}"
+            }
+          }
+        },
+        "inspect": {
+          "requiredFlags": [
+            "target"
+          ],
+          "scalarFlags": [
+            "target"
+          ],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/inspect.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "inspected existing llcg manifest"
+          }
+        },
+        "logs": {
+          "requiredFlags": [
+            "target"
+          ],
+          "scalarFlags": [
+            "target"
+          ],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/logs.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "read llcg log"
+          }
+        }
+      }
+    }
+  }
 }

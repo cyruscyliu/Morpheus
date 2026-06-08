@@ -40,6 +40,25 @@ tools:
       - bitcode-files
       - llbic-log
       - kernel-build-log
+  llcg:
+    mode: local
+    build-dir-key: 6.18.16-clang15
+    clang: 15
+    arch: x86_64
+    scope-name: linux-6.18.16
+    dependencies:
+      llbase:
+        tool: llbase
+        artifact: runtime-contract
+      llbic:
+        tool: llbic
+        artifact: llbic-json
+      llbic-bitcode:
+        tool: llbic
+        artifact: bitcode-files
+    artifacts:
+      - output-dir
+      - manifest
   buildroot:
     seed-dir: ./tools/buildroot/fixtures/minimal-buildroot
     patch-dir: ./tools/buildroot/patches/demo
@@ -100,6 +119,46 @@ workflows:
           - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
           - --build-version
           - "6.18.16"
+  llcg-build:
+    category: build
+    steps:
+      - id: llbase_build
+        tool: llbase
+        command: build
+      - id: llbic_build
+        tool: llbic
+        command: build
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --build-version
+          - "6.18.16"
+      - id: llcg_build
+        tool: llcg
+        command: build
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --source-dir
+          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - --generator
+          - files
+          - --file
+          - arch/x86/kernel/cpu/common.c
+          - --scope-name
+          - linux-6.18.16-x86-cpu-common
+      - id: llcg_run
+        tool: llcg
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --llbic-json
+          - "{{steps.llbic_build.artifacts.llbic-json.location}}"
+          - --all-bc-list
+          - "{{steps.llbic_build.artifacts.bitcode-files.location}}"
+          - --filter
+          - "{{steps.llcg_build.artifacts.mutator_manifest.location}}"
   buildroot-build:
     category: build
     steps:

@@ -3,6 +3,7 @@
 
 #include "llvm/Pass.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/PassManager.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/FileSystem.h"
@@ -46,6 +47,7 @@ public:
 
 	bool runOnModule(llvm::Module &M) override;
 	void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
+	bool processModule(llvm::Module &M, DevilangCGResult::AdjList *outGraph = nullptr);
 
 private:
 	/// Build adjacency list from KallGraph output (caller/count/callee block format).
@@ -115,6 +117,11 @@ private:
 	///   "! caller callee" — suppress (remove) edge
 	/// Blank lines and lines starting with '#' are ignored.
 	void loadExtraEdges(const std::string &path, DevilangCGResult::AdjList &adj);
+};
+
+class DevilangCGNewPM : public llvm::PassInfoMixin<DevilangCGNewPM> {
+public:
+  llvm::PreservedAnalyses run(llvm::Module &M, llvm::ModuleAnalysisManager &);
 };
 
 #endif // DEVILANG_CG_H

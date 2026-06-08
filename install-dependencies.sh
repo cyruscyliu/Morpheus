@@ -3,7 +3,12 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
-export PATH="${PATH}:${HOME}/.cargo/bin"
+USER_HOME="${HOME:-$(getent passwd "$(id -u)" | cut -d: -f6)}"
+export PATH="${PATH}:${USER_HOME}/.cargo/bin"
+NPM_PREFIX="$(npm prefix -g 2>/dev/null || true)"
+if [ -n "${NPM_PREFIX}" ]; then
+  export PATH="${PATH}:${NPM_PREFIX}/bin"
+fi
 
 if command -v apt-get >/dev/null 2>&1; then
   sudo dpkg --configure -a || true
@@ -14,6 +19,7 @@ if command -v apt-get >/dev/null 2>&1; then
     ninja-build \
     lcov \
     libxml2-utils \
+    graphviz \
     dwarfdump
 fi
 

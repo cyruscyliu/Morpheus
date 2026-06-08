@@ -36,7 +36,11 @@ from registry import (  # noqa: E402
 )
 
 DEFAULT_OUT_DIR = REPO_ROOT / "out"
-DEFAULT_BUILD_DIR = REPO_ROOT / "build"
+DEFAULT_BUILD_DIR = Path(
+    os.environ.get("LLCG_BUILD_DIR")
+    or os.environ.get("KERNEL_CALLGRAPH_BUILD_DIR")
+    or str(REPO_ROOT / "build")
+)
 DEFAULT_ARCH = "x86_64"
 DEFAULT_BLOCKLIST = MUTATORS_DIR / "blocklist.txt"
 DEFAULT_EXTRA_EDGES = MUTATORS_DIR / "extra_edges.txt"
@@ -219,7 +223,14 @@ def load_groups_files(paths: list[Path]) -> list[dict]:
         if modifying:
             existing = groups_by_label.get(current["label"])
             if existing is None:
-                raise ValueError(f"Group modifier refers to unknown label: {current['label']}")
+                current["members"] = [
+                    member[1:] if member.startswith("+") else member
+                    for member in current["members"]
+                    if not member.startswith("-")
+                ]
+                groups.append(current)
+                groups_by_label[current["label"]] = current
+                return
             existing["entry_point"] = existing["entry_point"] or current["entry_point"]
             existing["discard_unreachable"] = (
                 existing["discard_unreachable"] or current["discard_unreachable"]
@@ -617,10 +628,23 @@ def load_llbic_metadata(llbic_json_path: Path):
 
 def derive_bc_index(all_bc_list_path: Path, llbic_data: dict, llbic_root: Path):
     index = {}
-    host_bitcode_root = normalize_llbic_path(str(llbic_data.get("bitcode_root") or ""), llbic_root)
+
+    def add_index_entry(rel_path: str, resolved_path: Path) -> None:
+        index.setdefault(rel_path, resolved_path)
+        if rel_path.endswith(".bc"):
+            index.setdefault(f"{rel_path[:-3]}.o", resolved_path)
+
+    bitcode_root_value = str(llbic_data.get("bitcode_root") or "")
+    host_bitcode_root = (
+        normalize_llbic_path(bitcode_root_value, llbic_root)
+        if bitcode_root_value
+        else Path("__missing_bitcode_root__")
+    )
+    source_dir = normalize_llbic_path(str(llbic_data.get("source_dir") or ""), llbic_root)
     if not host_bitcode_root.exists():
         kbuild_name = Path(str(llbic_data.get("kbuild_dir") or llbic_data.get("bitcode_root") or "")).name
         candidate_roots = [
+            source_dir if source_dir.exists() else None,
             all_bc_list_path.parent / kbuild_name if kbuild_name else None,
             all_bc_list_path.parent,
         ]
@@ -634,11 +658,16 @@ def derive_bc_index(all_bc_list_path: Path, llbic_data: dict, llbic_root: Path):
     for rel, abs_path in zip(bitcode_rel, bitcode_abs):
         rel_path = Path(rel).as_posix()
         resolved = normalize_llbic_path(abs_path, llbic_root)
-        if not resolved.exists() and host_bitcode_root.exists():
-            candidate = host_bitcode_root / rel_path
-            if candidate.exists():
+        if not resolved.exists():
+            for root in (host_bitcode_root, source_dir, all_bc_list_path.parent):
+                if not root.exists():
+                    continue
+                candidate = root / rel_path
+                if not candidate.exists():
+                    continue
                 resolved = candidate.resolve()
-        index[rel_path] = resolved
+                break
+        add_index_entry(rel_path, resolved)
 
     if all_bc_list_path.is_file():
         for line in all_bc_list_path.read_text().splitlines():
@@ -647,11 +676,16 @@ def derive_bc_index(all_bc_list_path: Path, llbic_data: dict, llbic_root: Path):
                 continue
             rel = Path(entry).as_posix()
             resolved = normalize_llbic_path(entry, llbic_root)
-            if not resolved.exists() and host_bitcode_root.exists():
-                candidate = host_bitcode_root / rel
-                if candidate.exists():
+            if not resolved.exists():
+                for root in (host_bitcode_root, source_dir, all_bc_list_path.parent):
+                    if not root.exists():
+                        continue
+                    candidate = root / rel
+                    if not candidate.exists():
+                        continue
                     resolved = candidate.resolve()
-            index.setdefault(rel, resolved)
+                    break
+            add_index_entry(rel, resolved)
 
     return index
 
@@ -956,6 +990,8 @@ def resolve_mutator_filter_specs(filter_specs: list[str], out_dir: Path) -> list
                 manifest_path = candidate
                 break
         if manifest_path is None:
+            if raw_candidate.is_absolute():
+                raise ValueError(f"Mutator manifest not found: {raw_candidate}")
             candidates = sorted(out_dir.glob(f"{text}-mutator-*.json"))
             if len(candidates) == 0:
                 raise ValueError(f"No mutator manifest matched filter '{text}' in {out_dir}")
@@ -1341,10 +1377,21 @@ def run_pipeline(
     dot_path = out_dir / f"{stem}_cg.dot"
     cmd = [
         opt_bin,
-        "-enable-new-pm=0",
-        "-load",
-        str(callgraph_lib),
-        "-llvm-cg",
+    ]
+    if int(args.clang) >= 17:
+        cmd += [
+            "-load-pass-plugin",
+            str(callgraph_lib),
+            "-passes=llvm-cg",
+        ]
+    else:
+        cmd += [
+            "-enable-new-pm=0",
+            "-load",
+            str(callgraph_lib),
+            "-llvm-cg",
+        ]
+    cmd += [
         f"-llvm-cg-kallgraph={latest_callgraph}",
         f"-llvm-cg-bc-list={bc_list_path}",
         f"-llvm-cg-dot-output={raw_dot_path}",

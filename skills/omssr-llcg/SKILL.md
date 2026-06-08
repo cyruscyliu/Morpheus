@@ -13,9 +13,9 @@ with reusable mutators, and inspect the resulting run manifest and graph
 artifacts.
 
 When the task goes through Morpheus-managed tooling, treat `llcg` as a
-scripted managed tool. Use `morpheus build --tool llcg ...` for mutator
-generation, `morpheus exec --tool llcg ...` for callgraph runs, or workflow
-steps with `command: build` / `command: exec`.
+scripted managed tool. Use `morpheus build --tool llcg ...` to build the
+native llcg components, and `morpheus exec --tool llcg ...` for mutator
+generation or callgraph runs.
 
 ## What The Tool Does
 
@@ -73,7 +73,7 @@ The main user-facing commands are:
    Morpheus-managed equivalent:
 
    ```bash
-   ./bin/morpheus build --tool llcg \
+   ./bin/morpheus exec --tool llcg \
      --generator files \
      --source-dir /path/to/linux \
      --file drivers/virtio/virtio_mmio.c \
@@ -136,8 +136,11 @@ Typical run artifacts are:
 
 ## Build Notes
 
-- `run` automatically configures and builds the native components for the
-  selected `--clang` version before analysis.
+- Managed `build` configures and builds the native components for the selected
+  `--clang` version.
+- Managed `exec` generates mutators when `--generator` is present.
+- Managed `exec` runs the callgraph pipeline when callgraph inputs such as
+  `--llbic-json`, `--all-bc-list`, and `--filter` are present.
 - The docker backend is selected with `--backend docker` or
   `KERNEL_CALLGRAPH_BACKEND=docker`.
 - Docker execution reuses an existing compatible `llbic` image and mounts

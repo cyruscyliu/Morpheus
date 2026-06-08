@@ -761,9 +761,15 @@ workflows:
           - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
           - --build-version
           - "6.18.16"
-      - id: net_mutator_6_18_16
+      - id: llcg_build_6_18_16
         tool: llcg
         command: build
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
+      - id: net_mutator_6_18_16
+        tool: llcg
+        command: exec
         args:
           - --llbase-contract
           - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
@@ -775,7 +781,7 @@ workflows:
           - networking
       - id: storage_mutator_6_18_16
         tool: llcg
-        command: build
+        command: exec
         args:
           - --llbase-contract
           - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
@@ -813,3 +819,63 @@ workflows:
           - "{{steps.storage_mutator_6_18_16.artifacts.mutator_manifest.location}}"
           - --scope-name
           - storage-6.18.16
+      - id: boot_virtio_scope_6_18_16
+        tool: llcg
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
+          - --generator
+          - files
+          - --source-dir
+          - "{{steps.llbic_6_18_16.artifacts.source-dir.location}}"
+          - --scope-name
+          - boot-virtio
+          - --file
+          - init/main.c
+          - --file
+          - drivers/base/bus.c
+          - --file
+          - drivers/base/core.c
+          - --file
+          - drivers/base/dd.c
+          - --file
+          - drivers/base/driver.c
+          - --file
+          - drivers/base/platform.c
+          - --file
+          - drivers/virtio/virtio.c
+          - --file
+          - drivers/virtio/virtio_anchor.c
+          - --file
+          - drivers/virtio/virtio_mmio.c
+          - --file
+          - drivers/block/virtio_blk.c
+          - --file
+          - drivers/char/hw_random/virtio-rng.c
+          - --file
+          - drivers/char/virtio_console.c
+          - --file
+          - drivers/net/virtio_net.c
+          - --file
+          - drivers/remoteproc/remoteproc_virtio.c
+          - --file
+          - drivers/rpmsg/virtio_rpmsg_bus.c
+          - --file
+          - drivers/virtio/virtio_balloon.c
+          - --file
+          - net/9p/trans_virtio.c
+      - id: boot_virtio_cg_6_18_16
+        tool: llcg
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
+          - --llbic-json
+          - "{{steps.llbic_6_18_16.artifacts.llbic-json.location}}"
+          - --all-bc-list
+          - "{{steps.llbic_6_18_16.artifacts.bitcode-files.location}}"
+          - --filter
+          - "{{steps.boot_virtio_scope_6_18_16.artifacts.mutator_manifest.location}}"
+          - --scope-name
+          - boot-virtio-6.18.16

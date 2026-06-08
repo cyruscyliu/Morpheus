@@ -28,6 +28,7 @@ tools:
     out-of-tree: true
     defconfig: tinyconfig
     verbose: true
+    force-irdumper: true
     dependencies:
       llbase:
         tool: llbase

@@ -78,6 +78,13 @@ die()   { error "$@"; exit 1; }
 # ============================================================
 # Helpers
 # ============================================================
+_ensure_dir() {
+  local dir_path="${1:-}"
+  [[ -n "${dir_path}" ]] || return 0
+  [[ -d "${dir_path}" ]] && return 0
+  mkdir -p -- "${dir_path}"
+}
+
 _require_one_line() {
   local label="$1" value="${2:-}"
   if [[ "${value}" == *$'\n'* || "${value}" == *$'\r'* ]]; then
@@ -138,6 +145,33 @@ _runtime_execution_mode() {
     echo "docker"
   else
     echo "host"
+  fi
+}
+
+_llbase_irdumper_root() {
+  printf '%s\n' "${LLBIC_IRDUMPER_ROOT:-/opt/IRDumper}"
+}
+
+_llbase_image_for_kernel() {
+  local kernel_ver="${1:-}"
+  local major=""
+  local minor=""
+
+  [[ "${kernel_ver}" =~ ^([0-9]+)\.([0-9]+) ]] || {
+    printf '%s\n' "${LLBIC_RUNTIME_IMAGE_LATEST:-ghcr.io/jianxiaoyitech/llbase:latest}"
+    return 0
+  }
+  major="${BASH_REMATCH[1]}"
+  minor="${BASH_REMATCH[2]}"
+
+  if (( major >= 6 )); then
+    printf '%s\n' "${LLBIC_RUNTIME_IMAGE_LATEST:-ghcr.io/jianxiaoyitech/llbase:latest}"
+  elif (( major >= 4 )); then
+    printf '%s\n' "${LLBIC_RUNTIME_IMAGE_MID:-ghcr.io/jianxiaoyitech/llbase:mid}"
+  elif (( major == 3 || (major == 2 && minor == 6) )); then
+    printf '%s\n' "${LLBIC_RUNTIME_IMAGE_LEGACY:-ghcr.io/jianxiaoyitech/llbase:legacy}"
+  else
+    printf '%s\n' "${LLBIC_RUNTIME_IMAGE_LATEST:-ghcr.io/jianxiaoyitech/llbase:latest}"
   fi
 }
 
@@ -544,7 +578,7 @@ _ensure_rust_toolchain_for_kernel() {
   archive_path="${cache_dir}/${archive_name}"
   prefix="${cache_dir}/${slug}-${host_arch}"
 
-  mkdir -p -- "${cache_dir}"
+  _ensure_dir "${cache_dir}"
 
   if [[ -x "${prefix}/bin/clang" && -x "${prefix}/bin/rustc" ]]; then
     printf '%s\n' "${prefix}"
@@ -652,7 +686,7 @@ _warn_host_clang_mismatch() {
 
   if [[ "${llvm_major}" != "${expected_clang}" ]]; then
     warn "Host toolchain uses LLVM ${llvm_major} for kernel ${kernel_ver}; llbic defaults to Clang ${expected_clang} for this kernel era."
-    warn "If this mismatch is not intentional, run llbic explicitly inside ghcr.io/jianxiaoyitech/llbase with the matching toolchain."
+    warn "If this mismatch is not intentional, run llbic explicitly inside $(_llbase_image_for_kernel "${kernel_ver}") with the matching toolchain."
     _log_step "compile.warn host_clang_mismatch kernel=${kernel_ver} expected=${expected_clang} actual=${llvm_major}"
   fi
 }
@@ -667,7 +701,7 @@ _require_clang_or_suggest_docker() {
   fi
 
   if [[ "$(_runtime_execution_mode)" == "host" && -n "${expected_clang}" ]]; then
-    die "${clang_bin} not found on host for kernel ${kernel_ver}. Run llbic explicitly inside ghcr.io/jianxiaoyitech/llbase with the matching container toolchain (expected Clang ${expected_clang})."
+    die "${clang_bin} not found on host for kernel ${kernel_ver}. Run llbic explicitly inside $(_llbase_image_for_kernel "${kernel_ver}") with the matching container toolchain (expected Clang ${expected_clang})."
   fi
 
   die "${clang_bin} not found"
@@ -679,7 +713,7 @@ _write_rust_kconfig_fragment() {
   local rust_kconfig="${kernel_src}/samples/rust/Kconfig"
 
   [[ -f "${rust_kconfig}" ]] || die "Rust sample Kconfig not found: ${rust_kconfig}"
-  mkdir -p -- "$(dirname "${fragment_path}")"
+  _ensure_dir "$(dirname "${fragment_path}")"
 
   {
     printf '%s\n' '# llbic Rust/LTO compatibility settings'
@@ -883,6 +917,32 @@ _apply_kernel_compat_fixes() {
   fi
 }
 
+_apply_irdumper_hosttools_compat() {
+  local kernel_src="$1"
+  local top_makefile="${kernel_src}/Makefile"
+  local x86_kconfig="${kernel_src}/arch/x86/Kconfig"
+  local makefile_lib="${kernel_src}/scripts/Makefile.lib"
+
+  if [[ -f "${top_makefile}" ]]; then
+    perl -0pi -e 's/^prepare:\s+tools\/objtool$/# llbic IRDumper compat: skip tools\/objtool during prepare/m' "${top_makefile}"
+    _log_step "compat.fix path=${top_makefile} kind=skip_prepare_objtool_for_irdumper"
+  fi
+  if [[ -f "${x86_kconfig}" ]]; then
+    perl -0pi -e 's/^\s*select HAVE_OBJTOOL\s+if X86_64$/\t# llbic IRDumper compat: disable HAVE_OBJTOOL during bitcode extraction/m' "${x86_kconfig}"
+    _log_step "compat.fix path=${x86_kconfig} kind=disable_have_objtool_for_irdumper"
+  fi
+  if [[ -f "${makefile_lib}" ]]; then
+    perl -0pi -e 's/\n# --- llbic IRDumper objtool noop ---\nobjtool-enabled :=\ncmd_objtool :=\n//s' "${makefile_lib}"
+    cat >> "${makefile_lib}" <<'EOF'
+
+# --- llbic IRDumper objtool noop ---
+objtool-enabled :=
+cmd_objtool :=
+EOF
+    _log_step "compat.fix path=${makefile_lib} kind=noop_cmd_objtool_for_irdumper"
+  fi
+}
+
 _remove_injected_makefile_block() {
   local kernel_makefile="$1"
   local marker="$2"
@@ -914,12 +974,18 @@ _prepare_outtree_source_tree() {
 _llvm_make_args() {
   local llvm_major="${1:-}"
 
-  if [[ -n "${llvm_major}" ]] && ! command -v ld.lld >/dev/null 2>&1 && command -v "ld.lld-${llvm_major}" >/dev/null 2>&1; then
+  if [[ -n "${llvm_major}" ]] && \
+     command -v "clang-${llvm_major}" >/dev/null 2>&1 && \
+     command -v "ld.lld-${llvm_major}" >/dev/null 2>&1; then
     printf '%s\n' "LLVM=-${llvm_major}"
   else
     printf '%s\n' "LLVM=1"
   fi
   printf '%s\n' "LLVM_IAS=1"
+}
+
+_host_make_tool_args() {
+  :
 }
 
 _opaque_pointer_disable_flags() {
@@ -1305,7 +1371,7 @@ _collect_bitcode_files() {
 
 _write_bitcode_list_file() {
   local list_file="$1"
-  mkdir -p -- "$(dirname "${list_file}")"
+  _ensure_dir "$(dirname "${list_file}")"
   # One relative path per line (LLVM IR only), stable order.
   printf '%s\n' "${LAST_BITCODE_FILES_REL[@]}" > "${list_file}"
 }
@@ -1553,7 +1619,7 @@ _write_build_json_file() {
   shift
   shift
   shift
-  mkdir -p -- "$(dirname "${json_file}")"
+  _ensure_dir "$(dirname "${json_file}")"
   _emit_result_json "${status}" "${exit_code}" "${error_step}" "${error_msg}" "$@" > "${json_file}"
 }
 
@@ -1590,6 +1656,21 @@ _finalize_build_artifacts() {
       "${scoped_targets[@]}"
   else
     _collect_bitcode_files "${bitcode_root}" "${strategy}"
+  fi
+  if [[ "${strategy}" == "irdumper" && ${#LAST_BITCODE_FILES[@]} -eq 0 ]]; then
+    local kernel_src_fallback="${LLBIC_CTX_KERNEL_SRC}"
+    [[ -n "${kernel_src_fallback}" ]] && kernel_src_fallback="$(_resolve_portable_path_locally "${kernel_src_fallback}")"
+    if [[ -n "${kernel_src_fallback}" && -d "${kernel_src_fallback}" ]]; then
+      LAST_BITCODE_FILES=()
+      LAST_BITCODE_FILES_REL=()
+      while IFS= read -r candidate; do
+        [[ -n "${candidate}" ]] || continue
+        if file "${candidate}" 2>/dev/null | grep -q "LLVM IR bitcode"; then
+          LAST_BITCODE_FILES+=("${candidate}")
+          LAST_BITCODE_FILES_REL+=("${candidate#${kernel_src_fallback%/}/}")
+        fi
+      done < <(find "${kernel_src_fallback}" -type f -name '*.bc' | sort)
+    fi
   fi
   if [[ -n "${LLBIC_CTX_BC_LIST_FILE}" ]]; then
     _write_bitcode_list_file "$(_resolve_portable_path_locally "${LLBIC_CTX_BC_LIST_FILE}")"
@@ -1824,8 +1905,8 @@ cmd_build() {
   LAST_LOG_FILE="${bc_output}/llbic.log"
   LOG_FILE="${LAST_LOG_FILE}"
 
-  mkdir -p -- "${SOURCES_DIR}"
-  mkdir -p -- "${bc_output}"
+  _ensure_dir "${SOURCES_DIR}"
+  _ensure_dir "${bc_output}"
   touch "${LOG_FILE}"
 
   # Populate build context for failure reporting.
@@ -2002,7 +2083,7 @@ cmd_build() {
   if [[ "${build_layout}" == "outtree" ]]; then
     # Keep per-clang build dirs to avoid conflicts when switching toolchains.
     kbuild_dir="${bc_output}/kbuild-${arch}-clang${clang_version}"
-    mkdir -p -- "${kbuild_dir}"
+    _ensure_dir "${kbuild_dir}"
     _log_step "compile.layout outtree=1 kbuild_dir=${kbuild_dir}"
     LLBIC_CTX_KBUILD_DIR="$(_normalize_path_for_json "${kbuild_dir}")"
   else
@@ -2021,7 +2102,12 @@ cmd_build() {
   echo "" >&2
   printf '%s=== %s (%s) — %s (LLVM %s) ===%s\n' "${BOLD}" "${kernel_name}" "${kver}" "${clang}" "${llvm_major}" "${NC}" >&2
 
-  if _version_ge "${kver}" "5.12"; then
+  if [[ "${LLBIC_FORCE_IRDUMPER:-0}" == "1" ]]; then
+    _log_step "compile.start strategy=irdumper_forced kernel_version=${kver}"
+    LLBIC_CTX_STRATEGY="irdumper"
+    LLBIC_CTX_BITCODE_ROOT="$(_normalize_path_for_json "${kbuild_dir:-${kernel_src}}")"
+    _compile_irdumper "${kernel_src}" "${kernel_name}" "${bc_output}" "${clang}" "${clang_version}" "${llvm_major}" "${kbuild_dir}" "${arch}" "${cross_compile}" "${defconfig_target}" "${kconfig_fragments[@]}"
+  elif _version_ge "${kver}" "5.12"; then
     _log_step "compile.start strategy=lto kernel_version=${kver}"
     LLBIC_CTX_STRATEGY="lto"
     LLBIC_CTX_BITCODE_ROOT="$(_normalize_path_for_json "${kbuild_dir:-${kernel_src}}")"
@@ -2045,7 +2131,7 @@ cmd_build() {
 # download — fetch kernel sources from sources.conf
 # ============================================================
 cmd_download() {
-  mkdir -p "${SOURCES_DIR}"
+  _ensure_dir "${SOURCES_DIR}"
   local -a urls=()
   local -a downloaded=()
   local item=""
@@ -2290,8 +2376,10 @@ _compile_lto() {
   local kernel_src="$1" kernel_name="$2" output_dir="$3" clang="$4" llvm_major="$5" kbuild_dir="${6:-}" arch="${7:-x86_64}" cross_compile="${8:-}" defconfig_target="${9:-defconfig}"
   shift 9
   local -a kconfig_fragments=("$@")
+  local -a compat_kconfig_fragments=()
   local -a make_extra=()
   local -a make_llvm=()
+  local -a host_make_args=()
   local -a make_verbose=()
   local -a rust_make_args=()
   local -a rust_make_env=()
@@ -2299,7 +2387,9 @@ _compile_lto() {
   local clang_flags_override=""
   local compat_cflags=""
   local opaque_ptr_flags=""
-  mkdir -p "${output_dir}"
+  local host_cxx="${clang/clang/clang++}"
+  local kernel_build_log="${output_dir}/kernel-build.log"
+  _ensure_dir "${output_dir}"
   if [[ -n "${kbuild_dir}" ]]; then
     make_extra+=(O="${kbuild_dir}")
     _prepare_outtree_source_tree "${kernel_src}" "${arch}" "${cross_compile}"
@@ -2313,6 +2403,7 @@ _compile_lto() {
   fi
   _apply_kernel_compat_fixes "${kernel_src}"
   mapfile -t make_llvm < <(_llvm_make_args "${llvm_major}")
+  mapfile -t host_make_args < <(_host_make_tool_args "${clang}")
   mapfile -t make_verbose < <(_make_verbose_args)
   clang_flags_override="$(_clang_flags_override "${kernel_name}" "${arch}" "${cross_compile}")"
   compat_cflags="$(_kernel_compile_compat_flags "${kernel_name}" "${arch}")"
@@ -2322,6 +2413,12 @@ _compile_lto() {
   if [[ "${LLBIC_CTX_RUST_ENABLED:-0}" -eq 1 ]]; then
     _require_rustavailable "${kernel_src}" "${kbuild_dir}" "${arch}" "${cross_compile}" "${clang}" "${clang_flags_override}" "${make_llvm[@]}"
   fi
+
+  local section_mismatch_fragment="${output_dir}/section-mismatch-compat.config"
+  cat > "${section_mismatch_fragment}" <<'EOF'
+CONFIG_SECTION_MISMATCH_WARN_ONLY=y
+EOF
+  compat_kconfig_fragments+=("${section_mismatch_fragment}")
 
   info "Strategy: CONFIG_LTO_CLANG_FULL (native LTO)"
 
@@ -2338,11 +2435,13 @@ _compile_lto() {
   if [[ "${VERBOSE}" -eq 1 ]]; then
     env "${rust_make_env[@]}" make -C "${kernel_src}" "${make_extra[@]}" ARCH="${arch}" ${cross_compile:+CROSS_COMPILE="${cross_compile}"} \
       "${rust_make_args[@]}" \
-      "${make_verbose[@]}" CC="${clang}" ${clang_flags_override:+CLANG_FLAGS="${clang_flags_override}"} "${make_llvm[@]}" "${defconfig_target}" -j"${NPROC}"
+      "${make_verbose[@]}" "${host_make_args[@]}" CC="${clang}" ${clang_flags_override:+CLANG_FLAGS="${clang_flags_override}"} "${make_llvm[@]}" "${defconfig_target}" -j"${NPROC}" \
+      2>&1 | tee "${kernel_build_log}"
   else
     env "${rust_make_env[@]}" make -C "${kernel_src}" "${make_extra[@]}" ARCH="${arch}" ${cross_compile:+CROSS_COMPILE="${cross_compile}"} \
       "${rust_make_args[@]}" \
-      "${make_verbose[@]}" CC="${clang}" ${clang_flags_override:+CLANG_FLAGS="${clang_flags_override}"} "${make_llvm[@]}" "${defconfig_target}" -j"${NPROC}" > /dev/null 2>&1
+      "${make_verbose[@]}" "${host_make_args[@]}" CC="${clang}" ${clang_flags_override:+CLANG_FLAGS="${clang_flags_override}"} "${make_llvm[@]}" "${defconfig_target}" -j"${NPROC}" \
+      2>&1 | tee "${kernel_build_log}"
   fi
 
   local config_path="${kernel_src}/.config"
@@ -2350,7 +2449,7 @@ _compile_lto() {
 
   LLBIC_CTX_CONFIG_PATH="$(_normalize_path_for_json "${config_path}")"
 
-  _apply_kconfig_fragments "${kernel_src}" "${kbuild_dir}" "${config_path}" "${kconfig_fragments[@]}"
+  _apply_kconfig_fragments "${kernel_src}" "${kbuild_dir}" "${config_path}" "${kconfig_fragments[@]}" "${compat_kconfig_fragments[@]}"
 
   "${kernel_src}/scripts/config" --file "${config_path}" \
     --enable LTO_CLANG \
@@ -2362,11 +2461,13 @@ _compile_lto() {
   if [[ "${VERBOSE}" -eq 1 ]]; then
     env "${rust_make_env[@]}" make -C "${kernel_src}" "${make_extra[@]}" ARCH="${arch}" ${cross_compile:+CROSS_COMPILE="${cross_compile}"} \
       "${rust_make_args[@]}" \
-      "${make_verbose[@]}" CC="${clang}" ${clang_flags_override:+CLANG_FLAGS="${clang_flags_override}"} "${make_llvm[@]}" olddefconfig -j"${NPROC}"
+      "${make_verbose[@]}" "${host_make_args[@]}" CC="${clang}" ${clang_flags_override:+CLANG_FLAGS="${clang_flags_override}"} "${make_llvm[@]}" olddefconfig -j"${NPROC}" \
+      2>&1 | tee -a "${kernel_build_log}"
   else
     env "${rust_make_env[@]}" make -C "${kernel_src}" "${make_extra[@]}" ARCH="${arch}" ${cross_compile:+CROSS_COMPILE="${cross_compile}"} \
       "${rust_make_args[@]}" \
-      "${make_verbose[@]}" CC="${clang}" ${clang_flags_override:+CLANG_FLAGS="${clang_flags_override}"} "${make_llvm[@]}" olddefconfig -j"${NPROC}" > /dev/null 2>&1
+      "${make_verbose[@]}" "${host_make_args[@]}" CC="${clang}" ${clang_flags_override:+CLANG_FLAGS="${clang_flags_override}"} "${make_llvm[@]}" olddefconfig -j"${NPROC}" \
+      2>&1 | tee -a "${kernel_build_log}"
   fi
 
   LLBIC_CTX_CONFIG_SHA256="$(_sha256_file "${config_path}")"
@@ -2397,22 +2498,24 @@ EOF
       ARCH="${arch}" \
       ${cross_compile:+CROSS_COMPILE="${cross_compile}"} \
       "${make_verbose[@]}" \
+      "${host_make_args[@]}" \
       CC="${clang}" \
       ${clang_flags_override:+CLANG_FLAGS="${clang_flags_override}"} \
       "${rust_make_args[@]}" \
       "${make_llvm[@]}" \
-      prepare scripts -j"${NPROC}"
+      prepare scripts -j"${NPROC}" 2>&1 | tee -a "${kernel_build_log}"
   else
     env "${rust_make_env[@]}" make -C "${kernel_src}" \
       "${make_extra[@]}" \
       ARCH="${arch}" \
       ${cross_compile:+CROSS_COMPILE="${cross_compile}"} \
       "${make_verbose[@]}" \
+      "${host_make_args[@]}" \
       CC="${clang}" \
       ${clang_flags_override:+CLANG_FLAGS="${clang_flags_override}"} \
       "${rust_make_args[@]}" \
       "${make_llvm[@]}" \
-      prepare scripts -j"${NPROC}" > /dev/null 2>&1
+      prepare scripts -j"${NPROC}" 2>&1 | tee -a "${kernel_build_log}"
   fi
 
   if ! grep -qF "${marker}" "${kernel_makefile}"; then
@@ -2431,6 +2534,7 @@ EOF
       ARCH="${arch}" \
       ${cross_compile:+CROSS_COMPILE="${cross_compile}"} \
       "${make_verbose[@]}" \
+      "${host_make_args[@]}" \
       CC="${clang}" \
       ${clang_flags_override:+CLANG_FLAGS="${clang_flags_override}"} \
       "${rust_make_args[@]}" \
@@ -2445,6 +2549,7 @@ EOF
       ARCH="${arch}" \
       ${cross_compile:+CROSS_COMPILE="${cross_compile}"} \
       "${make_verbose[@]}" \
+      "${host_make_args[@]}" \
       CC="${clang}" \
       ${clang_flags_override:+CLANG_FLAGS="${clang_flags_override}"} \
       "${rust_make_args[@]}" \
@@ -2458,7 +2563,6 @@ EOF
   _remove_injected_makefile_block "${kernel_makefile}" "${opaque_marker}"
 
   local search_root="${kernel_src}"
-  [[ -n "${kbuild_dir}" ]] && search_root="${kbuild_dir}"
 
   info "Collecting bitcode module list..."
   if [[ ${#scoped_targets[@]} -gt 0 ]]; then
@@ -2476,8 +2580,10 @@ _compile_irdumper() {
   local kernel_src="$1" kernel_name="$2" output_dir="$3" clang="$4" clang_version="$5" llvm_major="$6" kbuild_dir="${7:-}" arch="${8:-x86_64}" cross_compile="${9:-}" defconfig_target="${10:-defconfig}"
   shift 10
   local -a kconfig_fragments=("$@")
+  local -a compat_kconfig_fragments=()
   local -a make_extra=()
   local -a make_llvm=()
+  local -a host_make_args=()
   local -a make_verbose=()
   local -a rust_make_args=()
   local -a rust_make_env=()
@@ -2486,7 +2592,9 @@ _compile_irdumper() {
   local compat_cflags=""
   local cc_wrapper=""
   local special_cc=""
-  mkdir -p "${output_dir}"
+  local host_cxx="${clang/clang/clang++}"
+  local kernel_build_log="${output_dir}/kernel-build.log"
+  _ensure_dir "${output_dir}"
   if [[ -n "${kbuild_dir}" ]]; then
     make_extra+=(O="${kbuild_dir}")
   else
@@ -2498,7 +2606,9 @@ _compile_irdumper() {
     fi
   fi
   _apply_kernel_compat_fixes "${kernel_src}"
+  _apply_irdumper_hosttools_compat "${kernel_src}"
   mapfile -t make_llvm < <(_llvm_make_args "${llvm_major}")
+  mapfile -t host_make_args < <(_host_make_tool_args "${clang}")
   mapfile -t make_verbose < <(_make_verbose_args)
   clang_flags_override="$(_clang_flags_override "${kernel_name}" "${arch}" "${cross_compile}")"
   compat_cflags="$(_kernel_compile_compat_flags "${kernel_name}" "${arch}")"
@@ -2508,9 +2618,21 @@ _compile_irdumper() {
     _require_rustavailable "${kernel_src}" "${kbuild_dir}" "${arch}" "${cross_compile}" "${clang}" "${clang_flags_override}" "${make_llvm[@]}"
   fi
 
+  local hosttools_fragment="${output_dir}/irdumper-hosttools-compat.config"
+  cat > "${hosttools_fragment}" <<'EOF'
+CONFIG_OBJTOOL=n
+CONFIG_STACK_VALIDATION=n
+CONFIG_UNWINDER_ORC=n
+EOF
+  compat_kconfig_fragments+=("${hosttools_fragment}")
+
   info "Strategy: IRDumper pass plugin (fallback)"
 
-  local irdumper_so="/opt/IRDumper/${clang_version}/libDumper.so"
+  if [[ -n "${clang_version}" && "${clang_version}" != "14" && "${clang_version}" != "15" ]]; then
+    die "IRDumper is only supported with Clang 14 or 15; requested Clang ${clang_version}"
+  fi
+
+  local irdumper_so="$(_llbase_irdumper_root)/${clang_version}/libDumper.so"
   [[ -f "${irdumper_so}" ]] || die "IRDumper not found: ${irdumper_so}"
 
   local irdumper_analysis_flags="-Wno-error -Wno-error=return-type -O1 -fno-discard-value-names -g -fno-inline-functions -fno-inline"
@@ -2542,17 +2664,19 @@ _compile_irdumper() {
   if [[ "${VERBOSE}" -eq 1 ]]; then
     env "${rust_make_env[@]}" make -C "${kernel_src}" "${make_extra[@]}" ARCH="${arch}" ${cross_compile:+CROSS_COMPILE="${cross_compile}"} \
       "${rust_make_args[@]}" \
-      "${make_verbose[@]}" CC="${clang}" ${clang_flags_override:+CLANG_FLAGS="${clang_flags_override}"} "${make_llvm[@]}" "${defconfig_target}" -j"${NPROC}"
+      "${make_verbose[@]}" "${host_make_args[@]}" CC="${clang}" ${clang_flags_override:+CLANG_FLAGS="${clang_flags_override}"} "${make_llvm[@]}" "${defconfig_target}" -j"${NPROC}" \
+      2>&1 | tee "${kernel_build_log}"
   else
     env "${rust_make_env[@]}" make -C "${kernel_src}" "${make_extra[@]}" ARCH="${arch}" ${cross_compile:+CROSS_COMPILE="${cross_compile}"} \
       "${rust_make_args[@]}" \
-      "${make_verbose[@]}" CC="${clang}" ${clang_flags_override:+CLANG_FLAGS="${clang_flags_override}"} "${make_llvm[@]}" "${defconfig_target}" -j"${NPROC}" > /dev/null 2>&1
+      "${make_verbose[@]}" "${host_make_args[@]}" CC="${clang}" ${clang_flags_override:+CLANG_FLAGS="${clang_flags_override}"} "${make_llvm[@]}" "${defconfig_target}" -j"${NPROC}" \
+      2>&1 | tee "${kernel_build_log}"
   fi
 
   local config_path="${kernel_src}/.config"
   [[ -n "${kbuild_dir}" ]] && config_path="${kbuild_dir}/.config"
   LLBIC_CTX_CONFIG_PATH="$(_normalize_path_for_json "${config_path}")"
-  _apply_kconfig_fragments "${kernel_src}" "${kbuild_dir}" "${config_path}" "${kconfig_fragments[@]}"
+  _apply_kconfig_fragments "${kernel_src}" "${kbuild_dir}" "${config_path}" "${kconfig_fragments[@]}" "${compat_kconfig_fragments[@]}"
 
   if [[ -n "${compat_cflags}" ]] && ! grep -qF "${compat_marker}" "${kernel_makefile}"; then
     cat >> "${kernel_makefile}" <<EOF
@@ -2570,20 +2694,24 @@ EOF
       ARCH="${arch}" \
       ${cross_compile:+CROSS_COMPILE="${cross_compile}"} \
       "${make_verbose[@]}" \
-      CC="${cc_wrapper}" \
+      "${host_make_args[@]}" \
+      CC="${clang}" \
+      ${clang_flags_override:+CLANG_FLAGS="${clang_flags_override}"} \
       "${rust_make_args[@]}" \
       "${make_llvm[@]}" \
-      prepare scripts -j"${NPROC}"
+      prepare scripts -j"${NPROC}" 2>&1 | tee -a "${kernel_build_log}"
   else
     env "${rust_make_env[@]}" make -C "${kernel_src}" \
       "${make_extra[@]}" \
       ARCH="${arch}" \
       ${cross_compile:+CROSS_COMPILE="${cross_compile}"} \
       "${make_verbose[@]}" \
-      CC="${cc_wrapper}" \
+      "${host_make_args[@]}" \
+      CC="${clang}" \
+      ${clang_flags_override:+CLANG_FLAGS="${clang_flags_override}"} \
       "${rust_make_args[@]}" \
       "${make_llvm[@]}" \
-      prepare scripts -j"${NPROC}" > /dev/null 2>&1
+      prepare scripts -j"${NPROC}" 2>&1 | tee -a "${kernel_build_log}"
   fi
 
   if ! grep -qF "${marker}" "${kernel_makefile}"; then
@@ -2630,12 +2758,23 @@ EOF
   _remove_injected_makefile_block "${kernel_makefile}" "${compat_marker}"
 
   local search_root="${kernel_src}"
-  [[ -n "${kbuild_dir}" ]] && search_root="${kbuild_dir}"
 
   info "Collecting bitcode module list..."
   if [[ ${#scoped_targets[@]} -gt 0 ]]; then
     _collect_target_bitcode_files "${search_root}" "irdumper" \
       "${scoped_targets[@]}"
+    if [[ ${#LAST_BITCODE_FILES[@]} -eq 0 ]]; then
+      _collect_bitcode_files "${search_root}" "irdumper"
+    fi
+    if [[ ${#LAST_BITCODE_FILES[@]} -eq 0 ]]; then
+      while IFS= read -r candidate; do
+        [[ -n "${candidate}" ]] || continue
+        if file "${candidate}" 2>/dev/null | grep -q "LLVM IR bitcode"; then
+          LAST_BITCODE_FILES+=("${candidate}")
+          LAST_BITCODE_FILES_REL+=("${candidate#${search_root%/}/}")
+        fi
+      done < <(find "${search_root}" -type f -name '*.bc' | sort)
+    fi
   else
     _collect_bitcode_files "${search_root}" "irdumper"
   fi
@@ -3107,7 +3246,7 @@ ${BOLD}Primary artifacts:${NC}
 
 ${BOLD}Docker:${NC}
   docker run --rm -v \$(pwd):/work -w /work --entrypoint /work/llbic \
-    ghcr.io/jianxiaoyitech/llbase:latest build 6.18.16
+    $(_llbase_image_for_kernel 6.18.16) build 6.18.16
 
 EOF
 }

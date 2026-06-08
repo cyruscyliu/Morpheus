@@ -1,6 +1,270 @@
 {
   "name": "llbic",
-  "runtime": "exec",
-  "cli-contract": "exec,inspect",
-  "entry": "llbic"
+  "runtime": null,
+  "cli-contract": "build,inspect,logs",
+  "config": {
+    "fields": {
+      "mode": {
+        "aliases": [
+          "mode"
+        ]
+      },
+      "source": {
+        "aliases": [
+          "source",
+          "sources"
+        ],
+        "path": true
+      },
+      "output": {
+        "aliases": [
+          "output"
+        ],
+        "path": true
+      },
+      "conf": {
+        "aliases": [
+          "conf"
+        ],
+        "path": true
+      },
+      "llbase-contract": {
+        "aliases": [
+          "llbase-contract",
+          "llbaseContract"
+        ],
+        "path": true
+      },
+      "target": {
+        "aliases": [
+          "target"
+        ],
+        "path": true
+      },
+      "build-version": {
+        "aliases": [
+          "build-version",
+          "buildVersion",
+          "version"
+        ]
+      },
+      "build-dir-key": {
+        "aliases": [
+          "build-dir-key",
+          "buildDirKey"
+        ]
+      },
+      "clang": {
+        "aliases": [
+          "clang"
+        ]
+      },
+      "arch": {
+        "aliases": [
+          "arch"
+        ]
+      },
+      "cross": {
+        "aliases": [
+          "cross"
+        ]
+      },
+      "defconfig": {
+        "aliases": [
+          "defconfig"
+        ]
+      },
+      "kconfig": {
+        "aliases": [
+          "kconfig"
+        ],
+        "repeatable": true,
+        "path": true
+      },
+      "file": {
+        "aliases": [
+          "file"
+        ],
+        "repeatable": true
+      },
+      "rust-target": {
+        "aliases": [
+          "rust-target",
+          "rustTarget"
+        ],
+        "repeatable": true
+      },
+      "out-of-tree": {
+        "aliases": [
+          "out-of-tree",
+          "outtree"
+        ],
+        "boolean": true
+      },
+      "intree": {
+        "aliases": [
+          "intree"
+        ],
+        "boolean": true
+      },
+      "rust": {
+        "aliases": [
+          "rust"
+        ],
+        "boolean": true
+      },
+      "verbose": {
+        "aliases": [
+          "verbose"
+        ],
+        "boolean": true
+      },
+      "force-irdumper": {
+        "aliases": [
+          "force-irdumper",
+          "forceIrdumper"
+        ],
+        "boolean": true
+      },
+      "artifacts": {
+        "aliases": [
+          "artifacts"
+        ],
+        "repeatable": true
+      }
+    }
+  },
+  "inputs": {
+    "build": {
+      "dependencies": {
+        "llbase": {
+          "flag": "llbase-contract"
+        }
+      }
+    }
+  },
+  "managed": {
+    "schemaVersion": 1,
+    "modes": [
+      "local",
+      "remote"
+    ],
+    "local": {
+      "sourceTemplate": "tools/llbic/sources",
+      "downloadsDir": "tools/llbic/sources",
+      "outputDirTemplate": "tools/llbic/builds/{buildDirKey}/output",
+      "artifacts": {
+        "sources-root": {
+          "pathTemplate": "tools/llbic/sources"
+        },
+        "output-dir": {
+          "pathTemplate": "tools/llbic/builds/{buildDirKey}/output"
+        },
+        "llbic-json": {
+          "pathTemplate": "tools/llbic/builds/{buildDirKey}/output/llbic.json"
+        },
+        "bitcode-files": {
+          "pathTemplate": "tools/llbic/builds/{buildDirKey}/output/bitcode_files.txt"
+        },
+        "llbic-log": {
+          "pathTemplate": "tools/llbic/builds/{buildDirKey}/output/llbic.log"
+        },
+        "kernel-build-log": {
+          "pathTemplate": "tools/llbic/builds/{buildDirKey}/output/kernel-build.log"
+        }
+      },
+      "commands": {
+        "build": {
+          "requiredFlags": [
+            "source",
+            "output",
+            "build-version",
+            "llbase-contract"
+          ],
+          "scalarFlags": [
+            "build-version",
+            "output",
+            "conf",
+            "clang",
+            "arch",
+            "cross",
+            "defconfig",
+            "llbase-contract"
+          ],
+          "repeatableFlags": [
+            "kconfig",
+            "file",
+            "rust-target"
+          ],
+          "pathFlags": {
+            "source": "tools/llbic/sources",
+            "output": "tools/llbic/builds/{buildDirKey}/output",
+            "llbase-contract": "tools/llbase/builds/{buildDirKey}/output/runtime-contract.json"
+          },
+          "script": {
+            "path": "scripts/build.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "completed local llbic build",
+            "errorSummary": "local llbic build failed",
+            "manifestTemplate": "{output}/manifest.json",
+            "artifact": {
+              "path": "output-dir",
+              "locationTemplate": "{output}"
+            },
+            "details": {
+              "source": "{source}",
+              "output": "{output}",
+              "build_version": {
+                "fromFlag": "build-version"
+              }
+            }
+          }
+        },
+        "inspect": {
+          "requiredFlags": [
+            "target"
+          ],
+          "scalarFlags": [
+            "target"
+          ],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/inspect.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "inspected existing llbic build",
+            "details": {
+              "target": {
+                "fromFlag": "target"
+              }
+            }
+          }
+        },
+        "logs": {
+          "requiredFlags": [
+            "target"
+          ],
+          "scalarFlags": [
+            "target"
+          ],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/logs.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "read llbic log",
+            "details": {
+              "target": {
+                "fromFlag": "target"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }

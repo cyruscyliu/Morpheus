@@ -76,12 +76,14 @@ RUN for v in 14 15 16 18; do \
         --slave /usr/bin/ld.lld ld.lld /usr/bin/ld.lld-${v}; \
     done
 
-# Build IRDumper only for LLVM 14. The plugin is not supported on newer Clang.
+# Build IRDumper for the Clang versions that use the fallback plugin path.
 COPY IRDumper /tmp/IRDumper
-RUN update-alternatives --set clang /usr/bin/clang-14 \
-      && make -C /tmp/IRDumper clean dumper \
-      && mkdir -p /opt/IRDumper/14 \
-      && cp /tmp/IRDumper/build/lib/libDumper.so /opt/IRDumper/14/ \
+RUN for v in 14 15; do \
+        update-alternatives --set clang /usr/bin/clang-${v}; \
+        make -C /tmp/IRDumper clean dumper LLVM_BUILD=/usr/lib/llvm-${v}; \
+        mkdir -p /opt/IRDumper/${v}; \
+        cp /tmp/IRDumper/build/lib/libDumper.so /opt/IRDumper/${v}/; \
+      done \
       && rm -rf /tmp/IRDumper
 
 RUN python3 -m pip install --break-system-packages \

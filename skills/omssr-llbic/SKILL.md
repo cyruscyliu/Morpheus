@@ -32,9 +32,15 @@ When operating as an agent in this repo:
 3. Use `inspect` to re-read a finished build instead of rebuilding it.
 4. Expect matching successful `build` or `compile` requests to reuse the
    recorded `llbic.json` output instead of recompiling.
-5. For Morpheus-managed runs, confirm the wrapper forwards the resolved
-   workspace output path to `./llbic`; otherwise reuse can silently break by
-   building under the synced runtime tree instead of the managed workspace.
+5. For Morpheus-managed runs, prefer Morpheus scripted commands instead of
+   invoking the legacy wrapper path through ad hoc workflow glue.
+
+For Morpheus-managed execution, prefer:
+
+```bash
+./bin/morpheus build --tool llbic --build-version 6.18.16 --json
+./bin/morpheus inspect --tool llbic --target /path/to/llbic.json --json
+```
 
 Typical flow:
 
@@ -61,7 +67,7 @@ Use Docker when:
 - the required host Clang version does not exist
 - the host Clang major does not match the kernel-era default and that mismatch
   is not intentional
-- you want the image-defined toolchain path for reproducibility
+- you want the Docker image-defined toolchain path for reproducibility
 
 Force Docker with:
 
@@ -220,3 +226,117 @@ When explaining or updating behavior, prefer these sources in order:
 4. the implementation in `llbic`
 
 If command behavior changes, update the documentation in the same change.
+
+## Supplementary Notes
+
+The material below preserves the older `tools/llbic/docs/index.md` narrative as
+supplementary context for contributors who want the design background, not just
+the command contract.
+
+### Why llbic Exists
+
+`llbic` is aimed at researchers, tool builders, and agent workflows that need
+reproducible LLVM bitcode and kernel build artifacts. The problem it addresses
+is narrower than "build Linux kernels." The real problem is "emit LLVM IR from
+kernel builds in a way that is reproducible and reusable."
+
+That is difficult because kernel builds are heavily versioned, configuration
+dependent, architecture sensitive, and toolchain sensitive. The hard part is
+not merely invoking Clang. The hard part is deciding what artifact should count
+as "the LLVM IR for the kernel" and producing it consistently across different
+build contexts.
+
+Historically, people tend to rely on:
+
+- shell scripts that only work for one kernel era
+- one-off build wrappers
+- handwritten command rewriting
+- locally meaningful output layouts
+
+That may be enough for one experiment, but it is not enough for a reusable
+human-in-the-loop workflow.
+
+### Design Goal
+
+`llbic` is not intended to be a new kernel build system. Its role is to provide
+a stable command surface and a stable artifact contract around the kernel build
+you are already trying to run.
+
+In practice that means:
+
+- one stable entry point for building a kernel
+- explicit output artifacts under `out/`
+- a machine-readable manifest in `llbic.json`
+- a clean inspection step for already completed builds
+- a path for status collection and regression tracking
+
+The core design is:
+
+1. run a real kernel build, not a synthetic imitation
+2. preserve a stable artifact layout
+3. collect LLVM artifacts that the chosen strategy naturally produces
+4. record everything in a manifest that agents and scripts can read
+
+The most important design choice is what `llbic` does not do. It does not force
+every build into one monolithic `vmlinux.bc` pipeline when the native kernel
+build does not naturally support that.
+
+### Why Earlier Approaches Were Replaced
+
+Earlier `llbic` logic tried to reconstruct a monolithic LLVM link graph by:
+
+- capturing kernel build commands from `make V=1`
+- rewriting compile commands into `clang --emit-llvm`
+- parsing `ld` commands to rebuild the dependency tree
+- running `llvm-link` to synthesize one giant bitcode blob
+
+That worked as a proof of concept, but it was fragile:
+
+- assembly inputs were always incomplete in that model
+- native linker behavior does not map cleanly to `llvm-link`
+- the wrapper effectively became a second kernel build system
+
+That last point was decisive. Once you rewrite compile commands and reconstruct
+link structure yourself, you are no longer faithfully using the kernel build.
+
+### The Two Modern Execution Paths
+
+Modern `llbic` settled on two practical paths instead.
+
+#### 1. Kernel-native Clang LTO
+
+When the target kernel supports it, `llbic` prefers the kernel's own Clang LTO
+path. In this mode, `llbic` enables the appropriate kernel configuration, builds
+with `LLVM=1`, then scans the real build output for verified LLVM bitcode.
+
+This approach keeps the native build semantics intact and records the LLVM
+artifacts the build already knows how to produce.
+
+#### 2. IRDumper Fallback
+
+When native LTO is not the right answer, `llbic` falls back to the `IRDumper`
+Clang pass plugin. The kernel still produces its normal object files, but the
+plugin also emits one `.bc` file per compiled translation unit.
+
+That fallback avoids reconstructing a fake LLVM link graph and produces
+per-file bitcode that is often more useful for indexing and analysis anyway.
+Today that path is supported only with Clang `14` and `15`; other toolchains
+should use the native LTO strategy instead.
+
+### Artifact Philosophy
+
+One practical caveat is that not every file ending in `.bc` inside a kernel
+tree is LLVM bitcode. `llbic` therefore verifies bitcode by file content rather
+than trusting filenames alone.
+
+More broadly, modern `llbic` is designed around reusable build artifacts, not
+around one giant derived bitcode file. The important output remains:
+
+- `llbic.json`
+- `bitcode_files.txt`
+- `llbic.log`
+- `kernel-build.log`
+
+The old approach optimized for a seductive output: a single monolithic LLVM
+file. The current approach optimizes for correctness, portability, and
+repeatability.

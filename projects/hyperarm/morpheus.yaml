@@ -767,58 +767,59 @@ workflows:
         args:
           - --llbase-contract
           - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
-      - id: net_mutator_6_18_16
-        tool: llcg
-        command: exec
-        args:
-          - --llbase-contract
-          - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
-          - --generator
-          - interfaces
-          - --source-dir
-          - "{{steps.llbic_6_18_16.artifacts.source-dir.location}}"
-          - --interfaces
-          - networking
-      - id: storage_mutator_6_18_16
-        tool: llcg
-        command: exec
-        args:
-          - --llbase-contract
-          - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
-          - --generator
-          - interfaces
-          - --source-dir
-          - "{{steps.llbic_6_18_16.artifacts.source-dir.location}}"
-          - --interfaces
-          - storage
-      - id: net_cg_6_18_16
-        tool: llcg
-        command: exec
-        args:
-          - --llbase-contract
-          - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
-          - --llbic-json
-          - "{{steps.llbic_6_18_16.artifacts.llbic-json.location}}"
-          - --all-bc-list
-          - "{{steps.llbic_6_18_16.artifacts.bitcode-files.location}}"
-          - --filter
-          - "{{steps.net_mutator_6_18_16.artifacts.mutator_manifest.location}}"
-          - --scope-name
-          - networking-6.18.16
-      - id: storage_cg_6_18_16
-        tool: llcg
-        command: exec
-        args:
-          - --llbase-contract
-          - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
-          - --llbic-json
-          - "{{steps.llbic_6_18_16.artifacts.llbic-json.location}}"
-          - --all-bc-list
-          - "{{steps.llbic_6_18_16.artifacts.bitcode-files.location}}"
-          - --filter
-          - "{{steps.storage_mutator_6_18_16.artifacts.mutator_manifest.location}}"
-          - --scope-name
-          - storage-6.18.16
+      # Disabled while focusing on the boot callgraph.
+      # - id: net_mutator_6_18_16
+      #   tool: llcg
+      #   command: exec
+      #   args:
+      #     - --llbase-contract
+      #     - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
+      #     - --generator
+      #     - interfaces
+      #     - --source-dir
+      #     - "{{steps.llbic_6_18_16.artifacts.source-dir.location}}"
+      #     - --interfaces
+      #     - networking
+      # - id: storage_mutator_6_18_16
+      #   tool: llcg
+      #   command: exec
+      #   args:
+      #     - --llbase-contract
+      #     - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
+      #     - --generator
+      #     - interfaces
+      #     - --source-dir
+      #     - "{{steps.llbic_6_18_16.artifacts.source-dir.location}}"
+      #     - --interfaces
+      #     - storage
+      # - id: net_cg_6_18_16
+      #   tool: llcg
+      #   command: exec
+      #   args:
+      #     - --llbase-contract
+      #     - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
+      #     - --llbic-json
+      #     - "{{steps.llbic_6_18_16.artifacts.llbic-json.location}}"
+      #     - --all-bc-list
+      #     - "{{steps.llbic_6_18_16.artifacts.bitcode-files.location}}"
+      #     - --filter
+      #     - "{{steps.net_mutator_6_18_16.artifacts.mutator_manifest.location}}"
+      #     - --scope-name
+      #     - networking-6.18.16
+      # - id: storage_cg_6_18_16
+      #   tool: llcg
+      #   command: exec
+      #   args:
+      #     - --llbase-contract
+      #     - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
+      #     - --llbic-json
+      #     - "{{steps.llbic_6_18_16.artifacts.llbic-json.location}}"
+      #     - --all-bc-list
+      #     - "{{steps.llbic_6_18_16.artifacts.bitcode-files.location}}"
+      #     - --filter
+      #     - "{{steps.storage_mutator_6_18_16.artifacts.mutator_manifest.location}}"
+      #     - --scope-name
+      #     - storage-6.18.16
       - id: boot_virtio_scope_6_18_16
         tool: llcg
         command: exec

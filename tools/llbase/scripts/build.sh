@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/runtime.sh"
+
 source_dir="${MORPHEUS_LLBASE_SOURCE:?}"
 output_dir="${MORPHEUS_LLBASE_OUTPUT:?}"
 family="${MORPHEUS_LLBASE_FAMILY:-all}"
@@ -25,6 +27,11 @@ if ! docker info >/dev/null 2>&1 && sudo docker info >/dev/null 2>&1; then
   docker_runner=(sudo docker)
 fi
 
+docker_available=false
+if docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1; then
+  docker_available=true
+fi
+
 selected_families=()
 case "${family}" in
   all) selected_families=(latest mid legacy) ;;
@@ -40,27 +47,31 @@ if [ -n "${image_tag}" ] && [ "${#selected_families[@]}" -ne 1 ]; then
 fi
 
 if [ "${build_image}" = "true" ]; then
+  if [ "${docker_available}" != "true" ]; then
+    echo "[llbase] build-image=true but no usable docker daemon is available" >&2
+    exit 1
+  fi
   for selected_family in "${selected_families[@]}"; do
     dockerfile="docker/Dockerfile"
-    resolved_tag="${image_tag:-ghcr.io/jianxiaoyitech/llbase:${selected_family}}"
+    resolved_tag="${image_tag:-ghcr.io/cyruscyliu/llbase:${selected_family}}"
     case "${selected_family}" in
       latest) dockerfile="docker/Dockerfile" ;;
       mid) dockerfile="docker/Dockerfile.mid" ;;
       legacy) dockerfile="docker/Dockerfile.legacy" ;;
     esac
     echo "[llbase] docker build family=${selected_family} tag=${resolved_tag}" >&2
-    "${docker_runner[@]}" build -f "${source_dir}/${dockerfile}" -t "${resolved_tag}" "${source_dir}"
+    env DOCKER_BUILDKIT=0 "${docker_runner[@]}" build -f "${source_dir}/${dockerfile}" -t "${resolved_tag}" "${source_dir}"
   done
 elif [ "${pull_image}" = "true" ]; then
-  if docker info >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1; then
-    for selected_family in "${selected_families[@]}"; do
-      resolved_tag="${image_tag:-ghcr.io/jianxiaoyitech/llbase:${selected_family}}"
-      echo "[llbase] docker pull family=${selected_family} tag=${resolved_tag}" >&2
-      "${docker_runner[@]}" pull "${resolved_tag}"
-    done
-  else
-    echo "[llbase] skipping image pull because no usable docker daemon is available" >&2
+  if [ "${docker_available}" != "true" ]; then
+    echo "[llbase] pull-image=true but no usable docker daemon is available" >&2
+    exit 1
   fi
+  for selected_family in "${selected_families[@]}"; do
+    resolved_tag="${image_tag:-ghcr.io/cyruscyliu/llbase:${selected_family}}"
+    echo "[llbase] docker pull family=${selected_family} tag=${resolved_tag}" >&2
+    "${docker_runner[@]}" pull "${resolved_tag}"
+  done
 fi
 
 if [ "${prepare_irdumper}" = "true" ]; then
@@ -86,17 +97,17 @@ const prepareIrdumper = String(prepareIrdumperArg || "false") === "true";
 const irdumperRoot = path.resolve(irdumperRootArg);
 const images = {
   latest: {
-    image: imageTagArg || "ghcr.io/jianxiaoyitech/llbase:latest",
+    image: imageTagArg || "ghcr.io/cyruscyliu/llbase:latest",
     dockerfile: path.join(sourceDir, "docker", "Dockerfile"),
     clang_versions: [14, 15, 16, 18],
   },
   mid: {
-    image: imageTagArg || "ghcr.io/jianxiaoyitech/llbase:mid",
+    image: imageTagArg || "ghcr.io/cyruscyliu/llbase:mid",
     dockerfile: path.join(sourceDir, "docker", "Dockerfile.mid"),
     clang_versions: [8, 9, 10, 11, 12],
   },
   legacy: {
-    image: imageTagArg || "ghcr.io/jianxiaoyitech/llbase:legacy",
+    image: imageTagArg || "ghcr.io/cyruscyliu/llbase:legacy",
     dockerfile: path.join(sourceDir, "docker", "Dockerfile.legacy"),
     clang_versions: ["6.0", 7, 8],
   },

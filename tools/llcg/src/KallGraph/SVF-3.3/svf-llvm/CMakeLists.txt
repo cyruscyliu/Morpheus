@@ -100,9 +100,14 @@ else()
 endif()
 
 # Add a custom command to compile the extapi.bc bitcode file from extapi.c
+set(SVF_EXTAPI_IR_FLAGS -w -c -fPIC -std=gnu11 -emit-llvm)
+if(LLVM_VERSION_MAJOR LESS 17)
+  list(APPEND SVF_EXTAPI_IR_FLAGS -Xclang -no-opaque-pointers)
+endif()
+
 add_custom_command(
   OUTPUT ${SVF_BUILD_EXTAPI_BC}
-  COMMAND ${CMAKE_C_COMPILER} -w -c -fPIC -std=gnu11 -emit-llvm -Xclang -no-opaque-pointers -o ${SVF_BUILD_EXTAPI_BC} ${EXTAPI_SRC}
+  COMMAND ${CMAKE_C_COMPILER} ${SVF_EXTAPI_IR_FLAGS} -o ${SVF_BUILD_EXTAPI_BC} ${EXTAPI_SRC}
   COMMENT "Generating extapi.bc LLVM bitcode file..."
   MAIN_DEPENDENCY ${EXTAPI_SRC}
   DEPENDS ${EXTAPI_SRC}

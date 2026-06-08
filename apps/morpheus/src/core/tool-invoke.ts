@@ -29,6 +29,10 @@ function parseToolArgs(argv) {
     "env",
     "artifact",
     "config-fragment",
+    "file",
+    "filter",
+    "kconfig",
+    "rust-target",
   ]);
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -323,11 +327,12 @@ function defaultScriptedCommandCwd(workspace, tool, command) {
   return path.join(workspace, "tmp", String(tool || "tool"), String(command || "command"));
 }
 
-function parseScriptedArgs(args) {
-  const positionals = [];
-  const flags = {};
-  const booleanFlags = new Set(["json", "help", "detach"]);
-  const repeatableFlags = new Set([
+function descriptorFlagMetadata(descriptor) {
+  const fields = descriptor && descriptor.config && descriptor.config.fields
+    ? descriptor.config.fields
+    : {};
+  const booleans = new Set(["json", "help", "detach"]);
+  const repeatables = new Set([
     "qemu-arg",
     "target-list",
     "configure-arg",
@@ -336,6 +341,52 @@ function parseScriptedArgs(args) {
     "artifact",
     "config-fragment",
   ]);
+  const paths = new Set([
+    "source",
+    "downloads-dir",
+    "patch-dir",
+    "output",
+    "build-dir",
+    "install-dir",
+    "path",
+    "run-dir",
+    "state-dir",
+    "kernel",
+    "initrd",
+    "qemu",
+    "microkit-sdk",
+    "sel4",
+    "toolchain",
+    "libvmm-dir",
+    "contract",
+  ]);
+
+  for (const [key, spec] of Object.entries(fields)) {
+    const aliases = Array.isArray(spec && spec.aliases) && spec.aliases.length > 0
+      ? spec.aliases
+      : [key];
+    for (const alias of aliases) {
+      if (spec && spec.boolean) {
+        booleans.add(String(alias));
+      }
+      if (spec && spec.repeatable) {
+        repeatables.add(String(alias));
+      }
+      if (spec && spec.path) {
+        paths.add(String(alias));
+      }
+    }
+  }
+
+  return { booleans, repeatables, paths };
+}
+
+function parseScriptedArgs(descriptor, args) {
+  const positionals = [];
+  const flags = {};
+  const metadata = descriptorFlagMetadata(descriptor);
+  const booleanFlags = metadata.booleans;
+  const repeatableFlags = metadata.repeatables;
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
     if (!token.startsWith("--")) {
@@ -491,7 +542,7 @@ function scriptResultSummary(command, spec, dynamicResult = {}) {
 }
 
 async function runScriptedToolStreaming(descriptor, args, options = {}) {
-  const parsed = parseScriptedArgs(args);
+  const parsed = parseScriptedArgs(descriptor, args);
   const command = parsed.command;
   const spec = scriptedCommandSpec(descriptor, command);
   if (!spec) {
@@ -799,30 +850,13 @@ function shellQuote(value) {
   return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
 
-function pathFlagSet() {
-  return new Set([
-    "--source",
-    "--downloads-dir",
-    "--patch-dir",
-    "--output",
-    "--build-dir",
-    "--install-dir",
-    "--path",
-    "--run-dir",
-    "--state-dir",
-    "--kernel",
-    "--initrd",
-    "--qemu",
-    "--microkit-sdk",
-    "--sel4",
-    "--toolchain",
-    "--libvmm-dir",
-    "--contract",
-  ]);
+function pathFlagSet(descriptor) {
+  const metadata = descriptorFlagMetadata(descriptor);
+  return new Set(Array.from(metadata.paths, (key) => `--${key}`));
 }
 
-function rewriteRemoteArgs(args, resolved) {
-  const pathFlags = pathFlagSet();
+function rewriteRemoteArgs(args, resolved, descriptor) {
+  const pathFlags = pathFlagSet(descriptor);
   const rewritten = [];
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
@@ -1138,8 +1172,9 @@ async function executeRemoteTopLevelToolCommand(command, tool, args, resolved, f
   const remoteRoot = resolved["sync-morpheus"]
     ? prepareRemoteMorpheusRuntime(resolved.workspace, ssh)
     : remoteRepoRoot();
-  const remoteArgs = rewriteRemoteArgs(args, resolved);
-  const pathFlags = pathFlagSet();
+  const descriptor = readToolDescriptor(tool);
+  const remoteArgs = rewriteRemoteArgs(args, resolved, descriptor);
+  const pathFlags = pathFlagSet(descriptor);
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
     if (!pathFlags.has(token) || index + 1 >= args.length) {
@@ -1206,7 +1241,7 @@ async function executeRemoteTopLevelToolCommand(command, tool, args, resolved, f
   if (result.exitCode !== 0 || !payload) {
     throw new Error((payload && payload.summary) || result.stderr || result.stdout || `failed to ${command} with tool ${tool}`);
   }
-  return materializeRemoteCanonicalArtifacts(tool, readToolDescriptor(tool), payload, resolved);
+  return materializeRemoteCanonicalArtifacts(tool, descriptor, payload, resolved);
 }
 
 function normalizeArtifacts(payload, command, resolved, descriptor) {
@@ -1313,6 +1348,9 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
   const forwardSpec = forwardedFlagSpec(descriptor, command);
   const pathFlags = spec && spec.pathFlags ? spec.pathFlags : {};
   const flagAliases = spec && spec.flagAliases ? spec.flagAliases : {};
+  const descriptorPathFields = descriptor && descriptor.config && descriptor.config.fields
+    ? descriptor.config.fields
+    : {};
   const effectivePaths = {
     source: resolved.source || defaultSourceDir(workspace, tool, descriptor, buildVersion, buildDirKey, templateExtras, cachePolicy),
     "build-version": buildVersion,
@@ -1350,6 +1388,17 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
       );
     }
   }
+  for (const [field, meta] of Object.entries(descriptorPathFields)) {
+    if (!(meta && meta.path)) {
+      continue;
+    }
+    if (effectivePaths[field]) {
+      continue;
+    }
+    if (resolved[field] != null) {
+      effectivePaths[field] = resolved[field];
+    }
+  }
 
   const args = ["--json", command];
   if (effectivePaths.source) {
@@ -1376,6 +1425,12 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
     args.push(`--${actualFlag}`, String(value));
   }
 
+  const descriptorFields = descriptor && descriptor.config && descriptor.config.fields
+    ? descriptor.config.fields
+    : {};
+  const descriptorScalarKeys = Object.entries(descriptorFields)
+    .filter(([, spec]) => !(spec && (spec.path || spec.repeatable)))
+    .map(([key]) => key);
   const defaultForwardedKeys = [
     "defconfig",
     "qemu",
@@ -1399,8 +1454,8 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
     "make-target",
   ];
   const forwardedKeys = Array.isArray(forwardSpec.scalar)
-    ? forwardSpec.scalar
-    : defaultForwardedKeys;
+    ? Array.from(new Set([...forwardSpec.scalar, ...descriptorScalarKeys]))
+    : Array.from(new Set([...defaultForwardedKeys, ...descriptorScalarKeys]));
   for (const key of forwardedKeys) {
     if (!Object.prototype.hasOwnProperty.call(resolved, key)) {
       continue;

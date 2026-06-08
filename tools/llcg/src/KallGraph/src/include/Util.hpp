@@ -112,7 +112,7 @@ extern unordered_map<NodeID, CallInst *> Arg2iCalls;
 
 inline Type *getPointeeType(const Type *type) {
   auto *ptrType = dyn_cast<PointerType>(type);
-  if (!ptrType || ptrType->isOpaque()) {
+  if (!ptrType) {
     return nullptr;
   }
   return ptrType->getNonOpaquePointerElementType();

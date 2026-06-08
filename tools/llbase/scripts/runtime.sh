@@ -103,11 +103,11 @@ llbase_mount_path() {
 
   [ -n "${candidate}" ] || return 0
   if [ -d "${candidate}" ]; then
-    mount_root="$(realpath "${candidate}")"
+    mount_root="$(realpath -s -m "${candidate}")"
   elif [ -e "${candidate}" ]; then
-    mount_root="$(realpath "$(dirname "${candidate}")")"
+    mount_root="$(realpath -s -m "$(dirname "${candidate}")")"
   else
-    mount_root="$(realpath -m "$(dirname "${candidate}")")"
+    mount_root="$(realpath -s -m "$(dirname "${candidate}")")"
   fi
   printf '%s\n' "${mount_root}"
 }

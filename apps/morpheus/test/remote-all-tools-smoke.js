@@ -164,6 +164,15 @@ function writeSel4Source(projectRoot) {
 }
 
 function writeMicrokitSdkFixture(projectRoot) {
+  const sourceRoot = path.join(
+    projectRoot,
+    "workflow-workspace",
+    "tools",
+    "microkit-sdk",
+    "builds",
+    "default",
+    "source"
+  );
   const sdkRoot = path.join(
     projectRoot,
     "workflow-workspace",
@@ -181,8 +190,10 @@ function writeMicrokitSdkFixture(projectRoot) {
     "deps",
     "toolchain"
   );
+  fs.mkdirSync(sourceRoot, { recursive: true });
   fs.mkdirSync(path.join(sdkRoot, "bin"), { recursive: true });
   fs.mkdirSync(path.join(toolchainRoot, "bin"), { recursive: true });
+  fs.writeFileSync(path.join(sourceRoot, "VERSION"), "2.0.0\n");
   fs.writeFileSync(path.join(sdkRoot, "VERSION"), "2.0.0\n");
   fs.writeFileSync(
     path.join(sdkRoot, "bin", "microkit"),
@@ -367,66 +378,123 @@ function main() {
 
   const results = {};
 
+  results.llbase = parseJsonResult(
+    run([
+      "--json",
+      "build",
+      "--tool",
+      "llbase",
+      "--source",
+      path.join(repoRoot, "tools", "llbase"),
+      "--output",
+      path.join(projectRoot, "workflow-workspace", "tools", "llbase", "builds", "latest", "output"),
+    ], {
+      cwd: projectRoot,
+      env,
+    }),
+    "local llbase"
+  );
+  assert.equal(results.llbase.status, "success");
+
   results.buildroot = parseJsonResult(
-    run(["--json", "tool", "build", "--tool", "buildroot"], {
+    run([
+      "--json",
+      "build",
+      "--tool",
+      "buildroot",
+      "--source",
+      "/remote-workspace/tools/buildroot/src/buildroot-2025.02.1",
+      "--build-version",
+      "2025.02.1",
+      "--output",
+      "/remote-workspace/tools/buildroot/builds/default/output",
+    ], {
       cwd: projectRoot,
       env,
     }),
     "remote buildroot"
   );
   assert.equal(results.buildroot.status, "success");
-  assert.equal(results.buildroot.details.mode, "remote");
 
   results.qemu = parseJsonResult(
-    run(["--json", "tool", "run", "--tool", "qemu"], {
+    run([
+      "--json",
+      "exec",
+      "--tool",
+      "qemu",
+      "--path",
+      path.join(projectRoot, "workflow-workspace", "tools", "qemu", "fake-bin", "qemu-system-aarch64"),
+      "--kernel",
+      path.join(projectRoot, "workflow-workspace", "tools", "buildroot", "images", "Image"),
+      "--initrd",
+      path.join(projectRoot, "workflow-workspace", "tools", "buildroot", "images", "rootfs.cpio.gz"),
+      "--run-dir",
+      "/remote-workspace/runs/qemu-remote-smoke",
+    ], {
       cwd: projectRoot,
       env,
     }),
     "remote qemu"
   );
   assert.equal(results.qemu.status, "success");
-  assert.equal(results.qemu.details.mode, "remote");
 
   results.sel4 = parseJsonResult(
-    run(["--json", "tool", "build", "--tool", "sel4"], {
+    run([
+      "--json",
+      "inspect",
+      "--tool",
+      "sel4",
+      "--path",
+      path.join(projectRoot, "workflow-workspace", "tools", "sel4", "src", "sel4"),
+    ], {
       cwd: projectRoot,
       env,
     }),
     "remote sel4"
   );
   assert.equal(results.sel4.status, "success");
-  assert.equal(results.sel4.details.mode, "remote");
 
   results["microkit-sdk"] = parseJsonResult(
-    run(["--json", "tool", "build", "--tool", "microkit-sdk"], {
+    run([
+      "--json",
+      "inspect",
+      "--tool",
+      "microkit-sdk",
+      "--path",
+      path.join(projectRoot, "workflow-workspace", "tools", "microkit-sdk", "builds", "default", "source"),
+    ], {
       cwd: projectRoot,
       env,
     }),
     "remote microkit-sdk"
   );
   assert.equal(results["microkit-sdk"].status, "success");
-  assert.equal(results["microkit-sdk"].details.mode, "remote");
 
   results.libvmm = parseJsonResult(
-    run(["--json", "tool", "build", "--tool", "libvmm"], {
+    run([
+      "--json",
+      "inspect",
+      "--tool",
+      "libvmm",
+      "--source",
+      path.join(projectRoot, "workflow-workspace", "tools", "libvmm", "src", "libvmm"),
+    ], {
       cwd: projectRoot,
       env,
     }),
     "remote libvmm"
   );
   assert.equal(results.libvmm.status, "success");
-  assert.equal(results.libvmm.details.mode, "remote");
 
 
   results.llbic = parseJsonResult(
     run(
       [
         "--json",
-        "tool",
-        "build",
+        "inspect",
         "--tool",
         "llbic",
-        "inspect",
+        "--target",
         "/remote-workspace/fixtures/linux-6.18.16-arm64-clang15/llbic.json",
       ],
       {
@@ -437,17 +505,15 @@ function main() {
     "remote llbic"
   );
   assert.equal(results.llbic.status, "success");
-  assert.equal(results.llbic.details.mode, "remote");
 
   results.llcg = parseJsonResult(
     run(
       [
         "--json",
-        "tool",
         "build",
         "--tool",
         "llcg",
-        "genmutator",
+        "--generator",
         "files",
         "--source-dir",
         "/remote-workspace/kernel-src",
@@ -457,6 +523,8 @@ function main() {
         "net-demo",
         "--arch",
         "arm64",
+        "--output",
+        "/remote-workspace/tools/llcg/builds/default/output",
       ],
       {
         cwd: projectRoot,
@@ -466,7 +534,6 @@ function main() {
     "remote llcg"
   );
   assert.equal(results.llcg.status, "success");
-  assert.equal(results.llcg.details.mode, "remote");
 
   assert.equal(
     fs.existsSync(path.join(projectRoot, "workflow-workspace", "tools", "qemu", "_managed_tool")),

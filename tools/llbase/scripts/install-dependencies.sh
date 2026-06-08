@@ -15,10 +15,11 @@ sudo apt-get install -y \
   docker-cli \
   docker-compose \
   docker.io \
+  gawk \
   make \
   python3.13-venv
 
-for bin in docker dockerd make; do
+for bin in docker dockerd make gawk; do
   if ! command -v "${bin}" >/dev/null 2>&1; then
     echo "failed to provision required host binary: ${bin}" >&2
     exit 1

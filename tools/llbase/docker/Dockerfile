@@ -76,15 +76,15 @@ RUN for v in 14 15 16 18; do \
         --slave /usr/bin/ld.lld ld.lld /usr/bin/ld.lld-${v}; \
     done
 
-# Build IRDumper for each LLVM version
+# Build IRDumper for the Clang versions that use the fallback plugin path.
 COPY IRDumper /tmp/IRDumper
-RUN for v in 14 15 16 18; do \
-      update-alternatives --set clang /usr/bin/clang-${v} \
-      && make -C /tmp/IRDumper clean dumper \
-      && mkdir -p /opt/IRDumper/${v} \
-      && cp /tmp/IRDumper/build/lib/libDumper.so /opt/IRDumper/${v}/ ; \
-    done \
-    && rm -rf /tmp/IRDumper
+RUN for v in 14 15; do \
+        update-alternatives --set clang /usr/bin/clang-${v}; \
+        make -C /tmp/IRDumper clean dumper LLVM_BUILD=/usr/lib/llvm-${v}; \
+        mkdir -p /opt/IRDumper/${v}; \
+        cp /tmp/IRDumper/build/lib/libDumper.so /opt/IRDumper/${v}/; \
+      done \
+      && rm -rf /tmp/IRDumper
 
 RUN python3 -m pip install --break-system-packages \
       networkx \
@@ -110,7 +110,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends sudo file \
       && useradd -m -s /bin/bash llbase \
       && echo "llbase ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/llbase
 
-LABEL org.opencontainers.image.source="https://github.com/jianxiaoyitech/llbase"
+LABEL org.opencontainers.image.source="https://github.com/cyruscyliu/Morpheus"
 LABEL org.opencontainers.image.description="Shared LLVM/Linux runtime image (latest: 6.x/7.x toolchains)"
 
 USER llbase

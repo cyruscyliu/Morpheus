@@ -1,0 +1,33 @@
+workspace:
+  root: ./workflow-workspace
+remote:
+  ssh: builder@example.com:2222
+  workspace:
+    root: /remote-workspace
+tools:
+  llbase:
+    mode: local
+    build-dir-key: latest
+    family: latest
+  buildroot:
+    mode: remote
+  qemu:
+    mode: remote
+  llbic:
+    mode: remote
+    dependencies:
+      llbase:
+        tool: llbase
+        artifact: runtime-contract
+  llcg:
+    mode: remote
+    dependencies:
+      llbase:
+        tool: llbase
+        artifact: runtime-contract
+  sel4:
+    mode: local
+  microkit-sdk:
+    mode: local
+  libvmm:
+    mode: local

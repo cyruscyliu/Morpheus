@@ -31,11 +31,11 @@ That contract records:
 
 Published image families:
 
-- `ghcr.io/jianxiaoyitech/llbase:latest` for recent kernels (`6.x`, `7.x`)
+- `ghcr.io/cyruscyliu/llbase:latest` for recent kernels (`6.x`, `7.x`)
   with Clang `14`, `15`, `16`, and `18`
-- `ghcr.io/jianxiaoyitech/llbase:mid` for mid-era kernels (`4.x`, `5.x`)
+- `ghcr.io/cyruscyliu/llbase:mid` for mid-era kernels (`4.x`, `5.x`)
   with Clang `8`, `9`, `10`, `11`, and `12`
-- `ghcr.io/jianxiaoyitech/llbase:legacy` for older kernels (`2.6`, `3.x`)
+- `ghcr.io/cyruscyliu/llbase:legacy` for older kernels (`2.6`, `3.x`)
   with Clang `6.0`, `7`, and `8`
 
 Build the runtime contract:
@@ -47,9 +47,8 @@ Build the runtime contract:
   --json
 ```
 
-By default this resolves and pulls the published GHCR image metadata for the
-selected family. Keep local image builds as an explicit debugging path with
-`--build-image`.
+By default this resolves image metadata for the selected family. Use
+`--build-image` when you want to build the local Docker image directly.
 
 Inspect an existing contract:
 
@@ -71,24 +70,10 @@ installer automatically.
 Build the images from the `tools/llbase` source tree with:
 
 ```bash
-docker build -f docker/Dockerfile -t ghcr.io/jianxiaoyitech/llbase:latest .
-docker build -f docker/Dockerfile.mid -t ghcr.io/jianxiaoyitech/llbase:mid .
-docker build -f docker/Dockerfile.legacy -t ghcr.io/jianxiaoyitech/llbase:legacy .
+docker build -f docker/Dockerfile -t ghcr.io/cyruscyliu/llbase:latest .
+docker build -f docker/Dockerfile.mid -t ghcr.io/cyruscyliu/llbase:mid .
+docker build -f docker/Dockerfile.legacy -t ghcr.io/cyruscyliu/llbase:legacy .
 ```
-
-Or use Compose:
-
-```bash
-docker compose build llbase
-docker compose build llbase-mid
-docker compose build llbase-legacy
-```
-
-Images are published to GHCR by the repo workflow that builds and publishes:
-
-- `ghcr.io/jianxiaoyitech/llbase:latest`
-- `ghcr.io/jianxiaoyitech/llbase:mid`
-- `ghcr.io/jianxiaoyitech/llbase:legacy`
 
 ## How llbic and llcg Use It
 

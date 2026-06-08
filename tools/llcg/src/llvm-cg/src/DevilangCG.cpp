@@ -3,6 +3,8 @@
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IRReader/IRReader.h"
+#include "llvm/Passes/PassBuilder.h"
+#include "llvm/Passes/PassPlugin.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
@@ -12,6 +14,7 @@
 #include <functional>
 #include <queue>
 #include <regex>
+#include <utility>
 #include <vector>
 
 using namespace llvm;
@@ -1088,6 +1091,13 @@ void DevilangCG::loadExtraEdges(const std::string &path,
 }
 
 bool DevilangCG::runOnModule(Module &M) {
+	DevilangCGResult::AdjList graph;
+	bool changed = processModule(M, &graph);
+	getAnalysis<DevilangCGResult>().setGraph(std::move(graph));
+	return changed;
+}
+
+bool DevilangCG::processModule(Module &M, DevilangCGResult::AdjList *outGraph) {
 	errs() << "DevilangCG: loading KallGraph call graph...\n";
 	if (DevilangKallgraphInput.empty()) {
 		errs() << "DevilangCG: specify -llvm-cg-kallgraph\n";
@@ -1186,7 +1196,8 @@ bool DevilangCG::runOnModule(Module &M) {
 	for (const auto &kv : merged)
 		mergedEdges += kv.second.size();
 
-	getAnalysis<DevilangCGResult>().setGraph(merged);
+	if (outGraph)
+		*outGraph = merged;
 
 	errs() << "DevilangCG: exporting DOT to " << DevilangDotOutput
 		   << " (groups=" << groups.size() << ")\n";
@@ -1206,3 +1217,31 @@ bool DevilangCG::runOnModule(Module &M) {
 
 	return false;
 }
+
+PreservedAnalyses DevilangCGNewPM::run(Module &M, ModuleAnalysisManager &) {
+	DevilangCG legacy;
+	legacy.processModule(M, nullptr);
+	return PreservedAnalyses::all();
+}
+
+llvm::PassPluginLibraryInfo getDevilangPluginInfo() {
+	return {LLVM_PLUGIN_API_VERSION, "DevilangCG", LLVM_VERSION_STRING,
+		[](PassBuilder &PB) {
+			PB.registerPipelineParsingCallback(
+					[](StringRef Name, llvm::ModulePassManager &PM,
+						ArrayRef<llvm::PassBuilder::PipelineElement>) {
+					if (Name == "llvm-cg") {
+						PM.addPass(DevilangCGNewPM());
+						return true;
+					}
+					return false;
+					});
+		}};
+}
+
+#ifndef LLVM_BYE_LINK_INTO_TOOLS
+extern "C" LLVM_ATTRIBUTE_WEAK ::llvm::PassPluginLibraryInfo
+llvmGetPassPluginInfo() {
+	return getDevilangPluginInfo();
+}
+#endif

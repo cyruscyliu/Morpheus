@@ -12,8 +12,10 @@ Use this skill when you need to generate Linux kernel callgraphs with the
 with reusable mutators, and inspect the resulting run manifest and graph
 artifacts.
 
-When the task goes through Morpheus-managed tooling, treat `llcg` as a `run`
-tool. Use `morpheus run --tool llcg ...` or workflow steps with `command: run`.
+When the task goes through Morpheus-managed tooling, treat `llcg` as a
+scripted managed tool. Use `morpheus build --tool llcg ...` for mutator
+generation, `morpheus exec --tool llcg ...` for callgraph runs, or workflow
+steps with `command: build` / `command: exec`.
 
 ## What The Tool Does
 
@@ -68,6 +70,18 @@ The main user-facing commands are:
      --json
    ```
 
+   Morpheus-managed equivalent:
+
+   ```bash
+   ./bin/morpheus build --tool llcg \
+     --generator files \
+     --source-dir /path/to/linux \
+     --file drivers/virtio/virtio_mmio.c \
+     --file drivers/net/virtio_net.c \
+     --scope-name virtio-mmio-net \
+     --json
+   ```
+
 4. Run the pipeline:
 
    ```bash
@@ -77,6 +91,17 @@ The main user-facing commands are:
      --all-bc-list /path/to/bitcode_files.txt \
      --filter ./out/virtio-mmio-net-mutator-6.18.16-arm64.json \
      --output ./out \
+     --json
+   ```
+
+   Morpheus-managed equivalent:
+
+   ```bash
+   ./bin/morpheus exec --tool llcg \
+     --clang 15 \
+     --llbic-json /path/to/llbic.json \
+     --all-bc-list /path/to/bitcode_files.txt \
+     --filter ./out/virtio-mmio-net-mutator-6.18.16-arm64.json \
      --json
    ```
 

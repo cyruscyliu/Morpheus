@@ -865,6 +865,18 @@ workflows:
           - drivers/virtio/virtio_balloon.c
           - --file
           - net/9p/trans_virtio.c
+      - id: boot_networking_mutator_6_18_16
+        tool: llcg
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
+          - --generator
+          - interfaces
+          - --source-dir
+          - "{{steps.llbic_6_18_16.artifacts.source-dir.location}}"
+          - --interfaces
+          - networking
       - id: boot_virtio_cg_6_18_16
         tool: llcg
         command: exec
@@ -877,5 +889,7 @@ workflows:
           - "{{steps.llbic_6_18_16.artifacts.bitcode-files.location}}"
           - --filter
           - "{{steps.boot_virtio_scope_6_18_16.artifacts.mutator_manifest.location}}"
+          - --filter
+          - "{{steps.boot_networking_mutator_6_18_16.artifacts.mutator_manifest.location}}"
           - --scope-name
-          - boot-virtio-6.18.16
+          - boot-virtio-networking-6.18.16

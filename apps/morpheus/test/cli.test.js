@@ -332,7 +332,7 @@ test("tool list discovers repo-local tools", () => {
   assert.equal(Object.prototype.hasOwnProperty.call(payload, "tools"), false);
   assert.deepEqual(
     payload.details.tools.map((tool) => tool.name),
-    ["buildroot", "libvmm", "llbic", "llcg", "microkit-sdk", "nqc2", "nvirsh", "outline-to-paper", "pkvm-aarch64", "qemu", "sel4"]
+    ["buildroot", "libafl", "libvmm", "llbase", "llbic", "llcg", "microkit-sdk", "nqc2", "nvirsh", "outline-to-paper", "pkvm-aarch64", "qemu", "sel4"]
   );
 });
 
@@ -341,14 +341,18 @@ test("tool list reports workflow-only tools without wrapper errors", () => {
   assert.equal(result.status, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
   const buildroot = payload.details.tools.find((tool) => tool.name === "buildroot");
+  const llbase = payload.details.tools.find((tool) => tool.name === "llbase");
   const llcg = payload.details.tools.find((tool) => tool.name === "llcg");
   const nvirsh = payload.details.tools.find((tool) => tool.name === "nvirsh");
   assert.equal(buildroot.verification.status, "workflow-only");
   assert.equal(buildroot.verification.note, "run through 'morpheus workflow run'");
   assert.deepEqual(buildroot.verification.issues, []);
-  assert.equal(llcg.verification.status, "ready");
-  assert.equal(llcg.verification.note, "available to Morpheus");
-  assert.ok(!llcg.verification.issues.some((issue) => issue.includes("missing wrapper")));
+  assert.equal(llbase.verification.status, "workflow-only");
+  assert.equal(llbase.verification.note, "run through 'morpheus workflow run'");
+  assert.deepEqual(llbase.verification.issues, []);
+  assert.equal(llcg.verification.status, "workflow-only");
+  assert.equal(llcg.verification.note, "run through 'morpheus workflow run'");
+  assert.deepEqual(llcg.verification.issues, []);
   assert.equal(nvirsh.verification.status, "workflow-only");
   assert.equal(nvirsh.verification.note, "run through 'morpheus workflow run'");
 });
@@ -1293,8 +1297,8 @@ test("workflow run resolves prior step artifacts in configured workflows", () =>
       "    steps:",
       "      - id: inspect_a",
       "        tool: llbic",
-      "        command: exec",
-      `        args: ["inspect", "${llbicManifestPath}"]`,
+      "        command: inspect",
+      `        args: ["--target", "${llbicManifestPath}"]`,
       ""
     ].join("\n")
   );
@@ -1314,7 +1318,7 @@ test("workflow run resolves prior step artifacts in configured workflows", () =>
   const payload = JSON.parse(result.stdout.trim());
   assert.equal(payload.status, "success");
   assert.equal(payload.details.steps.length, 1);
-  const runDir = payload.details.run_dir;
+  const runDir = path.join(projectRoot, payload.details.run_dir);
   const events = fs.readFileSync(path.join(runDir, "events.jsonl"), "utf8")
     .split(/\r?\n/)
     .filter(Boolean)
@@ -1578,7 +1582,7 @@ test("workflow run writes failure events to canonical event log", () => {
   assert.notEqual(result.status, 0);
   const payload = JSON.parse(result.stdout.trim());
   assert.equal(payload.status, "error");
-  const runDir = payload.details.run_dir;
+  const runDir = path.join(projectRoot, payload.details.run_dir);
   const events = fs.readFileSync(path.join(runDir, "events.jsonl"), "utf8")
     .split(/\r?\n/)
     .filter(Boolean)
@@ -1661,7 +1665,7 @@ test("workflow run captures tool phase events in canonical event log", () => {
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim());
-  const events = fs.readFileSync(path.join(payload.details.run_dir, "events.jsonl"), "utf8")
+  const events = fs.readFileSync(path.join(projectRoot, payload.details.run_dir, "events.jsonl"), "utf8")
     .split(/\r?\n/)
     .filter(Boolean)
     .map((line) => JSON.parse(line));
@@ -1718,7 +1722,7 @@ test("workflow run records outline-to-paper artifacts for downstream reuse", () 
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim());
   assert.equal(payload.status, "success");
-  const runDir = payload.details.run_dir;
+  const runDir = path.join(projectRoot, payload.details.run_dir);
   const stepDir = path.join(runDir, "steps", "outline_to_paper");
   const toolResult = JSON.parse(fs.readFileSync(path.join(stepDir, "tool-result.json"), "utf8"));
   const artifacts = toolResult && toolResult.details && Array.isArray(toolResult.details.artifacts)

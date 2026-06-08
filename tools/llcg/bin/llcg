@@ -44,7 +44,6 @@ DEFAULT_BUILD_DIR = Path(
 DEFAULT_ARCH = "x86_64"
 DEFAULT_BLOCKLIST = MUTATORS_DIR / "blocklist.txt"
 DEFAULT_EXTRA_EDGES = MUTATORS_DIR / "extra_edges.txt"
-DEFAULT_GROUPS = MUTATORS_DIR / "groups.txt"
 LOGGER = logging.getLogger("llcg")
 
 
@@ -785,17 +784,11 @@ def render_graphviz(dot_path: Path):
     return svg_path, pdf_path
 
 
-def write_empty_groups_file(path: Path, scope_label: str, arch: str) -> Path:
-    return write_groups_file(
-        path,
-        version="",
-        interface=scope_label,
-        arch=arch,
-        scan_dirs=[],
-        enabled_configs=set(),
-        groups=[],
-        syscall_groups=[],
-    )
+def remove_stale_collapsed_outputs(out_dir: Path, stem: str) -> None:
+    for suffix in (".dot", ".svg", ".pdf"):
+        candidate = out_dir / f"{stem}_cg_collapsed{suffix}"
+        if candidate.exists():
+            candidate.unlink()
 
 
 def collect_interface_mutator_payload(
@@ -1212,15 +1205,7 @@ def prepare_run_inputs(args, out_dir: Path) -> dict:
         if not bc_entries:
             raise ValueError(f"No bitcode entries found in {bitcode_list_path}")
         scope_label = scope_name or mutator_ctx["scope_label"] or sanitize_tag(bitcode_list_path.stem)
-        groups_path = (
-            mutator_ctx["groups_file"]
-            if mutator_ctx["groups_file"]
-            else write_empty_groups_file(
-                out_dir / f"{scope_label}-groups-{sanitize_tag(arch)}.txt",
-                scope_label,
-                arch,
-            )
-        )
+        groups_path = mutator_ctx["groups_file"]
         return {
             "kernel_version": kernel_version,
             "arch": arch,
@@ -1228,7 +1213,7 @@ def prepare_run_inputs(args, out_dir: Path) -> dict:
             "scope": {"mode": scope_mode, "files": []},
             "bitcode_list_path": bitcode_list_path,
             "bitcode_entries": bc_entries,
-            "groups_path": groups_path.resolve(),
+            "groups_path": groups_path.resolve() if groups_path else None,
             "source_files": [],
             "object_rels": [],
             "missing_objects": [],
@@ -1239,7 +1224,7 @@ def prepare_run_inputs(args, out_dir: Path) -> dict:
                 "source_list": "",
                 "object_list": "",
                 "bitcode_list": stable_path(bitcode_list_path, out_dir),
-                "groups_file": stable_path(groups_path, out_dir),
+                "groups_file": stable_path(groups_path, out_dir) if groups_path else "",
             },
             "warnings": [],
             "mutator_ctx": mutator_ctx,
@@ -1260,12 +1245,6 @@ def prepare_run_inputs(args, out_dir: Path) -> dict:
     source_list_path = out_dir / f"{scope_label}-sources-{kernel_version}-{sanitize_tag(arch)}.txt"
     write_lines(source_list_path, source_scope_files)
     groups_path = mutator_ctx["groups_file"]
-    if groups_path is None:
-        groups_path = write_empty_groups_file(
-            out_dir / f"{scope_label}-groups-{kernel_version}-{sanitize_tag(arch)}.txt",
-            scope_label,
-            arch,
-        )
 
     object_rels, object_paths, missing_objects = resolve_source_scope_to_bitcode(
         llbic_json_path=llbic_json_path,
@@ -1293,7 +1272,7 @@ def prepare_run_inputs(args, out_dir: Path) -> dict:
         "scope": {"mode": scope_mode, "files": source_scope_files},
         "bitcode_list_path": bitcode_list_path,
         "bitcode_entries": object_paths,
-        "groups_path": groups_path.resolve(),
+        "groups_path": groups_path.resolve() if groups_path else None,
         "source_files": source_scope_files,
         "object_rels": object_rels,
         "missing_objects": missing_objects,
@@ -1304,7 +1283,7 @@ def prepare_run_inputs(args, out_dir: Path) -> dict:
             "source_list": stable_path(source_list_path, out_dir),
             "object_list": stable_path(object_list_path, out_dir),
             "bitcode_list": stable_path(bitcode_list_path, out_dir),
-            "groups_file": stable_path(groups_path, out_dir),
+            "groups_file": stable_path(groups_path, out_dir) if groups_path else "",
         },
         "warnings": warnings,
         "mutator_ctx": mutator_ctx,
@@ -1315,7 +1294,7 @@ def run_pipeline(
     args,
     bc_list_path: Path,
     bc_entries,
-    groups_path: Path,
+    groups_path: Path | None,
     scope_label: str,
     kernel_version: str,
     arch: str,
@@ -1402,13 +1381,10 @@ def run_pipeline(
         log_command(cmd, stdin_path=bc_entries[0])
         subprocess.run(cmd, stdin=stub_in, stdout=subprocess.DEVNULL, stderr=log_out, check=True)
 
-    collapsed_path = out_dir / f"{stem}_cg_collapsed.dot"
     graph = load_dot_graph(raw_dot_path)
     group_inputs: list[Path] = []
-    if groups_path.is_file():
+    if groups_path and groups_path.is_file():
         group_inputs.append(groups_path)
-    if DEFAULT_GROUPS.is_file():
-        group_inputs.append(DEFAULT_GROUPS)
     groups = load_groups_files(group_inputs) if group_inputs else []
 
     for blocklist_file in args.post_mutators.get("blocklist", []):
@@ -1420,22 +1396,31 @@ def run_pipeline(
     remove_isolated_nodes(graph)
     write_dot_graph(dot_path, graph, groups)
 
-    collapsed_graph = collapse_graph_by_groups(graph, groups) if groups else {
-        "nodes": set(graph["nodes"]),
-        "edges": {src: set(dsts) for src, dsts in graph["edges"].items()},
-    }
-    write_dot_graph(collapsed_path, collapsed_graph)
-
     kallgraph_copy = out_dir / f"{stem}_kallgraph.txt"
     shutil.copy2(latest_callgraph, kallgraph_copy)
     dot_svg_path, dot_pdf_path = render_graphviz(dot_path)
-    collapsed_svg_path, collapsed_pdf_path = render_graphviz(collapsed_path)
+    collapsed_path = None
+    collapsed_svg_path = None
+    collapsed_pdf_path = None
+    if groups:
+        collapsed_graph = collapse_graph_by_groups(graph, groups)
+        collapsed_edges = sum(len(dsts) for dsts in collapsed_graph["edges"].values())
+        if collapsed_graph["nodes"] or collapsed_edges:
+            collapsed_path = out_dir / f"{stem}_cg_collapsed.dot"
+            write_dot_graph(collapsed_path, collapsed_graph)
+            collapsed_svg_path, collapsed_pdf_path = render_graphviz(collapsed_path)
+        else:
+            LOGGER.debug("Skipping collapsed graph because mutator groups did not match graph nodes")
+            remove_stale_collapsed_outputs(out_dir, stem)
+    else:
+        remove_stale_collapsed_outputs(out_dir, stem)
 
     LOGGER.debug("KallGraph output dir: %s", kallgraph_output)
     LOGGER.debug("KallGraph callgraph: %s", kallgraph_copy)
     LOGGER.debug("Raw callgraph DOT (internal): %s", raw_dot_path)
     LOGGER.debug("Final callgraph DOT: %s", dot_path)
-    LOGGER.debug("Collapsed callgraph DOT: %s", collapsed_path)
+    if collapsed_path:
+        LOGGER.debug("Collapsed callgraph DOT: %s", collapsed_path)
     LOGGER.debug("Callgraph log: %s", log_path)
     return {
         "scope_label": scope_label,
@@ -1490,18 +1475,22 @@ def build_run_manifest(
         "mutator_manifests": [stable_path(path, out_dir) for path in mutator_manifest_paths],
     }
     if result:
-        detail_paths.update(
-            {
-                "kallgraph_text": stable_path(Path(result["kallgraph"]), out_dir),
-                "cg_dot": stable_path(Path(result["dot"]), out_dir),
-                "cg_collapsed_dot": stable_path(Path(result["collapsed"]), out_dir),
-                "cg_svg": stable_path(Path(result["dot_svg"]), out_dir) if result.get("dot_svg") else "",
-                "cg_pdf": stable_path(Path(result["dot_pdf"]), out_dir) if result.get("dot_pdf") else "",
-                "cg_collapsed_svg": stable_path(Path(result["collapsed_svg"]), out_dir) if result.get("collapsed_svg") else "",
-                "cg_collapsed_pdf": stable_path(Path(result["collapsed_pdf"]), out_dir) if result.get("collapsed_pdf") else "",
-                "log_file": stable_path(Path(result["log"]), out_dir),
-            }
-        )
+        result_paths = {
+            "kallgraph_text": stable_path(Path(result["kallgraph"]), out_dir),
+            "cg_dot": stable_path(Path(result["dot"]), out_dir),
+            "cg_svg": stable_path(Path(result["dot_svg"]), out_dir) if result.get("dot_svg") else "",
+            "cg_pdf": stable_path(Path(result["dot_pdf"]), out_dir) if result.get("dot_pdf") else "",
+            "log_file": stable_path(Path(result["log"]), out_dir),
+        }
+        if result.get("collapsed"):
+            result_paths.update(
+                {
+                    "cg_collapsed_dot": stable_path(Path(result["collapsed"]), out_dir),
+                    "cg_collapsed_svg": stable_path(Path(result["collapsed_svg"]), out_dir) if result.get("collapsed_svg") else "",
+                    "cg_collapsed_pdf": stable_path(Path(result["collapsed_pdf"]), out_dir) if result.get("collapsed_pdf") else "",
+                }
+            )
+        detail_paths.update(result_paths)
 
     path_entries: dict[str, Path] = {"manifest": manifest_path.resolve()}
     for key, portable in detail_paths.items():

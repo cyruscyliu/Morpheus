@@ -10,6 +10,7 @@ build_dir="${MORPHEUS_LLCG_BUILD_DIR:-${tool_root}/build}"
 clang="${MORPHEUS_LLCG_CLANG:-15}"
 generator="${MORPHEUS_LLCG_GENERATOR:-}"
 source_dir="${MORPHEUS_LLCG_SOURCE_DIR:-}"
+scope_list="${MORPHEUS_LLCG_SCOPE_LIST:-}"
 file_list="${MORPHEUS_LLCG_FILE_FILE:-}"
 inline_files="${MORPHEUS_LLCG_FILE:-}"
 filter_list="${MORPHEUS_LLCG_FILTER_FILE:-}"
@@ -100,6 +101,7 @@ if [ -n "${generator}" ]; then
       interfaces="${MORPHEUS_LLCG_INTERFACES:-}"
       [ -n "${interfaces}" ] || { echo "llcg exec with generator=interfaces requires --interfaces" >&2; exit 1; }
       cmd=("${legacy}" genmutator interfaces "--source-dir" "${source_dir}" "--interfaces" "${interfaces}" "--output" "${output_dir}" "--json")
+      [ -n "${scope_list}" ] && cmd+=("--scope-list" "${scope_list}")
       [ -n "${MORPHEUS_LLCG_ARCH:-}" ] && cmd+=("--arch" "${MORPHEUS_LLCG_ARCH}")
       ;;
     *)
@@ -120,6 +122,7 @@ if [ -n "${generator}" ]; then
     "${source_dir}" \
     "${llbase_contract}" \
     "${file_list}" \
+    "${scope_list}" \
     -- \
     bash -lc 'python3 -c "import kconfiglib" 2>/dev/null || python3 -m pip install --user --break-system-packages kconfiglib >/dev/null; exec "$@"' bash "${cmd[@]}" \
     > "${tmp_json}" 2> "${tmp_err}"

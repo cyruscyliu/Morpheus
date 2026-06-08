@@ -878,6 +878,8 @@ workflows:
           - "{{steps.llbic_6_18_16.artifacts.source-dir.location}}"
           - --interfaces
           - boot-networking
+          - --scope-list
+          - "{{steps.boot_virtio_scope_6_18_16.artifacts.source_list.location}}"
       - id: boot_virtio_cg_6_18_16
         tool: llcg
         command: exec

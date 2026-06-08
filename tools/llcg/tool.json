@@ -73,6 +73,13 @@
           "scopeName"
         ]
       },
+      "scope-list": {
+        "aliases": [
+          "scope-list",
+          "scopeList"
+        ],
+        "path": true
+      },
       "bitcode-list": {
         "aliases": [
           "bitcode-list",
@@ -196,6 +203,7 @@
             "llbic-json",
             "all-bc-list",
             "scope-name",
+            "scope-list",
             "arch",
             "llbase-contract"
           ],

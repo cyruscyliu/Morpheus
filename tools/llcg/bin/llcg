@@ -797,6 +797,7 @@ def collect_interface_mutator_payload(
     interfaces: list[str],
     arch: str,
     out_dir: Path,
+    scope_list: Path | None = None,
 ) -> tuple[dict, Path]:
     LOGGER.info(
         "Generating interface mutator for interfaces=%s arch=%s",
@@ -820,9 +821,18 @@ def collect_interface_mutator_payload(
     aggregate_files: list[str] = []
     aggregate_file_seen: set[str] = set()
     interface_details: dict[str, dict] = {}
+    scoped_files = normalize_scope_files(kernel_root, read_lines(scope_list)) if scope_list else []
+    if scope_list and not scoped_files:
+        raise ValueError(f"Interface scope list is empty: {scope_list}")
+    scoped_to_source_list = scope_list is not None
 
     for interface in interfaces:
-        info = collect_groups_for_interface(kernel_root, interface, expanded[interface], arch=arch)
+        if scoped_to_source_list:
+            info = collect_groups_for_files(kernel_root, scoped_files, interface)
+            info["enabled_configs"].update(expanded[interface]["enable_configs"])
+            info["syscall_groups"] = []
+        else:
+            info = collect_groups_for_interface(kernel_root, interface, expanded[interface], arch=arch)
         rel_files = [path.relative_to(kernel_root).as_posix() for path in info["files"]]
         for scan_dir in info["scan_dirs"]:
             if scan_dir not in aggregate_scan_dir_seen:
@@ -846,6 +856,7 @@ def collect_interface_mutator_payload(
             "scan_dirs": info["scan_dirs"],
             "enabled_configs": sorted(info["enabled_configs"]),
             "scanned_files": rel_files,
+            "scope_list": stable_path(scope_list, out_dir) if scope_list else "",
             "groups_count": len(info["groups"]),
             "syscall_group_count": len(info["syscall_groups"]),
         }
@@ -869,13 +880,15 @@ def collect_interface_mutator_payload(
         "exit_code": 0,
         "summary": "generated interface mutator metadata from kernel sources",
         "details": {
-            "mutator_roles": ["pre", "post"],
+            "mutator_roles": ["post"] if scoped_to_source_list else ["pre", "post"],
             "kernel_version": kernel_version,
             "arch": arch,
             "interfaces": interfaces,
             "interface_label": interface_label,
             "source_dir": stable_path(kernel_root, out_dir),
             "source_list": stable_path(source_list_path, out_dir),
+            "scope_list": stable_path(scope_list, out_dir) if scope_list else "",
+            "scoped_to_source_list": scoped_to_source_list,
             "groups_file": stable_path(groups_path, out_dir),
             "scan_dirs": aggregate_scan_dirs,
             "enabled_configs": sorted(aggregate_configs),
@@ -889,6 +902,7 @@ def collect_interface_mutator_payload(
             "manifest": path_view(manifest_path, out_dir),
             "source_dir": path_view(kernel_root, out_dir),
             "source_list": path_view(source_list_path, out_dir),
+            **({"scope_list": path_view(scope_list, out_dir)} if scope_list else {}),
             "groups_file": path_view(groups_path, out_dir),
         },
         "artifacts": [
@@ -1052,7 +1066,7 @@ def merge_mutator_payloads(mutator_payloads: list[tuple[Path, dict]], out_dir: P
                 if "post" in roles and value not in post_mutators[key]:
                     post_mutators[key].append(value)
         for rel_file in rel_files:
-            if rel_file not in file_seen:
+            if "pre" in roles and rel_file not in file_seen:
                 file_seen.add(rel_file)
                 source_files.append(rel_file)
         groups_ref = details.get("groups_file", "")
@@ -1626,6 +1640,7 @@ def command_genmutator_interfaces(args) -> int:
         interfaces=interfaces,
         arch=args.arch,
         out_dir=out_dir,
+        scope_list=Path(args.scope_list).resolve() if args.scope_list else None,
     )
     return print_result(payload, args.json)
 
@@ -1732,6 +1747,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     genmutator_interfaces.add_argument("--source-dir", required=True)
     genmutator_interfaces.add_argument("--interfaces", required=True)
+    genmutator_interfaces.add_argument("--scope-list", default="")
     genmutator_interfaces.add_argument("--output", "-o", default=str(DEFAULT_OUT_DIR))
     genmutator_interfaces.add_argument("--arch", default="x86_64")
     genmutator_interfaces.add_argument("--json", action="store_true")

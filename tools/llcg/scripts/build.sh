@@ -67,7 +67,9 @@ case "${generator}" in
 esac
 
 tmp_json="$(mktemp)"
-trap 'rm -f "${tmp_json}"' EXIT
+tmp_err="$(mktemp)"
+trap 'rm -f "${tmp_json}" "${tmp_err}"' EXIT
+set +e
 llbase_exec_in_container \
   "${tool_root}" \
   "${build_dir}" \
@@ -77,15 +79,40 @@ llbase_exec_in_container \
   "${llbase_contract}" \
   "${file_list}" \
   -- \
-  "${cmd[@]}" \
-  > "${tmp_json}"
-node - "${tmp_json}" "${result_file}" "${output_dir}" <<'EOF'
+  bash -lc 'python3 -c "import kconfiglib" 2>/dev/null || python3 -m pip install --user --break-system-packages kconfiglib >/dev/null; exec "$@"' bash "${cmd[@]}" \
+  > "${tmp_json}" 2> "${tmp_err}"
+llcg_rc=$?
+set -e
+node - "${tmp_json}" "${tmp_err}" "${result_file}" "${output_dir}" "${llcg_rc}" <<'EOF'
 const fs = require("fs");
 const path = require("path");
 
-const payload = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-const resultFile = path.resolve(process.argv[3]);
-const outputDir = path.resolve(process.argv[4]);
+const jsonPath = path.resolve(process.argv[2]);
+const errPath = path.resolve(process.argv[3]);
+const resultFile = path.resolve(process.argv[4]);
+const outputDir = path.resolve(process.argv[5]);
+const rawExitCode = Number(process.argv[6] || "1");
+const rawStdout = fs.readFileSync(jsonPath, "utf8");
+const rawStderr = fs.readFileSync(errPath, "utf8");
+let payload = null;
+let jsonText = rawStdout.trim();
+const jsonStart = rawStdout.lastIndexOf("\n{");
+if (jsonStart >= 0) {
+  jsonText = rawStdout.slice(jsonStart + 1).trim();
+}
+try {
+  payload = JSON.parse(jsonText);
+} catch {
+  payload = {
+    status: "error",
+    exit_code: rawExitCode || 1,
+    summary: "llcg mutator generation failed before emitting JSON",
+    details: {
+      stdout: rawStdout,
+      stderr: rawStderr,
+    },
+  };
+}
 const artifacts = Array.isArray(payload.artifacts)
   ? payload.artifacts
       .filter((entry) => entry && typeof entry.key === "string" && typeof entry.resolved_path === "string")
@@ -100,9 +127,21 @@ fs.writeFileSync(
       ...(payload.details || {}),
       output: outputDir,
       llbase_contract: process.env.MORPHEUS_LLCG_LLBASE_CONTRACT || "",
+      ...(payload.error ? { error: payload.error } : {}),
+      ...(rawStderr ? { stderr: rawStderr } : {}),
     },
     artifacts,
   }, null, 2) + "\n",
   "utf8",
 );
+if (payload.status !== "success") {
+  process.stderr.write(JSON.stringify({
+    summary: payload.summary || "llcg mutator generation failed",
+    details: {
+      ...(payload.details || {}),
+      ...(payload.error ? { error: payload.error } : {}),
+    },
+  }, null, 2) + "\n");
+}
+process.exit(payload.status === "success" ? 0 : Number(payload.exit_code || rawExitCode || 1));
 EOF

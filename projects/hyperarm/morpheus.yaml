@@ -119,7 +119,6 @@ tools:
   llbase:
     mode: local
     source: ../../tools/llbase
-    output: tools/llbase/builds
     build-dir-key: latest
     family: latest
     pull-image: true
@@ -127,21 +126,22 @@ tools:
     artifacts:
       - source-dir
       - output-dir
+      - runtime-helper
       - runtime-contract
   llbic:
-    mode: remote
-    sync-morpheus: true
+    mode: local
     arch: arm64
     clang: 15
     out-of-tree: true
-    source: tools/llbic/src
-    output: tools/llbic/builds
+    build-dir-key: 6.18.16-arm64-clang15
+    source: tools/llbic/sources
     conf: tools/llbic/sources.conf
     dependencies:
       llbase:
         tool: llbase
         artifact: runtime-contract
     artifacts:
+      - sources-root
       - source-dir
       - output-dir
       - llbic-json
@@ -155,11 +155,16 @@ tools:
     clang: 15
     reuse-build-dir: true
     build-dir-key: arm64-clang15
-    output: tools/llcg/builds
     dependencies:
       llbase:
         tool: llbase
         artifact: runtime-contract
+      llbic:
+        tool: llbic
+        artifact: llbic-json
+      llbic-bitcode:
+        tool: llbic
+        artifact: bitcode-files
     artifacts:
       - output-dir
       - manifest
@@ -743,6 +748,7 @@ workflows:
           - "{{steps.libvmm_exec.details.run_dir}}"
   hyperarm-kernel-callgraphs:
     category: run
+    metadata: "paper section 4.2"
     steps:
       - id: llbase_latest
         tool: llbase
@@ -750,13 +756,17 @@ workflows:
       - id: llbic_6_18_16
         tool: llbic
         command: build
-        args: [ "--build-version", "6.18.16" ]
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
+          - --build-version
+          - "6.18.16"
       - id: net_mutator_6_18_16
         tool: llcg
         command: build
         args:
-          - --mode
-          - remote
+          - --llbase-contract
+          - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
           - --generator
           - interfaces
           - --source-dir
@@ -767,8 +777,8 @@ workflows:
         tool: llcg
         command: build
         args:
-          - --mode
-          - remote
+          - --llbase-contract
+          - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
           - --generator
           - interfaces
           - --source-dir
@@ -779,8 +789,8 @@ workflows:
         tool: llcg
         command: exec
         args:
-          - --mode
-          - remote
+          - --llbase-contract
+          - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
           - --llbic-json
           - "{{steps.llbic_6_18_16.artifacts.llbic-json.location}}"
           - --all-bc-list
@@ -793,128 +803,13 @@ workflows:
         tool: llcg
         command: exec
         args:
-          - --mode
-          - remote
+          - --llbase-contract
+          - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
           - --llbic-json
           - "{{steps.llbic_6_18_16.artifacts.llbic-json.location}}"
           - --all-bc-list
           - "{{steps.llbic_6_18_16.artifacts.bitcode-files.location}}"
           - --filter
-          - "{{steps.storage_mutator_6_18_16.artifacts.mutator_manifest.locatio\
-            n}}"
+          - "{{steps.storage_mutator_6_18_16.artifacts.mutator_manifest.location}}"
           - --scope-name
           - storage-6.18.16
-      - id: llbic_6_19_6
-        tool: llbic
-        command: build
-        args: [ "--build-version", "6.19.6" ]
-      - id: net_mutator_6_19_6
-        tool: llcg
-        command: build
-        args:
-          - --mode
-          - remote
-          - --generator
-          - interfaces
-          - --source-dir
-          - "{{steps.llbic_6_19_6.artifacts.source-dir.location}}"
-          - --interfaces
-          - networking
-      - id: storage_mutator_6_19_6
-        tool: llcg
-        command: build
-        args:
-          - --mode
-          - remote
-          - --generator
-          - interfaces
-          - --source-dir
-          - "{{steps.llbic_6_19_6.artifacts.source-dir.location}}"
-          - --interfaces
-          - storage
-      - id: net_cg_6_19_6
-        tool: llcg
-        command: exec
-        args:
-          - --mode
-          - remote
-          - --llbic-json
-          - "{{steps.llbic_6_19_6.artifacts.llbic-json.location}}"
-          - --all-bc-list
-          - "{{steps.llbic_6_19_6.artifacts.bitcode-files.location}}"
-          - --filter
-          - "{{steps.net_mutator_6_19_6.artifacts.mutator_manifest.location}}"
-          - --scope-name
-          - networking-6.19.6
-      - id: storage_cg_6_19_6
-        tool: llcg
-        command: exec
-        args:
-          - --mode
-          - remote
-          - --llbic-json
-          - "{{steps.llbic_6_19_6.artifacts.llbic-json.location}}"
-          - --all-bc-list
-          - "{{steps.llbic_6_19_6.artifacts.bitcode-files.location}}"
-          - --filter
-          - "{{steps.storage_mutator_6_19_6.artifacts.mutator_manifest.location\
-            }}"
-          - --scope-name
-          - storage-6.19.6
-      - id: llbic_7_0_rc3
-        tool: llbic
-        command: build
-        args: [ "--build-version", "7.0-rc3" ]
-      - id: net_mutator_7_0_rc3
-        tool: llcg
-        command: build
-        args:
-          - --mode
-          - remote
-          - --generator
-          - interfaces
-          - --source-dir
-          - "{{steps.llbic_7_0_rc3.artifacts.source-dir.location}}"
-          - --interfaces
-          - networking
-      - id: storage_mutator_7_0_rc3
-        tool: llcg
-        command: build
-        args:
-          - --mode
-          - remote
-          - --generator
-          - interfaces
-          - --source-dir
-          - "{{steps.llbic_7_0_rc3.artifacts.source-dir.location}}"
-          - --interfaces
-          - storage
-      - id: net_cg_7_0_rc3
-        tool: llcg
-        command: exec
-        args:
-          - --mode
-          - remote
-          - --llbic-json
-          - "{{steps.llbic_7_0_rc3.artifacts.llbic-json.location}}"
-          - --all-bc-list
-          - "{{steps.llbic_7_0_rc3.artifacts.bitcode-files.location}}"
-          - --filter
-          - "{{steps.net_mutator_7_0_rc3.artifacts.mutator_manifest.location}}"
-          - --scope-name
-          - networking-7.0-rc3
-      - id: storage_cg_7_0_rc3
-        tool: llcg
-        command: exec
-        args:
-          - --mode
-          - remote
-          - --llbic-json
-          - "{{steps.llbic_7_0_rc3.artifacts.llbic-json.location}}"
-          - --all-bc-list
-          - "{{steps.llbic_7_0_rc3.artifacts.bitcode-files.location}}"
-          - --filter
-          - "{{steps.storage_mutator_7_0_rc3.artifacts.mutator_manifest.locatio\
-            n}}"
-          - --scope-name
-          - storage-7.0-rc3

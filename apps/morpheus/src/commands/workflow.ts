@@ -581,6 +581,7 @@ function listManagedWorkflowRuns(workspaceRoot, flags) {
         createdAt: run.createdAt,
         completedAt: run.completedAt,
         changeName: run.changeName,
+        metadata: run.metadata == null ? null : run.metadata,
         stepCount: run.stepCount,
         runDir: run.runDir ? relativeToCwd(run.runDir) : run.runDir,
       })),
@@ -628,6 +629,7 @@ function inspectPayloadForRun(workspaceRoot, id) {
       createdAt: detail.createdAt,
       completedAt: detail.completedAt,
       changeName: detail.changeName,
+      metadata: detail.metadata == null ? null : detail.metadata,
       stepCount: detail.stepCount,
       runDir: detail.runDir ? relativeToCwd(detail.runDir) : detail.runDir,
       graph: detail.graph,
@@ -654,6 +656,9 @@ function resolveConfiguredWorkflow(name, explicitConfigPath = null) {
   return {
     name,
     category: workflow.category || "run",
+    metadata: Object.prototype.hasOwnProperty.call(workflow, "metadata")
+      ? workflow.metadata
+      : null,
     steps: workflow.steps,
     configPath: config.path || null,
   };
@@ -1709,11 +1714,16 @@ async function runToolWorkflow({
   endIndex = null,
   resumeMeta = null,
   configPath = null,
+  metadata = null,
 }) {
   if (category === "build") {
     runWorkflowBuildPreflight(steps);
   }
-  const workflow = existingWorkflow || createWorkflowRun(workspaceRoot, workflowName, { category, configPath });
+  const workflow = existingWorkflow || createWorkflowRun(workspaceRoot, workflowName, {
+    category,
+    configPath,
+    metadata,
+  });
   return await withLogFile(workflowEventLogPath(workflow.runDir), async () => withEventContext({
     workflow_id: workflow.id,
   }, async () => {
@@ -2347,6 +2357,7 @@ async function handleWorkflowCommand(argv) {
           category: configured.category || "run",
           commandLabel: "workflow run",
           configPath: configured.configPath,
+          metadata: configured.metadata,
           existingWorkflow: latest,
           existingSteps: plan.createdSteps,
           initialStepResults: plan.stepResults,
@@ -2373,6 +2384,7 @@ async function handleWorkflowCommand(argv) {
         category: configured.category || "run",
         commandLabel: "workflow run",
         configPath: configured.configPath,
+        metadata: configured.metadata,
       });
     }
 
@@ -2427,6 +2439,7 @@ async function handleWorkflowCommand(argv) {
       category: configured.category || "run",
       commandLabel: "workflow resume",
       configPath: configured.configPath,
+      metadata: configured.metadata,
       existingWorkflow: workflow,
       existingSteps: plan.createdSteps,
       initialStepResults: plan.stepResults,

@@ -27,8 +27,10 @@ from interfaces import (  # noqa: E402
     collect_syscall_entries_from_files,
     expand_presets,
     extract_groups_from_file,
+    find_c_files,
     parse_interfaces,
     parse_kernel_version,
+    resolve_pre_presets,
     write_groups_file,
 )
 from registry import (  # noqa: E402
@@ -754,6 +756,61 @@ def collect_groups_for_files(kernel_root: Path, rel_sources: list[str], scope_na
     }
 
 
+def collect_groups_for_scoped_interface(
+    kernel_root: Path,
+    interface: str,
+    expanded_preset: dict,
+    scoped_rel_sources: list[str],
+    arch: str,
+) -> dict:
+    enabled_configs: set[str] = set(expanded_preset["enable_configs"])
+    dedup_dirs: list[str] = []
+    seen_dirs: set[str] = set()
+    for scan_dir in expanded_preset["scan_dirs"]:
+        if scan_dir in seen_dirs:
+            continue
+        seen_dirs.add(scan_dir)
+        dedup_dirs.append(scan_dir)
+
+    pp = resolve_pre_presets(interface, arch=arch)
+    candidates = find_c_files(
+        kernel_root,
+        dedup_dirs,
+        enabled_configs,
+        pp.get("excluded_dirs", []),
+        pp.get("excluded_files", []),
+    )
+    scoped_rel_set = set(scoped_rel_sources)
+    files = [
+        path
+        for path in candidates
+        if path.relative_to(kernel_root).as_posix() in scoped_rel_set
+    ]
+
+    scan_dirs: list[str] = []
+    seen_scan_dirs: set[str] = set()
+    groups: list[tuple[str, list[str], str, int, str]] = []
+    seen_groups: set[str] = set()
+    for path in files:
+        parent_rel = path.parent.relative_to(kernel_root).as_posix()
+        if parent_rel not in seen_scan_dirs:
+            seen_scan_dirs.add(parent_rel)
+            scan_dirs.append(parent_rel)
+        for group_name, funcs, rel, line, struct_type in extract_groups_from_file(path, kernel_root):
+            if group_name in seen_groups:
+                continue
+            seen_groups.add(group_name)
+            groups.append((group_name, funcs, rel, line, struct_type))
+
+    return {
+        "enabled_configs": enabled_configs,
+        "scan_dirs": scan_dirs,
+        "files": files,
+        "groups": groups,
+        "syscall_groups": [],
+    }
+
+
 def build_output_stem(scope_label: str, kernel_version: str, arch: str, bc_list_path: Path):
     stem_parts = []
     primary_label = scope_label or sanitize_tag(bc_list_path.stem)
@@ -828,9 +885,13 @@ def collect_interface_mutator_payload(
 
     for interface in interfaces:
         if scoped_to_source_list:
-            info = collect_groups_for_files(kernel_root, scoped_files, interface)
-            info["enabled_configs"].update(expanded[interface]["enable_configs"])
-            info["syscall_groups"] = []
+            info = collect_groups_for_scoped_interface(
+                kernel_root,
+                interface,
+                expanded[interface],
+                scoped_files,
+                arch,
+            )
         else:
             info = collect_groups_for_interface(kernel_root, interface, expanded[interface], arch=arch)
         rel_files = [path.relative_to(kernel_root).as_posix() for path in info["files"]]

@@ -353,26 +353,31 @@ def extract_groups_from_file(
         struct_type, struct_name = m.group(1), m.group(2)
         j = i + 1
         fns: List[str] = []
+        fn_entries: List[Tuple[str, str]] = []
         while j < len(lines):
             if END_RE.match(lines[j]):
                 break
             em = ENTRY_RE.match(lines[j])
             if em:
+                field = em.group(1).strip()
                 val = em.group(2).strip()
                 if is_fn_like(val):
                     fns.append(val)
+                    fn_entries.append((field, val))
             j += 1
 
         if is_ops_struct(struct_type, struct_name, fn_count=len(fns)):
             uniq: List[str] = []
+            uniq_entries: List[str] = []
             seen: Set[str] = set()
-            for fn in fns:
+            for field, fn in fn_entries:
                 if fn not in seen:
                     seen.add(fn)
                     uniq.append(fn)
+                    uniq_entries.append(f"{field}: {fn}")
             if uniq:
                 rel = path.relative_to(kernel_root).as_posix()
-                out.append((struct_name, uniq, rel, i + 1, struct_type))
+                out.append((struct_name, uniq_entries, rel, i + 1, struct_type))
 
         i = j + 1
 

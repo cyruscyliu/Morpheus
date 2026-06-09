@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(Devilang LANGUAGES C CXX)
+project(llvm-cg LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -15,21 +15,22 @@ add_definitions(${LLVM_DEFINITIONS})
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-option(DEVILANG_BUILD_PASS "Build the legacy Devilang pass targets" OFF)
+option(LLVM_CG_BUILD_PASS "Build the LLVM callgraph pass targets" OFF)
 
-if(DEVILANG_BUILD_PASS)
-    set(DEVILANG_LIB_SRCS
-        src/DevilangCG.cpp
-        include/DevilangCG.h
+if(LLVM_CG_BUILD_PASS)
+    set(LLVM_CG_LIB_SRCS
+        src/LLVMCallGraph.cpp
+        include/LLVMCallGraph.h
         include/IO.h
     )
 
-    add_library(Devilang MODULE ${DEVILANG_LIB_SRCS})
-    add_library(DevilangStatic STATIC ${DEVILANG_LIB_SRCS})
+    add_library(LLVMCallGraph MODULE ${LLVM_CG_LIB_SRCS})
+    add_library(LLVMCallGraphStatic STATIC ${LLVM_CG_LIB_SRCS})
 
-    target_compile_options(Devilang PRIVATE -g -fno-rtti)
-    target_compile_options(DevilangStatic PRIVATE -g -fno-rtti)
-    set_target_properties(DevilangStatic PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_options(LLVMCallGraph PRIVATE -g -fno-rtti)
+    target_compile_options(LLVMCallGraphStatic PRIVATE -g -fno-rtti)
+    set_target_properties(LLVMCallGraph PROPERTIES PREFIX "" OUTPUT_NAME "llvm-cg")
+    set_target_properties(LLVMCallGraphStatic PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
     foreach(extra_include
         "${CMAKE_CURRENT_SOURCE_DIR}/../Utils/include"
@@ -39,8 +40,8 @@ if(DEVILANG_BUILD_PASS)
         "${CMAKE_CURRENT_SOURCE_DIR}/../z3/include"
     )
         if(EXISTS "${extra_include}")
-            target_include_directories(Devilang PRIVATE "${extra_include}")
-            target_include_directories(DevilangStatic PRIVATE "${extra_include}")
+            target_include_directories(LLVMCallGraph PRIVATE "${extra_include}")
+            target_include_directories(LLVMCallGraphStatic PRIVATE "${extra_include}")
         endif()
     endforeach()
 
@@ -49,18 +50,18 @@ if(DEVILANG_BUILD_PASS)
     endforeach()
 
     if(TARGET spdlog::spdlog)
-        target_link_libraries(Devilang PRIVATE spdlog::spdlog)
-        target_link_libraries(DevilangStatic PRIVATE spdlog::spdlog)
+        target_link_libraries(LLVMCallGraph PRIVATE spdlog::spdlog)
+        target_link_libraries(LLVMCallGraphStatic PRIVATE spdlog::spdlog)
     endif()
     if(TARGET yaml-cpp::yaml-cpp)
-        target_link_libraries(Devilang PRIVATE yaml-cpp::yaml-cpp)
-        target_link_libraries(DevilangStatic PRIVATE yaml-cpp::yaml-cpp)
+        target_link_libraries(LLVMCallGraph PRIVATE yaml-cpp::yaml-cpp)
+        target_link_libraries(LLVMCallGraphStatic PRIVATE yaml-cpp::yaml-cpp)
     endif()
 
     foreach(optional_target Utils Customizations LinuxKernelCustomizations RangeAnalysis)
         if(TARGET ${optional_target})
-            target_link_libraries(Devilang PRIVATE ${optional_target})
-            target_link_libraries(DevilangStatic PRIVATE ${optional_target})
+            target_link_libraries(LLVMCallGraph PRIVATE ${optional_target})
+            target_link_libraries(LLVMCallGraphStatic PRIVATE ${optional_target})
         else()
             message(WARNING "Optional target ${optional_target} is not available; pass linking may fail if it is required.")
         endif()

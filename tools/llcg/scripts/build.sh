@@ -20,6 +20,12 @@ if [ -f "${cache_file}" ] && ! grep -q "^CMAKE_HOME_DIRECTORY:INTERNAL=${tool_ro
   mkdir -p "${build_dir}"
 fi
 
+callgraph_pass="${build_dir}/llvm-cg/llvm-cg.so"
+legacy_callgraph_pass="${build_dir}/llvm-cg/libDevilang.so"
+if [ -f "${legacy_callgraph_pass}" ] && [ ! -f "${callgraph_pass}" ]; then
+  rm -rf "${build_dir}/llvm-cg" "${build_dir}/llvm-cg-prefix/src/llvm-cg-stamp"
+fi
+
 runtime_helper="$(
   node - "${llbase_contract}" "${runtime_helper_default}" <<'EOF'
 const fs = require("fs");
@@ -57,7 +63,7 @@ const rawStderr = fs.readFileSync(errPathArg, "utf8");
 const artifacts = [
   { path: "build-dir", location: buildDir },
   { path: "kallgraph-bin", location: path.join(buildDir, "kallgraph", "bin", "KallGraph") },
-  { path: "callgraph-pass", location: path.join(buildDir, "llvm-cg", "libDevilang.so") },
+  { path: "callgraph-pass", location: path.join(buildDir, "llvm-cg", "llvm-cg.so") },
 ];
 const payload = {
   summary: rawExitCode === 0 ? "built llcg native artifacts" : "llcg native build failed",

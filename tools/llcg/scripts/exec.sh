@@ -2,7 +2,7 @@
 set -euo pipefail
 
 tool_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-legacy="${tool_root}/bin/llcg"
+legacy="${tool_root}/llcg"
 runtime_helper_default="$(cd "${tool_root}/../llbase/scripts" && pwd)/runtime.sh"
 result_file="${MORPHEUS_LLCG_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 output_dir="${MORPHEUS_LLCG_OUTPUT:?}"

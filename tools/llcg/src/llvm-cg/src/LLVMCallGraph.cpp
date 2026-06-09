@@ -1,4 +1,4 @@
-#include "DevilangCG.h"
+#include "LLVMCallGraph.h"
 
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/Instructions.h"

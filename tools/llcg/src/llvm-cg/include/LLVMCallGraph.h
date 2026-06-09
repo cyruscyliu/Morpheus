@@ -1,5 +1,5 @@
-#ifndef DEVILANG_CG_H
-#define DEVILANG_CG_H
+#ifndef LLVM_CALL_GRAPH_H
+#define LLVM_CALL_GRAPH_H
 
 #include "llvm/Pass.h"
 #include "llvm/IR/Module.h"
@@ -124,4 +124,4 @@ public:
   llvm::PreservedAnalyses run(llvm::Module &M, llvm::ModuleAnalysisManager &);
 };
 
-#endif // DEVILANG_CG_H
+#endif // LLVM_CALL_GRAPH_H

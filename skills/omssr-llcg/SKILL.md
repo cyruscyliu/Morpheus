@@ -29,10 +29,10 @@ generation or callgraph runs.
 The main user-facing commands are:
 
 ```text
-./bin/llcg genmutator interfaces
-./bin/llcg genmutator files
-./bin/llcg run
-./bin/llcg inspect <manifest.json>
+tools/llcg/llcg genmutator interfaces
+tools/llcg/llcg genmutator files
+tools/llcg/llcg run
+tools/llcg/llcg inspect <manifest.json>
 ```
 
 ## When To Use Which Command
@@ -52,8 +52,8 @@ The main user-facing commands are:
 1. Ask the CLI for the current surface first:
 
    ```bash
-   ./bin/llcg --help
-   ./bin/llcg run --help
+   tools/llcg/llcg --help
+   tools/llcg/llcg run --help
    ```
 
 2. Prefer `--json` whenever you plan to consume output programmatically.
@@ -61,7 +61,7 @@ The main user-facing commands are:
 3. For a scoped run, generate the mutator first:
 
    ```bash
-   ./bin/llcg genmutator files \
+   tools/llcg/llcg genmutator files \
      --source-dir /path/to/linux \
      --file drivers/virtio/virtio_mmio.c \
      --file drivers/net/virtio_net.c \
@@ -85,7 +85,7 @@ The main user-facing commands are:
 4. Run the pipeline:
 
    ```bash
-   ./bin/llcg run \
+   tools/llcg/llcg run \
      --clang 15 \
      --llbic-json /path/to/llbic.json \
      --all-bc-list /path/to/bitcode_files.txt \
@@ -109,7 +109,7 @@ The main user-facing commands are:
    hand:
 
    ```bash
-   ./bin/llcg inspect ./out/llcg-manifest.json --json
+   tools/llcg/llcg inspect ./out/llcg-manifest.json --json
    ```
 
 ## Important Conventions

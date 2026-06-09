@@ -151,6 +151,9 @@
         },
         "qemu-system-aarch64": {
           "pathTemplate": "tools/qemu/builds/{buildDirKey}/install/bin/qemu-system-aarch64"
+        },
+        "edk2-aarch64-code": {
+          "pathTemplate": "tools/qemu/builds/{buildDirKey}/install/share/qemu/edk2-aarch64-code.fd"
         }
       },
       "commands": {

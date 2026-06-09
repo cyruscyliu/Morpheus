@@ -58,10 +58,15 @@ function findConfigPath(startDir, options = {}) {
 function importedRootConfigPath(filePath) {
   const selectedConfigPath = path.resolve(filePath);
   let current = path.dirname(selectedConfigPath);
+  let skippedNearestConfig = false;
   while (true) {
     const candidate = path.join(current, "morpheus.yaml");
-    if (fs.existsSync(candidate) && path.resolve(candidate) !== selectedConfigPath) {
-      return candidate;
+    if (fs.existsSync(candidate)) {
+      if (path.resolve(candidate) === selectedConfigPath || !skippedNearestConfig) {
+        skippedNearestConfig = true;
+      } else {
+        return candidate;
+      }
     }
     const parent = path.dirname(current);
     if (parent === current) {

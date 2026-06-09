@@ -217,7 +217,11 @@ copy_dir_to_guest() {
   parent_dir="$(dirname "${src_dir}")"
   base_name="$(basename "${src_dir}")"
   dst_parent="$(dirname "${dst_dir}")"
-  tar -C "${parent_dir}" -czf - "${base_name}" | ssh \
+  find "${src_dir}" -mindepth 1 -printf '%P\0' | tar \
+    -C "${src_dir}" \
+    --null \
+    -T - \
+    -czf - | ssh \
     -i "${keyfile}" \
     -o BatchMode=yes \
     -o StrictHostKeyChecking=no \
@@ -225,7 +229,7 @@ copy_dir_to_guest() {
     -o ConnectTimeout=5 \
     -p "${port}" \
     root@127.0.0.1 \
-    "rm -rf ${dst_dir} ${dst_parent}/${base_name} && mkdir -p ${dst_parent} && tar -C ${dst_parent} -xzf - && mv ${dst_parent}/${base_name} ${dst_dir}" >/dev/null
+    "rm -rf ${dst_dir} && mkdir -p ${dst_dir} && tar -C ${dst_dir} -xzf -" >/dev/null
   ssh_guest "${keyfile}" "${port}" "test -d ${dst_dir}"
 }
 
@@ -290,17 +294,18 @@ l2_memory="${l2_memory:-1024}"
 cat > "${build_l1_dir}/launch-l2.sh" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-printf 'script-start\n' > /root/launch-l2.marker
+launch_marker="/root/launch-l2.marker"
+guest_qemu_trace_events="/root/morpheus-qemu-trace-events.txt"
+printf 'script-start\n' > "\${launch_marker}"
 echo "launch-l2 marker: script-start" >&2
 guest_qemu="${guest_qemu_dir}/bin/qemu-system-aarch64"
 guest_qemu_data_dir="${guest_qemu_dir}/share/qemu"
 guest_qemu_data_args=()
 guest_nqc2_trace="/root/morpheus-nqc2.trace"
-guest_qemu_trace_events="/root/morpheus-qemu-trace-events.txt"
 if [ ! -x "\${guest_qemu}" ]; then
   guest_qemu="/usr/bin/qemu-system-aarch64"
 fi
-printf 'resolved-qemu=%s\n' "\${guest_qemu}" >> /root/launch-l2.marker
+printf 'resolved-qemu=%s\n' "\${guest_qemu}" >> "\${launch_marker}"
 if [ ! -d "\${guest_qemu_data_dir}" ] && [ -d "${guest_qemu_src_dir}/pc-bios" ]; then
   guest_qemu_data_dir="${guest_qemu_src_dir}/pc-bios"
 elif [ ! -d "\${guest_qemu_data_dir}" ] && [ -d "/usr/share/qemu" ]; then
@@ -313,16 +318,14 @@ fi
 if [ -d "\${guest_qemu_data_dir}" ]; then
   guest_qemu_data_args=(-L "\${guest_qemu_data_dir}")
 fi
-printf 'data-dir=%s\n' "\${guest_qemu_data_dir}" >> /root/launch-l2.marker
-cat > "\${guest_qemu_trace_events}" <<'TRACE'
-virtio_mmio_fuzz_read
-TRACE
-printf 'trace-events-ready\n' >> /root/launch-l2.marker
+printf 'data-dir=%s\n' "\${guest_qemu_data_dir}" >> "\${launch_marker}"
+printf 'virtio_mmio_fuzz_read\n' > "\${guest_qemu_trace_events}"
+printf 'trace-events-ready\n' >> "\${launch_marker}"
 guest_qemu_plugin_args=()
 if [ -f "${guest_nqc2_plugin_path}" ]; then
   guest_qemu_plugin_args=(-plugin "${guest_nqc2_plugin_path},trace=\${guest_nqc2_trace}")
 fi
-printf 'plugin-args=%s\n' "\${guest_qemu_plugin_args[*]:-none}" >> /root/launch-l2.marker
+printf 'plugin-args=%s\n' "\${guest_qemu_plugin_args[*]:-none}" >> "\${launch_marker}"
 exec "\${guest_qemu}" \
   "\${guest_qemu_data_args[@]}" \
   -trace events="\${guest_qemu_trace_events}",file=/dev/stderr \
@@ -362,6 +365,7 @@ if [ -d /root/morpheus-qemu-src ]; then
   export CXXFLAGS="-O0 -g1"
   # Skip test-only build subtrees inside the constrained L1 guest.
   python3 - <<'PY'
+import os
 from pathlib import Path
 
 meson = Path("/root/morpheus-qemu-src/meson.build")
@@ -412,31 +416,35 @@ mkdir -p /root/nvirsh-images
 chmod 0755 /root/launch-l2.sh
 if [ -x /root/libafl_nesting_stub ]; then
   python3 - <<'PY'
+import os
 from pathlib import Path
 
 grub = Path("/etc/default/grub")
 text = grub.read_text()
-needle = 'GRUB_CMDLINE_LINUX_DEFAULT="'
-start = text.find(needle)
-if start < 0:
-    raise SystemExit("missing GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub")
-start += len(needle)
-end = text.find('"', start)
-if end < 0:
-    raise SystemExit("unterminated GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub")
-
-current = text[start:end]
 required = [
     "init=/root/libafl_nesting_stub",
     "norandmaps",
     "rw",
 ]
-parts = [entry for entry in current.split() if entry]
-for entry in required:
-    if entry not in parts:
-        parts.append(entry)
-updated = " ".join(parts)
-grub.write_text(text[:start] + updated + text[end:])
+for variable in ("GRUB_CMDLINE_LINUX", "GRUB_CMDLINE_LINUX_DEFAULT"):
+    needle = f'{variable}="'
+    start = text.find(needle)
+    if start < 0:
+        text += f'\n{variable}=""\n'
+        start = text.find(needle)
+    start += len(needle)
+    end = text.find('"', start)
+    if end < 0:
+        raise SystemExit(f"unterminated {variable} in /etc/default/grub")
+
+    current = text[start:end]
+    parts = [entry for entry in current.split() if entry]
+    for entry in required:
+        if entry not in parts:
+            parts.append(entry)
+    updated = " ".join(parts)
+    text = text[:start] + updated + text[end:]
+grub.write_text(text)
 PY
   if systemctl list-unit-files | grep -q '^cloud-init\.service'; then
     sudo systemctl disable cloud-init.service cloud-init-local.service \
@@ -450,6 +458,41 @@ PY
     echo "missing grub update command in l1 guest" >&2
     exit 1
   fi
+  python3 - <<'PY'
+import os
+from pathlib import Path
+
+cfg = Path("/boot/grub/grub.cfg")
+text = cfg.read_text()
+required = [
+    "init=/root/libafl_nesting_stub",
+    "norandmaps",
+    "rw",
+]
+updated_lines = []
+for line in text.splitlines():
+    stripped = line.lstrip()
+    if stripped.startswith("linux") and "/boot/vmlinuz-" in stripped:
+        parts = line.split()
+        for entry in required:
+            if entry not in parts:
+                parts.append(entry)
+        line = "\t" + " ".join(parts)
+    updated_lines.append(line)
+updated = "\n".join(updated_lines) + "\n"
+cfg.write_text(updated)
+os.sync()
+missing = [
+    entry
+    for entry in required
+    if entry not in updated
+]
+if missing:
+    raise SystemExit(
+        "failed to add required kernel arguments to /boot/grub/grub.cfg: "
+        + " ".join(missing)
+    )
+PY
 fi
 EOF
 chmod +x "${build_l1_dir}/provision-l1.sh"
@@ -506,6 +549,16 @@ printf '[nvirsh] running l1 provision script\n'
 ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "bash /root/provision-l1.sh"
 printf '[nvirsh] l1 provision script completed\n'
 
+ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "sync"
+set +e
+ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "systemctl poweroff" >/dev/null 2>&1
+for _ in $(seq 1 60); do
+  if ! kill -0 "${qemu_pid}" 2>/dev/null; then
+    break
+  fi
+  sleep 1
+done
+set -e
 kill "${qemu_pid}" 2>/dev/null || true
 wait "${qemu_pid}" 2>/dev/null || true
 

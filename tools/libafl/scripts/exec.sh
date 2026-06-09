@@ -6,6 +6,7 @@ run_dir="${MORPHEUS_LIBAFL_RUN_DIR:?}"
 install_dir="${MORPHEUS_LIBAFL_INSTALL_DIR:?}"
 nvirsh_state="${MORPHEUS_LIBAFL_NVIRSH_STATE:?}"
 detach="${MORPHEUS_LIBAFL_DETACH:-false}"
+run_seconds="${MORPHEUS_LIBAFL_RUN_SECONDS:-0}"
 result_file="${MORPHEUS_LIBAFL_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 manifest_file="${run_dir}/manifest.json"
 fuzzer_bin="${install_dir}/bin/qemu_nesting"
@@ -115,13 +116,47 @@ EOF
 fi
 
 trap 'cleanup "terminated"; exit 143' TERM INT
-setsid "${launch_cmd[@]}" &
-child_pid="$!"
-cat > "${manifest_file}" <<EOF
+if [ "${run_seconds}" != "0" ]; then
+  end_time=$((SECONDS + run_seconds))
+  attempt=1
+  while [ "${SECONDS}" -lt "${end_time}" ]; do
+    setsid "${launch_cmd[@]}" &
+    child_pid="$!"
+    cat > "${manifest_file}" <<EOF
+{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","pid":${child_pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","attempt":${attempt}}
+EOF
+    while [ "${SECONDS}" -lt "${end_time}" ] && kill -0 "${child_pid}" 2>/dev/null; do
+      if ps -o stat= --ppid "${child_pid}" | grep -q 'Z'; then
+        echo "libafl launcher has a defunct child; restarting attempt $((attempt + 1))" >&2
+        kill_run "${child_pid}"
+        break
+      fi
+      sleep 5
+    done
+    if [ "${SECONDS}" -ge "${end_time}" ]; then
+      cleanup "success"
+      child_pid=""
+      break
+    fi
+    if wait "${child_pid}"; then
+      child_status=0
+    else
+      child_status="$?"
+    fi
+    child_pid=""
+    echo "libafl fuzzer exited before timed run completed; restarting attempt $((attempt + 1)) after status ${child_status}" >&2
+    attempt=$((attempt + 1))
+    sleep 1
+  done
+else
+  setsid "${launch_cmd[@]}" &
+  child_pid="$!"
+  cat > "${manifest_file}" <<EOF
 {"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","pid":${child_pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}"}
 EOF
-wait "${child_pid}"
-child_pid=""
+  wait "${child_pid}"
+  child_pid=""
+fi
 
 cat > "${manifest_file}" <<EOF
 {"schemaVersion":1,"tool":"libafl","status":"success","runDir":"${run_dir}","manifest":"${manifest_file}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}"}

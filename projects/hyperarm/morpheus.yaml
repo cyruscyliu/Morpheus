@@ -60,6 +60,7 @@ tools:
       - --disable-docs
       - --disable-tools
       - --disable-cap-ng
+      - --disable-curses
       - --disable-virtfs
       - --disable-guest-agent
       - --disable-guest-agent-msi
@@ -84,11 +85,13 @@ tools:
     profile: qemu-debian-arm64
     build-dir-key: qemu-debian-arm64
     reuse-build-dir: true
-    firmware: /usr/share/qemu-efi-aarch64/QEMU_EFI.fd
     dependencies:
       qemu:
         tool: qemu
         artifact: qemu-system-aarch64
+      firmware:
+        tool: qemu
+        artifact: edk2-aarch64-code
       buildroot:
         tool: buildroot
         artifact: images-dir
@@ -282,12 +285,46 @@ workflows:
         tool: libafl
         command: exec
         args:
-          - --detach
           - --source
           - "{{steps.libafl_patch.artifacts.source-dir.location}}"
           - --nvirsh-state
           - "{{steps.nvirsh_build.artifacts.prepared-state.location}}"
-        timeout-seconds: 5
+          - --run-seconds
+          - "3600"
+        timeout-seconds: 3700
+      - id: nvirsh_inspect
+        tool: nvirsh
+        command: inspect
+      - id: nqc2_postprocess
+        tool: nqc2
+        command: postprocess
+        args:
+          - --install-dir
+          - "{{steps.nqc2_build.artifacts.install-dir.location}}"
+          - --trace
+          - "{{steps.nvirsh_inspect.artifacts.guest-nqc2-trace.location}}"
+          - --elf
+          - "{{steps.nvirsh_inspect.artifacts.guest-kernel-vmlinux.location}}"
+          - --trace-output
+          - none
+          - --coverage-output
+          - "{{steps.libafl_exec.details.run_dir}}/guest-kernel-coverage.info"
+          - --coverage-format
+          - lcov
+          - --jobs
+          - "4"
+      - id: nqc2_genhtml
+        tool: nqc2
+        command: genhtml
+        args:
+          - --install-dir
+          - "{{steps.nqc2_build.artifacts.install-dir.location}}"
+          - --coverage-output
+          - "{{steps.libafl_exec.details.run_dir}}/guest-kernel-coverage.info"
+          - --output
+          - "{{steps.libafl_exec.details.run_dir}}/guest-kernel-coverage-html"
+          - --title
+          - HyperArm Guest Kernel Coverage
   pkvm-aarch64-runtime:
     category: run
     steps:

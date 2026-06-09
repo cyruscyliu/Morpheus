@@ -423,6 +423,62 @@ test("workflow imports resolve root morpheus.yaml relative to the selected confi
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("workflow imports from generated project configs skip the project config", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-temp-import-"));
+  const projectConfigDir = path.join(projectRoot, "projects", "hyperarm");
+  const generatedConfigDir = path.join(projectConfigDir, "workspace", "tmp");
+  fs.mkdirSync(generatedConfigDir, { recursive: true });
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "workflows:",
+      "  nvirsh-arm64-build:",
+      "    category: build",
+      "    steps:",
+      "      - tool: qemu",
+      "        command: build",
+      ""
+    ].join("\n")
+  );
+  writeConfig(
+    projectConfigDir,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      "imports:",
+      "  workflows:",
+      "    - root.nvirsh-arm64-build",
+      ""
+    ].join("\n")
+  );
+  const generatedConfig = path.join(generatedConfigDir, "libafl-fuzzing.yaml");
+  fs.writeFileSync(
+    generatedConfig,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      "imports:",
+      "  workflows:",
+      "    - root.nvirsh-arm64-build",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["--config", generatedConfig, "workflow", "list", "--json"], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.deepEqual(
+    payload.details.workflows.map((workflow) => workflow.name),
+    ["nvirsh-arm64-build"],
+  );
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
 test("config check does not warn when config is discovered implicitly", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-implicit-"));
   writeConfig(
@@ -1903,6 +1959,109 @@ test("workflow run --from-step reuses earlier validated steps from latest run", 
   assert.equal(rerun.status, 0, rerun.stderr || rerun.stdout);
   const stepA = JSON.parse(fs.readFileSync(stepAPath, "utf8"));
   assert.equal(stepA.reuseState, "reused");
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("workflow run --only-step executes just the requested step", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-only-step-"));
+  const workspaceRoot = path.join(projectRoot, "workspace");
+  const depsDir = path.join(projectRoot, "deps");
+  fs.mkdirSync(depsDir, { recursive: true });
+  const qemuA = path.join(depsDir, "qemu-a");
+  const qemuB = path.join(depsDir, "qemu-b");
+  const qemuC = path.join(depsDir, "qemu-c");
+  for (const qemuPath of [qemuA, qemuB, qemuC]) {
+    fs.writeFileSync(qemuPath, '#!/usr/bin/env sh\necho "QEMU emulator version 1.0"\n', { mode: 0o755 });
+  }
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      "workflows:",
+      "  inspect-triple:",
+      "    category: build",
+      "    steps:",
+      "      - id: inspect_a",
+      "        tool: qemu",
+      "        command: inspect",
+      "        args:",
+      "          - --path",
+      `          - ${qemuA}`,
+      "      - id: inspect_b",
+      "        tool: qemu",
+      "        command: inspect",
+      "        args:",
+      "          - --path",
+      `          - ${qemuB}`,
+      "      - id: inspect_c",
+      "        tool: qemu",
+      "        command: inspect",
+      "        args:",
+      "          - --path",
+      `          - ${qemuC}`,
+      ""
+    ].join("\n")
+  );
+
+  const first = run(["--json", "workflow", "run", "--name", "inspect-triple"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(first.status, 0, first.stderr || first.stdout);
+  const firstPayload = JSON.parse(first.stdout.trim());
+  const runDir = path.join(workspaceRoot, "runs", firstPayload.details.id);
+  const stepAPath = path.join(runDir, "steps", "inspect_a", "step.json");
+  const stepBPath = path.join(runDir, "steps", "inspect_b", "step.json");
+  const stepCLog = path.join(runDir, "steps", "inspect_c", "stdout.log");
+  const stepCLogBefore = fs.statSync(stepCLog).mtimeMs;
+
+  fs.writeFileSync(qemuB, '#!/usr/bin/env sh\necho "QEMU emulator version 2.0"\n', { mode: 0o755 });
+  const rerun = run(["--json", "workflow", "run", "--name", "inspect-triple", "--only-step", "inspect_b"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(rerun.status, 0, rerun.stderr || rerun.stdout);
+  const rerunPayload = JSON.parse(rerun.stdout.trim());
+  const workflow = JSON.parse(fs.readFileSync(path.join(runDir, "workflow.json"), "utf8"));
+  const stepA = JSON.parse(fs.readFileSync(stepAPath, "utf8"));
+  const stepB = JSON.parse(fs.readFileSync(stepBPath, "utf8"));
+  const stepCStatus = workflow.steps.find((step) => step.id === "inspect_c").status;
+  assert.equal(rerunPayload.details.id, firstPayload.details.id);
+  assert.equal(workflow.resumeHistory.at(-1).mode, "single-step");
+  assert.equal(workflow.resumeHistory.at(-1).fromStep, "inspect_b");
+  assert.equal(stepA.reuseState, "reused");
+  assert.equal(stepB.reuseState, "rerun");
+  assert.equal(stepCStatus, "success");
+  assert.equal(fs.statSync(stepCLog).mtimeMs, stepCLogBefore);
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("workflow run rejects removed --one-step control", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-one-step-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      "workflows:",
+      "  inspect-pair:",
+      "    category: build",
+      "    steps:",
+      "      - id: inspect_a",
+      "        tool: qemu",
+      "        command: inspect",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["--json", "workflow", "run", "--name", "inspect-pair", "--one-step"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(result.status, 1, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.match(payload.error.message, /--one-step was removed/);
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 

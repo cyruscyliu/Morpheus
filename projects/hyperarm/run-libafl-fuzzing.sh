@@ -18,8 +18,8 @@ Usage:
   projects/hyperarm/run-libafl-fuzzing.sh --minutes N [--run-id ID] [--json]
   projects/hyperarm/run-libafl-fuzzing.sh --hours N [--run-id ID] [--json]
 
-Runs the HyperArm LibAFL nesting fuzzer by resuming an existing Morpheus
-workflow from libafl_exec. Prior fetch/build/prep artifacts are reused from
+Runs the HyperArm LibAFL nesting fuzzer by resuming only the libafl_exec
+Morpheus workflow step. Prior fetch/build/prep artifacts are reused from
 that workflow run. If --run-id is omitted, this uses the run we have been
 working from: wf-20260609011130-6eb23996.
 EOF
@@ -85,10 +85,26 @@ if (data.workflow !== workflow) {
   throw new Error(`run ${data.id} is ${data.workflow}, not ${workflow}`);
 }
 NODE
+latest_run_id="$(node - "projects/hyperarm/workspace/runs" "${workflow}" <<'NODE'
+const fs = require("fs");
+const path = require("path");
+const [runsDir, workflow] = process.argv.slice(2);
+const runs = fs.readdirSync(runsDir)
+  .map((id) => {
+    const manifest = path.join(runsDir, id, "workflow.json");
+    if (!fs.existsSync(manifest)) return null;
+    const data = JSON.parse(fs.readFileSync(manifest, "utf8"));
+    if (data.workflow !== workflow) return null;
+    return { id, createdAt: data.createdAt || "" };
+  })
+  .filter(Boolean)
+  .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+if (runs[0]) process.stdout.write(runs[0].id);
+NODE
+)"
+[ "${latest_run_id}" = "${run_id}" ] || die "run ${run_id} is not the latest ${workflow} run (${latest_run_id}); Morpheus can only apply temporary step config through workflow run --only-step"
 
-tmp_dir="projects/hyperarm/workspace/tmp"
-mkdir -p "${tmp_dir}"
-tmp_config="$(mktemp "${tmp_dir}/libafl-fuzzing.XXXXXX.yaml")"
+tmp_config="$(mktemp "projects/hyperarm/libafl-fuzzing.XXXXXX.yaml")"
 trap 'rm -f "${tmp_config}"' EXIT
 
 step_timeout=$((seconds + 120))
@@ -137,13 +153,13 @@ if (!changedTimeout) throw new Error("libafl_exec timeout-seconds not found");
 fs.writeFileSync(outPath, out.join("\n"));
 NODE
 
-echo "resuming ${workflow} run ${run_id} from libafl_exec for ${seconds}s" >&2
+echo "running ${workflow} run ${run_id} libafl_exec for ${seconds}s" >&2
 cmd=(
   ./bin/morpheus
   --config "${tmp_config}"
-  workflow resume
-  --id "${run_id}"
-  --from-step libafl_exec
+  workflow run
+  --name "${workflow}"
+  --only-step libafl_exec
 )
 if [ "${json}" = "true" ]; then
   cmd+=(--json)

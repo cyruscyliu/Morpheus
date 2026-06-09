@@ -21,6 +21,36 @@ state_file="${install_dir}/state.json"
 build_l0_dir="${build_dir}/l0"
 build_l1_dir="${build_dir}/l1"
 l1_console_log="${install_dir}/l1-console.log"
+qemu_pid=""
+qemu_pid_file=""
+l1_ssh_port=""
+
+shutdown_l1() {
+  local pid="${qemu_pid:-}"
+  [ -n "${pid}" ] || return 0
+  if ! kill -0 "${pid}" 2>/dev/null; then
+    qemu_pid=""
+    return 0
+  fi
+
+  set +e
+  if [ -n "${l1_ssh_port:-}" ] && [ -f "${build_l0_dir}/id_ed25519" ]; then
+    ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "sync" >/dev/null 2>&1
+    ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "systemctl poweroff" >/dev/null 2>&1
+    for _ in $(seq 1 60); do
+      if ! kill -0 "${pid}" 2>/dev/null; then
+        break
+      fi
+      sleep 1
+    done
+  fi
+  kill "${pid}" 2>/dev/null || true
+  wait "${pid}" 2>/dev/null || true
+  qemu_pid=""
+  set -e
+}
+
+trap shutdown_l1 EXIT INT TERM
 
 state_matches_build() {
   local state_path="$1"
@@ -69,8 +99,10 @@ NODE
 if [ "${reuse_build_dir}" = "true" ] && [ -f "${state_file}" ]; then
   if state_matches_build "${state_file}" \
     && [ -x "${build_l1_dir}/launch-l2.sh" ] \
+    && [ "${build_l1_dir}/launch-l2.sh" -nt "$0" ] \
     && [ -f "${build_l0_dir}/base-image.qcow2" ] \
     && [ -f "${build_l0_dir}/overlay.qcow2" ] \
+    && { [ -z "${guest_stub_src}" ] || [ "${build_l0_dir}/overlay.qcow2" -nt "${guest_stub_src}" ]; } \
     && [ -f "${build_l0_dir}/seed.img" ]; then
     cat > "${result_file}" <<EOF
 {"details":{"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}","state_file":"${state_file}","profile":"${profile_name}","reused":true}}
@@ -294,14 +326,16 @@ l2_memory="${l2_memory:-1024}"
 cat > "${build_l1_dir}/launch-l2.sh" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-launch_marker="/root/launch-l2.marker"
-guest_qemu_trace_events="/root/morpheus-qemu-trace-events.txt"
+runtime_dir="\${MORPHEUS_L2_RUNTIME_DIR:-/run/morpheus-libafl}"
+mkdir -p "\${runtime_dir}"
+launch_marker="\${runtime_dir}/launch-l2.marker"
+guest_qemu_trace_events="\${runtime_dir}/morpheus-qemu-trace-events.txt"
 printf 'script-start\n' > "\${launch_marker}"
 echo "launch-l2 marker: script-start" >&2
 guest_qemu="${guest_qemu_dir}/bin/qemu-system-aarch64"
 guest_qemu_data_dir="${guest_qemu_dir}/share/qemu"
 guest_qemu_data_args=()
-guest_nqc2_trace="/root/morpheus-nqc2.trace"
+guest_nqc2_trace="\${runtime_dir}/morpheus-nqc2.trace"
 if [ ! -x "\${guest_qemu}" ]; then
   guest_qemu="/usr/bin/qemu-system-aarch64"
 fi
@@ -328,7 +362,7 @@ fi
 printf 'plugin-args=%s\n' "\${guest_qemu_plugin_args[*]:-none}" >> "\${launch_marker}"
 exec "\${guest_qemu}" \
   "\${guest_qemu_data_args[@]}" \
-  -trace events="\${guest_qemu_trace_events}",file=/dev/stderr \
+  -trace events="\${guest_qemu_trace_events}",file="\${runtime_dir}/morpheus-qemu-trace.log" \
   "\${guest_qemu_plugin_args[@]}" \
   -machine virt,virtualization=on,gic-version=3 \
   -accel tcg \
@@ -549,18 +583,8 @@ printf '[nvirsh] running l1 provision script\n'
 ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "bash /root/provision-l1.sh"
 printf '[nvirsh] l1 provision script completed\n'
 
-ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "sync"
-set +e
-ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "systemctl poweroff" >/dev/null 2>&1
-for _ in $(seq 1 60); do
-  if ! kill -0 "${qemu_pid}" 2>/dev/null; then
-    break
-  fi
-  sleep 1
-done
-set -e
-kill "${qemu_pid}" 2>/dev/null || true
-wait "${qemu_pid}" 2>/dev/null || true
+shutdown_l1
+trap - EXIT INT TERM
 
 node - "${profile_file}" "${state_file}" "${source_dir}" "${build_dir}" "${install_dir}" "${profile_name}" "${build_dir_key}" <<'NODE'
 const fs = require("fs");

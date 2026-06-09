@@ -59,6 +59,7 @@ fi
 
 if [ "${reuse_build_dir}" = "true" ] && \
    [ -x "${stub_bin}" ] && \
+   [ "${stub_bin}" -nt "${stub_c_src}" ] && \
    [ -x "${fuzzer_bin}" ] && \
    [ -f "${installed_bridge_lib}" ]; then
   cat > "${result_file}" <<EOF

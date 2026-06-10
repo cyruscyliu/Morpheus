@@ -17,6 +17,10 @@ scripted managed tool. Use `morpheus build --tool llcg ...` for mutator
 generation, `morpheus exec --tool llcg ...` for callgraph runs, or workflow
 steps with `command: build` / `command: exec`.
 
+Morpheus-managed runs keep native builds and outputs under
+`tools/llcg/builds/<key>/`: native CMake state in `build/`, generated mutators
+in `mutators/`, and callgraph run artifacts in `output/`.
+
 ## What The Tool Does
 
 - `KallGraph` resolves indirect calls from a selected bitcode set.

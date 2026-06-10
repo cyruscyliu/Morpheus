@@ -7,6 +7,7 @@ runtime_helper_default="$(cd "${tool_root}/../llbase/scripts" && pwd)/runtime.sh
 result_file="${MORPHEUS_LLBIC_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 build_version="${MORPHEUS_LLBIC_BUILD_VERSION:?}"
 sources_dir="${MORPHEUS_LLBIC_SOURCE:?}"
+downloads_dir="${MORPHEUS_LLBIC_DOWNLOADS_DIR:-${sources_dir}}"
 output_dir="${MORPHEUS_LLBIC_OUTPUT:?}"
 conf_path="${MORPHEUS_LLBIC_CONF:-${sources_dir}/sources.conf}"
 llbase_contract="${MORPHEUS_LLBIC_LLBASE_CONTRACT:-}"
@@ -18,7 +19,7 @@ file_inline="${MORPHEUS_LLBIC_FILE:-}"
 rust_target_file="${MORPHEUS_LLBIC_RUST_TARGET_FILE:-}"
 rust_target_inline="${MORPHEUS_LLBIC_RUST_TARGET:-}"
 
-mkdir -p "${sources_dir}" "${output_dir}"
+mkdir -p "${sources_dir}" "${downloads_dir}" "${output_dir}"
 
 cmd=("${legacy}" build "${build_version}" "--output" "${output_dir}" "--json")
 [ -n "${MORPHEUS_LLBIC_CLANG:-}" ] && cmd+=("--clang" "${MORPHEUS_LLBIC_CLANG}")
@@ -95,6 +96,7 @@ set +e
 container_cmd=(
   env
   "LLBIC_SOURCES=${sources_dir}"
+  "LLBIC_DOWNLOADS=${downloads_dir}"
   "LLBIC_OUTPUT=$(dirname "${output_dir}")"
   "LLBIC_CONF=${conf_path}"
   "LLBIC_IRDUMPER_ROOT=${LLBASE_IRDUMPER_CONTAINER_ROOT:-/opt/IRDumper}"
@@ -105,6 +107,7 @@ llbase_exec_in_container \
   "${tool_root}" \
   "${tool_root}" \
   "${sources_dir}" \
+  "${downloads_dir}" \
   "${output_dir}" \
   "${conf_path}" \
   "${llbase_contract}" \

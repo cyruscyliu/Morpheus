@@ -34,6 +34,8 @@ tools/llcg/src/KallGraph/build/
 tools/llcg/src/KallGraph/SVF-3.3/build/
 tools/llcg/compile_commands.json
 tools/llbic/out/
+tools/llbic/downloads/
+tools/llbic/src/
 tools/llbic/sources/
 tools/llbic/status/
 tools/buildroot/.tmp-smoke-out/

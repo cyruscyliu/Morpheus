@@ -10,6 +10,7 @@ VERSION="0.3.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="${LLBIC_ROOT:-$(_host_script_dir)}"
 SOURCES_DIR="${LLBIC_SOURCES:-${ROOT_DIR}/sources}"
+DOWNLOADS_DIR="${LLBIC_DOWNLOADS:-${SOURCES_DIR}}"
 BUILD_DIR="${LLBIC_OUTPUT:-${ROOT_DIR}/out}"
 CONF_FILE="${LLBIC_CONF:-${ROOT_DIR}/sources.conf}"
 NPROC="${NPROC:-$(nproc)}"
@@ -593,7 +594,7 @@ _ensure_rust_toolchain_for_kernel() {
   fi
 
   rm -rf -- "${prefix}"
-  tar -xf "${archive_path}" -C "${cache_dir}"
+  tar --no-same-owner -xf "${archive_path}" -C "${cache_dir}"
   [[ -x "${prefix}/bin/clang" && -x "${prefix}/bin/rustc" ]] || \
     die "Downloaded Rust LLVM toolchain is incomplete: ${prefix}"
 
@@ -1751,7 +1752,7 @@ _tarball_path_for_url() {
   elif [[ "${url}" == *.tar.xz ]]; then
     ext="tar.xz"
   fi
-  echo "${SOURCES_DIR}/${kernel_name}.${ext}"
+  echo "${DOWNLOADS_DIR}/${kernel_name}.${ext}"
 }
 
 # ============================================================
@@ -1881,7 +1882,11 @@ cmd_build() {
   LAST_SOURCE_URL="${url}"
 
   local tarball=""
-  if [[ -f "${SOURCES_DIR}/${kernel_name}.tar.xz" ]]; then
+  if [[ -f "${DOWNLOADS_DIR}/${kernel_name}.tar.xz" ]]; then
+    tarball="${DOWNLOADS_DIR}/${kernel_name}.tar.xz"
+  elif [[ -f "${DOWNLOADS_DIR}/${kernel_name}.tar.gz" ]]; then
+    tarball="${DOWNLOADS_DIR}/${kernel_name}.tar.gz"
+  elif [[ -f "${SOURCES_DIR}/${kernel_name}.tar.xz" ]]; then
     tarball="${SOURCES_DIR}/${kernel_name}.tar.xz"
   elif [[ -f "${SOURCES_DIR}/${kernel_name}.tar.gz" ]]; then
     tarball="${SOURCES_DIR}/${kernel_name}.tar.gz"
@@ -1906,6 +1911,7 @@ cmd_build() {
   LOG_FILE="${LAST_LOG_FILE}"
 
   _ensure_dir "${SOURCES_DIR}"
+  _ensure_dir "${DOWNLOADS_DIR}"
   _ensure_dir "${bc_output}"
   touch "${LOG_FILE}"
 
@@ -2032,7 +2038,7 @@ cmd_build() {
     info "Tarball exists, extracting..."
     _log_step "download.skip_tarball path=${tarball}"
     _log_step "extract.start tarball=${tarball}"
-    tar -xf "${tarball}" -C "${SOURCES_DIR}"
+    tar --no-same-owner -xf "${tarball}" -C "${SOURCES_DIR}"
     _log_step "extract.done source_dir=${kernel_src}"
   else
     info "Downloading ${kernel_name}..."
@@ -2056,7 +2062,7 @@ cmd_build() {
     _log_step "download.done url=${url} tarball=${tarball}"
     info "Extracting..."
     _log_step "extract.start tarball=${tarball}"
-    tar -xf "${tarball}" -C "${SOURCES_DIR}"
+    tar --no-same-owner -xf "${tarball}" -C "${SOURCES_DIR}"
     _log_step "extract.done source_dir=${kernel_src}"
   fi
 
@@ -2131,7 +2137,7 @@ cmd_build() {
 # download — fetch kernel sources from sources.conf
 # ============================================================
 cmd_download() {
-  _ensure_dir "${SOURCES_DIR}"
+  _ensure_dir "${DOWNLOADS_DIR}"
   local -a urls=()
   local -a downloaded=()
   local item=""
@@ -2172,7 +2178,7 @@ cmd_download() {
   for url in "${urls[@]}"; do
     local file_name
     file_name="$(basename "${url}")"
-    local output_path="${SOURCES_DIR}/${file_name}"
+    local output_path="${DOWNLOADS_DIR}/${file_name}"
 
     if [[ -s "${output_path}" ]]; then
       info "Skip ${file_name} (exists)"
@@ -2184,13 +2190,13 @@ cmd_download() {
     downloaded+=("${output_path}")
   done
 
-  info "Done. Files in: ${SOURCES_DIR}"
+  info "Done. Files in: ${DOWNLOADS_DIR}"
   if [[ "${JSON_OUTPUT}" -eq 1 ]]; then
-    local normalized_sources_dir="$(_normalize_path_for_json "${SOURCES_DIR}")"
+    local normalized_downloads_dir="$(_normalize_path_for_json "${DOWNLOADS_DIR}")"
     printf '{"command":"download","status":"success","exit_code":0,'
     printf '"summary":"downloaded kernel source archives",'
-    printf '"details":{"sources_dir":"%s","downloaded_files":' \
-      "$(_json_escape "${normalized_sources_dir}")"
+    printf '"details":{"downloads_dir":"%s","downloaded_files":' \
+      "$(_json_escape "${normalized_downloads_dir}")"
     _json_path_array downloaded
     printf '}}'
     printf '\n'
@@ -2201,7 +2207,8 @@ cmd_download() {
 # extract — decompress kernel archives
 # ============================================================
 cmd_extract() {
-  [[ -d "${SOURCES_DIR}" ]] || die "No sources directory. Run: llbic download"
+  [[ -d "${DOWNLOADS_DIR}" ]] || die "No downloads directory. Run: llbic download"
+  _ensure_dir "${SOURCES_DIR}"
   local -a extracted=()
 
   while [[ $# -gt 0 ]]; do
@@ -2220,7 +2227,7 @@ cmd_extract() {
     esac
   done
 
-  for archive in "${SOURCES_DIR}"/*.tar.{xz,gz,bz2}; do
+  for archive in "${DOWNLOADS_DIR}"/*.tar.{xz,gz,bz2}; do
     [[ -f "${archive}" ]] || continue
     local file_name
     file_name="$(basename "${archive}")"
@@ -2233,7 +2240,7 @@ cmd_extract() {
     fi
 
     info "Extracting ${file_name}..."
-    tar -xf "${archive}" -C "${SOURCES_DIR}"
+    tar --no-same-owner -xf "${archive}" -C "${SOURCES_DIR}"
     extracted+=("${out_dir}")
   done
 

@@ -139,7 +139,7 @@
     ],
     "local": {
       "sourceTemplate": "tools/llcg/src",
-      "buildDirTemplate": "tools/llcg/build",
+      "buildDirTemplate": "tools/llcg/builds/{buildDirKey}/build",
       "outputDirTemplate": "tools/llcg/builds/{buildDirKey}/output",
       "artifacts": {
         "output-dir": {
@@ -170,7 +170,8 @@
             "file"
           ],
           "pathFlags": {
-            "output": "tools/llcg/mutators/{buildDirKey}/output"
+            "build-dir": "tools/llcg/builds/{buildDirKey}/build",
+            "output": "tools/llcg/builds/{buildDirKey}/mutators"
           },
           "script": {
             "path": "scripts/build.sh",
@@ -208,6 +209,7 @@
             "filter"
           ],
           "pathFlags": {
+            "build-dir": "tools/llcg/builds/{buildDirKey}/build",
             "output": "tools/llcg/builds/{buildDirKey}/output"
           },
           "script": {

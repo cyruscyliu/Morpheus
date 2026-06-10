@@ -34,7 +34,7 @@ tools:
         tool: llbase
         artifact: runtime-contract
     artifacts:
-      - sources-root
+      - source-dir
       - output-dir
       - llbic-json
       - bitcode-files

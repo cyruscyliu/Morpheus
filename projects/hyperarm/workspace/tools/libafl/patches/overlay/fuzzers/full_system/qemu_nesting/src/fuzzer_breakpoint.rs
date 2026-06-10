@@ -11,7 +11,7 @@ use libafl::{
     monitors::MultiMonitor,
     observers::{CanTrack, HitcountsMapObserver, TimeObserver, VariableMapObserver},
     schedulers::{IndexesLenTimeMinimizerScheduler, QueueScheduler},
-    stages::{CalibrationStage, StdMutationalStage},
+    stages::StdMutationalStage,
     state::{HasCorpus, StdState},
     Error,
 };
@@ -104,11 +104,7 @@ pub fn fuzz() {
         let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
 
         let mutator = ScenarioMutator::default();
-        let calibration_feedback = MaxMapFeedback::new(&edges_observer);
-        let mut stages = tuple_list!(
-            StdMutationalStage::new(mutator),
-            CalibrationStage::new(&calibration_feedback)
-        );
+        let mut stages = tuple_list!(StdMutationalStage::new(mutator));
 
         let mut executor = QemuExecutor::new(
             emu,

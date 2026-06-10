@@ -12,6 +12,10 @@ use libvharness_sys::{
 };
 
 const INPUT_LEN: usize = 512;
+const RUNTIME_DIR: &str = "/run/morpheus-libafl";
+const INPUT_PATH: &str = "/run/morpheus-libafl/morpheus-qemu-input.bin";
+const LAUNCH_STDOUT_PATH: &str = "/run/morpheus-libafl/launch-l2.stdout";
+const LAUNCH_STDERR_PATH: &str = "/run/morpheus-libafl/launch-l2.stderr";
 
 #[unsafe(no_mangle)]
 pub static mut FUZZ_INPUT: [u8; INPUT_LEN] = [0; INPUT_LEN];
@@ -103,7 +107,8 @@ fn probe_inner_qemu_binary() {
 }
 
 fn write_input_snapshot(data: &[u8]) -> std::io::Result<()> {
-    fs::write("/root/morpheus-qemu-input.bin", data)
+    fs::create_dir_all(RUNTIME_DIR)?;
+    fs::write(INPUT_PATH, data)
 }
 
 fn launch_l2(data: &[u8]) -> std::io::Result<Child> {
@@ -112,7 +117,8 @@ fn launch_l2(data: &[u8]) -> std::io::Result<Child> {
     }
     let mut command = Command::new("/bin/bash");
     command.arg("/root/launch-l2.sh");
-    command.env("MORPHEUS_QEMU_INPUT_PATH", "/root/morpheus-qemu-input.bin");
+    command.env("MORPHEUS_QEMU_INPUT_PATH", INPUT_PATH);
+    command.env("MORPHEUS_L2_RUNTIME_DIR", RUNTIME_DIR);
     command.env("MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS", injected_period_ms(data));
     if let Some(vintid) = injected_vintid(data) {
         command.env("MORPHEUS_QEMU_INJECT_VIRQ", vintid);
@@ -170,24 +176,24 @@ fn run_iteration(data: &[u8]) -> bool {
 
     match child.try_wait() {
         Ok(Some(status)) => {
-            log_file_size("/root/launch-l2.stdout", "launch-l2.stdout");
-            log_file_size("/root/launch-l2.stderr", "launch-l2.stderr");
-            if let Ok(stdout) = fs::read_to_string("/root/launch-l2.stdout") {
+            log_file_size(LAUNCH_STDOUT_PATH, "launch-l2.stdout");
+            log_file_size(LAUNCH_STDERR_PATH, "launch-l2.stderr");
+            if let Ok(stdout) = fs::read_to_string(LAUNCH_STDOUT_PATH) {
                 log_text("stub: l2 stdout: ", &stdout);
             }
-            if let Ok(stderr) = fs::read_to_string("/root/launch-l2.stderr") {
+            if let Ok(stderr) = fs::read_to_string(LAUNCH_STDERR_PATH) {
                 log_text("stub: l2 stderr: ", &stderr);
             }
             status.success()
         }
         Ok(None) => {
             let ok = terminate_child_gracefully(&mut child);
-            log_file_size("/root/launch-l2.stdout", "launch-l2.stdout");
-            log_file_size("/root/launch-l2.stderr", "launch-l2.stderr");
-            if let Ok(stdout) = fs::read_to_string("/root/launch-l2.stdout") {
+            log_file_size(LAUNCH_STDOUT_PATH, "launch-l2.stdout");
+            log_file_size(LAUNCH_STDERR_PATH, "launch-l2.stderr");
+            if let Ok(stdout) = fs::read_to_string(LAUNCH_STDOUT_PATH) {
                 log_text("stub: l2 stdout: ", &stdout);
             }
-            if let Ok(stderr) = fs::read_to_string("/root/launch-l2.stderr") {
+            if let Ok(stderr) = fs::read_to_string(LAUNCH_STDERR_PATH) {
                 log_text("stub: l2 stderr: ", &stderr);
             }
             ok

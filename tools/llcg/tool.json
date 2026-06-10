@@ -73,6 +73,13 @@
           "scopeName"
         ]
       },
+      "scope-list": {
+        "aliases": [
+          "scope-list",
+          "scopeList"
+        ],
+        "path": true
+      },
       "bitcode-list": {
         "aliases": [
           "bitcode-list",
@@ -152,60 +159,56 @@
       "commands": {
         "build": {
           "requiredFlags": [
-            "output",
-            "generator",
-            "source-dir",
             "llbase-contract"
           ],
           "scalarFlags": [
-            "output",
-            "generator",
-            "source-dir",
-            "interfaces",
-            "scope-name",
-            "arch",
+            "build-dir",
+            "clang",
             "llbase-contract"
           ],
-          "repeatableFlags": [
-            "file"
-          ],
+          "repeatableFlags": [],
           "pathFlags": {
-            "build-dir": "tools/llcg/builds/{buildDirKey}/build",
-            "output": "tools/llcg/builds/{buildDirKey}/mutators"
+            "build-dir": "tools/llcg/builds/{buildDirKey}/build"
           },
           "script": {
             "path": "scripts/build.sh",
             "shell": "bash"
           },
           "result": {
-            "successSummary": "generated llcg mutator artifacts",
-            "errorSummary": "llcg mutator generation failed",
-            "manifestTemplate": "{output}/manifest.json",
+            "successSummary": "built llcg native artifacts",
+            "errorSummary": "llcg native build failed",
+            "manifestTemplate": "{build-dir}/manifest.json",
             "artifact": {
-              "path": "output-dir",
-              "locationTemplate": "{output}"
+              "path": "build-dir",
+              "locationTemplate": "{build-dir}"
             },
             "details": {
-              "output": "{output}"
+              "build_dir": "{build-dir}"
             }
           }
         },
         "exec": {
           "requiredFlags": [
             "output",
-            "clang",
             "llbase-contract"
           ],
           "scalarFlags": [
             "output",
+            "build-dir",
             "clang",
+            "generator",
+            "source-dir",
+            "interfaces",
             "bitcode-list",
             "llbic-json",
             "all-bc-list",
             "scope-name",
+            "scope-list",
+            "arch",
             "llbase-contract"
           ],
           "repeatableFlags": [
+            "file",
             "filter"
           ],
           "pathFlags": {

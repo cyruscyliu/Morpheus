@@ -103,6 +103,9 @@
         "qemu": {
           "flag": "qemu"
         },
+        "firmware": {
+          "flag": "firmware"
+        },
         "buildroot": {
           "flag": "buildroot-output-dir"
         },

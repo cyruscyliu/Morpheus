@@ -45,7 +45,7 @@ if [ -n "${archive_url}" ]; then
   extract_root="${downloads_dir}/.extract"
   rm -rf "${extract_root}"
   mkdir -p "${extract_root}"
-  tar -xJf "${archive_path}" -C "${extract_root}"
+  tar --no-same-owner -xJf "${archive_path}" -C "${extract_root}"
   first_dir="$(find "${extract_root}" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
   if [ -z "${first_dir}" ]; then
     echo "archive did not extract a source directory" >&2

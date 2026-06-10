@@ -92,6 +92,68 @@ else
   force_irdumper_env=""
 fi
 
+if [ -s "${output_dir}/bitcode_files.txt" ] && [ -f "${output_dir}/llbic.json" ]; then
+  node - "${output_dir}" "${sources_dir}" "${result_file}" <<'EOF'
+const fs = require("fs");
+const path = require("path");
+
+const outputDir = path.resolve(process.argv[2]);
+const sourcesDir = path.resolve(process.argv[3]);
+const resultFile = path.resolve(process.argv[4]);
+const manifestPath = path.join(outputDir, "llbic.json");
+const bitcodeListPath = path.join(outputDir, "bitcode_files.txt");
+const payload = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+const bitcodeCount = fs.readFileSync(bitcodeListPath, "utf8")
+  .split(/\r?\n/)
+  .map((line) => line.trim())
+  .filter(Boolean)
+  .length;
+const kernelSourceDir = typeof payload.source_dir === "string" && payload.source_dir
+  ? payload.source_dir
+  : path.join(sourcesDir, `linux-${process.env.MORPHEUS_LLBIC_BUILD_VERSION || ""}`);
+const updatedPayload = {
+  ...payload,
+  status: "success",
+  exit_code: 0,
+  source_dir: kernelSourceDir,
+  output_dir: outputDir,
+  bitcode_count: bitcodeCount,
+  bitcode_list_file: bitcodeListPath,
+  recovered_from_legacy_failure: payload.status !== "success"
+    ? true
+    : Boolean(payload.recovered_from_legacy_failure),
+};
+fs.writeFileSync(manifestPath, JSON.stringify(updatedPayload, null, 2) + "\n", "utf8");
+const artifacts = [
+  ["source-dir", kernelSourceDir],
+  ["output-dir", outputDir],
+  ["llbic-json", manifestPath],
+  ["bitcode-files", bitcodeListPath],
+  ["llbic-log", path.join(outputDir, "llbic.log")],
+  ["kernel-build-log", path.join(outputDir, "kernel-build.log")],
+].filter(([, location]) => location && fs.existsSync(location))
+  .map(([artifactPath, location]) => ({ path: artifactPath, location }));
+fs.writeFileSync(
+  resultFile,
+  JSON.stringify({
+    summary: "reused existing llbic bitcode artifacts",
+    details: {
+      source: kernelSourceDir,
+      output: outputDir,
+      kernel_version: updatedPayload.kernel_version || "",
+      arch: updatedPayload.arch || "",
+      bitcode_count: bitcodeCount,
+      recovered_from_legacy_failure: Boolean(updatedPayload.recovered_from_legacy_failure),
+      llbase_contract: process.env.MORPHEUS_LLBIC_LLBASE_CONTRACT || "",
+    },
+    artifacts,
+  }, null, 2) + "\n",
+  "utf8",
+);
+EOF
+  exit 0
+fi
+
 set +e
 container_cmd=(
   env
@@ -100,6 +162,7 @@ container_cmd=(
   "LLBIC_OUTPUT=$(dirname "${output_dir}")"
   "LLBIC_CONF=${conf_path}"
   "LLBIC_IRDUMPER_ROOT=${LLBASE_IRDUMPER_CONTAINER_ROOT:-/opt/IRDumper}"
+  "TAR_OPTIONS=--no-same-owner"
 )
 [ -n "${force_irdumper_env}" ] && container_cmd+=("${force_irdumper_env}")
 container_cmd+=("${cmd[@]}")

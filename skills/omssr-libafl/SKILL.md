@@ -29,7 +29,7 @@ The descriptor accepts these field families:
 - patching: `patch-dir`
 - build reuse: `reuse-build-dir`, `build-dir-key`
 - build passthrough: `cargo-arg`
-- runtime handoff: `nvirsh-state`, `run-dir`, `detach`
+- runtime handoff: `nvirsh-state`, `run-dir`, `detach`, `run-seconds`
 - artifact publication: `artifacts`
 
 Keep durable defaults in shared config and use workflow args only when the
@@ -57,7 +57,7 @@ Important descriptor fields:
   overlay source for `libafl_nesting`.
 - `config.fields.cargo-arg`:
   additional cargo build flags.
-- `config.fields.nvirsh-state`, `run-dir`, `detach`:
+- `config.fields.nvirsh-state`, `run-dir`, `detach`, `run-seconds`:
   prepared nested-stack runtime inputs for host-side fuzzing.
 - `managed.artifacts.qemu-bridge-lib`:
   installed patched QEMU bridge shared library.
@@ -74,10 +74,15 @@ the guest stub artifact.
 - `patch` copies the `libafl_nesting` overlay into the managed checkout and
   updates the workspace manifest
 - `build` compiles `libafl_nesting_stub` with the `qemu-bridge-aarch64`
-  feature, which in turn builds the patched `qemu-libafl-bridge` backend
+  feature, which in turn builds the patched `qemu-libafl-bridge` backend.
+  With `reuse-build-dir`, existing installed runtime artifacts are reused
+  before host build dependencies are required.
 - `exec` launches the installed `qemu_nesting` host-side fuzzer against a
   prepared `nvirsh` image and uses the installed guest stub ELF for
-  breakpoint symbol resolution
+  breakpoint symbol resolution. Use `run-seconds` for attached runs that
+  should stop after a bounded fuzzing interval. Runtime files emitted by the
+  L1 stub under `/run/morpheus-libafl` are reconstructed from step log records
+  into `<run-dir>/l1-runtime` so fuzzing does not dirty the L1 root disk.
 - `inspect` reports managed source and built artifact locations
 
 The current `exec` phase only launches the guest stub in L1.

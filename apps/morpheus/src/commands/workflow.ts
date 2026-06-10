@@ -36,7 +36,7 @@ const {
 function parseWorkflowArgs(argv) {
   const positionals = [];
   const flags = {};
-  const booleanFlags = new Set(["json", "follow", "one-step"]);
+  const booleanFlags = new Set(["json", "follow"]);
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -62,8 +62,8 @@ function workflowUsage() {
     "Usage:",
     "  ./bin/morpheus [--config PATH] workflow runs [--limit N] [--offset N] [--json]",
     "  ./bin/morpheus [--config PATH] workflow list [--json]",
-    "  ./bin/morpheus --config projects/<project>/morpheus.yaml workflow run --name WORKFLOW_NAME [--json]",
-    "  ./bin/morpheus [--config PATH] workflow resume --id WORKFLOW_RUN_ID [--from-step STEP_ID] [--one-step] [--json]",
+    "  ./bin/morpheus --config projects/<project>/morpheus.yaml workflow run --name WORKFLOW_NAME [--from-step STEP_ID] [--only-step STEP_ID] [--json]",
+    "  ./bin/morpheus [--config PATH] workflow resume --id WORKFLOW_RUN_ID [--from-step STEP_ID] [--only-step STEP_ID] [--json]",
     "  ./bin/morpheus [--config PATH] workflow inspect --id WORKFLOW_RUN_ID [--json]",
     "  ./bin/morpheus [--config PATH] workflow events --id WORKFLOW_RUN_ID [--json]",
     "  ./bin/morpheus [--config PATH] workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow]",
@@ -581,6 +581,7 @@ function listManagedWorkflowRuns(workspaceRoot, flags) {
         createdAt: run.createdAt,
         completedAt: run.completedAt,
         changeName: run.changeName,
+        metadata: run.metadata == null ? null : run.metadata,
         stepCount: run.stepCount,
         runDir: run.runDir ? relativeToCwd(run.runDir) : run.runDir,
       })),
@@ -628,6 +629,7 @@ function inspectPayloadForRun(workspaceRoot, id) {
       createdAt: detail.createdAt,
       completedAt: detail.completedAt,
       changeName: detail.changeName,
+      metadata: detail.metadata == null ? null : detail.metadata,
       stepCount: detail.stepCount,
       runDir: detail.runDir ? relativeToCwd(detail.runDir) : detail.runDir,
       graph: detail.graph,
@@ -654,6 +656,9 @@ function resolveConfiguredWorkflow(name, explicitConfigPath = null) {
   return {
     name,
     category: workflow.category || "run",
+    metadata: Object.prototype.hasOwnProperty.call(workflow, "metadata")
+      ? workflow.metadata
+      : null,
     steps: workflow.steps,
     configPath: config.path || null,
   };
@@ -1224,13 +1229,17 @@ function consumeToolOutput(stdout, stepLogFile) {
   return finalPayload;
 }
 
-function writeStepLogLine(stepLogFile, line) {
+function writeStepLogLine(stepLogFileOrWriter, line) {
   const text = String(line || "");
-  fs.appendFileSync(stepLogFile, `${text}\n`, "utf8");
+  if (typeof stepLogFileOrWriter === "function") {
+    stepLogFileOrWriter(`${text}\n`);
+  } else {
+    fs.appendFileSync(stepLogFileOrWriter, `${text}\n`, "utf8");
+  }
   process.stderr.write(`${text}\n`);
 }
 
-function processToolStdoutLine(rawLine, stepLogFile, state, eventContext) {
+function processToolStdoutLine(rawLine, stepLogFileOrWriter, state, eventContext) {
   const line = String(rawLine || "").trim();
   if (!line) {
     return;
@@ -1240,7 +1249,7 @@ function processToolStdoutLine(rawLine, stepLogFile, state, eventContext) {
   try {
     parsed = JSON.parse(line);
   } catch {
-    writeStepLogLine(stepLogFile, rawLine);
+    writeStepLogLine(stepLogFileOrWriter, rawLine);
     return;
   }
 
@@ -1251,7 +1260,11 @@ function processToolStdoutLine(rawLine, stepLogFile, state, eventContext) {
     parsed.details.event === "log"
   ) {
     if (typeof parsed.details.chunk === "string") {
-      fs.appendFileSync(stepLogFile, parsed.details.chunk, "utf8");
+      if (typeof stepLogFileOrWriter === "function") {
+        stepLogFileOrWriter(parsed.details.chunk);
+      } else {
+        fs.appendFileSync(stepLogFileOrWriter, parsed.details.chunk, "utf8");
+      }
       process.stderr.write(parsed.details.chunk);
       return;
     }
@@ -1391,6 +1404,10 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
     const attach = Boolean(options.attach);
     const eventContext = options.eventContext || {};
     const childCwd = options.cwd || process.cwd();
+    const logStream = fs.createWriteStream(stepLogFile, { flags: "a" });
+    const appendStepLog = (chunk) => {
+      logStream.write(chunk);
+    };
     const child = spawn(process.execPath, args, {
       cwd: childCwd,
       env,
@@ -1424,20 +1441,23 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
       const lines = stdoutBuffer.split(/\r?\n/);
       stdoutBuffer = lines.pop() || "";
       for (const rawLine of lines) {
-        processToolStdoutLine(rawLine, stepLogFile, state, eventContext);
+        processToolStdoutLine(rawLine, appendStepLog, state, eventContext);
       }
     });
 
     child.stderr.on("data", (chunk) => {
       stderrText += chunk;
-      fs.appendFileSync(stepLogFile, chunk, "utf8");
+      appendStepLog(chunk);
       process.stderr.write(chunk);
     });
 
-    child.on("error", reject);
+    child.on("error", (error) => {
+      logStream.end();
+      reject(error);
+    });
     child.on("close", (code) => {
       if (stdoutBuffer.trim()) {
-        processToolStdoutLine(stdoutBuffer, stepLogFile, state, eventContext);
+        processToolStdoutLine(stdoutBuffer, appendStepLog, state, eventContext);
       }
       if ((typeof state.finalPayload !== "object" || state.finalPayload == null) && stdoutText.trim()) {
         const parsed = parseTrailingJsonObject(stdoutText);
@@ -1454,10 +1474,12 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
         stepId: eventContext.stepId || null,
         tool: eventContext.tool || null,
       });
-      resolve({
-        status: typeof code === "number" ? code : 1,
-        stderr: stderrText,
-        toolPayload: state.finalPayload,
+      logStream.end(() => {
+        resolve({
+          status: typeof code === "number" ? code : 1,
+          stderr: stderrText,
+          toolPayload: state.finalPayload,
+        });
       });
     });
   });
@@ -1709,11 +1731,16 @@ async function runToolWorkflow({
   endIndex = null,
   resumeMeta = null,
   configPath = null,
+  metadata = null,
 }) {
   if (category === "build") {
     runWorkflowBuildPreflight(steps);
   }
-  const workflow = existingWorkflow || createWorkflowRun(workspaceRoot, workflowName, { category, configPath });
+  const workflow = existingWorkflow || createWorkflowRun(workspaceRoot, workflowName, {
+    category,
+    configPath,
+    metadata,
+  });
   return await withLogFile(workflowEventLogPath(workflow.runDir), async () => withEventContext({
     workflow_id: workflow.id,
   }, async () => {
@@ -1756,6 +1783,7 @@ async function runToolWorkflow({
     attach: Boolean(steps[index] && steps[index].attach),
     timeoutSeconds: Number(steps[index] && (steps[index]["timeout-seconds"] || steps[index].timeoutSeconds) || 0),
   }));
+  const stopIndex = endIndex == null ? createdSteps.length : Math.min(endIndex, createdSteps.length);
 
   emitEvent("workflow.created", {
     id: workflow.id,
@@ -1773,9 +1801,12 @@ async function runToolWorkflow({
     currentStepId: null,
     currentChildPid: null,
     steps: createdSteps.map((step, index) => {
-      const status = index < startIndex
-        ? workflowResumeStateFromStatus(step.status)
-        : "created";
+      let status = "created";
+      if (index < startIndex) {
+        status = workflowResumeStateFromStatus(step.status);
+      } else if (endIndex != null && index >= stopIndex && existingSteps) {
+        status = step.status || "created";
+      }
       return {
         id: step.id,
         name: step.name,
@@ -1806,7 +1837,6 @@ async function runToolWorkflow({
   const stepResults = initialStepResults ? { ...initialStepResults } : {};
   let activeStep = null;
   try {
-  const stopIndex = endIndex == null ? createdSteps.length : Math.min(endIndex, createdSteps.length);
   for (let stepIndex = startIndex; stepIndex < stopIndex; stepIndex += 1) {
     const step = createdSteps[stepIndex];
     activeStep = step;
@@ -2272,6 +2302,21 @@ function formatWorkflowLifecycleText(payload) {
   return lines.join("\n");
 }
 
+function workflowStepControl(flags) {
+  if (Object.prototype.hasOwnProperty.call(flags, "one-step")) {
+    throw new Error("workflow --one-step was removed; use --only-step STEP_ID");
+  }
+  const fromStep = flags["from-step"] ? String(flags["from-step"]) : null;
+  const onlyStep = flags["only-step"] ? String(flags["only-step"]) : null;
+  if (fromStep && onlyStep && fromStep !== onlyStep) {
+    throw new Error("workflow step control cannot combine different --from-step and --only-step values");
+  }
+  return {
+    fromStep: onlyStep || fromStep,
+    oneStep: Boolean(onlyStep),
+  };
+}
+
 async function handleWorkflowCommand(argv) {
   const { positionals, flags } = parseWorkflowArgs(argv);
   const subcommand = positionals[0];
@@ -2319,7 +2364,8 @@ async function handleWorkflowCommand(argv) {
     if (flags.name) {
       const configured = resolveConfiguredWorkflow(String(flags.name));
       const workspaceRoot = resolveWorkspaceRoot(flags);
-      if (flags["from-step"]) {
+      const stepControl = workflowStepControl(flags);
+      if (stepControl.fromStep) {
         const workflowRuns = listRunDirsForWorkflow(workspaceRoot, String(flags.name));
         if (workflowRuns.length === 0) {
           throw new Error(`workflow run --from-step requires an existing workflow run for ${String(flags.name)}`);
@@ -2329,7 +2375,7 @@ async function handleWorkflowCommand(argv) {
           workspaceRoot,
           latest,
           configured,
-          String(flags["from-step"]),
+          stepControl.fromStep,
         );
         return await runToolWorkflow({
           steps: configured.steps.map((step, index) => ({
@@ -2347,13 +2393,15 @@ async function handleWorkflowCommand(argv) {
           category: configured.category || "run",
           commandLabel: "workflow run",
           configPath: configured.configPath,
+          metadata: configured.metadata,
           existingWorkflow: latest,
           existingSteps: plan.createdSteps,
           initialStepResults: plan.stepResults,
           startIndex: plan.startIndex,
+          endIndex: stepControl.oneStep ? plan.startIndex + 1 : null,
           resumeMeta: {
-            mode: "from-step",
-            fromStep: String(flags["from-step"]),
+            mode: stepControl.oneStep ? "single-step" : "from-step",
+            fromStep: stepControl.fromStep,
           },
         });
       }
@@ -2373,6 +2421,7 @@ async function handleWorkflowCommand(argv) {
         category: configured.category || "run",
         commandLabel: "workflow run",
         configPath: configured.configPath,
+        metadata: configured.metadata,
       });
     }
 
@@ -2408,9 +2457,8 @@ async function handleWorkflowCommand(argv) {
       throw new Error("workflow resume requires a non-running workflow run");
     }
     const configured = resolveConfiguredWorkflow(String(workflow.workflow), workflow.configPath || null);
-    const fromStep = flags["from-step"] ? String(flags["from-step"]) : null;
-    const oneStep = Boolean(flags["one-step"]);
-    const plan = collectResumePlan(workspaceRoot, workflow, configured, fromStep);
+    const stepControl = workflowStepControl(flags);
+    const plan = collectResumePlan(workspaceRoot, workflow, configured, stepControl.fromStep);
     return await runToolWorkflow({
       steps: configured.steps.map((step, index) => ({
         id: step.id || step.name || `step-${index + 1}`,
@@ -2427,14 +2475,15 @@ async function handleWorkflowCommand(argv) {
       category: configured.category || "run",
       commandLabel: "workflow resume",
       configPath: configured.configPath,
+      metadata: configured.metadata,
       existingWorkflow: workflow,
       existingSteps: plan.createdSteps,
       initialStepResults: plan.stepResults,
       startIndex: plan.startIndex,
-      endIndex: oneStep ? plan.startIndex + 1 : null,
+      endIndex: stepControl.oneStep ? plan.startIndex + 1 : null,
       resumeMeta: {
-        mode: oneStep ? "single-step" : (fromStep ? "from-step" : "resume"),
-        fromStep: fromStep || (configured.steps[plan.startIndex] && (configured.steps[plan.startIndex].id || configured.steps[plan.startIndex].name)) || null,
+        mode: stepControl.oneStep ? "single-step" : (stepControl.fromStep ? "from-step" : "resume"),
+        fromStep: stepControl.fromStep || (configured.steps[plan.startIndex] && (configured.steps[plan.startIndex].id || configured.steps[plan.startIndex].name)) || null,
       },
     });
   }

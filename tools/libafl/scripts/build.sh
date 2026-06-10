@@ -12,13 +12,29 @@ guest_target="aarch64-unknown-linux-gnu"
 stub_bin="${install_dir}/bin/libafl_nesting_stub"
 fuzzer_bin="${install_dir}/bin/qemu_nesting"
 bridge_dir="${build_dir}/qemu-libafl-bridge"
-bridge_build_dir="${bridge_dir}/build"
+bridge_storage_dir="${MORPHEUS_LIBAFL_BRIDGE_STORAGE_DIR:-/tmp/morpheus-libafl-qemu-libafl-bridge}"
+bridge_build_dir="${bridge_storage_dir}/build"
 bridge_lib="${bridge_build_dir}/libqemu-system-aarch64.so"
 installed_bridge_lib="${install_dir}/lib/libqemu-system-aarch64.so"
 stub_c_src="${source_dir}/crates/libafl_nesting/c_src/libafl_nesting_stub.c"
+host_target_dir="${MORPHEUS_LIBAFL_HOST_TARGET_DIR:-/tmp/morpheus-libafl-target-host}"
+fuzzer_target_dir="${MORPHEUS_LIBAFL_FUZZER_TARGET_DIR:-/tmp/morpheus-libafl-target-fuzzer}"
 
 mkdir -p "$(dirname "${result_file}")"
 mkdir -p "${build_dir}" "${install_dir}/bin" "${install_dir}/lib"
+
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
+export CARGO_HOME="${CARGO_HOME:-/tmp/morpheus-cargo-home}"
+export RUSTFLAGS="${RUSTFLAGS:-} -A deprecated"
+export LIBCLANG_PATH="${LIBCLANG_PATH:-/workspace/llvm-root/usr/lib/llvm-19/lib}"
+export BINDGEN_EXTRA_CLANG_ARGS="${BINDGEN_EXTRA_CLANG_ARGS:-} -resource-dir /workspace/clang-root/usr/lib/llvm-19/lib/clang/19"
+
+if [ ! -e "${bridge_dir}" ] && [ ! -L "${bridge_dir}" ]; then
+  mkdir -p "${bridge_storage_dir}"
+  ln -s "${bridge_storage_dir}" "${bridge_dir}"
+elif [ -L "${bridge_dir}" ]; then
+  mkdir -p "$(readlink "${bridge_dir}")"
+fi
 
 if [ -n "${patch_dir}" ]; then
   "$(dirname "$0")/patch.sh"
@@ -40,6 +56,18 @@ if [ ! -f "${stub_c_src}" ]; then
   echo "missing guest stub source: ${stub_c_src}" >&2
   exit 1
 fi
+
+if [ "${reuse_build_dir}" = "true" ] && \
+   [ -x "${stub_bin}" ] && \
+   [ "${stub_bin}" -nt "${stub_c_src}" ] && \
+   [ -x "${fuzzer_bin}" ] && \
+   [ -f "${installed_bridge_lib}" ]; then
+  cat > "${result_file}" <<EOF
+{"details":{"built":true,"reused":true,"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}"},"artifacts":[{"path":"guest-stub-binary","location":"${stub_bin}"},{"path":"qemu-nesting-fuzzer","location":"${fuzzer_bin}"},{"path":"qemu-bridge-dir","location":"${bridge_dir}"},{"path":"qemu-bridge-lib","location":"${installed_bridge_lib}"}]}
+EOF
+  exit 0
+fi
+
 if ! command -v aarch64-linux-gnu-gcc >/dev/null 2>&1; then
   echo "missing aarch64-linux-gnu-gcc; run tools/libafl/scripts/install-dependencies.sh" >&2
   exit 1
@@ -81,20 +109,20 @@ fi
 
 bridge_cargo_args=(
   --manifest-path "${source_dir}/Cargo.toml"
-  --target-dir "${build_dir}/target-host"
+  --target-dir "${host_target_dir}"
   -p libafl_nesting
   --features qemu-bridge-aarch64
 )
 
 fuzzer_cargo_args=(
   --manifest-path "${source_dir}/fuzzers/full_system/qemu_nesting/Cargo.toml"
-  --target-dir "${build_dir}/target-fuzzer"
+  --target-dir "${fuzzer_target_dir}"
   --no-default-features
   --features std,aarch64
 )
 
 build_guest_stub() {
-  local vharness_root="${build_dir}/target-host/debug/libvharness"
+  local vharness_root="${host_target_dir}/debug/libvharness"
   local vharness_include="${vharness_root}/include"
   local vharness_src="${vharness_root}/src/api/lqemu"
   local vharness_calls="${vharness_src}/arch/aarch64/calls.c"
@@ -121,13 +149,28 @@ build_guest_stub() {
     -o "${stub_bin}"
 }
 
+if [ "${reuse_build_dir}" = "true" ] && \
+   [ -x "${fuzzer_bin}" ] && \
+   [ -f "${installed_bridge_lib}" ] && \
+   [ -d "${host_target_dir}/debug/libvharness/include" ] && \
+   [ -d "${host_target_dir}/debug/libvharness/src/api/lqemu" ] && \
+   [ -f "${host_target_dir}/debug/libvharness/src/api/lqemu/arch/aarch64/calls.c" ]; then
+  build_guest_stub
+  cat > "${result_file}" <<EOF
+{"details":{"built":true,"reused":true,"stub_rebuilt":true,"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}"},"artifacts":[{"path":"guest-stub-binary","location":"${stub_bin}"},{"path":"qemu-nesting-fuzzer","location":"${fuzzer_bin}"},{"path":"qemu-bridge-dir","location":"${bridge_dir}"},{"path":"qemu-bridge-lib","location":"${installed_bridge_lib}"}]}
+EOF
+  exit 0
+fi
+
 if [ "${reuse_build_dir}" = "true" ] && [ -x "${stub_bin}" ]; then
-  LIBAFL_QEMU_CLONE_DIR="${bridge_dir}" \
+  LIBAFL_QEMU_CLONE_DIR="${bridge_storage_dir}" \
   cargo build "${bridge_cargo_args[@]}" --lib "${cargo_args[@]}"
-  LIBAFL_QEMU_DIR="${bridge_dir}" \
+  rm -rf "${bridge_dir}"
+  ln -s "${bridge_storage_dir}" "${bridge_dir}"
+  LIBAFL_QEMU_DIR="${bridge_storage_dir}" \
   cargo build "${fuzzer_cargo_args[@]}"
   build_guest_stub
-  cp "${build_dir}/target-fuzzer/debug/qemu_nesting" "${fuzzer_bin}"
+  cp "${fuzzer_target_dir}/debug/qemu_nesting" "${fuzzer_bin}"
   if [ -f "${bridge_lib}" ]; then
     cp "${bridge_lib}" "${installed_bridge_lib}"
   fi
@@ -137,12 +180,14 @@ EOF
   exit 0
 fi
 
-LIBAFL_QEMU_CLONE_DIR="${bridge_dir}" \
+LIBAFL_QEMU_CLONE_DIR="${bridge_storage_dir}" \
 cargo build "${bridge_cargo_args[@]}" --lib "${cargo_args[@]}"
-LIBAFL_QEMU_DIR="${bridge_dir}" \
+rm -rf "${bridge_dir}"
+ln -s "${bridge_storage_dir}" "${bridge_dir}"
+LIBAFL_QEMU_DIR="${bridge_storage_dir}" \
 cargo build "${fuzzer_cargo_args[@]}"
 build_guest_stub
-cp "${build_dir}/target-fuzzer/debug/qemu_nesting" "${fuzzer_bin}"
+cp "${fuzzer_target_dir}/debug/qemu_nesting" "${fuzzer_bin}"
 if [ -f "${bridge_lib}" ]; then
   cp "${bridge_lib}" "${installed_bridge_lib}"
 fi

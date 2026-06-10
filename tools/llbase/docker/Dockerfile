@@ -43,6 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       gcc-riscv64-linux-gnu \
       # Version control & misc
       git \
+      graphviz \
       xz-utils \
       lz4 \
       gawk \
@@ -88,7 +89,8 @@ RUN for v in 14 15; do \
 
 RUN python3 -m pip install --break-system-packages \
       networkx \
-      graphviz
+      graphviz \
+      kconfiglib
 
 COPY scripts/install_rust_env.sh /tmp/install_rust_env.sh
 RUN chmod +x /tmp/install_rust_env.sh \

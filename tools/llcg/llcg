@@ -3,6 +3,7 @@
 import argparse
 import collections
 import contextlib
+import html
 import json
 import logging
 import os
@@ -14,7 +15,7 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent
 SRC_DIR = REPO_ROOT / "src"
 MUTATORS_DIR = REPO_ROOT / "mutators"
 if str(SRC_DIR) not in sys.path:
@@ -27,8 +28,10 @@ from interfaces import (  # noqa: E402
     collect_syscall_entries_from_files,
     expand_presets,
     extract_groups_from_file,
+    find_c_files,
     parse_interfaces,
     parse_kernel_version,
+    resolve_pre_presets,
     write_groups_file,
 )
 from registry import (  # noqa: E402
@@ -44,7 +47,6 @@ DEFAULT_BUILD_DIR = Path(
 DEFAULT_ARCH = "x86_64"
 DEFAULT_BLOCKLIST = MUTATORS_DIR / "blocklist.txt"
 DEFAULT_EXTRA_EDGES = MUTATORS_DIR / "extra_edges.txt"
-DEFAULT_GROUPS = MUTATORS_DIR / "groups.txt"
 LOGGER = logging.getLogger("llcg")
 
 
@@ -158,7 +160,11 @@ def is_llvm_bitcode(path: Path) -> bool:
 
 
 def dot_quote(value: str) -> str:
-    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n") + '"'
+
+
+def dot_html(value: str) -> str:
+    return html.escape(value, quote=True)
 
 
 def load_dot_graph(path: Path) -> dict:
@@ -214,7 +220,34 @@ def load_groups_files(paths: list[Path]) -> list[dict]:
             "discard_unreachable": False,
             "rank_hint": "",
             "members": [],
+            "member_labels": {},
+            "source_file": "",
+            "source_line": 0,
+            "struct_type": "",
         }
+
+    def merge_group_metadata(target: dict, source: dict) -> None:
+        if not target.get("source_file") and source.get("source_file"):
+            target["source_file"] = source["source_file"]
+        if not target.get("source_line") and source.get("source_line"):
+            target["source_line"] = source["source_line"]
+        if not target.get("struct_type") and source.get("struct_type"):
+            target["struct_type"] = source["struct_type"]
+        target.setdefault("member_labels", {}).update(source.get("member_labels", {}))
+
+    def parse_group_member_entry(entry: str) -> tuple[str, str, str]:
+        op = entry[0] if entry.startswith(("+", "-")) else ""
+        body = entry[1:].strip() if op else entry.strip()
+        field = ""
+        name = body
+        if ": " in body:
+            field, _, value = body.partition(": ")
+            if field.strip() and value.strip():
+                name = value.strip()
+                field = field.strip()
+        member = f"{op}{name}" if op else name
+        display = f"{field} -> {name}" if field else name
+        return member, name, display
 
     def flush(current: dict | None) -> None:
         if not current or not current["label"]:
@@ -232,6 +265,7 @@ def load_groups_files(paths: list[Path]) -> list[dict]:
                 groups_by_label[current["label"]] = current
                 return
             existing["entry_point"] = existing["entry_point"] or current["entry_point"]
+            merge_group_metadata(existing, current)
             existing["discard_unreachable"] = (
                 existing["discard_unreachable"] or current["discard_unreachable"]
             )
@@ -256,6 +290,7 @@ def load_groups_files(paths: list[Path]) -> list[dict]:
         existing = groups_by_label.get(current["label"])
         if existing is not None:
             existing["entry_point"] = existing["entry_point"] or current["entry_point"]
+            merge_group_metadata(existing, current)
             existing["discard_unreachable"] = (
                 existing["discard_unreachable"] or current["discard_unreachable"]
             )
@@ -276,9 +311,19 @@ def load_groups_files(paths: list[Path]) -> list[dict]:
         loaded_files.add(resolved)
 
         current: dict | None = None
+        pending_source: dict = {}
+        source_re = re.compile(r"^# from (.+):([0-9]+) \(([^)]+)\)$")
         for raw_line in resolved.read_text().splitlines():
             line = raw_line.strip()
             if line.startswith("#"):
+                source_match = source_re.match(line)
+                if source_match:
+                    source_file, source_line, struct_type = source_match.groups()
+                    pending_source = {
+                        "source_file": source_file,
+                        "source_line": int(source_line),
+                        "struct_type": struct_type,
+                    }
                 continue
             if not line:
                 flush(current)
@@ -294,6 +339,8 @@ def load_groups_files(paths: list[Path]) -> list[dict]:
                 continue
             if current is None:
                 current = new_group()
+                current.update(pending_source)
+                pending_source = {}
                 while True:
                     if line.startswith("[entry_point]"):
                         current["entry_point"] = True
@@ -314,7 +361,9 @@ def load_groups_files(paths: list[Path]) -> list[dict]:
                     break
                 current["label"] = line
                 continue
-            current["members"].append(line)
+            member, member_name, display = parse_group_member_entry(line)
+            current["members"].append(member)
+            current["member_labels"][member_name] = display
 
         flush(current)
 
@@ -412,18 +461,94 @@ def apply_reachability_post_mutator(graph: dict, groups: list[dict]) -> None:
     }
 
 
+def format_struct_group_html_label(group: dict, visible_members: list[str]) -> str:
+    struct_type = group.get("struct_type") or "struct"
+    source_file = group.get("source_file") or "unknown"
+    source_line = group.get("source_line") or 0
+    location = f"{source_file}:{source_line}" if source_line else source_file
+    member_labels = group.get("member_labels", {})
+    rows = [
+        '<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">',
+        (
+            '<TR><TD ALIGN="CENTER">'
+            f'<FONT POINT-SIZE="10">struct {dot_html(struct_type)} in file</FONT>'
+            '</TD></TR>'
+        ),
+        (
+            '<TR><TD ALIGN="CENTER">'
+            f'<FONT POINT-SIZE="9">{dot_html(location)}</FONT>'
+            '</TD></TR>'
+        ),
+        (
+            '<TR><TD ALIGN="CENTER">'
+            f'<B>{dot_html(group["label"])}</B>'
+            '</TD></TR>'
+        ),
+    ]
+    if visible_members:
+        rows.append(
+            '<TR><TD ALIGN="LEFT">'
+            '<FONT POINT-SIZE="9"><B>function pointers</B></FONT>'
+            '</TD></TR>'
+        )
+        for member in visible_members:
+            display = member_labels.get(member, member)
+            rows.append(
+                '<TR><TD ALIGN="LEFT">'
+                f'<FONT POINT-SIZE="9">{dot_html(display)}</FONT>'
+                '</TD></TR>'
+            )
+    rows.append("</TABLE>")
+    return "<" + "".join(rows) + ">"
+
+
 def collapse_graph_by_groups(graph: dict, groups: list[dict]) -> dict:
     member_to_group: dict[str, str] = {}
+    nodes_in_graph = graph_nodes_in_use(graph)
+    node_labels: dict[str, str] = {}
+    node_html_labels: dict[str, str] = {}
+
+    def format_collapsed_group_label(group: dict, visible_members: list[str]) -> str:
+        struct_type = group.get("struct_type") or "struct"
+        source_file = group.get("source_file") or "unknown"
+        source_line = group.get("source_line") or 0
+        location = f"{source_file}:{source_line}" if source_line else source_file
+        member_labels = group.get("member_labels", {})
+        lines = [
+            f"struct {struct_type}",
+            group["label"],
+            f"in file {location}",
+        ]
+        pointer_lines = [
+            member_labels.get(member, member)
+            for member in visible_members
+        ]
+        if pointer_lines:
+            lines.extend(["", "function pointers:", *pointer_lines])
+        return "\n".join(lines)
+
     for group in groups:
+        member_to_group[group["label"]] = group["label"]
         for member in group["members"]:
             member_to_group[member] = group["label"]
+        visible_members = [member for member in group["members"] if member in nodes_in_graph]
+        if visible_members:
+            node_labels[group["label"]] = format_collapsed_group_label(group, visible_members)
+            node_html_labels[group["label"]] = format_struct_group_html_label(group, visible_members)
 
-    grouped_nodes = {node for node in graph_nodes_in_use(graph) if node in member_to_group}
-    collapsed = {"nodes": set(), "edges": {}}
+    grouped_nodes = {node for node in nodes_in_graph if node in member_to_group}
+    collapsed = {
+        "nodes": set(),
+        "edges": {},
+        "edge_labels": {},
+        "node_labels": node_labels,
+        "node_html_labels": node_html_labels,
+    }
 
     for src in grouped_nodes:
-        collapsed["nodes"].add(src)
-        collapsed["edges"].setdefault(src, set())
+        src_group = member_to_group[src]
+        collapsed["nodes"].add(src_group)
+        collapsed["edges"].setdefault(src_group, set())
         visited = {src}
         worklist = collections.deque([src])
         while worklist:
@@ -434,20 +559,52 @@ def collapse_graph_by_groups(graph: dict, groups: list[dict]) -> dict:
                 visited.add(nxt)
                 dst_group = member_to_group.get(nxt)
                 if dst_group:
-                    if nxt != src:
-                        collapsed["nodes"].add(nxt)
-                        collapsed["edges"].setdefault(nxt, set())
-                        collapsed["edges"][src].add(nxt)
+                    if dst_group != src_group:
+                        collapsed["nodes"].add(dst_group)
+                        collapsed["edges"].setdefault(dst_group, set())
+                        collapsed["edges"][src_group].add(dst_group)
+                        collapsed["edge_labels"].setdefault((src_group, dst_group), set()).add(
+                            f"{src} -> {nxt}"
+                        )
                     continue
                 worklist.append(nxt)
 
     remove_isolated_nodes(collapsed)
+    active_edges = {
+        (src, dst)
+        for src, dsts in collapsed["edges"].items()
+        for dst in dsts
+    }
+    collapsed["edge_labels"] = {
+        edge: labels
+        for edge, labels in collapsed.get("edge_labels", {}).items()
+        if edge in active_edges
+    }
+    collapsed["node_labels"] = {
+        node: label
+        for node, label in collapsed.get("node_labels", {}).items()
+        if node in collapsed["nodes"]
+    }
+    collapsed["node_html_labels"] = {
+        node: label
+        for node, label in collapsed.get("node_html_labels", {}).items()
+        if node in collapsed["nodes"]
+    }
     return collapsed
 
 
-def write_dot_graph(path: Path, graph: dict, groups: list[dict] | None = None) -> Path:
+def write_dot_graph(
+    path: Path,
+    graph: dict,
+    groups: list[dict] | None = None,
+    *,
+    enhanced_group_labels: bool = False,
+) -> Path:
     groups = groups or []
     nodes_in_graph = graph_nodes_in_use(graph)
+    node_labels = graph.get("node_labels", {})
+    node_html_labels = graph.get("node_html_labels", {})
+    edge_labels = graph.get("edge_labels", {})
     grouped_nodes = {
         member
         for group in groups
@@ -456,7 +613,7 @@ def write_dot_graph(path: Path, graph: dict, groups: list[dict] | None = None) -
     }
 
     lines = [
-        "digraph DevilangCG {",
+        "digraph LLVMCallGraph {",
         "    rankdir=LR;",
         "    node [shape=box, style=filled, fillcolor=lightyellow];",
         "",
@@ -469,7 +626,10 @@ def write_dot_graph(path: Path, graph: dict, groups: list[dict] | None = None) -
             continue
         lines.append(f"    subgraph cluster_{cluster_index} {{")
         cluster_index += 1
-        lines.append(f"        label={dot_quote(group['label'])};")
+        if enhanced_group_labels:
+            lines.append(f"        label={format_struct_group_html_label(group, visible_members)};")
+        else:
+            lines.append(f"        label={dot_quote(group['label'])};")
         lines.append('        style="rounded,filled";')
         if group["entry_point"]:
             lines.extend([
@@ -494,21 +654,45 @@ def write_dot_graph(path: Path, graph: dict, groups: list[dict] | None = None) -
         lines.append("    }")
         lines.append("")
 
+    def emit_node(node: str) -> str:
+        html_label = node_html_labels.get(node)
+        if html_label:
+            return f"    {dot_quote(node)} [label={html_label}];"
+        label = node_labels.get(node)
+        if label and label != node:
+            return f"    {dot_quote(node)} [label={dot_quote(label)}];"
+        return f"    {dot_quote(node)};"
+
+    def emit_edge(src: str, dst: str) -> str:
+        labels = sorted(edge_labels.get((src, dst), []))
+        if not labels:
+            return f"    {dot_quote(src)} -> {dot_quote(dst)};"
+        max_lines = 10
+        visible = labels[:max_lines]
+        if len(labels) > max_lines:
+            visible.append(f"... {len(labels) - max_lines} more")
+        label = "\n".join(visible)
+        return f"    {dot_quote(src)} -> {dot_quote(dst)} [label={dot_quote(label)}, fontsize=9];"
+
     emitted_nodes: set[str] = set()
     for src in sorted(graph["edges"]):
         dsts = sorted(graph["edges"][src])
         if not dsts:
             if src not in grouped_nodes:
-                lines.append(f"    {dot_quote(src)};")
+                lines.append(emit_node(src))
                 emitted_nodes.add(src)
             continue
         for dst in dsts:
-            lines.append(f"    {dot_quote(src)} -> {dot_quote(dst)};")
+            lines.append(emit_edge(src, dst))
             emitted_nodes.add(src)
             emitted_nodes.add(dst)
 
     for node in sorted(nodes_in_graph - emitted_nodes - grouped_nodes):
-        lines.append(f"    {dot_quote(node)};")
+        lines.append(emit_node(node))
+
+    for node in sorted(node for node in nodes_in_graph if node in node_labels):
+        if node not in grouped_nodes:
+            lines.append(emit_node(node))
 
     lines.append("}")
     path.write_text("\n".join(lines) + "\n")
@@ -581,7 +765,7 @@ def ensure_native_artifacts_present() -> None:
     required = {
         "build_dir": DEFAULT_BUILD_DIR,
         "kallgraph_bin": DEFAULT_BUILD_DIR / "kallgraph" / "bin" / "KallGraph",
-        "callgraph_lib": DEFAULT_BUILD_DIR / "llvm-cg" / "libllvm-cg.so",
+        "callgraph_lib": DEFAULT_BUILD_DIR / "llvm-cg" / "llvm-cg.so",
         "extapi_bc": DEFAULT_BUILD_DIR / "svf" / "lib" / "extapi.bc",
     }
     missing = [key for key, path in required.items() if not path.exists()]
@@ -753,6 +937,61 @@ def collect_groups_for_files(kernel_root: Path, rel_sources: list[str], scope_na
     }
 
 
+def collect_groups_for_scoped_interface(
+    kernel_root: Path,
+    interface: str,
+    expanded_preset: dict,
+    scoped_rel_sources: list[str],
+    arch: str,
+) -> dict:
+    enabled_configs: set[str] = set(expanded_preset["enable_configs"])
+    dedup_dirs: list[str] = []
+    seen_dirs: set[str] = set()
+    for scan_dir in expanded_preset["scan_dirs"]:
+        if scan_dir in seen_dirs:
+            continue
+        seen_dirs.add(scan_dir)
+        dedup_dirs.append(scan_dir)
+
+    pp = resolve_pre_presets(interface, arch=arch)
+    candidates = find_c_files(
+        kernel_root,
+        dedup_dirs,
+        enabled_configs,
+        pp.get("excluded_dirs", []),
+        pp.get("excluded_files", []),
+    )
+    scoped_rel_set = set(scoped_rel_sources)
+    files = [
+        path
+        for path in candidates
+        if path.relative_to(kernel_root).as_posix() in scoped_rel_set
+    ]
+
+    scan_dirs: list[str] = []
+    seen_scan_dirs: set[str] = set()
+    groups: list[tuple[str, list[str], str, int, str]] = []
+    seen_groups: set[str] = set()
+    for path in files:
+        parent_rel = path.parent.relative_to(kernel_root).as_posix()
+        if parent_rel not in seen_scan_dirs:
+            seen_scan_dirs.add(parent_rel)
+            scan_dirs.append(parent_rel)
+        for group_name, funcs, rel, line, struct_type in extract_groups_from_file(path, kernel_root):
+            if group_name in seen_groups:
+                continue
+            seen_groups.add(group_name)
+            groups.append((group_name, funcs, rel, line, struct_type))
+
+    return {
+        "enabled_configs": enabled_configs,
+        "scan_dirs": scan_dirs,
+        "files": files,
+        "groups": groups,
+        "syscall_groups": [],
+    }
+
+
 def build_output_stem(scope_label: str, kernel_version: str, arch: str, bc_list_path: Path):
     stem_parts = []
     primary_label = scope_label or sanitize_tag(bc_list_path.stem)
@@ -783,17 +1022,11 @@ def render_graphviz(dot_path: Path):
     return svg_path, pdf_path
 
 
-def write_empty_groups_file(path: Path, scope_label: str, arch: str) -> Path:
-    return write_groups_file(
-        path,
-        version="",
-        interface=scope_label,
-        arch=arch,
-        scan_dirs=[],
-        enabled_configs=set(),
-        groups=[],
-        syscall_groups=[],
-    )
+def remove_stale_collapsed_outputs(out_dir: Path, stem: str) -> None:
+    for suffix in (".dot", ".svg", ".pdf"):
+        candidate = out_dir / f"{stem}_cg_collapsed{suffix}"
+        if candidate.exists():
+            candidate.unlink()
 
 
 def collect_interface_mutator_payload(
@@ -802,6 +1035,7 @@ def collect_interface_mutator_payload(
     interfaces: list[str],
     arch: str,
     out_dir: Path,
+    scope_list: Path | None = None,
 ) -> tuple[dict, Path]:
     LOGGER.info(
         "Generating interface mutator for interfaces=%s arch=%s",
@@ -825,9 +1059,22 @@ def collect_interface_mutator_payload(
     aggregate_files: list[str] = []
     aggregate_file_seen: set[str] = set()
     interface_details: dict[str, dict] = {}
+    scoped_files = normalize_scope_files(kernel_root, read_lines(scope_list)) if scope_list else []
+    if scope_list and not scoped_files:
+        raise ValueError(f"Interface scope list is empty: {scope_list}")
+    scoped_to_source_list = scope_list is not None
 
     for interface in interfaces:
-        info = collect_groups_for_interface(kernel_root, interface, expanded[interface], arch=arch)
+        if scoped_to_source_list:
+            info = collect_groups_for_scoped_interface(
+                kernel_root,
+                interface,
+                expanded[interface],
+                scoped_files,
+                arch,
+            )
+        else:
+            info = collect_groups_for_interface(kernel_root, interface, expanded[interface], arch=arch)
         rel_files = [path.relative_to(kernel_root).as_posix() for path in info["files"]]
         for scan_dir in info["scan_dirs"]:
             if scan_dir not in aggregate_scan_dir_seen:
@@ -851,6 +1098,7 @@ def collect_interface_mutator_payload(
             "scan_dirs": info["scan_dirs"],
             "enabled_configs": sorted(info["enabled_configs"]),
             "scanned_files": rel_files,
+            "scope_list": stable_path(scope_list, out_dir) if scope_list else "",
             "groups_count": len(info["groups"]),
             "syscall_group_count": len(info["syscall_groups"]),
         }
@@ -874,13 +1122,15 @@ def collect_interface_mutator_payload(
         "exit_code": 0,
         "summary": "generated interface mutator metadata from kernel sources",
         "details": {
-            "mutator_roles": ["pre", "post"],
+            "mutator_roles": ["post"] if scoped_to_source_list else ["pre", "post"],
             "kernel_version": kernel_version,
             "arch": arch,
             "interfaces": interfaces,
             "interface_label": interface_label,
             "source_dir": stable_path(kernel_root, out_dir),
             "source_list": stable_path(source_list_path, out_dir),
+            "scope_list": stable_path(scope_list, out_dir) if scope_list else "",
+            "scoped_to_source_list": scoped_to_source_list,
             "groups_file": stable_path(groups_path, out_dir),
             "scan_dirs": aggregate_scan_dirs,
             "enabled_configs": sorted(aggregate_configs),
@@ -894,6 +1144,7 @@ def collect_interface_mutator_payload(
             "manifest": path_view(manifest_path, out_dir),
             "source_dir": path_view(kernel_root, out_dir),
             "source_list": path_view(source_list_path, out_dir),
+            **({"scope_list": path_view(scope_list, out_dir)} if scope_list else {}),
             "groups_file": path_view(groups_path, out_dir),
         },
         "artifacts": [
@@ -1057,7 +1308,7 @@ def merge_mutator_payloads(mutator_payloads: list[tuple[Path, dict]], out_dir: P
                 if "post" in roles and value not in post_mutators[key]:
                     post_mutators[key].append(value)
         for rel_file in rel_files:
-            if rel_file not in file_seen:
+            if "pre" in roles and rel_file not in file_seen:
                 file_seen.add(rel_file)
                 source_files.append(rel_file)
         groups_ref = details.get("groups_file", "")
@@ -1210,15 +1461,7 @@ def prepare_run_inputs(args, out_dir: Path) -> dict:
         if not bc_entries:
             raise ValueError(f"No bitcode entries found in {bitcode_list_path}")
         scope_label = scope_name or mutator_ctx["scope_label"] or sanitize_tag(bitcode_list_path.stem)
-        groups_path = (
-            mutator_ctx["groups_file"]
-            if mutator_ctx["groups_file"]
-            else write_empty_groups_file(
-                out_dir / f"{scope_label}-groups-{sanitize_tag(arch)}.txt",
-                scope_label,
-                arch,
-            )
-        )
+        groups_path = mutator_ctx["groups_file"]
         return {
             "kernel_version": kernel_version,
             "arch": arch,
@@ -1226,7 +1469,7 @@ def prepare_run_inputs(args, out_dir: Path) -> dict:
             "scope": {"mode": scope_mode, "files": []},
             "bitcode_list_path": bitcode_list_path,
             "bitcode_entries": bc_entries,
-            "groups_path": groups_path.resolve(),
+            "groups_path": groups_path.resolve() if groups_path else None,
             "source_files": [],
             "object_rels": [],
             "missing_objects": [],
@@ -1237,7 +1480,7 @@ def prepare_run_inputs(args, out_dir: Path) -> dict:
                 "source_list": "",
                 "object_list": "",
                 "bitcode_list": stable_path(bitcode_list_path, out_dir),
-                "groups_file": stable_path(groups_path, out_dir),
+                "groups_file": stable_path(groups_path, out_dir) if groups_path else "",
             },
             "warnings": [],
             "mutator_ctx": mutator_ctx,
@@ -1258,12 +1501,6 @@ def prepare_run_inputs(args, out_dir: Path) -> dict:
     source_list_path = out_dir / f"{scope_label}-sources-{kernel_version}-{sanitize_tag(arch)}.txt"
     write_lines(source_list_path, source_scope_files)
     groups_path = mutator_ctx["groups_file"]
-    if groups_path is None:
-        groups_path = write_empty_groups_file(
-            out_dir / f"{scope_label}-groups-{kernel_version}-{sanitize_tag(arch)}.txt",
-            scope_label,
-            arch,
-        )
 
     object_rels, object_paths, missing_objects = resolve_source_scope_to_bitcode(
         llbic_json_path=llbic_json_path,
@@ -1291,7 +1528,7 @@ def prepare_run_inputs(args, out_dir: Path) -> dict:
         "scope": {"mode": scope_mode, "files": source_scope_files},
         "bitcode_list_path": bitcode_list_path,
         "bitcode_entries": object_paths,
-        "groups_path": groups_path.resolve(),
+        "groups_path": groups_path.resolve() if groups_path else None,
         "source_files": source_scope_files,
         "object_rels": object_rels,
         "missing_objects": missing_objects,
@@ -1302,7 +1539,7 @@ def prepare_run_inputs(args, out_dir: Path) -> dict:
             "source_list": stable_path(source_list_path, out_dir),
             "object_list": stable_path(object_list_path, out_dir),
             "bitcode_list": stable_path(bitcode_list_path, out_dir),
-            "groups_file": stable_path(groups_path, out_dir),
+            "groups_file": stable_path(groups_path, out_dir) if groups_path else "",
         },
         "warnings": warnings,
         "mutator_ctx": mutator_ctx,
@@ -1313,7 +1550,7 @@ def run_pipeline(
     args,
     bc_list_path: Path,
     bc_entries,
-    groups_path: Path,
+    groups_path: Path | None,
     scope_label: str,
     kernel_version: str,
     arch: str,
@@ -1334,7 +1571,7 @@ def run_pipeline(
     if kallgraph_bin is None:
         raise FileNotFoundError("Could not find KallGraph binary after native build.")
 
-    callgraph_lib = first_existing([DEFAULT_BUILD_DIR / "llvm-cg" / "libllvm-cg.so"])
+    callgraph_lib = first_existing([DEFAULT_BUILD_DIR / "llvm-cg" / "llvm-cg.so"])
     if callgraph_lib is None:
         raise FileNotFoundError("Could not find the callgraph pass library after native build.")
 
@@ -1400,13 +1637,10 @@ def run_pipeline(
         log_command(cmd, stdin_path=bc_entries[0])
         subprocess.run(cmd, stdin=stub_in, stdout=subprocess.DEVNULL, stderr=log_out, check=True)
 
-    collapsed_path = out_dir / f"{stem}_cg_collapsed.dot"
     graph = load_dot_graph(raw_dot_path)
     group_inputs: list[Path] = []
-    if groups_path.is_file():
+    if groups_path and groups_path.is_file():
         group_inputs.append(groups_path)
-    if DEFAULT_GROUPS.is_file():
-        group_inputs.append(DEFAULT_GROUPS)
     groups = load_groups_files(group_inputs) if group_inputs else []
 
     for blocklist_file in args.post_mutators.get("blocklist", []):
@@ -1418,22 +1652,31 @@ def run_pipeline(
     remove_isolated_nodes(graph)
     write_dot_graph(dot_path, graph, groups)
 
-    collapsed_graph = collapse_graph_by_groups(graph, groups) if groups else {
-        "nodes": set(graph["nodes"]),
-        "edges": {src: set(dsts) for src, dsts in graph["edges"].items()},
-    }
-    write_dot_graph(collapsed_path, collapsed_graph, groups)
-
     kallgraph_copy = out_dir / f"{stem}_kallgraph.txt"
     shutil.copy2(latest_callgraph, kallgraph_copy)
     dot_svg_path, dot_pdf_path = render_graphviz(dot_path)
-    collapsed_svg_path, collapsed_pdf_path = render_graphviz(collapsed_path)
+    collapsed_path = None
+    collapsed_svg_path = None
+    collapsed_pdf_path = None
+    if groups:
+        collapsed_graph = collapse_graph_by_groups(graph, groups)
+        collapsed_edges = sum(len(dsts) for dsts in collapsed_graph["edges"].values())
+        if collapsed_graph["nodes"] or collapsed_edges:
+            collapsed_path = out_dir / f"{stem}_cg_collapsed.dot"
+            write_dot_graph(collapsed_path, collapsed_graph)
+            collapsed_svg_path, collapsed_pdf_path = render_graphviz(collapsed_path)
+        else:
+            LOGGER.debug("Skipping collapsed graph because mutator groups did not match graph nodes")
+            remove_stale_collapsed_outputs(out_dir, stem)
+    else:
+        remove_stale_collapsed_outputs(out_dir, stem)
 
     LOGGER.debug("KallGraph output dir: %s", kallgraph_output)
     LOGGER.debug("KallGraph callgraph: %s", kallgraph_copy)
     LOGGER.debug("Raw callgraph DOT (internal): %s", raw_dot_path)
     LOGGER.debug("Final callgraph DOT: %s", dot_path)
-    LOGGER.debug("Collapsed callgraph DOT: %s", collapsed_path)
+    if collapsed_path:
+        LOGGER.debug("Collapsed callgraph DOT: %s", collapsed_path)
     LOGGER.debug("Callgraph log: %s", log_path)
     return {
         "scope_label": scope_label,
@@ -1488,18 +1731,22 @@ def build_run_manifest(
         "mutator_manifests": [stable_path(path, out_dir) for path in mutator_manifest_paths],
     }
     if result:
-        detail_paths.update(
-            {
-                "kallgraph_text": stable_path(Path(result["kallgraph"]), out_dir),
-                "cg_dot": stable_path(Path(result["dot"]), out_dir),
-                "cg_collapsed_dot": stable_path(Path(result["collapsed"]), out_dir),
-                "cg_svg": stable_path(Path(result["dot_svg"]), out_dir) if result.get("dot_svg") else "",
-                "cg_pdf": stable_path(Path(result["dot_pdf"]), out_dir) if result.get("dot_pdf") else "",
-                "cg_collapsed_svg": stable_path(Path(result["collapsed_svg"]), out_dir) if result.get("collapsed_svg") else "",
-                "cg_collapsed_pdf": stable_path(Path(result["collapsed_pdf"]), out_dir) if result.get("collapsed_pdf") else "",
-                "log_file": stable_path(Path(result["log"]), out_dir),
-            }
-        )
+        result_paths = {
+            "kallgraph_text": stable_path(Path(result["kallgraph"]), out_dir),
+            "cg_dot": stable_path(Path(result["dot"]), out_dir),
+            "cg_svg": stable_path(Path(result["dot_svg"]), out_dir) if result.get("dot_svg") else "",
+            "cg_pdf": stable_path(Path(result["dot_pdf"]), out_dir) if result.get("dot_pdf") else "",
+            "log_file": stable_path(Path(result["log"]), out_dir),
+        }
+        if result.get("collapsed"):
+            result_paths.update(
+                {
+                    "cg_collapsed_dot": stable_path(Path(result["collapsed"]), out_dir),
+                    "cg_collapsed_svg": stable_path(Path(result["collapsed_svg"]), out_dir) if result.get("collapsed_svg") else "",
+                    "cg_collapsed_pdf": stable_path(Path(result["collapsed_pdf"]), out_dir) if result.get("collapsed_pdf") else "",
+                }
+            )
+        detail_paths.update(result_paths)
 
     path_entries: dict[str, Path] = {"manifest": manifest_path.resolve()}
     for key, portable in detail_paths.items():
@@ -1635,6 +1882,7 @@ def command_genmutator_interfaces(args) -> int:
         interfaces=interfaces,
         arch=args.arch,
         out_dir=out_dir,
+        scope_list=Path(args.scope_list).resolve() if args.scope_list else None,
     )
     return print_result(payload, args.json)
 
@@ -1741,6 +1989,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     genmutator_interfaces.add_argument("--source-dir", required=True)
     genmutator_interfaces.add_argument("--interfaces", required=True)
+    genmutator_interfaces.add_argument("--scope-list", default="")
     genmutator_interfaces.add_argument("--output", "-o", default=str(DEFAULT_OUT_DIR))
     genmutator_interfaces.add_argument("--arch", default="x86_64")
     genmutator_interfaces.add_argument("--json", action="store_true")

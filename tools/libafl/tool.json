@@ -84,6 +84,12 @@
         ],
         "boolean": true
       },
+      "run-seconds": {
+        "aliases": [
+          "run-seconds",
+          "runSeconds"
+        ]
+      },
       "artifacts": {
         "aliases": [
           "artifacts"
@@ -303,6 +309,7 @@
             "install-dir",
             "nvirsh-state",
             "detach",
+            "run-seconds",
             "build-version",
             "build-dir-key"
           ],

@@ -55,6 +55,15 @@ IOMMU_PRE_PRESETS = VIRTIO_PRE_PRESETS
 MEM_PRE_PRESETS = VIRTIO_PRE_PRESETS
 NETWORKING_PRE_PRESETS = VIRTIO_PRE_PRESETS
 # NETWORKING_PRE_PRESETS["enable_configs"].append("CONFIG_INET")
+BOOT_NETWORKING_PRE_PRESETS: Dict[str, List[str]] = {
+    "scan_dirs": ["drivers/virtio"],
+    "enable_configs": ["CONFIG_VIRTIO_MMIO"],
+    "excluded_dirs": ["lib", "kernel", "net"],
+    "excluded_files": [
+        "drivers/net/loopback.c",
+        "drivers/net/net_failover.c",
+    ],
+}
 PMEM_PRE_PRESETS = VIRTIO_PRE_PRESETS
 RNG_PRE_PRESETS = VIRTIO_PRE_PRESETS
 SCSI_PRE_PRESETS = VIRTIO_PRE_PRESETS
@@ -138,6 +147,11 @@ PRESETS: Dict[str, Dict] = {
     "networking": {
         "key_config": "CONFIG_VIRTIO_NET",
         "pre_presets": NETWORKING_PRE_PRESETS,
+    },
+    "boot-networking": {
+        "key_config": "CONFIG_VIRTIO_NET",
+        "pre_presets": BOOT_NETWORKING_PRE_PRESETS,
+        "syscall_entries": False,
     },
     "pmem": {
         "key_config": "CONFIG_VIRTIO_PMEM",

@@ -15,6 +15,7 @@ sudo apt-get install -y \
   docker-cli \
   docker-compose \
   docker.io \
+  graphviz \
   gawk \
   make \
   python3.13-venv

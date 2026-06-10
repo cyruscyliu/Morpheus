@@ -1,28 +1,41 @@
 --- a/hw/virtio/trace-events
 +++ b/hw/virtio/trace-events
-@@ -97,6 +97,7 @@
+@@ -97,6 +97,8 @@
  # virtio-mmio.c
  virtio_mmio_read(uint64_t offset) "virtio_mmio_read offset 0x%" PRIx64
  virtio_mmio_write_offset(uint64_t offset, uint64_t value) "virtio_mmio_write offset 0x%" PRIx64 " value 0x%" PRIx64
 +virtio_mmio_fuzz_read(uint64_t offset, uint64_t base, uint64_t fuzzed, unsigned size, uint64_t cursor) "virtio_mmio_fuzz_read offset 0x%" PRIx64 " base 0x%" PRIx64 " fuzzed 0x%" PRIx64 " size %u cursor %" PRIu64
++virtio_mmio_dma_fuzz(uint64_t addr, unsigned len, uint32_t event, uint8_t opcode, uint8_t direction, uint64_t cursor, int status) "virtio_mmio_dma_fuzz addr 0x%" PRIx64 " len %u event 0x%" PRIx32 " opcode 0x%" PRIx8 " direction 0x%" PRIx8 " cursor %" PRIu64 " status %d"
  virtio_mmio_guest_page(uint64_t size, int shift) "guest page size 0x%" PRIx64 " shift %d"
  virtio_mmio_queue_write(uint64_t value, int max_size) "mmio_queue write 0x%" PRIx64 " max %d"
  virtio_mmio_setting_irq(int level) "virtio_mmio setting IRQ %d"
 --- a/hw/virtio/virtio-mmio.c
 +++ b/hw/virtio/virtio-mmio.c
 @@ -21,6 +21,7 @@
- 
+
  #include "qemu/osdep.h"
  #include "standard-headers/linux/virtio_mmio.h"
 +#include "standard-headers/linux/virtio_ids.h"
  #include "hw/irq.h"
  #include "hw/qdev-properties.h"
  #include "hw/sysbus.h"
-@@ -35,6 +36,82 @@
+@@ -35,6 +36,183 @@
  #include "qemu/log.h"
++#include "exec/address-spaces.h"
  #include "trace.h"
  
 +#define MORPHEUS_QEMU_INPUT_PATH_ENV "MORPHEUS_QEMU_INPUT_PATH"
++#define MORPHEUS_HP_DMA_EVENT_OFFSET 0x0c0u
++#define MORPHEUS_HP_DMA_ADDR_LO_OFFSET 0x0c4u
++#define MORPHEUS_HP_DMA_ADDR_HI_OFFSET 0x0c8u
++#define MORPHEUS_HP_DMA_EVENT_OPCODE_SHIFT 0u
++#define MORPHEUS_HP_DMA_EVENT_OPCODE_MASK 0x000000ffu
++#define MORPHEUS_HP_DMA_EVENT_DIRECTION_SHIFT 8u
++#define MORPHEUS_HP_DMA_EVENT_DIRECTION_MASK 0x00000300u
++#define MORPHEUS_HP_DMA_EVENT_SIZE_SHIFT 10u
++#define MORPHEUS_HP_DMA_EVENT_SIZE_MASK 0x0003fc00u
++#define MORPHEUS_HP_DMA_EVENT_DIR_FROM_DEVICE 0x2u
++#define MORPHEUS_HP_DMA_EVENT_DIR_BIDIRECTIONAL 0x3u
 +
 +typedef struct MorpheusVirtIOMMIOFuzzState {
 +    bool initialized;
@@ -30,6 +43,8 @@
 +    uint8_t *data;
 +    gsize len;
 +    uint64_t cursor;
++    uint32_t dma_addr_lo;
++    uint32_t dma_addr_hi;
 +} MorpheusVirtIOMMIOFuzzState;
 +
 +static MorpheusVirtIOMMIOFuzzState morpheus_virtio_mmio_fuzz;
@@ -83,6 +98,93 @@
 +    return value;
 +}
 +
++static void morpheus_virtio_mmio_next_buf(uint8_t *buf, unsigned len)
++{
++    unsigned i;
++
++    if (!morpheus_virtio_mmio_fuzz.len) {
++        memset(buf, 0, len);
++        return;
++    }
++
++    for (i = 0; i < len; i++) {
++        buf[i] = morpheus_virtio_mmio_fuzz
++                 .data[morpheus_virtio_mmio_fuzz.cursor %
++                       morpheus_virtio_mmio_fuzz.len];
++        morpheus_virtio_mmio_fuzz.cursor++;
++    }
++}
++
++static bool morpheus_virtio_mmio_dma_writable(uint8_t direction)
++{
++    return direction == MORPHEUS_HP_DMA_EVENT_DIR_FROM_DEVICE ||
++           direction == MORPHEUS_HP_DMA_EVENT_DIR_BIDIRECTIONAL;
++}
++
++static uint8_t morpheus_virtio_mmio_dma_event_opcode(uint32_t event)
++{
++    return (event & MORPHEUS_HP_DMA_EVENT_OPCODE_MASK) >>
++           MORPHEUS_HP_DMA_EVENT_OPCODE_SHIFT;
++}
++
++static uint8_t morpheus_virtio_mmio_dma_event_direction(uint32_t event)
++{
++    return (event & MORPHEUS_HP_DMA_EVENT_DIRECTION_MASK) >>
++           MORPHEUS_HP_DMA_EVENT_DIRECTION_SHIFT;
++}
++
++static unsigned morpheus_virtio_mmio_dma_event_len(uint32_t event)
++{
++    return (event & MORPHEUS_HP_DMA_EVENT_SIZE_MASK) >>
++           MORPHEUS_HP_DMA_EVENT_SIZE_SHIFT;
++}
++
++static bool morpheus_virtio_mmio_fuzz_dma_write(hwaddr offset, uint64_t value,
++                                                unsigned size)
++{
++    uint32_t event;
++    uint64_t addr;
++    uint8_t opcode;
++    uint8_t direction;
++    unsigned len;
++    uint8_t *buf;
++    MemTxResult status;
++
++    if (offset == MORPHEUS_HP_DMA_ADDR_LO_OFFSET && size == 4) {
++        morpheus_virtio_mmio_fuzz.dma_addr_lo = (uint32_t)value;
++        return true;
++    }
++    if (offset == MORPHEUS_HP_DMA_ADDR_HI_OFFSET && size == 4) {
++        morpheus_virtio_mmio_fuzz.dma_addr_hi = (uint32_t)value;
++        return true;
++    }
++    if (offset != MORPHEUS_HP_DMA_EVENT_OFFSET || size != 4) {
++        return false;
++    }
++
++    event = (uint32_t)value;
++    opcode = morpheus_virtio_mmio_dma_event_opcode(event);
++    direction = morpheus_virtio_mmio_dma_event_direction(event);
++    len = morpheus_virtio_mmio_dma_event_len(event);
++    addr = ((uint64_t)morpheus_virtio_mmio_fuzz.dma_addr_hi << 32) |
++           morpheus_virtio_mmio_fuzz.dma_addr_lo;
++
++    if (!morpheus_virtio_mmio_dma_writable(direction) || !addr || !len) {
++        trace_virtio_mmio_dma_fuzz(addr, len, event, opcode, direction,
++                                   morpheus_virtio_mmio_fuzz.cursor, -1);
++        return true;
++    }
++
++    buf = g_malloc(len);
++    morpheus_virtio_mmio_next_buf(buf, len);
++    status = address_space_write(&address_space_memory, addr,
++                                 MEMTXATTRS_UNSPECIFIED, buf, len);
++    g_free(buf);
++    trace_virtio_mmio_dma_fuzz(addr, len, event, opcode, direction,
++                               morpheus_virtio_mmio_fuzz.cursor, status);
++    return true;
++}
++
 +static uint64_t morpheus_virtio_mmio_fuzz_mix(hwaddr offset, uint64_t base,
 +                                              unsigned size, bool keep_nonzero)
 +{
@@ -101,7 +203,7 @@
  static bool virtio_mmio_ioeventfd_enabled(DeviceState *d)
  {
      VirtIOMMIOProxy *proxy = VIRTIO_MMIO(d);
-@@ -116,27 +193,43 @@
+@@ -116,27 +294,43 @@
      if (offset >= VIRTIO_MMIO_CONFIG) {
          offset -= VIRTIO_MMIO_CONFIG;
          if (proxy->legacy) {
@@ -151,7 +253,7 @@
          }
      }
      if (size != 4) {
-@@ -158,23 +251,27 @@
+@@ -158,23 +352,27 @@
          return vdev->device_id;
      case VIRTIO_MMIO_VENDOR_ID:
          return VIRT_VENDOR;
@@ -190,7 +292,7 @@
      case VIRTIO_MMIO_QUEUE_PFN:
          if (!proxy->legacy) {
              qemu_log_mask(LOG_GUEST_ERROR,
-@@ -195,9 +292,14 @@
+@@ -195,9 +393,14 @@
          }
          return proxy->vqs[vdev->queue_sel].enabled;
      case VIRTIO_MMIO_INTERRUPT_STATUS:
@@ -207,7 +309,7 @@
      case VIRTIO_MMIO_CONFIG_GENERATION:
          if (proxy->legacy) {
              qemu_log_mask(LOG_GUEST_ERROR,
-@@ -206,7 +308,10 @@
+@@ -206,7 +409,10 @@
                            __func__, offset);
              return 0;
          }
@@ -219,3 +321,14 @@
     case VIRTIO_MMIO_SHM_LEN_LOW:
     case VIRTIO_MMIO_SHM_LEN_HIGH:
          /*
+@@ -262,6 +466,10 @@
+
+     if (offset >= VIRTIO_MMIO_CONFIG) {
+         offset -= VIRTIO_MMIO_CONFIG;
++        if (morpheus_virtio_mmio_should_fuzz(vdev) &&
++            morpheus_virtio_mmio_fuzz_dma_write(offset, value, size)) {
++            return;
++        }
+         if (proxy->legacy) {
+             switch (size) {
+             case 1:

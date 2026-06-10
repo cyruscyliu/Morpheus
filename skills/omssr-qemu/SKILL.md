@@ -48,7 +48,8 @@ boot arguments or target selection.
 - `commands.*.result` defines summaries, artifacts, and stable details
 
 This descriptor is the source of truth for how Morpheus locates and publishes
-`qemu-system-aarch64`.
+`qemu-system-aarch64` and bundled firmware artifacts such as
+`edk2-aarch64-code`.
 
 Important descriptor fields:
 
@@ -68,7 +69,8 @@ Important descriptor fields:
 `qemu` can either inspect an existing executable or build one as a managed
 artifact through Morpheus-managed script execution.
 
-- `fetch` downloads and unpacks the requested source release
+- `fetch` downloads and unpacks the requested source release without
+  preserving archive owner IDs
 - `patch` applies the configured patch tree
 - `build` configures, compiles, and installs the executable into the managed
   install path
@@ -98,7 +100,7 @@ This validates the real managed QEMU workflow path.
 
 - executable inspection and version detection
 - managed source fetch, patch, build, and install
-- published QEMU executable artifacts for downstream tools
+- published QEMU executable and firmware artifacts for downstream tools
 - runtime execution against previously prepared artifacts
 
 ## Potential To-Do List

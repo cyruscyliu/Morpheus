@@ -52,7 +52,7 @@ function parseToolArgs(argv) {
     const key = token.slice(2);
     const next = argv[index + 1];
     if (repeatableFlags.has(key)) {
-      if (!next || next.startsWith("--")) {
+      if (typeof next !== "string" || next === "--") {
         flags[key] = Array.isArray(flags[key]) ? [...flags[key]] : [];
       } else {
         const current = Array.isArray(flags[key]) ? flags[key] : [];
@@ -396,7 +396,7 @@ function parseScriptedArgs(descriptor, args) {
     const key = token.slice(2);
     const next = args[index + 1];
     if (repeatableFlags.has(key)) {
-      if (typeof next !== "string" || next.startsWith("--")) {
+      if (typeof next !== "string" || next === "--") {
         flags[key] = Array.isArray(flags[key]) ? [...flags[key]] : [];
       } else {
         const current = Array.isArray(flags[key]) ? flags[key] : [];
@@ -614,6 +614,7 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
 
   const scriptPath = path.join(repoRoot(), descriptor.installRoot, spec.script.path);
   const logFd = detachedExec ? fs.openSync(logFile, "a") : null;
+  const logStream = detachedExec ? null : fs.createWriteStream(logFile, { flags: "a" });
   const child = spawn(spec.script.shell || "bash", [scriptPath], {
     cwd: childCwd,
     env,
@@ -634,7 +635,9 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
       if (!chunk) {
         return;
       }
-      fs.appendFileSync(logFile, chunk, "utf8");
+      if (logStream) {
+        logStream.write(chunk);
+      }
       if (options.jsonMode && options.emitStream) {
         writeStdoutLine(JSON.stringify({
           command,
@@ -665,7 +668,17 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
         emitChunk("stderr", chunk);
       });
     }
-    child.on("error", reject);
+    child.on("error", (error) => {
+      if (logFd != null) {
+        try {
+          fs.closeSync(logFd);
+        } catch {}
+      }
+      if (logStream) {
+        logStream.end();
+      }
+      reject(error);
+    });
     child.on("close", (code) => {
       if (logFd != null) {
         try {
@@ -710,12 +723,17 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
         fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
         fs.writeFileSync(manifestPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
       }
-      resolve({
+      const finish = () => resolve({
         status: exitCode,
         stdout: stdoutText,
         stderr: stderrText,
         toolPayload: payload,
       });
+      if (logStream) {
+        logStream.end(finish);
+      } else {
+        finish();
+      }
     });
   });
 }

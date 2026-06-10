@@ -20,7 +20,14 @@ if [ ! -d "${patch_dir}" ]; then
   exit 1
 fi
 
-fingerprint_files="$(find "${patch_dir}" -type f | sort)"
+repo_root="$(git -C "$(dirname "$0")/../.." rev-parse --show-toplevel 2>/dev/null || true)"
+patch_dir_abs="$(realpath "${patch_dir}")"
+if [ -n "${repo_root}" ] && [ "${patch_dir_abs#${repo_root}/}" != "${patch_dir_abs}" ]; then
+  patch_dir_rel="${patch_dir_abs#${repo_root}/}"
+  fingerprint_files="$(git -C "${repo_root}" ls-files -- "${patch_dir_rel}" | sed "s#^#${repo_root}/#")"
+else
+  fingerprint_files="$(find "${patch_dir}" -type f | sort)"
+fi
 fingerprint="$(
   {
     printf '%s\n' "${fingerprint_files}"

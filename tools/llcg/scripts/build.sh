@@ -2,26 +2,29 @@
 set -euo pipefail
 
 tool_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-legacy="${tool_root}/bin/llcg"
 runtime_helper_default="$(cd "${tool_root}/../llbase/scripts" && pwd)/runtime.sh"
 result_file="${MORPHEUS_LLCG_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
-output_dir="${MORPHEUS_LLCG_OUTPUT:?}"
 build_dir="${MORPHEUS_LLCG_BUILD_DIR:-${tool_root}/build}"
-generator="${MORPHEUS_LLCG_GENERATOR:?}"
-source_dir="${MORPHEUS_LLCG_SOURCE_DIR:?}"
-file_list="${MORPHEUS_LLCG_FILE_FILE:-}"
-inline_files="${MORPHEUS_LLCG_FILE:-}"
+clang="${MORPHEUS_LLCG_CLANG:-15}"
 llbase_contract="${MORPHEUS_LLCG_LLBASE_CONTRACT:-}"
 
-if [ -z "${file_list}" ] && [ -s ".morpheus-file.txt" ]; then
-  file_list="$(pwd)/.morpheus-file.txt"
-fi
-
-mkdir -p "${output_dir}" "${build_dir}"
+mkdir -p "${build_dir}"
 [ -n "${llbase_contract}" ] || {
   echo "llcg build requires --llbase-contract so the managed run uses the shared llbase container runtime" >&2
   exit 1
 }
+
+cache_file="${build_dir}/CMakeCache.txt"
+if [ -f "${cache_file}" ] && ! grep -q "^CMAKE_HOME_DIRECTORY:INTERNAL=${tool_root}$" "${cache_file}"; then
+  rm -rf "${build_dir}"
+  mkdir -p "${build_dir}"
+fi
+
+callgraph_pass="${build_dir}/llvm-cg/llvm-cg.so"
+legacy_callgraph_pass="${build_dir}/llvm-cg/libDevilang.so"
+if [ -f "${legacy_callgraph_pass}" ] && [ ! -f "${callgraph_pass}" ]; then
+  rm -rf "${build_dir}/llvm-cg" "${build_dir}/llvm-cg-prefix/src/llvm-cg-stamp"
+fi
 
 runtime_helper="$(
   node - "${llbase_contract}" "${runtime_helper_default}" <<'EOF'
@@ -32,77 +35,49 @@ process.stdout.write(String(contract.helperScripts?.runtime || fallbackPath));
 EOF
 )"
 source "${runtime_helper}"
-llbase_prepare_runtime "${llbase_contract}" "" "${MORPHEUS_LLCG_CLANG:-15}"
+llbase_prepare_runtime "${llbase_contract}" "" "${clang}"
 
-case "${generator}" in
-  files)
-    cmd=("${legacy}" genmutator files "--source-dir" "${source_dir}" "--output" "${output_dir}" "--json")
-    [ -n "${MORPHEUS_LLCG_SCOPE_NAME:-}" ] && cmd+=("--scope-name" "${MORPHEUS_LLCG_SCOPE_NAME}")
-    [ -n "${MORPHEUS_LLCG_ARCH:-}" ] && cmd+=("--arch" "${MORPHEUS_LLCG_ARCH}")
-    if [ -n "${inline_files}" ]; then
-      while IFS= read -r item; do
-        [ -n "${item}" ] || continue
-        cmd+=("--file" "${item}")
-      done <<< "${inline_files}"
-    elif [ -n "${file_list}" ] && [ -s "${file_list}" ]; then
-      while IFS= read -r item; do
-        [ -n "${item}" ] || continue
-        cmd+=("--file" "${item}")
-      done < "${file_list}"
-    else
-      echo "llcg build with generator=files requires at least one --file" >&2
-      exit 1
-    fi
-    ;;
-  interfaces)
-    interfaces="${MORPHEUS_LLCG_INTERFACES:-}"
-    [ -n "${interfaces}" ] || { echo "llcg build with generator=interfaces requires --interfaces" >&2; exit 1; }
-    cmd=("${legacy}" genmutator interfaces "--source-dir" "${source_dir}" "--interfaces" "${interfaces}" "--output" "${output_dir}" "--json")
-    [ -n "${MORPHEUS_LLCG_ARCH:-}" ] && cmd+=("--arch" "${MORPHEUS_LLCG_ARCH}")
-    ;;
-  *)
-    echo "unsupported llcg generator: ${generator}" >&2
-    exit 1
-    ;;
-esac
-
-tmp_json="$(mktemp)"
-trap 'rm -f "${tmp_json}"' EXIT
+tmp_err="$(mktemp)"
+trap 'rm -f "${tmp_err}"' EXIT
+set +e
 llbase_exec_in_container \
   "${tool_root}" \
-  "${build_dir}" \
   "${tool_root}" \
-  "${output_dir}" \
-  "${source_dir}" \
+  "${build_dir}" \
   "${llbase_contract}" \
-  "${file_list}" \
   -- \
-  "${cmd[@]}" \
-  > "${tmp_json}"
-node - "${tmp_json}" "${result_file}" "${output_dir}" <<'EOF'
+  bash -lc "cmake -S '${tool_root}' -B '${build_dir}' -DCLANG_VERSION='${clang}' -DLLVM_DIR='/usr/lib/llvm-${clang}/lib/cmake/llvm' >/dev/null && cmake --build '${build_dir}' --parallel --target build >/dev/null" \
+  2> "${tmp_err}"
+llcg_rc=$?
+set -e
+
+node - "${result_file}" "${build_dir}" "${llcg_rc}" "${clang}" "${tmp_err}" <<'EOF'
 const fs = require("fs");
 const path = require("path");
 
-const payload = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-const resultFile = path.resolve(process.argv[3]);
-const outputDir = path.resolve(process.argv[4]);
-const artifacts = Array.isArray(payload.artifacts)
-  ? payload.artifacts
-      .filter((entry) => entry && typeof entry.key === "string" && typeof entry.resolved_path === "string")
-      .map((entry) => ({ path: entry.key, location: entry.resolved_path }))
-  : [];
-artifacts.push({ path: "output-dir", location: outputDir });
-fs.writeFileSync(
-  resultFile,
-  JSON.stringify({
-    summary: payload.summary || "generated llcg mutator artifacts",
-    details: {
-      ...(payload.details || {}),
-      output: outputDir,
-      llbase_contract: process.env.MORPHEUS_LLCG_LLBASE_CONTRACT || "",
-    },
-    artifacts,
-  }, null, 2) + "\n",
-  "utf8",
-);
+const [resultFileArg, buildDirArg, rawExitCodeArg, clangArg, errPathArg] = process.argv.slice(2);
+const resultFile = path.resolve(resultFileArg);
+const buildDir = path.resolve(buildDirArg);
+const rawExitCode = Number(rawExitCodeArg || "1");
+const rawStderr = fs.readFileSync(errPathArg, "utf8");
+const artifacts = [
+  { path: "build-dir", location: buildDir },
+  { path: "kallgraph-bin", location: path.join(buildDir, "kallgraph", "bin", "KallGraph") },
+  { path: "callgraph-pass", location: path.join(buildDir, "llvm-cg", "llvm-cg.so") },
+];
+const payload = {
+  summary: rawExitCode === 0 ? "built llcg native artifacts" : "llcg native build failed",
+  details: {
+    build_dir: buildDir,
+    clang: String(clangArg || ""),
+    llbase_contract: process.env.MORPHEUS_LLCG_LLBASE_CONTRACT || "",
+    ...(rawStderr ? { stderr: rawStderr } : {}),
+  },
+  artifacts,
+};
+fs.writeFileSync(resultFile, JSON.stringify(payload, null, 2) + "\n", "utf8");
+if (rawExitCode !== 0) {
+  process.stderr.write(JSON.stringify(payload, null, 2) + "\n");
+}
+process.exit(rawExitCode);
 EOF

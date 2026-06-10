@@ -95,6 +95,7 @@ function createWorkflowRun(workspaceRoot, workflowName, options = {}) {
     id,
     workflow: workflowName || "workflow",
     configPath: options.configPath || null,
+    metadata: options.metadata == null ? null : options.metadata,
     category,
     status: "created",
     createdAt,
@@ -113,7 +114,11 @@ function createWorkflowRun(workspaceRoot, workflowName, options = {}) {
     status: record.status,
     createdAt: record.createdAt,
     completedAt: null,
-    summary: { workflow: record.workflow, category: record.category }
+    summary: {
+      workflow: record.workflow,
+      category: record.category,
+      metadata: record.metadata == null ? null : record.metadata,
+    }
   });
   return record;
 }
@@ -134,7 +139,11 @@ function updateWorkflowRun(runDir, mutator) {
     completedAt: next.status === "success" || next.status === "error" || next.status === "stopped"
       ? next.updatedAt
       : null,
-    summary: { workflow: next.workflow, category: next.category }
+    summary: {
+      workflow: next.workflow,
+      category: next.category,
+      metadata: next.metadata == null ? null : next.metadata,
+    }
   });
   return next;
 }

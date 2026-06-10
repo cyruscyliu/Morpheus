@@ -139,6 +139,12 @@ workflows:
         args:
           - --llbase-contract
           - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+      - id: llcg_mutator
+        tool: llcg
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
           - --source-dir
           - "{{steps.llbic_build.artifacts.source-dir.location}}"
           - --generator
@@ -158,7 +164,7 @@ workflows:
           - --all-bc-list
           - "{{steps.llbic_build.artifacts.bitcode-files.location}}"
           - --filter
-          - "{{steps.llcg_build.artifacts.mutator_manifest.location}}"
+          - "{{steps.llcg_mutator.artifacts.mutator_manifest.location}}"
   buildroot-build:
     category: build
     steps:

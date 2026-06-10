@@ -2,7 +2,7 @@ use core::time::Duration;
 use std::{env, path::PathBuf, process};
 
 use libafl::{
-    corpus::{Corpus, InMemoryCorpus, OnDiskCorpus},
+    corpus::{Corpus, OnDiskCorpus},
     events::{EventConfig, launcher::Launcher},
     feedback_or, feedback_or_fast,
     feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
@@ -41,7 +41,12 @@ pub fn fuzz() {
         .and_then(|value| value.parse::<u16>().ok())
         .unwrap_or(1341);
     let cores = Cores::from_cmdline("1").unwrap();
-    let objective_dir = PathBuf::from("./crashes");
+    let corpus_dir = env::var("MORPHEUS_LIBAFL_CORPUS_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("./corpus"));
+    let objective_dir = env::var("MORPHEUS_LIBAFL_OBJECTIVE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("./crashes"));
 
     let mut run_client = |state: Option<_>, mut mgr, _client_description| {
         let args: Vec<String> = env::args().collect();
@@ -86,7 +91,7 @@ pub fn fuzz() {
             let mut generator = ScenarioGenerator::default();
             let mut state = StdState::new(
                 StdRand::with_seed(current_nanos()),
-                InMemoryCorpus::new(),
+                OnDiskCorpus::new(corpus_dir.clone()).unwrap(),
                 OnDiskCorpus::new(objective_dir.clone()).unwrap(),
                 &mut feedback,
                 &mut objective,

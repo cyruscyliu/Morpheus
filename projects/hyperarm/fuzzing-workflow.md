@@ -534,6 +534,10 @@ and `libafl_exec` reconstructs them from step log records into
 `runtime/l1-runtime`. nqc2 postprocessing consumes that reconstructed guest
 trace instead of reading trace files back from the L1 root filesystem.
 
+The LibAFL input corpus is also persisted under the `libafl_exec` runtime
+directory. Normal generated corpus entries are written to `runtime/corpus`.
+Crash and timeout objectives are written to `runtime/crashes`.
+
 The coverage outputs are written under the `libafl_exec` runtime directory for
 the workflow run:
 

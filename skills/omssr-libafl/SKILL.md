@@ -83,6 +83,8 @@ the guest stub artifact.
   should stop after a bounded fuzzing interval. Runtime files emitted by the
   L1 stub under `/run/morpheus-libafl` are reconstructed from step log records
   into `<run-dir>/l1-runtime` so fuzzing does not dirty the L1 root disk.
+  The main LibAFL corpus is disk-backed at `<run-dir>/corpus`, while
+  crash/timeout objectives are disk-backed at `<run-dir>/crashes`.
 - `inspect` reports managed source and built artifact locations
 
 The current `exec` phase only launches the guest stub in L1.

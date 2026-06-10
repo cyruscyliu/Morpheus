@@ -10,13 +10,15 @@ run_seconds="${MORPHEUS_LIBAFL_RUN_SECONDS:-0}"
 result_file="${MORPHEUS_LIBAFL_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 manifest_file="${run_dir}/manifest.json"
 l1_runtime_dir="${run_dir}/l1-runtime"
+corpus_dir="${run_dir}/corpus"
+objective_dir="${run_dir}/crashes"
 step_log_file="${run_dir%/}/../stdout.log"
 fuzzer_bin="${install_dir}/bin/qemu_nesting"
 stub_elf="${install_dir}/bin/libafl_nesting_stub"
 bridge_dir="${install_dir}/../build/qemu-libafl-bridge"
 qemu_bundle_dir="${bridge_dir}/build/qemu-bundle/usr/local/share/qemu"
 
-mkdir -p "${run_dir}" "${l1_runtime_dir}" "$(dirname "${result_file}")"
+mkdir -p "${run_dir}" "${l1_runtime_dir}" "${corpus_dir}" "${objective_dir}" "$(dirname "${result_file}")"
 find "${l1_runtime_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 
 manifest_pid=""
@@ -177,7 +179,7 @@ NODE
 
 write_result() {
   cat > "${result_file}" <<EOF
-{"details":{"pid":null,"detached":false,"run_dir":"${run_dir}","manifest":"${manifest_file}","l1_runtime_dir":"${l1_runtime_dir}"},"artifacts":[{"path":"l1-runtime-dir","location":"${l1_runtime_dir}"}]}
+{"details":{"pid":null,"detached":false,"run_dir":"${run_dir}","manifest":"${manifest_file}","l1_runtime_dir":"${l1_runtime_dir}","corpus_dir":"${corpus_dir}","objective_dir":"${objective_dir}"},"artifacts":[{"path":"l1-runtime-dir","location":"${l1_runtime_dir}"},{"path":"corpus-dir","location":"${corpus_dir}"},{"path":"objective-dir","location":"${objective_dir}"}]}
 EOF
 }
 
@@ -192,7 +194,14 @@ args=(
   "-L" "${qemu_data_dir}"
 )
 
-launch_cmd=(env "STUB=${stub_elf}" "${fuzzer_bin}" "${args[@]}")
+launch_cmd=(
+  env
+  "STUB=${stub_elf}"
+  "MORPHEUS_LIBAFL_CORPUS_DIR=${corpus_dir}"
+  "MORPHEUS_LIBAFL_OBJECTIVE_DIR=${objective_dir}"
+  "${fuzzer_bin}"
+  "${args[@]}"
+)
 
 child_pid=""
 cleanup() {
@@ -202,7 +211,7 @@ cleanup() {
   fi
   extract_l1_runtime_from_log "${l1_runtime_dir}" "${step_log_file}"
   cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"libafl","status":"${status}","runDir":"${run_dir}","manifest":"${manifest_file}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","l1RuntimeDir":"${l1_runtime_dir}"}
+{"schemaVersion":1,"tool":"libafl","status":"${status}","runDir":"${run_dir}","manifest":"${manifest_file}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","l1RuntimeDir":"${l1_runtime_dir}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}"}
 EOF
 }
 
@@ -210,10 +219,10 @@ if [ "${detach}" = "true" ]; then
   setsid "${launch_cmd[@]}" < /dev/null &
   pid="$!"
   cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","pid":${pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}"}
+{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","pid":${pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}"}
 EOF
   cat > "${result_file}" <<EOF
-{"details":{"pid":${pid},"detached":true,"run_dir":"${run_dir}","manifest":"${manifest_file}","l1_runtime_dir":"${l1_runtime_dir}"},"artifacts":[{"path":"l1-runtime-dir","location":"${l1_runtime_dir}"}]}
+{"details":{"pid":${pid},"detached":true,"run_dir":"${run_dir}","manifest":"${manifest_file}","l1_runtime_dir":"${l1_runtime_dir}","corpus_dir":"${corpus_dir}","objective_dir":"${objective_dir}"},"artifacts":[{"path":"l1-runtime-dir","location":"${l1_runtime_dir}"},{"path":"corpus-dir","location":"${corpus_dir}"},{"path":"objective-dir","location":"${objective_dir}"}]}
 EOF
   exit 0
 fi
@@ -226,7 +235,7 @@ if [ "${run_seconds}" != "0" ]; then
     setsid "${launch_cmd[@]}" &
     child_pid="$!"
     cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","pid":${child_pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","attempt":${attempt}}
+{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","pid":${child_pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","attempt":${attempt},"corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}"}
 EOF
     while [ "${SECONDS}" -lt "${end_time}" ] && kill -0 "${child_pid}" 2>/dev/null; do
       if ps -o stat= --ppid "${child_pid}" | grep -q 'Z'; then
@@ -255,14 +264,14 @@ else
   setsid "${launch_cmd[@]}" &
   child_pid="$!"
   cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","pid":${child_pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}"}
+{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","pid":${child_pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}"}
 EOF
   wait "${child_pid}"
   child_pid=""
 fi
 
 cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"libafl","status":"success","runDir":"${run_dir}","manifest":"${manifest_file}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","l1RuntimeDir":"${l1_runtime_dir}"}
+{"schemaVersion":1,"tool":"libafl","status":"success","runDir":"${run_dir}","manifest":"${manifest_file}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","l1RuntimeDir":"${l1_runtime_dir}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}"}
 EOF
 extract_l1_runtime_from_log "${l1_runtime_dir}" "${step_log_file}"
 write_result

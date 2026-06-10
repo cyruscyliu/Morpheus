@@ -22,6 +22,17 @@ venv/
 # Imported tool outputs
 tools/llcg/build/
 tools/llcg/out/
+tools/llcg/**/*.o
+tools/llcg/libs/*.cpp
+tools/llcg/libs/*.h
+tools/llcg/libs/*.interp
+tools/llcg/libs/*.tokens
+tools/llcg/bin/*
+!tools/llcg/bin/llcg
+tools/llcg/bin/__pycache__/
+tools/llcg/src/KallGraph/build/
+tools/llcg/src/KallGraph/SVF-3.3/build/
+tools/llcg/compile_commands.json
 tools/llbic/out/
 tools/llbic/sources/
 tools/llbic/status/

@@ -29,6 +29,7 @@ if(DEVILANG_BUILD_PASS)
 
     target_compile_options(Devilang PRIVATE -g -fno-rtti)
     target_compile_options(DevilangStatic PRIVATE -g -fno-rtti)
+    set_target_properties(Devilang PROPERTIES OUTPUT_NAME llvm-cg)
     set_target_properties(DevilangStatic PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
     foreach(extra_include

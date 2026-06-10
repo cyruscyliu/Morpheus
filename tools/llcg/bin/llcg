@@ -415,7 +415,6 @@ def apply_reachability_post_mutator(graph: dict, groups: list[dict]) -> None:
 def collapse_graph_by_groups(graph: dict, groups: list[dict]) -> dict:
     member_to_group: dict[str, str] = {}
     for group in groups:
-        member_to_group[group["label"]] = group["label"]
         for member in group["members"]:
             member_to_group[member] = group["label"]
 
@@ -423,9 +422,8 @@ def collapse_graph_by_groups(graph: dict, groups: list[dict]) -> dict:
     collapsed = {"nodes": set(), "edges": {}}
 
     for src in grouped_nodes:
-        src_group = member_to_group[src]
-        collapsed["nodes"].add(src_group)
-        collapsed["edges"].setdefault(src_group, set())
+        collapsed["nodes"].add(src)
+        collapsed["edges"].setdefault(src, set())
         visited = {src}
         worklist = collections.deque([src])
         while worklist:
@@ -436,10 +434,10 @@ def collapse_graph_by_groups(graph: dict, groups: list[dict]) -> dict:
                 visited.add(nxt)
                 dst_group = member_to_group.get(nxt)
                 if dst_group:
-                    if dst_group != src_group:
-                        collapsed["nodes"].add(dst_group)
-                        collapsed["edges"].setdefault(dst_group, set())
-                        collapsed["edges"][src_group].add(dst_group)
+                    if nxt != src:
+                        collapsed["nodes"].add(nxt)
+                        collapsed["edges"].setdefault(nxt, set())
+                        collapsed["edges"][src].add(nxt)
                     continue
                 worklist.append(nxt)
 
@@ -583,7 +581,7 @@ def ensure_native_artifacts_present() -> None:
     required = {
         "build_dir": DEFAULT_BUILD_DIR,
         "kallgraph_bin": DEFAULT_BUILD_DIR / "kallgraph" / "bin" / "KallGraph",
-        "callgraph_lib": DEFAULT_BUILD_DIR / "llvm-cg" / "libDevilang.so",
+        "callgraph_lib": DEFAULT_BUILD_DIR / "llvm-cg" / "libllvm-cg.so",
         "extapi_bc": DEFAULT_BUILD_DIR / "svf" / "lib" / "extapi.bc",
     }
     missing = [key for key, path in required.items() if not path.exists()]
@@ -1336,7 +1334,7 @@ def run_pipeline(
     if kallgraph_bin is None:
         raise FileNotFoundError("Could not find KallGraph binary after native build.")
 
-    callgraph_lib = first_existing([DEFAULT_BUILD_DIR / "llvm-cg" / "libDevilang.so"])
+    callgraph_lib = first_existing([DEFAULT_BUILD_DIR / "llvm-cg" / "libllvm-cg.so"])
     if callgraph_lib is None:
         raise FileNotFoundError("Could not find the callgraph pass library after native build.")
 
@@ -1424,7 +1422,7 @@ def run_pipeline(
         "nodes": set(graph["nodes"]),
         "edges": {src: set(dsts) for src, dsts in graph["edges"].items()},
     }
-    write_dot_graph(collapsed_path, collapsed_graph)
+    write_dot_graph(collapsed_path, collapsed_graph, groups)
 
     kallgraph_copy = out_dir / f"{stem}_kallgraph.txt"
     shutil.copy2(latest_callgraph, kallgraph_copy)

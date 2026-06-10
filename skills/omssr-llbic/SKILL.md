@@ -42,6 +42,12 @@ For Morpheus-managed execution, prefer:
 ./bin/morpheus inspect --tool llbic --target /path/to/llbic.json --json
 ```
 
+Morpheus-managed runs use the stable workspace layout:
+
+- `tools/llbic/downloads/` for downloaded kernel archives
+- `tools/llbic/src/` for extracted kernel source trees
+- `tools/llbic/builds/<key>/output/` for build manifests, logs, and bitcode
+
 Typical flow:
 
 ```bash
@@ -138,12 +144,6 @@ Inspect a prior result:
 ./llbic inspect out/linux-6.18.16-x86_64-clang18/llbic.json --json
 ```
 
-Collect the support status board from completed build manifests:
-
-```bash
-python3 scripts/collect_status.py
-```
-
 ## Scoped Build Semantics
 
 `--file` maps cleanly to Kbuild targets for standalone C and assembly inputs.
@@ -190,40 +190,13 @@ manifest also records `requested_clang`, which is important for distinguishing
 support rows when the same kernel and arch are tested under different requested
 toolchains, including failed host runs where the requested Clang is missing.
 
-## Status Workflow
-
-This repo does not currently use a standalone unit test suite as the primary
-regression contract. The contributor workflow is:
-
-1. run the build path you changed
-2. collect the resulting artifacts
-3. update the status board when support coverage or regression expectations change
-
-The status board files are:
-
-- `status/status.json`
-- `status/STATUS.md`
-- `status/badges/overall.json`
-- `status/badges/bitcode.json`
-- `status/badges/vmlinux.json`
-
-The board should be monotonic by default: existing passing entries should not
-silently regress to failing entries unless the pull request explicitly changes
-the support contract or documents a regression. The collector compares against
-the existing `status/status.json`, warns when previously good rows regress, and
-only refreshes the badge JSON files when there are no warnings. Use
-`--force-badges` only when you intentionally want to regenerate badge files
-despite those warnings. For row identity, treat support targets as distinct by
-`arch + requested_clang + kernel`.
-
 ## Documentation Priorities
 
 When explaining or updating behavior, prefer these sources in order:
 
 1. `./llbic --help`
 2. `README.md`
-3. `status/status.json`, `status/STATUS.md`, `status/badges/`, and `scripts/collect_status.py`
-4. the implementation in `llbic`
+3. the implementation in `llbic`
 
 If command behavior changes, update the documentation in the same change.
 

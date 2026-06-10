@@ -9,12 +9,15 @@ detach="${MORPHEUS_LIBAFL_DETACH:-false}"
 run_seconds="${MORPHEUS_LIBAFL_RUN_SECONDS:-0}"
 result_file="${MORPHEUS_LIBAFL_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 manifest_file="${run_dir}/manifest.json"
+l1_runtime_dir="${run_dir}/l1-runtime"
+step_log_file="${run_dir%/}/../stdout.log"
 fuzzer_bin="${install_dir}/bin/qemu_nesting"
 stub_elf="${install_dir}/bin/libafl_nesting_stub"
 bridge_dir="${install_dir}/../build/qemu-libafl-bridge"
 qemu_bundle_dir="${bridge_dir}/build/qemu-bundle/usr/local/share/qemu"
 
-mkdir -p "${run_dir}" "$(dirname "${result_file}")"
+mkdir -p "${run_dir}" "${l1_runtime_dir}" "$(dirname "${result_file}")"
+find "${l1_runtime_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 
 manifest_pid=""
 if [ -f "${manifest_file}" ]; then
@@ -78,6 +81,105 @@ overlay_image="${state_fields[1]}"
 l1_cpu="${state_fields[3]}"
 l1_memory="${state_fields[4]}"
 l1_smp="${state_fields[5]}"
+qemu_data_dir="${qemu_bundle_dir}"
+firmware_data_dir="$(dirname "${firmware}")"
+if [ ! -f "${qemu_data_dir}/efi-virtio.rom" ] && \
+   [ -f "${firmware_data_dir}/efi-virtio.rom" ]; then
+  qemu_data_dir="${firmware_data_dir}"
+elif [ ! -f "${qemu_data_dir}/efi-virtio.rom" ] && \
+     [ -f "/usr/share/qemu/efi-virtio.rom" ]; then
+  qemu_data_dir="/usr/share/qemu"
+fi
+
+extract_l1_runtime_from_log() {
+  local output_dir="$1"
+  local log_file="$2"
+
+  if [ ! -f "${log_file}" ]; then
+    return 0
+  fi
+  node - "${log_file}" "${output_dir}" <<'NODE'
+const fs = require("fs");
+const path = require("path");
+
+const logFile = process.argv[2];
+const outputDir = process.argv[3];
+const safeName = /^[A-Za-z0-9._-]+$/;
+const records = new Map();
+
+function resetRecord(name, size, dumped, truncated) {
+  if (!safeName.test(name)) {
+    return;
+  }
+  records.set(name, {
+    size: Number(size),
+    dumped: Number(dumped),
+    truncated: truncated === "1",
+    chunks: new Map(),
+    complete: false,
+  });
+}
+
+function recordFor(name) {
+  if (!safeName.test(name) || !records.has(name)) {
+    return null;
+  }
+  return records.get(name);
+}
+
+function writeRecord(name, record) {
+  if (!record || !record.complete) {
+    return;
+  }
+  const chunks = [...record.chunks.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .map((entry) => entry[1]);
+  fs.mkdirSync(outputDir, { recursive: true });
+  fs.writeFileSync(path.join(outputDir, name), Buffer.concat(chunks));
+}
+
+const logPrefix = "LQPRINTF: ";
+const content = fs.readFileSync(logFile, "utf8");
+for (const line of content.split(/\r?\n/)) {
+  const index = line.indexOf(logPrefix);
+  const message = index >= 0 ? line.slice(index + logPrefix.length) : line;
+  let match = message.match(
+    /^stub-runtime begin name=([A-Za-z0-9._-]+) size=(\d+) dumped=(\d+) truncated=([01])$/,
+  );
+  if (match) {
+    resetRecord(match[1], match[2], match[3], match[4]);
+    continue;
+  }
+
+  match = message.match(
+    /^stub-runtime data name=([A-Za-z0-9._-]+) offset=(\d+) hex=([0-9a-f]*)$/,
+  );
+  if (match) {
+    const record = recordFor(match[1]);
+    if (!record || !/^(?:[0-9a-f]{2})*$/.test(match[3])) {
+      continue;
+    }
+    record.chunks.set(Number(match[2]), Buffer.from(match[3], "hex"));
+    continue;
+  }
+
+  match = message.match(/^stub-runtime end name=([A-Za-z0-9._-]+)$/);
+  if (match) {
+    const record = recordFor(match[1]);
+    if (record) {
+      record.complete = true;
+      writeRecord(match[1], record);
+    }
+  }
+}
+NODE
+}
+
+write_result() {
+  cat > "${result_file}" <<EOF
+{"details":{"pid":null,"detached":false,"run_dir":"${run_dir}","manifest":"${manifest_file}","l1_runtime_dir":"${l1_runtime_dir}"},"artifacts":[{"path":"l1-runtime-dir","location":"${l1_runtime_dir}"}]}
+EOF
+}
 
 args=(
   "-machine" "virt,virtualization=on,gic-version=3"
@@ -87,7 +189,7 @@ args=(
   "-nographic"
   "-bios" "${firmware}"
   "-drive" "file=${overlay_image},if=virtio,format=qcow2"
-  "-L" "${qemu_bundle_dir}"
+  "-L" "${qemu_data_dir}"
 )
 
 launch_cmd=(env "STUB=${stub_elf}" "${fuzzer_bin}" "${args[@]}")
@@ -98,8 +200,9 @@ cleanup() {
   if [ -n "${child_pid}" ]; then
     kill_run "${child_pid}"
   fi
+  extract_l1_runtime_from_log "${l1_runtime_dir}" "${step_log_file}"
   cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"libafl","status":"${status}","runDir":"${run_dir}","manifest":"${manifest_file}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}"}
+{"schemaVersion":1,"tool":"libafl","status":"${status}","runDir":"${run_dir}","manifest":"${manifest_file}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","l1RuntimeDir":"${l1_runtime_dir}"}
 EOF
 }
 
@@ -110,7 +213,7 @@ if [ "${detach}" = "true" ]; then
 {"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","pid":${pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}"}
 EOF
   cat > "${result_file}" <<EOF
-{"details":{"pid":${pid},"detached":true,"run_dir":"${run_dir}","manifest":"${manifest_file}"}}
+{"details":{"pid":${pid},"detached":true,"run_dir":"${run_dir}","manifest":"${manifest_file}","l1_runtime_dir":"${l1_runtime_dir}"},"artifacts":[{"path":"l1-runtime-dir","location":"${l1_runtime_dir}"}]}
 EOF
   exit 0
 fi
@@ -159,8 +262,7 @@ EOF
 fi
 
 cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"libafl","status":"success","runDir":"${run_dir}","manifest":"${manifest_file}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}"}
+{"schemaVersion":1,"tool":"libafl","status":"success","runDir":"${run_dir}","manifest":"${manifest_file}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","l1RuntimeDir":"${l1_runtime_dir}"}
 EOF
-cat > "${result_file}" <<EOF
-{"details":{"pid":null,"detached":false,"run_dir":"${run_dir}","manifest":"${manifest_file}"}}
-EOF
+extract_l1_runtime_from_log "${l1_runtime_dir}" "${step_log_file}"
+write_result

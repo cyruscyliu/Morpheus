@@ -18,5 +18,9 @@ prepared `nvirsh` image.
 `exec` supports `--detach` for background launches and `--run-seconds N` for
 attached runs that stop the fuzzer after a bounded interval.
 
+During attached fuzzing, L1 runtime files under `/run/morpheus-libafl` are
+reconstructed from `LQPRINTF` step-log records into `runtime/l1-runtime`.
+The exec path avoids writing those files back into the L1 root filesystem.
+
 When `reuse-build-dir` is enabled and all installed runtime artifacts are
 present, `build` reuses them without requiring host build dependencies.

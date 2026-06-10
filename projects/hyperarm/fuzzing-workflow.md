@@ -529,8 +529,10 @@ Main ways to improve throughput:
 
 ## Coverage
 
-After fuzzing, `nvirsh_inspect` and nqc2 postprocessing extract and convert the
-guest trace.
+During fuzzing, the L1 stub writes runtime files under `/run/morpheus-libafl`
+and `libafl_exec` reconstructs them from step log records into
+`runtime/l1-runtime`. nqc2 postprocessing consumes that reconstructed guest
+trace instead of reading trace files back from the L1 root filesystem.
 
 The coverage outputs are written under the `libafl_exec` runtime directory for
 the workflow run:

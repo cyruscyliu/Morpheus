@@ -302,7 +302,7 @@ workflows:
           - --install-dir
           - "{{steps.nqc2_build.artifacts.install-dir.location}}"
           - --trace
-          - "{{steps.nvirsh_inspect.artifacts.guest-nqc2-trace.location}}"
+          - "{{steps.libafl_exec.details.l1_runtime_dir}}/morpheus-nqc2.trace"
           - --elf
           - "{{steps.nvirsh_inspect.artifacts.guest-kernel-vmlinux.location}}"
           - --trace-output

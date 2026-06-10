@@ -74,6 +74,9 @@ try {
     && state.layeredState.l1.guestNqc2Plugin
       ? state.layeredState.l1.guestNqc2Plugin
       : "";
+  const statusOk = state.status === "prepared" || state.status === "stopped";
+  const phaseOk =
+    state.currentPhase === "prepared" || state.currentPhase === "stopped";
   const matches =
     state
     && state.tool === "nvirsh"
@@ -82,8 +85,8 @@ try {
     && state.source === sourceDir
     && state.buildDir === buildDir
     && state.installDir === installDir
-    && state.status === "prepared"
-    && state.currentPhase === "prepared"
+    && statusOk
+    && phaseOk
     && state.phases
     && state.phases.build === "success"
     && recordedStub === (guestStub || "")
@@ -99,7 +102,6 @@ NODE
 if [ "${reuse_build_dir}" = "true" ] && [ -f "${state_file}" ]; then
   if state_matches_build "${state_file}" \
     && [ -x "${build_l1_dir}/launch-l2.sh" ] \
-    && [ "${build_l1_dir}/launch-l2.sh" -nt "$0" ] \
     && [ -f "${build_l0_dir}/base-image.qcow2" ] \
     && [ -f "${build_l0_dir}/overlay.qcow2" ] \
     && { [ -z "${guest_stub_src}" ] || [ "${build_l0_dir}/overlay.qcow2" -nt "${guest_stub_src}" ]; } \
@@ -118,7 +120,19 @@ if [ -f "${build_l0_dir}/l1.pid" ]; then
     kill "${old_pid}" 2>/dev/null || true
   fi
 fi
-rm -rf "${install_dir}/plan" "${build_l0_dir}" "${build_l1_dir}"
+preserve_l0="false"
+if [ "${reuse_build_dir}" = "true" ] \
+   && [ -f "${build_l0_dir}/base-image.qcow2" ] \
+   && [ -f "${build_l0_dir}/overlay.qcow2" ] \
+   && [ -f "${build_l0_dir}/seed.img" ] \
+   && [ -f "${build_l0_dir}/id_ed25519" ]; then
+  preserve_l0="true"
+fi
+
+rm -rf "${install_dir}/plan" "${build_l1_dir}"
+if [ "${preserve_l0}" != "true" ]; then
+  rm -rf "${build_l0_dir}"
+fi
 mkdir -p "${build_dir}" "${install_dir}" "${build_l0_dir}" "${build_l1_dir}"
 : > "${l1_console_log}"
 
@@ -208,6 +222,68 @@ wait_for_guest_command() {
   return 1
 }
 
+clear_stub_init_from_overlay() {
+  local image="$1"
+  local nbd_dev=""
+  local root_dev=""
+  local mount_dir=""
+  local status=0
+
+  command -v qemu-nbd >/dev/null 2>&1 || {
+    echo "qemu-nbd is required to prepare a reused l1 overlay" >&2
+    return 1
+  }
+  mount_dir="$(mktemp -d)"
+
+  for candidate in /dev/nbd[0-9]*; do
+    case "${candidate}" in
+      *p*) continue ;;
+    esac
+    if qemu-nbd --connect="${candidate}" "${image}" >/dev/null 2>&1; then
+      nbd_dev="${candidate}"
+      break
+    fi
+  done
+  if [ -z "${nbd_dev}" ]; then
+    rmdir "${mount_dir}" 2>/dev/null || true
+    echo "failed to attach reused l1 overlay with qemu-nbd" >&2
+    return 1
+  fi
+
+  if command -v partprobe >/dev/null 2>&1; then
+    partprobe "${nbd_dev}" >/dev/null 2>&1 || true
+  fi
+  for _ in $(seq 1 20); do
+    if [ -b "${nbd_dev}p1" ]; then
+      root_dev="${nbd_dev}p1"
+      break
+    fi
+    sleep 0.25
+  done
+  if [ -z "${root_dev}" ]; then
+    status=1
+    echo "failed to find root partition for reused l1 overlay" >&2
+  elif ! mount "${root_dev}" "${mount_dir}" >/dev/null 2>&1; then
+    status=1
+    echo "failed to mount reused l1 overlay root filesystem" >&2
+  else
+    for grub_file in \
+      "${mount_dir}/etc/default/grub" \
+      "${mount_dir}/boot/grub/grub.cfg"; do
+      if [ -f "${grub_file}" ]; then
+        sed -i 's/[[:space:]]init=\/root\/libafl_nesting_stub//g' \
+          "${grub_file}"
+      fi
+    done
+    sync
+    umount "${mount_dir}" >/dev/null 2>&1 || status=1
+  fi
+
+  qemu-nbd --disconnect "${nbd_dev}" >/dev/null 2>&1 || true
+  rmdir "${mount_dir}" 2>/dev/null || true
+  return "${status}"
+}
+
 copy_to_guest() {
   local keyfile="$1"
   local port="$2"
@@ -261,8 +337,42 @@ copy_dir_to_guest() {
     -o ConnectTimeout=5 \
     -p "${port}" \
     root@127.0.0.1 \
-    "rm -rf ${dst_dir} && mkdir -p ${dst_dir} && tar -C ${dst_dir} -xzf -" >/dev/null
+    "mkdir -p ${dst_dir} && find ${dst_dir} -mindepth 1 -maxdepth 1 ! -name build -exec rm -rf {} + && tar -C ${dst_dir} -xzf -" >/dev/null
   ssh_guest "${keyfile}" "${port}" "test -d ${dst_dir}"
+}
+
+copy_qemu_source_to_guest() {
+  local keyfile="$1"
+  local port="$2"
+  local src_dir="$3"
+  local dst_dir="$4"
+  local files=(
+    "configure"
+    "hw/intc/arm_gicv3_common.c"
+    "hw/intc/arm_gicv3_cpuif.c"
+    "hw/intc/trace-events"
+    "hw/virtio/trace-events"
+    "hw/virtio/virtio-mmio.c"
+    "include/hw/intc/arm_gicv3_common.h"
+    "target/arm/helper.c"
+    "target/arm/tcg/helper-a64.c"
+    "target/arm/trace-events"
+  )
+
+  if ssh_guest "${keyfile}" "${port}" "test -f ${dst_dir}/build/build.ninja" >/dev/null 2>&1; then
+    tar -C "${src_dir}" -czf - "${files[@]}" | ssh \
+      -i "${keyfile}" \
+      -o BatchMode=yes \
+      -o StrictHostKeyChecking=no \
+      -o UserKnownHostsFile=/dev/null \
+      -o ConnectTimeout=5 \
+      -p "${port}" \
+      root@127.0.0.1 \
+      "mkdir -p ${dst_dir} && tar -C ${dst_dir} -xzf -" >/dev/null
+    return 0
+  fi
+
+  copy_dir_to_guest "${keyfile}" "${port}" "${src_dir}" "${dst_dir}"
 }
 
 run_in_guest() {
@@ -300,7 +410,11 @@ run_profile_script() {
   "${script_path}"
 }
 
-run_profile_script "l0.provisionScript"
+if [ "${preserve_l0}" = "true" ]; then
+  printf '[nvirsh] reusing existing l0 overlay for %s\n' "${profile_name}"
+else
+  run_profile_script "l0.provisionScript"
+fi
 run_profile_script "l1.provisionScript"
 
 guest_image_dir="/root/nvirsh-images"
@@ -322,6 +436,14 @@ l1_ssh_port="$(node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSy
 l2_cpu="$(profile_arg_value l2 -cpu)"
 l2_memory="$(profile_arg_value l2 -m)"
 l2_memory="${l2_memory:-1024}"
+
+if [ -n "${guest_qemu_source}" ] && [ -d "${guest_qemu_source}" ]; then
+  guest_qemu_base="$(basename "${guest_qemu_source}")"
+  guest_qemu_archive_candidate="$(dirname "$(dirname "${guest_qemu_source}")")/downloads/${guest_qemu_base}.tar.xz"
+  if [ -f "${guest_qemu_archive_candidate}" ]; then
+    guest_qemu_archive="${guest_qemu_archive_candidate}"
+  fi
+fi
 
 cat > "${build_l1_dir}/launch-l2.sh" <<EOF
 #!/usr/bin/env bash
@@ -354,6 +476,8 @@ if [ -d "\${guest_qemu_data_dir}" ]; then
 fi
 printf 'data-dir=%s\n' "\${guest_qemu_data_dir}" >> "\${launch_marker}"
 printf 'virtio_mmio_fuzz_read\n' > "\${guest_qemu_trace_events}"
+printf 'virtio_mmio_dma_fuzz\n' >> "\${guest_qemu_trace_events}"
+printf 'net-transport=virtio-mmio\n' >> "\${launch_marker}"
 printf 'trace-events-ready\n' >> "\${launch_marker}"
 guest_qemu_plugin_args=()
 if [ -f "${guest_nqc2_plugin_path}" ]; then
@@ -380,20 +504,54 @@ chmod +x "${build_l1_dir}/launch-l2.sh"
 cat > "${build_l1_dir}/provision-l1.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+build_guest_qemu="__MORPHEUS_BUILD_GUEST_QEMU__"
 if [ -x /root/install-dependencies.sh ]; then
   bash /root/install-dependencies.sh
 fi
-if [ -d /root/morpheus-qemu-src ]; then
-  rm -rf /root/morpheus-qemu-src/build /root/morpheus-qemu
+reuse_guest_qemu() {
+  if [ -x /root/morpheus-qemu/bin/qemu-system-aarch64 ]; then
+    echo "reusing installed guest qemu"
+    return 0
+  fi
+  if [ -x /root/morpheus-qemu-src/build/qemu-system-aarch64 ]; then
+    echo "repairing guest qemu install from existing build output"
+    mkdir -p /root/morpheus-qemu/bin
+    cp -f /root/morpheus-qemu-src/build/qemu-system-aarch64 \
+      /root/morpheus-qemu/bin/qemu-system-aarch64
+    return 0
+  fi
+  return 1
+}
+if reuse_guest_qemu; then
+  build_guest_qemu="false"
+fi
+if [ "${build_guest_qemu}" = "true" ] && [ -d /root/morpheus-qemu-src ]; then
   cd /root/morpheus-qemu-src
-elif [ -f /root/morpheus-qemu-src.tar.xz ]; then
+elif [ "${build_guest_qemu}" = "true" ] && [ -f /root/morpheus-qemu-src.tar.xz ]; then
   rm -rf /root/morpheus-qemu-src
   mkdir -p /root/morpheus-qemu-src
   tar -xJf /root/morpheus-qemu-src.tar.xz -C /root/morpheus-qemu-src --strip-components=1
-  rm -rf /root/morpheus-qemu
   cd /root/morpheus-qemu-src
 fi
-if [ -d /root/morpheus-qemu-src ]; then
+if [ "${build_guest_qemu}" = "true" ] && [ -d /root/morpheus-qemu-src ]; then
+  if [ -f /root/morpheus-qemu-src/build/build.ninja ]; then
+    find /root/morpheus-qemu-src \
+      -path /root/morpheus-qemu-src/build -prune \
+      -o -type f -exec touch -d @0 {} +
+    for path in \
+      configure \
+      hw/intc/arm_gicv3_common.c \
+      hw/intc/arm_gicv3_cpuif.c \
+      hw/intc/trace-events \
+      hw/virtio/trace-events \
+      hw/virtio/virtio-mmio.c \
+      include/hw/intc/arm_gicv3_common.h \
+      target/arm/helper.c \
+      target/arm/tcg/helper-a64.c \
+      target/arm/trace-events; do
+      touch "/root/morpheus-qemu-src/${path}"
+    done
+  fi
   export MORPHEUS_QEMU_USE_SYSTEM_MESON=1
   export CFLAGS="-O0 -g1"
   export CXXFLAGS="-O0 -g1"
@@ -443,7 +601,7 @@ PY
   mkdir -p /root/morpheus-qemu/bin
   cp -f /root/morpheus-qemu-src/build/qemu-system-aarch64 \
     /root/morpheus-qemu/bin/qemu-system-aarch64
-elif [ ! -x /usr/bin/qemu-system-aarch64 ]; then
+elif [ "${build_guest_qemu}" = "true" ] && [ ! -x /usr/bin/qemu-system-aarch64 ]; then
   sudo apt-get install -y qemu-system-arm
 fi
 mkdir -p /root/nvirsh-images
@@ -472,10 +630,9 @@ for variable in ("GRUB_CMDLINE_LINUX", "GRUB_CMDLINE_LINUX_DEFAULT"):
         raise SystemExit(f"unterminated {variable} in /etc/default/grub")
 
     current = text[start:end]
-    parts = [entry for entry in current.split() if entry]
-    for entry in required:
-        if entry not in parts:
-            parts.append(entry)
+    parts = [entry for entry in current.split() if entry and entry not in required]
+    if variable == "GRUB_CMDLINE_LINUX":
+        parts.extend(required)
     updated = " ".join(parts)
     text = text[:start] + updated + text[end:]
 grub.write_text(text)
@@ -507,10 +664,8 @@ updated_lines = []
 for line in text.splitlines():
     stripped = line.lstrip()
     if stripped.startswith("linux") and "/boot/vmlinuz-" in stripped:
-        parts = line.split()
-        for entry in required:
-            if entry not in parts:
-                parts.append(entry)
+        parts = [entry for entry in line.split() if entry not in required]
+        parts.extend(required)
         line = "\t" + " ".join(parts)
     updated_lines.append(line)
 updated = "\n".join(updated_lines) + "\n"
@@ -529,7 +684,16 @@ if missing:
 PY
 fi
 EOF
+if [ -n "${guest_qemu_archive}" ] || [ -n "${guest_qemu_source}" ]; then
+  sed -i 's/__MORPHEUS_BUILD_GUEST_QEMU__/true/g' "${build_l1_dir}/provision-l1.sh"
+else
+  sed -i 's/__MORPHEUS_BUILD_GUEST_QEMU__/false/g' "${build_l1_dir}/provision-l1.sh"
+fi
 chmod +x "${build_l1_dir}/provision-l1.sh"
+
+if [ "${preserve_l0}" = "true" ]; then
+  clear_stub_init_from_overlay "${overlay_image_path}"
+fi
 
 "${qemu}" \
   -machine virt,virtualization=on,gic-version=3 \
@@ -574,7 +738,7 @@ if [ -n "${guest_qemu_archive}" ] && [ -f "${guest_qemu_archive}" ]; then
   copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${guest_qemu_archive}" "${guest_qemu_archive_path}"
 elif [ -n "${guest_qemu_source}" ] && [ -d "${guest_qemu_source}" ]; then
   printf '[nvirsh] copying patched qemu source tree into l1\n'
-  copy_dir_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${guest_qemu_source}" "${guest_qemu_src_dir}"
+  copy_qemu_source_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${guest_qemu_source}" "${guest_qemu_src_dir}"
 fi
 
 copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${build_l1_dir}/provision-l1.sh" "/root/provision-l1.sh"
@@ -675,10 +839,3 @@ cat > "${result_file}" <<EOF
 {"details":{"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}","state_file":"${state_file}","profile":"${profile_name}","reused":false}}
 EOF
 printf '[nvirsh] prepared l1 runtime and l2 launch script for %s\n' "${profile_name}"
-if [ -n "${guest_qemu_source}" ] && [ -d "${guest_qemu_source}" ]; then
-  guest_qemu_base="$(basename "${guest_qemu_source}")"
-  guest_qemu_archive_candidate="$(dirname "$(dirname "${guest_qemu_source}")")/downloads/${guest_qemu_base}.tar.xz"
-  if [ -f "${guest_qemu_archive_candidate}" ]; then
-    guest_qemu_archive="${guest_qemu_archive_candidate}"
-  fi
-fi

@@ -1,6 +1,7 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,6 +20,8 @@
 #define LAUNCH_MARKER_PATH RUNTIME_DIR "/launch-l2.marker"
 #define QEMU_TRACE_LOG_PATH RUNTIME_DIR "/morpheus-qemu-trace.log"
 #define NQC2_TRACE_PATH RUNTIME_DIR "/morpheus-nqc2.trace"
+#define RUNTIME_DUMP_MAX_BYTES (256U * 1024U)
+#define RUNTIME_DUMP_CHUNK_BYTES 128U
 
 static uint8_t FUZZ_INPUT[INPUT_LEN];
 
@@ -70,6 +73,89 @@ static void log_file_state(const char *path, const char *label) {
   }
 }
 
+static void dump_runtime_file(const char *name, const char *path) {
+  static const char hex_digits[] = "0123456789abcdef";
+  uint8_t buf[RUNTIME_DUMP_CHUNK_BYTES];
+  char hex[(RUNTIME_DUMP_CHUNK_BYTES * 2U) + 1U];
+  struct stat st;
+  size_t dumped = 0;
+  size_t offset = 0;
+  int fd = open(path, O_RDONLY);
+
+  if (fd < 0) {
+    return;
+  }
+
+  if (fstat(fd, &st) != 0) {
+    close(fd);
+    return;
+  }
+
+  if (st.st_size > 0) {
+    unsigned long long size = (unsigned long long)st.st_size;
+    dumped = size > RUNTIME_DUMP_MAX_BYTES ? RUNTIME_DUMP_MAX_BYTES
+                                           : (size_t)size;
+  }
+
+  lqprintf("stub-runtime begin name=%s size=%llu dumped=%zu truncated=%u\n",
+           name, (unsigned long long)st.st_size, dumped,
+           (unsigned)(st.st_size > (off_t)dumped));
+
+  while (offset < dumped) {
+    size_t want = dumped - offset;
+    ssize_t nread;
+
+    if (want > sizeof(buf)) {
+      want = sizeof(buf);
+    }
+
+    nread = read(fd, buf, want);
+    if (nread <= 0) {
+      break;
+    }
+
+    for (ssize_t i = 0; i < nread; i++) {
+      hex[(size_t)i * 2U] = hex_digits[buf[i] >> 4];
+      hex[((size_t)i * 2U) + 1U] = hex_digits[buf[i] & 0x0fU];
+    }
+    hex[(size_t)nread * 2U] = '\0';
+    lqprintf("stub-runtime data name=%s offset=%zu hex=%s\n", name, offset,
+             hex);
+    offset += (size_t)nread;
+  }
+
+  close(fd);
+  lqprintf("stub-runtime end name=%s\n", name);
+}
+
+static void dump_runtime_snapshot(void) {
+  static const char *files[] = {
+      "morpheus-qemu-input.bin",
+      "launch-l2.marker",
+      "launch-l2.stdout",
+      "launch-l2.stderr",
+      "morpheus-qemu-trace-events.txt",
+      "morpheus-qemu-trace.log",
+      "morpheus-nqc2.trace",
+  };
+  char path[256];
+
+  for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
+    snprintf(path, sizeof(path), RUNTIME_DIR "/%s", files[i]);
+    dump_runtime_file(files[i], path);
+  }
+  lqprintf("stub: dumped runtime files to log\n");
+}
+
+static void redirect_child_log(const char *path, int target_fd) {
+  int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (fd < 0) {
+    return;
+  }
+  dup2(fd, target_fd);
+  close(fd);
+}
+
 static void log_process_state(pid_t pid) {
   char path[64];
   char buf[256];
@@ -108,6 +194,8 @@ static bool launch_l2(const uint8_t *data) {
   }
 
   if (pid == 0) {
+    redirect_child_log(LAUNCH_STDOUT_PATH, STDOUT_FILENO);
+    redirect_child_log(LAUNCH_STDERR_PATH, STDERR_FILENO);
     setenv("MORPHEUS_QEMU_INPUT_PATH", INPUT_PATH, 1);
     setenv("MORPHEUS_L2_RUNTIME_DIR", RUNTIME_DIR, 1);
     setenv("MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS", period_ms, 1);
@@ -144,6 +232,7 @@ static bool launch_l2(const uint8_t *data) {
       lqprintf("stub: launch-l2.stderr size=%ld\n", ftell(stderr_fp));
       fclose(stderr_fp);
     }
+    dump_runtime_snapshot();
     kill(pid, SIGTERM);
     waitpid(pid, &status, 0);
     lqprintf("stub: l2 timed out and was terminated\n");
@@ -172,11 +261,13 @@ static bool launch_l2(const uint8_t *data) {
       lqprintf("stub: launch-l2.stderr size=%ld\n", ftell(stderr_fp));
       fclose(stderr_fp);
     }
+    dump_runtime_snapshot();
     lqprintf("stub: l2 exited status=%d\n", WEXITSTATUS(status));
     return WEXITSTATUS(status) == 0;
   }
   if (WIFSIGNALED(status)) {
     lqprintf("stub: l2 killed by signal=%d\n", WTERMSIG(status));
+    dump_runtime_snapshot();
   }
   return false;
 }

@@ -149,6 +149,19 @@ build_guest_stub() {
     -o "${stub_bin}"
 }
 
+if [ "${reuse_build_dir}" = "true" ] && \
+   [ -x "${fuzzer_bin}" ] && \
+   [ -f "${installed_bridge_lib}" ] && \
+   [ -d "${host_target_dir}/debug/libvharness/include" ] && \
+   [ -d "${host_target_dir}/debug/libvharness/src/api/lqemu" ] && \
+   [ -f "${host_target_dir}/debug/libvharness/src/api/lqemu/arch/aarch64/calls.c" ]; then
+  build_guest_stub
+  cat > "${result_file}" <<EOF
+{"details":{"built":true,"reused":true,"stub_rebuilt":true,"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}"},"artifacts":[{"path":"guest-stub-binary","location":"${stub_bin}"},{"path":"qemu-nesting-fuzzer","location":"${fuzzer_bin}"},{"path":"qemu-bridge-dir","location":"${bridge_dir}"},{"path":"qemu-bridge-lib","location":"${installed_bridge_lib}"}]}
+EOF
+  exit 0
+fi
+
 if [ "${reuse_build_dir}" = "true" ] && [ -x "${stub_bin}" ]; then
   LIBAFL_QEMU_CLONE_DIR="${bridge_storage_dir}" \
   cargo build "${bridge_cargo_args[@]}" --lib "${cargo_args[@]}"

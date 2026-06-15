@@ -253,74 +253,35 @@
          }
      }
      if (size != 4) {
-@@ -158,23 +352,27 @@
-         return vdev->device_id;
-     case VIRTIO_MMIO_VENDOR_ID:
-         return VIRT_VENDOR;
--    case VIRTIO_MMIO_DEVICE_FEATURES:
-+    case VIRTIO_MMIO_DEVICE_FEATURES: {
+@@ -143,6 +337,28 @@
+                       "%s: wrong size access to register!\n",
+                       __func__);
+         return 0;
+     }
++    if (morpheus_virtio_mmio_should_fuzz(vdev)) {
 +        uint64_t value;
-         if (proxy->legacy) {
--            if (proxy->host_features_sel) {
--                return 0;
--            } else {
--                return vdev->host_features;
--            }
-+            value = proxy->host_features_sel ? 0 : vdev->host_features;
-         } else {
-             VirtioDeviceClass *vdc = VIRTIO_DEVICE_GET_CLASS(vdev);
--            return (vdev->host_features & ~vdc->legacy_features)
-+            value = (vdev->host_features & ~vdc->legacy_features)
-                 >> (32 * proxy->host_features_sel);
-         }
-+        return morpheus_virtio_mmio_should_fuzz(vdev)
-+            ? morpheus_virtio_mmio_fuzz_mix(offset, value, size, false)
-+            : value;
++
++        switch (offset) {
++        case VIRTIO_MMIO_DEVICE_FEATURES:
++            if (proxy->legacy) {
++                value = proxy->host_features_sel ? 0 : vdev->host_features;
++            } else {
++                VirtioDeviceClass *vdc = VIRTIO_DEVICE_GET_CLASS(vdev);
++                value = (vdev->host_features & ~vdc->legacy_features)
++                    >> (32 * proxy->host_features_sel);
++            }
++            return morpheus_virtio_mmio_fuzz_mix(offset, value, size, false);
++        case VIRTIO_MMIO_QUEUE_NUM_MAX:
++            value = virtio_queue_get_num(vdev, vdev->queue_sel)
++                ? VIRTQUEUE_MAX_SIZE
++                : 0;
++            return morpheus_virtio_mmio_fuzz_mix(offset, value, size, false);
++        default:
++            break;
++        }
 +    }
-     case VIRTIO_MMIO_QUEUE_NUM_MAX:
--        if (!virtio_queue_get_num(vdev, vdev->queue_sel)) {
--            return 0;
--        }
--        return VIRTQUEUE_MAX_SIZE;
-+        return morpheus_virtio_mmio_should_fuzz(vdev)
-+            ? morpheus_virtio_mmio_fuzz_mix(
-+                  offset,
-+                  virtio_queue_get_num(vdev, vdev->queue_sel) ? VIRTQUEUE_MAX_SIZE : 0,
-+                  size,
-+                  true)
-+            : (virtio_queue_get_num(vdev, vdev->queue_sel) ? VIRTQUEUE_MAX_SIZE : 0);
-     case VIRTIO_MMIO_QUEUE_PFN:
-         if (!proxy->legacy) {
-             qemu_log_mask(LOG_GUEST_ERROR,
-@@ -195,9 +393,14 @@
-         }
-         return proxy->vqs[vdev->queue_sel].enabled;
-     case VIRTIO_MMIO_INTERRUPT_STATUS:
--        return qatomic_read(&vdev->isr);
-+        return morpheus_virtio_mmio_should_fuzz(vdev)
-+            ? morpheus_virtio_mmio_fuzz_mix(offset, qatomic_read(&vdev->isr),
-+                                            size, false)
-+            : qatomic_read(&vdev->isr);
-     case VIRTIO_MMIO_STATUS:
--        return vdev->status;
-+        return morpheus_virtio_mmio_should_fuzz(vdev)
-+            ? morpheus_virtio_mmio_fuzz_mix(offset, vdev->status, size, false)
-+            : vdev->status;
-     case VIRTIO_MMIO_CONFIG_GENERATION:
-         if (proxy->legacy) {
-             qemu_log_mask(LOG_GUEST_ERROR,
-@@ -206,7 +409,10 @@
-                           __func__, offset);
-             return 0;
-         }
--        return vdev->generation;
-+        return morpheus_virtio_mmio_should_fuzz(vdev)
-+            ? morpheus_virtio_mmio_fuzz_mix(offset, vdev->generation,
-+                                            size, false)
-+            : vdev->generation;
-    case VIRTIO_MMIO_SHM_LEN_LOW:
-    case VIRTIO_MMIO_SHM_LEN_HIGH:
-         /*
+     switch (offset) {
+     case VIRTIO_MMIO_MAGIC_VALUE:
 @@ -262,6 +466,10 @@
 
      if (offset >= VIRTIO_MMIO_CONFIG) {

@@ -90,6 +90,39 @@
           "runSeconds"
         ]
       },
+      "l2-run-window-ms": {
+        "aliases": [
+          "l2-run-window-ms",
+          "l2RunWindowMs"
+        ]
+      },
+      "l2-accel": {
+        "aliases": [
+          "l2-accel",
+          "l2Accel"
+        ]
+      },
+      "l2-cpu": {
+        "aliases": [
+          "l2-cpu",
+          "l2Cpu"
+        ]
+      },
+      "replay-input": {
+        "aliases": [
+          "replay-input",
+          "replayInput"
+        ],
+        "path": true,
+        "repeatable": true
+      },
+      "disable-nqc2-plugin": {
+        "aliases": [
+          "disable-nqc2-plugin",
+          "disableNqc2Plugin"
+        ],
+        "boolean": true
+      },
       "artifacts": {
         "aliases": [
           "artifacts"
@@ -310,10 +343,17 @@
             "nvirsh-state",
             "detach",
             "run-seconds",
+            "l2-run-window-ms",
+            "l2-accel",
+            "l2-cpu",
+            "replay-input",
+            "disable-nqc2-plugin",
             "build-version",
             "build-dir-key"
           ],
-          "repeatableFlags": [],
+          "repeatableFlags": [
+            "replay-input"
+          ],
           "pathFlags": {
             "source": "tools/libafl/builds/{buildDirKey}/source",
             "install-dir": "tools/libafl/builds/{buildDirKey}/install",

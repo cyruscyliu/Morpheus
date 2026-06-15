@@ -20,25 +20,6 @@
  
      /* Properties of the CPU interface. These are initialized from
       * the settings in the CPU proper.
---- a/hw/intc/arm_gicv3_common.c	2024-09-19 23:54:00.000000000 +0200
-+++ b/hw/intc/arm_gicv3_common.c	2026-05-03 10:40:29.317256108 +0200
-@@ -447,6 +447,16 @@
- static void arm_gicv3_finalize(Object *obj)
- {
-     GICv3State *s = ARM_GICV3_COMMON(obj);
-+    int i;
-+
-+    if (s->cpu) {
-+        for (i = 0; i < s->num_cpu; i++) {
-+            if (s->cpu[i].inject_timer) {
-+                timer_free(s->cpu[i].inject_timer);
-+            }
-+        }
-+        g_free(s->cpu);
-+    }
- 
-     g_free(s->redist_region_count);
- }
 --- a/hw/intc/arm_gicv3_cpuif.c	2024-09-19 23:54:00.000000000 +0200
 +++ b/hw/intc/arm_gicv3_cpuif.c	2026-05-03 10:42:12.291703595 +0200
 @@ -29,6 +29,10 @@

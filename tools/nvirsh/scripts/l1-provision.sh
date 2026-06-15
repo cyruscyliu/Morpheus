@@ -25,7 +25,8 @@ sudo apt-get install -y --no-install-recommends \
   build-essential \
   libglib2.0-dev \
   libpixman-1-dev \
-  libslirp-dev
+  libslirp-dev \
+  strace
 
 sudo apt-get clean
 sudo rm -rf /var/lib/apt/lists/*

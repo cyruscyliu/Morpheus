@@ -309,3 +309,62 @@ index e69de29..69beeff 100644
 +}
 +
 +#endif /* _LINUX_DMA_TELEMETRY_APERTURE_H */
+diff --git a/drivers/virtio/virtio_mmio.c b/drivers/virtio/virtio_mmio.c
+index 56128b9..da2ff00 100644
+--- a/drivers/virtio/virtio_mmio.c
++++ b/drivers/virtio/virtio_mmio.c
+@@ -88,6 +88,24 @@ struct virtio_mmio_device {
+ 	void __iomem *base;
+ 	unsigned long version;
+ };
++static bool hyperarm_virtio_oracle_bug = true;
++module_param_named(hyperarm_oracle_bug, hyperarm_virtio_oracle_bug, bool, 0644);
++MODULE_PARM_DESC(hyperarm_oracle_bug,
++		 "Enable HyperArm fuzz-oracle driver panic");
++
++#define HYPERARM_VIRTIO_ORACLE_MAGIC0 0xa5u
++#define HYPERARM_VIRTIO_ORACLE_MAGIC1 0x5au
++
++static void hyperarm_virtio_oracle_check(u32 value)
++{
++	if (!hyperarm_virtio_oracle_bug ||
++	    ((value & 0xffu) != HYPERARM_VIRTIO_ORACLE_MAGIC0 &&
++	     (value & 0xffu) != HYPERARM_VIRTIO_ORACLE_MAGIC1))
++		return;
++
++	pr_err("HyperArm oracle test bug triggered value=0x%08x\n", value);
++	panic("HyperArm virtio-mmio driver oracle");
++}
+ 
+ /* Configuration interface */
+ 
+@@ -95,13 +113,18 @@ static u64 vm_get_features(struct virtio_device *vdev)
+ {
+ 	struct virtio_mmio_device *vm_dev = to_virtio_mmio_device(vdev);
+ 	u64 features;
++	u32 feature_hi;
++	u32 feature_lo;
+ 
+ 	writel(1, vm_dev->base + VIRTIO_MMIO_DEVICE_FEATURES_SEL);
+-	features = readl(vm_dev->base + VIRTIO_MMIO_DEVICE_FEATURES);
+-	features <<= 32;
++	feature_hi = readl(vm_dev->base + VIRTIO_MMIO_DEVICE_FEATURES);
++	hyperarm_virtio_oracle_check(feature_hi);
++	features = (u64)feature_hi << 32;
+ 
+ 	writel(0, vm_dev->base + VIRTIO_MMIO_DEVICE_FEATURES_SEL);
+-	features |= readl(vm_dev->base + VIRTIO_MMIO_DEVICE_FEATURES);
++	feature_lo = readl(vm_dev->base + VIRTIO_MMIO_DEVICE_FEATURES);
++	hyperarm_virtio_oracle_check(feature_lo);
++	features |= feature_lo;
+ 
+ 	return features;
+ }
+@@ -372,6 +395,7 @@ static struct virtqueue *vm_setup_vq(struct virtio_device *vdev, unsigned int index,
+ 	}
+ 
+ 	num = readl(vm_dev->base + VIRTIO_MMIO_QUEUE_NUM_MAX);
++	hyperarm_virtio_oracle_check(num);
+ 	if (num == 0) {
+ 		err = -ENOENT;
+ 		goto error_new_virtqueue;

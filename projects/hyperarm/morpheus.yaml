@@ -28,12 +28,13 @@ tools:
     patch-dir: tools/buildroot/patches
     defconfig: qemu_aarch64_virt_defconfig
     make-args:
-      - -j4
+      - -j1
     config-fragment:
       - BR2_LINUX_KERNEL=y
       - BR2_LINUX_KERNEL_CUSTOM_VERSION=y
       - BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.16"
       - BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(CONFIG_DIR)/../../../patches/linux/kernel.fragment"
+      - BR2_TAR_OPTIONS="--no-same-owner"
       - BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
       - BR2_TARGET_GENERIC_GETTY=y
       - BR2_TARGET_GENERIC_GETTY_PORT="console"

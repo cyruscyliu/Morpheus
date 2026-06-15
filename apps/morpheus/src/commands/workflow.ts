@@ -1427,6 +1427,11 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
       tool: eventContext.tool || null,
     });
 
+    const maxBufferedOutput = 1024 * 1024;
+    const appendBounded = (current, chunk) => {
+      const next = current + chunk;
+      return next.length > maxBufferedOutput ? next.slice(-maxBufferedOutput) : next;
+    };
     let stdoutBuffer = "";
     let stdoutText = "";
     let stderrText = "";
@@ -1436,7 +1441,7 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
     child.stderr.setEncoding("utf8");
 
     child.stdout.on("data", (chunk) => {
-      stdoutText += chunk;
+      stdoutText = appendBounded(stdoutText, chunk);
       stdoutBuffer += chunk;
       const lines = stdoutBuffer.split(/\r?\n/);
       stdoutBuffer = lines.pop() || "";
@@ -1446,7 +1451,7 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
     });
 
     child.stderr.on("data", (chunk) => {
-      stderrText += chunk;
+      stderrText = appendBounded(stderrText, chunk);
       appendStepLog(chunk);
       process.stderr.write(chunk);
     });

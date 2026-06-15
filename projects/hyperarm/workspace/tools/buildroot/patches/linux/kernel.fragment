@@ -1,9 +1,31 @@
 CONFIG_VIRTIO=y
 CONFIG_VIRTIO_MMIO=y
 CONFIG_VIRTIO_CONSOLE=y
+CONFIG_VIRTIO_BLK=y
+CONFIG_VIRTIO_NET=y
 CONFIG_HVC_DRIVER=y
 CONFIG_HVC_CONSOLE=y
+CONFIG_PVPANIC=y
+CONFIG_PVPANIC_MMIO=y
+# L2 uses virtio-mmio devices. Avoid unrelated default driver forests.
+# CONFIG_PCI is not set
+# CONFIG_VIRTIO_PCI is not set
+# CONFIG_DRM is not set
+# CONFIG_FB is not set
+# CONFIG_SCSI is not set
+# CONFIG_ATA is not set
+# CONFIG_ETHERNET is not set
+# CONFIG_WLAN is not set
+# CONFIG_WIRELESS is not set
+# L2 is booted with QEMU -kernel, so the EFI stub path is unused here.
+# CONFIG_EFI is not set
+CONFIG_EXPERT=y
+# CONFIG_RELOCATABLE is not set
+# CONFIG_RANDOMIZE_BASE is not set
 CONFIG_DEBUG_KERNEL=y
+CONFIG_PANIC_ON_OOPS=y
+CONFIG_PANIC_TIMEOUT=-1
+# CONFIG_MODULES is not set
 CONFIG_DEBUG_INFO=y
 CONFIG_DEBUG_INFO_DWARF5=y
 CONFIG_DEBUG_INFO_COMPRESSED_NONE=y

@@ -19,17 +19,55 @@ installed_bridge_lib="${install_dir}/lib/libqemu-system-aarch64.so"
 stub_c_src="${source_dir}/crates/libafl_nesting/c_src/libafl_nesting_stub.c"
 fuzzer_src_dir="${source_dir}/fuzzers/full_system/qemu_nesting"
 libafl_nesting_src_dir="${source_dir}/crates/libafl_nesting"
+fuzzer_fingerprint_file="${install_dir}/.qemu_nesting.sources.fingerprint"
 host_target_dir="${MORPHEUS_LIBAFL_HOST_TARGET_DIR:-/tmp/morpheus-libafl-target-host}"
 fuzzer_target_dir="${MORPHEUS_LIBAFL_FUZZER_TARGET_DIR:-/tmp/morpheus-libafl-target-fuzzer}"
+libvharness_url="${MORPHEUS_LIBAFL_LIBVHARNESS_URL:-https://github.com/rmalmain/libvharness.git}"
+libvharness_commit="${MORPHEUS_LIBAFL_LIBVHARNESS_COMMIT:-9a316966ce7aa4bd9f733491511e6ac4be6dd980}"
 
 mkdir -p "$(dirname "${result_file}")"
 mkdir -p "${build_dir}" "${install_dir}/bin" "${install_dir}/lib"
 
+if command -v ulimit >/dev/null 2>&1; then
+  current_open_files="$(ulimit -n 2>/dev/null || true)"
+  case "${current_open_files}" in
+    ''|unlimited) ;;
+    *)
+      if [ "${current_open_files}" -lt 4096 ] 2>/dev/null; then
+        ulimit -n 4096 2>/dev/null || true
+      fi
+      ;;
+  esac
+fi
+
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
-export CARGO_HOME="${CARGO_HOME:-/tmp/morpheus-cargo-home}"
+export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
+export NUM_JOBS="${NUM_JOBS:-${MORPHEUS_LIBAFL_NATIVE_JOBS:-4}}"
+export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-${MORPHEUS_LIBAFL_NATIVE_JOBS:-4}}"
+export MAKEFLAGS="${MAKEFLAGS:--j${MORPHEUS_LIBAFL_NATIVE_JOBS:-4}}"
+export CARGO_HOME="${MORPHEUS_LIBAFL_CARGO_HOME:-/tmp/morpheus-libafl-cargo-home}"
+export CARGO_CACHE_AUTO_CLEAN_FREQUENCY="${CARGO_CACHE_AUTO_CLEAN_FREQUENCY:-never}"
+export RUSTC_WRAPPER=""
 export RUSTFLAGS="${RUSTFLAGS:-} -A deprecated"
 export LIBCLANG_PATH="${LIBCLANG_PATH:-/workspace/llvm-root/usr/lib/llvm-19/lib}"
 export BINDGEN_EXTRA_CLANG_ARGS="${BINDGEN_EXTRA_CLANG_ARGS:-} -resource-dir /workspace/clang-root/usr/lib/llvm-19/lib/clang/19"
+
+rustc_fingerprint="$(rustc -vV)"
+
+refresh_cargo_target_dir() {
+  local target_dir="$1"
+  local fingerprint_file="${target_dir}/.morpheus-rustc-fingerprint"
+
+  if [ -d "${target_dir}" ] \
+     && { [ ! -f "${fingerprint_file}" ] \
+          || [ "$(cat "${fingerprint_file}")" != "${rustc_fingerprint}" ]; }; then
+    rm -rf "${target_dir}"
+  fi
+  mkdir -p "${target_dir}"
+  printf '%s\n' "${rustc_fingerprint}" > "${fingerprint_file}"
+}
+
+refresh_cargo_target_dir "${fuzzer_target_dir}"
 
 if [ ! -e "${bridge_dir}" ] && [ ! -L "${bridge_dir}" ]; then
   mkdir -p "${bridge_storage_dir}"
@@ -63,21 +101,35 @@ stub_current() {
   [ -x "${stub_bin}" ] && [ "${stub_bin}" -nt "${stub_c_src}" ]
 }
 
+fuzzer_fingerprint() {
+  find "${fuzzer_src_dir}" "${libafl_nesting_src_dir}" \
+    -type f \
+    \( -name '*.rs' -o -name 'Cargo.toml' \) \
+    -print0 \
+    | sort -z \
+    | xargs -0 sha256sum \
+    | sha256sum \
+    | awk '{print $1}'
+}
+
+record_fuzzer_fingerprint() {
+  fuzzer_fingerprint > "${fuzzer_fingerprint_file}"
+}
+
 fuzzer_current() {
-  local newer
   if [ ! -x "${fuzzer_bin}" ]; then
     return 1
   fi
-  newer="$(
-    find "${fuzzer_src_dir}" "${libafl_nesting_src_dir}" \
-      -type f \
-      \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'Cargo.lock' \) \
-      -newer "${fuzzer_bin}" \
-      -print \
-      -quit
-  )"
-  [ -z "${newer}" ]
+  [ -f "${fuzzer_fingerprint_file}" ] \
+    && [ "$(cat "${fuzzer_fingerprint_file}")" = "$(fuzzer_fingerprint)" ]
 }
+
+if [ "${reuse_build_dir}" = "true" ] && \
+   [ -x "${fuzzer_bin}" ] && \
+   [ ! -f "${fuzzer_fingerprint_file}" ] && \
+   [ -f "${installed_bridge_lib}" ]; then
+  record_fuzzer_fingerprint
+fi
 
 if [ "${reuse_build_dir}" = "true" ] && \
    stub_current && \
@@ -129,6 +181,7 @@ fi
 bridge_cargo_args=(
   --manifest-path "${source_dir}/Cargo.toml"
   --target-dir "${host_target_dir}"
+  --jobs 1
   -p libafl_nesting
   --features qemu-bridge-aarch64
 )
@@ -136,6 +189,7 @@ bridge_cargo_args=(
 fuzzer_cargo_args=(
   --manifest-path "${source_dir}/fuzzers/full_system/qemu_nesting/Cargo.toml"
   --target-dir "${fuzzer_target_dir}"
+  --jobs 1
   --no-default-features
   --features std,aarch64
 )
@@ -145,6 +199,19 @@ build_guest_stub() {
   local vharness_include="${vharness_root}/include"
   local vharness_src="${vharness_root}/src/api/lqemu"
   local vharness_calls="${vharness_src}/arch/aarch64/calls.c"
+  local vharness_rev="${vharness_root}/QEMU_REVISION"
+
+  if [ ! -d "${vharness_root}" ] \
+     || [ ! -f "${vharness_rev}" ] \
+     || [ "$(cat "${vharness_rev}" 2>/dev/null || true)" != "${libvharness_commit}" ]; then
+    rm -rf "${vharness_root}"
+    mkdir -p "${vharness_root}"
+    git -C "${vharness_root}" init
+    git -C "${vharness_root}" remote add origin "${libvharness_url}"
+    git -C "${vharness_root}" fetch --depth 1 origin "${libvharness_commit}"
+    git -C "${vharness_root}" checkout FETCH_HEAD
+    printf '%s' "${libvharness_commit}" > "${vharness_rev}"
+  fi
 
   if [ ! -d "${vharness_include}" ] || [ ! -d "${vharness_src}" ] || [ ! -f "${vharness_calls}" ]; then
     echo "missing vendored libvharness sources under ${vharness_root}" >&2
@@ -193,6 +260,7 @@ if [ "${reuse_build_dir}" = "true" ] && \
     LIBAFL_QEMU_DIR="${bridge_storage_dir}" \
     cargo build "${fuzzer_cargo_args[@]}"
     cp "${fuzzer_target_dir}/debug/qemu_nesting" "${fuzzer_bin}"
+    record_fuzzer_fingerprint
     fuzzer_rebuilt=true
   fi
   if ! stub_current; then
@@ -212,6 +280,7 @@ if [ "${reuse_build_dir}" = "true" ] && \
   LIBAFL_QEMU_DIR="${bridge_storage_dir}" \
   cargo build "${fuzzer_cargo_args[@]}"
   cp "${fuzzer_target_dir}/debug/qemu_nesting" "${fuzzer_bin}"
+  record_fuzzer_fingerprint
   cat > "${result_file}" <<EOF
 {"details":{"built":true,"reused":true,"fuzzer_rebuilt":true,"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}"},"artifacts":[{"path":"guest-stub-binary","location":"${stub_bin}"},{"path":"qemu-nesting-fuzzer","location":"${fuzzer_bin}"},{"path":"qemu-bridge-dir","location":"${bridge_dir}"},{"path":"qemu-bridge-lib","location":"${installed_bridge_lib}"}]}
 EOF
@@ -228,6 +297,7 @@ if [ "${reuse_build_dir}" = "true" ] && [ -x "${stub_bin}" ]; then
   cargo build "${fuzzer_cargo_args[@]}"
   build_guest_stub
   cp "${fuzzer_target_dir}/debug/qemu_nesting" "${fuzzer_bin}"
+  record_fuzzer_fingerprint
   if [ -f "${bridge_lib}" ]; then
     cp "${bridge_lib}" "${installed_bridge_lib}"
   fi
@@ -246,6 +316,7 @@ LIBAFL_QEMU_DIR="${bridge_storage_dir}" \
 cargo build "${fuzzer_cargo_args[@]}"
 build_guest_stub
 cp "${fuzzer_target_dir}/debug/qemu_nesting" "${fuzzer_bin}"
+record_fuzzer_fingerprint
 if [ -f "${bridge_lib}" ]; then
   cp "${bridge_lib}" "${installed_bridge_lib}"
 fi

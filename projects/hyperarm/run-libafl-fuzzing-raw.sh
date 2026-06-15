@@ -8,6 +8,7 @@ cd "${repo_root}"
 seconds=""
 cache_root=""
 run_dir=""
+l2_run_window_ms=""
 
 usage() {
   cat <<'EOF'
@@ -15,6 +16,7 @@ Usage:
   projects/hyperarm/run-libafl-fuzzing-raw.sh --seconds N
   projects/hyperarm/run-libafl-fuzzing-raw.sh --minutes N
   projects/hyperarm/run-libafl-fuzzing-raw.sh --hours N
+    [--l2-run-window-ms N]
 
 Runs the extracted LibAFL qemu_nesting command directly, without Morpheus.
 It reuses the existing HyperArm cache artifacts for LibAFL, QEMU firmware, and
@@ -53,6 +55,10 @@ while [ "$#" -gt 0 ]; do
       shift
       run_dir="${1:-}"
       ;;
+    --l2-run-window-ms)
+      shift
+      l2_run_window_ms="${1:-}"
+      ;;
     -h|--help)
       usage
       exit 0
@@ -67,6 +73,11 @@ done
 [ -n "${seconds}" ] || die "choose one of --seconds, --minutes, or --hours"
 [[ "${seconds}" =~ ^[0-9]+$ ]] || die "timeout must be an integer"
 [ "${seconds}" -gt 0 ] || die "timeout must be greater than zero"
+if [ -n "${l2_run_window_ms}" ]; then
+  [[ "${l2_run_window_ms}" =~ ^[0-9]+$ ]] || die "l2-run-window-ms must be an integer"
+  [ "${l2_run_window_ms}" -ge 1000 ] || die "l2-run-window-ms must be at least 1000"
+  [ "${l2_run_window_ms}" -le 120000 ] || die "l2-run-window-ms must be at most 120000"
+fi
 
 if [ -z "${cache_root}" ]; then
   home="${HOME:-}"
@@ -118,6 +129,7 @@ overlay_image="${state_fields[1]}"
 l1_cpu="${state_fields[2]}"
 l1_memory="${state_fields[3]}"
 l1_smp="${state_fields[4]}"
+libafl_l1_smp="${MORPHEUS_LIBAFL_L1_SMP:-1}"
 
 [ -f "${firmware}" ] || die "missing firmware: ${firmware}"
 [ -f "${overlay_image}" ] || die "missing overlay image: ${overlay_image}"
@@ -126,12 +138,18 @@ args=(
   -machine virt,virtualization=on,gic-version=3
   -cpu "${l1_cpu}"
   -m "${l1_memory}"
-  -smp "${l1_smp}"
+  -smp "${libafl_l1_smp}"
   -nographic
   -bios "${firmware}"
   -drive "file=${overlay_image},if=virtio,format=qcow2"
   -L "${qemu_bundle_dir}"
 )
+if [ -n "${l2_run_window_ms}" ]; then
+  args+=(
+    -fw_cfg "name=opt/morpheus/l2-run-window-ms,string=${l2_run_window_ms}"
+    -smbios "type=11,value=morpheus.l2_run_window_ms=${l2_run_window_ms}"
+  )
+fi
 
 kill_group() {
   local pid="$1"
@@ -145,6 +163,11 @@ pkill -f "${fuzzer_bin}" 2>/dev/null || true
 
 echo "run_dir=${run_dir}"
 echo "timeout_seconds=${seconds}"
+echo "prepared_l1_smp=${l1_smp}"
+echo "effective_l1_smp=${libafl_l1_smp}"
+if [ -n "${l2_run_window_ms}" ]; then
+  echo "l2_run_window_ms=${l2_run_window_ms}"
+fi
 echo "command:"
 printf 'STUB=%q %q' "${stub_elf}" "${fuzzer_bin}"
 printf ' %q' "${args[@]}"

@@ -51,8 +51,8 @@ rm -rf "${crate_dir}"
 rm -rf "${example_dir}"
 mkdir -p "${source_dir}/crates"
 mkdir -p "${source_dir}/fuzzers/full_system"
-cp -R "${patch_dir}/crates/libafl_nesting" "${crate_dir}"
-cp -R "${patch_dir}/fuzzers/full_system/qemu_nesting" "${example_dir}"
+cp -a "${patch_dir}/crates/libafl_nesting" "${crate_dir}"
+cp -a "${patch_dir}/fuzzers/full_system/qemu_nesting" "${example_dir}"
 
 node - "${workspace_toml}" <<'NODE'
 const fs = require('fs');

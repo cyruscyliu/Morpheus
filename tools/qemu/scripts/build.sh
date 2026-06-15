@@ -19,6 +19,41 @@ needs_rebuild="true"
 use_system_meson="${MORPHEUS_QEMU_USE_SYSTEM_MESON:-1}"
 configure_signature_file="${build_dir}/.morpheus-configure-signature"
 
+if command -v ulimit >/dev/null 2>&1; then
+  ulimit -n 65535 >/dev/null 2>&1 || true
+fi
+
+convert_thin_archives() {
+  local archive=""
+  local backup=""
+  local member=""
+  local -a members=()
+
+  while IFS= read -r archive; do
+    if ! file "${archive}" | grep -q 'thin archive'; then
+      continue
+    fi
+
+    members=()
+    while IFS= read -r member; do
+      members+=("${member}")
+    done < <(ar t "${archive}")
+    if [ "${#members[@]}" -eq 0 ]; then
+      continue
+    fi
+
+    backup="${archive}.thin"
+    rm -f "${backup}"
+    mv "${archive}" "${backup}"
+    if ! ar csrD "${archive}" "${members[@]}"; then
+      rm -f "${archive}"
+      mv "${backup}" "${archive}"
+      return 1
+    fi
+    rm -f "${backup}"
+  done < <(find . -type f \( -name '*.a' -o -name '*.fa' \) | sort)
+}
+
 stale_target_list_config() {
   local config_host_mak="$1"
   local expected_targets="$2"
@@ -164,7 +199,10 @@ if [ -f "${build_dir}/build.ninja" ]; then
     echo "ninja is required for QEMU builds that generate build.ninja" >&2
     exit 1
   fi
-  ninja "-j${jobs}"
+  if ! ninja "-j${jobs}"; then
+    convert_thin_archives
+    ninja "-j${jobs}"
+  fi
   ninja install
 elif [ -f "${build_dir}/Makefile" ]; then
   make "-j${jobs}"

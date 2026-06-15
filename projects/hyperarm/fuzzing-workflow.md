@@ -488,6 +488,27 @@ QEMU TCG executes guest code
 This feedback guides mutation during fuzzing. It is separate from the
 post-run guest kernel coverage generated from nqc2 traces.
 
+## Driver-Only Oracle Pitfall
+
+The fuzzing oracle is intended to find bugs in `drivers/`, especially the
+virtio-mmio path exercised by the L2 QEMU input.
+
+Whole-kernel KASAN is noisy in this nested setup. Generic KASAN instruments
+early boot code, allocator setup, EFI/libstub code, GIC ITS setup, and module
+paths before the L2 guest reaches the driver target. Those faults can block the
+run, but they are not useful fuzzing findings for this project.
+
+Treat non-driver KASAN failures as harness noise unless they are required to
+reach the driver surface. For the inserted virtio-mmio test bug, use a direct
+driver oracle in `drivers/virtio/virtio_mmio.c` instead of whole-kernel KASAN.
+The oracle should fail only after fuzz-controlled MMIO, DMA, or interrupt
+behavior reaches the target driver path.
+
+Loadable modules are another common pitfall. Sanitized module builds can fail
+in `modpost` on unrelated `.ko` files before the L2 kernel image is usable.
+The L2 fuzzing kernel should avoid module-only surfaces unless the target
+driver explicitly requires them.
+
 ## Throughput Notes
 
 Current throughput is expected to be low.

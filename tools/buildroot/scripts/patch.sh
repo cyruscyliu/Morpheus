@@ -25,15 +25,35 @@ has_strategy() {
 
 collect_source_tree_patch_files() {
   local root="$1"
-  find "${root}" -mindepth 1 -maxdepth 1 -type f \( -name '*.patch' -o -name '*.diff' \) | sort
+  local file
+
+  for file in "${root}"/*.patch "${root}"/*.diff; do
+    [ -f "${file}" ] && printf '%s\n' "${file}"
+  done | sort
+
   if [ -d "${root}/buildroot" ]; then
-    find "${root}/buildroot" -type f \( -name '*.patch' -o -name '*.diff' \) | sort
+    for file in "${root}/buildroot"/*.patch "${root}/buildroot"/*.diff; do
+      [ -f "${file}" ] && printf '%s\n' "${file}"
+    done | sort
   fi
+
+  return 0
 }
 
 collect_fingerprint_files() {
   local root="$1"
-  find "${root}" -type f ! -path '*/.*' | sort
+  local file
+
+  {
+    for file in "${root}"/*; do
+      [ -f "${file}" ] && printf '%s\n' "${file}"
+    done
+    for file in "${root}"/linux/* "${root}"/linux-headers/* "${root}"/buildroot/*; do
+      [ -f "${file}" ] && printf '%s\n' "${file}"
+    done
+  } | sort
+
+  return 0
 }
 
 patch_files=""

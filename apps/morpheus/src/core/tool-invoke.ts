@@ -32,6 +32,7 @@ function parseToolArgs(argv) {
     "file",
     "filter",
     "kconfig",
+    "replay-input",
     "rust-target",
   ]);
 
@@ -624,6 +625,11 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
   });
 
   return await new Promise((resolve, reject) => {
+    const maxBufferedOutput = 1024 * 1024;
+    const appendBounded = (current, chunk) => {
+      const next = current + chunk;
+      return next.length > maxBufferedOutput ? next.slice(-maxBufferedOutput) : next;
+    };
     let stdoutText = "";
     let stderrText = "";
     if (!detachedExec) {
@@ -660,11 +666,11 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
 
     if (!detachedExec) {
       child.stdout.on("data", (chunk) => {
-        stdoutText += chunk;
+        stdoutText = appendBounded(stdoutText, chunk);
         emitChunk("stdout", chunk);
       });
       child.stderr.on("data", (chunk) => {
-        stderrText += chunk;
+        stderrText = appendBounded(stderrText, chunk);
         emitChunk("stderr", chunk);
       });
     }
@@ -1488,7 +1494,7 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
     }
     args.push(`--${key}`, String(value));
   }
-  const defaultRepeatableForwardedKeys = ["target-list", "configure-arg", "qemu-arg", "make-arg", "config-fragment", "env", "file", "filter", "kconfig", "rust-target"];
+  const defaultRepeatableForwardedKeys = ["target-list", "configure-arg", "qemu-arg", "make-arg", "config-fragment", "env", "file", "filter", "kconfig", "replay-input", "rust-target"];
   const repeatableForwardedKeys = Array.isArray(forwardSpec.repeatable)
     ? forwardSpec.repeatable
     : defaultRepeatableForwardedKeys;

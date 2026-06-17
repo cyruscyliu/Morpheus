@@ -9,7 +9,7 @@ const { spawnSync, spawn } = require("node:child_process");
 const appRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(appRoot, "..", "..");
 const bin = path.join(appRoot, "dist", "cli.js");
-const buildrootFixture = path.join(repoRoot, "tools", "buildroot", "test", "fixtures", "minimal-buildroot");
+const buildrootFixture = path.join(repoRoot, "tools", "buildroot", "tests", "fixtures", "minimal-buildroot");
 const { applyConfigDefaults } = require("../dist/core/config.js");
 const { effectiveBuildDirKey, syncRemotePathToLocal } = require("../dist/transport/remote.js");
 

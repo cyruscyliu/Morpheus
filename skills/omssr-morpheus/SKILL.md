@@ -134,6 +134,11 @@ Operational rule:
 - Keep patch inputs in managed workspace locations when possible, and point
   tool patch configuration at those managed paths or at repo-shipped patch
   directories when that is the intended source.
+- Keep tool-owned smoke and test fixtures in one canonical tree under
+  `tools/<tool>/tests/fixtures/`.
+- Point repo configs, smoke workflows, and tests at that same
+  `tools/<tool>/tests/fixtures/` path instead of duplicating fixture trees
+  under both `tools/<tool>/fixtures/` and `tools/<tool>/test/fixtures/`.
 - When this repo carries multiple projects, prefer project-owned managed patch
   trees such as `projects/<project>/workspace/tools/<tool>/patches`.
 - When patch sets change, prefer resetting managed patch targets before
@@ -711,6 +716,21 @@ Managed workspace layout:
 Treat this layout as stable.
 Treat `<workspace>/runs/` as the canonical managed run root.
 Do not invent parallel management roots outside it.
+
+Repo-side tool layout:
+
+```text
+tools/<tool>/
+  scripts/
+  patches/
+  tests/fixtures/
+  tool.json
+```
+
+Keep tool-owned smoke and test fixtures in `tools/<tool>/tests/fixtures/`.
+Point repo configs, smoke workflows, and tests at that same fixture tree.
+Do not split equivalent fixtures across `tools/<tool>/fixtures/`,
+`tools/<tool>/test/fixtures/`, and `tools/<tool>/tests/fixtures/`.
 
 ## Remote Mode
 

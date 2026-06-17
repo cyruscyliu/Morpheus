@@ -11,7 +11,7 @@ const buildrootFixture = path.join(
   repoRoot,
   "tools",
   "buildroot",
-  "test",
+  "tests",
   "fixtures",
   "minimal-buildroot"
 );

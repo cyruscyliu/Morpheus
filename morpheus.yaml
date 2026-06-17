@@ -60,7 +60,7 @@ tools:
       - output-dir
       - manifest
   buildroot:
-    seed-dir: ./tools/buildroot/fixtures/minimal-buildroot
+    seed-dir: ./tools/buildroot/tests/fixtures/minimal-buildroot
     patch-dir: ./tools/buildroot/patches/demo
   libvmm:
     seed-dir: ./tools/libvmm/fixtures/minimal-libvmm-src

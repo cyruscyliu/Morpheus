@@ -23,11 +23,6 @@
 - Keep tool semantics thin and testable.
 - Treat remote mode as transport, not as a separate tool contract.
 - Treat cache policy as Morpheus-owned configuration, not as tool behavior.
-- Treat repo-local tool CLIs as Morpheus-internal execution surfaces.
-- Do not invoke repo-local tools directly from the agent shell.
-- Run tools only through `morpheus workflow ...`.
-- Prefer resuming an existing workflow run over creating a new run when the
-  same work can continue safely.
 - Never add tool-specific behavior to Morpheus.
 - Keep Morpheus generic and move tool-specific logic into `tools/<tool>/`.
 - Respect `reuse-build-dir: true` in tool build scripts.
@@ -42,17 +37,8 @@
   test, and smoke commands.
 - `install:bin` installs only the repo-local `morpheus` wrapper in `bin/`.
 - Do not expose repo-local tool CLIs as top-level wrappers in `bin/`.
-- When updating a tool, update its skill and `tools/<tool>/README.md` in the
-  same change unless the README is explicitly for standalone non-Morpheus use.
 - When changing `morpheus.yaml`, review the resolved workflow paths and step
   directories before committing.
-- Tool scripts must write only to stdout/stderr.
-- Morpheus owns log placement under `runs/steps/`; tools must not choose log
-  file paths.
-- Tool scripts must not implement their own runtime timeouts.
-- Tool scripts must not resolve managed workspace, cache, or artifact paths.
-- Tool scripts may only consume Morpheus-provided flags and env vars for
-  managed paths.
 
 ## Commit Messages
 
@@ -64,8 +50,6 @@
   the stable Morpheus-managed layout.
 - Treat `~/.cache/morpheus/<namespace>/tools/...` as the stable global cache
   layout when cache is enabled.
-- Write workflow and tool logs under `<workspace>/runs/steps/`; do not add
-  new log files under tool build or install directories.
 
 ## Skills-First Docs
 

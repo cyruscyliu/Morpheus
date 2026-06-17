@@ -10,6 +10,21 @@
 - Add comments when they improve clarity.
 - If you are uncertain, ask instead of fabricating results under pressure.
 
+## Review Principles
+
+- For review requests scoped by time, release, tag, or similar history
+  boundaries, first resolve the exact review boundary from the repo's release
+  history.
+- Prefer real Git tags when they exist.
+- If tags are missing or incomplete, use release/version commits and
+  `CHANGELOG.md` as the authoritative fallback.
+- State the exact commit or version boundary used in the review.
+- Structure the review in this order:
+  1. inspect the code changes in the requested scope
+  2. identify regressions, risks, and behavior changes in those changes
+  3. verify that the relevant skills, docs, or contracts still match the live
+     implementation
+
 ## CLI Principles
 
 - Design CLIs in a Unix-like style.
@@ -21,35 +36,13 @@
 - Use stable field names and predictable exit codes.
 - Keep output deterministic for scripts and agents.
 - Keep tool semantics thin and testable.
-- Treat remote mode as transport, not as a separate tool contract.
-- Treat cache policy as Morpheus-owned configuration, not as tool behavior.
-- Never add tool-specific behavior to Morpheus.
-- Keep Morpheus generic and move tool-specific logic into `tools/<tool>/`.
-- Respect `reuse-build-dir: true` in tool build scripts.
-- Do not delete managed build or install trees when reuse is enabled unless
-  the script first proves the tree is stale or incompatible.
-- Keep global cache enablement transparent to tools.
-- Prefer explicit `cache.namespace` values in `morpheus.yaml`.
-- When cache is enabled, Morpheus may create only the `patches` symlink bridge
-  for workspace-owned tool patch trees.
 - Require explicit user intent for ambiguous or destructive actions.
 - When adding a new CLI package or tool, update the relevant build, lint,
   test, and smoke commands.
-- `install:bin` installs only the repo-local `morpheus` wrapper in `bin/`.
-- Do not expose repo-local tool CLIs as top-level wrappers in `bin/`.
-- When changing `morpheus.yaml`, review the resolved workflow paths and step
-  directories before committing.
 
 ## Commit Messages
 
 - Use `component: action short-summary` subject-only commit messages.
-
-## Workspace Rule
-
-- Treat `<workspace>/tools/`, `<workspace>/runs/`, and `<workspace>/tmp/` as
-  the stable Morpheus-managed layout.
-- Treat `~/.cache/morpheus/<namespace>/tools/...` as the stable global cache
-  layout when cache is enabled.
 
 ## Skills-First Docs
 

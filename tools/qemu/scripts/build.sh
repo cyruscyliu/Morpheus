@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
+
 source_dir="${MORPHEUS_QEMU_SOURCE:?}"
 build_dir="${MORPHEUS_QEMU_BUILD_DIR:?}"
 install_dir="${MORPHEUS_QEMU_INSTALL_DIR:?}"
@@ -8,7 +10,7 @@ target_list_file="${MORPHEUS_QEMU_TARGET_LIST_FILE:-}"
 configure_arg_file="${MORPHEUS_QEMU_CONFIGURE_ARG_FILE:-}"
 target_list_raw="${MORPHEUS_QEMU_TARGET_LIST:-}"
 configure_arg_raw="${MORPHEUS_QEMU_CONFIGURE_ARG:-}"
-jobs="${MORPHEUS_QEMU_JOBS:-4}"
+jobs="${MORPHEUS_QEMU_JOBS:-$(morpheus_default_jobs)}"
 result_file="${MORPHEUS_QEMU_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 archive_url="${MORPHEUS_QEMU_ARCHIVE_URL:-}"
 seed_dir="${MORPHEUS_QEMU_SEED_DIR:-}"

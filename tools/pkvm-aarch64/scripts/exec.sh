@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
+
 source_dir="${MORPHEUS_PKVM_AARCH64_SOURCE:?}"
 run_dir="${MORPHEUS_PKVM_AARCH64_RUN_DIR:?}"
 platform="${MORPHEUS_PKVM_AARCH64_PLATFORM:-virt}"
@@ -20,7 +22,7 @@ make_args=()
 if [ -n "${make_arg_file}" ] && [ -s "${make_arg_file}" ]; then
   mapfile -t make_args < "${make_arg_file}"
 else
-  make_args=(-j4)
+  make_args=(-j"$(morpheus_default_jobs)")
 fi
 
 manifest_file="${run_dir}/manifest.json"

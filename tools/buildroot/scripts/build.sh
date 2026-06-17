@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
+
 source_dir="${MORPHEUS_BUILDROOT_SOURCE:?}"
 output_dir="${MORPHEUS_BUILDROOT_OUTPUT:?}"
 defconfig="${MORPHEUS_BUILDROOT_DEFCONFIG:-}"
@@ -238,7 +240,7 @@ if [ -n "${make_arg_file}" ] && [ -s "${make_arg_file}" ]; then
     make_args[$i]="${make_args[$i]//\$(nproc)/${nproc_value}}"
   done
 else
-  make_args=(-j4)
+  make_args=(-j"$(morpheus_default_jobs)")
 fi
 
 if [ "${reuse_build_dir}" = "true" ] \

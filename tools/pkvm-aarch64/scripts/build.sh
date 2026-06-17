@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
+
 source_dir="${MORPHEUS_PKVM_AARCH64_SOURCE:?}"
 build_dir="${MORPHEUS_PKVM_AARCH64_BUILD_DIR:?}"
 build_target="${MORPHEUS_PKVM_AARCH64_BUILD_TARGET:-all}"
@@ -59,10 +61,10 @@ make_args=()
 if [ -n "${make_arg_file}" ] && [ -s "${make_arg_file}" ]; then
   mapfile -t make_args < "${make_arg_file}"
 else
-  make_args=(-j4)
+  make_args=(-j"$(morpheus_default_jobs)")
 fi
 
-pkvm_jobs=4
+pkvm_jobs="$(morpheus_default_jobs)"
 for index in "${!make_args[@]}"; do
   arg="${make_args[$index]}"
   case "${arg}" in

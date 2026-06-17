@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
+
 source_dir="${MORPHEUS_LIBVMM_SOURCE:?}"
 example="${MORPHEUS_LIBVMM_EXAMPLE:-virtio}"
 microkit_sdk="${MORPHEUS_LIBVMM_MICROKIT_SDK:?}"
@@ -53,7 +55,7 @@ EOF
   exit 0
 fi
 
-make -C "${example_dir}" -j4 all
+make -C "${example_dir}" -j"$(morpheus_default_jobs)" all
 
 cat > "${runtime_contract}" <<EOF
 {

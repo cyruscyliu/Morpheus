@@ -629,11 +629,13 @@ cat > "${build_l1_dir}/provision-l1.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 build_guest_qemu="__MORPHEUS_BUILD_GUEST_QEMU__"
+guest_qemu_bin="/root/morpheus-qemu/bin/qemu-system-aarch64"
+guest_qemu_fallback_bin="/usr/bin/qemu-system-aarch64"
 if [ -x /root/install-dependencies.sh ]; then
   bash /root/install-dependencies.sh
 fi
 reuse_guest_qemu() {
-  local installed_qemu="/root/morpheus-qemu/bin/qemu-system-aarch64"
+  local installed_qemu="${guest_qemu_bin}"
   local built_qemu="/root/morpheus-qemu-src/build/qemu-system-aarch64"
   local installed_hash="/root/morpheus-qemu/.morpheus-source-v2.sha256"
   local source_hash="/root/morpheus-qemu-src/.morpheus-source-v2.sha256"
@@ -740,7 +742,12 @@ PY
     --disable-vduse-blk-export \
     --disable-cap-ng \
     --audio-drv-list=
-  make -j"$(nproc)" qemu-system-aarch64
+  guest_jobs="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 1)"
+  if ! [[ "${guest_jobs}" =~ ^[0-9]+$ ]] || [ "${guest_jobs}" -lt 1 ]; then
+    guest_jobs=1
+  fi
+  guest_jobs="$(( guest_jobs / 2 > 0 ? guest_jobs / 2 : 1 ))"
+  make -j"${guest_jobs}" qemu-system-aarch64
   cp -f /root/morpheus-qemu-src/.morpheus-source-v2.sha256 \
     /root/morpheus-qemu-src/build/.morpheus-source-v2.sha256
   mkdir -p /root/morpheus-qemu/bin
@@ -748,7 +755,8 @@ PY
     /root/morpheus-qemu/bin/qemu-system-aarch64
   cp -f /root/morpheus-qemu-src/.morpheus-source-v2.sha256 \
     /root/morpheus-qemu/.morpheus-source-v2.sha256
-elif [ "${build_guest_qemu}" = "true" ] && [ ! -x /usr/bin/qemu-system-aarch64 ]; then
+elif [ ! -x "${guest_qemu_bin}" ] && \
+     [ ! -x "${guest_qemu_fallback_bin}" ]; then
   sudo apt-get install -y qemu-system-arm
 fi
 mkdir -p /root/nvirsh-images

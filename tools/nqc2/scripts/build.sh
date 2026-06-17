@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
+
 source_dir="${MORPHEUS_NQC2_SOURCE:?}"
 qemu_path="${MORPHEUS_NQC2_QEMU:-}"
 build_dir="${MORPHEUS_NQC2_BUILD_DIR:?}"
@@ -102,7 +104,7 @@ if [ ! -d "${qemu_etrace_repo}/.git" ]; then
   git clone "${qemu_etrace_url}" "${qemu_etrace_repo}"
 fi
 
-make -C "${qemu_etrace_repo}" -j4
+make -C "${qemu_etrace_repo}" -j"$(morpheus_default_jobs)"
 
 install -m 0755 "${qemu_etrace_repo}/qemu-etrace" "${qemu_etrace_out}"
 cat > "${cli_out}" <<'EOF'

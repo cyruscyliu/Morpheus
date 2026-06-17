@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
+
 source_dir="${MORPHEUS_LIBAFL_SOURCE:?}"
 build_dir="${MORPHEUS_LIBAFL_BUILD_DIR:?}"
 install_dir="${MORPHEUS_LIBAFL_INSTALL_DIR:?}"
@@ -25,6 +27,10 @@ fuzzer_target_dir="${MORPHEUS_LIBAFL_FUZZER_TARGET_DIR:-/tmp/morpheus-libafl-tar
 libvharness_url="${MORPHEUS_LIBAFL_LIBVHARNESS_URL:-https://github.com/rmalmain/libvharness.git}"
 libvharness_commit="${MORPHEUS_LIBAFL_LIBVHARNESS_COMMIT:-9a316966ce7aa4bd9f733491511e6ac4be6dd980}"
 
+if [ -d "${HOME}/.cargo/bin" ]; then
+  export PATH="${HOME}/.cargo/bin:${PATH}"
+fi
+
 mkdir -p "$(dirname "${result_file}")"
 mkdir -p "${build_dir}" "${install_dir}/bin" "${install_dir}/lib"
 
@@ -40,11 +46,13 @@ if command -v ulimit >/dev/null 2>&1; then
   esac
 fi
 
-export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
+default_jobs="$(morpheus_default_jobs)"
+
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-${default_jobs}}"
 export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
-export NUM_JOBS="${NUM_JOBS:-${MORPHEUS_LIBAFL_NATIVE_JOBS:-4}}"
-export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-${MORPHEUS_LIBAFL_NATIVE_JOBS:-4}}"
-export MAKEFLAGS="${MAKEFLAGS:--j${MORPHEUS_LIBAFL_NATIVE_JOBS:-4}}"
+export NUM_JOBS="${NUM_JOBS:-${MORPHEUS_LIBAFL_NATIVE_JOBS:-${default_jobs}}}"
+export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-${MORPHEUS_LIBAFL_NATIVE_JOBS:-${default_jobs}}}"
+export MAKEFLAGS="${MAKEFLAGS:--j${MORPHEUS_LIBAFL_NATIVE_JOBS:-${default_jobs}}}"
 export CARGO_HOME="${MORPHEUS_LIBAFL_CARGO_HOME:-/tmp/morpheus-libafl-cargo-home}"
 export CARGO_CACHE_AUTO_CLEAN_FREQUENCY="${CARGO_CACHE_AUTO_CLEAN_FREQUENCY:-never}"
 export RUSTC_WRAPPER=""
@@ -181,7 +189,7 @@ fi
 bridge_cargo_args=(
   --manifest-path "${source_dir}/Cargo.toml"
   --target-dir "${host_target_dir}"
-  --jobs 1
+  --jobs "${CARGO_BUILD_JOBS}"
   -p libafl_nesting
   --features qemu-bridge-aarch64
 )
@@ -189,7 +197,7 @@ bridge_cargo_args=(
 fuzzer_cargo_args=(
   --manifest-path "${source_dir}/fuzzers/full_system/qemu_nesting/Cargo.toml"
   --target-dir "${fuzzer_target_dir}"
-  --jobs 1
+  --jobs "${CARGO_BUILD_JOBS}"
   --no-default-features
   --features std,aarch64
 )

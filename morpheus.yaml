@@ -75,7 +75,7 @@ tools:
     build-version: dev
     build-dir-key: default
   qemu:
-    seed-dir: ./tools/qemu/fixtures/minimal-qemu-src
+    seed-dir: ./tools/qemu/tests/fixtures/minimal-qemu-src
     patch-dir: ./tools/qemu/patches/demo
   libafl:
     seed-dir: ./tmp/libafl
@@ -477,6 +477,30 @@ workflows:
         args:
           - --source
           - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+  qemu-fetch-ci:
+    category: build
+    steps:
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+        args:
+          - --build-version
+          - fixture
+  qemu-patch-ci:
+    category: build
+    steps:
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+        args:
+          - --build-version
+          - fixture
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
   qemu-build-ci:
     category: build
     steps:

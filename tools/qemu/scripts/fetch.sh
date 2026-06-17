@@ -23,10 +23,6 @@ else
   if [ -z "${resolved_archive_url}" ] && [ -n "${build_version}" ]; then
     resolved_archive_url="https://download.qemu.org/qemu-${build_version}.tar.xz"
   fi
-  if [ -n "${resolved_archive_url}" ]; then
-    mode="archive"
-    input_fingerprint="$(printf '%s\n%s\n' "${resolved_archive_url}" "${build_version}" | sha256sum | awk '{print $1}')"
-  fi
 fi
 
 if [ -x "${source_dir}/configure" ] \
@@ -69,6 +65,21 @@ if [ -n "${archive_url}" ]; then
     else
       curl -L "${archive_url}" -o "${archive_path}"
     fi
+  fi
+  mode="archive"
+  archive_hash="$(sha256sum "${archive_path}" | awk '{print $1}')"
+  input_fingerprint="$(
+    printf '%s\n%s\n%s\n' "${archive_url}" "${build_version}" "${archive_hash}" \
+      | sha256sum | awk '{print $1}'
+  )"
+  if [ -x "${source_dir}/configure" ] \
+    && morpheus_state_matches "${state_file}" "mode" "${mode}" \
+    && morpheus_state_matches "${state_file}" "input_fingerprint" "${input_fingerprint}"; then
+    printf '[qemu] reuse source %s version=%s\n' "${source_dir}" "${build_version}"
+    cat > "${result_file}" <<EOF
+{"details":{"reused":true,"fetched_source":false,"build_version":"${build_version}"}}
+EOF
+    exit 0
   fi
   extract_root="${downloads_dir}/.extract"
   rm -rf "${extract_root}"

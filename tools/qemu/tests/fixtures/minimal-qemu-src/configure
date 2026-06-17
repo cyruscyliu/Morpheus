@@ -18,6 +18,7 @@ all:
 	cp "${MORPHEUS_QEMU_SOURCE}/target/trace.sh" build-out/qemu-system-aarch64
 	chmod +x build-out/qemu-system-aarch64
 install:
-	mkdir -p ${prefix}/bin
+	mkdir -p ${prefix}/bin ${prefix}/share/qemu
 	cp build-out/qemu-system-aarch64 ${prefix}/bin/qemu-system-aarch64
+	printf '%s\n' 'fake edk2 firmware' > ${prefix}/share/qemu/edk2-aarch64-code.fd
 EOF

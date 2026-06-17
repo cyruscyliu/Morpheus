@@ -16,7 +16,7 @@ Use this skill when you need to work with the `buildroot` tool in this repo.
 
 `buildroot` is now migrating to a script-backed Morpheus tool model.
 `tool.json` is the contract.
-`scripts/` own fetch, patch, build, inspect, and logs behavior.
+`scripts/` own fetch, patch, build, and inspect behavior.
 Use Morpheus for workflow runs, inspection, logs, and artifact-oriented
 execution.
 
@@ -41,7 +41,7 @@ run-specific values.
 
 `tools/buildroot/tool.json` is the integration contract Morpheus reads.
 
-- `cli-contract` is `fetch,patch,build,inspect,logs`
+- `cli-contract` is `fetch,patch,build,inspect`
 - `config.fields` defines accepted config names and aliases
 - `managed` declares managed source, downloads, build output, and artifact
   path templates
@@ -61,7 +61,7 @@ Important descriptor fields:
   stable managed build path policy.
 - `managed.local.sourceTemplate`, `buildDirTemplate`:
   managed source and output locations.
-- `commands.build.pathFlags.build-dir` and `result.artifact`:
+- `commands.build.pathFlags.output` and `managed.local.artifacts`:
   where the build writes and what it publishes.
 
 ## How The Tool Works
@@ -72,8 +72,6 @@ Buildroot work is split into explicit stages.
 - `patch` applies a configured patch set to that tree
 - `build` runs Buildroot against the resolved source and output paths
 - `inspect` re-reads the recorded manifest instead of rebuilding
-- `logs` re-reads prior build logs
-
 The managed artifact contract is centered on the fetched source tree and the
 published image outputs such as `images/Image` and
 `images/rootfs.cpio.gz`.

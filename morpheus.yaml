@@ -78,6 +78,7 @@ tools:
     seed-dir: ./tools/qemu/tests/fixtures/minimal-qemu-src
     patch-dir: ./tools/qemu/patches/demo
   libafl:
+    seed-dir: ./tools/libafl/tests/fixtures/minimal-libafl-src
     patch-dir: ./projects/hyperarm/workspace/tools/libafl/patches/overlay
   pkvm-aarch64:
     git-url: https://github.com/vrosendahl/pkvm-aarch64.git

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/state.sh"
+
 source_dir="${MORPHEUS_QEMU_SOURCE:?}"
 patch_dir="${MORPHEUS_QEMU_PATCH_DIR:?}"
 result_file="${MORPHEUS_QEMU_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
@@ -16,19 +18,9 @@ if [ ! -d "${patch_dir}" ]; then
 fi
 
 patch_files="$(find "${patch_dir}" -type f \( -name '*.patch' -o -name '*.diff' \) -print | LC_ALL=C awk 'BEGIN{ORS="\n"}{print}' | LC_ALL=C sort)"
-fingerprint="$(
-  {
-    printf '%s\n' "${patch_files}"
-    while IFS= read -r file; do
-      [ -n "${file}" ] || continue
-      cat "${file}"
-    done <<EOF
-${patch_files}
-EOF
-  } | sha256sum | awk '{print $1}'
-)"
+fingerprint="$(printf '%s\n' "${patch_files}" | morpheus_hash_files_from_stdin)"
 
-if [ -f "${state_file}" ] && grep -q "\"fingerprint\": \"${fingerprint}\"" "${state_file}"; then
+if morpheus_patch_state_matches "${state_file}" "${fingerprint}"; then
   printf '[qemu] reuse patch state %s fingerprint=%s\n' "${patch_dir}" "${fingerprint}"
   cat > "${result_file}" <<EOF
 {"details":{"reused":true,"applied":true,"fingerprint":"${fingerprint}"}}
@@ -48,13 +40,7 @@ done <<EOF
 ${patch_files}
 EOF
 
-cat > "${state_file}" <<EOF
-{
-  "appliedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "dir": "${patch_dir}",
-  "fingerprint": "${fingerprint}"
-}
-EOF
+morpheus_write_patch_state "${state_file}" "${patch_dir}" "${fingerprint}"
 
 printf '[qemu] applied patches from %s fingerprint=%s\n' "${patch_dir}" "${fingerprint}"
 cat > "${result_file}" <<EOF

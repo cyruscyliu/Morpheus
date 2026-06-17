@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/state.sh"
+
 source_dir="${MORPHEUS_LIBAFL_SOURCE:?}"
 patch_dir="${MORPHEUS_LIBAFL_PATCH_DIR:?}"
 result_file="${MORPHEUS_LIBAFL_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
@@ -28,19 +30,9 @@ if [ -n "${repo_root}" ] && [ "${patch_dir_abs#${repo_root}/}" != "${patch_dir_a
 else
   fingerprint_files="$(find "${patch_dir}" -type f | sort)"
 fi
-fingerprint="$(
-  {
-    printf '%s\n' "${fingerprint_files}"
-    while IFS= read -r file; do
-      [ -n "${file}" ] || continue
-      cat "${file}"
-    done <<EOF
-${fingerprint_files}
-EOF
-  } | sha256sum | awk '{print $1}'
-)"
+fingerprint="$(printf '%s\n' "${fingerprint_files}" | morpheus_hash_files_from_stdin)"
 
-if [ -f "${state_file}" ] && grep -q "\"fingerprint\": \"${fingerprint}\"" "${state_file}"; then
+if morpheus_patch_state_matches "${state_file}" "${fingerprint}"; then
   cat > "${result_file}" <<EOF
 {"details":{"reused":true,"applied":true,"fingerprint":"${fingerprint}"}}
 EOF
@@ -73,13 +65,7 @@ if (!text.includes('libafl_nesting = { path = "./crates/libafl_nesting"')) {
 fs.writeFileSync(path, text);
 NODE
 
-cat > "${state_file}" <<EOF
-{
-  "appliedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "dir": "${patch_dir}",
-  "fingerprint": "${fingerprint}"
-}
-EOF
+morpheus_write_patch_state "${state_file}" "${patch_dir}" "${fingerprint}"
 
 cat > "${result_file}" <<EOF
 {"details":{"applied":true,"fingerprint":"${fingerprint}","crate_dir":"${crate_dir}","example_dir":"${example_dir}"}}

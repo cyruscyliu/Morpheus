@@ -1,16 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/state.sh"
+
 source_dir="${MORPHEUS_QEMU_SOURCE:?}"
 seed_dir="${MORPHEUS_QEMU_SEED_DIR:-}"
 archive_url="${MORPHEUS_QEMU_ARCHIVE_URL:-}"
 downloads_dir="${MORPHEUS_QEMU_DOWNLOADS_DIR:-}"
 result_file="${MORPHEUS_QEMU_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 build_version="${MORPHEUS_QEMU_BUILD_VERSION:-}"
+state_file="${source_dir}/.morpheus-fetch.json"
 
 mkdir -p "$(dirname "${source_dir}")"
 
-if [ -x "${source_dir}/configure" ]; then
+mode="empty"
+input_fingerprint=""
+if [ -n "${seed_dir}" ]; then
+  mode="seed"
+  input_fingerprint="$(morpheus_hash_tree "${seed_dir}")"
+else
+  resolved_archive_url="${archive_url}"
+  if [ -z "${resolved_archive_url}" ] && [ -n "${build_version}" ]; then
+    resolved_archive_url="https://download.qemu.org/qemu-${build_version}.tar.xz"
+  fi
+  if [ -n "${resolved_archive_url}" ]; then
+    mode="archive"
+    input_fingerprint="$(printf '%s\n%s\n' "${resolved_archive_url}" "${build_version}" | sha256sum | awk '{print $1}')"
+  fi
+fi
+
+if [ -x "${source_dir}/configure" ] \
+  && morpheus_state_matches "${state_file}" "mode" "${mode}" \
+  && morpheus_state_matches "${state_file}" "input_fingerprint" "${input_fingerprint}"; then
   printf '[qemu] reuse source %s version=%s\n' "${source_dir}" "${build_version}"
   cat > "${result_file}" <<EOF
 {"details":{"reused":true,"fetched_source":false,"build_version":"${build_version}"}}
@@ -21,6 +42,13 @@ fi
 if [ -n "${seed_dir}" ]; then
   rm -rf "${source_dir}"
   cp -R "${seed_dir}" "${source_dir}"
+  morpheus_write_state_json \
+    "${state_file}" \
+    "fetchedAt" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "mode" "seed" \
+    "input_fingerprint" "${input_fingerprint}" \
+    "seed_dir" "${seed_dir}" \
+    "build_version" "${build_version}"
   cat > "${result_file}" <<EOF
 {"details":{"fetched_source":true,"seed_dir":"${seed_dir}","build_version":"${build_version}"}}
 EOF
@@ -54,6 +82,13 @@ if [ -n "${archive_url}" ]; then
   rm -rf "${source_dir}"
   mv "${first_dir}" "${source_dir}"
   rm -rf "${extract_root}"
+  morpheus_write_state_json \
+    "${state_file}" \
+    "fetchedAt" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "mode" "archive" \
+    "input_fingerprint" "${input_fingerprint}" \
+    "archive_url" "${archive_url}" \
+    "build_version" "${build_version}"
   printf '[qemu] fetched source %s from %s version=%s\n' "${source_dir}" "${archive_path}" "${build_version}"
   cat > "${result_file}" <<EOF
 {"details":{"fetched_source":true,"archive":"${archive_path}","build_version":"${build_version}"}}

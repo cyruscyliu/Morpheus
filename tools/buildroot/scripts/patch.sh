@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/state.sh"
+
 source_dir="${MORPHEUS_BUILDROOT_SOURCE:?}"
 patch_dir="${MORPHEUS_BUILDROOT_PATCH_DIR:?}"
 result_file="${MORPHEUS_BUILDROOT_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
@@ -65,19 +67,9 @@ if has_strategy "source-tree"; then
   patch_files="$(collect_source_tree_patch_files "${patch_dir}")"
 fi
 fingerprint_files="$(collect_fingerprint_files "${patch_dir}")"
-fingerprint="$(
-  {
-    printf '%s\n' "${fingerprint_files}"
-    while IFS= read -r file; do
-      [ -n "${file}" ] || continue
-      cat "${file}"
-    done <<EOF
-${fingerprint_files}
-EOF
-  } | sha256sum | awk '{print $1}'
-)"
+fingerprint="$(printf '%s\n' "${fingerprint_files}" | morpheus_hash_files_from_stdin)"
 
-if [ -f "${state_file}" ] && grep -q "\"fingerprint\": \"${fingerprint}\"" "${state_file}"; then
+if morpheus_patch_state_matches "${state_file}" "${fingerprint}"; then
   printf '[buildroot] reuse patch state %s fingerprint=%s\n' "${patch_dir}" "${fingerprint}"
   cat > "${result_file}" <<EOF
 {"details":{"reused":true,"applied":true,"fingerprint":"${fingerprint}"}}
@@ -97,13 +89,7 @@ else
   printf 'no direct buildroot source patches under %s\n' "${patch_dir}"
 fi
 
-cat > "${state_file}" <<EOF
-{
-  "appliedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "dir": "${patch_dir}",
-  "fingerprint": "${fingerprint}"
-}
-EOF
+morpheus_write_patch_state "${state_file}" "${patch_dir}" "${fingerprint}"
 
 printf '[buildroot] applied patch contract %s fingerprint=%s\n' "${patch_dir}" "${fingerprint}"
 cat > "${result_file}" <<EOF

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/state.sh"
+
 source_dir="${MORPHEUS_PKVM_AARCH64_SOURCE:?}"
 seed_dir="${MORPHEUS_PKVM_AARCH64_SEED_DIR:-}"
 build_version="${MORPHEUS_PKVM_AARCH64_BUILD_VERSION:-}"
@@ -8,6 +10,7 @@ git_url="${MORPHEUS_PKVM_AARCH64_GIT_URL:-https://github.com/vrosendahl/pkvm-aar
 fetch_submodules="${MORPHEUS_PKVM_AARCH64_FETCH_SUBMODULES:-false}"
 result_file="${MORPHEUS_PKVM_AARCH64_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 marker_file="${source_dir}/.morpheus-fetch-complete"
+state_file="${source_dir}/.morpheus-fetch.json"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../../.." && pwd)"
 override_dir="${repo_root}/tools/pkvm-aarch64/overrides"
@@ -45,7 +48,16 @@ mkdir -p "$(dirname "${source_dir}")"
 apply_overrides
 adjust_source_tree
 
-if [ -f "${marker_file}" ]; then
+mode="git"
+input_fingerprint="$(printf '%s\n%s\n%s\n' "${git_url}" "${build_version}" "${fetch_submodules}" | sha256sum | awk '{print $1}')"
+if [ -n "${seed_dir}" ]; then
+  mode="seed"
+  input_fingerprint="$(morpheus_hash_tree "${seed_dir}")"
+fi
+
+if [ -f "${marker_file}" ] \
+  && morpheus_state_matches "${state_file}" "mode" "${mode}" \
+  && morpheus_state_matches "${state_file}" "input_fingerprint" "${input_fingerprint}"; then
   cat > "${result_file}" <<EOF
 {"details":{"reused":true,"fetched_source":false,"source":"${source_dir}","build_version":"${build_version}","version":"$(detect_version)"}}
 EOF
@@ -77,6 +89,16 @@ if [ ! -f "${source_dir}/Makefile" ]; then
   echo "missing pKVM source tree: ${source_dir}" >&2
   exit 1
 fi
+
+morpheus_write_state_json \
+  "${state_file}" \
+  "fetchedAt" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  "mode" "${mode}" \
+  "input_fingerprint" "${input_fingerprint}" \
+  "seed_dir" "${seed_dir}" \
+  "git_url" "${git_url}" \
+  "build_version" "${build_version}" \
+  "fetch_submodules" "${fetch_submodules}"
 
 cat > "${result_file}" <<EOF
 {"details":{"fetched_source":true,"source":"${source_dir}","seed_dir":"${seed_dir}","git_url":"${git_url}","build_version":"${build_version}","version":"$(detect_version)"}}

@@ -23,7 +23,27 @@ detect_version() {
 mkdir -p "$(dirname "${source_dir}")"
 
 mode="git"
-input_fingerprint="$(printf '%s\n%s\n' "${git_url}" "${build_version}" | sha256sum | awk '{print $1}')"
+resolved_revision=""
+resolve_git_revision() {
+  if [ -z "${build_version}" ]; then
+    git ls-remote "${git_url}" HEAD | awk 'NR==1{print $1}'
+    return
+  fi
+  if [[ "${build_version}" =~ ^[0-9a-f]{40}$ ]]; then
+    printf '%s\n' "${build_version}"
+    return
+  fi
+  git ls-remote "${git_url}" \
+    "refs/heads/${build_version}" \
+    "refs/tags/${build_version}" \
+    "${build_version}" \
+    | awk 'NR==1{print $1}'
+}
+resolved_revision="$(resolve_git_revision || true)"
+if [ -z "${resolved_revision}" ]; then
+  resolved_revision="${build_version}"
+fi
+input_fingerprint="$(printf '%s\n%s\n' "${git_url}" "${resolved_revision}" | sha256sum | awk '{print $1}')"
 if [ -n "${seed_dir}" ]; then
   mode="seed"
   input_fingerprint="$(morpheus_hash_tree "${seed_dir}")"
@@ -48,6 +68,7 @@ if [ -n "${seed_dir}" ]; then
     "input_fingerprint" "${input_fingerprint}" \
     "seed_dir" "${seed_dir}" \
     "build_version" "${build_version}" \
+    "resolved_revision" "${resolved_revision}" \
     "git_url" "${git_url}"
   cat > "${result_file}" <<EOF
 {"details":{"fetched_source":true,"seed_dir":"${seed_dir}","build_version":"${build_version}","version":"$(detect_version)"}}
@@ -73,7 +94,8 @@ morpheus_write_state_json \
   "mode" "git" \
   "input_fingerprint" "${input_fingerprint}" \
   "git_url" "${git_url}" \
-  "build_version" "${build_version}"
+  "build_version" "${build_version}" \
+  "resolved_revision" "${resolved_revision}"
 
 cat > "${result_file}" <<EOF
 {"details":{"fetched_source":true,"git_url":"${git_url}","build_version":"${build_version}","version":"$(detect_version)"}}

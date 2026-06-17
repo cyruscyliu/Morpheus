@@ -41,4 +41,6 @@ projects/*/workspace/**
 !projects/*/workspace/tools/*/
 !projects/*/workspace/tools/*/patches/
 !projects/*/workspace/tools/*/patches/**
+!projects/*/workspace/tools/*/scripts/
+!projects/*/workspace/tools/*/scripts/**
 crashes/

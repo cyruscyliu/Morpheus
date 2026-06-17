@@ -43,6 +43,13 @@
         ],
         "path": true
       },
+      "patch-script": {
+        "aliases": [
+          "patch-script",
+          "patchScript"
+        ],
+        "path": true
+      },
       "reuse-build-dir": {
         "aliases": [
           "reuse-build-dir",
@@ -56,6 +63,13 @@
           "buildDirKey"
         ]
       },
+      "build-script": {
+        "aliases": [
+          "build-script",
+          "buildScript"
+        ],
+        "path": true
+      },
       "cargo-arg": {
         "aliases": [
           "cargo-arg",
@@ -64,6 +78,13 @@
         ],
         "repeatable": true
       },
+      "inspect-script": {
+        "aliases": [
+          "inspect-script",
+          "inspectScript"
+        ],
+        "path": true
+      },
       "run-dir": {
         "aliases": [
           "run-dir",
@@ -71,12 +92,20 @@
         ],
         "path": true
       },
-      "nvirsh-state": {
+      "harness-script": {
         "aliases": [
-          "nvirsh-state",
-          "nvirshState"
+          "harness-script",
+          "harnessScript"
         ],
         "path": true
+      },
+      "harness-arg": {
+        "aliases": [
+          "harness-arg",
+          "harness-args",
+          "harnessArgs"
+        ],
+        "repeatable": true
       },
       "detach": {
         "aliases": [
@@ -89,39 +118,6 @@
           "run-seconds",
           "runSeconds"
         ]
-      },
-      "l2-run-window-ms": {
-        "aliases": [
-          "l2-run-window-ms",
-          "l2RunWindowMs"
-        ]
-      },
-      "l2-accel": {
-        "aliases": [
-          "l2-accel",
-          "l2Accel"
-        ]
-      },
-      "l2-cpu": {
-        "aliases": [
-          "l2-cpu",
-          "l2Cpu"
-        ]
-      },
-      "replay-input": {
-        "aliases": [
-          "replay-input",
-          "replayInput"
-        ],
-        "path": true,
-        "repeatable": true
-      },
-      "disable-nqc2-plugin": {
-        "aliases": [
-          "disable-nqc2-plugin",
-          "disableNqc2Plugin"
-        ],
-        "boolean": true
       },
       "artifacts": {
         "aliases": [
@@ -144,21 +140,6 @@
       "artifacts": {
         "source-dir": {
           "pathTemplate": "tools/libafl/builds/{buildDirKey}/source"
-        },
-        "crate-dir": {
-          "pathTemplate": "tools/libafl/builds/{buildDirKey}/source/crates/libafl_nesting"
-        },
-        "qemu-bridge-dir": {
-          "pathTemplate": "tools/libafl/builds/{buildDirKey}/build/qemu-libafl-bridge"
-        },
-        "qemu-bridge-lib": {
-          "pathTemplate": "tools/libafl/builds/{buildDirKey}/install/lib/libqemu-system-aarch64.so"
-        },
-        "guest-stub-binary": {
-          "pathTemplate": "tools/libafl/builds/{buildDirKey}/install/bin/libafl_nesting_stub"
-        },
-        "qemu-nesting-fuzzer": {
-          "pathTemplate": "tools/libafl/builds/{buildDirKey}/install/bin/qemu_nesting"
         },
         "run-manifest": {
           "pathTemplate": "tools/libafl/runs/{buildDirKey}/manifest.json"
@@ -206,7 +187,8 @@
             "patch-dir"
           ],
           "scalarFlags": [
-            "patch-dir"
+            "patch-dir",
+            "patch-script"
           ],
           "repeatableFlags": [],
           "script": {
@@ -225,17 +207,7 @@
             },
             "details": {
               "source": "{source}",
-              "patch_dir": "{patch-dir}",
-              "artifacts": [
-                {
-                  "path": "source-dir",
-                  "location": "{source}"
-                },
-                {
-                  "path": "crate-dir",
-                  "location": "{source}/crates/libafl_nesting"
-                }
-              ]
+              "patch_dir": "{patch-dir}"
             }
           }
         },
@@ -250,6 +222,7 @@
             "build-dir",
             "install-dir",
             "patch-dir",
+            "build-script",
             "reuse-build-dir",
             "build-version",
             "git-url",
@@ -269,34 +242,16 @@
             "install-dir": "tools/libafl/builds/{buildDirKey}/install"
           },
           "result": {
-            "successSummary": "built local libafl_nesting guest stub",
-            "reusedSummary": "reused local libafl_nesting guest stub build",
+            "successSummary": "built local libafl harness artifacts",
+            "reusedSummary": "reused local libafl harness build",
             "artifact": {
-              "path": "qemu-nesting-fuzzer",
-              "locationTemplate": "{install-dir}/bin/qemu_nesting"
+              "path": "source-dir",
+              "locationTemplate": "{source}"
             },
             "details": {
               "source": "{source}",
               "build_dir": "{build-dir}",
-              "install_dir": "{install-dir}",
-              "artifacts": [
-                {
-                  "path": "guest-stub-binary",
-                  "location": "{install-dir}/bin/libafl_nesting_stub"
-                },
-                {
-                  "path": "qemu-nesting-fuzzer",
-                  "location": "{install-dir}/bin/qemu_nesting"
-                },
-                {
-                  "path": "qemu-bridge-dir",
-                  "location": "{build-dir}/qemu-libafl-bridge"
-                },
-                {
-                  "path": "qemu-bridge-lib",
-                  "location": "{install-dir}/lib/libqemu-system-aarch64.so"
-                }
-              ]
+              "install_dir": "{install-dir}"
             }
           }
         },
@@ -308,6 +263,7 @@
             "source",
             "build-dir",
             "install-dir",
+            "inspect-script",
             "build-version",
             "git-url"
           ],
@@ -322,10 +278,10 @@
             "install-dir": "tools/libafl/builds/{buildDirKey}/install"
           },
           "result": {
-            "successSummary": "inspected managed LibAFL nesting build",
+            "successSummary": "inspected managed LibAFL build",
             "artifact": {
-              "path": "crate-dir",
-              "locationTemplate": "{source}/crates/libafl_nesting"
+              "path": "source-dir",
+              "locationTemplate": "{source}"
             }
           }
         },
@@ -334,25 +290,20 @@
             "source",
             "run-dir",
             "install-dir",
-            "nvirsh-state"
+            "harness-script"
           ],
           "scalarFlags": [
             "source",
             "run-dir",
             "install-dir",
-            "nvirsh-state",
+            "harness-script",
             "detach",
             "run-seconds",
-            "l2-run-window-ms",
-            "l2-accel",
-            "l2-cpu",
-            "replay-input",
-            "disable-nqc2-plugin",
             "build-version",
             "build-dir-key"
           ],
           "repeatableFlags": [
-            "replay-input"
+            "harness-arg"
           ],
           "pathFlags": {
             "source": "tools/libafl/builds/{buildDirKey}/source",
@@ -365,17 +316,16 @@
             "cwdTemplate": "{run-dir}"
           },
           "result": {
-            "successSummary": "launched host-side libafl qemu_nesting fuzzer",
-            "attachedSuccessSummary": "completed host-side libafl qemu_nesting fuzzer",
-            "errorSummary": "host-side libafl qemu_nesting launch failed",
+            "successSummary": "launched host-side libafl harness",
+            "attachedSuccessSummary": "completed host-side libafl harness",
+            "errorSummary": "host-side libafl harness launch failed",
             "artifact": {
               "path": "run-manifest",
               "locationTemplate": "{run-dir}/manifest.json"
             },
             "details": {
               "run_dir": "{run-dir}",
-              "manifest": "{run-dir}/manifest.json",
-              "nvirsh_state": "{nvirsh-state}"
+              "manifest": "{run-dir}/manifest.json"
             }
           }
         }

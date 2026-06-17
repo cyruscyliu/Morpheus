@@ -142,21 +142,25 @@ cmd=(
   workflow run
   --tool libafl
   --source "${source_dir}"
-  --nvirsh-state "${nvirsh_state}"
-  --l2-run-window-ms "${l2_run_window_ms}"
-  --l2-accel "${l2_accel}"
+  --harness-script "projects/hyperarm/workspace/tools/libafl/scripts/qemu_nesting/exec.sh"
+  --harness-arg "--nvirsh-state"
+  --harness-arg "${nvirsh_state}"
+  --harness-arg "--l2-run-window-ms"
+  --harness-arg "${l2_run_window_ms}"
+  --harness-arg "--l2-accel"
+  --harness-arg "${l2_accel}"
 )
 
 if [ -n "${l2_cpu}" ]; then
-  cmd+=(--l2-cpu "${l2_cpu}")
+  cmd+=(--harness-arg "--l2-cpu" --harness-arg "${l2_cpu}")
 fi
 
 for input in "${absolute_inputs[@]}"; do
-  cmd+=(--replay-input "${input}")
+  cmd+=(--harness-arg "--replay-input" --harness-arg "${input}")
 done
 
 if [ "${disable_nqc2_plugin}" = "true" ]; then
-  cmd+=(--disable-nqc2-plugin)
+  cmd+=(--harness-arg "--disable-nqc2-plugin")
 fi
 
 if [ "${json}" = "true" ]; then

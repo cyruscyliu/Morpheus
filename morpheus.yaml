@@ -78,7 +78,6 @@ tools:
     seed-dir: ./tools/qemu/tests/fixtures/minimal-qemu-src
     patch-dir: ./tools/qemu/patches/demo
   libafl:
-    seed-dir: ./tmp/libafl
     patch-dir: ./projects/hyperarm/workspace/tools/libafl/patches/overlay
   pkvm-aarch64:
     git-url: https://github.com/vrosendahl/pkvm-aarch64.git
@@ -207,6 +206,27 @@ workflows:
       - id: libafl_fetch
         tool: libafl
         command: fetch
+      - id: libafl_patch
+        tool: libafl
+        command: patch
+        args:
+          - --source
+          - "{{steps.libafl_fetch.artifacts.source-dir.location}}"
+      - id: libafl_build
+        tool: libafl
+        command: build
+        args:
+          - --source
+          - "{{steps.libafl_patch.artifacts.source-dir.location}}"
+  libafl-build-ci:
+    category: build
+    steps:
+      - id: libafl_fetch
+        tool: libafl
+        command: fetch
+        args:
+          - --build-version
+          - ffbb151f34d4d486ffc8e24fc105571c4133a149
       - id: libafl_patch
         tool: libafl
         command: patch

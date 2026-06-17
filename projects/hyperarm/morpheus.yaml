@@ -74,6 +74,10 @@ tools:
     build-version: b32557c8ae7e2300657de06382f2761f831c1963
     git-url: https://github.com/AFLplusplus/LibAFL.git
     patch-dir: tools/libafl/patches/overlay
+    patch-script: ./workspace/tools/libafl/scripts/qemu_nesting/patch.sh
+    build-script: ./workspace/tools/libafl/scripts/qemu_nesting/build.sh
+    inspect-script: ./workspace/tools/libafl/scripts/qemu_nesting/inspect.sh
+    harness-script: ./workspace/tools/libafl/scripts/qemu_nesting/exec.sh
     artifacts:
       - source-dir
       - crate-dir
@@ -288,7 +292,11 @@ workflows:
         args:
           - --source
           - "{{steps.libafl_patch.artifacts.source-dir.location}}"
+          - --harness-script
+          - ./workspace/tools/libafl/scripts/qemu_nesting/exec.sh
+          - --harness-arg
           - --nvirsh-state
+          - --harness-arg
           - "{{steps.nvirsh_build.artifacts.prepared-state.location}}"
           - --run-seconds
           - "3600"

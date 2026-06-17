@@ -7,6 +7,8 @@
 - Wrap generated Markdown at 80 chars.
 - Use repo-relative paths or plain code references.
 - Do not add absolute filesystem paths.
+- Do not hardcode environment-specific `/workspace/...` discovery paths or
+  similar host-layout assumptions into repo code.
 - Add comments when they improve clarity.
 - If you are uncertain, ask instead of fabricating results under pressure.
 
@@ -24,6 +26,8 @@
   2. identify regressions, risks, and behavior changes in those changes
   3. verify that the relevant skills, docs, or contracts still match the live
      implementation
+- When reviewing a Morpheus-managed tool, always use the Morpheus skill as part
+  of the review, even if a tool-specific skill also applies.
 
 ## CLI Principles
 

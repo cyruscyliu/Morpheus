@@ -313,7 +313,14 @@ diff --git a/drivers/virtio/virtio_mmio.c b/drivers/virtio/virtio_mmio.c
 index 56128b9..da2ff00 100644
 --- a/drivers/virtio/virtio_mmio.c
 +++ b/drivers/virtio/virtio_mmio.c
-@@ -88,6 +88,24 @@ struct virtio_mmio_device {
+@@ -59,6 +59,7 @@
+ #include <linux/interrupt.h>
+ #include <linux/io.h>
++#include <linux/kasan-checks.h>
+ #include <linux/list.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
+@@ -88,6 +88,34 @@ struct virtio_mmio_device {
  	void __iomem *base;
  	unsigned long version;
  };
@@ -325,6 +332,18 @@ index 56128b9..da2ff00 100644
 +#define HYPERARM_VIRTIO_ORACLE_MAGIC0 0xa5u
 +#define HYPERARM_VIRTIO_ORACLE_MAGIC1 0x5au
 +
++static noinline void hyperarm_virtio_oracle_kasan_fault(void)
++{
++	u8 *victim = kmalloc(8, GFP_KERNEL);
++	void *bad;
++
++	if (!victim)
++		panic("HyperArm virtio-mmio driver oracle allocation failed");
++	bad = victim + 8;
++	__kasan_check_write(bad, 1);
++	kfree(victim);
++}
++
 +static void hyperarm_virtio_oracle_check(u32 value)
 +{
 +	if (!hyperarm_virtio_oracle_bug ||
@@ -333,12 +352,12 @@ index 56128b9..da2ff00 100644
 +		return;
 +
 +	pr_err("HyperArm oracle test bug triggered value=0x%08x\n", value);
-+	panic("HyperArm virtio-mmio driver oracle");
++	hyperarm_virtio_oracle_kasan_fault();
 +}
  
  /* Configuration interface */
  
-@@ -95,13 +113,18 @@ static u64 vm_get_features(struct virtio_device *vdev)
+@@ -95,13 +123,18 @@ static u64 vm_get_features(struct virtio_device *vdev)
  {
  	struct virtio_mmio_device *vm_dev = to_virtio_mmio_device(vdev);
  	u64 features;
@@ -360,7 +379,7 @@ index 56128b9..da2ff00 100644
  
  	return features;
  }
-@@ -372,6 +395,7 @@ static struct virtqueue *vm_setup_vq(struct virtio_device *vdev, unsigned int index,
+@@ -372,6 +405,7 @@ static struct virtqueue *vm_setup_vq(struct virtio_device *vdev, unsigned int index,
  	}
  
  	num = readl(vm_dev->base + VIRTIO_MMIO_QUEUE_NUM_MAX);

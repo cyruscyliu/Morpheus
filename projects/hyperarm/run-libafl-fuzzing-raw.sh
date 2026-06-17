@@ -76,7 +76,7 @@ done
 if [ -n "${l2_run_window_ms}" ]; then
   [[ "${l2_run_window_ms}" =~ ^[0-9]+$ ]] || die "l2-run-window-ms must be an integer"
   [ "${l2_run_window_ms}" -ge 1000 ] || die "l2-run-window-ms must be at least 1000"
-  [ "${l2_run_window_ms}" -le 120000 ] || die "l2-run-window-ms must be at most 120000"
+  [ "${l2_run_window_ms}" -le 900000 ] || die "l2-run-window-ms must be at most 900000"
 fi
 
 if [ -z "${cache_root}" ]; then

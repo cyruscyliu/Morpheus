@@ -136,8 +136,8 @@ fi
 if [ -n "${l2_run_window_ms}" ]; then
   if ! [[ "${l2_run_window_ms}" =~ ^[0-9]+$ ]] \
      || [ "${l2_run_window_ms}" -lt 1000 ] \
-     || [ "${l2_run_window_ms}" -gt 120000 ]; then
-    echo "l2-run-window-ms must be an integer between 1000 and 120000" >&2
+     || [ "${l2_run_window_ms}" -gt 900000 ]; then
+    echo "l2-run-window-ms must be an integer between 1000 and 900000" >&2
     exit 1
   fi
 fi
@@ -173,6 +173,7 @@ const state = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 const firmware = (state.hostLaunch && state.hostLaunch.firmware) || "";
 const overlay = (state.hostLaunch && state.hostLaunch.overlayImage) || "";
 const seed = (state.hostLaunch && state.hostLaunch.seedImage) || "";
+const buildDir = state.buildDir || "";
 const l1Args = (state.profileData && state.profileData.l1 && Array.isArray(state.profileData.l1.launcherArgs))
   ? state.profileData.l1.launcherArgs
   : [];
@@ -184,7 +185,7 @@ for (let i = 0; i < l1Args.length - 1; i += 1) {
   if (l1Args[i] === "-m") memory = String(l1Args[i + 1]);
   if (l1Args[i] === "-smp") smp = String(l1Args[i + 1]);
 }
-process.stdout.write(`${firmware}\n${overlay}\n${seed}\n${cpu}\n${memory}\n${smp}\n`);
+process.stdout.write(`${firmware}\n${overlay}\n${seed}\n${cpu}\n${memory}\n${smp}\n${buildDir}\n`);
 NODE
 )
 
@@ -193,9 +194,13 @@ overlay_image="${state_fields[1]}"
 l1_cpu="${state_fields[3]}"
 l1_memory="${state_fields[4]}"
 l1_smp="${state_fields[5]}"
+l1_build_dir="${state_fields[6]}"
 libafl_l1_smp="${MORPHEUS_LIBAFL_L1_SMP:-1}"
 qemu_data_dir="${qemu_bundle_dir}"
 firmware_data_dir="$(dirname "${firmware}")"
+direct_l1_kernel="${l1_build_dir}/l1/host-boot/vmlinuz"
+direct_l1_initrd="${l1_build_dir}/l1/host-boot/initrd.img"
+direct_l1_append="root=PARTUUID=48bd50df-bfd1-4457-8648-8026f634af47 ro init=/root/libafl_nesting_stub norandmaps rw"
 disable_nqc2_plugin="${MORPHEUS_LIBAFL_DISABLE_NQC2_PLUGIN:-false}"
 if [ -n "${MORPHEUS_L2_DISABLE_NQC2_PLUGIN:-}" ]; then
   disable_nqc2_plugin="true"
@@ -351,33 +356,45 @@ args=(
   "-m" "${l1_memory}"
   "-smp" "${libafl_l1_smp}"
   "-nographic"
-  "-bios" "${firmware}"
   "-drive" "file=${overlay_image},if=virtio,format=qcow2"
   "-L" "${qemu_data_dir}"
 )
 if [ "${disable_nqc2_plugin}" = "true" ]; then
+  direct_l1_append="${direct_l1_append} morpheus.l2_disable_nqc2_plugin=1"
   args+=(
     "-fw_cfg" "name=opt/morpheus/l2-disable-nqc2-plugin,string=1"
     "-smbios" "type=11,value=morpheus.l2_disable_nqc2_plugin=1"
   )
 fi
 if [ -n "${l2_run_window_ms}" ]; then
+  direct_l1_append="${direct_l1_append} morpheus.l2_run_window_ms=${l2_run_window_ms}"
   args+=(
     "-fw_cfg" "name=opt/morpheus/l2-run-window-ms,string=${l2_run_window_ms}"
     "-smbios" "type=11,value=morpheus.l2_run_window_ms=${l2_run_window_ms}"
   )
 fi
 if [ "${l2_accel}" != "auto" ]; then
+  direct_l1_append="${direct_l1_append} morpheus.l2_accel=${l2_accel}"
   args+=(
     "-fw_cfg" "name=opt/morpheus/l2-accel,string=${l2_accel}"
     "-smbios" "type=11,value=morpheus.l2_accel=${l2_accel}"
   )
 fi
 if [ -n "${l2_cpu}" ]; then
+  direct_l1_append="${direct_l1_append} morpheus.l2_cpu=${l2_cpu}"
   args+=(
     "-fw_cfg" "name=opt/morpheus/l2-cpu,string=${l2_cpu}"
     "-smbios" "type=11,value=morpheus.l2_cpu=${l2_cpu}"
   )
+fi
+if [ -f "${direct_l1_kernel}" ] && [ -f "${direct_l1_initrd}" ]; then
+  args+=(
+    "-kernel" "${direct_l1_kernel}"
+    "-initrd" "${direct_l1_initrd}"
+    "-append" "${direct_l1_append}"
+  )
+else
+  args+=("-bios" "${firmware}")
 fi
 
 launch_env=(

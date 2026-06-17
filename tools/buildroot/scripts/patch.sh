@@ -37,6 +37,10 @@ collect_source_tree_patch_files() {
     done | sort
   fi
 
+  # Linux patches are applied by Buildroot itself via BR2_GLOBAL_PATCH_DIR or
+  # the package patch hooks during the build step. Do not patch the Buildroot
+  # source tree with them here, or they will be applied twice.
+
   return 0
 }
 

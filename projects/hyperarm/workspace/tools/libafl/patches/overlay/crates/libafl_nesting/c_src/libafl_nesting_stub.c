@@ -54,8 +54,61 @@
 #define L2_RUN_WINDOW_DMI "morpheus.l2_run_window_ms="
 #define L2_ACCEL_DMI "morpheus.l2_accel="
 #define L2_CPU_DMI "morpheus.l2_cpu="
+#define PROC_CMDLINE_PATH "/proc/cmdline"
+#define L2_DISABLE_NQC2_CMDLINE "morpheus.l2_disable_nqc2_plugin=1"
+#define L2_RUN_WINDOW_CMDLINE "morpheus.l2_run_window_ms="
+#define L2_ACCEL_CMDLINE "morpheus.l2_accel="
+#define L2_CPU_CMDLINE "morpheus.l2_cpu="
 
 static uint8_t FUZZ_INPUT[INPUT_LEN];
+
+static bool read_text_prefix_value(const char *path, const char *prefix,
+                                   char *out, size_t out_len) {
+  FILE *fp = fopen(path, "rb");
+  char buf[4096];
+  size_t len;
+  const char *found = NULL;
+  const char *end = NULL;
+  size_t prefix_len = strlen(prefix);
+
+  if (!fp) {
+    return false;
+  }
+  len = fread(buf, 1, sizeof(buf) - 1, fp);
+  fclose(fp);
+  buf[len] = '\0';
+
+  found = strstr(buf, prefix);
+  if (!found) {
+    return false;
+  }
+  found += prefix_len;
+  end = found;
+  while (*end != '\0' && *end != ' ' && *end != '\n' && *end != '\r') {
+    end++;
+  }
+  if (end == found) {
+    return false;
+  }
+  snprintf(out, out_len, "%.*s", (int)(end - found), found);
+  return true;
+}
+
+static bool proc_cmdline_has_token(const char *token) {
+  FILE *fp = fopen(PROC_CMDLINE_PATH, "rb");
+  char buf[4096];
+  size_t len;
+  bool found = false;
+
+  if (!fp) {
+    return false;
+  }
+  len = fread(buf, 1, sizeof(buf) - 1, fp);
+  fclose(fp);
+  buf[len] = '\0';
+  found = strstr(buf, token) != NULL;
+  return found;
+}
 
 static void injected_period_ms(const uint8_t *data, char *out, size_t out_len) {
   uint16_t lo = data[1];
@@ -77,7 +130,7 @@ static bool injected_vintid(const uint8_t *data, char *out, size_t out_len) {
 static bool parse_run_window_ms(const char *value, unsigned *out) {
   char *end = NULL;
   unsigned long parsed = strtoul(value, &end, 10);
-  if (end != value && parsed >= 1000UL && parsed <= 120000UL) {
+  if (end != value && parsed >= 1000UL && parsed <= 900000UL) {
     *out = (unsigned)parsed;
     return true;
   }
@@ -118,6 +171,15 @@ static const char *fw_cfg_l2_cpu(void) {
   n = fread(value, 1, sizeof(value) - 1, fp);
   fclose(fp);
   return n > 0 ? parse_l2_cpu(value) : NULL;
+}
+
+static const char *proc_cmdline_l2_cpu(void) {
+  char value[32] = {0};
+  if (!read_text_prefix_value(PROC_CMDLINE_PATH, L2_CPU_CMDLINE,
+                              value, sizeof(value))) {
+    return NULL;
+  }
+  return parse_l2_cpu(value);
 }
 
 static const char *dmi_l2_cpu(void) {
@@ -174,6 +236,15 @@ static const char *fw_cfg_l2_accel(void) {
   n = fread(value, 1, sizeof(value) - 1, fp);
   fclose(fp);
   return n > 0 ? parse_l2_accel(value) : NULL;
+}
+
+static const char *proc_cmdline_l2_accel(void) {
+  char value[16] = {0};
+  if (!read_text_prefix_value(PROC_CMDLINE_PATH, L2_ACCEL_CMDLINE,
+                              value, sizeof(value))) {
+    return NULL;
+  }
+  return parse_l2_accel(value);
 }
 
 static const char *dmi_l2_accel(void) {
@@ -238,6 +309,15 @@ static bool fw_cfg_run_window_ms(unsigned *out) {
   return n > 0 && parse_run_window_ms(value, out);
 }
 
+static bool proc_cmdline_run_window_ms(unsigned *out) {
+  char value[32] = {0};
+  if (!read_text_prefix_value(PROC_CMDLINE_PATH, L2_RUN_WINDOW_CMDLINE,
+                              value, sizeof(value))) {
+    return false;
+  }
+  return parse_run_window_ms(value, out);
+}
+
 static bool dmi_run_window_ms(unsigned *out) {
   DIR *dir = opendir(DMI_ENTRIES_DIR);
   struct dirent *entry = NULL;
@@ -289,6 +369,7 @@ static unsigned run_window_ms(const uint8_t *data) {
   unsigned configured = 0;
 
   if (fw_cfg_run_window_ms(&configured) ||
+      proc_cmdline_run_window_ms(&configured) ||
       dmi_run_window_ms(&configured)) {
     return configured;
   }
@@ -320,6 +401,10 @@ static bool l2_disable_nqc2_plugin_enabled(void) {
     if (n > 0 && value[0] == '1') {
       return true;
     }
+  }
+
+  if (proc_cmdline_has_token(L2_DISABLE_NQC2_CMDLINE)) {
+    return true;
   }
 
   DIR *dir = opendir(DMI_ENTRIES_DIR);
@@ -558,6 +643,9 @@ static const char *resolve_l2_accel(void) {
   if (!configured) {
     configured = dmi_l2_accel();
   }
+  if (!configured) {
+    configured = proc_cmdline_l2_accel();
+  }
   if (configured) {
     return configured;
   }
@@ -574,6 +662,11 @@ static const char *resolve_l2_cpu(bool use_kvm, const char **source) {
   configured = dmi_l2_cpu();
   if (configured) {
     *source = "dmi";
+    return configured;
+  }
+  configured = proc_cmdline_l2_cpu();
+  if (configured) {
+    *source = "cmdline";
     return configured;
   }
   *source = "default";

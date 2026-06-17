@@ -14,8 +14,11 @@ build_version="${MORPHEUS_BUILDROOT_BUILD_VERSION:-}"
 patch_strategies="${MORPHEUS_BUILDROOT_PATCH_STRATEGIES:-${MORPHEUS_SCRIPT_PATCH_STRATEGIES:-source-tree}}"
 reuse_build_dir="${MORPHEUS_BUILDROOT_REUSE_BUILD_DIR:-false}"
 kernel_inputs_state_file="${output_dir}/.morpheus-kernel-inputs.json"
+tmp_dir="${MORPHEUS_BUILDROOT_TMPDIR:-${output_dir}/tmp}"
 
 export PATH="${PATH}:/usr/sbin:/usr/bin:/sbin:/bin"
+mkdir -p "${tmp_dir}"
+export TMPDIR="${tmp_dir}"
 
 stale_host_fakeroot() {
   local fakeroot_bin="$1"
@@ -91,7 +94,7 @@ verify_kernel_config_fragment() {
 
   while IFS= read -r line; do
     case "${line}" in
-      CONFIG_PVPANIC*=*|CONFIG_PANIC_ON_OOPS=*|CONFIG_PANIC_TIMEOUT=*|CONFIG_KASAN*=*|CONFIG_EFI=*|CONFIG_EXPERT=*|CONFIG_RELOCATABLE=*|CONFIG_RANDOMIZE_BASE=*|CONFIG_PCI=*|CONFIG_VIRTIO_PCI=*|CONFIG_DRM=*|CONFIG_FB=*|CONFIG_SCSI=*|CONFIG_ATA=*|CONFIG_ETHERNET=*|CONFIG_WLAN=*|CONFIG_WIRELESS=*|"# CONFIG_KASAN"*" is not set"|"# CONFIG_EFI"*" is not set"|"# CONFIG_RELOCATABLE"*" is not set"|"# CONFIG_RANDOMIZE_BASE"*" is not set"|"# CONFIG_PCI"*" is not set"|"# CONFIG_VIRTIO_PCI"*" is not set"|"# CONFIG_DRM"*" is not set"|"# CONFIG_FB"*" is not set"|"# CONFIG_SCSI"*" is not set"|"# CONFIG_ATA"*" is not set"|"# CONFIG_ETHERNET"*" is not set"|"# CONFIG_WLAN"*" is not set"|"# CONFIG_WIRELESS"*" is not set")
+      CONFIG_PVPANIC*=*|CONFIG_PANIC_ON_OOPS=*|CONFIG_PANIC_TIMEOUT=*|CONFIG_KASAN*=*|CONFIG_HYPERARM_KASAN_DRIVERS_ONLY=*|CONFIG_EFI=*|CONFIG_EXPERT=*|CONFIG_RELOCATABLE=*|CONFIG_RANDOMIZE_BASE=*|CONFIG_PCI=*|CONFIG_VIRTIO_PCI=*|CONFIG_DRM=*|CONFIG_FB=*|CONFIG_SCSI=*|CONFIG_ATA=*|CONFIG_ETHERNET=*|CONFIG_WLAN=*|CONFIG_WIRELESS=*|"# CONFIG_KASAN"*" is not set"|"# CONFIG_HYPERARM_KASAN_DRIVERS_ONLY"*" is not set"|"# CONFIG_EFI"*" is not set"|"# CONFIG_RELOCATABLE"*" is not set"|"# CONFIG_RANDOMIZE_BASE"*" is not set"|"# CONFIG_PCI"*" is not set"|"# CONFIG_VIRTIO_PCI"*" is not set"|"# CONFIG_DRM"*" is not set"|"# CONFIG_FB"*" is not set"|"# CONFIG_SCSI"*" is not set"|"# CONFIG_ATA"*" is not set"|"# CONFIG_ETHERNET"*" is not set"|"# CONFIG_WLAN"*" is not set"|"# CONFIG_WIRELESS"*" is not set")
         if [[ "${line}" == "# CONFIG_"*" is not set" ]]; then
           symbol="${line#"# "}"
           symbol="${symbol%" is not set"}"
@@ -122,7 +125,7 @@ kernel_config_matches_fragment() {
 
   while IFS= read -r line; do
     case "${line}" in
-      CONFIG_PVPANIC*=*|CONFIG_PANIC_ON_OOPS=*|CONFIG_PANIC_TIMEOUT=*|CONFIG_KASAN*=*|CONFIG_EFI=*|CONFIG_EXPERT=*|CONFIG_RELOCATABLE=*|CONFIG_RANDOMIZE_BASE=*|CONFIG_PCI=*|CONFIG_VIRTIO_PCI=*|CONFIG_DRM=*|CONFIG_FB=*|CONFIG_SCSI=*|CONFIG_ATA=*|CONFIG_ETHERNET=*|CONFIG_WLAN=*|CONFIG_WIRELESS=*|"# CONFIG_KASAN"*" is not set"|"# CONFIG_EFI"*" is not set"|"# CONFIG_RELOCATABLE"*" is not set"|"# CONFIG_RANDOMIZE_BASE"*" is not set"|"# CONFIG_PCI"*" is not set"|"# CONFIG_VIRTIO_PCI"*" is not set"|"# CONFIG_DRM"*" is not set"|"# CONFIG_FB"*" is not set"|"# CONFIG_SCSI"*" is not set"|"# CONFIG_ATA"*" is not set"|"# CONFIG_ETHERNET"*" is not set"|"# CONFIG_WLAN"*" is not set"|"# CONFIG_WIRELESS"*" is not set")
+      CONFIG_PVPANIC*=*|CONFIG_PANIC_ON_OOPS=*|CONFIG_PANIC_TIMEOUT=*|CONFIG_KASAN*=*|CONFIG_HYPERARM_KASAN_DRIVERS_ONLY=*|CONFIG_EFI=*|CONFIG_EXPERT=*|CONFIG_RELOCATABLE=*|CONFIG_RANDOMIZE_BASE=*|CONFIG_PCI=*|CONFIG_VIRTIO_PCI=*|CONFIG_DRM=*|CONFIG_FB=*|CONFIG_SCSI=*|CONFIG_ATA=*|CONFIG_ETHERNET=*|CONFIG_WLAN=*|CONFIG_WIRELESS=*|"# CONFIG_KASAN"*" is not set"|"# CONFIG_HYPERARM_KASAN_DRIVERS_ONLY"*" is not set"|"# CONFIG_EFI"*" is not set"|"# CONFIG_RELOCATABLE"*" is not set"|"# CONFIG_RANDOMIZE_BASE"*" is not set"|"# CONFIG_PCI"*" is not set"|"# CONFIG_VIRTIO_PCI"*" is not set"|"# CONFIG_DRM"*" is not set"|"# CONFIG_FB"*" is not set"|"# CONFIG_SCSI"*" is not set"|"# CONFIG_ATA"*" is not set"|"# CONFIG_ETHERNET"*" is not set"|"# CONFIG_WLAN"*" is not set"|"# CONFIG_WIRELESS"*" is not set")
         if [[ "${line}" == "# CONFIG_"*" is not set" ]]; then
           symbol="${line#"# "}"
           symbol="${symbol%" is not set"}"
@@ -186,20 +189,8 @@ if [ -n "${config_fragment_file}" ] && [ -s "${config_fragment_file}" ]; then
   cat "${config_fragment_file}" >> "${output_dir}/.config"
 fi
 
-if [ -n "${patch_dir}" ] && [[ ",${patch_strategies}," == *",buildroot-global-patch-dir,"* ]]; then
-  printf 'BR2_GLOBAL_PATCH_DIR="%s"\n' "${patch_dir}" >> "${output_dir}/.config"
-fi
-
 if { [ -n "${config_fragment_file}" ] && [ -s "${config_fragment_file}" ]; } || { [ -n "${patch_dir}" ] && [[ ",${patch_strategies}," == *",buildroot-global-patch-dir,"* ]]; }; then
   make -C "${source_dir}" "O=${output_dir}" olddefconfig
-fi
-
-if [ -n "${patch_dir}" ] && [[ ",${patch_strategies}," == *",buildroot-global-patch-dir,"* ]]; then
-  if grep -q '^BR2_GLOBAL_PATCH_DIR=' "${output_dir}/.config"; then
-    sed -i "s|^BR2_GLOBAL_PATCH_DIR=.*|BR2_GLOBAL_PATCH_DIR=\"${patch_dir}\"|" "${output_dir}/.config"
-  else
-    printf 'BR2_GLOBAL_PATCH_DIR="%s"\n' "${patch_dir}" >> "${output_dir}/.config"
-  fi
 fi
 
 kernel_inputs_fingerprint="$(compute_kernel_inputs_fingerprint)"

@@ -2,17 +2,13 @@ diff --git a/Makefile b/Makefile
 index 33b0ca7..23a86aa 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -1211,7 +1211,13 @@ endif
+@@ -1211,7 +1211,9 @@ endif
  quiet_cmd_ar_vmlinux.a = AR      $@
        cmd_ar_vmlinux.a = \
  	rm -f $@; \
 -	$(AR) cDPrST $@ $(KBUILD_VMLINUX_OBJS); \
-+	for p in $(KBUILD_VMLINUX_OBJS); do \
-+		case "$$p" in \
-+		*.a) $(AR) t "$$p" ;; \
-+		*) printf '%s\n' "$$p" ;; \
-+		esac; \
-+	done | xargs -r $(AR) cDrST $@; \
++	printf '%s\n' $(KBUILD_VMLINUX_OBJS) \
++	| xargs -r -n 128 $(AR) cDPrST $@; \
 +	[ -f $@ ] || $(AR) cDrST $@; \
  	$(AR) mPiT $$($(AR) t $@ | sed -n 1p) $@ $$($(AR) t $@ | grep -F -f $(srctree)/scripts/head-object-list.txt)
  
@@ -21,19 +17,12 @@ diff --git a/scripts/Makefile.build b/scripts/Makefile.build
 index c16bc00..d391bfd 100644
 --- a/scripts/Makefile.build
 +++ b/scripts/Makefile.build
-@@ -469,7 +469,14 @@
+@@ -469,7 +469,9 @@
  quiet_cmd_ar_builtin = AR      $@
        cmd_ar_builtin = rm -f $@; \
 -	$(if $(real-prereqs), printf "$(obj)/%s " $(patsubst $(obj)/%,%,$(real-prereqs)) | xargs) \
 -	$(AR) cDPrST $@
-+	{ \
-+		for p in $(filter %.o %.a,$(real-prereqs)); do \
-+			case "$$p" in \
-+			*.a) $(AR) t "$$p" ;; \
-+			*) printf '%s\n' "$$p" ;; \
-+			esac; \
-+		done; \
-+	} | xargs -r $(AR) cDrST $@; \
++	$(if $(filter %.o %.a,$(real-prereqs)), printf '%s\n' $(filter %.o %.a,$(real-prereqs)) | xargs -r -n 128 $(AR) cDPrST $@;) \
 +	[ -f $@ ] || $(AR) cDrST $@
  
  $(obj)/built-in.a: $(real-obj-y) FORCE

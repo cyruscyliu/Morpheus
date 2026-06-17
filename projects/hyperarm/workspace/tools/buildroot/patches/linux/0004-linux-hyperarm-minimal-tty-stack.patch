@@ -1,0 +1,29 @@
+diff --git a/drivers/tty/Makefile b/drivers/tty/Makefile
+--- a/drivers/tty/Makefile
++++ b/drivers/tty/Makefile
+@@ -1,13 +1,18 @@
+ # SPDX-License-Identifier: GPL-2.0
++obj-$(CONFIG_HYPERARM_MINIMAL_TTY_STACK)	+= tty_io.o tty_port.o
+ obj-$(CONFIG_TTY)		+= tty_io.o n_tty.o tty_ioctl.o tty_ldisc.o \
+ 				   tty_buffer.o tty_port.o tty_mutex.o \
+ 				   tty_ldsem.o tty_baudrate.o tty_jobctrl.o \
+ 				   n_null.o
++obj-$(CONFIG_HYPERARM_MINIMAL_TTY_STACK)	:=
+ obj-$(CONFIG_LEGACY_PTYS)	+= pty.o
+ obj-$(CONFIG_UNIX98_PTYS)	+= pty.o
+ obj-$(CONFIG_AUDIT)		+= tty_audit.o
+ obj-$(CONFIG_MAGIC_SYSRQ)	+= sysrq.o
+ obj-$(CONFIG_N_HDLC)		+= n_hdlc.o
+ obj-$(CONFIG_N_GSM)		+= n_gsm.o
+ 
++obj-$(CONFIG_HYPERARM_MINIMAL_TTY_STACK)	+=
+ obj-y				+= vt/
+ obj-$(CONFIG_HVC_DRIVER)	+= hvc/
+ obj-y				+= serial/
+@@ -25,4 +30,5 @@ obj-$(CONFIG_GOLDFISH_TTY)	+= goldfish.o
+ obj-$(CONFIG_MIPS_EJTAG_FDC_TTY) += mips_ejtag_fdc.o
+ obj-$(CONFIG_VCC)		+= vcc.o
+ obj-$(CONFIG_RPMSG_TTY)		+= rpmsg_tty.o
+ 
++obj-$(CONFIG_HYPERARM_MINIMAL_TTY_STACK)	+=
+ obj-y += ipwireless/

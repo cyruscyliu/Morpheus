@@ -139,6 +139,11 @@ Operational rule:
 - When patch sets change, prefer resetting managed patch targets before
   reapplying patches so patch iteration stays consistent, unless a tool
   contract defines a different update strategy.
+- For workflow recovery or continuation, prefer reusing the latest successful
+  compatible workflow state before starting a fresh run. Repair or extend the
+  existing successful state in place when possible, and update only the
+  artifacts that changed, unless the existing successful state is proven
+  unusable or incompatible with the requested work.
 - When `--json` is used, treat stdout as the machine-readable result channel
   and stderr as the progress or diagnostic channel unless a tool contract says
   otherwise.

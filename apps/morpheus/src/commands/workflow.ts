@@ -36,10 +36,20 @@ const {
 function parseWorkflowArgs(argv) {
   const positionals = [];
   const flags = {};
+  const passthrough = [];
   const booleanFlags = new Set(["json", "follow"]);
+  let afterDoubleDash = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
+    if (afterDoubleDash) {
+      passthrough.push(token);
+      continue;
+    }
+    if (token === "--") {
+      afterDoubleDash = true;
+      continue;
+    }
     if (!token.startsWith("--")) {
       positionals.push(token);
       continue;
@@ -54,7 +64,7 @@ function parseWorkflowArgs(argv) {
     }
   }
 
-  return { positionals, flags };
+  return { positionals, flags, passthrough };
 }
 
 function workflowUsage() {
@@ -2323,7 +2333,7 @@ function workflowStepControl(flags) {
 }
 
 async function handleWorkflowCommand(argv) {
-  const { positionals, flags } = parseWorkflowArgs(argv);
+  const { positionals, flags, passthrough } = parseWorkflowArgs(argv);
   const subcommand = positionals[0];
   if (!subcommand || subcommand === "help" || subcommand === "--help") {
     writeStdoutLine(workflowUsage());
@@ -2436,9 +2446,11 @@ async function handleWorkflowCommand(argv) {
     }
     const workflowName = flags.workflow || `tool-${tool}`;
     const workspaceRoot = resolveWorkspaceRoot(flags);
-    const toolArgv = argv.filter((token) => token !== "run").filter((token) => token !== "--tool").filter((token) => token !== tool)
-      .filter((token) => token !== "--workflow").filter((token) => token !== workflowName)
-      .filter((token) => token !== "--json").filter((token) => token !== "--workspace").filter((token) => token !== workspaceRoot);
+    const toolArgv = passthrough.length > 0
+      ? [...passthrough]
+      : argv.filter((token) => token !== "run").filter((token) => token !== "--tool").filter((token) => token !== tool)
+        .filter((token) => token !== "--workflow").filter((token) => token !== workflowName)
+        .filter((token) => token !== "--json").filter((token) => token !== "--workspace").filter((token) => token !== workspaceRoot);
 
     return runToolWorkflow({
       steps: [{ tool, name: `${tool}.exec`, toolArgv, toolCommand: "exec" }],

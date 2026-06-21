@@ -1790,6 +1790,66 @@ test("workflow run records outline-to-paper artifacts for downstream reuse", () 
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("workflow run --tool forwards passthrough args after -- to the tool step", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-tool-passthrough-"));
+  const workspaceRoot = path.join(projectRoot, "workspace");
+  const sourceDir = path.join(workspaceRoot, "tools", "libafl", "builds", "default", "source");
+  const installDir = path.join(workspaceRoot, "tools", "libafl", "builds", "default", "install");
+  const harnessDir = path.join(projectRoot, "scripts");
+  const harnessScript = path.join(harnessDir, "capture-libafl-args.sh");
+  const argsPath = path.join(projectRoot, "captured-args.txt");
+
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.mkdirSync(path.join(installDir, "bin"), { recursive: true });
+  fs.mkdirSync(harnessDir, { recursive: true });
+  fs.writeFileSync(
+    harnessScript,
+    [
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      `printf '%s\\n' "$@" > ${JSON.stringify(argsPath)}`,
+      ""
+    ].join("\n"),
+    { mode: 0o755 }
+  );
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      "tools:",
+      "  libafl:",
+      "    mode: local",
+      ""
+    ].join("\n")
+  );
+
+  const result = run([
+    "--json",
+    "workflow",
+    "run",
+    "--tool",
+    "libafl",
+    "--",
+    "--source",
+    sourceDir,
+    "--harness-script",
+    harnessScript,
+    "--harness-arg",
+    "--nvirsh-state",
+    "--harness-arg",
+    "state.json",
+  ], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(fs.readFileSync(argsPath, "utf8"), "--nvirsh-state\nstate.json\n");
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
 test("workflow resume reuses workflow config path for nondefault workflow files", () => {
   const configPath = path.join(repoRoot, "projects", "o2p", "morpheus.yaml");
   const first = run(["--config", configPath, "--json", "workflow", "run", "--name", "outline-paper-sample"], {

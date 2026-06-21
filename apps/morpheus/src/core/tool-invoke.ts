@@ -26,6 +26,7 @@ function parseToolArgs(argv) {
     "target-list",
     "configure-arg",
     "make-arg",
+    "harness-arg",
     "env",
     "artifact",
     "config-fragment",

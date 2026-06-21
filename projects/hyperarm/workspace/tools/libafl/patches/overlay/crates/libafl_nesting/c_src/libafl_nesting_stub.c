@@ -802,7 +802,7 @@ static void exec_l2_qemu(bool enable_oracle_bug) {
 static bool launch_l2(const uint8_t *data, size_t len, bool *oracle_hit) {
   char period_ms[32];
   char vintid[32];
-  bool enable_oracle_bug = oracle_test_bug_enabled(data, len);
+  bool enable_oracle_bug = true;
   bool have_vintid = !enable_oracle_bug &&
                      injected_vintid(data, vintid, sizeof(vintid));
   *oracle_hit = false;

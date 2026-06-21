@@ -120,6 +120,7 @@ fn launch_l2(data: &[u8]) -> std::io::Result<Child> {
     command.env("MORPHEUS_QEMU_INPUT_PATH", INPUT_PATH);
     command.env("MORPHEUS_L2_RUNTIME_DIR", RUNTIME_DIR);
     command.env("MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS", injected_period_ms(data));
+    command.env("MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG", "1");
     if let Some(vintid) = injected_vintid(data) {
         command.env("MORPHEUS_QEMU_INJECT_VIRQ", vintid);
     }

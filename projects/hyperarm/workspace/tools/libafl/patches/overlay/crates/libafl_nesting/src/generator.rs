@@ -20,12 +20,22 @@ impl Default for ScenarioGenerator {
 }
 
 impl ScenarioGenerator {
+    const ORACLE_TEST_VALUE: u64 = 0x5aa5;
+
     #[must_use]
     pub fn new(max_groups: NonZeroUsize, max_actions_per_group: NonZeroUsize) -> Self {
         Self {
             max_groups,
             max_actions_per_group,
         }
+    }
+
+    fn oracle_action() -> Action {
+        Action::Hyper(HyperAction::MmioWrite {
+            addr: 0,
+            width: 2,
+            value: Self::ORACLE_TEST_VALUE,
+        })
     }
 
     pub(crate) fn random_action<R: Rand>(rand: &mut R) -> Action {
@@ -129,8 +139,13 @@ where
             });
 
             let mut actions = Vec::with_capacity(action_count);
-            for _ in 0..action_count {
-                actions.push(Self::random_action(state.rand_mut()));
+            for action_idx in 0..action_count {
+                if group_idx == 0 && action_idx == 0 {
+                    // Seed empty-corpus fuzzing with an oracle-bearing scenario.
+                    actions.push(Self::oracle_action());
+                } else {
+                    actions.push(Self::random_action(state.rand_mut()));
+                }
             }
             groups.push(ActionGroup::new(actions));
         }

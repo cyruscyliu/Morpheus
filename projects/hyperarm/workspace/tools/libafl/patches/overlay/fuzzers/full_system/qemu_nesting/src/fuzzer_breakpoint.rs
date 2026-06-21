@@ -57,8 +57,17 @@ fn executor_timeout(replay_enabled: bool) -> Duration {
 
 fn replay_input_paths() -> Option<Vec<PathBuf>> {
     let manifest = env::var("MORPHEUS_LIBAFL_REPLAY_INPUTS").ok()?;
+    input_paths_from_manifest(&manifest, "replay")
+}
+
+fn initial_input_paths() -> Option<Vec<PathBuf>> {
+    let manifest = env::var("MORPHEUS_LIBAFL_INITIAL_INPUTS").ok()?;
+    input_paths_from_manifest(&manifest, "initial")
+}
+
+fn input_paths_from_manifest(manifest: &str, kind: &str) -> Option<Vec<PathBuf>> {
     let content = fs::read_to_string(&manifest)
-        .unwrap_or_else(|err| panic!("failed to read replay input manifest {manifest}: {err}"));
+        .unwrap_or_else(|err| panic!("failed to read {kind} input manifest {manifest}: {err}"));
     let paths = content
         .lines()
         .map(str::trim)
@@ -97,6 +106,7 @@ pub fn fuzz() {
     env_logger::init();
 
     let replay_inputs = replay_input_paths();
+    let initial_inputs = initial_input_paths();
     let timeout = executor_timeout(replay_inputs.is_some());
     let broker_port = env::var("BROKER_PORT")
         .ok()
@@ -171,6 +181,28 @@ pub fn fuzz() {
                                 Some(path.file_name().unwrap().to_string_lossy().to_string());
                             state.corpus_mut().add(testcase).unwrap();
                         }
+                    } else if let Some(paths) = initial_inputs.as_ref() {
+                        let mut loaded = 0usize;
+                        for path in paths {
+                            let input = match load_replay_input(path) {
+                                Ok(input) => input,
+                                Err(err) => {
+                                    eprintln!(
+                                        "skipping invalid initial fuzz input {}: {err:?}",
+                                        path.display()
+                                    );
+                                    continue;
+                                }
+                            };
+                            let mut testcase = Testcase::from(input);
+                            *testcase.filename_mut() =
+                                Some(path.file_name().unwrap().to_string_lossy().to_string());
+                            state.corpus_mut().add(testcase).unwrap();
+                            loaded += 1;
+                        }
+                        if loaded == 0 {
+                            panic!("no valid initial fuzz inputs loaded");
+                        }
                     } else {
                         let mut generator = ScenarioGenerator::default();
                         for _ in 0..4 {
@@ -216,6 +248,21 @@ pub fn fuzz() {
                             });
                     }
                 } else {
+                    if initial_inputs.is_some() {
+                        let corpus_ids = state.corpus().ids().collect::<Vec<_>>();
+                        for corpus_id in corpus_ids {
+                            let input = {
+                                let mut testcase = state.corpus().get(corpus_id)?.borrow_mut();
+                                testcase.load_input(state.corpus())?.clone()
+                            };
+                            fuzzer
+                                .evaluate_input(&mut state, &mut executor, &mut $mgr, &input)
+                                .unwrap_or_else(|err| {
+                                    println!("failed initial input: {err:?}");
+                                    process::exit(1);
+                                });
+                        }
+                    }
                     fuzzer
                         .fuzz_loop(&mut stages, &mut executor, &mut state, &mut $mgr)
                         .unwrap_or_else(|_| {

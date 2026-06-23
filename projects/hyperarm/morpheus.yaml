@@ -1,7 +1,7 @@
 workspace:
   root: ./workspace
 cache:
-  root: ~/.cache/morpheus
+  root: ../../.cache
   namespace: hyperarm
   downloads: global
   builds: global

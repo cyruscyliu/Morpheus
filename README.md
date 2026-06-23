@@ -88,7 +88,7 @@ pnpm cache:enable -- --config morpheus.yaml
 pnpm cache:enable -- --config projects/hyperarm/morpheus.yaml
 ```
 
-The shared cache root defaults to `~/.cache/morpheus`.
+The shared cache root defaults to `./.cache`.
 
 - check available scripts:
 

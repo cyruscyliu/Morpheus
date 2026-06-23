@@ -108,7 +108,7 @@ function readScalar(doc, pathItems) {
 
 function ensureCacheConfig(doc, configPath, repoRoot, flags) {
   const namespace = flags.namespace || readScalar(doc, ["cache", "namespace"]) || inferNamespace(configPath, repoRoot);
-  const cacheRootRaw = flags.root || readScalar(doc, ["cache", "root"]) || "~/.cache/morpheus";
+  const cacheRootRaw = flags.root || readScalar(doc, ["cache", "root"]) || "./.cache";
   const expected = {
     root: cacheRootRaw,
     namespace,

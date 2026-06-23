@@ -80,11 +80,7 @@ if [ -n "${l2_run_window_ms}" ]; then
 fi
 
 if [ -z "${cache_root}" ]; then
-  home="${HOME:-}"
-  if [ -z "${home}" ]; then
-    home="$(getent passwd "$(id -u)" | cut -d: -f6)"
-  fi
-  cache_root="${home}/.cache/morpheus/hyperarm"
+  cache_root="${repo_root}/.cache/hyperarm"
 fi
 
 if [ -z "${run_dir}" ]; then

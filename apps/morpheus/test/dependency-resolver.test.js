@@ -40,7 +40,7 @@ test("resolveToolDependencies projects managed artifacts into the global cache",
     "workspace:",
     "  root: ./workspace",
     "cache:",
-    "  root: ~/.cache/morpheus",
+    "  root: ./.cache",
     "  namespace: hyperarm",
     "  downloads: global",
     "  builds: global",
@@ -81,7 +81,7 @@ test("resolveToolDependencies projects managed artifacts into the global cache",
 
     assert.equal(
       libvmm["microkit-sdk"],
-      "/root/.cache/morpheus/hyperarm/tools/microkit-sdk/builds/microkit-sdk-2.1.0/install",
+      path.join(projectRoot, ".cache", "hyperarm", "tools", "microkit-sdk", "builds", "microkit-sdk-2.1.0", "install"),
     );
 
     const microkit = dependencyResolver.resolveToolDependencies(
@@ -96,7 +96,7 @@ test("resolveToolDependencies projects managed artifacts into the global cache",
 
     assert.equal(
       microkit.sel4,
-      "/root/.cache/morpheus/hyperarm/tools/sel4/builds/sel4-c0fc3245/source",
+      path.join(projectRoot, ".cache", "hyperarm", "tools", "sel4", "builds", "sel4-c0fc3245", "source"),
     );
   });
 
@@ -111,7 +111,7 @@ test("resolveToolDependencies keeps workspace paths when cache is workspace-scop
     "workspace:",
     "  root: ./workspace",
     "cache:",
-    "  root: ~/.cache/morpheus",
+    "  root: ./.cache",
     "  namespace: hyperarm",
     "  downloads: workspace",
     "  builds: workspace",
@@ -159,7 +159,7 @@ test("resolveToolDependencies rejects global cache configs without a namespace",
     "workspace:",
     "  root: ./workspace",
     "cache:",
-    "  root: ~/.cache/morpheus",
+    "  root: ./.cache",
     "  downloads: global",
     "  builds: global",
     "  src: global",
@@ -202,7 +202,7 @@ test("resolveToolDependencies projects nvirsh runtime inputs through Morpheus", 
     "workspace:",
     "  root: ./workspace",
     "cache:",
-    "  root: ~/.cache/morpheus",
+    "  root: ./.cache",
     "  namespace: hyperarm",
     "  downloads: global",
     "  builds: global",
@@ -239,11 +239,11 @@ test("resolveToolDependencies projects nvirsh runtime inputs through Morpheus", 
 
     assert.equal(
       nvirsh.qemu,
-      "/root/.cache/morpheus/hyperarm/tools/qemu/builds/qemu-8.2.7-aarch64-softmmu/install/bin/qemu-system-aarch64",
+      path.join(projectRoot, ".cache", "hyperarm", "tools", "qemu", "builds", "qemu-8.2.7-aarch64-softmmu", "install", "bin", "qemu-system-aarch64"),
     );
     assert.equal(
       nvirsh["buildroot-output-dir"],
-      "/root/.cache/morpheus/hyperarm/tools/buildroot/builds/arm64-dev/output",
+      path.join(projectRoot, ".cache", "hyperarm", "tools", "buildroot", "builds", "arm64-dev", "output"),
     );
   });
 

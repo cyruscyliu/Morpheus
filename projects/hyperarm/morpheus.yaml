@@ -45,6 +45,7 @@ tools:
       - BR2_PACKAGE_DROPBEAR=y
       - BR2_TARGET_GENERIC_ROOT_PASSWD="root"
     artifacts:
+      - images-dir
       - images/Image
       - images/rootfs.cpio.gz
       - build/vmlinux
@@ -259,6 +260,21 @@ workflows:
         args:
           - --source
           - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+      - id: buildroot_build
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
       - id: nqc2_fetch
         tool: nqc2
         command: fetch
@@ -279,6 +295,8 @@ workflows:
         args:
           - --qemu
           - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+          - --buildroot-output-dir
+          - "{{steps.buildroot_build.details.output}}/images"
           - --guest-stub
           - "{{steps.libafl_build.artifacts.guest-stub-binary.location}}"
           - --guest-qemu-source
@@ -393,12 +411,49 @@ workflows:
   nvirsh-qemu-arm64-runtime:
     category: run
     steps:
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+      - id: buildroot_build
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
       - id: nvirsh_fetch
         tool: nvirsh
         command: fetch
       - id: nvirsh_build
         tool: nvirsh
         command: build
+        args:
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+          - --buildroot-output-dir
+          - "{{steps.buildroot_build.details.output}}/images"
+          - --guest-qemu-source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
       - id: nvirsh_exec
         tool: nvirsh
         command: exec

@@ -243,12 +243,49 @@ workflows:
   nvirsh-arm64-build:
     category: build
     steps:
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+      - id: buildroot_build
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
       - id: nvirsh_fetch
         tool: nvirsh
         command: fetch
       - id: nvirsh_build
         tool: nvirsh
         command: build
+        args:
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+          - --buildroot-output-dir
+          - "{{steps.buildroot_build.details.output}}/images"
+          - --guest-qemu-source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
   nqc2-build:
     category: build
     steps:

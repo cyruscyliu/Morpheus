@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
+
 source_dir="${MORPHEUS_NVIRSH_SOURCE:?}"
 build_dir="${MORPHEUS_NVIRSH_BUILD_DIR:?}"
 install_dir="${MORPHEUS_NVIRSH_INSTALL_DIR:?}"
@@ -14,6 +16,7 @@ guest_stub_src="${MORPHEUS_NVIRSH_GUEST_STUB:-}"
 guest_qemu_source="${MORPHEUS_NVIRSH_GUEST_QEMU_SOURCE:-}"
 guest_nqc2_plugin="${MORPHEUS_NVIRSH_GUEST_NQC2_PLUGIN:-}"
 reuse_build_dir="${MORPHEUS_NVIRSH_REUSE_BUILD_DIR:-false}"
+guest_jobs="${MORPHEUS_NVIRSH_GUEST_JOBS:-$(morpheus_default_jobs)}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 profile_file="${source_dir}/profile.json"
 state_file="${install_dir}/state.json"
@@ -35,6 +38,10 @@ guest_qemu_sync_files=(
   "target/arm/tcg/helper-a64.c"
   "target/arm/trace-events"
 )
+
+if ! [[ "${guest_jobs}" =~ ^[0-9]+$ ]] || [ "${guest_jobs}" -lt 1 ]; then
+  guest_jobs=1
+fi
 
 shutdown_l1() {
   local pid="${qemu_pid:-}"
@@ -207,19 +214,15 @@ if [ -f "${build_l0_dir}/l1.pid" ]; then
     kill "${old_pid}" 2>/dev/null || true
   fi
 fi
-preserve_l0="false"
-if [ "${reuse_build_dir}" = "true" ] \
-   && [ -f "${build_l0_dir}/base-image.qcow2" ] \
-   && [ -f "${build_l0_dir}/overlay.qcow2" ] \
-   && [ -f "${build_l0_dir}/seed.img" ] \
-   && [ -f "${build_l0_dir}/id_ed25519" ]; then
-  preserve_l0="true"
-fi
 
 rm -rf "${install_dir}/plan" "${build_l1_dir}"
-if [ "${preserve_l0}" != "true" ]; then
-  rm -rf "${build_l0_dir}"
-fi
+mkdir -p "${build_l0_dir}"
+rm -f \
+  "${build_l0_dir}/overlay.qcow2" \
+  "${build_l0_dir}/seed.img" \
+  "${build_l0_dir}/user-data" \
+  "${build_l0_dir}/meta-data" \
+  "${build_l0_dir}/provision.json"
 mkdir -p "${build_dir}" "${install_dir}" "${build_l0_dir}" "${build_l1_dir}"
 : > "${l1_console_log}"
 
@@ -307,68 +310,6 @@ wait_for_guest_command() {
   done
   echo "timed out waiting for guest command: $*" >&2
   return 1
-}
-
-clear_stub_init_from_overlay() {
-  local image="$1"
-  local nbd_dev=""
-  local root_dev=""
-  local mount_dir=""
-  local status=0
-
-  command -v qemu-nbd >/dev/null 2>&1 || {
-    echo "qemu-nbd is required to prepare a reused l1 overlay" >&2
-    return 1
-  }
-  mount_dir="$(mktemp -d)"
-
-  for candidate in /dev/nbd[0-9]*; do
-    case "${candidate}" in
-      *p*) continue ;;
-    esac
-    if qemu-nbd --connect="${candidate}" "${image}" >/dev/null 2>&1; then
-      nbd_dev="${candidate}"
-      break
-    fi
-  done
-  if [ -z "${nbd_dev}" ]; then
-    rmdir "${mount_dir}" 2>/dev/null || true
-    echo "failed to attach reused l1 overlay with qemu-nbd" >&2
-    return 1
-  fi
-
-  if command -v partprobe >/dev/null 2>&1; then
-    partprobe "${nbd_dev}" >/dev/null 2>&1 || true
-  fi
-  for _ in $(seq 1 20); do
-    if [ -b "${nbd_dev}p1" ]; then
-      root_dev="${nbd_dev}p1"
-      break
-    fi
-    sleep 0.25
-  done
-  if [ -z "${root_dev}" ]; then
-    status=1
-    echo "failed to find root partition for reused l1 overlay" >&2
-  elif ! mount "${root_dev}" "${mount_dir}" >/dev/null 2>&1; then
-    status=1
-    echo "failed to mount reused l1 overlay root filesystem" >&2
-  else
-    for grub_file in \
-      "${mount_dir}/etc/default/grub" \
-      "${mount_dir}/boot/grub/grub.cfg"; do
-      if [ -f "${grub_file}" ]; then
-        sed -i 's/[[:space:]]init=\/root\/libafl_nesting_stub//g' \
-          "${grub_file}"
-      fi
-    done
-    sync
-    umount "${mount_dir}" >/dev/null 2>&1 || status=1
-  fi
-
-  qemu-nbd --disconnect "${nbd_dev}" >/dev/null 2>&1 || true
-  rmdir "${mount_dir}" 2>/dev/null || true
-  return "${status}"
 }
 
 copy_to_guest() {
@@ -503,11 +444,7 @@ run_profile_script() {
   "${script_path}"
 }
 
-if [ "${preserve_l0}" = "true" ]; then
-  printf '[nvirsh] reusing existing l0 overlay for %s\n' "${profile_name}"
-else
-  run_profile_script "l0.provisionScript"
-fi
+run_profile_script "l0.provisionScript"
 run_profile_script "l1.provisionScript"
 
 guest_image_dir="/root/nvirsh-images"
@@ -629,10 +566,14 @@ cat > "${build_l1_dir}/provision-l1.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 build_guest_qemu="__MORPHEUS_BUILD_GUEST_QEMU__"
+guest_jobs="__MORPHEUS_GUEST_JOBS__"
 guest_qemu_bin="/root/morpheus-qemu/bin/qemu-system-aarch64"
 guest_qemu_fallback_bin="/usr/bin/qemu-system-aarch64"
 if [ -x /root/install-dependencies.sh ]; then
   bash /root/install-dependencies.sh
+fi
+if ! [[ "${guest_jobs}" =~ ^[0-9]+$ ]] || [ "${guest_jobs}" -lt 1 ]; then
+  guest_jobs=1
 fi
 reuse_guest_qemu() {
   local installed_qemu="${guest_qemu_bin}"
@@ -742,11 +683,6 @@ PY
     --disable-vduse-blk-export \
     --disable-cap-ng \
     --audio-drv-list=
-  guest_jobs="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 1)"
-  if ! [[ "${guest_jobs}" =~ ^[0-9]+$ ]] || [ "${guest_jobs}" -lt 1 ]; then
-    guest_jobs=1
-  fi
-  guest_jobs="$(( guest_jobs / 2 > 0 ? guest_jobs / 2 : 1 ))"
   make -j"${guest_jobs}" qemu-system-aarch64
   cp -f /root/morpheus-qemu-src/.morpheus-source-v2.sha256 \
     /root/morpheus-qemu-src/build/.morpheus-source-v2.sha256
@@ -757,7 +693,18 @@ PY
     /root/morpheus-qemu/.morpheus-source-v2.sha256
 elif [ ! -x "${guest_qemu_bin}" ] && \
      [ ! -x "${guest_qemu_fallback_bin}" ]; then
-  sudo apt-get install -y qemu-system-arm
+  install_guest_qemu_package() {
+    local pkg
+    for pkg in qemu-system-arm qemu-system-misc qemu-system; do
+      if apt-cache show "${pkg}" >/dev/null 2>&1; then
+        sudo apt-get install -y "${pkg}"
+        return 0
+      fi
+    done
+    echo "unable to find a guest qemu package providing qemu-system-aarch64" >&2
+    return 1
+  }
+  install_guest_qemu_package
 fi
 mkdir -p /root/nvirsh-images
 chmod 0755 /root/launch-l2.sh
@@ -844,11 +791,8 @@ if [ -n "${guest_qemu_source}" ]; then
 else
   sed -i 's/__MORPHEUS_BUILD_GUEST_QEMU__/false/g' "${build_l1_dir}/provision-l1.sh"
 fi
+sed -i "s/__MORPHEUS_GUEST_JOBS__/${guest_jobs}/g" "${build_l1_dir}/provision-l1.sh"
 chmod +x "${build_l1_dir}/provision-l1.sh"
-
-if [ "${preserve_l0}" = "true" ]; then
-  clear_stub_init_from_overlay "${overlay_image_path}"
-fi
 
 "${qemu}" \
   -machine virt,virtualization=on,gic-version=3 \

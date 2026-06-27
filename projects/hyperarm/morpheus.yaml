@@ -27,9 +27,8 @@ tools:
     build-dir-key: arm64-dev
     patch-dir: tools/buildroot/patches
     defconfig: qemu_aarch64_virt_defconfig
-    make-args:
-      - -j1
     config-fragment:
+      - BR2_GLOBAL_PATCH_DIR=""
       - BR2_LINUX_KERNEL=y
       - BR2_LINUX_KERNEL_CUSTOM_VERSION=y
       - BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.16"

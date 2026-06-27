@@ -6,7 +6,6 @@ source "$(dirname "${BASH_SOURCE[0]}")/../../../../../../../tools/_shared/script
 source_dir="${MORPHEUS_LIBAFL_SOURCE:?}"
 build_dir="${MORPHEUS_LIBAFL_BUILD_DIR:?}"
 install_dir="${MORPHEUS_LIBAFL_INSTALL_DIR:?}"
-patch_dir="${MORPHEUS_LIBAFL_PATCH_DIR:-}"
 cargo_arg_file="${MORPHEUS_LIBAFL_CARGO_ARG_FILE:-}"
 reuse_build_dir="${MORPHEUS_LIBAFL_REUSE_BUILD_DIR:-false}"
 result_file="${MORPHEUS_LIBAFL_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
@@ -51,10 +50,6 @@ if [ ! -e "${bridge_dir}" ] && [ ! -L "${bridge_dir}" ]; then
   ln -s "${bridge_storage_dir}" "${bridge_dir}"
 elif [ -L "${bridge_dir}" ]; then
   mkdir -p "$(readlink "${bridge_dir}")"
-fi
-
-if [ -n "${patch_dir}" ]; then
-  "$(dirname "$0")/patch.sh"
 fi
 
 [ -f "${source_dir}/Cargo.toml" ] || { echo "missing source Cargo.toml: ${source_dir}/Cargo.toml" >&2; exit 1; }

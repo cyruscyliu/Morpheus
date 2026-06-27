@@ -211,7 +211,6 @@
           ],
           "scalarFlags": [
             "defconfig",
-            "patch-dir",
             "output",
             "seed-dir",
             "archive-url",
@@ -228,11 +227,6 @@
             "shell": "bash",
             "cwdTemplate": "{output}"
           },
-          "patch": {
-            "strategies": [
-              "buildroot-global-patch-dir"
-            ]
-          },
           "pathFlags": {
             "source": "tools/buildroot/src/buildroot-{buildVersion}",
             "output": "tools/buildroot/builds/{buildDirKey}/output"
@@ -247,9 +241,6 @@
               "manifest": "{output}/manifest.json",
               "defconfig": {
                 "fromFlag": "defconfig"
-              },
-              "patch_dir": {
-                "fromFlag": "patch-dir"
               },
               "make_args": {
                 "fromFlag": "make-arg"

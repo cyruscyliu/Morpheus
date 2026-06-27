@@ -25,6 +25,55 @@ has_strategy() {
   esac
 }
 
+ensure_cache_patch_bridge() {
+  local tool_root
+  local bridge_dir
+
+  tool_root="$(cd "${source_dir}/.." && pwd)/.."
+  bridge_dir="${tool_root}/patches"
+  [ "${bridge_dir}" != "${patch_dir}" ] || return 0
+
+  if [ -L "${bridge_dir}" ]; then
+    local current_target
+    current_target="$(readlink "${bridge_dir}")"
+    [ "${current_target}" = "${patch_dir}" ] && return 0
+    rm "${bridge_dir}"
+  elif [ -e "${bridge_dir}" ]; then
+    rm -rf "${bridge_dir}"
+  fi
+
+  ln -s "${patch_dir}" "${bridge_dir}"
+}
+
+overlay_hash_target_path() {
+  local hash_file="$1"
+  local rel_path="${hash_file#${patch_dir}/}"
+
+  case "${rel_path}" in
+    linux/*)
+      printf '%s/%s\n' "${source_dir}" "${rel_path}"
+      ;;
+    linux-headers/*)
+      printf '%s/package/%s\n' "${source_dir}" "${rel_path}"
+      ;;
+    *)
+      printf '%s/%s\n' "${source_dir}" "${rel_path}"
+      ;;
+  esac
+}
+
+stage_hash_overlays() {
+  local hash_file
+  local target_path
+
+  while IFS= read -r hash_file; do
+    [ -n "${hash_file}" ] || continue
+    target_path="$(overlay_hash_target_path "${hash_file}")"
+    mkdir -p "$(dirname "${target_path}")"
+    cp "${hash_file}" "${target_path}"
+  done < <(find "${patch_dir}" -type f -name '*.hash' | sort)
+}
+
 collect_source_tree_patch_files() {
   local root="$1"
   local file
@@ -88,6 +137,10 @@ EOF
 else
   printf 'no direct buildroot source patches under %s\n' "${patch_dir}"
 fi
+
+stage_hash_overlays
+
+ensure_cache_patch_bridge
 
 morpheus_write_patch_state "${state_file}" "${patch_dir}" "${fingerprint}"
 

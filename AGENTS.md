@@ -11,6 +11,10 @@
   similar host-layout assumptions into repo code.
 - Add comments when they improve clarity.
 - If you are uncertain, ask instead of fabricating results under pressure.
+- Keep workflow phase boundaries strict.
+- `patch.sh` focuses on patching.
+- `build.sh` focuses on building, with no patching.
+- `run.sh` focuses on running, with no patching and no building.
 
 ## Review Principles
 

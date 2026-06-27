@@ -125,6 +125,10 @@ Operational rule:
 - Treat `tool.json` as the tool contract schema: tools must implement
   `inspect` and `logs`, and may optionally implement `fetch`, `patch`,
   `build`, and `exec`.
+- Keep workflow phase boundaries strict:
+  `patch.sh` focuses on patching;
+  `build.sh` focuses on building, with no patching;
+  `run.sh` focuses on running, with no patching and no building.
 - Treat `tools.<name>` in `morpheus.yaml` as management policy, not tool
   business logic.
 - Treat `imports.workflows` as an explicit workflow import list, not as an

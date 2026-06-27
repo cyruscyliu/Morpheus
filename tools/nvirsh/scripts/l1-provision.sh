@@ -28,6 +28,7 @@ sudo apt-get install -y --no-install-recommends \
   libglib2.0-dev \
   libpixman-1-dev \
   libslirp-dev \
+  qemu-system-arm \
   strace
 
 sudo apt-get clean

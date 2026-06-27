@@ -13,7 +13,7 @@ seed_dir="${MORPHEUS_BUILDROOT_SEED_DIR:-}"
 archive_url="${MORPHEUS_BUILDROOT_ARCHIVE_URL:-}"
 build_version="${MORPHEUS_BUILDROOT_BUILD_VERSION:-}"
 reuse_build_dir="${MORPHEUS_BUILDROOT_REUSE_BUILD_DIR:-false}"
-kernel_inputs_state_file="${output_dir}/.morpheus-kernel-inputs.json"
+build_inputs_state_file="${output_dir}/.morpheus-build-inputs.json"
 tmp_dir="${MORPHEUS_BUILDROOT_TMPDIR:-${output_dir}/tmp}"
 
 export PATH="${PATH}:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -31,8 +31,14 @@ stale_host_fakeroot() {
   return 0
 }
 
-compute_kernel_inputs_fingerprint() {
+compute_build_inputs_fingerprint() {
+  local patch_state_file="${source_dir}/.morpheus-patches.json"
+
   {
+    if [ -f "${patch_state_file}" ]; then
+      printf '%s\n' "${patch_state_file}"
+      sha256sum "${patch_state_file}"
+    fi
     if [ -n "${config_fragment_file}" ] && [ -f "${config_fragment_file}" ]; then
       printf '%s\n' "${config_fragment_file}"
       sha256sum "${config_fragment_file}"
@@ -86,10 +92,10 @@ fi
 
 make -C "${source_dir}" "O=${output_dir}" olddefconfig
 
-kernel_inputs_fingerprint="$(compute_kernel_inputs_fingerprint)"
-previous_kernel_inputs_fingerprint=""
-if [ -f "${kernel_inputs_state_file}" ]; then
-  previous_kernel_inputs_fingerprint="$(
+build_inputs_fingerprint="$(compute_build_inputs_fingerprint)"
+previous_build_inputs_fingerprint=""
+if [ -f "${build_inputs_state_file}" ]; then
+  previous_build_inputs_fingerprint="$(
     node -e '
 const fs = require("fs");
 try {
@@ -98,19 +104,19 @@ try {
 } catch {
   process.stdout.write("");
 }
-' "${kernel_inputs_state_file}"
+' "${build_inputs_state_file}"
   )"
 fi
 if [ "${reuse_build_dir}" = "true" ] \
-  && [ "${previous_kernel_inputs_fingerprint}" != "${kernel_inputs_fingerprint}" ] \
+  && [ "${previous_build_inputs_fingerprint}" != "${build_inputs_fingerprint}" ] \
   && linux_build_dir_present; then
-  printf '[buildroot] kernel inputs changed; cleaning reused linux build tree\n'
+  printf '[buildroot] prepared build inputs changed; cleaning reused linux build tree\n'
   make -C "${source_dir}" "O=${output_dir}" linux-dirclean
 fi
 
-cat > "${kernel_inputs_state_file}" <<EOF
+cat > "${build_inputs_state_file}" <<EOF
 {
-  "fingerprint": "${kernel_inputs_fingerprint}"
+  "fingerprint": "${build_inputs_fingerprint}"
 }
 EOF
 
@@ -126,7 +132,7 @@ else
 fi
 
 if [ "${reuse_build_dir}" = "true" ] \
-  && [ "${previous_kernel_inputs_fingerprint}" = "${kernel_inputs_fingerprint}" ] \
+  && [ "${previous_build_inputs_fingerprint}" = "${build_inputs_fingerprint}" ] \
   && [ -f "${output_dir}/images/Image" ] \
   && [ -f "${output_dir}/images/rootfs.cpio.gz" ]; then
   if make -C "${source_dir}" "O=${output_dir}" -q >/dev/null 2>&1; then
@@ -147,11 +153,13 @@ const add = (artifactPath, location) => {
     artifacts.push({ path: artifactPath, location });
   }
 };
-add("images/Image", process.argv[1]);
-add("images/rootfs.cpio.gz", process.argv[2]);
-add("build/vmlinux", process.argv[3]);
+add("output-dir", process.argv[1]);
+add("images-dir", process.argv[2]);
+add("images/Image", process.argv[3]);
+add("images/rootfs.cpio.gz", process.argv[4]);
+add("build/vmlinux", process.argv[5]);
 process.stdout.write(JSON.stringify(artifacts));
-' "${kernel_image}" "${initrd_image}" "${vmlinux_path}"
+' "${output_dir}" "${output_dir}/images" "${kernel_image}" "${initrd_image}" "${vmlinux_path}"
     )"
     cat > "${result_file}" <<EOF
 {"details":{"built":true,"reused":true},"artifacts":${artifacts_json}}
@@ -183,11 +191,13 @@ const add = (artifactPath, location) => {
     artifacts.push({ path: artifactPath, location });
   }
 };
-add("images/Image", process.argv[1]);
-add("images/rootfs.cpio.gz", process.argv[2]);
-add("build/vmlinux", process.argv[3]);
+add("output-dir", process.argv[1]);
+add("images-dir", process.argv[2]);
+add("images/Image", process.argv[3]);
+add("images/rootfs.cpio.gz", process.argv[4]);
+add("build/vmlinux", process.argv[5]);
 process.stdout.write(JSON.stringify(artifacts));
-' "${kernel_image}" "${initrd_image}" "${vmlinux_path}"
+' "${output_dir}" "${output_dir}/images" "${kernel_image}" "${initrd_image}" "${vmlinux_path}"
 )"
 
 cat > "${result_file}" <<EOF

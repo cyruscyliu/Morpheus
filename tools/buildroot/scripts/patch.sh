@@ -118,6 +118,9 @@ fi
 fingerprint_files="$(collect_fingerprint_files "${patch_dir}")"
 fingerprint="$(printf '%s\n' "${fingerprint_files}" | morpheus_hash_files_from_stdin)"
 
+stage_hash_overlays
+ensure_cache_patch_bridge
+
 if morpheus_patch_state_matches "${state_file}" "${fingerprint}"; then
   printf '[buildroot] reuse patch state %s fingerprint=%s\n' "${patch_dir}" "${fingerprint}"
   cat > "${result_file}" <<EOF
@@ -137,10 +140,6 @@ EOF
 else
   printf 'no direct buildroot source patches under %s\n' "${patch_dir}"
 fi
-
-stage_hash_overlays
-
-ensure_cache_patch_bridge
 
 morpheus_write_patch_state "${state_file}" "${patch_dir}" "${fingerprint}"
 

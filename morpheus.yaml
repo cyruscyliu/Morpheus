@@ -94,7 +94,7 @@ tools:
         artifact: qemu-system-aarch64
       buildroot:
         tool: buildroot
-        artifact: images-dir
+        artifact: output-dir
   sel4:
     seed-dir: ./tools/sel4/fixtures/minimal-sel4-src
     patch-dir: ./tools/sel4/patches/demo
@@ -283,7 +283,7 @@ workflows:
           - --qemu
           - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
           - --buildroot-output-dir
-          - "{{steps.buildroot_build.details.output}}/images"
+          - "{{steps.buildroot_build.artifacts.output-dir.location}}"
           - --guest-qemu-source
           - "{{steps.qemu_patch.artifacts.source-dir.location}}"
   nqc2-build:

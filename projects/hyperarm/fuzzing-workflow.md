@@ -1,7 +1,7 @@
-# HyperArm LibAFL Nesting Fuzzing Workflow
+# HyperArm LibAFL Nesting Injected-Bug Workflow
 
 This document explains the
-`nvirsh-aarch64-libafl-nesting-fuzzing` workflow in
+`nvirsh-aarch64-libafl-nesting-injected-bug` workflow in
 `projects/hyperarm/morpheus.yaml`.
 
 The workflow fuzzes a nested AArch64 VM setup:
@@ -65,16 +65,16 @@ The workflow in `projects/hyperarm/morpheus.yaml` performs these steps:
 
 5. `libafl_exec`
 
-   Runs `qemu_nesting` against the prepared L1 overlay for the configured
-   fuzzing duration.
+   Replays the oracle-trigger seed through `qemu_nesting` against the prepared
+   L1 overlay to reproduce the injected guest bug.
 
 6. `nvirsh_inspect`
 
    Extracts trace artifacts from the prepared nvirsh build tree after fuzzing.
 
-7. `nqc2_postprocess`, `nqc2_genhtml`
+7. `nqc2_postprocess`
 
-   Converts the nqc2 trace into LCOV and HTML coverage for the L2 kernel.
+   Converts the nqc2 trace into LCOV coverage for the L2 kernel.
 
 ## L1 Provisioning
 
@@ -565,7 +565,6 @@ the workflow run:
 ```text
 projects/hyperarm/workspace/runs/<run-id>/steps/libafl_exec/runtime/
   guest-kernel-coverage.info
-  guest-kernel-coverage-html/
 ```
 
 Summarize LCOV with:
@@ -582,17 +581,16 @@ Run through the Morpheus workflow:
 
 ```bash
 ./bin/morpheus --config projects/hyperarm/morpheus.yaml \
-  workflow run nvirsh-aarch64-libafl-nesting-fuzzing --json
+  workflow run nvirsh-aarch64-libafl-nesting-injected-bug --json
 ```
 
-Resume the checked-out run from `libafl_exec` with a chosen duration:
+Replay the default injected-bug seed through the prepared artifacts:
 
 ```bash
-projects/hyperarm/run-libafl-fuzzing.sh --minutes 10
-projects/hyperarm/run-libafl-fuzzing.sh --hours 1
+projects/hyperarm/run-libafl-fuzzing.sh
 ```
 
-Run the extracted raw command without Morpheus:
+Run the extracted raw timed fuzzing command without Morpheus:
 
 ```bash
 projects/hyperarm/run-libafl-fuzzing-raw.sh --minutes 10

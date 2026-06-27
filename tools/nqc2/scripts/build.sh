@@ -104,6 +104,11 @@ if [ ! -d "${qemu_etrace_repo}/.git" ]; then
   git clone "${qemu_etrace_url}" "${qemu_etrace_repo}"
 fi
 
+if [ ! -f "${qemu_etrace_repo}/binutils-2.42-install/include/bfd.h" ] \
+  || [ ! -f "${qemu_etrace_repo}/binutils-2.42-install/lib/libiberty.a" ]; then
+  make -C "${qemu_etrace_repo}" binutils
+fi
+
 make -C "${qemu_etrace_repo}" -j"$(morpheus_default_jobs)"
 
 install -m 0755 "${qemu_etrace_repo}/qemu-etrace" "${qemu_etrace_out}"

@@ -17,7 +17,11 @@ if [ -n "${harness_arg_file}" ] && [ -s "${harness_arg_file}" ]; then
   mapfile -t harness_args < "${harness_arg_file}"
 fi
 
-if ! morpheus_delegate_project_hook "${BASH_SOURCE[0]}" "${harness_script}" "libafl harness"; then
+if ! morpheus_delegate_project_hook \
+  "${BASH_SOURCE[0]}" \
+  "${harness_script}" \
+  "libafl harness" \
+  "${harness_args[@]}"; then
   echo "missing libafl harness script: ${harness_script}" >&2
   exit 1
 fi

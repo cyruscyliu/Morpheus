@@ -6,7 +6,7 @@ repo_root="$(cd "${script_dir}/../.." && pwd)"
 cd "${repo_root}"
 
 config="projects/hyperarm/morpheus.yaml"
-workflow="nvirsh-aarch64-libafl-nesting-fuzzing"
+workflow="nvirsh-aarch64-libafl-nesting-injected-bug"
 run_id="wf-20260609011130-6eb23996"
 json="false"
 disable_nqc2_plugin="false"

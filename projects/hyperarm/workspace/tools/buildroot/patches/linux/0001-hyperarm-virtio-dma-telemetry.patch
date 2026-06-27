@@ -313,51 +313,37 @@ diff --git a/drivers/virtio/virtio_mmio.c b/drivers/virtio/virtio_mmio.c
 index 56128b9..da2ff00 100644
 --- a/drivers/virtio/virtio_mmio.c
 +++ b/drivers/virtio/virtio_mmio.c
-@@ -59,6 +59,7 @@
- #include <linux/interrupt.h>
- #include <linux/io.h>
-+#include <linux/kasan-checks.h>
- #include <linux/list.h>
- #include <linux/module.h>
- #include <linux/of.h>
-@@ -88,6 +88,34 @@ struct virtio_mmio_device {
+@@ -88,6 +88,29 @@ struct virtio_mmio_device {
  	void __iomem *base;
  	unsigned long version;
  };
-+static bool hyperarm_virtio_oracle_bug = true;
-+module_param_named(hyperarm_oracle_bug, hyperarm_virtio_oracle_bug, bool, 0644);
++static bool hyperarm_virtio_oracle_bug_enabled = true;
++module_param_named(hyperarm_oracle_bug, hyperarm_virtio_oracle_bug_enabled, bool, 0644);
 +MODULE_PARM_DESC(hyperarm_oracle_bug,
 +		 "Enable HyperArm fuzz-oracle driver panic");
 +
 +#define HYPERARM_VIRTIO_ORACLE_MAGIC0 0xa5u
 +#define HYPERARM_VIRTIO_ORACLE_MAGIC1 0x5au
 +
-+static noinline void hyperarm_virtio_oracle_kasan_fault(void)
++static noinline void hyperarm_virtio_oracle_bug(void)
 +{
-+	u8 *victim = kmalloc(8, GFP_KERNEL);
-+	void *bad;
-+
-+	if (!victim)
-+		panic("HyperArm virtio-mmio driver oracle allocation failed");
-+	bad = victim + 8;
-+	__kasan_check_write(bad, 1);
-+	kfree(victim);
++	BUG();
 +}
 +
 +static void hyperarm_virtio_oracle_check(u32 value)
 +{
-+	if (!hyperarm_virtio_oracle_bug ||
++	if (!hyperarm_virtio_oracle_bug_enabled ||
 +	    ((value & 0xffu) != HYPERARM_VIRTIO_ORACLE_MAGIC0 &&
 +	     (value & 0xffu) != HYPERARM_VIRTIO_ORACLE_MAGIC1))
 +		return;
 +
 +	pr_err("HyperArm oracle test bug triggered value=0x%08x\n", value);
-+	hyperarm_virtio_oracle_kasan_fault();
++	hyperarm_virtio_oracle_bug();
 +}
  
  /* Configuration interface */
  
-@@ -95,13 +123,18 @@ static u64 vm_get_features(struct virtio_device *vdev)
+@@ -95,13 +118,18 @@ static u64 vm_get_features(struct virtio_device *vdev)
  {
  	struct virtio_mmio_device *vm_dev = to_virtio_mmio_device(vdev);
  	u64 features;
@@ -379,7 +365,7 @@ index 56128b9..da2ff00 100644
  
  	return features;
  }
-@@ -372,6 +405,7 @@ static struct virtqueue *vm_setup_vq(struct virtio_device *vdev, unsigned int index,
+@@ -372,6 +400,7 @@ static struct virtqueue *vm_setup_vq(struct virtio_device *vdev, unsigned int index,
  	}
  
  	num = readl(vm_dev->base + VIRTIO_MMIO_QUEUE_NUM_MAX);

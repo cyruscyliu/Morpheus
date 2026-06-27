@@ -17,7 +17,7 @@ diff --git a/scripts/Makefile.build b/scripts/Makefile.build
 index c16bc00..d391bfd 100644
 --- a/scripts/Makefile.build
 +++ b/scripts/Makefile.build
-@@ -469,7 +469,9 @@
+@@ -469,7 +469,7 @@
  quiet_cmd_ar_builtin = AR      $@
        cmd_ar_builtin = rm -f $@; \
 -	$(if $(real-prereqs), printf "$(obj)/%s " $(patsubst $(obj)/%,%,$(real-prereqs)) | xargs) \

@@ -54,20 +54,22 @@ if [ -n "${build_dir}" ] && [ -f "${build_dir}/l0/overlay.qcow2" ]; then
   extract_guest_file "${build_dir}/l0/overlay.qcow2" "/root/morpheus-qemu-trace.log" "${guest_qemu_trace_out}" || true
 fi
 
-if [ -n "${build_dir}" ]; then
-  cache_root="${build_dir%%/tools/nvirsh/builds/*}"
-  for candidate in "${cache_root}"/tools/buildroot/builds/*/output/build/linux-*/vmlinux; do
-    if [ -f "${candidate}" ]; then
-      guest_kernel_vmlinux="${candidate}"
-      break
-    fi
-  done
-fi
-
 node - "${manifest_file}" "${source_dir}" "${run_dir}" "${build_dir}" "${install_dir}" "${profile_name}" "${build_dir_key}" "${result_file}" "${guest_trace_out}" "${guest_qemu_trace_out}" "${guest_kernel_vmlinux}" <<'NODE'
 const fs = require('fs');
 const [manifestFile, sourceDir, runDir, buildDir, installDir, profileName, buildDirKey, resultFile, guestTraceOut, guestQemuTraceOut, guestKernelVmlinux] = process.argv.slice(2);
 const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+const recordedBuildrootImages =
+  manifest.layeredState &&
+  manifest.layeredState.l2 &&
+  manifest.layeredState.l2.buildrootImages
+    ? manifest.layeredState.l2.buildrootImages
+    : null;
+const resolvedGuestKernelVmlinux =
+  recordedBuildrootImages &&
+  recordedBuildrootImages.vmlinux &&
+  fs.existsSync(recordedBuildrootImages.vmlinux)
+    ? recordedBuildrootImages.vmlinux
+    : (guestKernelVmlinux && fs.existsSync(guestKernelVmlinux) ? guestKernelVmlinux : null);
 const details = {
   profile: profileName,
   build_dir_key: buildDirKey,
@@ -83,12 +85,12 @@ const details = {
   layered_state: manifest.layeredState || null,
   guest_nqc2_trace: fs.existsSync(guestTraceOut) ? guestTraceOut : null,
   guest_qemu_trace_log: fs.existsSync(guestQemuTraceOut) ? guestQemuTraceOut : null,
-  guest_kernel_vmlinux: guestKernelVmlinux && fs.existsSync(guestKernelVmlinux) ? guestKernelVmlinux : null,
+  guest_kernel_vmlinux: resolvedGuestKernelVmlinux,
 };
 const artifacts = [
   ...(fs.existsSync(guestTraceOut) ? [{ path: 'guest-nqc2-trace', location: guestTraceOut }] : []),
   ...(fs.existsSync(guestQemuTraceOut) ? [{ path: 'guest-qemu-trace-log', location: guestQemuTraceOut }] : []),
-  ...(guestKernelVmlinux && fs.existsSync(guestKernelVmlinux) ? [{ path: 'guest-kernel-vmlinux', location: guestKernelVmlinux }] : []),
+  ...(resolvedGuestKernelVmlinux ? [{ path: 'guest-kernel-vmlinux', location: resolvedGuestKernelVmlinux }] : []),
 ];
 fs.writeFileSync(resultFile, `${JSON.stringify({ details, artifacts }, null, 2)}\n`);
 NODE

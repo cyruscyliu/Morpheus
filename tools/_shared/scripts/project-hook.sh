@@ -4,6 +4,7 @@ morpheus_delegate_project_hook() {
   local current_script="$1"
   local delegated_script="$2"
   local hook_label="$3"
+  shift 3
 
   if [ -z "${delegated_script}" ]; then
     return 1
@@ -23,5 +24,5 @@ morpheus_delegate_project_hook() {
     return 1
   fi
 
-  exec "${delegated_resolved}"
+  exec "${delegated_resolved}" "$@"
 }

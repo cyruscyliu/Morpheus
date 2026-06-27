@@ -12,6 +12,7 @@ result_file="${MORPHEUS_NVIRSH_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 qemu="${MORPHEUS_NVIRSH_QEMU:?}"
 firmware="${MORPHEUS_NVIRSH_FIRMWARE:?}"
 buildroot_output_dir="${MORPHEUS_NVIRSH_BUILDROOT_OUTPUT_DIR:?}"
+buildroot_images_dir="${buildroot_output_dir}/images"
 guest_stub_src="${MORPHEUS_NVIRSH_GUEST_STUB:-}"
 guest_qemu_source="${MORPHEUS_NVIRSH_GUEST_QEMU_SOURCE:-}"
 guest_nqc2_plugin="${MORPHEUS_NVIRSH_GUEST_NQC2_PLUGIN:-}"
@@ -22,6 +23,8 @@ profile_file="${source_dir}/profile.json"
 state_file="${install_dir}/state.json"
 build_l0_dir="${build_dir}/l0"
 build_l1_dir="${build_dir}/l1"
+build_l1_host_boot_dir="${build_l1_dir}/host-boot"
+provisioned_overlay_image="${build_l0_dir}/l1-provisioned.qcow2"
 l1_console_log="${install_dir}/l1-console.log"
 qemu_pid=""
 qemu_pid_file=""
@@ -146,8 +149,8 @@ try {
     && state.layeredState.l1.guestQemuSourceSha256
       ? state.layeredState.l1.guestQemuSourceSha256
       : "";
-  const imagePath = `${buildrootOutputDir}/Image`;
-  const initrdPath = `${buildrootOutputDir}/rootfs.cpio.gz`;
+  const imagePath = `${buildrootOutputDir}/images/Image`;
+  const initrdPath = `${buildrootOutputDir}/images/rootfs.cpio.gz`;
   const currentBuildrootImages =
     fs.existsSync(imagePath) && fs.existsSync(initrdPath)
       ? {
@@ -168,6 +171,10 @@ try {
   const statusOk = state.status === "prepared" || state.status === "stopped";
   const phaseOk =
     state.currentPhase === "prepared" || state.currentPhase === "stopped";
+  const currentRequestedNqc2Plugin = guestNqc2Plugin || "";
+  const nqc2PluginCompatible =
+    !currentRequestedNqc2Plugin ||
+    recordedNqc2Plugin === currentRequestedNqc2Plugin;
   const matches =
     state
     && state.tool === "nvirsh"
@@ -185,7 +192,7 @@ try {
     && recordedScriptSha256 === currentScriptSha256
     && recordedQemu === (guestQemuSource || "")
     && recordedGuestQemuSourceSha256 === currentGuestQemuSourceSha256
-    && recordedNqc2Plugin === (guestNqc2Plugin || "")
+    && nqc2PluginCompatible
     && buildrootImagesMatch;
   process.exit(matches ? 0 : 1);
 } catch {
@@ -194,9 +201,102 @@ try {
 NODE
 }
 
+state_matches_l1_provision() {
+  local state_path="$1"
+  node - "${state_path}" "${profile_name}" "${build_dir_key}" "${source_dir}" "${build_dir}" "${install_dir}" "${guest_qemu_source}" "${BASH_SOURCE[0]}" "${guest_qemu_sync_files[@]}" <<'NODE'
+const crypto = require("crypto");
+const fs = require("fs");
+const [
+  statePath,
+  profileName,
+  buildDirKey,
+  sourceDir,
+  buildDir,
+  installDir,
+  guestQemuSource,
+  scriptPath,
+  ...guestQemuSyncFiles
+] = process.argv.slice(2);
+function sha256File(path) {
+  return crypto.createHash("sha256").update(fs.readFileSync(path)).digest("hex");
+}
+function sha256GuestQemuSyncFiles(sourceDir, files) {
+  if (!sourceDir) {
+    return "";
+  }
+  const hash = crypto.createHash("sha256");
+  for (const file of files) {
+    const path = `${sourceDir}/${file}`;
+    hash.update(file);
+    hash.update("\0");
+    hash.update(fs.readFileSync(path));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+try {
+  const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+  const statusOk = state.status === "prepared" || state.status === "stopped";
+  const phaseOk =
+    state.currentPhase === "prepared" || state.currentPhase === "stopped";
+  const recordedScriptSha256 = state.layeredState
+    && state.layeredState.l1
+    && state.layeredState.l1.nvirshBuildScriptSha256
+      ? state.layeredState.l1.nvirshBuildScriptSha256
+      : "";
+  const recordedQemu = state.layeredState
+    && state.layeredState.l1
+    && state.layeredState.l1.guestQemuSource
+      ? state.layeredState.l1.guestQemuSource
+      : "";
+  const recordedGuestQemuSourceSha256 = state.layeredState
+    && state.layeredState.l1
+    && state.layeredState.l1.guestQemuSourceSha256
+      ? state.layeredState.l1.guestQemuSourceSha256
+      : "";
+  const currentScriptSha256 = sha256File(scriptPath);
+  const currentGuestQemuSourceSha256 = sha256GuestQemuSyncFiles(
+    guestQemuSource,
+    guestQemuSyncFiles,
+  );
+  const matches =
+    state
+    && state.tool === "nvirsh"
+    && state.profile === profileName
+    && state.buildDirKey === buildDirKey
+    && state.source === sourceDir
+    && state.buildDir === buildDir
+    && state.installDir === installDir
+    && statusOk
+    && phaseOk
+    && state.phases
+    && state.phases.build === "success"
+    && recordedScriptSha256 === currentScriptSha256
+    && recordedQemu === (guestQemuSource || "")
+    && recordedGuestQemuSourceSha256 === currentGuestQemuSourceSha256;
+  process.exit(matches ? 0 : 1);
+} catch {
+  process.exit(1);
+}
+NODE
+}
+
+recreate_overlay_from_backing() {
+  local backing_image="$1"
+  rm -f "${build_l0_dir}/overlay.qcow2"
+  qemu-img create \
+    -f qcow2 \
+    -F qcow2 \
+    -b "${backing_image}" \
+    "${build_l0_dir}/overlay.qcow2" >/dev/null
+}
+
 if [ "${reuse_build_dir}" = "true" ] && [ -f "${state_file}" ]; then
   if state_matches_build "${state_file}" \
     && [ -x "${build_l1_dir}/launch-l2.sh" ] \
+    && [ -f "${build_l1_host_boot_dir}/vmlinuz" ] \
+    && [ -f "${build_l1_host_boot_dir}/initrd.img" ] \
+    && [ -f "${build_l1_host_boot_dir}/cmdline.txt" ] \
     && [ -f "${build_l0_dir}/base-image.qcow2" ] \
     && [ -f "${build_l0_dir}/overlay.qcow2" ] \
     && [ -f "${build_l0_dir}/seed.img" ]; then
@@ -212,17 +312,37 @@ if [ -f "${build_l0_dir}/l1.pid" ]; then
   old_pid="$(cat "${build_l0_dir}/l1.pid" 2>/dev/null || true)"
   if [ -n "${old_pid}" ]; then
     kill "${old_pid}" 2>/dev/null || true
+    wait "${old_pid}" 2>/dev/null || true
   fi
+  rm -f "${build_l0_dir}/l1.pid"
+fi
+
+preserve_l0="false"
+reuse_provisioned_l1="false"
+if [ "${reuse_build_dir}" = "true" ] \
+   && [ -f "${state_file}" ] \
+   && [ -f "${provisioned_overlay_image}" ] \
+   && [ -f "${build_l0_dir}/base-image.qcow2" ] \
+   && [ -f "${build_l0_dir}/seed.img" ] \
+   && [ -f "${build_l0_dir}/id_ed25519" ] \
+   && [ -f "${build_l1_host_boot_dir}/vmlinuz" ] \
+   && [ -f "${build_l1_host_boot_dir}/initrd.img" ] \
+   && [ -f "${build_l1_host_boot_dir}/cmdline.txt" ] \
+   && state_matches_l1_provision "${state_file}"; then
+  preserve_l0="true"
+  reuse_provisioned_l1="true"
 fi
 
 rm -rf "${install_dir}/plan" "${build_l1_dir}"
 mkdir -p "${build_l0_dir}"
-rm -f \
-  "${build_l0_dir}/overlay.qcow2" \
-  "${build_l0_dir}/seed.img" \
-  "${build_l0_dir}/user-data" \
-  "${build_l0_dir}/meta-data" \
-  "${build_l0_dir}/provision.json"
+if [ "${preserve_l0}" != "true" ]; then
+  rm -f \
+    "${build_l0_dir}/overlay.qcow2" \
+    "${build_l0_dir}/seed.img" \
+    "${build_l0_dir}/user-data" \
+    "${build_l0_dir}/meta-data" \
+    "${build_l0_dir}/provision.json"
+fi
 mkdir -p "${build_dir}" "${install_dir}" "${build_l0_dir}" "${build_l1_dir}"
 : > "${l1_console_log}"
 
@@ -338,6 +458,33 @@ copy_to_guest() {
   return 1
 }
 
+copy_from_guest() {
+  local keyfile="$1"
+  local port="$2"
+  local src="$3"
+  local dst="$4"
+  local attempts=0
+  mkdir -p "$(dirname "${dst}")"
+  while [ "${attempts}" -lt 10 ]; do
+    if scp \
+      -i "${keyfile}" \
+      -o BatchMode=yes \
+      -o StrictHostKeyChecking=no \
+      -o UserKnownHostsFile=/dev/null \
+      -o ConnectTimeout=5 \
+      -O \
+      -P "${port}" \
+      "root@127.0.0.1:${src}" \
+      "${dst}" >/dev/null; then
+      return 0
+    fi
+    attempts=$((attempts + 1))
+    sleep 2
+  done
+  echo "failed to copy guest:${src} to ${dst}" >&2
+  return 1
+}
+
 copy_dir_to_guest() {
   local keyfile="$1"
   local port="$2"
@@ -444,7 +591,12 @@ run_profile_script() {
   "${script_path}"
 }
 
-run_profile_script "l0.provisionScript"
+if [ "${preserve_l0}" = "true" ]; then
+  printf '[nvirsh] reusing provisioned l1 snapshot for %s\n' "${profile_name}"
+  recreate_overlay_from_backing "${provisioned_overlay_image}"
+else
+  run_profile_script "l0.provisionScript"
+fi
 run_profile_script "l1.provisionScript"
 
 guest_image_dir="/root/nvirsh-images"
@@ -465,6 +617,10 @@ l1_ssh_port="$(node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSy
 l2_cpu="$(profile_arg_value l2 -cpu)"
 l2_memory="$(profile_arg_value l2 -m)"
 l2_memory="${l2_memory:-1024}"
+
+printf '[nvirsh] guest build jobs=%s (l1-smp=%s)\n' \
+  "${guest_jobs}" \
+  "${l1_cpus:-unset}"
 
 cat > "${build_l1_dir}/launch-l2.sh" <<EOF
 #!/usr/bin/env bash
@@ -569,6 +725,11 @@ build_guest_qemu="__MORPHEUS_BUILD_GUEST_QEMU__"
 guest_jobs="__MORPHEUS_GUEST_JOBS__"
 guest_qemu_bin="/root/morpheus-qemu/bin/qemu-system-aarch64"
 guest_qemu_fallback_bin="/usr/bin/qemu-system-aarch64"
+provision_marker="/root/.morpheus-l1-provisioned"
+if [ -f "${provision_marker}" ]; then
+  echo "reusing existing l1 provision marker"
+  exit 0
+fi
 if [ -x /root/install-dependencies.sh ]; then
   bash /root/install-dependencies.sh
 fi
@@ -695,9 +856,10 @@ elif [ ! -x "${guest_qemu_bin}" ] && \
      [ ! -x "${guest_qemu_fallback_bin}" ]; then
   install_guest_qemu_package() {
     local pkg
+    sudo apt-get update
     for pkg in qemu-system-arm qemu-system-misc qemu-system; do
       if apt-cache show "${pkg}" >/dev/null 2>&1; then
-        sudo apt-get install -y "${pkg}"
+        sudo apt-get install -y --no-install-recommends "${pkg}"
         return 0
       fi
     done
@@ -785,6 +947,7 @@ if missing:
     )
 PY
 fi
+touch "${provision_marker}"
 EOF
 if [ -n "${guest_qemu_source}" ]; then
   sed -i 's/__MORPHEUS_BUILD_GUEST_QEMU__/true/g' "${build_l1_dir}/provision-l1.sh"
@@ -813,15 +976,17 @@ if ! wait_for_ssh "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${qemu_pid}"; t
   exit 1
 fi
 
-printf '[nvirsh] waiting for cloud-init in l1\n'
-wait_for_guest_command "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${qemu_pid}" "cloud-init status --wait"
-printf '[nvirsh] cloud-init finished in l1\n'
+if [ "${reuse_provisioned_l1}" != "true" ]; then
+  printf '[nvirsh] waiting for cloud-init in l1\n'
+  wait_for_guest_command "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${qemu_pid}" "cloud-init status --wait"
+  printf '[nvirsh] cloud-init finished in l1\n'
+fi
 
 copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${build_l1_dir}/install-dependencies.sh" "/root/install-dependencies.sh"
 copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${build_l1_dir}/launch-l2.sh" "${guest_launch}"
 ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "mkdir -p ${guest_image_dir}"
-copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${buildroot_output_dir}/Image" "${guest_image_dir}/Image"
-copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${buildroot_output_dir}/rootfs.cpio.gz" "${guest_image_dir}/rootfs.cpio.gz"
+copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${buildroot_images_dir}/Image" "${guest_image_dir}/Image"
+copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${buildroot_images_dir}/rootfs.cpio.gz" "${guest_image_dir}/rootfs.cpio.gz"
 if [ -n "${guest_stub_src}" ] && [ -f "${guest_stub_src}" ]; then
   printf '[nvirsh] copying guest stub into l1\n'
   copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${guest_stub_src}" "${guest_stub}"
@@ -839,9 +1004,37 @@ fi
 
 copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${build_l1_dir}/provision-l1.sh" "/root/provision-l1.sh"
 ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "chmod 0755 /root/provision-l1.sh"
-printf '[nvirsh] running l1 provision script\n'
-ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "bash /root/provision-l1.sh"
-printf '[nvirsh] l1 provision script completed\n'
+if [ "${reuse_provisioned_l1}" = "true" ]; then
+  printf '[nvirsh] skipped l1 provision script; using provisioned snapshot\n'
+else
+  printf '[nvirsh] running l1 provision script\n'
+  ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "bash /root/provision-l1.sh"
+  printf '[nvirsh] l1 provision script completed\n'
+fi
+
+mkdir -p "${build_l1_host_boot_dir}"
+guest_boot_kernel="$(
+  ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" \
+    'kernel=""; for candidate in /vmlinuz /boot/vmlinuz-*; do if [ -e "$candidate" ]; then kernel="$(readlink -f "$candidate")"; break; fi; done; printf "%s\n" "$kernel"'
+)"
+guest_boot_initrd="$(
+  ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" \
+    'initrd=""; for candidate in /initrd.img /boot/initrd.img-*; do if [ -e "$candidate" ]; then initrd="$(readlink -f "$candidate")"; break; fi; done; printf "%s\n" "$initrd"'
+)"
+if [ -z "${guest_boot_kernel}" ] || [ -z "${guest_boot_initrd}" ]; then
+  echo "failed to resolve guest boot artifacts in l1" >&2
+  exit 1
+fi
+copy_from_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${guest_boot_kernel}" "${build_l1_host_boot_dir}/vmlinuz"
+copy_from_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${guest_boot_initrd}" "${build_l1_host_boot_dir}/initrd.img"
+ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "cat /proc/cmdline" > "${build_l1_host_boot_dir}/cmdline.txt"
+
+if [ "${reuse_provisioned_l1}" != "true" ]; then
+  provisioned_tmp="${provisioned_overlay_image}.tmp"
+  rm -f "${provisioned_tmp}"
+  qemu-img convert -O qcow2 "${overlay_image_path}" "${provisioned_tmp}"
+  mv -f "${provisioned_tmp}" "${provisioned_overlay_image}"
+fi
 
 shutdown_l1
 trap - EXIT INT TERM
@@ -882,6 +1075,9 @@ function sha256GuestQemuSyncFiles(sourceDir, files) {
   }
   return hash.digest("hex");
 }
+function writeJson(filePath, value) {
+  fs.writeFileSync(filePath, JSON.stringify(value, null, 2) + "\n");
+}
 const guestStub = process.env.MORPHEUS_NVIRSH_GUEST_STUB || "";
 const guestStubSha256 = guestStub
   ? sha256File(guestStub)
@@ -893,11 +1089,28 @@ const guestQemuSourceSha256 = sha256GuestQemuSyncFiles(
   guestQemuSyncFiles,
 );
 const buildrootImages = {
-  image: path.join(buildrootOutputDir, "Image"),
-  initrd: path.join(buildrootOutputDir, "rootfs.cpio.gz"),
-  imageSha256: sha256File(path.join(buildrootOutputDir, "Image")),
-  initrdSha256: sha256File(path.join(buildrootOutputDir, "rootfs.cpio.gz")),
+  outputDir: buildrootOutputDir,
+  image: path.join(buildrootOutputDir, "images", "Image"),
+  initrd: path.join(buildrootOutputDir, "images", "rootfs.cpio.gz"),
+  vmlinux: null,
+  imageSha256: sha256File(path.join(buildrootOutputDir, "images", "Image")),
+  initrdSha256: sha256File(path.join(buildrootOutputDir, "images", "rootfs.cpio.gz")),
 };
+const buildrootBuildDir = path.join(buildrootOutputDir, "build");
+if (fs.existsSync(buildrootBuildDir)) {
+  for (const candidate of fs.readdirSync(buildrootBuildDir, {
+    withFileTypes: true,
+  })) {
+    if (!candidate.isDirectory() || !candidate.name.startsWith("linux-")) {
+      continue;
+    }
+    const vmlinuxPath = path.join(buildrootBuildDir, candidate.name, "vmlinux");
+    if (fs.existsSync(vmlinuxPath)) {
+      buildrootImages.vmlinux = vmlinuxPath;
+      break;
+    }
+  }
+}
 const state = {
   schemaVersion: 1,
   tool: "nvirsh",
@@ -921,6 +1134,7 @@ const state = {
   hostLaunch: {
     firmware: process.env.MORPHEUS_NVIRSH_FIRMWARE || null,
     overlayImage: path.join(buildDir, "l0", "overlay.qcow2"),
+    provisionedOverlayImage: path.join(buildDir, "l0", "l1-provisioned.qcow2"),
     seedImage: path.join(buildDir, "l0", "seed.img"),
   },
   layeredState: {
@@ -929,6 +1143,7 @@ const state = {
       hostName: l0.hostName || null,
       workspace: l0.workspace || null,
       image: l0.image || null,
+      provisionedOverlayImage: path.join(buildDir, "l0", "l1-provisioned.qcow2"),
       bootLog: path.join(installDir, "l1-console.log"),
     },
     l1: {
@@ -971,13 +1186,15 @@ const state = {
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString()
 };
-fs.writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`);
-fs.writeFileSync(path.join(installDir, "profile.json"), `${JSON.stringify(profile, null, 2)}\n`);
-fs.writeFileSync(path.join(installDir, "l0-provision.json"), `${JSON.stringify(profile.l0 || {}, null, 2)}\n`);
-fs.writeFileSync(path.join(installDir, "l1-provision.json"), `${JSON.stringify({
-  ...((profile.l1 && typeof profile.l1 === "object") ? profile.l1 : {}),
-  workspace: l0.workspace || null,
-}, null, 2)}\n`);
+const l1Provision = Object.assign(
+  {},
+  (profile.l1 && typeof profile.l1 === "object") ? profile.l1 : {},
+  { workspace: l0.workspace || null },
+);
+writeJson(stateFile, state);
+writeJson(path.join(installDir, "profile.json"), profile);
+writeJson(path.join(installDir, "l0-provision.json"), profile.l0 || {});
+writeJson(path.join(installDir, "l1-provision.json"), l1Provision);
 NODE
 
 cat > "${result_file}" <<EOF

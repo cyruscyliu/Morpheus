@@ -17,6 +17,32 @@ diff --git a/lib/Kconfig.kasan b/lib/Kconfig.kasan
  config CC_HAS_KASAN_MEMINTRINSIC_PREFIX
  	def_bool (CC_IS_CLANG && $(cc-option,-fsanitize=kernel-address -mllvm -asan-kernel-mem-intrinsic-prefix=1)) || \
  		 (CC_IS_GCC && $(cc-option,-fsanitize=kernel-address --param asan-kernel-mem-intrinsic-prefix=1))
+@@ -99,7 +108,7 @@ config KASAN_GENERIC
+ 	bool "Generic KASAN"
+ 	depends on HAVE_ARCH_KASAN && CC_HAS_KASAN_GENERIC
+ 	depends on CC_HAS_WORKING_NOSANITIZE_ADDRESS
+-	select SLUB_DEBUG
++	select SLUB_DEBUG if !HYPERARM_KASAN_DRIVERS_ONLY
+ 	select CONSTRUCTORS
+ 	help
+ 	  Enables Generic KASAN.
+@@ -114,7 +123,7 @@ config KASAN_SW_TAGS
+ 	bool "Software Tag-Based KASAN"
+ 	depends on HAVE_ARCH_KASAN_SW_TAGS && CC_HAS_KASAN_SW_TAGS
+ 	depends on CC_HAS_WORKING_NOSANITIZE_ADDRESS
+-	select SLUB_DEBUG
++	select SLUB_DEBUG if !HYPERARM_KASAN_DRIVERS_ONLY
+ 	select CONSTRUCTORS
+ 	help
+ 	  Enables Software Tag-Based KASAN.
+@@ -172,6 +181,7 @@ config KASAN_STACK
+ 	bool "Stack instrumentation (unsafe)" if CC_IS_CLANG && !COMPILE_TEST
+ 	depends on KASAN_GENERIC || KASAN_SW_TAGS
+ 	depends on !ARCH_DISABLE_KASAN_INLINE
++	default n if HYPERARM_KASAN_DRIVERS_ONLY
+ 	default y if CC_IS_GCC
+ 	help
+ 	  Disables stack instrumentation and thus KASAN's ability to detect
 diff --git a/scripts/Makefile.lib b/scripts/Makefile.lib
 --- a/scripts/Makefile.lib
 +++ b/scripts/Makefile.lib
@@ -38,16 +64,17 @@ diff --git a/scripts/Makefile.lib b/scripts/Makefile.lib
 -		$(KASAN_SANITIZE_$(target-stem).o)$(KASAN_SANITIZE)$(is-kernel-object)), \
 +		$(__kasan_scope)), \
  		$(RUSTFLAGS_KASAN))
-endif
-endif
+ endif
+ endif
 diff --git a/drivers/virtio/Makefile b/drivers/virtio/Makefile
 --- a/drivers/virtio/Makefile
 +++ b/drivers/virtio/Makefile
-@@ -4,6 +4,7 @@ obj-$(CONFIG_VIRTIO) += virtio.o virtio_ring.o
+@@ -4,6 +4,8 @@ obj-$(CONFIG_VIRTIO) += virtio.o virtio_ring.o
  obj-$(CONFIG_VIRTIO_ANCHOR) += virtio_anchor.o
  obj-$(CONFIG_VIRTIO_PCI_LIB) += virtio_pci_modern_dev.o
  obj-$(CONFIG_VIRTIO_PCI_LIB_LEGACY) += virtio_pci_legacy_dev.o
-+KASAN_SANITIZE_virtio_mmio.o := y
++# HyperArm forces KASAN compiler flags onto the oracle injection target.
++CFLAGS_virtio_mmio.o += $(CFLAGS_KASAN)
  obj-$(CONFIG_VIRTIO_MMIO) += virtio_mmio.o
  obj-$(CONFIG_VIRTIO_PCI) += virtio_pci.o
  virtio_pci-y := virtio_pci_modern.o virtio_pci_common.o

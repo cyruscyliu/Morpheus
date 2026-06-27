@@ -211,13 +211,13 @@
             "phase"
           ],
           "repeatableFlags": [],
-          "pathFlags": {
-            "source": "tools/nvirsh/builds/{buildDirKey}/source",
-            "build-dir": "tools/nvirsh/builds/{buildDirKey}/build",
-            "install-dir": "tools/nvirsh/builds/{buildDirKey}/install",
-            "qemu": "tools/qemu/builds/{buildDirKey}/install/bin/qemu-system-aarch64",
-            "buildroot-output-dir": "tools/buildroot/builds/{buildDirKey}/output/images"
-          },
+        "pathFlags": {
+          "source": "tools/nvirsh/builds/{buildDirKey}/source",
+          "build-dir": "tools/nvirsh/builds/{buildDirKey}/build",
+          "install-dir": "tools/nvirsh/builds/{buildDirKey}/install",
+          "qemu": "tools/qemu/builds/{buildDirKey}/install/bin/qemu-system-aarch64",
+          "buildroot-output-dir": "tools/buildroot/builds/{buildDirKey}/output"
+        },
           "script": {
             "path": "scripts/build.sh",
             "shell": "bash",

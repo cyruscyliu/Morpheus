@@ -43,6 +43,13 @@ fuzzer_bin="${install_dir}/bin/qemu_nesting"
 stub_elf="${install_dir}/bin/libafl_nesting_stub"
 bridge_dir="${install_dir}/../build/qemu-libafl-bridge"
 qemu_bundle_dir="${bridge_dir}/build/qemu-bundle/usr/local/share/qemu"
+workspace_root="${MORPHEUS_LIBAFL_WORKSPACE:-${MORPHEUS_SCRIPT_WORKSPACE:-}}"
+if [ -z "${workspace_root}" ]; then
+  echo "missing Morpheus workspace root for qemu_nesting harness" >&2
+  exit 1
+fi
+workspace_root="$(cd "${workspace_root}" && pwd)"
+repo_root="$(cd "${workspace_root}/../.." && pwd)"
 
 mkdir -p "${run_dir}" "${l1_runtime_dir}" "${corpus_dir}" "${objective_dir}" "$(dirname "${result_file}")"
 find "${l1_runtime_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
@@ -74,14 +81,27 @@ kill_run "${manifest_pid}"
 
 replay_enabled=false
 if [ "${#replay_inputs[@]}" -gt 0 ]; then
-  node - "${replay_inputs_file}" "${replay_state_file}" "${replay_inputs[@]}" <<'NODE'
+  node - "${replay_inputs_file}" "${replay_state_file}" "${workspace_root}" "${repo_root}" "${replay_inputs[@]}" <<'NODE'
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const outputFile = process.argv[2];
 const stateFile = process.argv[3];
-const roots = process.argv.slice(4);
+const workspaceRoot = process.argv[4];
+const repoRoot = process.argv[5];
+const roots = process.argv.slice(6);
 const inputs = [];
+function resolveInputPath(input) {
+  const candidates = [
+    path.resolve(input),
+    path.resolve(workspaceRoot, input),
+    path.resolve(repoRoot, input),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return path.resolve(input);
+}
 function addFile(file) {
   const stat = fs.statSync(file);
   if (!stat.isFile()) return;
@@ -90,7 +110,7 @@ function addFile(file) {
   inputs.push(path.resolve(file));
 }
 for (const root of roots) {
-  const resolved = path.resolve(root);
+  const resolved = resolveInputPath(root);
   const stat = fs.statSync(resolved);
   if (stat.isDirectory()) {
     for (const entry of fs.readdirSync(resolved).sort()) addFile(path.join(resolved, entry));
@@ -118,12 +138,25 @@ NODE
 fi
 
 if [ "${#seed_inputs[@]}" -gt 0 ]; then
-  node - "${seed_inputs_file}" "${seed_inputs[@]}" <<'NODE'
+  node - "${seed_inputs_file}" "${workspace_root}" "${repo_root}" "${seed_inputs[@]}" <<'NODE'
 const fs = require("fs");
 const path = require("path");
 const outputFile = process.argv[2];
-const roots = process.argv.slice(3);
+const workspaceRoot = process.argv[3];
+const repoRoot = process.argv[4];
+const roots = process.argv.slice(5);
 const inputs = [];
+function resolveInputPath(input) {
+  const candidates = [
+    path.resolve(input),
+    path.resolve(workspaceRoot, input),
+    path.resolve(repoRoot, input),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return path.resolve(input);
+}
 function addFile(file) {
   const stat = fs.statSync(file);
   if (!stat.isFile()) return;
@@ -132,7 +165,7 @@ function addFile(file) {
   inputs.push(path.resolve(file));
 }
 for (const root of roots) {
-  const resolved = path.resolve(root);
+  const resolved = resolveInputPath(root);
   const stat = fs.statSync(resolved);
   if (stat.isDirectory()) {
     for (const entry of fs.readdirSync(resolved).sort()) addFile(path.join(resolved, entry));

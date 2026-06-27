@@ -6,7 +6,7 @@ const path = require("node:path");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const dependencyResolver = require("../dist/core/dependency-resolver.js");
-const { applyConfigDefaults } = require("../dist/core/config.js");
+const { applyConfigDefaults, loadConfig } = require("../dist/core/config.js");
 
 function tempDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -279,4 +279,55 @@ test("applyConfigDefaults resolves nvirsh firmware path from config", () => {
   });
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("repo nvirsh workflows build Buildroot before nvirsh", () => {
+  const configRoot = path.resolve(repoRoot, "..");
+  const rootConfig = loadConfig(configRoot, {
+    explicitPath: path.join(configRoot, "morpheus.yaml"),
+  }).value;
+  const projectConfig = loadConfig(configRoot, {
+    explicitPath: path.join(
+      configRoot,
+      "projects",
+      "hyperarm",
+      "morpheus.yaml",
+    ),
+  }).value;
+
+  const rootWorkflow = rootConfig.workflows["nvirsh-arm64-build"];
+  assert.ok(rootWorkflow, "missing root nvirsh-arm64-build workflow");
+  assert.deepEqual(
+    rootWorkflow.steps.map((step) => step.id),
+    [
+      "buildroot_fetch",
+      "buildroot_patch",
+      "buildroot_build",
+      "qemu_fetch",
+      "qemu_patch",
+      "qemu_build",
+      "nvirsh_fetch",
+      "nvirsh_build",
+    ],
+  );
+
+  const injectedBugWorkflow =
+    projectConfig.workflows["nvirsh-aarch64-libafl-nesting-injected-bug"];
+  assert.ok(
+    injectedBugWorkflow,
+    "missing hyperarm nvirsh-aarch64-libafl-nesting-injected-bug workflow",
+  );
+  const stepIds = injectedBugWorkflow.steps.map((step) => step.id);
+  assert.ok(
+    stepIds.indexOf("buildroot_fetch") < stepIds.indexOf("buildroot_patch"),
+    "expected buildroot_fetch before buildroot_patch",
+  );
+  assert.ok(
+    stepIds.indexOf("buildroot_patch") < stepIds.indexOf("buildroot_build"),
+    "expected buildroot_patch before buildroot_build",
+  );
+  assert.ok(
+    stepIds.indexOf("buildroot_build") < stepIds.indexOf("nvirsh_build"),
+    "expected buildroot_build before nvirsh_build",
+  );
 });

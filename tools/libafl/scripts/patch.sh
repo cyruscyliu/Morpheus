@@ -2,9 +2,11 @@
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/state.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/project-hook.sh"
 
 source_dir="${MORPHEUS_LIBAFL_SOURCE:?}"
 patch_dir="${MORPHEUS_LIBAFL_PATCH_DIR:?}"
+patch_script="${MORPHEUS_LIBAFL_PATCH_SCRIPT:-}"
 result_file="${MORPHEUS_LIBAFL_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 state_file="${source_dir}/.morpheus-libafl-nesting.json"
 crate_dir="${source_dir}/crates/libafl_nesting"
@@ -14,6 +16,8 @@ mkdir -p "$(dirname "${result_file}")"
 [ -d "${source_dir}" ] || { echo "missing source directory: ${source_dir}" >&2; exit 1; }
 [ -d "${patch_dir}" ] || { echo "missing patch directory: ${patch_dir}" >&2; exit 1; }
 [ -d "${patch_dir}/crates/libafl_nesting" ] || { echo "missing libafl_nesting patch tree under ${patch_dir}" >&2; exit 1; }
+
+morpheus_delegate_project_hook "${BASH_SOURCE[0]}" "${patch_script}" "libafl patch" || true
 
 fingerprint_files="$(find "${patch_dir}/crates/libafl_nesting" -type f | sort)"
 fingerprint="$(printf '%s\n' "${fingerprint_files}" | morpheus_hash_files_from_stdin)"

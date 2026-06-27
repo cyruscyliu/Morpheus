@@ -57,6 +57,8 @@ fi
 [ -f "${source_dir}/fuzzers/full_system/qemu_nesting/Cargo.toml" ] || { echo "missing qemu_nesting example: ${source_dir}/fuzzers/full_system/qemu_nesting/Cargo.toml" >&2; exit 1; }
 [ -f "${stub_c_src}" ] || { echo "missing guest stub source: ${stub_c_src}" >&2; exit 1; }
 
+mkdir -p "${install_dir}/bin" "${install_dir}/lib"
+
 stub_current() { [ -x "${stub_bin}" ] && [ "${stub_bin}" -nt "${stub_c_src}" ]; }
 fuzzer_fingerprint() {
   find "${fuzzer_src_dir}" -type f \( -name '*.rs' -o -name 'Cargo.toml' \) -print0 \

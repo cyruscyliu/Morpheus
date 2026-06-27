@@ -15,6 +15,10 @@
 - `patch.sh` focuses on patching.
 - `build.sh` focuses on building, with no patching.
 - `run.sh` focuses on running, with no patching and no building.
+- When a tool exposes project hook scripts, the tool-owned script is an
+  adapter and must delegate explicitly to the configured project hook.
+- Do not accept hook-script config fields without implementing the matching
+  runtime delegation path.
 
 ## Review Principles
 

@@ -129,6 +129,12 @@ Operational rule:
   `patch.sh` focuses on patching;
   `build.sh` focuses on building, with no patching;
   `run.sh` focuses on running, with no patching and no building.
+- When a tool descriptor exposes project hook scripts such as
+  `patch-script`, `build-script`, `inspect-script`, or `harness-script`,
+  treat the tool-owned script as an adapter that must delegate explicitly to
+  the configured project hook at runtime.
+- Do not add hook-script config fields unless the corresponding tool script
+  implements the runtime delegation path.
 - Treat `tools.<name>` in `morpheus.yaml` as management policy, not tool
   business logic.
 - Treat `imports.workflows` as an explicit workflow import list, not as an

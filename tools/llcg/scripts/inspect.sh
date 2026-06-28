@@ -3,8 +3,13 @@ set -euo pipefail
 
 tool_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 legacy="${tool_root}/llcg"
+repo_root="$(cd "${tool_root}/../.." && pwd)"
 result_file="${MORPHEUS_LLCG_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 target="${MORPHEUS_LLCG_TARGET:?}"
+
+if [ ! -e "${target}" ] && [ -e "${repo_root}/${target#./}" ]; then
+  target="${repo_root}/${target#./}"
+fi
 
 tmp_json="$(mktemp)"
 trap 'rm -f "${tmp_json}"' EXIT

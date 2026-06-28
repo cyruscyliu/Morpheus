@@ -7,18 +7,6 @@ cache:
   builds: global
   src: global
 
-imports:
-  workflows:
-    - root.buildroot-build
-    - root.qemu-build
-    - root.libafl-build
-    - root.nvirsh-arm64-build
-    - root.microkit-sdk-build
-    - root.nqc2-build
-    - root.libvmm-build
-    - root.pkvm-aarch64-build
-    - root.sel4-fetch-patch
-
 tools:
   buildroot:
     mode: local
@@ -227,6 +215,301 @@ tools:
     artifacts:
       - source-dir
 workflows:
+  llbase-build:
+    category: build
+    steps:
+      - id: llbase_build
+        tool: llbase
+        command: build
+  llbic-build:
+    category: build
+    steps:
+      - id: llbase_build
+        tool: llbase
+        command: build
+      - id: llbic_build
+        tool: llbic
+        command: build
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --build-version
+          - "6.18.16"
+  llcg-build:
+    category: build
+    steps:
+      - id: llbase_build
+        tool: llbase
+        command: build
+      - id: llbic_build
+        tool: llbic
+        command: build
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --build-version
+          - "6.18.16"
+      - id: llcg_build
+        tool: llcg
+        command: build
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+      - id: llcg_mutator
+        tool: llcg
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --source-dir
+          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - --generator
+          - files
+          - --file
+          - arch/x86/kernel/cpu/common.c
+          - --scope-name
+          - linux-6.18.16-x86-cpu-common
+      - id: llcg_run
+        tool: llcg
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --llbic-json
+          - "{{steps.llbic_build.artifacts.llbic-json.location}}"
+          - --all-bc-list
+          - "{{steps.llbic_build.artifacts.bitcode-files.location}}"
+          - --filter
+          - "{{steps.llcg_mutator.artifacts.mutator_manifest.location}}"
+  buildroot-build:
+    category: build
+    steps:
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+      - id: buildroot_build
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+  qemu-build:
+    category: build
+    steps:
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+  libafl-build:
+    category: build
+    steps:
+      - id: libafl_fetch
+        tool: libafl
+        command: fetch
+      - id: libafl_patch
+        tool: libafl
+        command: patch
+        args:
+          - --source
+          - "{{steps.libafl_fetch.artifacts.source-dir.location}}"
+      - id: libafl_build
+        tool: libafl
+        command: build
+        args:
+          - --source
+          - "{{steps.libafl_patch.artifacts.source-dir.location}}"
+  nvirsh-arm64-build:
+    category: build
+    steps:
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+      - id: buildroot_build
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+      - id: nvirsh_fetch
+        tool: nvirsh
+        command: fetch
+      - id: nvirsh_build
+        tool: nvirsh
+        command: build
+        args:
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+          - --buildroot-output-dir
+          - "{{steps.buildroot_build.artifacts.output-dir.location}}"
+          - --guest-qemu-source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+  nqc2-build:
+    category: build
+    steps:
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+      - id: nqc2_fetch
+        tool: nqc2
+        command: fetch
+      - id: nqc2_build
+        tool: nqc2
+        command: build
+        args:
+          - --source
+          - "{{steps.nqc2_fetch.artifacts.source-dir.location}}"
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+  microkit-sdk-build:
+    category: build
+    steps:
+      - id: sel4_fetch
+        tool: sel4
+        command: fetch
+      - id: sel4_patch
+        tool: sel4
+        command: patch
+        args:
+          - --source
+          - "{{steps.sel4_fetch.artifacts.source-dir.location}}"
+      - id: microkit_sdk_fetch
+        tool: microkit-sdk
+        command: fetch
+      - id: microkit_sdk_patch
+        tool: microkit-sdk
+        command: patch
+        args:
+          - --source
+          - "{{steps.microkit_sdk_fetch.artifacts.source-dir.location}}"
+      - id: microkit_sdk_build
+        tool: microkit-sdk
+        command: build
+        args:
+          - --source
+          - "{{steps.microkit_sdk_patch.artifacts.source-dir.location}}"
+          - --sel4
+          - "{{steps.sel4_patch.artifacts.source-dir.location}}"
+  libvmm-build:
+    category: build
+    steps:
+      - id: libvmm_fetch
+        tool: libvmm
+        command: fetch
+      - id: libvmm_patch
+        tool: libvmm
+        command: patch
+        args:
+          - --source
+          - "{{steps.libvmm_fetch.artifacts.libvmm-dir.location}}"
+      - id: libvmm_build
+        tool: libvmm
+        command: build
+        args:
+          - --source
+          - "{{steps.libvmm_patch.artifacts.libvmm-dir.location}}"
+  sel4-fetch-patch:
+    category: build
+    steps:
+      - id: sel4_fetch
+        tool: sel4
+        command: fetch
+      - id: sel4_patch
+        tool: sel4
+        command: patch
+        args:
+          - --source
+          - "{{steps.sel4_fetch.artifacts.source-dir.location}}"
+  pkvm-aarch64-build:
+    category: run
+    steps:
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+      - id: pkvm_fetch
+        tool: pkvm-aarch64
+        command: fetch
+      - id: pkvm_build_all
+        tool: pkvm-aarch64
+        command: build
+        args:
+          - --source
+          - "{{steps.pkvm_fetch.artifacts.source-dir.location}}"
+          - --build-target
+          - all
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+      - id: pkvm_build_guest2host
+        tool: pkvm-aarch64
+        command: build
+        args:
+          - --source
+          - "{{steps.pkvm_fetch.artifacts.source-dir.location}}"
+          - --build-target
+          - guest2host
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
   nvirsh-aarch64-libafl-nesting-injected-bug:
     category: run
     steps:

@@ -18,6 +18,7 @@
     "smoke:tool:sel4": "node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name sel4-build-ci",
     "smoke:tool:libvmm": "node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name libvmm-build-ci",
     "smoke:tool:outline-to-paper": "pnpm --filter @morpheus/outline-to-paper smoke",
+    "test:root-config": "pnpm --filter @morpheus/app test:root-config",
     "test": "pnpm --filter @morpheus/app test && pnpm --filter @morpheus/docs test && pnpm --filter @morpheus/runs-viewer test && pnpm --filter @morpheus/outline-to-paper test",
     "lint": "pnpm --filter @morpheus/app lint && pnpm --filter @morpheus/docs lint && pnpm --filter @morpheus/runs-viewer lint && pnpm --filter @morpheus/outline-to-paper lint",
     "install:bin": "node scripts/install-bin.mjs"

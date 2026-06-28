@@ -37,6 +37,7 @@ qemu_etrace_out="${install_dir}/bin/qemu-etrace"
 manifest_file="${build_dir}/manifest.json"
 qemu_etrace_repo="${build_dir}/qemu-etrace"
 qemu_etrace_url="https://github.com/edgarigl/qemu-etrace.git"
+qemu_etrace_makefile="${qemu_etrace_repo}/Makefile"
 
 if [ ! -f "${plugin_header}" ]; then
   echo "missing QEMU plugin header: ${plugin_header}" >&2
@@ -102,6 +103,12 @@ aarch64-linux-gnu-gcc \
 if [ ! -d "${qemu_etrace_repo}/.git" ]; then
   rm -rf "${qemu_etrace_repo}"
   git clone "${qemu_etrace_url}" "${qemu_etrace_repo}"
+fi
+
+if [ -f "${qemu_etrace_makefile}" ] && ! grep -q -- "-lzstd" "${qemu_etrace_makefile}"; then
+  if pkg-config --exists libzstd 2>/dev/null || ldconfig -p 2>/dev/null | grep -q 'libzstd\.so'; then
+    printf '\nLDLIBS += -lzstd\n' >> "${qemu_etrace_makefile}"
+  fi
 fi
 
 if [ ! -f "${qemu_etrace_repo}/binutils-2.42-install/include/bfd.h" ] \

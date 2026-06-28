@@ -149,6 +149,9 @@
       "buildDirTemplate": "tools/llcg/build",
       "outputDirTemplate": "tools/llcg/builds/{buildDirKey}/output",
       "artifacts": {
+        "build-dir": {
+          "pathTemplate": "tools/llcg/build"
+        },
         "output-dir": {
           "pathTemplate": "tools/llcg/builds/{buildDirKey}/output"
         },

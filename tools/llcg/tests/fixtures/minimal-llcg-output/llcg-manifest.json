@@ -1,0 +1,68 @@
+{
+  "command": "run",
+  "status": "success",
+  "exit_code": 0,
+  "summary": "fixture llcg manifest",
+  "details": {
+    "run_id": "fixture-run",
+    "interface": "net-demo",
+    "kernel_version": "6.18.16",
+    "arch": "arm64",
+    "clang": "15",
+    "source_dir": "tools/llcg/tests/fixtures/minimal-llcg-output/source",
+    "llbic_json": "tools/llbic/tests/fixtures/linux-6.18.16-arm64-clang15/llbic.json",
+    "all_bc_list": "tools/llbic/tests/fixtures/linux-6.18.16-arm64-clang15/bitcode_files.txt",
+    "kallgraph_text": "kallgraph.txt",
+    "cg_dot": "callgraph.dot",
+    "log_file": "llcg.log",
+    "planned_stages": [
+      "fixture"
+    ]
+  },
+  "paths": {
+    "manifest": {
+      "portable": "llcg-manifest.json",
+      "runtime_path": "llcg-manifest.json",
+      "resolved_path": "tools/llcg/tests/fixtures/minimal-llcg-output/llcg-manifest.json"
+    },
+    "source_dir": {
+      "portable": "source",
+      "runtime_path": "source",
+      "resolved_path": "tools/llcg/tests/fixtures/minimal-llcg-output/source"
+    },
+    "llbic_json": {
+      "portable": "../../../llbic/tests/fixtures/linux-6.18.16-arm64-clang15/llbic.json",
+      "runtime_path": "../../../llbic/tests/fixtures/linux-6.18.16-arm64-clang15/llbic.json",
+      "resolved_path": "tools/llbic/tests/fixtures/linux-6.18.16-arm64-clang15/llbic.json"
+    },
+    "all_bc_list": {
+      "portable": "../../../llbic/tests/fixtures/linux-6.18.16-arm64-clang15/bitcode_files.txt",
+      "runtime_path": "../../../llbic/tests/fixtures/linux-6.18.16-arm64-clang15/bitcode_files.txt",
+      "resolved_path": "tools/llbic/tests/fixtures/linux-6.18.16-arm64-clang15/bitcode_files.txt"
+    },
+    "kallgraph_text": {
+      "portable": "kallgraph.txt",
+      "runtime_path": "kallgraph.txt",
+      "resolved_path": "tools/llcg/tests/fixtures/minimal-llcg-output/kallgraph.txt"
+    },
+    "cg_dot": {
+      "portable": "callgraph.dot",
+      "runtime_path": "callgraph.dot",
+      "resolved_path": "tools/llcg/tests/fixtures/minimal-llcg-output/callgraph.dot"
+    },
+    "log_file": {
+      "portable": "llcg.log",
+      "runtime_path": "llcg.log",
+      "resolved_path": "tools/llcg/tests/fixtures/minimal-llcg-output/llcg.log"
+    }
+  },
+  "artifacts": {
+    "manifest": true,
+    "source_dir": true,
+    "llbic_json": true,
+    "all_bc_list": true,
+    "kallgraph_text": true,
+    "cg_dot": true,
+    "log_file": true
+  }
+}

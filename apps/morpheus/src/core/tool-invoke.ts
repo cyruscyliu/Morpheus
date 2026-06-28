@@ -1364,6 +1364,8 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
   const workspace = resolved.workspace;
   const buildVersion = resolved["build-version"] || null;
   const buildDirKey = resolved["build-dir-key"] || "default";
+  const flagMetadata = descriptorFlagMetadata(descriptor);
+  const booleanFlags = flagMetadata.booleans;
   const templateExtras = {
     toolchainVersion: resolved["toolchain-version"] || null,
     example: resolved.example || null,
@@ -1486,6 +1488,12 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
       continue;
     }
     const value = resolved[key];
+    if (booleanFlags.has(key)) {
+      if (value === true && !args.includes(`--${key}`)) {
+        args.push(`--${key}`);
+      }
+      continue;
+    }
     if (value == null || value === false || value === "" || args.includes(`--${key}`)) {
       continue;
     }

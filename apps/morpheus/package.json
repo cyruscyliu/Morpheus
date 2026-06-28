@@ -8,6 +8,7 @@
     "build": "pnpm exec tsc -p tsconfig.json",
     "lint": "pnpm exec tsc -p tsconfig.json --noEmit",
     "morpheus": "node dist/cli.js",
+    "test:root-config": "pnpm run build && node --test test/root-config.test.js",
     "test": "pnpm run build && node --test test/*.test.js"
   },
   "dependencies": {

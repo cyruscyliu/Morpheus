@@ -83,12 +83,23 @@ done
 manifest_file="${build_dir}/manifest.json"
 artifact_parent="${source_dir}"
 work_dir="${PWD}"
+managed_tmpdir="${build_dir}/tmp"
+
+mkdir -p "${managed_tmpdir}"
+export TMPDIR="${managed_tmpdir}"
+export TMP="${managed_tmpdir}"
+export TEMP="${managed_tmpdir}"
 
 check_target_up_to_date() {
   local target="$1"
   local rc=0
   set +e
-  make -C "${source_dir}" "PLATFORM=${platform}" -q "${target}" >/dev/null 2>&1
+  make -C "${source_dir}" \
+    "PLATFORM=${platform}" \
+    "TMPDIR=${managed_tmpdir}" \
+    "TMP=${managed_tmpdir}" \
+    "TEMP=${managed_tmpdir}" \
+    -q "${target}" >/dev/null 2>&1
   rc="$?"
   return "${rc}"
 }
@@ -167,7 +178,13 @@ git config submodule.fetchJobs 4 || true
 run_target() {
   local target="$1"
   local rc=0
-  make "PLATFORM=${platform}" "NJOBS=${pkvm_jobs}" "${make_args[@]}" "${target}" || rc="$?"
+  make \
+    "PLATFORM=${platform}" \
+    "NJOBS=${pkvm_jobs}" \
+    "TMPDIR=${managed_tmpdir}" \
+    "TMP=${managed_tmpdir}" \
+    "TEMP=${managed_tmpdir}" \
+    "${make_args[@]}" "${target}" || rc="$?"
   return "${rc}"
 }
 

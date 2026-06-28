@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+tool_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+repo_root="$(cd "${tool_root}/../.." && pwd)"
 result_file="${MORPHEUS_LLBIC_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 target="${MORPHEUS_LLBIC_TARGET:?}"
+
+if [ ! -e "${target}" ] && [ -e "${repo_root}/${target#./}" ]; then
+  target="${repo_root}/${target#./}"
+fi
 
 node - "${target}" "${result_file}" <<'EOF'
 const fs = require("fs");

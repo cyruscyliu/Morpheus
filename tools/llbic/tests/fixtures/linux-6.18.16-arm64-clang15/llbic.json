@@ -1,0 +1,13 @@
+{
+  "kernel_version": "6.18.16",
+  "kernel_name": "linux-6.18.16",
+  "arch": "arm64",
+  "build_layout": "out-of-tree",
+  "config_path": "tools/llbic/tests/fixtures/linux-6.18.16-arm64-clang15/.config",
+  "bitcode_list_file": "tools/llbic/tests/fixtures/linux-6.18.16-arm64-clang15/bitcode_files.txt",
+  "source_dir": "tools/llbic/tests/fixtures/linux-6.18.16-arm64-clang15/source",
+  "output_dir": "tools/llbic/tests/fixtures/linux-6.18.16-arm64-clang15",
+  "kernel_build_log": "tools/llbic/tests/fixtures/linux-6.18.16-arm64-clang15/kernel-build.log",
+  "status": "success",
+  "bitcode_count": 1
+}

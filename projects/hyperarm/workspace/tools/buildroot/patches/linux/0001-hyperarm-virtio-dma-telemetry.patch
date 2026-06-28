@@ -1,7 +1,4 @@
 diff --git a/drivers/virtio/virtio_ring.c b/drivers/virtio/virtio_ring.c
-index ddab689..3859248 100644
---- a/drivers/virtio/virtio_ring.c	2026-05-04 13:29:58.411228182 +0200
-+++ b/drivers/virtio/virtio_ring.c	2026-05-04 13:37:09.800491185 +0200
 @@ -11,8 +11,10 @@
  #include <linux/module.h>
  #include <linux/hrtimer.h>
@@ -25,7 +22,7 @@ index ddab689..3859248 100644
  
  /*
   * Helpers.
-@@ -293,6 +300,100 @@
+@@ -293,6 +300,106 @@
  	return vring->use_map_api && (extra->addr != DMA_MAPPING_ERROR);
  }
  
@@ -123,10 +120,65 @@ index ddab689..3859248 100644
 +				     (_use_dma) ? "dma_api" : "phys");	\
 +	} while (0)
 +
++static void hp_dma_trace_vq_state(struct virtqueue *_vq, u32 opcode,
++				  dma_addr_t aux, const char *kind)
++{
++	HP_DMA_TRACE(_vq->vdev, opcode, DMA_NONE, 0, aux, kind, false);
++}
++
  size_t virtio_max_dma_size(const struct virtio_device *vdev)
  {
  	size_t max_segment_size = SIZE_MAX;
-@@ -366,17 +459,29 @@
+@@ -315,8 +422,18 @@
+ 			       union virtio_map map)
+ {
+ 	if (vring_use_map_api(vdev)) {
+-		return virtqueue_map_alloc_coherent(vdev, map, size,
+-						    map_handle, flag);
++		void *queue = virtqueue_map_alloc_coherent(vdev, map, size,
++							   map_handle, flag);
++
++		if (queue)
++			HP_DMA_TRACE(vdev, HP_DMA_EVENT_OP_ALLOC_SUCCESS,
++				     DMA_BIDIRECTIONAL, size, *map_handle,
++				     "queue", true);
++		else
++			HP_DMA_TRACE(vdev, HP_DMA_EVENT_OP_ALLOC_FAIL,
++				     DMA_BIDIRECTIONAL, size, 0,
++				     "queue", true);
++		return queue;
+ 	} else {
+ 		void *queue = alloc_pages_exact(PAGE_ALIGN(size), flag);
+ 
+@@ -337,8 +454,18 @@
+ 			 */
+ 			if (WARN_ON_ONCE(*map_handle != phys_addr)) {
+ 				free_pages_exact(queue, PAGE_ALIGN(size));
++				HP_DMA_TRACE(vdev, HP_DMA_EVENT_OP_ALLOC_FAIL,
++					     DMA_BIDIRECTIONAL, size, 0,
++					     "queue", false);
+ 				return NULL;
+ 			}
++			HP_DMA_TRACE(vdev, HP_DMA_EVENT_OP_ALLOC_SUCCESS,
++				     DMA_BIDIRECTIONAL, size, *map_handle,
++				     "queue", false);
++		} else {
++			HP_DMA_TRACE(vdev, HP_DMA_EVENT_OP_ALLOC_FAIL,
++				     DMA_BIDIRECTIONAL, size, 0,
++				     "queue", false);
+ 		}
+ 		return queue;
+ 	}
+@@ -348,6 +475,8 @@
+ 			     void *queue, dma_addr_t map_handle,
+ 			     union virtio_map map)
+ {
++	HP_DMA_TRACE(vdev, HP_DMA_EVENT_OP_FREE, DMA_BIDIRECTIONAL, size,
++		     map_handle, "queue", vring_use_map_api(vdev));
+ 	if (vring_use_map_api(vdev))
+ 		virtqueue_map_free_coherent(vdev, map, size,
+ 					    queue, map_handle);
+@@ -366,17 +495,29 @@
  }
  
  static int vring_mapping_error(const struct vring_virtqueue *vq,
@@ -159,7 +211,7 @@ index ddab689..3859248 100644
  }
  
  /* Map one sg entry. */
-@@ -412,7 +517,7 @@
+@@ -412,9 +553,12 @@
  					 sg->offset, sg->length,
  					 direction, 0);
  
@@ -167,8 +219,48 @@ index ddab689..3859248 100644
 +	if (vring_mapping_error(vq, *addr, direction, *len, "payload"))
  		return -ENOMEM;
  
++	HP_DMA_TRACE(vq->vq.vdev, HP_DMA_EVENT_OP_MAP, direction, *len, *addr,
++		     "payload", true);
++
  	return 0;
-@@ -646,7 +751,9 @@
+ }
+ 
+@@ -425,8 +569,19 @@
+ 	if (!vq->use_map_api)
+ 		return (dma_addr_t)virt_to_phys(cpu_addr);
+ 
+-	return virtqueue_map_single_attrs(&vq->vq, cpu_addr,
+-					  size, direction, 0);
++	{
++		dma_addr_t addr = virtqueue_map_single_attrs(&vq->vq, cpu_addr,
++							     size, direction, 0);
++
++		if (vq->use_map_api &&
++		    !(vq->vq.vdev->map ?
++		      vq->vq.vdev->map->mapping_error(vq->map, addr) :
++		      dma_mapping_error(vring_dma_dev(vq), addr))) {
++			HP_DMA_TRACE(vq->vq.vdev, HP_DMA_EVENT_OP_MAP, direction,
++				     size, addr, "single", true);
++		}
++		return addr;
++	}
+ }
+ 
+ static void virtqueue_init(struct vring_virtqueue *vq, u32 num)
+@@ -471,6 +626,12 @@
+ 				   (flags & VRING_DESC_F_WRITE) ?
+ 				   DMA_FROM_DEVICE : DMA_TO_DEVICE,
+ 				   0);
++	HP_DMA_TRACE(vq->vq.vdev, HP_DMA_EVENT_OP_UNMAP,
++		     (flags & VRING_DESC_F_WRITE) ? DMA_FROM_DEVICE :
++		     DMA_TO_DEVICE,
++		     extra->len, extra->addr,
++		     (flags & VRING_DESC_F_INDIRECT) ? "indirect" : "payload",
++		     true);
+ 
+ out:
+ 	return extra->next;
+@@ -646,7 +807,9 @@
  		dma_addr_t addr = vring_map_single(
  			vq, desc, total_sg * sizeof(struct vring_desc),
  			DMA_TO_DEVICE);
@@ -179,7 +271,55 @@ index ddab689..3859248 100644
  			goto unmap_release;
  
  		virtqueue_add_desc_split(_vq, vq->split.vring.desc,
-@@ -1379,7 +1486,9 @@
+@@ -830,6 +993,8 @@
+ 
+ 	if (!more_used_split(vq)) {
+ 		pr_debug("No more buffers in queue\n");
++		hp_dma_trace_vq_state(_vq, HP_DMA_EVENT_OP_VQ_GET_BUF_EMPTY,
++				      vq->last_used_idx, "split");
+ 		END_USE(vq);
+ 		return NULL;
+ 	}
+@@ -865,6 +1030,8 @@
+ 				cpu_to_virtio16(_vq->vdev, vq->last_used_idx));
+ 
+ 	LAST_ADD_TIME_INVALID(vq);
++	hp_dma_trace_vq_state(_vq, HP_DMA_EVENT_OP_VQ_GET_BUF,
++			      vq->last_used_idx, "split");
+ 
+ 	END_USE(vq);
+ 	return ret;
+@@ -922,9 +1089,15 @@
+ static bool virtqueue_poll_split(struct virtqueue *_vq, unsigned int last_used_idx)
+ {
+ 	struct vring_virtqueue *vq = to_vvq(_vq);
++	bool pending;
+ 
+-	return (u16)last_used_idx != virtio16_to_cpu(_vq->vdev,
++	pending = (u16)last_used_idx != virtio16_to_cpu(_vq->vdev,
+ 			vq->split.vring.used->idx);
++	hp_dma_trace_vq_state(_vq,
++			      pending ? HP_DMA_EVENT_OP_VQ_POLL_HIT :
++					HP_DMA_EVENT_OP_VQ_POLL_MISS,
++			      last_used_idx, "split");
++	return pending;
+ }
+ 
+ static bool virtqueue_enable_cb_delayed_split(struct virtqueue *_vq)
+@@ -1289,6 +1462,12 @@
+ 				   (flags & VRING_DESC_F_WRITE) ?
+ 				   DMA_FROM_DEVICE : DMA_TO_DEVICE,
+ 				   0);
++	HP_DMA_TRACE(vq->vq.vdev, HP_DMA_EVENT_OP_UNMAP,
++		     (flags & VRING_DESC_F_WRITE) ? DMA_FROM_DEVICE :
++		     DMA_TO_DEVICE,
++		     extra->len, extra->addr,
++		     (flags & VRING_DESC_F_INDIRECT) ? "indirect" : "payload",
++		     true);
+ }
+ 
+ static struct vring_packed_desc *alloc_indirect_packed(unsigned int total_sg,
+@@ -1379,7 +1558,9 @@
  	addr = vring_map_single(vq, desc,
  			total_sg * sizeof(struct vring_packed_desc),
  			DMA_TO_DEVICE);
@@ -190,7 +330,45 @@ index ddab689..3859248 100644
  		goto unmap_release;
  
  	vq->packed.vring.desc[head].addr = cpu_to_le64(addr);
-@@ -3310,7 +3419,7 @@
+@@ -1741,6 +1922,8 @@
+ 
+ 	if (!more_used_packed(vq)) {
+ 		pr_debug("No more buffers in queue\n");
++		hp_dma_trace_vq_state(_vq, HP_DMA_EVENT_OP_VQ_GET_BUF_EMPTY,
++				      READ_ONCE(vq->last_used_idx), "packed");
+ 		END_USE(vq);
+ 		return NULL;
+ 	}
+@@ -1787,6 +1970,8 @@
+ 				cpu_to_le16(vq->last_used_idx));
+ 
+ 	LAST_ADD_TIME_INVALID(vq);
++	hp_dma_trace_vq_state(_vq, HP_DMA_EVENT_OP_VQ_GET_BUF,
++			      READ_ONCE(vq->last_used_idx), "packed");
+ 
+ 	END_USE(vq);
+ 	return ret;
+@@ -1848,12 +2033,18 @@
+ {
+ 	struct vring_virtqueue *vq = to_vvq(_vq);
+ 	bool wrap_counter;
++	bool pending;
+ 	u16 used_idx;
+ 
+ 	wrap_counter = off_wrap >> VRING_PACKED_EVENT_F_WRAP_CTR;
+ 	used_idx = off_wrap & ~(1 << VRING_PACKED_EVENT_F_WRAP_CTR);
+ 
+-	return is_used_desc_packed(vq, used_idx, wrap_counter);
++	pending = is_used_desc_packed(vq, used_idx, wrap_counter);
++	hp_dma_trace_vq_state(_vq,
++			      pending ? HP_DMA_EVENT_OP_VQ_POLL_HIT :
++					HP_DMA_EVENT_OP_VQ_POLL_MISS,
++			      off_wrap, "packed");
++	return pending;
+ }
+ 
+ static bool virtqueue_enable_cb_delayed_packed(struct virtqueue *_vq)
+@@ -3310,7 +3501,7 @@
  {
  	const struct vring_virtqueue *vq = to_vvq(_vq);
  

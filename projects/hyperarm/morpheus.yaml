@@ -267,9 +267,9 @@ workflows:
           - --generator
           - files
           - --file
-          - arch/x86/kernel/cpu/common.c
+          - arch/arm64/kernel/cpuinfo.c
           - --scope-name
-          - linux-6.18.16-x86-cpu-common
+          - linux-6.18.16-arm64-cpuinfo
       - id: llcg_run
         tool: llcg
         command: exec

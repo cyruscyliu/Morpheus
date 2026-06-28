@@ -9,10 +9,11 @@ set -euo pipefail
 VERSION="0.3.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="${LLBIC_ROOT:-$(_host_script_dir)}"
+source "${ROOT_DIR}/../_shared/scripts/parallelism.sh"
 SOURCES_DIR="${LLBIC_SOURCES:-${ROOT_DIR}/sources}"
 BUILD_DIR="${LLBIC_OUTPUT:-${ROOT_DIR}/out}"
 CONF_FILE="${LLBIC_CONF:-${ROOT_DIR}/sources.conf}"
-NPROC="${NPROC:-$(nproc)}"
+NPROC="${NPROC:-$(morpheus_default_jobs)}"
 RUST_TOOLCHAINS_DIR="${LLBIC_RUST_TOOLCHAINS:-${SOURCES_DIR}/toolchains/rust-llvm}"
 RUST_KERNEL_TOOLCHAIN_BASE_URL="${LLBIC_RUST_TOOLCHAIN_BASE_URL:-https://mirrors.edge.kernel.org/pub/tools/llvm/rust/files}"
 JSON_OUTPUT=0

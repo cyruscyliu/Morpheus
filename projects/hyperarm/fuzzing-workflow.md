@@ -1,10 +1,12 @@
-# HyperArm LibAFL Nesting Injected-Bug Workflow
+# HyperArm LibAFL Nesting Workflows
 
-This document explains the
-`nvirsh-aarch64-libafl-nesting-injected-bug` workflow in
-`projects/hyperarm/morpheus.yaml`.
+This document explains the HyperArm nesting workflows in
+`projects/hyperarm/morpheus.yaml`:
 
-The workflow fuzzes a nested AArch64 VM setup:
+- `nvirsh-aarch64-libafl-nesting-injected-bug`
+- `nvirsh-aarch64-libafl-nesting-injected-bug-fuzz`
+
+Both workflows run a nested AArch64 VM setup:
 
 ```text
 host LibAFL qemu_nesting
@@ -38,9 +40,25 @@ The workflow has three layers.
 - A Buildroot kernel and initramfs launched by QEMU inside L1.
 - This is the guest kernel whose coverage is postprocessed.
 
+## Workflow Modes
+
+`nvirsh-aarch64-libafl-nesting-injected-bug`
+
+- Replays a known oracle-triggering seed.
+- Uses `--replay-input`.
+- Reproduces the injected bug path deterministically.
+
+`nvirsh-aarch64-libafl-nesting-injected-bug-fuzz`
+
+- Runs timed fuzzing with generated mutations.
+- Keeps the injected bug enabled in L2.
+- Seeds the corpus from a neutral scenario file.
+- Enables LibAFL cmplog in the `qemu_nesting` fuzzer.
+- Avoids relying on the replay seed or the generator fallback path.
+
 ## Workflow Steps
 
-The workflow in `projects/hyperarm/morpheus.yaml` performs these steps:
+Both workflows in `projects/hyperarm/morpheus.yaml` perform these steps:
 
 1. `libafl_fetch`, `libafl_patch`, `libafl_build`
 
@@ -65,8 +83,8 @@ The workflow in `projects/hyperarm/morpheus.yaml` performs these steps:
 
 5. `libafl_exec`
 
-   Replays the oracle-trigger seed through `qemu_nesting` against the prepared
-   L1 overlay to reproduce the injected guest bug.
+   Runs either replay or timed fuzzing through `qemu_nesting` against the
+   prepared L1 overlay.
 
 6. `nvirsh_inspect`
 

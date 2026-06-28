@@ -319,6 +319,100 @@ workflows:
           - --harness-arg
           - --disable-nqc2-plugin
         timeout-seconds: 600
+  nvirsh-aarch64-libafl-nesting-injected-bug-fuzz:
+    category: run
+    steps:
+      - id: libafl_fetch
+        tool: libafl
+        command: fetch
+      - id: libafl_patch
+        tool: libafl
+        command: patch
+        args:
+          - --source
+          - "{{steps.libafl_fetch.artifacts.source-dir.location}}"
+      - id: libafl_build
+        tool: libafl
+        command: build
+        args:
+          - --source
+          - "{{steps.libafl_patch.artifacts.source-dir.location}}"
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+      - id: buildroot_build
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+      - id: nvirsh_fetch
+        tool: nvirsh
+        command: fetch
+      - id: nvirsh_build
+        tool: nvirsh
+        command: build
+        args:
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+          - --buildroot-output-dir
+          - "{{steps.buildroot_build.artifacts.output-dir.location}}"
+          - --guest-qemu-source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+          - --guest-stub
+          - "{{steps.libafl_build.artifacts.guest-stub-binary.location}}"
+      - id: libafl_exec
+        tool: libafl
+        command: exec
+        args:
+          - --source
+          - "{{steps.libafl_patch.artifacts.source-dir.location}}"
+          - --run-seconds
+          - "1800"
+          - --harness-arg
+          - --nvirsh-state
+          - --harness-arg
+          - "{{steps.nvirsh_build.artifacts.prepared-state.location}}"
+          - --harness-arg
+          - --l2-accel
+          - --harness-arg
+          - tcg
+          - --harness-arg
+          - --l2-cpu
+          - --harness-arg
+          - cortex-a57
+          - --harness-arg
+          - --l2-run-window-ms
+          - --harness-arg
+          - "120000"
+          - --harness-arg
+          - --seed-input
+          - --harness-arg
+          - ./tools/libafl/seeds/qemu_nesting/oracle-neutral.raw
+          - --harness-arg
+          - --disable-nqc2-plugin
+        timeout-seconds: 2100
   pkvm-aarch64-runtime:
     category: run
     steps:

@@ -1,7 +1,7 @@
 {
   "name": "pkvm-aarch64",
   "runtime": null,
-  "cli-contract": "fetch,build,exec,inspect,stop",
+  "cli-contract": "fetch,patch,build,exec,inspect,stop",
   "runGuard": {
     "scope": "workspace",
     "keyTemplate": "run"
@@ -18,6 +18,13 @@
         "aliases": [
           "seed-dir",
           "seedDir"
+        ],
+        "path": true
+      },
+      "patch-dir": {
+        "aliases": [
+          "patch-dir",
+          "patchDir"
         ],
         "path": true
       },
@@ -182,6 +189,36 @@
               "git_url": {
                 "fromFlag": "git-url"
               }
+            }
+          }
+        },
+        "patch": {
+          "requiredFlags": [
+            "source",
+            "patch-dir"
+          ],
+          "scalarFlags": [
+            "source",
+            "patch-dir"
+          ],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/patch.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "source": "tools/pkvm-aarch64/src/pkvm-aarch64-{buildVersion}"
+          },
+          "result": {
+            "successSummary": "patched managed pKVM source tree",
+            "reusedSummary": "reused managed pKVM patch state",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{source}"
+            },
+            "details": {
+              "source": "{source}",
+              "patch_dir": "{patch-dir}"
             }
           }
         },

@@ -184,6 +184,7 @@ tools:
     reuse-build-dir: true
     build-dir-key: pkvm-aarch64-main
     git-url: https://github.com/vrosendahl/pkvm-aarch64.git
+    patch-dir: tools/pkvm-aarch64/patches/overlay
   libvmm:
     mode: local
     reuse-build-dir: true
@@ -490,12 +491,18 @@ workflows:
       - id: pkvm_fetch
         tool: pkvm-aarch64
         command: fetch
+      - id: pkvm_patch
+        tool: pkvm-aarch64
+        command: patch
+        args:
+          - --source
+          - "{{steps.pkvm_fetch.artifacts.source-dir.location}}"
       - id: pkvm_build_all
         tool: pkvm-aarch64
         command: build
         args:
           - --source
-          - "{{steps.pkvm_fetch.artifacts.source-dir.location}}"
+          - "{{steps.pkvm_patch.artifacts.source-dir.location}}"
           - --build-target
           - all
           - --qemu
@@ -505,7 +512,7 @@ workflows:
         command: build
         args:
           - --source
-          - "{{steps.pkvm_fetch.artifacts.source-dir.location}}"
+          - "{{steps.pkvm_patch.artifacts.source-dir.location}}"
           - --build-target
           - guest2host
           - --qemu
@@ -717,12 +724,18 @@ workflows:
       - id: pkvm_fetch
         tool: pkvm-aarch64
         command: fetch
+      - id: pkvm_patch
+        tool: pkvm-aarch64
+        command: patch
+        args:
+          - --source
+          - "{{steps.pkvm_fetch.artifacts.source-dir.location}}"
       - id: pkvm_build_all
         tool: pkvm-aarch64
         command: build
         args:
           - --source
-          - "{{steps.pkvm_fetch.artifacts.source-dir.location}}"
+          - "{{steps.pkvm_patch.artifacts.source-dir.location}}"
           - --build-target
           - all
           - --qemu
@@ -732,7 +745,7 @@ workflows:
         command: build
         args:
           - --source
-          - "{{steps.pkvm_fetch.artifacts.source-dir.location}}"
+          - "{{steps.pkvm_patch.artifacts.source-dir.location}}"
           - --build-target
           - guest2host
           - --qemu
@@ -742,7 +755,7 @@ workflows:
         command: exec
         args:
           - --source
-          - "{{steps.pkvm_fetch.artifacts.source-dir.location}}"
+          - "{{steps.pkvm_patch.artifacts.source-dir.location}}"
           - --qemu
           - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
           - --detach

@@ -190,6 +190,20 @@ run_target() {
 
 prepare_sources() {
   local rc=0
+  local submodule=""
+  local submodule_path=""
+  local modules_path=""
+
+  for submodule in crosvm linux linux-host qemu oss/binutils-gdb oss/gcc oss/glibc oss/qemu; do
+    submodule_path="${source_dir}/${submodule}"
+    modules_path="${source_dir}/.git/modules/${submodule}"
+    if [ -d "${submodule_path}" ] || [ -f "${submodule_path}" ]; then
+      if ! git -C "${submodule_path}" rev-parse --verify HEAD >/dev/null 2>&1; then
+        rm -rf "${submodule_path}" "${modules_path}"
+      fi
+    fi
+  done
+
   git submodule sync --recursive || rc="$?"
   if [ "${rc}" != "0" ]; then
     return "${rc}"

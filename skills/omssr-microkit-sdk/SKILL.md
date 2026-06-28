@@ -33,7 +33,7 @@ The descriptor accepts these field families:
 - build reuse: `reuse-build-dir`, `build-dir-key`
 - artifact publication: `artifacts`
 
-Use shared config for stable SDK defaults and workflow overrides for
+Use shared config for stable SDK defaults and workflow-step arguments for
 version-specific runs.
 
 ## `tool.json`

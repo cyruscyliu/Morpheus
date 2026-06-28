@@ -34,7 +34,7 @@ The descriptor accepts these field families:
 
 Use aliases from the descriptor when Morpheus resolves workflow config into
 tool flags.
-Prefer shared config for stable defaults and workflow-step overrides for
+Prefer shared config for stable defaults and workflow-step arguments for
 run-specific values.
 
 ## `tool.json`

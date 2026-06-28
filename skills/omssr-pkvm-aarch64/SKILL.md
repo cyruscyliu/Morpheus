@@ -13,7 +13,7 @@ Use this skill when you need to work with the `pkvm-aarch64` tool.
 
 `pkvm-aarch64` is a script-backed Morpheus tool.
 `tool.json` is the contract.
-`scripts/` own fetch, build, exec, inspect, logs, and stop behavior.
+`scripts/` own fetch, patch, build, exec, inspect, logs, and stop behavior.
 
 ## Config Schema
 
@@ -21,6 +21,7 @@ Treat `tools.pkvm-aarch64` in Morpheus config as the stable config surface.
 The descriptor accepts these field families:
 
 - source selection: `source`, `seed-dir`, `build-version`, `git-url`
+- patching: `patch-dir`
 - fetch control: `fetch-submodules`
 - build selection: `build-target`, `platform`, `make-arg`
 - qemu path: `qemu`
@@ -28,14 +29,14 @@ The descriptor accepts these field families:
 - runtime directory: `run-dir`
 - artifact publication: `artifacts`
 
-Use shared config for durable defaults and workflow overrides for per-run
+Use shared config for durable defaults and workflow-step arguments for per-run
 targets or extra make variables.
 
 ## `tool.json`
 
 `tools/pkvm-aarch64/tool.json` is the Morpheus integration contract.
 
-- `cli-contract` is `fetch,build,exec,inspect,logs,stop`
+- `cli-contract` is `fetch,patch,build,exec,inspect,logs,stop`
 - `runGuard` serializes managed runs in one workspace
 - `config.fields` defines accepted names and aliases
 - `managed.artifacts` defines stable artifact names
@@ -67,8 +68,10 @@ the upstream `make run` path.
 - `exec` runs `make PLATFORM=virt run` in the managed checkout
 - `exec --detach` is available when the workflow should launch QEMU and return
 - `exec --timeout-seconds` is available for attached or detached runtime limits
-- fetch applies workspace-safe overrides so image creation works without loop
-  devices
+- fetch only provisions source
+- patch applies repo-managed source changes from
+  `tools/pkvm-aarch64/patches/`
+- no `overrides/` mechanism is acceptable for this tool
 - `inspect` and `logs` re-read prior state instead of repeating work
 - `stop` terminates a recorded runtime run from its managed run directory
 

@@ -28,7 +28,7 @@ The descriptor accepts these field families:
 - build reuse: `reuse-build-dir`, `build-dir-key`
 - artifact publication: `artifacts`
 
-Use shared config for stable source defaults and workflow overrides when a run
+Use shared config for stable source defaults and workflow-step arguments when a run
 needs a specific seL4 version.
 
 ## `tool.json`

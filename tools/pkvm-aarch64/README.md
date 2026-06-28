@@ -6,6 +6,8 @@ Managed checkout and build wrapper for
 ## Commands
 
 - `fetch` clones the upstream tree.
+- `patch` applies repo-managed source changes from
+  `tools/pkvm-aarch64/patches/`.
 - `build` runs `make PLATFORM=virt all` by default.
 - `exec` runs `make PLATFORM=virt run`.
 - `exec --detach` records the runtime pid and returns once QEMU is started.
@@ -13,8 +15,7 @@ Managed checkout and build wrapper for
 - `inspect`, `logs`, and `stop` read or manage managed state.
 - `qemu` can be supplied from the managed QEMU tool for build and run paths.
 - `fetch-submodules` stays off by default.
-- Fetch applies workspace-safe overrides for image creation in restricted
-  environments.
+- Fetch only provisions source.
 
 ## Dependencies
 

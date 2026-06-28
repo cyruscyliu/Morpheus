@@ -3,6 +3,8 @@ set -e -o pipefail
 
 . "$BASE_DIR/scripts/img_util.sh"
 
+ensure_root_namespace "$@"
+
 export PATH=$PATH:/usr/sbin
 cd "$(dirname "$0")"
 
@@ -142,7 +144,7 @@ if [ -f "$GUESTIMG2" ]; then
 fi
 cp "$GUESTKERNEL" tmp/home/ubuntu/guest
 
-sudo -E chroot tmp chown -R ubuntu:ubuntu /home/ubuntu/guest
+chroot tmp chown -R ubuntu:ubuntu /home/ubuntu/guest
 
 do_cleanup
 

@@ -4,6 +4,8 @@ set -e
 
 . "$BASE_DIR/scripts/img_util.sh"
 
+ensure_root_namespace "$@"
+
 TOOLDIR=$BASE_DIR/buildtools
 QEMU_USER=$(which qemu-aarch64-static)
 
@@ -19,6 +21,7 @@ export BINFMTENTRY=/proc/sys/fs/binfmt_misc/pkvm-aarch64-build
 NJOBS_MAX=8
 NJOBS=$(nproc)
 BINFMT_ENTRIES=""
+SKIP_CHROOT=0
 
 if [ -z "${BUILD_QEMU_USER+x}" ]; then
 	BUILD_QEMU_USER=1
@@ -32,8 +35,8 @@ do_unmount_all() {
 	[ -n "$LEAVE_MOUNTS" ] && echo "leaving bind mounts in place." && exit 0
 	do_unmount "$CHROOTDIR/proc"
 	do_unmount "$CHROOTDIR/dev"
-	sudo rm -f "$CHROOTDIR/var/cache/apt/archives/"*.deb || true
-	sudo rm -f "$CHROOTDIR/var/cache/apt/archives/"*.ddeb || true
+	rm -f "$CHROOTDIR/var/cache/apt/archives/"*.deb || true
+	rm -f "$CHROOTDIR/var/cache/apt/archives/"*.ddeb || true
 	restore_binfmt
 }
 
@@ -43,7 +46,7 @@ do_clean() {
 
 do_distclean() {
 	do_unmount_all
-	sudo rm -rf "$CHROOTDIR"
+	rm -rf "$CHROOTDIR"
 }
 
 do_sysroot() {
@@ -54,16 +57,19 @@ do_sysroot() {
 
 	cd "$CHROOTDIR"
 	wget -c "$UBUNTU_BASE"
-	sudo tar --numeric-owner -xf "$(basename "$UBUNTU_BASE")"
-	sudo mount --bind /dev "$CHROOTDIR/dev"
-	sudo mount -t proc none "$CHROOTDIR/proc"
-	echo "nameserver 8.8.8.8" | sudo tee "$CHROOTDIR/etc/resolv.conf" > /dev/null
-	sudo chown 0:0 "$CHROOTDIR/etc/resolv.conf"
-	sudo cp "$QEMU_USER" usr/bin
-	export DEBIAN_FRONTEND=noninteractive
-	run_chroot "$CHROOTDIR" /bin/bash -lc "apt-get update"
-	run_chroot "$CHROOTDIR" /bin/bash -lc "apt-get -y dist-upgrade"
-	run_chroot "$CHROOTDIR" /bin/bash -lc "apt-get -y install $PKGLIST"
+	tar --numeric-owner -xf "$(basename "$UBUNTU_BASE")"
+	cp "$QEMU_USER" usr/bin
+	if mount --bind /dev "$CHROOTDIR/dev" && mount -t proc none "$CHROOTDIR/proc"; then
+		echo "nameserver 8.8.8.8" > "$CHROOTDIR/etc/resolv.conf"
+		chown 0:0 "$CHROOTDIR/etc/resolv.conf"
+		export DEBIAN_FRONTEND=noninteractive
+		run_chroot "$CHROOTDIR" /bin/bash -lc "apt-get update"
+		run_chroot "$CHROOTDIR" /bin/bash -lc "apt-get -y dist-upgrade"
+		run_chroot "$CHROOTDIR" /bin/bash -lc "apt-get -y install $PKGLIST"
+	else
+		SKIP_CHROOT=1
+		echo "Restricted environment: skipping ubuntu-template package install"
+	fi
 	rm "$(basename "$UBUNTU_BASE")"
 }
 

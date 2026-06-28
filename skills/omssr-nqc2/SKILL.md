@@ -44,7 +44,7 @@ The descriptor accepts these field families:
 - artifact publication:
   `artifacts`
 
-Use shared config for durable defaults and workflow overrides for per-run
+Use shared config for durable defaults and workflow-step arguments for per-run
 trace, ELF, and output paths.
 
 ## `tool.json`

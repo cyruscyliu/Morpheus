@@ -129,6 +129,11 @@ Operational rule:
   `patch.sh` focuses on patching;
   `build.sh` focuses on building, with no patching;
   `run.sh` focuses on running, with no patching and no building.
+- `overrides/` source mutation trees are not acceptable anywhere in this repo.
+- Expected source modifications live in a tool patch phase and patch working
+  tree, such as `tools/<tool>/patches/` for repo-shipped patches or
+  `projects/<project>/workspace/tools/<tool>/patches/` for project-owned
+  managed patch trees.
 - When a tool descriptor exposes project hook scripts such as
   `patch-script`, `build-script`, `inspect-script`, or `harness-script`,
   treat the tool-owned script as an adapter that must delegate explicitly to

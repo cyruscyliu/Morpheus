@@ -31,7 +31,7 @@ The descriptor accepts these field families:
 - runtime passthrough: `qemu-arg`, `append`
 - artifact publication: `artifacts`
 
-Use shared config for durable defaults and workflow overrides for per-run
+Use shared config for durable defaults and workflow-step arguments for per-run
 boot arguments or target selection.
 
 ## `tool.json`

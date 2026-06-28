@@ -17,6 +17,9 @@
 - `patch.sh` focuses on patching.
 - `build.sh` focuses on building, with no patching.
 - `run.sh` focuses on running, with no patching and no building.
+- `overrides/` source mutation trees are not acceptable.
+- Repo-managed source changes must go through a tool patch phase and a
+  `patch-dir`, not fetch-time or build-time overrides.
 - When a tool exposes project hook scripts, the tool-owned script is an
   adapter and must delegate explicitly to the configured project hook.
 - Do not accept hook-script config fields without implementing the matching

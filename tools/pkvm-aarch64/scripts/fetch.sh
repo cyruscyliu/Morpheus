@@ -11,27 +11,6 @@ fetch_submodules="${MORPHEUS_PKVM_AARCH64_FETCH_SUBMODULES:-false}"
 result_file="${MORPHEUS_PKVM_AARCH64_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 marker_file="${source_dir}/.morpheus-fetch-complete"
 state_file="${source_dir}/.morpheus-fetch.json"
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd "${script_dir}/../../.." && pwd)"
-override_dir="${repo_root}/tools/pkvm-aarch64/overrides"
-
-apply_overrides() {
-  if [ ! -d "${override_dir}" ]; then
-    return 0
-  fi
-
-  find "${override_dir}" -type f -print0 | while IFS= read -r -d '' file; do
-    rel="${file#${override_dir}/}"
-    install -D -m 0755 "${file}" "${source_dir}/${rel}"
-  done
-}
-
-adjust_source_tree() {
-  local virt_makefile="${source_dir}/platform/virt/Makefile"
-  if [ -f "${virt_makefile}" ]; then
-    sed -i 's/hostfwd=tcp:$(WAYOUT):$(PORT)-192.168.7.2:22/hostfwd=tcp:127.0.0.1:$(PORT)-192.168.7.2:22/' "${virt_makefile}"
-  fi
-}
 
 detect_version() {
   if [ -d "${source_dir}/.git" ]; then
@@ -44,9 +23,6 @@ detect_version() {
 }
 
 mkdir -p "$(dirname "${source_dir}")"
-
-apply_overrides
-adjust_source_tree
 
 mode="git"
 input_fingerprint="$(printf '%s\n%s\n%s\n' "${git_url}" "${build_version}" "${fetch_submodules}" | sha256sum | awk '{print $1}')"
@@ -81,9 +57,6 @@ else
     git -C "${source_dir}" submodule update --init --recursive || true
   fi
 fi
-
-apply_overrides
-adjust_source_tree
 
 if [ ! -f "${source_dir}/Makefile" ]; then
   echo "missing pKVM source tree: ${source_dir}" >&2

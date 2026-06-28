@@ -82,3 +82,21 @@ test("root morpheus.yaml uses canonical fixture seed paths", () => {
     );
   }
 });
+
+test("root build-ci workflows do not include exec steps", () => {
+  const config = parseYaml(rootConfigPath);
+  const workflows = config.workflows || {};
+
+  for (const [workflowName, workflow] of Object.entries(workflows)) {
+    if (!workflowName.endsWith("-build-ci")) {
+      continue;
+    }
+    for (const step of workflow.steps || []) {
+      assert.notEqual(
+        step.command,
+        "exec",
+        `${workflowName} must not include exec step ${step.id || "<unnamed>"}`,
+      );
+    }
+  }
+});

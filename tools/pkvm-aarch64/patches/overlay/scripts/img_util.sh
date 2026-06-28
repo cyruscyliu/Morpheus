@@ -2,6 +2,14 @@
 
 # Common helpers for the workspace-safe image builders.
 
+ensure_root_namespace() {
+	if [ "${MORPHEUS_PKVM_UNSHARED:-0}" = "1" ]; then
+		return 0
+	fi
+	export MORPHEUS_PKVM_UNSHARED=1
+	exec unshare -rm --mount-proc "$0" "$@"
+}
+
 udev_has_wait() {
 	v=$(udevadm --version 2>/dev/null || echo 0)
 	[ "$v" -ge 251 ]
@@ -26,7 +34,7 @@ udev_blockdev_sync() {
 
 do_unmount() {
 	if [[ $(findmnt -M "$1") ]]; then
-		sudo umount "$1"
+		umount "$1"
 		if [ $? -ne 0 ]; then
 			echo "ERROR: failed to umount $1"
 			exit 1
@@ -40,16 +48,16 @@ restore_binfmt() {
 	fi
 
 	if [ -e "${BINFMTENTRY}" ]; then
-		echo -1 | sudo tee "${BINFMTENTRY}" > /dev/null
+		echo -1 > "${BINFMTENTRY}"
 	fi
 
 	for ent in ${BINFMT_ENTRIES:-}; do
-		echo 1 | sudo tee "$ent" > /dev/null
+		echo 1 > "$ent"
 	done
 }
 
 prepare_binfmt() {
-	if ! sudo modprobe binfmt_misc >/dev/null 2>&1; then
+	if ! modprobe binfmt_misc >/dev/null 2>&1; then
 		BINFMT_AVAILABLE=0
 		return 0
 	fi
@@ -59,22 +67,22 @@ prepare_binfmt() {
 		return 0
 	fi
 
-	procfiles=$(sudo find /proc/sys/fs/binfmt_misc | grep -v "^/proc/sys/fs/binfmt_misc$" | grep -v "^/proc/sys/fs/binfmt_misc/register$" | grep -v "^/proc/sys/fs/binfmt_misc/status$")
+	procfiles=$(find /proc/sys/fs/binfmt_misc | grep -v "^/proc/sys/fs/binfmt_misc$" | grep -v "^/proc/sys/fs/binfmt_misc/register$" | grep -v "^/proc/sys/fs/binfmt_misc/status$")
 
 	if echo "$procfiles" | grep -q '[^[:space:]]'; then
-		entries=$(sudo fgrep -l 7f454c460201010000000000000000000200b700 $procfiles)
+		entries=$(fgrep -l 7f454c460201010000000000000000000200b700 $procfiles)
 	else
 		entries=""
 	fi
 
 	for ent in $entries; do
-		if [ x$(sudo cat "$ent" | awk 'NR = 1 && /enabled/ {print "FOUND"}') = xFOUND ]; then
+		if [ x$(awk 'NR = 1 && /enabled/ {print "FOUND"}' "$ent") = xFOUND ]; then
 			BINFMT_ENTRIES="$BINFMT_ENTRIES $ent"
-			echo 0 | sudo tee "$ent" > /dev/null
+			echo 0 > "$ent"
 		fi
 	done
 
-	echo ":pkvm-aarch64-build:M::\x7f\x45\x4c\x46\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00:\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:replace:OCPF" | sed -e "s|replace|$QEMU_USER|" | sudo tee /proc/sys/fs/binfmt_misc/register > /dev/null
+	echo ":pkvm-aarch64-build:M::\x7f\x45\x4c\x46\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00:\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:replace:OCPF" | sed -e "s|replace|$QEMU_USER|" > /proc/sys/fs/binfmt_misc/register
 	BINFMT_AVAILABLE=1
 }
 
@@ -82,9 +90,9 @@ run_chroot() {
 	rootfs=$1
 	shift
 	if [ "${BINFMT_AVAILABLE:-1}" = "1" ]; then
-		sudo -E chroot "$rootfs" "$@"
+		chroot "$rootfs" "$@"
 	else
-		sudo -E chroot "$rootfs" /usr/bin/qemu-aarch64-static "$@"
+		chroot "$rootfs" /usr/bin/qemu-aarch64-static "$@"
 	fi
 }
 

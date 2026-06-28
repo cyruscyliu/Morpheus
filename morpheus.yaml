@@ -42,6 +42,7 @@ tools:
     patch-dir: ./projects/hyperarm/workspace/tools/libafl/patches/overlay
   pkvm-aarch64:
     git-url: https://github.com/vrosendahl/pkvm-aarch64.git
+    patch-dir: ./tools/pkvm-aarch64/patches/overlay
   nvirsh:
     source: ./tools/nvirsh/profiles/qemu-debian-arm
     profile: qemu-debian-arm64
@@ -346,49 +347,8 @@ workflows:
           - "{{steps.nqc2_fetch.artifacts.source-dir.location}}"
           - --qemu
           - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
-  pkvm-aarch64-build-ci:
-    category: build
-    steps:
-      - id: pkvm_fetch
-        tool: pkvm-aarch64
-        command: fetch
-      - id: qemu_fetch
-        tool: qemu
-        command: fetch
-        args:
-          - --build-version
-          - fixture
-      - id: qemu_patch
-        tool: qemu
-        command: patch
-        args:
-          - --source
-          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
-      - id: qemu_build
-        tool: qemu
-        command: build
-        args:
-          - --source
-          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
-          - --build-dir-key
-          - default
-      - id: pkvm_build
-        tool: pkvm-aarch64
-        command: build
-        args:
-          - --source
-          - "{{steps.pkvm_fetch.artifacts.source-dir.location}}"
-          - --build-dir-key
-          - default
-          - --qemu
-          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
-      - id: pkvm_exec
-        tool: pkvm-aarch64
-        command: exec
-        args:
-          - --source
-          - "{{steps.pkvm_fetch.artifacts.source-dir.location}}"
-          - --run-dir
-          - "./workflow-workspace/runs/pkvm-aarch64/default"
-          - --qemu
-          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+  # pkvm-aarch64-build-ci:
+  #   Disabled for now.
+  #   Current pKVM image targets still depend on unstable rootless mount/chroot
+  #   behavior in CI, and the upstream tree still needs a cleaner CI-safe smoke
+  #   contract before this workflow should be re-enabled at repo root.

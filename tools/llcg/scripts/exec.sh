@@ -18,6 +18,7 @@ inline_filters="${MORPHEUS_LLCG_FILTER:-}"
 llbase_contract="${MORPHEUS_LLCG_LLBASE_CONTRACT:-}"
 kernel_version=""
 llbic_source_dir=""
+python_deps_dir="${output_dir}/python-deps"
 
 if [ -z "${file_list}" ] && [ -s ".morpheus-file.txt" ]; then
   file_list="$(pwd)/.morpheus-file.txt"
@@ -40,6 +41,7 @@ elif [ -n "${filter_list}" ] && [ -s "${filter_list}" ]; then
 fi
 
 mkdir -p "${output_dir}" "${build_dir}"
+mkdir -p "${python_deps_dir}"
 [ -n "${llbase_contract}" ] || {
   echo "llcg exec requires --llbase-contract so the managed run uses the shared llbase container runtime" >&2
   exit 1
@@ -119,12 +121,13 @@ if [ -n "${generator}" ]; then
     "${build_dir}" \
     "${tool_root}" \
     "${output_dir}" \
+    "${python_deps_dir}" \
     "${source_dir}" \
     "${llbase_contract}" \
     "${file_list}" \
     "${scope_list}" \
     -- \
-    bash -lc 'python3 -c "import kconfiglib" 2>/dev/null || python3 -m pip install --user --break-system-packages kconfiglib >/dev/null; exec "$@"' bash "${cmd[@]}" \
+    bash -lc 'export PYTHONPATH="$1${PYTHONPATH:+:$PYTHONPATH}"; python3 -c "import kconfiglib" 2>/dev/null || python3 -m pip install --target "$1" --break-system-packages kconfiglib >/dev/null; shift; exec "$@"' bash "${python_deps_dir}" "${cmd[@]}" \
     > "${tmp_json}" 2> "${tmp_err}"
   llcg_rc=$?
   set -e

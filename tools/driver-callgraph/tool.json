@@ -1,0 +1,144 @@
+{
+  "name": "driver-callgraph",
+  "runtime": null,
+  "cli-contract": "build,inspect,logs",
+  "config": {
+    "fields": {
+      "build-dir-key": {
+        "aliases": [
+          "build-dir-key",
+          "buildDirKey"
+        ]
+      },
+      "output": {
+        "aliases": [
+          "output"
+        ],
+        "path": true
+      },
+      "llcg-manifest": {
+        "aliases": [
+          "llcg-manifest",
+          "llcgManifest"
+        ],
+        "path": true
+      },
+      "title": {
+        "aliases": [
+          "title"
+        ]
+      }
+    }
+  },
+  "managed": {
+    "schemaVersion": 1,
+    "modes": [
+      "local"
+    ],
+    "local": {
+      "sourceTemplate": "tools/driver-callgraph/src",
+      "outputDirTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output",
+      "artifacts": {
+        "output-dir": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output"
+        },
+        "manifest": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph-manifest.json"
+        },
+        "graph-dot": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph.dot"
+        },
+        "graph-svg": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph.svg"
+        },
+        "graph-pdf": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph.pdf"
+        },
+        "build-log": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/build.log"
+        }
+      },
+      "commands": {
+        "build": {
+          "requiredFlags": [
+            "llcg-manifest",
+            "output"
+          ],
+          "scalarFlags": [
+            "llcg-manifest",
+            "output",
+            "title"
+          ],
+          "repeatableFlags": [],
+          "pathFlags": {
+            "output": "tools/driver-callgraph/builds/{buildDirKey}/output"
+          },
+          "script": {
+            "path": "scripts/build.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "built driver lifecycle base graph",
+            "errorSummary": "driver lifecycle base graph build failed",
+            "artifact": {
+              "path": "output-dir",
+              "locationTemplate": "{output}"
+            },
+            "details": {
+              "output": "{output}",
+              "llcg_manifest": {
+                "fromFlag": "llcg-manifest"
+              }
+            }
+          }
+        },
+        "inspect": {
+          "requiredFlags": [
+            "output"
+          ],
+          "scalarFlags": [
+            "output"
+          ],
+          "repeatableFlags": [],
+          "pathFlags": {
+            "output": "tools/driver-callgraph/builds/{buildDirKey}/output"
+          },
+          "script": {
+            "path": "scripts/inspect.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "inspected driver lifecycle base graph",
+            "artifact": {
+              "path": "manifest",
+              "locationTemplate": "{output}/driver-callgraph-manifest.json"
+            }
+          }
+        },
+        "logs": {
+          "requiredFlags": [
+            "output"
+          ],
+          "scalarFlags": [
+            "output"
+          ],
+          "repeatableFlags": [],
+          "pathFlags": {
+            "output": "tools/driver-callgraph/builds/{buildDirKey}/output"
+          },
+          "script": {
+            "path": "scripts/logs.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "reported driver lifecycle base graph logs",
+            "artifact": {
+              "path": "build-log",
+              "locationTemplate": "{output}/build.log"
+            }
+          }
+        }
+      }
+    }
+  }
+}

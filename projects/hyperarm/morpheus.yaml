@@ -179,6 +179,18 @@ tools:
       - cg_collapsed_svg
       - cg_collapsed_pdf
       - log_file
+  driver-callgraph:
+    mode: local
+    build-dir-key: boot-virtio-base
+    llcg-manifest: ./.cache/hyperarm/tools/llcg/builds/arm64-clang15/output/llcg-manifest.json
+    title: HyperArm Driver Init / Deinit Base Graph
+    artifacts:
+      - output-dir
+      - manifest
+      - graph-dot
+      - graph-svg
+      - graph-pdf
+      - build-log
   pkvm-aarch64:
     mode: local
     reuse-build-dir: true
@@ -1354,3 +1366,14 @@ workflows:
           - "{{steps.boot_networking_mutator_6_18_16.artifacts.mutator_manifest.location}}"
           - --scope-name
           - boot-virtio-networking-6.18.16
+  driver-callgraph-build:
+    category: build
+    steps:
+      - id: driver_callgraph_build
+        tool: driver-callgraph
+        command: build
+        args:
+          - --llcg-manifest
+          - "./.cache/hyperarm/tools/llcg/builds/arm64-clang15/output/llcg-manifest.json"
+          - --title
+          - "HyperArm Driver Init / Deinit Base Graph"

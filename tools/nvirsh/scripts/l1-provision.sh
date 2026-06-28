@@ -24,6 +24,7 @@ sudo apt-get install -y --no-install-recommends \
   meson \
   ninja-build \
   pkg-config \
+  rsync \
   build-essential \
   libglib2.0-dev \
   libpixman-1-dev \

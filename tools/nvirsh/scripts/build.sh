@@ -46,6 +46,28 @@ if ! [[ "${guest_jobs}" =~ ^[0-9]+$ ]] || [ "${guest_jobs}" -lt 1 ]; then
   guest_jobs=1
 fi
 
+timestamp_utc() {
+  date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+log_timed() {
+  local phase="$1"
+  local action="$2"
+  local duration="${3:-}"
+  if [ -n "${duration}" ]; then
+    printf '[nvirsh][%s] %s %s duration=%ss\n' \
+      "$(timestamp_utc)" \
+      "${phase}" \
+      "${action}" \
+      "${duration}"
+    return 0
+  fi
+  printf '[nvirsh][%s] %s %s\n' \
+    "$(timestamp_utc)" \
+    "${phase}" \
+    "${action}"
+}
+
 shutdown_l1() {
   local pid="${qemu_pid:-}"
   [ -n "${pid}" ] || return 0
@@ -249,16 +271,7 @@ try {
     && state.layeredState.l1.guestQemuSource
       ? state.layeredState.l1.guestQemuSource
       : "";
-  const recordedGuestQemuSourceSha256 = state.layeredState
-    && state.layeredState.l1
-    && state.layeredState.l1.guestQemuSourceSha256
-      ? state.layeredState.l1.guestQemuSourceSha256
-      : "";
   const currentScriptSha256 = sha256File(scriptPath);
-  const currentGuestQemuSourceSha256 = sha256GuestQemuSyncFiles(
-    guestQemuSource,
-    guestQemuSyncFiles,
-  );
   const matches =
     state
     && state.tool === "nvirsh"
@@ -272,8 +285,7 @@ try {
     && state.phases
     && state.phases.build === "success"
     && recordedScriptSha256 === currentScriptSha256
-    && recordedQemu === (guestQemuSource || "")
-    && recordedGuestQemuSourceSha256 === currentGuestQemuSourceSha256;
+    && recordedQemu === (guestQemuSource || "");
   process.exit(matches ? 0 : 1);
 } catch {
   process.exit(1);
@@ -516,12 +528,38 @@ copy_dir_to_guest() {
   ssh_guest "${keyfile}" "${port}" "test -d ${dst_dir}"
 }
 
+guest_supports_rsync() {
+  local keyfile="$1"
+  local port="$2"
+  ssh_guest "${keyfile}" "${port}" "command -v rsync >/dev/null 2>&1"
+}
+
+rsync_qemu_source_to_guest() {
+  local keyfile="$1"
+  local port="$2"
+  local src_dir="$3"
+  local dst_dir="$4"
+  local files_list="$5"
+
+  ssh_guest "${keyfile}" "${port}" "mkdir -p ${dst_dir}"
+  rsync \
+    -a \
+    --files-from="${files_list}" \
+    --relative \
+    -e "ssh -i ${keyfile} -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -p ${port}" \
+    "${src_dir}/./" \
+    "root@127.0.0.1:${dst_dir}/" >/dev/null
+}
+
 copy_qemu_source_to_guest() {
   local keyfile="$1"
   local port="$2"
   local src_dir="$3"
   local dst_dir="$4"
   local source_hash_file="${build_l1_dir}/guest-qemu-source.sha256"
+  local guest_qemu_sync_list="${build_l1_dir}/guest-qemu-sync-files.txt"
+  local sync_started=""
+  local sync_finished=""
 
   node - "${src_dir}" "${source_hash_file}" "${guest_qemu_sync_files[@]}" <<'NODE'
 const crypto = require("crypto");
@@ -537,22 +575,53 @@ for (const file of files) {
 }
 fs.writeFileSync(outFile, `${hash.digest("hex")}\n`);
 NODE
+  printf '%s\n' "${guest_qemu_sync_files[@]}" > "${guest_qemu_sync_list}"
 
   if ssh_guest "${keyfile}" "${port}" "test -f ${dst_dir}/build/build.ninja" >/dev/null 2>&1; then
-    tar -C "${src_dir}" -czf - "${guest_qemu_sync_files[@]}" | ssh \
-      -i "${keyfile}" \
-      -o BatchMode=yes \
-      -o StrictHostKeyChecking=no \
-      -o UserKnownHostsFile=/dev/null \
-      -o ConnectTimeout=5 \
-      -p "${port}" \
-      root@127.0.0.1 \
-      "mkdir -p ${dst_dir} && tar -C ${dst_dir} -xzf -" >/dev/null
+    if guest_supports_rsync "${keyfile}" "${port}"; then
+      log_timed "guest-qemu-sync" "start mode=rsync"
+      sync_started="$(date +%s)"
+      rsync_qemu_source_to_guest \
+        "${keyfile}" \
+        "${port}" \
+        "${src_dir}" \
+        "${dst_dir}" \
+        "${guest_qemu_sync_list}"
+      sync_finished="$(date +%s)"
+      log_timed \
+        "guest-qemu-sync" \
+        "end mode=rsync" \
+        "$((sync_finished - sync_started))"
+    else
+      log_timed "guest-qemu-sync" "start mode=tar-fallback"
+      sync_started="$(date +%s)"
+      tar -C "${src_dir}" -czf - "${guest_qemu_sync_files[@]}" | ssh \
+        -i "${keyfile}" \
+        -o BatchMode=yes \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        -o ConnectTimeout=5 \
+        -p "${port}" \
+        root@127.0.0.1 \
+        "mkdir -p ${dst_dir} && tar -C ${dst_dir} -xzf -" >/dev/null
+      sync_finished="$(date +%s)"
+      log_timed \
+        "guest-qemu-sync" \
+        "end mode=tar-fallback" \
+        "$((sync_finished - sync_started))"
+    fi
     copy_to_guest "${keyfile}" "${port}" "${source_hash_file}" "${dst_dir}/.morpheus-source-v2.sha256"
     return 0
   fi
 
+  log_timed "guest-qemu-sync" "start mode=initial-copy"
+  sync_started="$(date +%s)"
   copy_dir_to_guest "${keyfile}" "${port}" "${src_dir}" "${dst_dir}"
+  sync_finished="$(date +%s)"
+  log_timed \
+    "guest-qemu-sync" \
+    "end mode=initial-copy" \
+    "$((sync_finished - sync_started))"
   copy_to_guest "${keyfile}" "${port}" "${source_hash_file}" "${dst_dir}/.morpheus-source-v2.sha256"
 }
 
@@ -726,12 +795,38 @@ guest_jobs="__MORPHEUS_GUEST_JOBS__"
 guest_qemu_bin="/root/morpheus-qemu/bin/qemu-system-aarch64"
 guest_qemu_fallback_bin="/usr/bin/qemu-system-aarch64"
 provision_marker="/root/.morpheus-l1-provisioned"
+reuse_provision_marker="false"
+timestamp_utc() {
+  date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+log_timed() {
+  local phase="$1"
+  local action="$2"
+  local duration="${3:-}"
+  if [ -n "${duration}" ]; then
+    printf '[nvirsh-l1][%s] %s %s duration=%ss\n' \
+      "$(timestamp_utc)" \
+      "${phase}" \
+      "${action}" \
+      "${duration}"
+    return 0
+  fi
+  printf '[nvirsh-l1][%s] %s %s\n' \
+    "$(timestamp_utc)" \
+    "${phase}" \
+    "${action}"
+}
 if [ -f "${provision_marker}" ]; then
+  reuse_provision_marker="true"
   echo "reusing existing l1 provision marker"
-  exit 0
 fi
-if [ -x /root/install-dependencies.sh ]; then
+if [ "${reuse_provision_marker}" != "true" ] && \
+   [ -x /root/install-dependencies.sh ]; then
+  install_started="$(date +%s)"
+  log_timed "l1-deps" "start"
   bash /root/install-dependencies.sh
+  install_finished="$(date +%s)"
+  log_timed "l1-deps" "end" "$((install_finished - install_started))"
 fi
 if ! [[ "${guest_jobs}" =~ ^[0-9]+$ ]] || [ "${guest_jobs}" -lt 1 ]; then
   guest_jobs=1
@@ -750,6 +845,7 @@ reuse_guest_qemu() {
      [ -f "${source_hash}" ] &&
      [ -f "${installed_hash}" ] &&
      cmp -s "${source_hash}" "${installed_hash}"; then
+    log_timed "guest-qemu-build" "reuse installed"
     echo "reusing installed guest qemu"
     return 0
   fi
@@ -761,6 +857,7 @@ reuse_guest_qemu() {
      [ -f "${source_hash}" ] &&
      [ -f /root/morpheus-qemu-src/build/.morpheus-source-v2.sha256 ] &&
      cmp -s "${source_hash}" /root/morpheus-qemu-src/build/.morpheus-source-v2.sha256; then
+    log_timed "guest-qemu-build" "reuse build-output"
     echo "repairing guest qemu install from existing build output"
     mkdir -p /root/morpheus-qemu/bin
     cp -f "${built_qemu}" "${installed_qemu}"
@@ -781,7 +878,10 @@ elif [ "${build_guest_qemu}" = "true" ] && [ -f /root/morpheus-qemu-src.tar.xz ]
   cd /root/morpheus-qemu-src
 fi
 if [ "${build_guest_qemu}" = "true" ] && [ -d /root/morpheus-qemu-src ]; then
+  guest_qemu_build_started="$(date +%s)"
+  log_timed "guest-qemu-build" "start jobs=${guest_jobs}"
   if [ -f /root/morpheus-qemu-src/build/build.ninja ]; then
+    log_timed "guest-qemu-build" "reuse existing configure"
     find /root/morpheus-qemu-src \
       -path /root/morpheus-qemu-src/build -prune \
       -o -type f -exec touch -d @0 {} +
@@ -802,8 +902,10 @@ if [ "${build_guest_qemu}" = "true" ] && [ -d /root/morpheus-qemu-src ]; then
   export MORPHEUS_QEMU_USE_SYSTEM_MESON=1
   export CFLAGS="-O0 -g1"
   export CXXFLAGS="-O0 -g1"
-  # Skip test-only build subtrees inside the constrained L1 guest.
-  python3 - <<'PY'
+  if [ ! -f /root/morpheus-qemu-src/build/build.ninja ]; then
+    log_timed "guest-qemu-build" "configure fresh build"
+    # Skip test-only build subtrees inside the constrained L1 guest.
+    python3 - <<'PY'
 import os
 from pathlib import Path
 
@@ -823,27 +925,28 @@ for old, new in replacements.items():
     text = text.replace(old, new)
 meson.write_text(text)
 PY
-  ./configure \
-    --target-list=aarch64-softmmu \
-    --prefix=/root/morpheus-qemu \
-    --disable-docs \
-    --disable-gtk \
-    --disable-sdl \
-    --disable-vnc \
-    --disable-curses \
-    --disable-tools \
-    --enable-plugins \
-    --disable-install-blobs \
-    --disable-guest-agent \
-    --disable-guest-agent-msi \
-    --disable-virtfs \
-    --disable-virtfs-proxy-helper \
-    --disable-vhost-user \
-    --disable-vhost-user-blk-server \
-    --disable-vhost-crypto \
-    --disable-vduse-blk-export \
-    --disable-cap-ng \
-    --audio-drv-list=
+    ./configure \
+      --target-list=aarch64-softmmu \
+      --prefix=/root/morpheus-qemu \
+      --disable-docs \
+      --disable-gtk \
+      --disable-sdl \
+      --disable-vnc \
+      --disable-curses \
+      --disable-tools \
+      --enable-plugins \
+      --disable-install-blobs \
+      --disable-guest-agent \
+      --disable-guest-agent-msi \
+      --disable-virtfs \
+      --disable-virtfs-proxy-helper \
+      --disable-vhost-user \
+      --disable-vhost-user-blk-server \
+      --disable-vhost-crypto \
+      --disable-vduse-blk-export \
+      --disable-cap-ng \
+      --audio-drv-list=
+  fi
   make -j"${guest_jobs}" qemu-system-aarch64
   cp -f /root/morpheus-qemu-src/.morpheus-source-v2.sha256 \
     /root/morpheus-qemu-src/build/.morpheus-source-v2.sha256
@@ -852,6 +955,11 @@ PY
     /root/morpheus-qemu/bin/qemu-system-aarch64
   cp -f /root/morpheus-qemu-src/.morpheus-source-v2.sha256 \
     /root/morpheus-qemu/.morpheus-source-v2.sha256
+  guest_qemu_build_finished="$(date +%s)"
+  log_timed \
+    "guest-qemu-build" \
+    "end jobs=${guest_jobs}" \
+    "$((guest_qemu_build_finished - guest_qemu_build_started))"
 elif [ ! -x "${guest_qemu_bin}" ] && \
      [ ! -x "${guest_qemu_fallback_bin}" ]; then
   install_guest_qemu_package() {
@@ -1004,13 +1112,9 @@ fi
 
 copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${build_l1_dir}/provision-l1.sh" "/root/provision-l1.sh"
 ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "chmod 0755 /root/provision-l1.sh"
-if [ "${reuse_provisioned_l1}" = "true" ]; then
-  printf '[nvirsh] skipped l1 provision script; using provisioned snapshot\n'
-else
-  printf '[nvirsh] running l1 provision script\n'
-  ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "bash /root/provision-l1.sh"
-  printf '[nvirsh] l1 provision script completed\n'
-fi
+printf '[nvirsh] running l1 provision script\n'
+ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "bash /root/provision-l1.sh"
+printf '[nvirsh] l1 provision script completed\n'
 
 mkdir -p "${build_l1_host_boot_dir}"
 guest_boot_kernel="$(
@@ -1029,15 +1133,15 @@ copy_from_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${guest_boot_kern
 copy_from_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${guest_boot_initrd}" "${build_l1_host_boot_dir}/initrd.img"
 ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "cat /proc/cmdline" > "${build_l1_host_boot_dir}/cmdline.txt"
 
+shutdown_l1
+trap - EXIT INT TERM
+
 if [ "${reuse_provisioned_l1}" != "true" ]; then
   provisioned_tmp="${provisioned_overlay_image}.tmp"
   rm -f "${provisioned_tmp}"
   qemu-img convert -O qcow2 "${overlay_image_path}" "${provisioned_tmp}"
   mv -f "${provisioned_tmp}" "${provisioned_overlay_image}"
 fi
-
-shutdown_l1
-trap - EXIT INT TERM
 
 node - "${profile_file}" "${state_file}" "${source_dir}" "${build_dir}" "${install_dir}" "${profile_name}" "${build_dir_key}" "${buildroot_output_dir}" "${BASH_SOURCE[0]}" "${guest_qemu_sync_files[@]}" <<'NODE'
 const crypto = require("crypto");

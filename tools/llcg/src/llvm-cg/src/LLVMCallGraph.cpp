@@ -20,19 +20,19 @@
 
 using namespace llvm;
 
-static cl::opt<std::string> DevilangDotOutput(
+static cl::opt<std::string> LLVMCallGraphDotOutput(
 	"llvm-cg-dot-output",
-	cl::desc("Path to write Devilang call graph DOT file"),
+	cl::desc("Path to write LLVM call graph DOT file"),
 	cl::value_desc("filename"),
-	cl::init("devilang_cg.dot"));
+	cl::init("llvm_cg.dot"));
 
-static cl::opt<std::string> DevilangKallgraphInput(
+static cl::opt<std::string> LLVMCallGraphKallgraphInput(
 	"llvm-cg-kallgraph",
 	cl::desc("Path to KallGraph output file (caller/count/callee blocks)"),
 	cl::value_desc("filename"),
 	cl::init(""));
 
-static cl::list<PrunePolicy> DevilangPrune(
+static cl::list<PrunePolicy> LLVMCallGraphPrune(
 	"llvm-cg-prune",
 	cl::desc("Graph pruning policies (can be specified multiple times, applied in order)"),
 	cl::values(
@@ -41,13 +41,13 @@ static cl::list<PrunePolicy> DevilangPrune(
 				   "Remove nodes matching regex patterns from a blocklist file")),
 	cl::CommaSeparated);
 
-static cl::opt<std::string> DevilangBlocklistFile(
+static cl::opt<std::string> LLVMCallGraphBlocklistFile(
 	"llvm-cg-blocklist",
 	cl::desc("Path to blocklist file (one regex pattern per line)"),
 	cl::value_desc("filename"),
 	cl::init(""));
 
-static cl::opt<std::string> DevilangBCList(
+static cl::opt<std::string> LLVMCallGraphBCList(
 	"llvm-cg-bc-list",
 	cl::desc("Path to a file listing extra .bc paths (one per line) to augment "
 			 "the debug location map. Useful when the main module was linked "
@@ -55,7 +55,7 @@ static cl::opt<std::string> DevilangBCList(
 	cl::value_desc("filename"),
 	cl::init(""));
 
-static cl::opt<std::string> DevilangGroupsFile(
+static cl::opt<std::string> LLVMCallGraphGroupsFile(
 	"llvm-cg-groups",
 	cl::desc("Path to a groups file. Each block (separated by blank lines) "
 			 "has a label on the first line followed by member function names. "
@@ -64,7 +64,7 @@ static cl::opt<std::string> DevilangGroupsFile(
 	cl::value_desc("filename"),
 	cl::init(""));
 
-static cl::opt<std::string> DevilangExtraEdgesFile(
+static cl::opt<std::string> LLVMCallGraphExtraEdgesFile(
 	"llvm-cg-extra-edges",
 	cl::desc("Path to a manual indirect call list file. Each line specifies one "
 	         "edge: 'caller callee'. Blank lines and '#' comments are ignored. "
@@ -73,29 +73,29 @@ static cl::opt<std::string> DevilangExtraEdgesFile(
 	cl::value_desc("filename"),
 	cl::init(""));
 
-static cl::opt<bool> DevilangReachabilityPrune(
+static cl::opt<bool> LLVMCallGraphReachabilityPrune(
 	"llvm-cg-reachability-prune",
 	cl::desc("Enable reachability pruning from [entry_point] groups"),
 	cl::init(false));
 
 
-char DevilangCGResult::ID = 0;
-static RegisterPass<DevilangCGResult>
+char LLVMCallGraphResult::ID = 0;
+static RegisterPass<LLVMCallGraphResult>
 	RegResult("llvm-cg-result",
-			  "Devilang Call Graph Result", false, true);
+			  "LLVM Call Graph Result", false, true);
 
-char DevilangCG::ID = 0;
-static RegisterPass<DevilangCG>
+char LLVMCallGraphPass::ID = 0;
+static RegisterPass<LLVMCallGraphPass>
 	RegCG("llvm-cg",
-			  "Devilang KallGraph Loader + Pruner", false, true);
+			  "LLVM KallGraph Loader + Pruner", false, true);
 
-void DevilangCG::getAnalysisUsage(AnalysisUsage &AU) const {
+void LLVMCallGraphPass::getAnalysisUsage(AnalysisUsage &AU) const {
 	AU.setPreservesAll();
-	AU.addRequired<DevilangCGResult>();
+	AU.addRequired<LLVMCallGraphResult>();
 }
 
 std::unordered_map<std::string, std::set<std::string>>
-DevilangCG::buildDebugLocMap(Module &M) {
+LLVMCallGraphPass::buildDebugLocMap(Module &M) {
 	std::unordered_map<std::string, std::set<std::string>> locMap;
 
 	for (auto &F : M) {
@@ -200,13 +200,13 @@ static std::string formatUserDetail(User *user) {
 	return valueNameOrOpcode(cast<Value>(user));
 }
 
-static DevilangCGResult::CallbackTraceRecord analyzeCallbackArgumentFlow(
+static LLVMCallGraphResult::CallbackTraceRecord analyzeCallbackArgumentFlow(
 	const std::string &callerName,
 	const std::string &calleeName,
 	unsigned argIndex,
 	const std::string &targetName,
 	Argument *formalArg) {
-	DevilangCGResult::CallbackTraceRecord record;
+	LLVMCallGraphResult::CallbackTraceRecord record;
 	record.caller = callerName;
 	record.callee = calleeName;
 	record.argIndex = argIndex;
@@ -280,11 +280,11 @@ static DevilangCGResult::CallbackTraceRecord analyzeCallbackArgumentFlow(
 	return record;
 }
 
-DevilangCGResult::AdjList DevilangCG::buildDirectCallGraph(
+LLVMCallGraphResult::AdjList LLVMCallGraphPass::buildDirectCallGraph(
 	Module &M,
-	DevilangCGResult::EdgeAdjList *callbackAdj,
-	DevilangCGResult::CallbackTraceRecords *callbackTrace) {
-	DevilangCGResult::AdjList adj;
+	LLVMCallGraphResult::EdgeAdjList *callbackAdj,
+	LLVMCallGraphResult::CallbackTraceRecords *callbackTrace) {
+	LLVMCallGraphResult::AdjList adj;
 
 	for (auto &F : M) {
 		if (F.isDeclaration())
@@ -340,13 +340,13 @@ DevilangCGResult::AdjList DevilangCG::buildDirectCallGraph(
 	return adj;
 }
 
-void DevilangCG::exportCallbackTrace(
-	const DevilangCGResult::CallbackTraceRecords &records,
+void LLVMCallGraphPass::exportCallbackTrace(
+	const LLVMCallGraphResult::CallbackTraceRecords &records,
 	const std::string &path) {
 	std::error_code EC;
 	raw_fd_ostream out(path, EC, sys::fs::OF_Text);
 	if (EC) {
-		errs() << "DevilangCG: cannot open callback trace file " << path
+		errs() << "LLVMCallGraph: cannot open callback trace file " << path
 			   << ": " << EC.message() << "\n";
 		return;
 	}
@@ -363,7 +363,7 @@ void DevilangCG::exportCallbackTrace(
 	}
 }
 
-std::string DevilangCG::resolveCallerName(
+std::string LLVMCallGraphPass::resolveCallerName(
 	StringRef callerToken,
 	const std::unordered_map<std::string, std::set<std::string>> &debugLocMap) {
 	if (callerToken.empty())
@@ -440,16 +440,16 @@ std::string DevilangCG::resolveCallerName(
 	return token;
 }
 
-DevilangCGResult::AdjList DevilangCG::buildAdjListFromKallgraph(
+LLVMCallGraphResult::AdjList LLVMCallGraphPass::buildAdjListFromKallgraph(
 	const std::string &path,
 	const std::unordered_map<std::string, std::set<std::string>> &debugLocMap) {
-	DevilangCGResult::AdjList adj;
+	LLVMCallGraphResult::AdjList adj;
 	if (path.empty())
 		return adj;
 
 	auto bufOrErr = MemoryBuffer::getFile(path);
 	if (!bufOrErr) {
-		errs() << "DevilangCG: cannot open KallGraph file " << path
+		errs() << "LLVMCallGraph: cannot open KallGraph file " << path
 			   << ": " << bufOrErr.getError().message() << "\n";
 		return adj;
 	}
@@ -492,7 +492,7 @@ DevilangCGResult::AdjList DevilangCG::buildAdjListFromKallgraph(
 		++i;
 
 		if (i >= lines.size()) {
-			errs() << "DevilangCG: malformed KallGraph file " << path
+			errs() << "LLVMCallGraph: malformed KallGraph file " << path
 				   << " (missing callee count for caller " << caller << ")\n";
 			break;
 		}
@@ -500,7 +500,7 @@ DevilangCGResult::AdjList DevilangCG::buildAdjListFromKallgraph(
 		StringRef countLine = lines[i].trim();
 		unsigned count = 0;
 		if (countLine.getAsInteger(10, count)) {
-			errs() << "DevilangCG: malformed KallGraph file " << path
+			errs() << "LLVMCallGraph: malformed KallGraph file " << path
 				   << " (invalid count for caller " << caller << ")\n";
 			++i;
 			continue;
@@ -516,7 +516,7 @@ DevilangCGResult::AdjList DevilangCG::buildAdjListFromKallgraph(
 		}
 	}
 
-	errs() << "DevilangCG: parsed callers=" << totalCallers
+	errs() << "LLVMCallGraph: parsed callers=" << totalCallers
 		   << ", location-callers=" << locationCallers
 		   << ", resolved-location-callers=" << resolvedLocationCallers
 		   << ", unresolved-location-callers=" << unresolvedLocationCallers << "\n";
@@ -524,14 +524,14 @@ DevilangCGResult::AdjList DevilangCG::buildAdjListFromKallgraph(
 	return adj;
 }
 
-void DevilangCG::exportDOT(const DevilangCGResult::AdjList &adj,
+void LLVMCallGraphPass::exportDOT(const LLVMCallGraphResult::AdjList &adj,
 						   const std::string &path,
 						   const std::vector<Group> &groups,
-						   const DevilangCGResult::EdgeAdjList *callbackAdj) {
+						   const LLVMCallGraphResult::EdgeAdjList *callbackAdj) {
 	std::error_code EC;
 	raw_fd_ostream out(path, EC, sys::fs::OF_Text);
 	if (EC) {
-		errs() << "DevilangCG: cannot open DOT file " << path
+		errs() << "LLVMCallGraph: cannot open DOT file " << path
 			   << ": " << EC.message() << "\n";
 		return;
 	}
@@ -552,7 +552,7 @@ void DevilangCG::exportDOT(const DevilangCGResult::AdjList &adj,
 			if (nodesInGraph.count(m))
 				groupedNodes.insert(m);
 
-	out << "digraph DevilangCG {\n";
+	out << "digraph LLVMCallGraph {\n";
 	out << "    rankdir=LR;\n";
 	out << "    node [shape=box, style=filled, fillcolor=lightyellow];\n\n";
 
@@ -619,7 +619,7 @@ void DevilangCG::exportDOT(const DevilangCGResult::AdjList &adj,
 	out << "}\n";
 }
 
-std::vector<DevilangCG::Group> DevilangCG::loadGroups(const std::string &path) {
+std::vector<LLVMCallGraphPass::Group> LLVMCallGraphPass::loadGroups(const std::string &path) {
 	std::vector<Group> groups;
 	if (path.empty())
 		return groups;
@@ -688,7 +688,7 @@ std::vector<DevilangCG::Group> DevilangCG::loadGroups(const std::string &path) {
 			// Modify an existing group's members.
 			auto it = labelIndex.find(cur.label);
 			if (it == labelIndex.end()) {
-				errs() << "DevilangCG: cannot modify group '" << cur.label
+				errs() << "LLVMCallGraph: cannot modify group '" << cur.label
 					   << "': no existing group with that label\n";
 				return;
 			}
@@ -740,7 +740,7 @@ std::vector<DevilangCG::Group> DevilangCG::loadGroups(const std::string &path) {
 					   std::unordered_set<std::string> &loadedFiles) -> bool {
 		const std::string normPath = normalizePath(filePath);
 		if (activeStack.count(normPath)) {
-			errs() << "DevilangCG: cyclic groups import detected at " << normPath << "\n";
+			errs() << "LLVMCallGraph: cyclic groups import detected at " << normPath << "\n";
 			return false;
 		}
 		if (loadedFiles.count(normPath))
@@ -748,7 +748,7 @@ std::vector<DevilangCG::Group> DevilangCG::loadGroups(const std::string &path) {
 
 		auto bufOrErr = MemoryBuffer::getFile(normPath);
 		if (!bufOrErr) {
-			errs() << "DevilangCG: cannot open groups file " << normPath
+			errs() << "LLVMCallGraph: cannot open groups file " << normPath
 				   << ": " << bufOrErr.getError().message() << "\n";
 			return false;
 		}
@@ -833,12 +833,12 @@ std::vector<DevilangCG::Group> DevilangCG::loadGroups(const std::string &path) {
 	return groups;
 }
 
-std::vector<std::string> DevilangCG::loadFileLines(const std::string &path) {
+std::vector<std::string> LLVMCallGraphPass::loadFileLines(const std::string &path) {
 	std::vector<std::string> entries;
 
 	auto bufOrErr = MemoryBuffer::getFile(path);
 	if (!bufOrErr) {
-		errs() << "DevilangCG: cannot open file " << path
+		errs() << "LLVMCallGraph: cannot open file " << path
 			   << ": " << bufOrErr.getError().message() << "\n";
 		return entries;
 	}
@@ -857,14 +857,14 @@ std::vector<std::string> DevilangCG::loadFileLines(const std::string &path) {
 	return entries;
 }
 
-void DevilangCG::pruneBlocklist(DevilangCGResult::AdjList &adj) {
-	if (DevilangBlocklistFile.empty()) {
-		errs() << "DevilangCG: blocklist pruning requested but "
+void LLVMCallGraphPass::pruneBlocklist(LLVMCallGraphResult::AdjList &adj) {
+	if (LLVMCallGraphBlocklistFile.empty()) {
+		errs() << "LLVMCallGraph: blocklist pruning requested but "
 				  "-llvm-cg-blocklist not specified\n";
 		return;
 	}
 
-	auto patterns = loadFileLines(DevilangBlocklistFile);
+	auto patterns = loadFileLines(LLVMCallGraphBlocklistFile);
 	if (patterns.empty())
 		return;
 
@@ -874,7 +874,7 @@ void DevilangCG::pruneBlocklist(DevilangCGResult::AdjList &adj) {
 		try {
 			regexes.emplace_back(pat);
 		} catch (const std::regex_error &e) {
-			errs() << "DevilangCG: invalid regex '" << pat
+			errs() << "LLVMCallGraph: invalid regex '" << pat
 				   << "': " << e.what() << "\n";
 		}
 	}
@@ -912,14 +912,14 @@ void DevilangCG::pruneBlocklist(DevilangCGResult::AdjList &adj) {
 			callees.erase(blocked);
 	}
 
-	errs() << "DevilangCG: blocklist pruned " << removeSet.size()
+	errs() << "LLVMCallGraph: blocklist pruned " << removeSet.size()
 		   << " nodes using " << regexes.size() << " patterns\n";
 }
 
-void DevilangCG::pruneGraph(DevilangCGResult::AdjList &adj,
+void LLVMCallGraphPass::pruneGraph(LLVMCallGraphResult::AdjList &adj,
 							 const std::vector<Group> &groups) {
 	(void)groups;
-	for (PrunePolicy policy : DevilangPrune) {
+	for (PrunePolicy policy : LLVMCallGraphPrune) {
 		switch (policy) {
 		case PrunePolicy::None:
 			break;
@@ -930,7 +930,7 @@ void DevilangCG::pruneGraph(DevilangCGResult::AdjList &adj,
 	}
 }
 
-void DevilangCG::pruneUnreachable(DevilangCGResult::AdjList &adj,
+void LLVMCallGraphPass::pruneUnreachable(LLVMCallGraphResult::AdjList &adj,
                                    const std::vector<Group> &groups) {
 	if (groups.empty())
 		return;
@@ -944,7 +944,7 @@ void DevilangCG::pruneUnreachable(DevilangCGResult::AdjList &adj,
 		}
 	}
 	if (!hasPruneMarkers) {
-		errs() << "DevilangCG: reachability pruning skipped "
+		errs() << "LLVMCallGraph: reachability pruning skipped "
 		       << "(no [entry_point] groups)\n";
 		return;
 	}
@@ -955,7 +955,7 @@ void DevilangCG::pruneUnreachable(DevilangCGResult::AdjList &adj,
 		for (const auto &m : g.members)
 			targets.insert(m);
 	}
-	errs() << "DevilangCG: reachability pruning mode=entry_point"
+	errs() << "LLVMCallGraph: reachability pruning mode=entry_point"
 		   << ", target-functions=" << targets.size() << "\n";
 
 	// Build reverse adjacency: callee -> set of callers.
@@ -1015,17 +1015,17 @@ void DevilangCG::pruneUnreachable(DevilangCGResult::AdjList &adj,
 			++it;
 		}
 	}
-	errs() << "DevilangCG: reachability pruned " << removed
+	errs() << "LLVMCallGraph: reachability pruned " << removed
 	       << " nodes (kept " << reachable.size() << " reachable)\n";
 }
 
-void DevilangCG::loadExtraEdges(const std::string &path,
-                                DevilangCGResult::AdjList &adj) {
+void LLVMCallGraphPass::loadExtraEdges(const std::string &path,
+                                LLVMCallGraphResult::AdjList &adj) {
 	if (path.empty())
 		return;
 	auto bufOrErr = MemoryBuffer::getFile(path);
 	if (!bufOrErr) {
-		errs() << "DevilangCG: cannot open extra-edges file " << path
+		errs() << "LLVMCallGraph: cannot open extra-edges file " << path
 		       << ": " << bufOrErr.getError().message() << "\n";
 		return;
 	}
@@ -1044,7 +1044,7 @@ void DevilangCG::loadExtraEdges(const std::string &path,
 		auto [callerRef, rest] = payload.split(' ');
 		StringRef calleeRef = rest.trim();
 		if (callerRef.empty() || calleeRef.empty()) {
-			errs() << "DevilangCG: extra-edges: malformed line (expected '[!] caller callee'): "
+			errs() << "LLVMCallGraph: extra-edges: malformed line (expected '[!] caller callee'): "
 			       << trimmed << "\n";
 			continue;
 		}
@@ -1058,33 +1058,33 @@ void DevilangCG::loadExtraEdges(const std::string &path,
 			++added;
 		}
 	}
-	errs() << "DevilangCG: extra-edges: added=" << added
+	errs() << "LLVMCallGraph: extra-edges: added=" << added
 	       << ", suppressed=" << suppressed << " (from " << path << ")\n";
 }
 
-bool DevilangCG::runOnModule(Module &M) {
-	DevilangCGResult::AdjList graph;
+bool LLVMCallGraphPass::runOnModule(Module &M) {
+	LLVMCallGraphResult::AdjList graph;
 	bool changed = processModule(M, &graph);
-	getAnalysis<DevilangCGResult>().setGraph(std::move(graph));
+	getAnalysis<LLVMCallGraphResult>().setGraph(std::move(graph));
 	return changed;
 }
 
-bool DevilangCG::processModule(Module &M, DevilangCGResult::AdjList *outGraph) {
-	errs() << "DevilangCG: loading KallGraph call graph...\n";
-	if (DevilangKallgraphInput.empty()) {
-		errs() << "DevilangCG: specify -llvm-cg-kallgraph\n";
+bool LLVMCallGraphPass::processModule(Module &M, LLVMCallGraphResult::AdjList *outGraph) {
+	errs() << "LLVMCallGraph: loading KallGraph call graph...\n";
+	if (LLVMCallGraphKallgraphInput.empty()) {
+		errs() << "LLVMCallGraph: specify -llvm-cg-kallgraph\n";
 		return false;
 	}
 	auto debugLocMap = buildDebugLocMap(M);
-	errs() << "DevilangCG: debug location map entries (main module)=" << debugLocMap.size() << "\n";
+	errs() << "LLVMCallGraph: debug location map entries (main module)=" << debugLocMap.size() << "\n";
 
 	// Build and merge direct call graph from LLVM IR.
-	DevilangCGResult::EdgeAdjList callbackAdj;
-	DevilangCGResult::CallbackTraceRecords callbackTrace;
+	LLVMCallGraphResult::EdgeAdjList callbackAdj;
+	LLVMCallGraphResult::CallbackTraceRecords callbackTrace;
 	auto directAdj = buildDirectCallGraph(M, &callbackAdj, &callbackTrace);
 
-	if (!DevilangBCList.empty()) {
-		auto bcPaths = loadFileLines(DevilangBCList);
+	if (!LLVMCallGraphBCList.empty()) {
+		auto bcPaths = loadFileLines(LLVMCallGraphBCList);
 		unsigned loaded = 0, failed = 0;
 		for (const std::string &bcPath : bcPaths) {
 			SMDiagnostic Err;
@@ -1100,8 +1100,8 @@ bool DevilangCG::processModule(Module &M, DevilangCGResult::AdjList *outGraph) {
 			// Also extract direct calls from this module so declarations in
 			// the main module (stripped by llvm-link -only-needed) get their
 			// outgoing edges populated.
-				DevilangCGResult::EdgeAdjList extraCallbackAdj;
-				DevilangCGResult::CallbackTraceRecords extraCallbackTrace;
+				LLVMCallGraphResult::EdgeAdjList extraCallbackAdj;
+				LLVMCallGraphResult::CallbackTraceRecords extraCallbackTrace;
 				auto extraAdj = buildDirectCallGraph(*extraMod, &extraCallbackAdj,
 													 &extraCallbackTrace);
 				for (auto &kv : extraAdj)
@@ -1113,39 +1113,39 @@ bool DevilangCG::processModule(Module &M, DevilangCGResult::AdjList *outGraph) {
 								   extraCallbackTrace.end());
 				++loaded;
 			}
-		errs() << "DevilangCG: augmented from bc-list: loaded=" << loaded
+		errs() << "LLVMCallGraph: augmented from bc-list: loaded=" << loaded
 			   << ", failed=" << failed
 			   << ", debug map entries=" << debugLocMap.size()
 			   << ", direct cg nodes=" << directAdj.size() << "\n";
 	}
-	errs() << "DevilangCG: direct call graph nodes=" << directAdj.size() << "\n";
+	errs() << "LLVMCallGraph: direct call graph nodes=" << directAdj.size() << "\n";
 
 	// Load KallGraph (indirect call graph) and resolve file:line callers.
-	auto indirectAdj = buildAdjListFromKallgraph(DevilangKallgraphInput, debugLocMap);
+	auto indirectAdj = buildAdjListFromKallgraph(LLVMCallGraphKallgraphInput, debugLocMap);
 
 	// Merge: start with the full direct graph, add all indirect edges on top.
 	auto merged = directAdj;
 	for (auto &kv : indirectAdj)
 		merged[kv.first].insert(kv.second.begin(), kv.second.end());
 
-	auto groups = loadGroups(DevilangGroupsFile);
+	auto groups = loadGroups(LLVMCallGraphGroupsFile);
 
-	if (DevilangPrune.empty()) {
-		errs() << "DevilangCG: skipped pruning (no policies specified)\n";
+	if (LLVMCallGraphPrune.empty()) {
+		errs() << "LLVMCallGraph: skipped pruning (no policies specified)\n";
 	} else {
-		errs() << "DevilangCG: pruning merged graph with " << DevilangPrune.size()
+		errs() << "LLVMCallGraph: pruning merged graph with " << LLVMCallGraphPrune.size()
 			   << " policy(s)\n";
 		pruneGraph(merged, groups);
 	}
 
 	// Inject/suppress manual edges after blocklist pruning so that additions
 	// are not immediately removed by blocklist patterns.
-	loadExtraEdges(DevilangExtraEdgesFile, merged);
+	loadExtraEdges(LLVMCallGraphExtraEdgesFile, merged);
 
-	if (DevilangReachabilityPrune)
+	if (LLVMCallGraphReachabilityPrune)
 		pruneUnreachable(merged, groups);
 	else
-		errs() << "DevilangCG: reachability pruning disabled "
+		errs() << "LLVMCallGraph: reachability pruning disabled "
 		       << "(pass -llvm-cg-reachability-prune to enable)\n";
 
 	// Ensure every group member has an entry in merged so it appears as a node
@@ -1171,7 +1171,7 @@ bool DevilangCG::processModule(Module &M, DevilangCGResult::AdjList *outGraph) {
 			}
 		}
 		if (isolated)
-			errs() << "DevilangCG: removed " << isolated << " isolated nodes\n";
+			errs() << "LLVMCallGraph: removed " << isolated << " isolated nodes\n";
 	}
 
 	std::size_t mergedEdges = 0;
@@ -1181,38 +1181,38 @@ bool DevilangCG::processModule(Module &M, DevilangCGResult::AdjList *outGraph) {
 	if (outGraph)
 		*outGraph = merged;
 
-	errs() << "DevilangCG: exporting DOT to " << DevilangDotOutput
+	errs() << "LLVMCallGraph: exporting DOT to " << LLVMCallGraphDotOutput
 		   << " (groups=" << groups.size() << ")\n";
-	exportDOT(merged, DevilangDotOutput, groups, &callbackAdj);
-	std::string callbackTracePath = DevilangDotOutput;
+	exportDOT(merged, LLVMCallGraphDotOutput, groups, &callbackAdj);
+	std::string callbackTracePath = LLVMCallGraphDotOutput;
 	if (StringRef(callbackTracePath).endswith(".dot"))
 		callbackTracePath =
 			StringRef(callbackTracePath).drop_back(4).str() + "_callback_trace.txt";
 	else
 		callbackTracePath += "_callback_trace.txt";
-	errs() << "DevilangCG: exporting callback trace to " << callbackTracePath << "\n";
+	errs() << "LLVMCallGraph: exporting callback trace to " << callbackTracePath << "\n";
 	exportCallbackTrace(callbackTrace, callbackTracePath);
 
-	errs() << "DevilangCG: done."
+	errs() << "LLVMCallGraph: done."
 		   << " merged nodes=" << merged.size() << ", merged edges=" << mergedEdges << "\n";
 
 	return false;
 }
 
-PreservedAnalyses DevilangCGNewPM::run(Module &M, ModuleAnalysisManager &) {
-	DevilangCG legacy;
+PreservedAnalyses LLVMCallGraphNewPM::run(Module &M, ModuleAnalysisManager &) {
+	LLVMCallGraphPass legacy;
 	legacy.processModule(M, nullptr);
 	return PreservedAnalyses::all();
 }
 
-llvm::PassPluginLibraryInfo getDevilangPluginInfo() {
-	return {LLVM_PLUGIN_API_VERSION, "DevilangCG", LLVM_VERSION_STRING,
+llvm::PassPluginLibraryInfo getLLVMCallGraphPluginInfo() {
+	return {LLVM_PLUGIN_API_VERSION, "LLVMCallGraph", LLVM_VERSION_STRING,
 		[](PassBuilder &PB) {
 			PB.registerPipelineParsingCallback(
 					[](StringRef Name, llvm::ModulePassManager &PM,
 						ArrayRef<llvm::PassBuilder::PipelineElement>) {
 					if (Name == "llvm-cg") {
-						PM.addPass(DevilangCGNewPM());
+						PM.addPass(LLVMCallGraphNewPM());
 						return true;
 					}
 					return false;
@@ -1223,6 +1223,6 @@ llvm::PassPluginLibraryInfo getDevilangPluginInfo() {
 #ifndef LLVM_BYE_LINK_INTO_TOOLS
 extern "C" LLVM_ATTRIBUTE_WEAK ::llvm::PassPluginLibraryInfo
 llvmGetPassPluginInfo() {
-	return getDevilangPluginInfo();
+	return getLLVMCallGraphPluginInfo();
 }
 #endif

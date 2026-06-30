@@ -1270,7 +1270,7 @@ workflows:
           - --scope-list
           - "{{steps.driver_callgraph_scope.artifacts.source_list.location}}"
           - --groups-extension
-          - "projects/hyperarm/workspace/tools/driver-callgraph/groups.txt"
+          - "projects/hyperarm/workspace/tools/driver-callgraph/scripts/groups.txt"
       - id: driver_callgraph_llcg
         tool: llcg
         command: exec
@@ -1298,7 +1298,7 @@ workflows:
           - --groups-file
           - "{{steps.driver_callgraph_llcg.artifacts.groups_file.location}}"
           - --prefix-file
-          - "projects/hyperarm/workspace/tools/driver-callgraph/prefix.json"
+          - "projects/hyperarm/workspace/tools/driver-callgraph/scripts/prefix.json"
           - --title
           - "HyperArm Driver Init / Deinit Base Graph"
   driver-callgraph-runtime-build:
@@ -1348,7 +1348,7 @@ workflows:
           - --scope-list
           - "{{steps.driver_callgraph_runtime_interface.artifacts.source_list.location}}"
           - --groups-extension
-          - "projects/hyperarm/workspace/tools/driver-callgraph/runtime-groups.txt"
+          - "projects/hyperarm/workspace/tools/driver-callgraph/scripts/runtime-groups.txt"
       - id: driver_callgraph_runtime_llcg
         tool: llcg
         command: exec

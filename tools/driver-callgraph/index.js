@@ -490,6 +490,14 @@ function renderGraph(title, llcgDotPath, groupsFilePath, prefixFilePath, mode = 
     return 1 + (index % 3);
   }
 
+  function projectedRepresentativeForNode(node) {
+    const groupLabel = memberToGroup.get(node) || "";
+    if (!groupLabel) {
+      return node;
+    }
+    return groupRepresentatives.get(groupLabel) || node;
+  }
+
   const lines = [
     "digraph driver_callgraph {",
     "  graph [",
@@ -555,14 +563,28 @@ function renderGraph(title, llcgDotPath, groupsFilePath, prefixFilePath, mode = 
     lines.push('    style="rounded,filled,dashed";');
     lines.push('    fillcolor="#ffd6a5";');
     lines.push('    penwidth="2.0";');
-    groupRepresentatives.set(group.label, visibleMembers[0]);
     for (const member of visibleMembers) {
       groupedMembers.add(member);
       memberToGroup.set(member, group.label);
-      lines.push(renderNode(dotQuote(member), {
-        label: member,
-        fillcolor: "#edf3fb",
+    }
+    if (mode === "projected") {
+      const anchorId = `${clusterName}_anchor`;
+      groupRepresentatives.set(group.label, anchorId);
+      lines.push(renderNode(anchorId, {
+        label: "",
+        shape: "point",
+        width: "0",
+        height: "0",
+        style: "invis",
       }));
+    } else {
+      groupRepresentatives.set(group.label, visibleMembers[0]);
+      for (const member of visibleMembers) {
+        lines.push(renderNode(dotQuote(member), {
+          label: member,
+          fillcolor: "#edf3fb",
+        }));
+      }
     }
     lines.push("  }");
   }
@@ -580,11 +602,15 @@ function renderGraph(title, llcgDotPath, groupsFilePath, prefixFilePath, mode = 
     if (mode === "projected") {
       const srcGroup = memberToGroup.get(edge.src) || "";
       const dstGroup = memberToGroup.get(edge.dst) || "";
+      const srcRepresentative = projectedRepresentativeForNode(edge.src);
+      const dstRepresentative = projectedRepresentativeForNode(edge.dst);
       const srcCluster = srcGroup ? groupClusterNames.get(srcGroup) : "";
-      if (srcGroup && dstGroup && srcGroup !== dstGroup) {
-        const representative = groupRepresentatives.get(dstGroup);
+      if (srcGroup && dstGroup) {
+        if (srcGroup === dstGroup) {
+          continue;
+        }
         const clusterName = groupClusterNames.get(dstGroup);
-        if (representative && clusterName) {
+        if (srcRepresentative && dstRepresentative && clusterName) {
           const edgeKey = `${srcGroup} -> ${dstGroup}`;
           if (projectedEdgeSeen.has(edgeKey)) {
             continue;
@@ -599,7 +625,7 @@ function renderGraph(title, llcgDotPath, groupsFilePath, prefixFilePath, mode = 
           if (srcCluster) {
             attrs.ltail = srcCluster;
           }
-          lines.push(renderEdge(dotQuote(edge.src), dotQuote(representative), attrs));
+          lines.push(renderEdge(dotQuote(srcRepresentative), dotQuote(dstRepresentative), attrs));
           continue;
         }
       }
@@ -608,9 +634,42 @@ function renderGraph(title, llcgDotPath, groupsFilePath, prefixFilePath, mode = 
       color: "#3c5d7d",
       penwidth: "1.6",
     };
+    let renderedSrc = edge.src;
+    let renderedDst = edge.dst;
     if (mode === "projected") {
       const srcGroup = memberToGroup.get(edge.src) || "";
       const dstGroup = memberToGroup.get(edge.dst) || "";
+      const srcCluster = srcGroup ? groupClusterNames.get(srcGroup) : "";
+      const dstCluster = dstGroup ? groupClusterNames.get(dstGroup) : "";
+      renderedSrc = projectedRepresentativeForNode(edge.src);
+      renderedDst = projectedRepresentativeForNode(edge.dst);
+      if (srcGroup && dstGroup && srcGroup === dstGroup) {
+        continue;
+      }
+      if (srcCluster) {
+        attrs.ltail = srcCluster;
+      }
+      if (dstCluster) {
+        attrs.lhead = dstCluster;
+        attrs.minlen = nextProjectedMinlen(dstGroup);
+      }
+    }
+    lines.push(renderEdge(dotQuote(renderedSrc), dotQuote(renderedDst), attrs));
+  }
+  lines.push("");
+
+  for (const edge of prefix.edges || []) {
+    const attrs = { ...(edge.attrs || {}) };
+    let renderedSrc = edge.src;
+    let renderedDst = edge.dst;
+    if (mode === "projected") {
+      const srcGroup = memberToGroup.get(edge.src) || "";
+      const dstGroup = memberToGroup.get(edge.dst) || "";
+      if (srcGroup && dstGroup && srcGroup === dstGroup) {
+        continue;
+      }
+      renderedSrc = projectedRepresentativeForNode(edge.src);
+      renderedDst = projectedRepresentativeForNode(edge.dst);
       const srcCluster = srcGroup ? groupClusterNames.get(srcGroup) : "";
       const dstCluster = dstGroup ? groupClusterNames.get(dstGroup) : "";
       if (srcCluster) {
@@ -621,12 +680,7 @@ function renderGraph(title, llcgDotPath, groupsFilePath, prefixFilePath, mode = 
         attrs.minlen = nextProjectedMinlen(dstGroup);
       }
     }
-    lines.push(renderEdge(dotQuote(edge.src), dotQuote(edge.dst), attrs));
-  }
-  lines.push("");
-
-  for (const edge of prefix.edges || []) {
-    lines.push(renderEdge(edge.src, edge.dst, edge.attrs || {}));
+    lines.push(renderEdge(renderedSrc, renderedDst, attrs));
   }
   lines.push("");
 

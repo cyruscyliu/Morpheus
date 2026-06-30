@@ -1,0 +1,187 @@
+{
+  "roots": [
+    "virtio_mmio_probe",
+    "virtnet_validate",
+    "virtnet_probe",
+    "virtnet_config_changed"
+  ],
+  "graph": {
+    "rankdir": "TB",
+    "display_rankdir": "LR",
+    "concentrate": false,
+    "display_splines": "polyline",
+    "display_nodesep": "0.9",
+    "display_ranksep": "1.3",
+    "compound": true,
+    "splines": "ortho",
+    "nodesep": "0.55",
+    "ranksep": "0.8",
+    "labelloc": "t",
+    "labeljust": "l",
+    "fontsize": "18",
+    "fontname": "Helvetica"
+  },
+  "node_defaults": {
+    "shape": "box",
+    "style": "rounded,filled",
+    "fontname": "Helvetica",
+    "fontsize": "12",
+    "color": "#3b342f",
+    "penwidth": "1.4"
+  },
+  "edge_defaults": {
+    "color": "#4a443e",
+    "penwidth": "1.5",
+    "arrowsize": "0.8",
+    "fontname": "Helvetica",
+    "fontsize": "11"
+  },
+  "clusters": [
+    {
+      "name": "cluster_platform_match",
+      "attrs": {
+        "label": "",
+        "color": "#cdbf9e",
+        "style": "rounded,dashed",
+        "penwidth": "1.0"
+      },
+      "nodes": [
+        {
+          "id": "pdev",
+          "attrs": {
+            "label": "pdev\nplatform_device",
+            "shape": "component",
+            "fillcolor": "#f5e7c5"
+          }
+        },
+        {
+          "id": "platform_match",
+          "attrs": {
+            "label": "platform device/driver\nmatch()",
+            "fillcolor": "#f1efe9"
+          }
+        },
+        {
+          "id": "virtio_mmio_driver",
+          "attrs": {
+            "label": "virtio_mmio_driver\nplatform_driver",
+            "shape": "component",
+            "fillcolor": "#f5e7c5"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cluster_virtio_match",
+      "attrs": {
+        "label": "",
+        "color": "#b7d9cf",
+        "style": "rounded,dashed",
+        "penwidth": "1.0"
+      },
+      "nodes": [
+        {
+          "id": "vm_dev",
+          "attrs": {
+            "label": "vm_dev\nvirtio_device",
+            "shape": "component",
+            "fillcolor": "#d7efe6"
+          }
+        },
+        {
+          "id": "virtio_match",
+          "attrs": {
+            "label": "virtio device/driver\nmatch()",
+            "fillcolor": "#eef6f3"
+          }
+        },
+        {
+          "id": "virtio_net_driver",
+          "attrs": {
+            "label": "virtio_net_driver\nvirtio_driver",
+            "shape": "component",
+            "fillcolor": "#d7efe6"
+          }
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "src": "pdev",
+      "dst": "platform_match",
+      "attrs": {
+        "color": "#7b6d60",
+        "style": "dashed",
+        "penwidth": "1.3",
+        "arrowsize": "0.7"
+      }
+    },
+    {
+      "src": "virtio_mmio_driver",
+      "dst": "platform_match",
+      "attrs": {
+        "color": "#7b6d60",
+        "style": "dashed",
+        "penwidth": "1.3",
+        "arrowsize": "0.7"
+      }
+    },
+    {
+      "src": "vm_dev",
+      "dst": "virtio_match",
+      "attrs": {
+        "color": "#7b6d60",
+        "style": "dashed",
+        "penwidth": "1.3",
+        "arrowsize": "0.7"
+      }
+    },
+    {
+      "src": "virtio_net_driver",
+      "dst": "virtio_match",
+      "attrs": {
+        "color": "#7b6d60",
+        "style": "dashed",
+        "penwidth": "1.3",
+        "arrowsize": "0.7"
+      }
+    },
+    {
+      "src": "platform_match",
+      "dst": "virtio_mmio_probe",
+      "attrs": {
+        "color": "#2f5d50",
+        "penwidth": "1.8",
+        "arrowsize": "0.85"
+      }
+    },
+    {
+      "src": "virtio_match",
+      "dst": "virtnet_validate",
+      "attrs": {
+        "color": "#2f5d50",
+        "penwidth": "1.8",
+        "arrowsize": "0.85"
+      }
+    },
+    {
+      "src": "virtio_match",
+      "dst": "virtnet_probe",
+      "attrs": {
+        "color": "#2f5d50",
+        "penwidth": "1.8",
+        "arrowsize": "0.85"
+      }
+    },
+    {
+      "src": "virtnet_probe",
+      "dst": "virtnet_config_changed",
+      "attrs": {
+        "color": "#2f5d50",
+        "penwidth": "1.8",
+        "arrowsize": "0.85"
+      }
+    }
+  ]
+}

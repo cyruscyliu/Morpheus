@@ -1,0 +1,90 @@
+# Runtime driver-callgraph group extensions.
+#
+# Keep runtime roots at the syscall/socket boundary plus the current
+# driver-facing virtio roots. The current llcg output does not yet connect the
+# syscall/socket roots all the way down to vm_* on its own, so demote only the
+# internal transport/helper roots here.
+
+[entry_point] virtnet_netdev
+
+[entry_point] virtio_net_driver
+
+[no_entry_point] virtio_mmio_config_ops
+
+[no_entry_point] virtio_mmio_driver
+
+[no_entry_point] virtio_mmio_isr
+
+[entry_point][rank_max] MMIO ops
+iowrite64
+iowrite32_rep
+iowrite16_rep
+iowrite8_rep
+iowrite32
+iowrite16
+iowrite8
+writeq
+writel
+writew
+writeb
+vga_w
+vga_w_fast
+__ew32
+igb_wr32
+_aty_st_le32
+_aty_st_8
+vp_iowrite8
+vp_iowrite16
+vp_iowrite32
+vp_iowrite64_twopart
+snd_hdac_reg_writeb
+snd_hdac_reg_writew
+pvscsi_reg_write
+vmw_write
+ioread64
+ioread32_rep
+ioread16_rep
+ioread8_rep
+ioread32
+ioread16
+ioread8
+readq
+readl
+readw
+readb
+vga_r
+__er32
+igb_rd32
+_aty_ld_le32
+vp_ioread8
+vp_ioread16
+vp_ioread32
+snd_hdac_reg_readb
+snd_hdac_reg_readw
+pvscsi_reg_read
+vmw_read
+outl
+outw
+outb
+e1000_io_write
+inl
+inw
+inb
+pci_write_config_dword
+pci_write_config_word
+pci_write_config_byte
+pcie_write_config_dword
+pcie_write_config_word
+pci_read_config_dword
+pci_read_config_word
+pci_read_config_byte
+pcie_read_config_dword
+pcie_read_config_word
+
+[entry_point][rank_max] DMA ops
+vring_alloc_queue
+vring_map_one_sg
+vring_map_single
+virtqueue_dma_map_single_attrs
+
+[no_entry_point] module_init

@@ -21,6 +21,25 @@ needs_rebuild="true"
 use_system_meson="${MORPHEUS_QEMU_USE_SYSTEM_MESON:-1}"
 configure_signature_file="${build_dir}/.morpheus-configure-signature"
 
+if [[ "${source_dir}" != /* ]]; then
+  source_dir="$(pwd)/${source_dir#./}"
+fi
+if [[ "${build_dir}" != /* ]]; then
+  build_dir="$(pwd)/${build_dir#./}"
+fi
+if [[ "${install_dir}" != /* ]]; then
+  install_dir="$(pwd)/${install_dir#./}"
+fi
+if [[ "${result_file}" != /* ]]; then
+  result_file="$(pwd)/${result_file#./}"
+fi
+configure_signature_file="${build_dir}/.morpheus-configure-signature"
+
+emit_phase() {
+  local phase="$1"
+  printf '{"status":"stream","details":{"event":"tool.phase","phase":"%s"}}\n' "${phase}"
+}
+
 if command -v ulimit >/dev/null 2>&1; then
   ulimit -n 65535 >/dev/null 2>&1 || true
 fi
@@ -189,6 +208,7 @@ fi
 export MORPHEUS_QEMU_USE_SYSTEM_MESON="${use_system_meson}"
 
 if [ ! -f "${build_dir}/build.ninja" ]; then
+  emit_phase "configure"
   "${source_dir}/configure" \
     "--prefix=${install_dir}" \
     "${target_args[@]}" \
@@ -201,13 +221,17 @@ if [ -f "${build_dir}/build.ninja" ]; then
     echo "ninja is required for QEMU builds that generate build.ninja" >&2
     exit 1
   fi
+  emit_phase "build"
   if ! ninja "-j${jobs}"; then
     convert_thin_archives
     ninja "-j${jobs}"
   fi
+  emit_phase "install"
   ninja install
 elif [ -f "${build_dir}/Makefile" ]; then
+  emit_phase "build"
   make "-j${jobs}"
+  emit_phase "install"
   make install
 else
   echo "QEMU configure did not generate build.ninja or Makefile in ${build_dir}" >&2

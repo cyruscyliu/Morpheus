@@ -112,6 +112,21 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
+function tryReadJson(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return null;
+  }
+  try {
+    const text = fs.readFileSync(filePath, "utf8");
+    if (!String(text).trim()) {
+      return null;
+    }
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 function writeJson(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
@@ -808,13 +823,81 @@ function listWorkflowSteps(runDir) {
     });
 }
 
+function inferWorkflowStatusFromSteps(steps, fallback = "unknown") {
+  if (steps.some((step) => step && step.status === "running")) {
+    return "running";
+  }
+  if (steps.some((step) => step && (step.status === "error" || step.status === "failed"))) {
+    return "error";
+  }
+  if (steps.some((step) => step && step.status === "stopped")) {
+    return "stopped";
+  }
+  if (steps.length > 0 && steps.every((step) => step && (step.status === "success" || step.status === "reused"))) {
+    return "success";
+  }
+  return String(fallback || "unknown");
+}
+
+function rebuildWorkflowManifest(runDir) {
+  const legacyPath = path.join(runDir, "run.json");
+  const legacy = tryReadJson(legacyPath);
+  if (!legacy || typeof legacy !== "object") {
+    return null;
+  }
+  const steps = listWorkflowSteps(runDir);
+  const updatedAtCandidates = steps
+    .map((step) => String(step?.updatedAt || step?.createdAt || "").trim())
+    .filter(Boolean)
+    .sort();
+  const updatedAt = updatedAtCandidates.at(-1) || legacy.completedAt || legacy.createdAt || new Date().toISOString();
+  const record = {
+    schemaVersion: 1,
+    id: String(legacy.id || path.basename(runDir)),
+    workflow: typeof legacy.summary?.workflow === "string" ? legacy.summary.workflow : "workflow",
+    configPath: null,
+    metadata: legacy.summary?.metadata == null ? null : legacy.summary.metadata,
+    category: String(legacy.category || legacy.summary?.category || "build"),
+    status: inferWorkflowStatusFromSteps(steps, legacy.status || "unknown"),
+    createdAt: legacy.createdAt || updatedAt,
+    updatedAt,
+    eventLogFile: workflowEventLogPath(runDir),
+    workspace: path.resolve(runDir, "..", ".."),
+    runDir,
+    currentStepId: null,
+    currentChildPid: null,
+    runnerPid: null,
+    steps: steps.map((step) => ({
+      id: step.id || path.basename(step.stepDir || ""),
+      name: step.name || step.id || path.basename(step.stepDir || ""),
+      status: step.status || "unknown",
+      stepDir: step.stepDir || path.join(runDir, "steps", String(step.id || "")),
+    })),
+  };
+  writeJson(workflowManifestPath(runDir), record);
+  return record;
+}
+
+function ensureWorkflowManifest(runDir) {
+  const manifestPath = workflowManifestPath(runDir);
+  const record = tryReadJson(manifestPath);
+  if (record && typeof record === "object") {
+    return { runDir, manifestPath };
+  }
+  const rebuilt = rebuildWorkflowManifest(runDir);
+  if (rebuilt && typeof rebuilt === "object") {
+    return { runDir, manifestPath };
+  }
+  throw new Error(`workflow run manifest is missing or invalid: ${path.relative(process.cwd(), manifestPath)}`);
+}
+
 function findWorkflowRun(workspaceRoot, id) {
   const runDir = path.join(workflowRunsRoot(workspaceRoot), id);
   const manifestPath = workflowManifestPath(runDir);
   if (!fs.existsSync(manifestPath)) {
     throw new Error(`workflow run not found: ${id}; use 'morpheus workflow list' to start a run or 'morpheus workflow inspect --id <run-id>' with a valid id`);
   }
-  return { runDir, manifestPath };
+  return ensureWorkflowManifest(runDir);
 }
 
 function listRunDirsForWorkflow(workspaceRoot, workflowName) {

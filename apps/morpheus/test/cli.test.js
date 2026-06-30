@@ -332,7 +332,7 @@ test("tool list discovers repo-local tools", () => {
   assert.equal(Object.prototype.hasOwnProperty.call(payload, "tools"), false);
   assert.deepEqual(
     payload.details.tools.map((tool) => tool.name),
-    ["buildroot", "libafl", "libvmm", "llbase", "llbic", "llcg", "microkit-sdk", "nqc2", "nvirsh", "outline-to-paper", "pkvm-aarch64", "qemu", "sel4"]
+    ["buildroot", "driver-callgraph", "libafl", "libvmm", "llbase", "llbic", "llcg", "microkit-sdk", "nqc2", "nvirsh", "outline-to-paper", "pkvm-aarch64", "qemu", "sel4"]
   );
 });
 
@@ -812,6 +812,59 @@ test("workflow inspect reconciles stale running workflows with dead pids", () =>
   assert.equal(workflow.status, "error");
   assert.equal(step.status, "error");
   assert.equal(legacy.status, "error");
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
+test("workflow inspect repairs an empty workflow manifest from legacy run state", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-repair-"));
+  const runId = "wf-repair-test";
+  const runDir = path.join(workspaceRoot, "runs", runId);
+  const stepDir = path.join(runDir, "steps", "01-build");
+  fs.mkdirSync(stepDir, { recursive: true });
+  fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
+  fs.writeFileSync(path.join(stepDir, "step.json"), `${JSON.stringify({
+    id: "01-build",
+    name: "build",
+    status: "stopped",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    updatedAt: "2026-04-26T12:10:00.000Z",
+    stepDir,
+    logFile: path.join(stepDir, "stdout.log"),
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "workflow.json"), "", "utf8");
+  fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
+    id: runId,
+    kind: "workflow",
+    category: "build",
+    status: "running",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    completedAt: null,
+    summary: { workflow: "tool-buildroot", category: "build" },
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "events.jsonl"), "", "utf8");
+
+  const inspect = run(["--json", "workflow", "inspect", "--id", runId, "--workspace", workspaceRoot], {
+    cwd: workspaceRoot,
+  });
+  assert.equal(inspect.status, 0, inspect.stderr || inspect.stdout);
+  const inspectPayload = JSON.parse(inspect.stdout.trim());
+  assert.equal(inspectPayload.status, "success");
+  assert.equal(inspectPayload.details.id, runId);
+  assert.equal(inspectPayload.details.status, "stopped");
+
+  const repaired = JSON.parse(fs.readFileSync(path.join(runDir, "workflow.json"), "utf8"));
+  assert.equal(repaired.id, runId);
+  assert.equal(repaired.workflow, "tool-buildroot");
+  assert.equal(repaired.status, "stopped");
+  assert.equal(Array.isArray(repaired.steps), true);
+  assert.equal(repaired.steps.length, 1);
+  assert.equal(repaired.steps[0].id, "01-build");
+
+  const removed = run(["--json", "workflow", "remove", "--id", runId, "--workspace", workspaceRoot], {
+    cwd: workspaceRoot,
+  });
+  assert.equal(removed.status, 0, removed.stderr || removed.stdout);
+  assert.equal(fs.existsSync(runDir), false);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 
@@ -1392,6 +1445,7 @@ test("workflow run resolves prior step artifacts in configured workflows", () =>
 
 test("workflow run builds qemu through scripted fetch patch build steps", () => {
   const workspaceRoot = path.join(repoRoot, "workspace");
+  const cacheRoot = path.join(repoRoot, ".cache", "root");
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 
   const result = run([
@@ -1413,7 +1467,7 @@ test("workflow run builds qemu through scripted fetch patch build steps", () => 
   );
 
   const executable = path.join(
-    workspaceRoot,
+    cacheRoot,
     "tools",
     "qemu",
     "builds",
@@ -1431,6 +1485,7 @@ test("workflow run builds qemu through scripted fetch patch build steps", () => 
 
 test("workflow run builds buildroot through scripted fetch patch build steps", () => {
   const workspaceRoot = path.join(repoRoot, "workspace");
+  const cacheRoot = path.join(repoRoot, ".cache", "root");
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 
   const result = run([
@@ -1452,7 +1507,7 @@ test("workflow run builds buildroot through scripted fetch patch build steps", (
   );
 
   const image = path.join(
-    workspaceRoot,
+    cacheRoot,
     "tools",
     "buildroot",
     "builds",
@@ -1462,7 +1517,7 @@ test("workflow run builds buildroot through scripted fetch patch build steps", (
     "Image",
   );
   const rootfs = path.join(
-    workspaceRoot,
+    cacheRoot,
     "tools",
     "buildroot",
     "builds",
@@ -1478,8 +1533,9 @@ test("workflow run builds buildroot through scripted fetch patch build steps", (
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 
-test("workflow run builds sel4 through scripted fetch patch build steps", () => {
+test("workflow run fetches and patches sel4 through scripted fetch patch steps", () => {
   const workspaceRoot = path.join(repoRoot, "workspace");
+  const cacheRoot = path.join(repoRoot, ".cache", "root");
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 
   const result = run([
@@ -1489,19 +1545,19 @@ test("workflow run builds sel4 through scripted fetch patch build steps", () => 
     "workflow",
     "run",
     "--name",
-    "sel4-build-ci",
+    "sel4-fetch-patch-ci",
   ]);
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
   assert.equal(payload.status, "success");
-  assert.equal(payload.details.steps.length, 3);
+  assert.equal(payload.details.steps.length, 2);
   assert.deepEqual(
     payload.details.steps.map((step) => step.id),
-    ["sel4_fetch", "sel4_patch", "sel4_build"],
+    ["sel4_fetch", "sel4_patch"],
   );
 
   const versionFile = path.join(
-    workspaceRoot,
+    cacheRoot,
     "tools",
     "sel4",
     "builds",
@@ -1531,10 +1587,10 @@ test("workflow run builds microkit-sdk through scripted fetch patch build steps"
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
   assert.equal(payload.status, "success");
-  assert.equal(payload.details.steps.length, 6);
+  assert.equal(payload.details.steps.length, 5);
 
   const generated = path.join(
-    workspaceRoot,
+    path.join(repoRoot, ".cache", "root"),
     "tools",
     "microkit-sdk",
     "builds",
@@ -1578,10 +1634,10 @@ test("workflow run builds libvmm through scripted fetch patch build steps", () =
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
   assert.equal(payload.status, "success");
-  assert.equal(payload.details.steps.length, 9);
+  assert.equal(payload.details.steps.length, 8);
 
   const contract = path.join(
-    workspaceRoot,
+    path.join(repoRoot, ".cache", "root"),
     "tools",
     "libvmm",
     "builds",
@@ -1590,7 +1646,7 @@ test("workflow run builds libvmm through scripted fetch patch build steps", () =
     "runtime-contract.json",
   );
   const guest = path.join(
-    workspaceRoot,
+    path.join(repoRoot, ".cache", "root"),
     "tools",
     "libvmm",
     "builds",

@@ -633,13 +633,86 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
     };
     let stdoutText = "";
     let stderrText = "";
+    let stdoutBuffer = "";
     if (!detachedExec) {
       child.stdout.setEncoding("utf8");
       child.stderr.setEncoding("utf8");
     }
 
+    const emitStdoutLine = (rawLine) => {
+      if (!rawLine) {
+        return;
+      }
+      const line = String(rawLine);
+      const trimmed = line.trim();
+      if (!trimmed) {
+        if (logStream) {
+          logStream.write(line.endsWith("\n") ? line : `${line}\n`);
+        }
+        if (!options.jsonMode) {
+          writeStdoutLine(line);
+        }
+        return;
+      }
+      let parsed = null;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        if (logStream) {
+          logStream.write(line.endsWith("\n") ? line : `${line}\n`);
+        }
+        if (options.jsonMode && options.emitStream) {
+          writeStdoutLine(JSON.stringify({
+            command,
+            status: "stream",
+            exit_code: 0,
+            details: {
+              event: "log",
+              stream: "stdout",
+              chunk: line.endsWith("\n") ? line : `${line}\n`,
+            },
+          }));
+        } else if (!options.jsonMode) {
+          writeStdoutLine(line);
+        }
+        return;
+      }
+
+      if (parsed && parsed.status === "stream" && parsed.details) {
+        if (logStream) {
+          logStream.write(line.endsWith("\n") ? line : `${line}\n`);
+        }
+        if (options.jsonMode && options.emitStream) {
+          writeStdoutLine(trimmed);
+        } else if (!options.jsonMode) {
+          if (parsed.details.event === "log" && typeof parsed.details.chunk === "string") {
+            writeStdout(parsed.details.chunk);
+          } else if (parsed.details.event === "log" && typeof parsed.details.line === "string") {
+            writeStdoutLine(parsed.details.line);
+          }
+        }
+        return;
+      }
+
+      if (logStream) {
+        logStream.write(line.endsWith("\n") ? line : `${line}\n`);
+      }
+      if (!options.jsonMode) {
+        writeStdoutLine(line);
+      }
+    };
+
     const emitChunk = (stream, chunk) => {
       if (!chunk) {
+        return;
+      }
+      if (stream === "stdout") {
+        stdoutBuffer += chunk;
+        const lines = stdoutBuffer.split(/\r?\n/);
+        stdoutBuffer = lines.pop() || "";
+        for (const line of lines) {
+          emitStdoutLine(line);
+        }
         return;
       }
       if (logStream) {
@@ -691,6 +764,9 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
         try {
           fs.closeSync(logFd);
         } catch {}
+      }
+      if (stdoutBuffer.trim()) {
+        emitStdoutLine(stdoutBuffer);
       }
       const exitCode = typeof code === "number" ? code : 1;
       let dynamicResult = {};

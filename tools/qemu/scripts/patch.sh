@@ -8,6 +8,17 @@ patch_dir="${MORPHEUS_QEMU_PATCH_DIR:?}"
 result_file="${MORPHEUS_QEMU_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 state_file="${source_dir}/.morpheus-patches.json"
 
+if [[ "${source_dir}" != /* ]]; then
+  source_dir="$(pwd)/${source_dir#./}"
+fi
+if [[ "${patch_dir}" != /* ]]; then
+  patch_dir="$(pwd)/${patch_dir#./}"
+fi
+if [[ "${result_file}" != /* ]]; then
+  result_file="$(pwd)/${result_file#./}"
+fi
+state_file="${source_dir}/.morpheus-patches.json"
+
 if [ ! -d "${source_dir}" ]; then
   echo "missing source directory: ${source_dir}" >&2
   exit 1
@@ -29,8 +40,36 @@ EOF
 fi
 
 printf '[qemu] patch fingerprint changed, refetching clean source before apply\n'
+fetch_seed_dir="$(node -e '
+const fs = require("fs");
+const file = process.argv[1];
+try {
+  const data = JSON.parse(fs.readFileSync(file, "utf8"));
+  process.stdout.write(String(data.seed_dir || ""));
+} catch {}
+' "${source_dir}/.morpheus-fetch.json")"
+fetch_archive_url="$(node -e '
+const fs = require("fs");
+const file = process.argv[1];
+try {
+  const data = JSON.parse(fs.readFileSync(file, "utf8"));
+  process.stdout.write(String(data.archive_url || ""));
+} catch {}
+' "${source_dir}/.morpheus-fetch.json")"
+fetch_build_version="$(node -e '
+const fs = require("fs");
+const file = process.argv[1];
+try {
+  const data = JSON.parse(fs.readFileSync(file, "utf8"));
+  process.stdout.write(String(data.build_version || ""));
+} catch {}
+' "${source_dir}/.morpheus-fetch.json")"
 rm -rf "${source_dir}"
-"$(dirname "$0")/fetch.sh"
+env \
+  MORPHEUS_QEMU_SEED_DIR="${fetch_seed_dir}" \
+  MORPHEUS_QEMU_ARCHIVE_URL="${fetch_archive_url}" \
+  MORPHEUS_QEMU_BUILD_VERSION="${fetch_build_version}" \
+  "$(dirname "$0")/fetch.sh"
 
 while IFS= read -r patch_file; do
   [ -n "${patch_file}" ] || continue

@@ -10,6 +10,21 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
+function tryReadJson(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return null;
+  }
+  try {
+    const text = fs.readFileSync(filePath, "utf8");
+    if (!String(text).trim()) {
+      return null;
+    }
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 function readJsonIfExists(filePath, fallback = null) {
   if (!filePath || !fs.existsSync(filePath)) {
     return fallback;
@@ -115,7 +130,54 @@ function normalizeWorkflowCategory(value) {
 }
 
 function readWorkflowRecord(runDir) {
-  return readJson(path.join(runDir, "workflow.json"));
+  const manifestPath = path.join(runDir, "workflow.json");
+  const direct = tryReadJson(manifestPath);
+  if (direct && typeof direct === "object") {
+    return direct;
+  }
+  const legacy = tryReadJson(path.join(runDir, "run.json"));
+  if (!legacy || typeof legacy !== "object") {
+    return readJson(manifestPath);
+  }
+  const steps = listWorkflowSteps(runDir);
+  const updatedAtCandidates = steps
+    .map((step) => String(step?.updatedAt || step?.createdAt || "").trim())
+    .filter(Boolean)
+    .sort();
+  const inferredStatus = steps.some((step) => step && step.status === "running")
+    ? "running"
+    : steps.some((step) => step && (step.status === "error" || step.status === "failed"))
+      ? "error"
+      : steps.some((step) => step && step.status === "stopped")
+        ? "stopped"
+        : steps.length > 0 && steps.every((step) => step && (step.status === "success" || step.status === "reused"))
+          ? "success"
+          : String(legacy.status || "unknown");
+  const rebuilt = {
+    schemaVersion: 1,
+    id: String(legacy.id || path.basename(runDir)),
+    workflow: typeof legacy.summary?.workflow === "string" ? legacy.summary.workflow : "workflow",
+    configPath: null,
+    metadata: legacy.summary?.metadata == null ? null : legacy.summary.metadata,
+    category: String(legacy.category || legacy.summary?.category || "build"),
+    status: inferredStatus,
+    createdAt: legacy.createdAt || null,
+    updatedAt: updatedAtCandidates.at(-1) || legacy.completedAt || legacy.createdAt || null,
+    eventLogFile: path.join(runDir, "events.jsonl"),
+    workspace: path.resolve(runDir, "..", ".."),
+    runDir,
+    currentStepId: null,
+    currentChildPid: null,
+    runnerPid: null,
+    steps: steps.map((step) => ({
+      id: step.id || path.basename(step.stepDir || ""),
+      name: step.name || step.id || path.basename(step.stepDir || ""),
+      status: step.status || "unknown",
+      stepDir: step.stepDir || path.join(runDir, "steps", String(step.id || "")),
+    })),
+  };
+  fs.writeFileSync(manifestPath, `${JSON.stringify(rebuilt, null, 2)}\n`, "utf8");
+  return rebuilt;
 }
 
 function readLegacyRecord(runDir) {

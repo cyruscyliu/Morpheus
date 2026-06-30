@@ -1,0 +1,1308 @@
+struct AHCI_CMDHDR {
+    u32DescInf: u32 flag [
+        bits 0..4 = 5;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+        bits 8..8;
+        bits 9..9;
+        bits 10..10;
+        bits 11..15;
+        bits 16..31;
+    ];
+    u32PRDBC: u32 random;
+    u32CmdTblAddr: ptr<u64> align 0;
+    u32Resevered: bytes[16] random;
+}
+
+pointer {
+    from = AHCI_CMDHDR.u32CmdTblAddr;
+    to = AHCI_BUF0;
+    align = 0;
+}
+struct AHCI_BUF0 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = AHCI_CMDHDR;
+    position = [
+        filename = DevAHCI.cpp;
+        caller = _ZL25ahciPortTaskGetCommandFisP11PDMDEVINSR3P4AHCIP8AHCIPORTP7AHCIREQ;
+        callee = _ZL24PDMDevHlpPCIPhysReadMetaP11PDMDEVINSR3mPvm;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct AHCI_CMFIS {
+    cmfis0: u8 immediate [
+        imm 0;
+        imm 39;
+    ];
+    cmfis1: u8 flag [
+        bits 0..3;
+        bits 4..6;
+        bits 7..7;
+    ];
+    cmfis2: u8 random;
+    cmfis3: u8 random;
+    cmfis4: u64 random;
+    cmfis12: u8 random;
+    cmfis13: u8 random;
+    cmfis14: u8 random;
+    cmfis15: u8 flag [
+        bits 0..1;
+        bits 2..2;
+        bits 3..7;
+    ];
+    cmfis16: u32 random;
+    cmfis17: u32 random;
+    cmfis18: u32 random;
+    cmfis19: u32 random;
+    cmfis20: u32 random;
+    cmfis21: u32 random;
+    cmfis22: u32 random;
+    cmfis23: u32 random;
+    cmfis24: u32 random;
+    cmfis25: u32 random;
+    cmfis26: u32 random;
+    cmfis27: u32 random;
+    cmfis28: u32 random;
+    cmfis29: u32 random;
+    cmfis30: u32 random;
+    cmfis31: u32 random;
+    cmfis32: u32 random;
+    cmfis33: u32 random;
+    cmfis34: u32 random;
+    cmfis35: u32 random;
+    cmfis36: u32 random;
+    cmfis37: u32 random;
+    cmfis38: u32 random;
+    cmfis39: u32 random;
+    cmfis40: u32 random;
+    cmfis41: u32 random;
+    cmfis42: u32 random;
+    cmfis43: u32 random;
+}
+
+head {
+    to = AHCI_CMFIS;
+    position = [
+        filename = ahci.c;
+        caller = handle_cmd;
+        callee = dma_memory_map;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevAHCI.cpp;
+        caller = _ZL25ahciPortTaskGetCommandFisP11PDMDEVINSR3P4AHCIP8AHCIPORTP7AHCIREQ;
+        callee = _ZL24PDMDevHlpPCIPhysReadMetaP11PDMDEVINSR3mPvm;
+        call_depth = 1;
+        argument_index = 1;
+    ]
+}
+struct AHCI_SG {
+    addr: ptr<u64> align 0;
+    reserved: u32 random;
+    flags_size: u32 random;
+}
+
+pointer {
+    from = AHCI_SG.addr;
+    to = AHCI_BUF1;
+    align = 0;
+}
+struct AHCI_BUF1 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = AHCI_SG;
+    position = [
+        filename = ahci.c;
+        caller = ahci_populate_sglist;
+        callee = dma_memory_map;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevAHCI.cpp;
+        caller = _ZL31ahciR3CopyBufferFromGuestWorkerP11PDMDEVINSR3mP7RTSGBUFmPm;
+        callee = _ZL20PDMDevHlpPCIPhysReadP11PDMDEVINSR3mPvm;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevAHCI.cpp;
+        caller = _ZL19ahciR3IoReqQueryBufP15PDMIMEDIAEXPORTP18PDMMEDIAEXIOREQINTPvPS3_Pm;
+        callee = _ZL24PDMDevHlpPCIPhysReadMetaP11PDMDEVINSR3mPvm;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevAHCI.cpp;
+        caller = _ZL15ahciR3PrdtlWalkP11PDMDEVINSR3P7AHCIREQPFvS0_mP7RTSGBUFmPmES4_mm;
+        callee = _ZL24PDMDevHlpPCIPhysReadMetaP11PDMDEVINSR3mPvm;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevAHCI.cpp;
+        caller = _ZL19ahciR3PrdtQuerySizeP11PDMDEVINSR3P7AHCIREQPm;
+        callee = _ZL24PDMDevHlpPCIPhysReadMetaP11PDMDEVINSR3mPvm;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevAHCI.cpp;
+        caller = _ZL20ahciTrimRangesCreateP11PDMDEVINSR3P8AHCIPORTP7AHCIREQjP7RTRANGEjPj;
+        callee = _ZL24PDMDevHlpPCIPhysReadMetaP11PDMDEVINSR3mPvm;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct AHCI_RESFIS {
+    resfix: bytes[256] random;
+}
+
+head {
+    to = AHCI_RESFIS;
+    position = [
+        filename = ahci;
+        caller = ahci_map_fis_address;
+        callee = map_page;
+        call_depth = 0;
+        argument_index = 2;
+    ]
+}
+struct AHCI_LST {
+    lst: bytes[0x400] random;
+}
+
+head {
+    to = AHCI_LST;
+    position = [
+        filename = ahci;
+        caller = ahci_map_clb_address;
+        callee = map_page;
+        call_depth = 0;
+        argument_index = 2;
+    ]
+}
+
+op op_1 {
+    call pci_get_drvdata;
+}
+
+op op_2 {
+    mmio readl_2 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_3 {
+    mmio writel_3 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=call_1() & 0xfffffffd;
+    }
+}
+
+op op_4 {
+    mmio readl_4 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_5 {
+    call ahci_pci_disable_interrupts;
+}
+
+op op_1 {
+    call pci_get_drvdata;
+}
+
+op op_7 {
+    call is_mcp89_apple;
+}
+
+op op_8 {
+    call ahci_mcp89_apple_enable;
+}
+
+op op_9 {
+    call ahci_pci_reset_controller;
+}
+
+op op_10 {
+    call ahci_pci_init_controller;
+}
+
+op op_1 {
+    call pci_get_drvdata;
+}
+
+op op_5 {
+    call ahci_pci_disable_interrupts;
+}
+
+op op_1 {
+    call pci_get_drvdata;
+}
+
+op op_9 {
+    call ahci_pci_reset_controller;
+}
+
+op op_10 {
+    call ahci_pci_init_controller;
+}
+
+op op_16 {
+    call sata_ehc_deb_timing;
+}
+
+op op_17 {
+    call ata_tf_init;
+}
+
+op op_18 {
+    call sata_pmp_attached;
+}
+
+op op_19 {
+    mmio pci_read_config_word_19 {
+        direction=r;
+        region=0;
+        address=0x92;
+        size=2;
+    }
+}
+
+op op_20 {
+    mmio pci_write_config_word_20 {
+        direction=w;
+        region=0;
+        address=0x92;
+        size=2;
+        data=num_1 & num_2;
+    }
+}
+
+op op_21 {
+    mmio pci_write_config_word_21 {
+        direction=w;
+        region=0;
+        address=0x92;
+        size=2;
+        data=num_1 | (0x1 << num_2);
+    }
+}
+
+op op_17 {
+    call ata_tf_init;
+}
+
+op op_18 {
+    call sata_pmp_attached;
+}
+
+op op_24 {
+    mmio pci_read_config_word_24 {
+        direction=r;
+        region=0;
+        address=0x92;
+        size=2;
+    }
+}
+
+op op_25 {
+    mmio pci_write_config_word_25 {
+        direction=w;
+        region=0;
+        address=0x92;
+        size=2;
+        data=num_1 & num_2;
+    }
+}
+
+op op_26 {
+    mmio pci_write_config_word_26 {
+        direction=w;
+        region=0;
+        address=0x92;
+        size=2;
+        data=num_1 | (0x1 << num_2);
+    }
+}
+
+op op_16 {
+    call sata_ehc_deb_timing;
+}
+
+op op_17 {
+    call ata_tf_init;
+}
+
+op op_16 {
+    call sata_ehc_deb_timing;
+}
+
+op op_30 {
+    call pm_runtime_get_noresume;
+}
+
+op op_31 {
+    mmio readl_31 {
+        direction=r;
+        region=0;
+        address=0xa4;
+        size=4;
+    }
+}
+
+op op_32 {
+    mmio readq_32 {
+        direction=r;
+        region=0;
+        address=0x800;
+        size=8;
+    }
+}
+
+op op_33 {
+    mmio writel_33 {
+        direction=w;
+        region=0;
+        address=0x14;
+        size=4;
+        data=arg(0, num_1, call_2() & 0xfffffffd);
+    }
+}
+
+op op_7 {
+    call is_mcp89_apple;
+}
+
+op op_35 {
+    mmio pci_read_config_dword_35 {
+        direction=r;
+        region=0;
+        address=0xf8;
+        size=4;
+    }
+}
+
+op op_36 {
+    mmio pci_write_config_dword_36 {
+        direction=w;
+        region=0;
+        address=0xf8;
+        size=4;
+        data=num_1 | 0x8000000;
+    }
+}
+
+op op_37 {
+    mmio pci_read_config_dword_37 {
+        direction=r;
+        region=0;
+        address=0x54c;
+        size=4;
+    }
+}
+
+op op_38 {
+    mmio pci_write_config_dword_38 {
+        direction=w;
+        region=0;
+        address=0x54c;
+        size=4;
+        data=num_1 | 0x1000;
+    }
+}
+
+op op_39 {
+    mmio pci_read_config_dword_39 {
+        direction=r;
+        region=0;
+        address=0x4a4;
+        size=4;
+    }
+}
+
+op op_40 {
+    mmio pci_write_config_dword_40 {
+        direction=w;
+        region=0;
+        address=0x4a4;
+        size=4;
+        data=(num_1 & 0xff) | 0x1060100;
+    }
+}
+
+op op_41 {
+    mmio pci_read_config_dword_41 {
+        direction=r;
+        region=0;
+        address=0x54c;
+        size=4;
+    }
+}
+
+op op_42 {
+    mmio pci_write_config_dword_42 {
+        direction=w;
+        region=0;
+        address=0x54c;
+        size=4;
+        data=num_1 & 0xffffefff;
+    }
+}
+
+op op_43 {
+    mmio pci_read_config_dword_43 {
+        direction=r;
+        region=0;
+        address=0xf8;
+        size=4;
+    }
+}
+
+op op_44 {
+    mmio pci_write_config_dword_44 {
+        direction=w;
+        region=0;
+        address=0xf8;
+        size=4;
+        data=num_1 & 0xf7ffffff;
+    }
+}
+
+op op_8 {
+    call ahci_mcp89_apple_enable;
+}
+
+op op_46 {
+    mmio pci_read_config_byte_46 {
+        direction=r;
+        region=0;
+        address=0x90;
+        size=1;
+    }
+}
+
+op op_47 {
+    call ahci_sb600_enable_64bit;
+}
+
+op op_48 {
+    call resource_size;
+}
+
+op op_49 {
+    mmio readl_49 {
+        direction=r;
+        region=0;
+        address=0xa4;
+        size=4;
+    }
+}
+
+op op_50 {
+    mmio readq_50 {
+        direction=r;
+        region=0;
+        address=0x800;
+        size=8;
+    }
+}
+
+op op_51 {
+    call ahci_remap_dcc;
+}
+
+op op_52 {
+    mmio readl_52 {
+        direction=r;
+        region=0;
+        address=0xdeadbeef;
+        size=4;
+    }
+}
+
+op op_51 {
+    call ahci_remap_dcc;
+}
+
+op op_54 {
+    mmio readl_54 {
+        direction=r;
+        region=0;
+        address=0xdeadbeef;
+        size=4;
+    }
+}
+
+op op_51 {
+    call ahci_remap_dcc;
+}
+
+op op_56 {
+    mmio readl_56 {
+        direction=r;
+        region=0;
+        address=0xdeadbeef;
+        size=4;
+    }
+}
+
+op op_57 {
+    call ahci_remap_check;
+}
+
+op op_58 {
+    call ahci_broken_devslp;
+}
+
+op op_59 {
+    call ahci_pci_save_initial_config;
+}
+
+op op_60 {
+    call ahci_broken_system_poweroff;
+}
+
+op op_61 {
+    call ahci_broken_lpm;
+}
+
+op op_62 {
+    call ahci_broken_suspend;
+}
+
+op op_63 {
+    call ahci_broken_online;
+}
+
+op op_64 {
+    call acer_sa5_271_workaround;
+}
+
+op op_65 {
+    call ahci_nr_ports;
+}
+
+op op_66 {
+    mmio readl_66 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_67 {
+    call ahci_init_msi;
+}
+
+op op_68 {
+    call ahci_update_initial_lpm_policy;
+}
+
+op op_69 {
+    call ahci_p5wdh_workaround;
+}
+
+op op_70 {
+    call ahci_gtf_filter_workaround;
+}
+
+op op_71 {
+    call ahci_configure_dma_masks;
+}
+
+op op_72 {
+    mmio pci_read_config_word_72 {
+        direction=r;
+        region=0;
+        address=0x92;
+        size=2;
+    }
+}
+
+op op_73 {
+    mmio pci_write_config_word_73 {
+        direction=w;
+        region=0;
+        address=0x92;
+        size=2;
+        data=num_1 | num_2;
+    }
+}
+
+op op_74 {
+    call ahci_intel_pcs_quirk;
+}
+
+op op_9 {
+    call ahci_pci_reset_controller;
+}
+
+op op_76 {
+    call __ahci_port_base;
+}
+
+op op_77 {
+    mmio writel_77 {
+        direction=w;
+        region=0;
+        address=0x14;
+        size=4;
+        data=0;
+    }
+}
+
+op op_78 {
+    mmio readl_78 {
+        direction=r;
+        region=0;
+        address=0x10;
+        size=4;
+    }
+}
+
+op op_79 {
+    mmio writel_79 {
+        direction=w;
+        region=0;
+        address=0x10;
+        size=4;
+        data=call_1();
+    }
+}
+
+op op_10 {
+    call ahci_pci_init_controller;
+}
+
+op op_81 {
+    mmio pci_read_config_word_81 {
+        direction=r;
+        region=0;
+        address=0xa;
+        size=2;
+    }
+}
+
+op op_82 {
+    call ahci_pci_print_info;
+}
+
+op op_83 {
+    call pm_runtime_put_noidle;
+}
+
+
+bb ahci_pci_print_info_232 {
+    op op_81;
+}
+
+bb ahci_vt8251_hardreset_38 {
+    op op_16;
+}
+
+bb ahci_avn_hardreset_22 {
+    op op_18;
+}
+
+bb readq_50 {
+    op op_32;
+}
+
+bb ahci_init_one_162 {
+    op op_67;
+}
+
+bb ahci_init_one_80 {
+    op op_46;
+}
+
+bb ahci_remove_one_45 {
+    op op_30;
+}
+
+bb ahci_init_one_138 {
+    op op_61;
+}
+
+bb ahci_pci_device_runtime_resume_16 {
+    op op_10;
+}
+
+bb ahci_pci_init_controller_230 {
+    op op_79;
+}
+
+bb ahci_pci_device_runtime_resume_15 {
+    op op_1;
+    op op_9;
+}
+
+bb ahci_pci_device_resume_7 {
+    op op_1;
+    op op_7;
+}
+
+bb ahci_pci_device_resume_8 {
+    op op_8;
+}
+
+bb ahci_remap_check_114 {
+    op op_51;
+    op op_54;
+}
+
+bb ahci_avn_hardreset_18 {
+    op op_16;
+    op op_17;
+}
+
+bb ahci_pci_device_resume_11 {
+    op op_10;
+}
+
+bb ahci_init_msi_166 {
+    op op_66;
+}
+
+bb ahci_init_one_224 {
+    op op_10;
+    op op_82;
+}
+
+bb ahci_init_one_156 {
+    op op_64;
+    op op_65;
+}
+
+bb ahci_init_one_235 {
+    op op_83;
+}
+
+bb ahci_remap_check_108 {
+    op op_51;
+    op op_52;
+}
+
+bb ahci_init_one_123 {
+    op op_59;
+}
+
+bb ahci_pci_reset_controller_216 {
+    op op_74;
+}
+
+bb ahci_avn_hardreset_28 {
+    op op_19;
+    op op_20;
+    op op_21;
+    op op_17;
+}
+
+bb ahci_pci_device_suspend_4 {
+    op op_5;
+}
+
+bb ahci_pci_device_resume_10 {
+    op op_9;
+}
+
+bb ahci_init_one_187 {
+    op op_68;
+}
+
+bb ahci_intel_pcs_quirk_221 {
+    op op_73;
+}
+
+bb readl_49 {
+    op op_31;
+}
+
+bb ahci_remap_check_104 {
+    op op_48;
+}
+
+bb ahci_pci_init_controller_226 {
+    op op_76;
+    op op_77;
+    op op_78;
+}
+
+bb ahci_mcp89_apple_enable_68 {
+    op op_35;
+    op op_36;
+    op op_37;
+    op op_38;
+    op op_39;
+    op op_40;
+    op op_41;
+    op op_42;
+    op op_43;
+    op op_44;
+}
+
+bb ahci_init_one_194 {
+    op op_69;
+    op op_70;
+    op op_71;
+}
+
+bb ahci_avn_hardreset_37 {
+    op op_24;
+    op op_25;
+    op op_26;
+}
+
+bb ahci_init_one_92 {
+    op op_47;
+}
+
+bb ahci_avn_hardreset_33 {
+    op op_18;
+}
+
+bb ahci_pci_device_suspend_1 {
+    op op_1;
+}
+
+bb ahci_intel_pcs_quirk_220 {
+    op op_72;
+}
+
+bb ahci_init_one_61 {
+    op op_7;
+}
+
+bb writel_57 {
+    op op_33;
+}
+
+bb ahci_pci_device_runtime_suspend_14 {
+    op op_1;
+    op op_5;
+}
+
+bb ahci_init_one_67 {
+    op op_8;
+}
+
+bb ahci_init_one_150 {
+    op op_63;
+}
+
+bb ahci_init_one_133 {
+    op op_60;
+}
+
+bb ahci_pci_disable_interrupts_5 {
+    op op_2;
+    op op_3;
+    op op_4;
+}
+
+bb ahci_p5wdh_hardreset_39 {
+    op op_17;
+    op op_16;
+}
+
+bb ahci_remap_check_106 {
+    op op_49;
+}
+
+bb ahci_remap_check_117 {
+    op op_51;
+    op op_56;
+}
+
+bb ahci_init_one_143 {
+    op op_62;
+}
+
+bb ahci_init_one_214 {
+    op op_9;
+}
+
+bb ahci_init_one_101 {
+    op op_57;
+    op op_58;
+}
+
+bb ahci_remap_check_107 {
+    op op_50;
+}
+
+path ahci_pci_device_runtime_resume_0 {
+    bb bb_15
+    bb bb_16
+}
+
+path ahci_avn_hardreset_0 {
+    bb bb_18
+    bb bb_22
+    bb bb_28
+    bb bb_33
+    bb bb_37
+}
+
+path ahci_pci_device_runtime_suspend_0 {
+    bb bb_14
+}
+
+path readq_0 {
+    bb bb_50
+}
+
+path ahci_init_one_0 {
+    bb bb_61
+    bb bb_67
+    bb bb_80
+    bb bb_92
+    bb bb_101
+    bb bb_123
+    bb bb_133
+    bb bb_138
+    bb bb_143
+    bb bb_150
+    bb bb_156
+    bb bb_162
+    bb bb_187
+    bb bb_194
+    bb bb_214
+    bb bb_224
+    bb bb_235
+}
+
+path ahci_init_one_6 {
+    bb bb_61
+    bb bb_92
+    bb bb_101
+    bb bb_123
+    bb bb_133
+    bb bb_138
+    bb bb_143
+    bb bb_150
+    bb bb_156
+    bb bb_162
+    bb bb_187
+    bb bb_194
+    bb bb_214
+    bb bb_224
+    bb bb_235
+}
+
+path ahci_init_one_4 {
+    bb bb_61
+    bb bb_80
+    bb bb_92
+    bb bb_101
+    bb bb_123
+    bb bb_133
+    bb bb_138
+    bb bb_143
+    bb bb_150
+    bb bb_156
+    bb bb_162
+    bb bb_187
+    bb bb_194
+    bb bb_214
+    bb bb_224
+    bb bb_235
+}
+
+path ahci_init_one_3 {
+    bb bb_61
+    bb bb_67
+    bb bb_92
+    bb bb_101
+    bb bb_123
+    bb bb_133
+    bb bb_138
+    bb bb_143
+    bb bb_150
+    bb bb_156
+    bb bb_162
+    bb bb_194
+    bb bb_214
+    bb bb_224
+    bb bb_235
+}
+
+path ahci_init_one_1 {
+    bb bb_61
+    bb bb_67
+    bb bb_80
+    bb bb_92
+    bb bb_101
+    bb bb_123
+    bb bb_133
+    bb bb_138
+    bb bb_143
+    bb bb_150
+    bb bb_156
+    bb bb_162
+    bb bb_194
+    bb bb_214
+    bb bb_224
+    bb bb_235
+}
+
+path ahci_init_one_7 {
+    bb bb_61
+    bb bb_92
+    bb bb_101
+    bb bb_123
+    bb bb_133
+    bb bb_138
+    bb bb_143
+    bb bb_150
+    bb bb_156
+    bb bb_162
+    bb bb_194
+    bb bb_214
+    bb bb_224
+    bb bb_235
+}
+
+path ahci_init_one_2 {
+    bb bb_61
+    bb bb_67
+    bb bb_92
+    bb bb_101
+    bb bb_123
+    bb bb_133
+    bb bb_138
+    bb bb_143
+    bb bb_150
+    bb bb_156
+    bb bb_162
+    bb bb_187
+    bb bb_194
+    bb bb_214
+    bb bb_224
+    bb bb_235
+}
+
+path ahci_init_one_5 {
+    bb bb_61
+    bb bb_80
+    bb bb_92
+    bb bb_101
+    bb bb_123
+    bb bb_133
+    bb bb_138
+    bb bb_143
+    bb bb_150
+    bb bb_156
+    bb bb_162
+    bb bb_194
+    bb bb_214
+    bb bb_224
+    bb bb_235
+}
+
+path ahci_pci_reset_controller_0 {
+    bb bb_216
+}
+
+path writel_0 {
+    bb bb_57
+}
+
+path ahci_remove_one_0 {
+    bb bb_45
+}
+
+path ahci_pci_device_suspend_0 {
+    bb bb_1
+    bb bb_4
+}
+
+path ahci_pci_disable_interrupts_0 {
+    bb bb_5
+}
+
+path ahci_init_msi_0 {
+    bb bb_166
+}
+
+path ahci_pci_device_resume_0 {
+    bb bb_7
+    bb bb_10
+    bb bb_11
+}
+
+path ahci_pci_device_resume_1 {
+    bb bb_7
+    bb bb_8
+    bb bb_10
+    bb bb_11
+}
+
+path ahci_p5wdh_hardreset_0 {
+    bb bb_39
+}
+
+path readl_0 {
+    bb bb_49
+}
+
+path ahci_pci_print_info_0 {
+    bb bb_232
+}
+
+path ahci_pci_init_controller_0 {
+    bb bb_226
+    bb bb_230
+}
+
+path ahci_vt8251_hardreset_0 {
+    bb bb_38
+}
+
+path ahci_intel_pcs_quirk_0 {
+    bb bb_220
+    bb bb_221
+}
+
+path ahci_mcp89_apple_enable_0 {
+    bb bb_68
+}
+
+path ahci_remap_check_0 {
+    bb bb_104
+    bb bb_106
+    bb bb_107
+    bb bb_108
+    bb bb_114
+    bb bb_117
+}
+
+path ahci_remap_check_1 {
+    bb bb_104
+    bb bb_106
+    bb bb_107
+    bb bb_108
+    bb bb_117
+}
+
+path ahci_remap_check_2 {
+    bb bb_104
+    bb bb_106
+    bb bb_107
+    bb bb_114
+    bb bb_117
+}
+
+path ahci_remap_check_3 {
+    bb bb_104
+    bb bb_106
+    bb bb_107
+    bb bb_117
+}
+
+func ahci_pci_device_runtime_resume {
+    path path_ahci_pci_device_runtime_resume_0;
+}
+
+func ahci_avn_hardreset {
+    path path_ahci_avn_hardreset_0;
+}
+
+func ahci_pci_device_runtime_suspend {
+    path path_ahci_pci_device_runtime_suspend_0;
+}
+
+func readq {
+    path path_readq_0;
+}
+
+func ahci_init_one {
+    path path_ahci_init_one_0;
+    path path_ahci_init_one_6;
+    path path_ahci_init_one_4;
+    path path_ahci_init_one_3;
+    path path_ahci_init_one_1;
+    path path_ahci_init_one_7;
+    path path_ahci_init_one_2;
+    path path_ahci_init_one_5;
+}
+
+func ahci_pci_reset_controller {
+    path path_ahci_pci_reset_controller_0;
+}
+
+func writel {
+    path path_writel_0;
+}
+
+func ahci_remove_one {
+    path path_ahci_remove_one_0;
+}
+
+func ahci_pci_device_suspend {
+    path path_ahci_pci_device_suspend_0;
+}
+
+func ahci_pci_disable_interrupts {
+    path path_ahci_pci_disable_interrupts_0;
+}
+
+func ahci_init_msi {
+    path path_ahci_init_msi_0;
+}
+
+func ahci_pci_device_resume {
+    path path_ahci_pci_device_resume_0;
+    path path_ahci_pci_device_resume_1;
+}
+
+func ahci_p5wdh_hardreset {
+    path path_ahci_p5wdh_hardreset_0;
+}
+
+func readl {
+    path path_readl_0;
+}
+
+func ahci_pci_print_info {
+    path path_ahci_pci_print_info_0;
+}
+
+func ahci_pci_init_controller {
+    path path_ahci_pci_init_controller_0;
+}
+
+func ahci_vt8251_hardreset {
+    path path_ahci_vt8251_hardreset_0;
+}
+
+func ahci_intel_pcs_quirk {
+    path path_ahci_intel_pcs_quirk_0;
+}
+
+func ahci_mcp89_apple_enable {
+    path path_ahci_mcp89_apple_enable_0;
+}
+
+func ahci_remap_check {
+    path path_ahci_remap_check_0;
+    path path_ahci_remap_check_1;
+    path path_ahci_remap_check_2;
+    path path_ahci_remap_check_3;
+}
+

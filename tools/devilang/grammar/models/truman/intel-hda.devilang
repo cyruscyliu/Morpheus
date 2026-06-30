@@ -1,0 +1,1929 @@
+op op_1 {
+    call azx_is_pm_ready;
+}
+
+op op_2 {
+    call snd_power_change_state;
+}
+
+op op_1 {
+    call azx_is_pm_ready;
+}
+
+op op_2 {
+    call snd_power_change_state;
+}
+
+op op_1 {
+    call azx_is_pm_ready;
+}
+
+op op_6 {
+    call azx_clear_irq_pending;
+}
+
+op op_7 {
+    call __azx_shutdown_chip;
+}
+
+op op_8 {
+    call azx_shutdown_chip;
+}
+
+op op_9 {
+    call cpu_online;
+}
+
+op op_9 {
+    call cpu_online;
+}
+
+op op_11 {
+    call trace_azx_suspend;
+}
+
+op op_1 {
+    call azx_is_pm_ready;
+}
+
+op op_13 {
+    call azx_acquire_irq;
+}
+
+op op_14 {
+    mmio snd_hdac_reg_readw_14 {
+        direction=r;
+        region=0;
+        address=0xe;
+        size=2;
+    }
+}
+
+op op_15 {
+    call azx_init_pci;
+}
+
+op op_16 {
+    call hda_intel_init_chip;
+}
+
+op op_17 {
+    call pm_request_resume;
+}
+
+op op_18 {
+    call __azx_runtime_resume;
+}
+
+op op_9 {
+    call cpu_online;
+}
+
+op op_9 {
+    call cpu_online;
+}
+
+op op_21 {
+    call trace_azx_resume;
+}
+
+op op_1 {
+    call azx_is_pm_ready;
+}
+
+op op_1 {
+    call azx_is_pm_ready;
+}
+
+op op_1 {
+    call azx_is_pm_ready;
+}
+
+op op_25 {
+    mmio snd_hdac_reg_readw_25 {
+        direction=r;
+        region=0;
+        address=0xc;
+        size=2;
+    }
+}
+
+op op_26 {
+    mmio snd_hdac_reg_writew_26 {
+        direction=w;
+        region=0;
+        address=0x0;
+        size=2;
+        data=num_1;
+    }
+}
+
+op op_8 {
+    call azx_shutdown_chip;
+}
+
+op op_9 {
+    call cpu_online;
+}
+
+op op_9 {
+    call cpu_online;
+}
+
+op op_30 {
+    call trace_azx_runtime_suspend;
+}
+
+op op_1 {
+    call azx_is_pm_ready;
+}
+
+op op_18 {
+    call __azx_runtime_resume;
+}
+
+op op_33 {
+    mmio snd_hdac_reg_readw_33 {
+        direction=r;
+        region=0;
+        address=0xc;
+        size=2;
+    }
+}
+
+op op_34 {
+    mmio snd_hdac_reg_writew_34 {
+        direction=w;
+        region=0;
+        address=0x0;
+        size=2;
+        data=num_1;
+    }
+}
+
+op op_9 {
+    call cpu_online;
+}
+
+op op_9 {
+    call cpu_online;
+}
+
+op op_37 {
+    call trace_azx_runtime_resume;
+}
+
+op op_38 {
+    call azx_free;
+}
+
+op op_13 {
+    call azx_acquire_irq;
+}
+
+op op_40 {
+    mmio readl_40 {
+        direction=r;
+        region=0;
+        address=0x30;
+        size=4;
+    }
+}
+
+op op_41 {
+    call bytes_to_frames;
+}
+
+op op_42 {
+    call azx_position_ok;
+}
+
+op op_43 {
+    call queue_work;
+}
+
+op op_44 {
+    call schedule_work;
+}
+
+op op_45 {
+    call bpf_prog_array_valid;
+}
+
+op op_46 {
+    call hlist_empty;
+}
+
+op op_47 {
+    call perf_fetch_caller_regs;
+}
+
+op op_48 {
+    call pci_get_drvdata;
+}
+
+op op_49 {
+    call device_unlock;
+}
+
+op op_50 {
+    call device_lock;
+}
+
+op op_48 {
+    call pci_get_drvdata;
+}
+
+op op_7 {
+    call __azx_shutdown_chip;
+}
+
+op op_53 {
+    mmio readw_53 {
+        direction=r;
+        region=0;
+        address=0xc;
+        size=2;
+    }
+}
+
+op op_54 {
+    mmio writew_54 {
+        direction=w;
+        region=0;
+        address=0xc;
+        size=2;
+        data=arg(call_1() | 0xff, call_3() & 0xff00);
+    }
+}
+
+op op_55 {
+    mmio writew_55 {
+        direction=w;
+        region=0;
+        address=0xc;
+        size=2;
+        data=arg(arg(call_1() | 0xff, call_3() & 0xff00));
+    }
+}
+
+op op_56 {
+    mmio readw_56 {
+        direction=r;
+        region=0;
+        address=0xc;
+        size=2;
+    }
+}
+
+op op_57 {
+    mmio readl_57 {
+        direction=r;
+        region=0;
+        address=0x1040;
+        size=4;
+    }
+}
+
+op op_58 {
+    mmio writel_58 {
+        direction=w;
+        region=0;
+        address=0x1040;
+        size=4;
+        data=arg(num_1 & 0x300000, num_3 | (num_4 & 0xfffffff0), (num_7 & 0xfffeffff) | (arg(0, 0x1) << 0x10));
+    }
+}
+
+op op_59 {
+    call azx_probe_continue;
+}
+
+op op_60 {
+    call queue_delayed_work;
+}
+
+op op_61 {
+    call __list_add;
+}
+
+op op_62 {
+    call list_add;
+}
+
+op op_42 {
+    call azx_position_ok;
+}
+
+op op_41 {
+    call bytes_to_frames;
+}
+
+op op_65 {
+    mmio readl_65 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_66 {
+    call snd_hdac_stream_get_pos_lpib;
+}
+
+op op_66 {
+    call snd_hdac_stream_get_pos_lpib;
+}
+
+op op_68 {
+    call frames_to_bytes;
+}
+
+op op_41 {
+    call bytes_to_frames;
+}
+
+op op_70 {
+    call find_first_zero_bit;
+}
+
+op op_71 {
+    call check_msi;
+}
+
+op op_72 {
+    call INIT_LIST_HEAD;
+}
+
+op op_73 {
+    call lockdep_init_map_waits;
+}
+
+op op_74 {
+    call lockdep_init_map_wait;
+}
+
+op op_75 {
+    call lockdep_init_map;
+}
+
+op op_72 {
+    call INIT_LIST_HEAD;
+}
+
+op op_72 {
+    call INIT_LIST_HEAD;
+}
+
+op op_78 {
+    call init_completion;
+}
+
+op op_79 {
+    call check_position_fix;
+}
+
+op op_80 {
+    call assign_position_fix;
+}
+
+op op_81 {
+    mmio pci_read_config_byte_81 {
+        direction=r;
+        region=0;
+        address=0x42;
+        size=1;
+    }
+}
+
+op op_82 {
+    call azx_check_snoop_available;
+}
+
+op op_83 {
+    call default_bdl_pos_adj;
+}
+
+op op_84 {
+    call azx_snoop;
+}
+
+op op_85 {
+    call check_probe_mask;
+}
+
+op op_86 {
+    call pm_runtime_get_noresume;
+}
+
+op op_87 {
+    call pm_runtime_dont_use_autosuspend;
+}
+
+op op_88 {
+    call __list_del;
+}
+
+op op_89 {
+    call __list_del_entry;
+}
+
+op op_72 {
+    call INIT_LIST_HEAD;
+}
+
+op op_91 {
+    call list_del_init;
+}
+
+op op_92 {
+    call azx_del_card_list;
+}
+
+op op_6 {
+    call azx_clear_irq_pending;
+}
+
+op op_94 {
+    call snd_hdac_i915_exit;
+}
+
+op op_38 {
+    call azx_free;
+}
+
+op op_75 {
+    call lockdep_init_map;
+}
+
+op op_72 {
+    call INIT_LIST_HEAD;
+}
+
+op op_98 {
+    call azx_create;
+}
+
+op op_99 {
+    call schedule_delayed_work;
+}
+
+op op_100 {
+    mmio snd_hdac_reg_readw_100 {
+        direction=r;
+        region=0;
+        address=0x0;
+        size=2;
+    }
+}
+
+op op_101 {
+    call dma_set_max_seg_size;
+}
+
+op op_102 {
+    mmio pci_read_config_byte_102 {
+        direction=r;
+        region=0;
+        address=0x0;
+        size=1;
+    }
+}
+
+op op_103 {
+    mmio pci_write_config_byte_103 {
+        direction=w;
+        region=0;
+        address=0x0;
+        size=1;
+        data=(num_1 & num_2) | (arg(0, select(0x2, 0), select(0x2, 0), 0xf, 0x1, 0x1) & arg(0x7, 0x7, 0x7, 0xf, 0x1, 0x1));
+    }
+}
+
+op op_104 {
+    call update_pci_byte;
+}
+
+op op_84 {
+    call azx_snoop;
+}
+
+op op_84 {
+    call azx_snoop;
+}
+
+op op_104 {
+    call update_pci_byte;
+}
+
+op op_84 {
+    call azx_snoop;
+}
+
+op op_104 {
+    call update_pci_byte;
+}
+
+op op_84 {
+    call azx_snoop;
+}
+
+op op_104 {
+    call update_pci_byte;
+}
+
+op op_104 {
+    call update_pci_byte;
+}
+
+op op_104 {
+    call update_pci_byte;
+}
+
+op op_114 {
+    mmio pci_read_config_word_114 {
+        direction=r;
+        region=0;
+        address=0x78;
+        size=2;
+    }
+}
+
+op op_84 {
+    call azx_snoop;
+}
+
+op op_84 {
+    call azx_snoop;
+}
+
+op op_117 {
+    mmio pci_write_config_word_117 {
+        direction=w;
+        region=0;
+        address=0x78;
+        size=2;
+        data=phi(num_1 | 0x800, var_1 & 0xf7ff);
+    }
+}
+
+op op_118 {
+    mmio pci_read_config_word_118 {
+        direction=r;
+        region=0;
+        address=0x78;
+        size=2;
+    }
+}
+
+op op_15 {
+    call azx_init_pci;
+}
+
+op op_120 {
+    mmio pci_read_config_dword_120 {
+        direction=r;
+        region=0;
+        address=0x48;
+        size=4;
+    }
+}
+
+op op_121 {
+    mmio pci_write_config_dword_121 {
+        direction=w;
+        region=0;
+        address=0x48;
+        size=4;
+        data=num_1 & 0xffffffbf;
+    }
+}
+
+op op_122 {
+    mmio pci_read_config_dword_122 {
+        direction=r;
+        region=0;
+        address=0x48;
+        size=4;
+    }
+}
+
+op op_123 {
+    mmio pci_write_config_dword_123 {
+        direction=w;
+        region=0;
+        address=0x48;
+        size=4;
+        data=num_1 | 0x40;
+    }
+}
+
+op op_124 {
+    mmio readl_124 {
+        direction=r;
+        region=0;
+        address=0x1040;
+        size=4;
+    }
+}
+
+op op_125 {
+    mmio writel_125 {
+        direction=w;
+        region=0;
+        address=0x1040;
+        size=4;
+        data=call_1() & 0x300000;
+    }
+}
+
+op op_126 {
+    call bxt_reduce_dma_latency;
+}
+
+op op_127 {
+    mmio readl_127 {
+        direction=r;
+        region=0;
+        address=0x44;
+        size=4;
+    }
+}
+
+op op_128 {
+    mmio readl_128 {
+        direction=r;
+        region=0;
+        address=0x44;
+        size=4;
+    }
+}
+
+op op_129 {
+    mmio writel_129 {
+        direction=w;
+        region=0;
+        address=0x44;
+        size=4;
+        data=(call_1() & 0xfffeffff) | (arg(0, 0x1) << 0x10);
+    }
+}
+
+op op_130 {
+    mmio readl_130 {
+        direction=r;
+        region=0;
+        address=0x44;
+        size=4;
+    }
+}
+
+op op_131 {
+    call intel_ml_lctl_set_power;
+}
+
+op op_132 {
+    mmio readl_132 {
+        direction=r;
+        region=0;
+        address=0x40;
+        size=4;
+    }
+}
+
+op op_133 {
+    call intel_get_lctl_scf;
+}
+
+op op_134 {
+    mmio writel_134 {
+        direction=w;
+        region=0;
+        address=0x44;
+        size=4;
+        data=num_1 | (call_2() & 0xfffffff0);
+    }
+}
+
+op op_131 {
+    call intel_ml_lctl_set_power;
+}
+
+op op_136 {
+    call intel_init_lctl;
+}
+
+op op_16 {
+    call hda_intel_init_chip;
+}
+
+op op_138 {
+    call request_irq;
+}
+
+op op_13 {
+    call azx_acquire_irq;
+}
+
+op op_140 {
+    call azx_first_init;
+}
+
+op op_141 {
+    call _msecs_to_jiffies;
+}
+
+op op_99 {
+    call schedule_delayed_work;
+}
+
+op op_143 {
+    call azx_add_card_list;
+}
+
+op op_144 {
+    call set_default_power_save;
+}
+
+op op_145 {
+    call pm_runtime_use_autosuspend;
+}
+
+op op_146 {
+    call pm_runtime_put_autosuspend;
+}
+
+op op_59 {
+    call azx_probe_continue;
+}
+
+
+bb azx_irq_pending_work_234 {
+    op op_42;
+}
+
+bb hda_intel_init_chip_492 {
+    op op_136;
+}
+
+bb azx_suspend_20 {
+    op op_1;
+}
+
+bb azx_get_pos_fifo_262 {
+    op op_66;
+}
+
+bb disable_msi_reset_irq_117 {
+    op op_13;
+}
+
+bb azx_create_359 {
+    op op_85;
+}
+
+bb azx_probe_continue_537 {
+    op op_143;
+    op op_144;
+}
+
+bb azx_position_check_144 {
+    op op_44;
+}
+
+bb azx_remove_185 {
+    op op_49;
+    op op_50;
+}
+
+bb hda_intel_init_chip_489 {
+    op op_126;
+}
+
+bb azx_get_pos_fifo_263 {
+    op op_68;
+}
+
+bb azx_first_init_433 {
+    op op_100;
+}
+
+bb list_add_213 {
+    op op_61;
+}
+
+bb azx_complete_17 {
+    op op_1;
+}
+
+bb azx_probe_continue_416 {
+    op op_140;
+}
+
+bb azx_init_pci_472 {
+    op op_84;
+}
+
+bb azx_position_check_118 {
+    op op_42;
+}
+
+bb azx_via_get_position_249 {
+    op op_66;
+}
+
+bb trace_azx_runtime_resume_103 {
+    op op_9;
+}
+
+bb azx_complete_18 {
+    op op_2;
+}
+
+bb trace_azx_resume_64 {
+    op op_9;
+}
+
+bb azx_firmware_cb_207 {
+    op op_59;
+}
+
+bb schedule_work_145 {
+    op op_43;
+}
+
+bb azx_remove_183 {
+    op op_48;
+}
+
+bb intel_get_lctl_scf_501 {
+    op op_132;
+}
+
+bb azx_position_ok_137 {
+    op op_41;
+}
+
+bb azx_resume_44 {
+    op op_1;
+}
+
+bb azx_init_pci_477 {
+    op op_84;
+}
+
+bb trace_azx_runtime_suspend_85 {
+    op op_9;
+}
+
+bb azx_resume_48 {
+    op op_13;
+}
+
+bb azx_create_292 {
+    op op_71;
+}
+
+bb list_del_init_376 {
+    op op_89;
+    op op_72;
+}
+
+bb lockdep_init_map_303 {
+    op op_74;
+}
+
+bb azx_runtime_suspend_82 {
+    op op_1;
+}
+
+bb readl_199 {
+    op op_57;
+}
+
+bb azx_thaw_noirq_78 {
+    op op_1;
+}
+
+bb update_pci_byte_466 {
+    op op_102;
+    op op_103;
+}
+
+bb intel_init_lctl_500 {
+    op op_133;
+    op op_134;
+}
+
+bb azx_prepare_14 {
+    op op_2;
+}
+
+bb azx_shutdown_192 {
+    op op_7;
+}
+
+bb __azx_shutdown_chip_25 {
+    op op_6;
+}
+
+bb azx_probe_continue_538 {
+    op op_145;
+    op op_146;
+}
+
+bb azx_init_pci_473 {
+    op op_104;
+    op op_104;
+    op op_104;
+}
+
+bb azx_acquire_irq_513 {
+    op op_138;
+}
+
+bb __azx_runtime_resume_52 {
+    op op_14;
+    op op_15;
+    op op_16;
+}
+
+bb azx_init_pci_479 {
+    op op_117;
+    op op_118;
+}
+
+bb azx_init_pci_470 {
+    op op_84;
+    op op_104;
+}
+
+bb trace_azx_suspend_39 {
+    op op_9;
+}
+
+bb azx_probe_continue_535 {
+    op op_141;
+    op op_99;
+}
+
+bb azx_create_352 {
+    op op_84;
+}
+
+bb lockdep_init_map_wait_304 {
+    op op_73;
+}
+
+bb azx_create_343 {
+    op op_83;
+}
+
+bb perf_trace_hda_pm_172 {
+    op op_46;
+}
+
+bb azx_del_card_list_375 {
+    op op_91;
+}
+
+bb snd_hdac_stream_get_pos_lpib_250 {
+    op op_65;
+}
+
+bb azx_probe_289 {
+    op op_98;
+}
+
+bb hda_intel_init_chip_485 {
+    op op_120;
+    op op_121;
+}
+
+bb azx_get_delay_from_lpib_247 {
+    op op_41;
+}
+
+bb azx_free_374 {
+    op op_92;
+}
+
+bb azx_probe_398 {
+    op op_99;
+}
+
+bb azx_dev_free_115 {
+    op op_38;
+}
+
+bb hda_intel_init_chip_487 {
+    op op_122;
+    op op_123;
+}
+
+bb azx_position_ok_120 {
+    op op_40;
+}
+
+bb trace_azx_runtime_resume_98 {
+    op op_9;
+}
+
+bb azx_free_381 {
+    op op_6;
+}
+
+bb perf_trace_hda_pm_170 {
+    op op_45;
+}
+
+bb azx_runtime_resume_95 {
+    op op_1;
+}
+
+bb azx_create_392 {
+    op op_75;
+    op op_72;
+}
+
+bb __azx_runtime_resume_57 {
+    op op_17;
+}
+
+bb azx_probe_work_403 {
+    op op_59;
+}
+
+bb trace_azx_suspend_31 {
+    op op_9;
+}
+
+bb bxt_reduce_dma_latency_490 {
+    op op_124;
+    op op_125;
+}
+
+bb trace_azx_runtime_suspend_90 {
+    op op_9;
+}
+
+bb azx_first_init_449 {
+    op op_101;
+}
+
+bb azx_shutdown_chip_22 {
+    op op_7;
+}
+
+bb intel_init_lctl_495 {
+    op op_131;
+}
+
+bb azx_free_371 {
+    op op_86;
+    op op_87;
+}
+
+bb azx_free_388 {
+    op op_94;
+}
+
+bb intel_ml_lctl_set_power_497 {
+    op op_130;
+}
+
+bb azx_resume_49 {
+    op op_18;
+    op op_21;
+}
+
+bb writel_200 {
+    op op_58;
+}
+
+bb azx_create_301 {
+    op op_72;
+    op op_75;
+    op op_72;
+    op op_72;
+    op op_78;
+    op op_79;
+    op op_80;
+}
+
+bb snd_hdac_reg_writew_196 {
+    op op_54;
+}
+
+bb azx_runtime_suspend_83 {
+    op op_25;
+    op op_26;
+    op op_8;
+    op op_30;
+}
+
+bb snd_hdac_reg_readw_195 {
+    op op_53;
+}
+
+bb azx_init_pci_465 {
+    op op_104;
+}
+
+bb azx_add_card_list_212 {
+    op op_62;
+}
+
+bb azx_shutdown_189 {
+    op op_48;
+}
+
+bb azx_create_331 {
+    op op_82;
+}
+
+bb intel_init_lctl_493 {
+    op op_127;
+}
+
+bb azx_prepare_9 {
+    op op_1;
+}
+
+bb intel_init_lctl_508 {
+    op op_131;
+}
+
+bb perf_trace_hda_pm_175 {
+    op op_47;
+}
+
+bb azx_init_pci_469 {
+    op op_84;
+    op op_84;
+    op op_104;
+}
+
+bb azx_create_367 {
+    op op_38;
+}
+
+bb azx_first_init_512 {
+    op op_13;
+}
+
+bb __list_del_entry_378 {
+    op op_88;
+}
+
+bb azx_probe_276 {
+    op op_70;
+}
+
+bb azx_first_init_461 {
+    op op_15;
+    op op_16;
+}
+
+bb readw_198 {
+    op op_56;
+}
+
+bb azx_get_pos_fifo_266 {
+    op op_41;
+}
+
+bb writew_197 {
+    op op_55;
+}
+
+bb azx_suspend_21 {
+    op op_8;
+}
+
+bb azx_init_pci_474 {
+    op op_114;
+    op op_84;
+}
+
+bb trace_azx_resume_69 {
+    op op_9;
+}
+
+bb intel_ml_lctl_set_power_496 {
+    op op_128;
+    op op_129;
+}
+
+bb azx_check_snoop_available_336 {
+    op op_81;
+}
+
+bb azx_suspend_29 {
+    op op_11;
+}
+
+bb azx_freeze_noirq_74 {
+    op op_1;
+}
+
+bb azx_runtime_resume_96 {
+    op op_18;
+    op op_33;
+    op op_34;
+    op op_37;
+}
+
+bb schedule_delayed_work_209 {
+    op op_60;
+}
+
+path azx_position_check_0 {
+    bb bb_118
+    bb bb_144
+}
+
+path azx_first_init_0 {
+    bb bb_433
+    bb bb_449
+    bb bb_461
+    bb bb_512
+}
+
+path list_del_init_0 {
+    bb bb_376
+}
+
+path snd_hdac_reg_writew_0 {
+    bb bb_196
+}
+
+path azx_suspend_0 {
+    bb bb_20
+    bb bb_21
+    bb bb_29
+}
+
+path snd_hdac_reg_readw_0 {
+    bb bb_195
+}
+
+path azx_freeze_noirq_0 {
+    bb bb_74
+}
+
+path azx_free_0 {
+    bb bb_371
+}
+
+path azx_free_2 {
+    bb bb_374
+    bb bb_388
+}
+
+path azx_free_1 {
+    bb bb_374
+    bb bb_381
+    bb bb_388
+}
+
+path __list_del_entry_0 {
+    bb bb_378
+}
+
+path azx_create_0 {
+    bb bb_292
+    bb bb_301
+    bb bb_331
+    bb bb_343
+    bb bb_352
+    bb bb_359
+    bb bb_367
+}
+
+path azx_create_1 {
+    bb bb_292
+    bb bb_301
+    bb bb_331
+    bb bb_343
+    bb bb_352
+    bb bb_359
+    bb bb_392
+}
+
+path azx_create_2 {
+    bb bb_292
+    bb bb_301
+    bb bb_331
+    bb bb_352
+    bb bb_359
+    bb bb_367
+}
+
+path azx_create_3 {
+    bb bb_292
+    bb bb_301
+    bb bb_331
+    bb bb_352
+    bb bb_359
+    bb bb_392
+}
+
+path disable_msi_reset_irq_0 {
+    bb bb_117
+}
+
+path lockdep_init_map_0 {
+    bb bb_303
+}
+
+path azx_prepare_0 {
+    bb bb_9
+    bb bb_14
+}
+
+path azx_get_delay_from_lpib_0 {
+    bb bb_247
+}
+
+path azx_probe_work_0 {
+    bb bb_403
+}
+
+path trace_azx_runtime_resume_0 {
+    bb bb_103
+}
+
+path trace_azx_runtime_resume_1 {
+    bb bb_98
+    bb bb_103
+}
+
+path azx_thaw_noirq_0 {
+    bb bb_78
+}
+
+path __azx_runtime_resume_0 {
+    bb bb_52
+    bb bb_57
+}
+
+path list_add_0 {
+    bb bb_213
+}
+
+path snd_hdac_stream_get_pos_lpib_0 {
+    bb bb_250
+}
+
+path azx_probe_0 {
+    bb bb_276
+    bb bb_289
+    bb bb_398
+}
+
+path azx_resume_0 {
+    bb bb_44
+    bb bb_48
+    bb bb_49
+}
+
+path azx_dev_free_0 {
+    bb bb_115
+}
+
+path azx_remove_0 {
+    bb bb_183
+    bb bb_185
+}
+
+path schedule_work_0 {
+    bb bb_145
+}
+
+path readw_0 {
+    bb bb_198
+}
+
+path azx_probe_continue_0 {
+    bb bb_416
+    bb bb_535
+}
+
+path azx_probe_continue_1 {
+    bb bb_416
+    bb bb_537
+    bb bb_538
+}
+
+path intel_init_lctl_1 {
+    bb bb_493
+    bb bb_495
+    bb bb_508
+}
+
+path intel_init_lctl_0 {
+    bb bb_493
+    bb bb_495
+    bb bb_500
+    bb bb_508
+}
+
+path azx_del_card_list_0 {
+    bb bb_375
+}
+
+path hda_intel_init_chip_5 {
+    bb bb_487
+    bb bb_492
+}
+
+path hda_intel_init_chip_7 {
+    bb bb_492
+}
+
+path hda_intel_init_chip_0 {
+    bb bb_485
+    bb bb_487
+    bb bb_489
+    bb bb_492
+}
+
+path hda_intel_init_chip_2 {
+    bb bb_485
+    bb bb_489
+    bb bb_492
+}
+
+path hda_intel_init_chip_4 {
+    bb bb_487
+    bb bb_489
+    bb bb_492
+}
+
+path hda_intel_init_chip_1 {
+    bb bb_485
+    bb bb_487
+    bb bb_492
+}
+
+path hda_intel_init_chip_6 {
+    bb bb_489
+    bb bb_492
+}
+
+path hda_intel_init_chip_3 {
+    bb bb_485
+    bb bb_492
+}
+
+path writel_0 {
+    bb bb_200
+}
+
+path perf_trace_hda_pm_0 {
+    bb bb_170
+    bb bb_172
+    bb bb_175
+}
+
+path perf_trace_hda_pm_1 {
+    bb bb_170
+    bb bb_175
+}
+
+path azx_get_pos_fifo_0 {
+    bb bb_262
+    bb bb_263
+    bb bb_266
+}
+
+path lockdep_init_map_wait_0 {
+    bb bb_304
+}
+
+path trace_azx_runtime_suspend_1 {
+    bb bb_90
+}
+
+path trace_azx_runtime_suspend_0 {
+    bb bb_85
+    bb bb_90
+}
+
+path azx_shutdown_chip_0 {
+    bb bb_22
+}
+
+path writew_0 {
+    bb bb_197
+}
+
+path azx_firmware_cb_0 {
+    bb bb_207
+}
+
+path azx_runtime_resume_0 {
+    bb bb_95
+    bb bb_96
+}
+
+path bxt_reduce_dma_latency_0 {
+    bb bb_490
+}
+
+path __azx_shutdown_chip_0 {
+    bb bb_25
+}
+
+path schedule_delayed_work_0 {
+    bb bb_209
+}
+
+path azx_check_snoop_available_0 {
+    bb bb_336
+}
+
+path azx_add_card_list_0 {
+    bb bb_212
+}
+
+path update_pci_byte_0 {
+    bb bb_466
+}
+
+path azx_position_ok_0 {
+    bb bb_120
+    bb bb_137
+}
+
+path azx_init_pci_2 {
+    bb bb_465
+    bb bb_472
+    bb bb_473
+}
+
+path azx_init_pci_5 {
+    bb bb_469
+}
+
+path azx_init_pci_9 {
+    bb bb_474
+    bb bb_477
+    bb bb_479
+}
+
+path azx_init_pci_7 {
+    bb bb_472
+    bb bb_473
+}
+
+path azx_init_pci_4 {
+    bb bb_465
+    bb bb_474
+    bb bb_477
+    bb bb_479
+}
+
+path azx_init_pci_1 {
+    bb bb_465
+    bb bb_470
+}
+
+path azx_init_pci_8 {
+    bb bb_473
+}
+
+path azx_init_pci_6 {
+    bb bb_470
+}
+
+path azx_init_pci_3 {
+    bb bb_465
+    bb bb_473
+}
+
+path azx_init_pci_0 {
+    bb bb_465
+    bb bb_469
+}
+
+path azx_shutdown_0 {
+    bb bb_189
+    bb bb_192
+}
+
+path azx_complete_0 {
+    bb bb_17
+    bb bb_18
+}
+
+path trace_azx_resume_0 {
+    bb bb_64
+    bb bb_69
+}
+
+path trace_azx_resume_1 {
+    bb bb_69
+}
+
+path trace_azx_suspend_1 {
+    bb bb_39
+}
+
+path trace_azx_suspend_0 {
+    bb bb_31
+    bb bb_39
+}
+
+path intel_get_lctl_scf_0 {
+    bb bb_501
+}
+
+path azx_via_get_position_0 {
+    bb bb_249
+}
+
+path intel_ml_lctl_set_power_0 {
+    bb bb_496
+    bb bb_497
+}
+
+path azx_runtime_suspend_0 {
+    bb bb_82
+    bb bb_83
+}
+
+path azx_acquire_irq_0 {
+    bb bb_513
+}
+
+path readl_0 {
+    bb bb_199
+}
+
+path azx_irq_pending_work_0 {
+    bb bb_234
+}
+
+func azx_position_check {
+    path path_azx_position_check_0;
+}
+
+func azx_first_init {
+    path path_azx_first_init_0;
+}
+
+func list_del_init {
+    path path_list_del_init_0;
+}
+
+func snd_hdac_reg_writew {
+    path path_snd_hdac_reg_writew_0;
+}
+
+func azx_suspend {
+    path path_azx_suspend_0;
+}
+
+func snd_hdac_reg_readw {
+    path path_snd_hdac_reg_readw_0;
+}
+
+func azx_freeze_noirq {
+    path path_azx_freeze_noirq_0;
+}
+
+func azx_free {
+    path path_azx_free_0;
+    path path_azx_free_2;
+    path path_azx_free_1;
+}
+
+func __list_del_entry {
+    path path___list_del_entry_0;
+}
+
+func azx_create {
+    path path_azx_create_0;
+    path path_azx_create_1;
+    path path_azx_create_2;
+    path path_azx_create_3;
+}
+
+func disable_msi_reset_irq {
+    path path_disable_msi_reset_irq_0;
+}
+
+func lockdep_init_map {
+    path path_lockdep_init_map_0;
+}
+
+func azx_prepare {
+    path path_azx_prepare_0;
+}
+
+func azx_get_delay_from_lpib {
+    path path_azx_get_delay_from_lpib_0;
+}
+
+func azx_probe_work {
+    path path_azx_probe_work_0;
+}
+
+func trace_azx_runtime_resume {
+    path path_trace_azx_runtime_resume_0;
+    path path_trace_azx_runtime_resume_1;
+}
+
+func azx_thaw_noirq {
+    path path_azx_thaw_noirq_0;
+}
+
+func __azx_runtime_resume {
+    path path___azx_runtime_resume_0;
+}
+
+func list_add {
+    path path_list_add_0;
+}
+
+func snd_hdac_stream_get_pos_lpib {
+    path path_snd_hdac_stream_get_pos_lpib_0;
+}
+
+func azx_probe {
+    path path_azx_probe_0;
+}
+
+func azx_resume {
+    path path_azx_resume_0;
+}
+
+func azx_dev_free {
+    path path_azx_dev_free_0;
+}
+
+func azx_remove {
+    path path_azx_remove_0;
+}
+
+func schedule_work {
+    path path_schedule_work_0;
+}
+
+func readw {
+    path path_readw_0;
+}
+
+func azx_probe_continue {
+    path path_azx_probe_continue_0;
+    path path_azx_probe_continue_1;
+}
+
+func intel_init_lctl {
+    path path_intel_init_lctl_1;
+    path path_intel_init_lctl_0;
+}
+
+func azx_del_card_list {
+    path path_azx_del_card_list_0;
+}
+
+func hda_intel_init_chip {
+    path path_hda_intel_init_chip_5;
+    path path_hda_intel_init_chip_7;
+    path path_hda_intel_init_chip_0;
+    path path_hda_intel_init_chip_2;
+    path path_hda_intel_init_chip_4;
+    path path_hda_intel_init_chip_1;
+    path path_hda_intel_init_chip_6;
+    path path_hda_intel_init_chip_3;
+}
+
+func writel {
+    path path_writel_0;
+}
+
+func perf_trace_hda_pm {
+    path path_perf_trace_hda_pm_0;
+    path path_perf_trace_hda_pm_1;
+}
+
+func azx_get_pos_fifo {
+    path path_azx_get_pos_fifo_0;
+}
+
+func lockdep_init_map_wait {
+    path path_lockdep_init_map_wait_0;
+}
+
+func trace_azx_runtime_suspend {
+    path path_trace_azx_runtime_suspend_1;
+    path path_trace_azx_runtime_suspend_0;
+}
+
+func azx_shutdown_chip {
+    path path_azx_shutdown_chip_0;
+}
+
+func writew {
+    path path_writew_0;
+}
+
+func azx_firmware_cb {
+    path path_azx_firmware_cb_0;
+}
+
+func azx_runtime_resume {
+    path path_azx_runtime_resume_0;
+}
+
+func bxt_reduce_dma_latency {
+    path path_bxt_reduce_dma_latency_0;
+}
+
+func __azx_shutdown_chip {
+    path path___azx_shutdown_chip_0;
+}
+
+func schedule_delayed_work {
+    path path_schedule_delayed_work_0;
+}
+
+func azx_check_snoop_available {
+    path path_azx_check_snoop_available_0;
+}
+
+func azx_add_card_list {
+    path path_azx_add_card_list_0;
+}
+
+func update_pci_byte {
+    path path_update_pci_byte_0;
+}
+
+func azx_position_ok {
+    path path_azx_position_ok_0;
+}
+
+func azx_init_pci {
+    path path_azx_init_pci_2;
+    path path_azx_init_pci_5;
+    path path_azx_init_pci_9;
+    path path_azx_init_pci_7;
+    path path_azx_init_pci_4;
+    path path_azx_init_pci_1;
+    path path_azx_init_pci_8;
+    path path_azx_init_pci_6;
+    path path_azx_init_pci_3;
+    path path_azx_init_pci_0;
+}
+
+func azx_shutdown {
+    path path_azx_shutdown_0;
+}
+
+func azx_complete {
+    path path_azx_complete_0;
+}
+
+func trace_azx_resume {
+    path path_trace_azx_resume_0;
+    path path_trace_azx_resume_1;
+}
+
+func trace_azx_suspend {
+    path path_trace_azx_suspend_1;
+    path path_trace_azx_suspend_0;
+}
+
+func intel_get_lctl_scf {
+    path path_intel_get_lctl_scf_0;
+}
+
+func azx_via_get_position {
+    path path_azx_via_get_position_0;
+}
+
+func intel_ml_lctl_set_power {
+    path path_intel_ml_lctl_set_power_0;
+}
+
+func azx_runtime_suspend {
+    path path_azx_runtime_suspend_0;
+}
+
+func azx_acquire_irq {
+    path path_azx_acquire_irq_0;
+}
+
+func readl {
+    path path_readl_0;
+}
+
+func azx_irq_pending_work {
+    path path_azx_irq_pending_work_0;
+}
+

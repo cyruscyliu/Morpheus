@@ -1,0 +1,689 @@
+struct OHCI_BUF0 {
+    buf: bytes[256] random;
+}
+struct OHCI_HCCA {
+    intr0: ptr<u32> align 0;
+    intr1: ptr<u32> align 0;
+    intr2: ptr<u32> align 0;
+    intr3: ptr<u32> align 0;
+    intr4: ptr<u32> align 0;
+    intr5: ptr<u32> align 0;
+    intr6: ptr<u32> align 0;
+    intr7: ptr<u32> align 0;
+    intr8: ptr<u32> align 0;
+    intr9: ptr<u32> align 0;
+    intr10: ptr<u32> align 0;
+    intr11: ptr<u32> align 0;
+    intr12: ptr<u32> align 0;
+    intr13: ptr<u32> align 0;
+    intr14: ptr<u32> align 0;
+    intr15: ptr<u32> align 0;
+    intr16: ptr<u32> align 0;
+    intr17: ptr<u32> align 0;
+    intr18: ptr<u32> align 0;
+    intr19: ptr<u32> align 0;
+    intr20: ptr<u32> align 0;
+    intr21: ptr<u32> align 0;
+    intr22: ptr<u32> align 0;
+    intr23: ptr<u32> align 0;
+    intr24: ptr<u32> align 0;
+    intr25: ptr<u32> align 0;
+    intr26: ptr<u32> align 0;
+    intr27: ptr<u32> align 0;
+    intr28: ptr<u32> align 0;
+    intr29: ptr<u32> align 0;
+    intr30: ptr<u32> align 0;
+    intr31: ptr<u32> align 0;
+    frame: u16 random;
+    pad: u16 random;
+    done: u32 random;
+}
+
+pointer {
+    from = OHCI_HCCA.intr0;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr1;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr2;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr3;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr4;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr5;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr6;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr7;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr8;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr9;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr10;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr11;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr12;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr13;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr14;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr15;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr16;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr17;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr18;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr19;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr20;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr21;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr22;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr23;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr24;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr25;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr26;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr27;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr28;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr29;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr30;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_HCCA.intr31;
+    to = OHCI_BUF0;
+    align = 0;
+}
+
+head {
+    to = OHCI_HCCA;
+    position = [
+        filename = hcd-ohci.c;
+        caller = ohci_read_hcca;
+        callee = dma_memory_read;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevOHCI.cpp;
+        caller = _ZL16ohciR3UpdateHCCAP11PDMDEVINSR3P4OHCIP6OHCIR3;
+        callee = _ZL14ohciR3PhysReadP11PDMDEVINSR3jPvm;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct OHCI_BUF3 {
+    buf: bytes[256] random;
+}
+struct OHCI_INTR {
+    intr0: ptr<u32> align 0;
+    intr1: ptr<u32> align 0;
+    intr2: ptr<u32> align 0;
+    intr3: ptr<u32> align 0;
+    intr4: ptr<u32> align 0;
+    intr5: ptr<u32> align 0;
+    intr6: ptr<u32> align 0;
+    intr7: ptr<u32> align 0;
+    intr8: ptr<u32> align 0;
+    intr9: ptr<u32> align 0;
+    intr10: ptr<u32> align 0;
+    intr11: ptr<u32> align 0;
+    intr12: ptr<u32> align 0;
+    intr13: ptr<u32> align 0;
+    intr14: ptr<u32> align 0;
+    intr15: ptr<u32> align 0;
+    intr16: ptr<u32> align 0;
+    intr17: ptr<u32> align 0;
+    intr18: ptr<u32> align 0;
+    intr19: ptr<u32> align 0;
+    intr20: ptr<u32> align 0;
+    intr21: ptr<u32> align 0;
+    intr22: ptr<u32> align 0;
+    intr23: ptr<u32> align 0;
+    intr24: ptr<u32> align 0;
+    intr25: ptr<u32> align 0;
+    intr26: ptr<u32> align 0;
+    intr27: ptr<u32> align 0;
+    intr28: ptr<u32> align 0;
+    intr29: ptr<u32> align 0;
+    intr30: ptr<u32> align 0;
+    intr31: ptr<u32> align 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr0;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr1;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr2;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr3;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr4;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr5;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr6;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr7;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr8;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr9;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr10;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr11;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr12;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr13;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr14;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr15;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr16;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr17;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr18;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr19;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr20;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr21;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr22;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr23;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr24;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr25;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr26;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr27;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr28;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr29;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr30;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = OHCI_INTR.intr31;
+    to = OHCI_BUF3;
+    align = 0;
+}
+
+head {
+    to = OHCI_INTR;
+    position = [
+        filename = DevOHCI.cpp;
+        caller = _ZL25ohciR3ServicePeriodicListP11PDMDEVINSR3P4OHCIP6OHCIR3;
+        callee = _ZL15ohciR3GetDWordsP11PDMDEVINSR3jPji;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct OHCI_BUF1 {
+    buf: bytes[256] random;
+}
+struct OHCI_BUF2 {
+    tag: u32 random;
+    data_len: u32 immediate [
+        imm 0;
+        imm 100;
+    ];
+    flags: u8 flag [
+        bits 0..6;
+        bits 7..7;
+    ];
+    lun: u8 random;
+    cmd_len: u8 random;
+    cmd1: u8 immediate [
+        imm 3;
+        imm 18;
+    ];
+    buf: bytes[0xff0] random;
+    sig2: u32 immediate [
+        imm 0x43425355;
+    ];
+}
+struct OHCI_ED {
+    flags: u32 flag [
+        bits 0..6 = 0;
+        bits 7..8;
+        bits 9..10 = 0;
+        bits 11..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+        bits 16..26;
+        bits 27..31;
+    ];
+    tail: ptr<u32>;
+    head: ptr<u32> flag align 4 [
+        bits 0..0;
+        bits 1..1;
+    ];
+    next: ptr<u32> flag align 4 [
+        bits 0..3 = 0;
+    ];
+}
+
+list<OHCI_TD | OHCI_ISO_TD> {
+    head = OHCI_ED.head;
+    tail = OHCI_ED.tail;
+    next = next | next;
+    sentinel = OHCI_ED.flags[15];
+    align = 4;
+}
+
+pointer {
+    from = OHCI_ED.next;
+    to = OHCI_BUF1;
+    align = 4;
+}
+struct OHCI_TD {
+    flags: u32 flag [
+        bits 0..15;
+        bits 18..18;
+        bits 19..20;
+        bits 21..23;
+        bits 24..24;
+        bits 25..25;
+        bits 26..27;
+        bits 28..31;
+    ];
+    cbp: ptr<u32> flag align 12 [
+        bits 0..11 = 0xffc;
+    ];
+    next: ptr<u32> flag align 4 [
+        bits 0..3 = 0;
+    ];
+    be: ptr<u32> flag align 12 [
+        bits 0..3 = 10;
+        bits 4..5;
+        bits 6..11 = 0;
+    ];
+}
+
+pointer {
+    from = OHCI_TD.cbp;
+    to = OHCI_BUF2;
+    align = 12;
+}
+
+pointer {
+    from = OHCI_TD.next;
+    to = OHCI_TD;
+    align = 4;
+}
+
+pointer {
+    from = OHCI_TD.be;
+    to = OHCI_BUF2;
+    align = 12;
+}
+struct OHCI_ISO_TD {
+    flags: u32 flag [
+        bits 0..15 = 0;
+        bits 18..18;
+        bits 19..20;
+        bits 21..23;
+        bits 24..26;
+        bits 28..31;
+    ];
+    bp: u32 random;
+    next: ptr<u32> flag align 4 [
+        bits 0..3 = 0;
+    ];
+    be: u32 random;
+    offset0: u16 random;
+    offset1: u16 random;
+    offset2: u16 random;
+    offset3: u16 random;
+    offset4: u16 random;
+    offset5: u16 random;
+    offset6: u16 random;
+    offset7: u16 random;
+}
+
+pointer {
+    from = OHCI_ISO_TD.next;
+    to = OHCI_ISO_TD;
+    align = 4;
+}
+
+head {
+    to = OHCI_ED;
+    position = [
+        filename = hcd-ohci.c;
+        caller = ohci_service_ed_list;
+        callee = ohci_read_ed;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevOHCI.cpp;
+        caller = _ZL16ohciR3DumpEdListP11PDMDEVINSR3P6OHCIR3jPKcb;
+        callee = _ZL12ohciR3ReadEdP11PDMDEVINSR3jP6OHCIED;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevOHCI.cpp;
+        caller = _ZL24ohciR3HasUrbBeenCanceledP11PDMDEVINSR3P4OHCIP7VUSBURBPK6OHCIED;
+        callee = _ZL12ohciR3ReadEdP11PDMDEVINSR3jP6OHCIED;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevOHCI.cpp;
+        caller = _ZL22ohciR3RhXferCompletionP16VUSBIROOTHUBPORTP7VUSBURB;
+        callee = _ZL12ohciR3ReadEdP11PDMDEVINSR3jP6OHCIED;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevOHCI.cpp;
+        caller = _ZL21ohciR3ServiceBulkListP11PDMDEVINSR3P4OHCIP6OHCIR3;
+        callee = _ZL12ohciR3ReadEdP11PDMDEVINSR3jP6OHCIED;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevOHCI.cpp;
+        caller = _ZL21ohciR3ServiceBulkListP11PDMDEVINSR3P4OHCIP6OHCIR3;
+        callee = _ZL12ohciR3ReadEdP11PDMDEVINSR3jP6OHCIED;
+        call_depth = 1;
+        argument_index = 1;
+    ] | [
+        filename = DevOHCI.cpp;
+        caller = _ZL18ohciR3UndoBulkListP11PDMDEVINSR3P4OHCIP6OHCIR3;
+        callee = _ZL12ohciR3ReadEdP11PDMDEVINSR3jP6OHCIED;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevOHCI.cpp;
+        caller = _ZL21ohciR3ServiceCtrlListP11PDMDEVINSR3P4OHCIP6OHCIR3;
+        callee = _ZL12ohciR3ReadEdP11PDMDEVINSR3jP6OHCIED;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevOHCI.cpp;
+        caller = _ZL21ohciR3ServiceCtrlListP11PDMDEVINSR3P4OHCIP6OHCIR3;
+        callee = _ZL12ohciR3ReadEdP11PDMDEVINSR3jP6OHCIED;
+        call_depth = 1;
+        argument_index = 1;
+    ] | [
+        filename = DevOHCI.cpp;
+        caller = _ZL25ohciR3ServicePeriodicListP11PDMDEVINSR3P4OHCIP6OHCIR3;
+        callee = _ZL12ohciR3ReadEdP11PDMDEVINSR3jP6OHCIED;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevOHCI.cpp;
+        caller = _ZL24ohciR3CancelOrphanedURBsP11PDMDEVINSR3P4OHCIP6OHCIR3;
+        callee = _ZL12ohciR3ReadEdP11PDMDEVINSR3jP6OHCIED;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}

@@ -1,0 +1,59 @@
+struct E1000_RX_DESC {
+    buffer_addr: ptr<u64> align 0;
+    length: u16 random;
+    csum: u16 random;
+    status: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    errors: u8 random;
+    special: u16 flag [
+        bits 0..11;
+        bits 12..12;
+        bits 13..15;
+    ];
+}
+
+pointer {
+    from = E1000_RX_DESC.buffer_addr;
+    to = E1000_BUF1;
+    align = 0;
+}
+struct E1000_BUF1 {
+    buf: bytes[0x1000] random;
+}
+
+head {
+    to = E1000_RX_DESC;
+    position = [
+        filename = e1000.c;
+        caller = e1000_receive_iov;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevE1000.cpp;
+        caller = _ZL15e1kR3CanReceiveP11PDMDEVINSR3P8E1KSTATE;
+        callee = _ZL20PDMDevHlpPCIPhysReadP11PDMDEVINSR3mPvm;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevE1000.cpp;
+        caller = _ZL14e1kRxDPrefetchP11PDMDEVINSR3P8E1KSTATEP13E1kRxDContext;
+        callee = _ZL20PDMDevHlpPCIPhysReadP11PDMDEVINSR3mPvm;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevE1000.cpp;
+        caller = _ZL14e1kRxDPrefetchP11PDMDEVINSR3P8E1KSTATEP13E1kRxDContext;
+        callee = _ZL20PDMDevHlpPCIPhysReadP11PDMDEVINSR3mPvm;
+        call_depth = 1;
+        argument_index = 1;
+    ]
+}

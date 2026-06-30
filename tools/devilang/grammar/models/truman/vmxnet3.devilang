@@ -1,0 +1,8397 @@
+op op_1 {
+    call pci_get_drvdata;
+}
+
+op op_2 {
+    call netif_running;
+}
+
+op op_3 {
+    mmio writel_3 {
+        direction=w;
+        region=0;
+        address=unknown;
+        size=4;
+        data=0x1;
+    }
+}
+
+op op_4 {
+    call vmxnet3_disable_intr;
+}
+
+op op_5 {
+    call vmxnet3_disable_all_intrs;
+}
+
+op op_6 {
+    call vmxnet3_free_irqs;
+}
+
+op op_7 {
+    call vmxnet3_free_intr_resources;
+}
+
+op op_8 {
+    call rcu_lock_acquire;
+}
+
+op op_9 {
+    call __in_dev_get_rcu;
+}
+
+op op_10 {
+    call rcu_lock_release;
+}
+
+op op_11 {
+    call rcu_read_unlock;
+}
+
+op op_11 {
+    call rcu_read_unlock;
+}
+
+op op_11 {
+    call rcu_read_unlock;
+}
+
+op op_14 {
+    mmio writel_14 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xcafe0008;
+    }
+}
+
+op op_1 {
+    call pci_get_drvdata;
+}
+
+op op_2 {
+    call netif_running;
+}
+
+op op_17 {
+    mmio writel_17 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xf00d0008;
+    }
+}
+
+op op_18 {
+    mmio readl_18 {
+        direction=r;
+        region=1;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_19 {
+    call vmxnet3_acquire_msix_vectors;
+}
+
+op op_20 {
+    call vmxnet3_alloc_intr_resources;
+}
+
+op op_21 {
+    mmio writel_21 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xcafe0001;
+    }
+}
+
+op op_8 {
+    call rcu_lock_acquire;
+}
+
+op op_23 {
+    call dma_unmap_single_attrs;
+}
+
+op op_24 {
+    call vmxnet3_unmap_tx_buf;
+}
+
+op op_25 {
+    call dev_kfree_skb_any;
+}
+
+op op_26 {
+    call vmxnet3_cmd_ring_adv_next2comp;
+}
+
+op op_11 {
+    call rcu_read_unlock;
+}
+
+op op_28 {
+    call vmxnet3_tq_cleanup;
+}
+
+op op_29 {
+    call vmxnet3_tq_cleanup_all;
+}
+
+op op_30 {
+    call page_pool_defrag_page;
+}
+
+op op_31 {
+    call page_pool_is_last_frag;
+}
+
+op op_32 {
+    call page_pool_put_page;
+}
+
+op op_33 {
+    call page_pool_put_full_page;
+}
+
+op op_34 {
+    call page_pool_recycle_direct;
+}
+
+op op_23 {
+    call dma_unmap_single_attrs;
+}
+
+op op_36 {
+    call _compound_head;
+}
+
+op op_37 {
+    call page_zonenum;
+}
+
+op op_38 {
+    call is_zone_device_page;
+}
+
+op op_39 {
+    call put_devmap_managed_page_refs;
+}
+
+op op_40 {
+    call put_devmap_managed_page;
+}
+
+op op_41 {
+    call page_ref_count;
+}
+
+op op_42 {
+    call page_ref_dec_and_test;
+}
+
+op op_43 {
+    call put_page_testzero;
+}
+
+op op_44 {
+    call folio_put_testzero;
+}
+
+op op_45 {
+    call folio_put;
+}
+
+op op_46 {
+    call put_page;
+}
+
+op op_46 {
+    call put_page;
+}
+
+op op_23 {
+    call dma_unmap_single_attrs;
+}
+
+op op_34 {
+    call page_pool_recycle_direct;
+}
+
+op op_50 {
+    call vmxnet3_rq_cleanup;
+}
+
+op op_51 {
+    call vmxnet3_rq_cleanup_all;
+}
+
+op op_52 {
+    mmio writel_52 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xcafe0002;
+    }
+}
+
+op op_53 {
+    call vmxnet3_reset_dev;
+}
+
+op op_54 {
+    call vmxnet3_tq_init;
+}
+
+op op_55 {
+    call vmxnet3_tq_init_all;
+}
+
+op op_56 {
+    call vmxnet3_xdp_enabled;
+}
+
+op op_56 {
+    call vmxnet3_xdp_enabled;
+}
+
+op op_58 {
+    call IS_ERR;
+}
+
+op op_59 {
+    call PTR_ERR;
+}
+
+op op_60 {
+    call xdp_rxq_info_reg;
+}
+
+op op_61 {
+    call vmxnet3_create_pp;
+}
+
+op op_62 {
+    call page_pool_get_dma_addr;
+}
+
+op op_63 {
+    call vmxnet3_pp_get_buff;
+}
+
+op op_64 {
+    call __netdev_alloc_skb_ip_align;
+}
+
+op op_65 {
+    call dma_mapping_error;
+}
+
+op op_25 {
+    call dev_kfree_skb_any;
+}
+
+op op_65 {
+    call dma_mapping_error;
+}
+
+op op_46 {
+    call put_page;
+}
+
+op op_69 {
+    call vmxnet3_cmd_ring_adv_next2fill;
+}
+
+op op_70 {
+    call vmxnet3_rq_alloc_rx_buf;
+}
+
+op op_70 {
+    call vmxnet3_rq_alloc_rx_buf;
+}
+
+op op_72 {
+    call vmxnet3_rq_init;
+}
+
+op op_73 {
+    call vmxnet3_rq_init_all;
+}
+
+op op_74 {
+    call request_irq;
+}
+
+op op_74 {
+    call request_irq;
+}
+
+op op_74 {
+    call request_irq;
+}
+
+op op_74 {
+    call request_irq;
+}
+
+op op_74 {
+    call request_irq;
+}
+
+op op_79 {
+    call vmxnet3_request_irqs;
+}
+
+op op_80 {
+    call ethtool_rxfh_indir_default;
+}
+
+op op_81 {
+    call find_next_bit;
+}
+
+op op_81 {
+    call find_next_bit;
+}
+
+op op_83 {
+    call vmxnet3_restore_vlan;
+}
+
+op op_84 {
+    mmio writel_84 {
+        direction=w;
+        region=1;
+        address=0x28;
+        size=4;
+        data=arg(num_1, num_2);
+    }
+}
+
+op op_85 {
+    mmio writel_85 {
+        direction=w;
+        region=1;
+        address=0x30;
+        size=4;
+        data=(num_1 << 0x8) | num_3;
+    }
+}
+
+op op_86 {
+    call vmxnet3_write_mac_addr;
+}
+
+op op_87 {
+    call vmxnet3_setup_driver_shared;
+}
+
+op op_88 {
+    mmio writel_88 {
+        direction=w;
+        region=1;
+        address=0x10;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_89 {
+    mmio writel_89 {
+        direction=w;
+        region=1;
+        address=0x18;
+        size=4;
+        data=num_1 >> 0x20;
+    }
+}
+
+op op_90 {
+    mmio writel_90 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xcafe0000;
+    }
+}
+
+op op_91 {
+    mmio readl_91 {
+        direction=r;
+        region=1;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_92 {
+    mmio writel_92 {
+        direction=w;
+        region=1;
+        address=0x10;
+        size=4;
+        data=0;
+    }
+}
+
+op op_93 {
+    mmio writel_93 {
+        direction=w;
+        region=1;
+        address=0x18;
+        size=4;
+        data=0;
+    }
+}
+
+op op_6 {
+    call vmxnet3_free_irqs;
+}
+
+op op_95 {
+    mmio writel_95 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xcafe0013;
+    }
+}
+
+op op_96 {
+    call vmxnet3_init_bufsize;
+}
+
+op op_97 {
+    mmio writel_97 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=select(0xcafe000e, 0xf00d000b);
+    }
+}
+
+op op_98 {
+    call vmxnet3_init_coalesce;
+}
+
+op op_99 {
+    mmio writel_99 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xf00d000c;
+    }
+}
+
+op op_100 {
+    mmio readl_100 {
+        direction=r;
+        region=1;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_101 {
+    call vmxnet3_check_ptcapability;
+}
+
+op op_101 {
+    call vmxnet3_check_ptcapability;
+}
+
+op op_101 {
+    call vmxnet3_check_ptcapability;
+}
+
+op op_104 {
+    mmio writel_104 {
+        direction=w;
+        region=1;
+        address=0x48;
+        size=4;
+        data=phi(phi((phi((num_1 & 0xfffffffe), (num_3 | 0x1)) & 0xfffffffd), (var_5 | 0x2)) & 0xfffffdff, var_8 | 0x200);
+    }
+}
+
+op op_105 {
+    mmio writel_105 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xf00d0012;
+    }
+}
+
+op op_106 {
+    mmio readl_106 {
+        direction=r;
+        region=1;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_107 {
+    mmio writel_107 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xcafe0010;
+    }
+}
+
+op op_108 {
+    mmio writel_108 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xf00d000c;
+    }
+}
+
+op op_109 {
+    mmio readl_109 {
+        direction=r;
+        region=1;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_110 {
+    call vmxnet3_init_rssfields;
+}
+
+op op_111 {
+    mmio writel_111 {
+        direction=w;
+        region=0;
+        address=unknown;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_112 {
+    mmio writel_112 {
+        direction=w;
+        region=0;
+        address=unknown;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_83 {
+    call vmxnet3_restore_vlan;
+}
+
+op op_114 {
+    call vmxnet3_copy_mc;
+}
+
+op op_65 {
+    call dma_mapping_error;
+}
+
+op op_116 {
+    mmio writel_116 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xcafe0003;
+    }
+}
+
+op op_117 {
+    mmio writel_117 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xcafe0005;
+    }
+}
+
+op op_118 {
+    mmio writel_118 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xcafe0004;
+    }
+}
+
+op op_23 {
+    call dma_unmap_single_attrs;
+}
+
+op op_120 {
+    call vmxnet3_set_mc;
+}
+
+op op_121 {
+    mmio writel_121 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xf00d0002;
+    }
+}
+
+op op_122 {
+    mmio readl_122 {
+        direction=r;
+        region=1;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_123 {
+    call netdev_get_tx_queue;
+}
+
+op op_124 {
+    call netif_start_subqueue;
+}
+
+op op_125 {
+    call vmxnet3_tq_start;
+}
+
+op op_123 {
+    call netdev_get_tx_queue;
+}
+
+op op_127 {
+    call netif_stop_subqueue;
+}
+
+op op_128 {
+    call vmxnet3_tq_stop;
+}
+
+op op_129 {
+    call vmxnet3_check_link;
+}
+
+op op_123 {
+    call netdev_get_tx_queue;
+}
+
+op op_131 {
+    call netif_tx_wake_all_queues;
+}
+
+op op_132 {
+    mmio writel_132 {
+        direction=w;
+        region=0;
+        address=unknown;
+        size=4;
+        data=0;
+    }
+}
+
+op op_133 {
+    call vmxnet3_enable_intr;
+}
+
+op op_134 {
+    call vmxnet3_enable_all_intrs;
+}
+
+op op_51 {
+    call vmxnet3_rq_cleanup_all;
+}
+
+op op_136 {
+    call vmxnet3_activate_dev;
+}
+
+op op_137 {
+    call vmxnet3_force_close;
+}
+
+op op_138 {
+    mmio writel_138 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xf00d000a;
+    }
+}
+
+op op_139 {
+    mmio readl_139 {
+        direction=r;
+        region=1;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_140 {
+    call dev_to_node;
+}
+
+op op_141 {
+    call dma_free_coherent;
+}
+
+op op_141 {
+    call dma_free_coherent;
+}
+
+op op_141 {
+    call dma_free_coherent;
+}
+
+op op_144 {
+    call vmxnet3_tq_destroy;
+}
+
+op op_145 {
+    call vmxnet3_tq_create;
+}
+
+op op_146 {
+    call fls_long;
+}
+
+op op_147 {
+    call __rounddown_pow_of_two;
+}
+
+op op_147 {
+    call __rounddown_pow_of_two;
+}
+
+op op_149 {
+    call vmxnet3_adjust_rx_ring_size;
+}
+
+op op_140 {
+    call dev_to_node;
+}
+
+op op_141 {
+    call dma_free_coherent;
+}
+
+op op_141 {
+    call dma_free_coherent;
+}
+
+op op_141 {
+    call dma_free_coherent;
+}
+
+op op_141 {
+    call dma_free_coherent;
+}
+
+op op_155 {
+    call vmxnet3_rq_destroy;
+}
+
+op op_156 {
+    call vmxnet3_rq_create;
+}
+
+op op_141 {
+    call dma_free_coherent;
+}
+
+op op_158 {
+    call vmxnet3_rq_destroy_all_rxdataring;
+}
+
+op op_144 {
+    call vmxnet3_tq_destroy;
+}
+
+op op_160 {
+    call vmxnet3_tq_destroy_all;
+}
+
+op op_161 {
+    call vmxnet3_create_queues;
+}
+
+op op_136 {
+    call vmxnet3_activate_dev;
+}
+
+op op_155 {
+    call vmxnet3_rq_destroy;
+}
+
+op op_164 {
+    call vmxnet3_rq_destroy_all;
+}
+
+op op_160 {
+    call vmxnet3_tq_destroy_all;
+}
+
+op op_166 {
+    call usleep_range;
+}
+
+op op_167 {
+    mmio writel_167 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xcafe0001;
+    }
+}
+
+op op_5 {
+    call vmxnet3_disable_all_intrs;
+}
+
+op op_169 {
+    call local_bh_disable;
+}
+
+op op_123 {
+    call netdev_get_tx_queue;
+}
+
+op op_171 {
+    call __netif_tx_lock;
+}
+
+op op_172 {
+    call __netif_tx_unlock;
+}
+
+op op_173 {
+    call local_bh_enable;
+}
+
+op op_174 {
+    call netif_tx_disable;
+}
+
+op op_29 {
+    call vmxnet3_tq_cleanup_all;
+}
+
+op op_51 {
+    call vmxnet3_rq_cleanup_all;
+}
+
+op op_6 {
+    call vmxnet3_free_irqs;
+}
+
+op op_178 {
+    call vmxnet3_quiesce_dev;
+}
+
+op op_164 {
+    call vmxnet3_rq_destroy_all;
+}
+
+op op_160 {
+    call vmxnet3_tq_destroy_all;
+}
+
+op op_181 {
+    call skb_headlen;
+}
+
+op op_182 {
+    call skb_end_pointer;
+}
+
+op op_183 {
+    call skb_frag_size;
+}
+
+op op_184 {
+    call txd_estimate;
+}
+
+op op_185 {
+    call eth_type_vlan;
+}
+
+op op_181 {
+    call skb_headlen;
+}
+
+op op_187 {
+    call __skb_header_pointer;
+}
+
+op op_188 {
+    call skb_header_pointer;
+}
+
+op op_185 {
+    call eth_type_vlan;
+}
+
+op op_190 {
+    call __vlan_get_protocol;
+}
+
+op op_191 {
+    call vlan_get_protocol;
+}
+
+op op_191 {
+    call vlan_get_protocol;
+}
+
+op op_182 {
+    call skb_end_pointer;
+}
+
+op op_182 {
+    call skb_end_pointer;
+}
+
+op op_195 {
+    call skb_header_cloned;
+}
+
+op op_196 {
+    call skb_is_nonlinear;
+}
+
+op op_197 {
+    call __skb_linearize;
+}
+
+op op_198 {
+    call skb_linearize;
+}
+
+op op_181 {
+    call skb_headlen;
+}
+
+op op_200 {
+    call skb_inner_transport_header;
+}
+
+op op_201 {
+    call inner_tcp_hdr;
+}
+
+op op_202 {
+    call skb_inner_network_header;
+}
+
+op op_203 {
+    call inner_ip_hdr;
+}
+
+op op_204 {
+    call csum_tcpudp_nofold;
+}
+
+op op_205 {
+    call csum_fold;
+}
+
+op op_206 {
+    call csum_tcpudp_magic;
+}
+
+op op_202 {
+    call skb_inner_network_header;
+}
+
+op op_208 {
+    call inner_ipv6_hdr;
+}
+
+op op_209 {
+    call vmxnet3_prepare_inner_tso;
+}
+
+op op_210 {
+    call skb_transport_header_was_set;
+}
+
+op op_211 {
+    call skb_transport_header;
+}
+
+op op_212 {
+    call tcp_hdr;
+}
+
+op op_213 {
+    call skb_network_header;
+}
+
+op op_214 {
+    call ip_hdr;
+}
+
+op op_206 {
+    call csum_tcpudp_magic;
+}
+
+op op_213 {
+    call skb_network_header;
+}
+
+op op_217 {
+    call ipv6_hdr;
+}
+
+op op_212 {
+    call tcp_hdr;
+}
+
+op op_219 {
+    call tcp_v6_check;
+}
+
+op op_220 {
+    call tcp_v6_gso_csum_prep;
+}
+
+op op_221 {
+    call vmxnet3_prepare_tso;
+}
+
+op op_198 {
+    call skb_linearize;
+}
+
+op op_181 {
+    call skb_headlen;
+}
+
+op op_200 {
+    call skb_inner_transport_header;
+}
+
+op op_225 {
+    call skb_inner_transport_offset;
+}
+
+op op_201 {
+    call inner_tcp_hdr;
+}
+
+op op_227 {
+    call inner_tcp_hdrlen;
+}
+
+op op_211 {
+    call skb_transport_header;
+}
+
+op op_229 {
+    call skb_transport_offset;
+}
+
+op op_212 {
+    call tcp_hdr;
+}
+
+op op_231 {
+    call __tcp_hdrlen;
+}
+
+op op_232 {
+    call tcp_hdrlen;
+}
+
+op op_233 {
+    call skb_headroom;
+}
+
+op op_234 {
+    call skb_checksum_start_offset;
+}
+
+op op_203 {
+    call inner_ip_hdr;
+}
+
+op op_208 {
+    call inner_ipv6_hdr;
+}
+
+op op_214 {
+    call ip_hdr;
+}
+
+op op_217 {
+    call ipv6_hdr;
+}
+
+op op_227 {
+    call inner_tcp_hdrlen;
+}
+
+op op_232 {
+    call tcp_hdrlen;
+}
+
+op op_181 {
+    call skb_headlen;
+}
+
+op op_181 {
+    call skb_headlen;
+}
+
+op op_243 {
+    call pskb_may_pull_reason;
+}
+
+op op_244 {
+    call pskb_may_pull;
+}
+
+op op_245 {
+    call vmxnet3_parse_hdr;
+}
+
+op op_246 {
+    call vmxnet3_cmd_ring_desc_avail;
+}
+
+op op_128 {
+    call vmxnet3_tq_stop;
+}
+
+op op_248 {
+    call vmxnet3_copy_hdr;
+}
+
+op op_181 {
+    call skb_headlen;
+}
+
+op op_69 {
+    call vmxnet3_cmd_ring_adv_next2fill;
+}
+
+op op_181 {
+    call skb_headlen;
+}
+
+op op_182 {
+    call skb_end_pointer;
+}
+
+op op_65 {
+    call dma_mapping_error;
+}
+
+op op_69 {
+    call vmxnet3_cmd_ring_adv_next2fill;
+}
+
+op op_183 {
+    call skb_frag_size;
+}
+
+op op_256 {
+    call skb_frag_page;
+}
+
+op op_257 {
+    call skb_frag_off;
+}
+
+op op_258 {
+    call skb_frag_dma_map;
+}
+
+op op_65 {
+    call dma_mapping_error;
+}
+
+op op_69 {
+    call vmxnet3_cmd_ring_adv_next2fill;
+}
+
+op op_182 {
+    call skb_end_pointer;
+}
+
+op op_262 {
+    call vmxnet3_map_pkt;
+}
+
+op op_182 {
+    call skb_end_pointer;
+}
+
+op op_264 {
+    call le32_add_cpu;
+}
+
+op op_265 {
+    mmio writel_265 {
+        direction=w;
+        region=0;
+        address=unknown;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_25 {
+    call dev_kfree_skb_any;
+}
+
+op op_267 {
+    call vmxnet3_tq_xmit;
+}
+
+op op_268 {
+    call __dev_addr_set;
+}
+
+op op_269 {
+    call dev_addr_set;
+}
+
+op op_86 {
+    call vmxnet3_write_mac_addr;
+}
+
+op op_166 {
+    call usleep_range;
+}
+
+op op_2 {
+    call netif_running;
+}
+
+op op_178 {
+    call vmxnet3_quiesce_dev;
+}
+
+op op_53 {
+    call vmxnet3_reset_dev;
+}
+
+op op_164 {
+    call vmxnet3_rq_destroy_all;
+}
+
+op op_149 {
+    call vmxnet3_adjust_rx_ring_size;
+}
+
+op op_156 {
+    call vmxnet3_rq_create;
+}
+
+op op_164 {
+    call vmxnet3_rq_destroy_all;
+}
+
+op op_158 {
+    call vmxnet3_rq_destroy_all_rxdataring;
+}
+
+op op_280 {
+    call vmxnet3_rq_create_all;
+}
+
+op op_136 {
+    call vmxnet3_activate_dev;
+}
+
+op op_137 {
+    call vmxnet3_force_close;
+}
+
+op op_283 {
+    call queue_work;
+}
+
+op op_284 {
+    call schedule_work;
+}
+
+op op_285 {
+    mmio writel_285 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xcafe0005;
+    }
+}
+
+op op_286 {
+    mmio writel_286 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xcafe0005;
+    }
+}
+
+op op_4 {
+    call vmxnet3_disable_intr;
+}
+
+op op_288 {
+    call napi_schedule;
+}
+
+op op_289 {
+    call vmxnet3_msix_rx;
+}
+
+op op_290 {
+    mmio readl_290 {
+        direction=r;
+        region=1;
+        address=0x38;
+        size=4;
+    }
+}
+
+op op_5 {
+    call vmxnet3_disable_all_intrs;
+}
+
+op op_288 {
+    call napi_schedule;
+}
+
+op op_293 {
+    call vmxnet3_intr;
+}
+
+op op_294 {
+    call vmxnet3_get_regs_len;
+}
+
+op op_295 {
+    mmio readl.34_295 {
+        direction=r;
+        region=1;
+        address=0x0;
+        size=4;
+    }
+}
+
+op op_296 {
+    mmio readl.34_296 {
+        direction=r;
+        region=1;
+        address=0x8;
+        size=4;
+    }
+}
+
+op op_297 {
+    mmio readl.34_297 {
+        direction=r;
+        region=1;
+        address=0x10;
+        size=4;
+    }
+}
+
+op op_298 {
+    mmio readl.34_298 {
+        direction=r;
+        region=1;
+        address=0x18;
+        size=4;
+    }
+}
+
+op op_299 {
+    mmio readl.34_299 {
+        direction=r;
+        region=1;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_300 {
+    mmio readl.34_300 {
+        direction=r;
+        region=1;
+        address=0x28;
+        size=4;
+    }
+}
+
+op op_301 {
+    mmio readl.34_301 {
+        direction=r;
+        region=1;
+        address=0x30;
+        size=4;
+    }
+}
+
+op op_302 {
+    mmio readl.34_302 {
+        direction=r;
+        region=1;
+        address=0x38;
+        size=4;
+    }
+}
+
+op op_303 {
+    mmio readl.34_303 {
+        direction=r;
+        region=1;
+        address=0x40;
+        size=4;
+    }
+}
+
+op op_304 {
+    mmio readl.34_304 {
+        direction=r;
+        region=0;
+        address=0xdeadbeef;
+        size=4;
+    }
+}
+
+op op_305 {
+    mmio readl.34_305 {
+        direction=r;
+        region=0;
+        address=0xdeadbeef;
+        size=4;
+    }
+}
+
+op op_306 {
+    mmio readl.34_306 {
+        direction=r;
+        region=0;
+        address=0xdeadbeef;
+        size=4;
+    }
+}
+
+op op_307 {
+    mmio readl.34_307 {
+        direction=r;
+        region=0;
+        address=0xdeadbeef;
+        size=4;
+    }
+}
+
+op op_308 {
+    call netif_running.37;
+}
+
+op op_309 {
+    mmio writel.4_309 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xcafe000e;
+    }
+}
+
+op op_310 {
+    call fls_long.44;
+}
+
+op op_311 {
+    call __rounddown_pow_of_two.39;
+}
+
+op op_311 {
+    call __rounddown_pow_of_two.39;
+}
+
+op op_311 {
+    call __rounddown_pow_of_two.39;
+}
+
+op op_314 {
+    call usleep_range.40;
+}
+
+op op_308 {
+    call netif_running.37;
+}
+
+op op_316 {
+    mmio writel.4_316 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xf00d0001;
+    }
+}
+
+op op_308 {
+    call netif_running.37;
+}
+
+op op_318 {
+    mmio writel.4_318 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xf00d000c;
+    }
+}
+
+op op_319 {
+    mmio readl.34_319 {
+        direction=r;
+        region=1;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_320 {
+    call vmxnet3_get_rss_hash_opts;
+}
+
+op op_308 {
+    call netif_running.37;
+}
+
+op op_101 {
+    call vmxnet3_check_ptcapability;
+}
+
+op op_101 {
+    call vmxnet3_check_ptcapability;
+}
+
+op op_101 {
+    call vmxnet3_check_ptcapability;
+}
+
+op op_325 {
+    mmio writel.4_325 {
+        direction=w;
+        region=1;
+        address=0x48;
+        size=4;
+        data=phi(phi(phi((phi(phi((num_1 & 0xfffffffe), (num_3 | 0x1)), num_6) & 0xfffffffd), (var_6 | 0x2)), num_11) & 0xfffffdff, var_11 | 0x200);
+    }
+}
+
+op op_326 {
+    mmio writel.4_326 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xf00d0012;
+    }
+}
+
+op op_327 {
+    mmio readl.34_327 {
+        direction=r;
+        region=1;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_328 {
+    mmio writel.4_328 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xcafe0010;
+    }
+}
+
+op op_329 {
+    mmio writel.4_329 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xf00d000c;
+    }
+}
+
+op op_330 {
+    mmio readl.34_330 {
+        direction=r;
+        region=1;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_331 {
+    call vmxnet3_set_rss_hash_opt;
+}
+
+op op_332 {
+    mmio writel.4_332 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xcafe0006;
+    }
+}
+
+op op_333 {
+    call bitmap_zero;
+}
+
+op op_333 {
+    call bitmap_zero;
+}
+
+op op_1 {
+    call pci_get_drvdata;
+}
+
+op op_336 {
+    mmio writel_336 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xf00d000f;
+    }
+}
+
+op op_337 {
+    mmio readl_337 {
+        direction=r;
+        region=1;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_147 {
+    call __rounddown_pow_of_two;
+}
+
+op op_7 {
+    call vmxnet3_free_intr_resources;
+}
+
+op op_340 {
+    call vmxnet3_free_pci_resources;
+}
+
+op op_141 {
+    call dma_free_coherent;
+}
+
+op op_141 {
+    call dma_free_coherent;
+}
+
+op op_141 {
+    call dma_free_coherent;
+}
+
+op op_141 {
+    call dma_free_coherent;
+}
+
+op op_141 {
+    call dma_free_coherent;
+}
+
+op op_23 {
+    call dma_unmap_single_attrs;
+}
+
+op op_1 {
+    call pci_get_drvdata;
+}
+
+op op_166 {
+    call usleep_range;
+}
+
+op op_349 {
+    mmio writel_349 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xcafe0001;
+    }
+}
+
+op op_5 {
+    call vmxnet3_disable_all_intrs;
+}
+
+op op_351 {
+    mmio writel_351 {
+        direction=w;
+        region=1;
+        address=0x0;
+        size=4;
+        data=arg(phi(0x40, 0x20, 0x10, 0x8, 0x4, 0x2, 0x1), 0x1, num_2, 0xf00d0012, 0xf00d000f, 0xf00d000f, 0xcafe0001, 0xcafe0008, 0xcafe0001, 0xf00d0008, 0xcafe0002, num_3, var_3 >> 0x20, 0xcafe0000, 0, 0, num_5, num_6, 0xcafe0013, select(0xcafe000e, 0xf00d000b), 0xf00d000c, phi(phi((phi((num_8 & 0xfffffffe), (num_10 | 0x1)) & 0xfffffffd), (var_12 | 0x2)) & 0xfffffdff, var_15 | 0x200), 0xf00d0012, 0xcafe0010, 0xf00d000c, 0xcafe0003, 0xcafe0005, 0xcafe0004, 0xf00d0002, 0, arg(num_19, num_20), (num_22 << 0x8) | num_24, 0x1, 0xf00d0000, arg(num_26), phi(num_28 | 0x80, var_28), 0xf00d0012, num_31, 0xcafe0001, 0xf00d000a, 0xcafe0005, 0xcafe0005, num_32);
+    }
+}
+
+op op_352 {
+    mmio readl_352 {
+        direction=r;
+        region=1;
+        address=0x0;
+        size=4;
+    }
+}
+
+op op_4 {
+    call vmxnet3_disable_intr;
+}
+
+op op_8 {
+    call rcu_lock_acquire;
+}
+
+op op_24 {
+    call vmxnet3_unmap_tx_buf;
+}
+
+op op_26 {
+    call vmxnet3_cmd_ring_adv_next2comp;
+}
+
+op op_24 {
+    call vmxnet3_unmap_tx_buf;
+}
+
+op op_26 {
+    call vmxnet3_cmd_ring_adv_next2comp;
+}
+
+op op_25 {
+    call dev_kfree_skb_any;
+}
+
+op op_360 {
+    call vmxnet3_unmap_pkt;
+}
+
+op op_361 {
+    call vmxnet3_comp_ring_adv_next2proc;
+}
+
+op op_11 {
+    call rcu_read_unlock;
+}
+
+op op_363 {
+    call vmxnet3_tq_stopped;
+}
+
+op op_246 {
+    call vmxnet3_cmd_ring_desc_avail;
+}
+
+op op_365 {
+    call netif_carrier_ok;
+}
+
+op op_123 {
+    call netdev_get_tx_queue;
+}
+
+op op_367 {
+    call netif_wake_subqueue;
+}
+
+op op_368 {
+    call vmxnet3_tq_wake;
+}
+
+op op_11 {
+    call rcu_read_unlock;
+}
+
+op op_370 {
+    call vmxnet3_tq_tx_complete;
+}
+
+op op_370 {
+    call vmxnet3_tq_tx_complete;
+}
+
+op op_133 {
+    call vmxnet3_enable_intr;
+}
+
+op op_4 {
+    call vmxnet3_disable_intr;
+}
+
+op op_374 {
+    mmio writel_374 {
+        direction=w;
+        region=1;
+        address=0x40;
+        size=4;
+        data=arg(num_1);
+    }
+}
+
+op op_375 {
+    call vmxnet3_ack_events;
+}
+
+op op_129 {
+    call vmxnet3_check_link;
+}
+
+op op_377 {
+    mmio writel_377 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xf00d0000;
+    }
+}
+
+op op_284 {
+    call schedule_work;
+}
+
+op op_379 {
+    call vmxnet3_process_events;
+}
+
+op op_133 {
+    call vmxnet3_enable_intr;
+}
+
+op op_101 {
+    call vmxnet3_check_ptcapability;
+}
+
+op op_101 {
+    call vmxnet3_check_ptcapability;
+}
+
+op op_101 {
+    call vmxnet3_check_ptcapability;
+}
+
+op op_101 {
+    call vmxnet3_check_ptcapability;
+}
+
+op op_101 {
+    call vmxnet3_check_ptcapability;
+}
+
+op op_101 {
+    call vmxnet3_check_ptcapability;
+}
+
+op op_387 {
+    mmio writel_387 {
+        direction=w;
+        region=1;
+        address=0x48;
+        size=4;
+        data=phi(num_1 | 0x80, var_1);
+    }
+}
+
+op op_388 {
+    mmio writel_388 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xf00d0012;
+    }
+}
+
+op op_389 {
+    mmio readl_389 {
+        direction=r;
+        region=1;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_390 {
+    mmio readl_390 {
+        direction=r;
+        region=1;
+        address=0x28;
+        size=4;
+    }
+}
+
+op op_391 {
+    mmio readl_391 {
+        direction=r;
+        region=1;
+        address=0x30;
+        size=4;
+    }
+}
+
+op op_392 {
+    call lockdep_init_map_waits;
+}
+
+op op_393 {
+    call lockdep_init_map_wait;
+}
+
+op op_2 {
+    call netif_running;
+}
+
+op op_178 {
+    call vmxnet3_quiesce_dev;
+}
+
+op op_53 {
+    call vmxnet3_reset_dev;
+}
+
+op op_136 {
+    call vmxnet3_activate_dev;
+}
+
+op op_123 {
+    call netdev_get_tx_queue;
+}
+
+op op_399 {
+    call netif_wake_queue;
+}
+
+op op_370 {
+    call vmxnet3_tq_tx_complete;
+}
+
+op op_401 {
+    call dev_kfree_skb_irq;
+}
+
+op op_402 {
+    call vmxnet3_rx_error;
+}
+
+op op_56 {
+    call vmxnet3_xdp_enabled;
+}
+
+op op_56 {
+    call vmxnet3_xdp_enabled;
+}
+
+op op_64 {
+    call __netdev_alloc_skb_ip_align;
+}
+
+op op_406 {
+    call netdev_alloc_skb_ip_align;
+}
+
+op op_65 {
+    call dma_mapping_error;
+}
+
+op op_23 {
+    call dma_unmap_single_attrs;
+}
+
+op op_409 {
+    call skb_record_rx_queue;
+}
+
+op op_65 {
+    call dma_mapping_error;
+}
+
+op op_46 {
+    call put_page;
+}
+
+op op_182 {
+    call skb_end_pointer;
+}
+
+op op_413 {
+    call skb_frag_size_set;
+}
+
+op op_414 {
+    call skb_frag_fill_page_desc;
+}
+
+op op_182 {
+    call skb_end_pointer;
+}
+
+op op_416 {
+    call vmxnet3_append_frag;
+}
+
+op op_417 {
+    call __skb_set_hash;
+}
+
+op op_418 {
+    call skb_set_hash;
+}
+
+op op_419 {
+    call skb_checksum_none_assert;
+}
+
+op op_419 {
+    call skb_checksum_none_assert;
+}
+
+op op_421 {
+    call vmxnet3_rx_csum;
+}
+
+op op_182 {
+    call skb_end_pointer;
+}
+
+op op_182 {
+    call skb_end_pointer;
+}
+
+op op_182 {
+    call skb_end_pointer;
+}
+
+op op_181 {
+    call skb_headlen;
+}
+
+op op_426 {
+    call skb_mac_header_was_set;
+}
+
+op op_427 {
+    call skb_mac_header;
+}
+
+op op_428 {
+    call eth_hdr;
+}
+
+op op_429 {
+    call vmxnet3_get_hdr_len;
+}
+
+op op_182 {
+    call skb_end_pointer;
+}
+
+op op_182 {
+    call skb_end_pointer;
+}
+
+op op_182 {
+    call skb_end_pointer;
+}
+
+op op_182 {
+    call skb_end_pointer;
+}
+
+op op_434 {
+    call __vlan_hwaccel_put_tag;
+}
+
+op op_246 {
+    call vmxnet3_cmd_ring_desc_avail;
+}
+
+op op_246 {
+    call vmxnet3_cmd_ring_desc_avail;
+}
+
+op op_69 {
+    call vmxnet3_cmd_ring_adv_next2fill;
+}
+
+op op_438 {
+    mmio writel_438 {
+        direction=w;
+        region=0;
+        address=unknown;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_361 {
+    call vmxnet3_comp_ring_adv_next2proc;
+}
+
+op op_440 {
+    call vmxnet3_rq_rx_complete;
+}
+
+op op_133 {
+    call vmxnet3_enable_intr;
+}
+
+op op_379 {
+    call vmxnet3_process_events;
+}
+
+op op_370 {
+    call vmxnet3_tq_tx_complete;
+}
+
+op op_440 {
+    call vmxnet3_rq_rx_complete;
+}
+
+op op_445 {
+    call vmxnet3_do_poll;
+}
+
+op op_134 {
+    call vmxnet3_enable_all_intrs;
+}
+
+op op_447 {
+    mmio writel.4_447 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xf00d0001;
+    }
+}
+
+op op_448 {
+    mmio writel_448 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=arg(0xf00d0001, 0xcafe0009, phi(num_1 | 0x80, var_1), 0xf00d0012, num_4 & 0xffffff03, 0xf00d0012, 0xcafe000e, 0xf00d0001, 0xcafe0006, phi(phi(phi((phi(phi((num_6 & 0xfffffffe), (num_8 | 0x1)), num_11) & 0xfffffffd), (var_11 | 0x2)), num_16) & 0xfffffdff, var_16 | 0x200), 0xf00d0012, 0xcafe0010, 0xf00d000c, 0xf00d000c);
+    }
+}
+
+op op_449 {
+    call vmxnet3_xdp_enabled.7;
+}
+
+op op_450 {
+    call eth_type_vlan.27;
+}
+
+op op_451 {
+    call skb_headlen.30;
+}
+
+op op_452 {
+    call __skb_header_pointer.31;
+}
+
+op op_453 {
+    call skb_header_pointer.29;
+}
+
+op op_450 {
+    call eth_type_vlan.27;
+}
+
+op op_455 {
+    call __vlan_get_protocol.26;
+}
+
+op op_456 {
+    call vlan_get_protocol.19;
+}
+
+op op_457 {
+    call skb_network_header.25;
+}
+
+op op_458 {
+    call ip_hdr.20;
+}
+
+op op_457 {
+    call skb_network_header.25;
+}
+
+op op_460 {
+    call ipv6_hdr.21;
+}
+
+op op_461 {
+    call skb_transport_header_was_set.23;
+}
+
+op op_462 {
+    call skb_transport_header.22;
+}
+
+op op_463 {
+    call udp_hdr;
+}
+
+op op_101 {
+    call vmxnet3_check_ptcapability;
+}
+
+op op_101 {
+    call vmxnet3_check_ptcapability;
+}
+
+op op_101 {
+    call vmxnet3_check_ptcapability;
+}
+
+op op_101 {
+    call vmxnet3_check_ptcapability;
+}
+
+op op_101 {
+    call vmxnet3_check_ptcapability;
+}
+
+op op_101 {
+    call vmxnet3_check_ptcapability;
+}
+
+op op_470 {
+    mmio writel.4_470 {
+        direction=w;
+        region=1;
+        address=0x48;
+        size=4;
+        data=phi(num_1 | 0x80, var_1);
+    }
+}
+
+op op_471 {
+    mmio writel.4_471 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xf00d0012;
+    }
+}
+
+op op_472 {
+    mmio readl.34_472 {
+        direction=r;
+        region=1;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_473 {
+    call vmxnet3_enable_encap_offloads;
+}
+
+op op_474 {
+    mmio writel.4_474 {
+        direction=w;
+        region=1;
+        address=0x48;
+        size=4;
+        data=num_1 & 0xffffff03;
+    }
+}
+
+op op_475 {
+    mmio writel.4_475 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xf00d0012;
+    }
+}
+
+op op_476 {
+    mmio readl.34_476 {
+        direction=r;
+        region=1;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_477 {
+    call vmxnet3_disable_encap_offloads;
+}
+
+op op_478 {
+    mmio writel.4_478 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xcafe0009;
+    }
+}
+
+op op_479 {
+    mmio readl_479 {
+        direction=r;
+        region=1;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_480 {
+    call netif_running.60;
+}
+
+op op_481 {
+    call vmxnet3_xdp_exchange_program;
+}
+
+op op_482 {
+    call vmxnet3_xdp_set;
+}
+
+op op_483 {
+    call reciprocal_scale;
+}
+
+op op_484 {
+    call vmxnet3_xdp_get_tq;
+}
+
+op op_485 {
+    call vmxnet3_cmd_ring_desc_avail.63;
+}
+
+op op_486 {
+    call dma_mapping_error.65;
+}
+
+op op_487 {
+    call page_pool_get_dma_addr.66;
+}
+
+op op_488 {
+    call le32_add_cpu.67;
+}
+
+op op_489 {
+    call vmxnet3_cmd_ring_adv_next2fill.68;
+}
+
+op op_490 {
+    mmio writel.69_490 {
+        direction=w;
+        region=0;
+        address=0x600;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_491 {
+    call vmxnet3_xdp_xmit_frame;
+}
+
+op op_492 {
+    mmio writel_492 {
+        direction=w;
+        region=0;
+        address=0x600;
+        size=4;
+        data=arg(num_1);
+    }
+}
+
+op op_493 {
+    call local_inc;
+}
+
+op op_494 {
+    call u64_stats_inc;
+}
+
+op op_495 {
+    call local_add;
+}
+
+op op_496 {
+    call u64_stats_add;
+}
+
+op op_497 {
+    call netif_is_bond_slave;
+}
+
+op op_498 {
+    call page_pool_defrag_page.81;
+}
+
+op op_499 {
+    call page_pool_is_last_frag.80;
+}
+
+op op_500 {
+    call page_pool_put_page.79;
+}
+
+op op_501 {
+    call page_pool_put_full_page.78;
+}
+
+op op_502 {
+    call page_pool_recycle_direct.77;
+}
+
+op op_503 {
+    call xdp_update_frame_from_buff;
+}
+
+op op_504 {
+    call xdp_convert_buff_to_frame;
+}
+
+op op_484 {
+    call vmxnet3_xdp_get_tq;
+}
+
+op op_506 {
+    call netdev_get_tx_queue.86;
+}
+
+op op_507 {
+    call __netif_tx_lock.87;
+}
+
+op op_491 {
+    call vmxnet3_xdp_xmit_frame;
+}
+
+op op_509 {
+    call __netif_tx_unlock.88;
+}
+
+op op_510 {
+    call vmxnet3_xdp_xmit_back;
+}
+
+op op_502 {
+    call page_pool_recycle_direct.77;
+}
+
+op op_512 {
+    call cpu_online;
+}
+
+op op_512 {
+    call cpu_online;
+}
+
+op op_514 {
+    call trace_xdp_exception;
+}
+
+op op_502 {
+    call page_pool_recycle_direct.77;
+}
+
+op op_516 {
+    call vmxnet3_run_xdp;
+}
+
+op op_502 {
+    call page_pool_recycle_direct.77;
+}
+
+op op_518 {
+    call skb_reserve;
+}
+
+op op_519 {
+    call skb_mark_for_recycle;
+}
+
+op op_520 {
+    call vmxnet3_build_skb;
+}
+
+op op_487 {
+    call page_pool_get_dma_addr.66;
+}
+
+op op_522 {
+    call page_pool_get_dma_dir;
+}
+
+op op_516 {
+    call vmxnet3_run_xdp;
+}
+
+op op_520 {
+    call vmxnet3_build_skb;
+}
+
+op op_65 {
+    call dma_mapping_error;
+}
+
+op op_526 {
+    call resource_size;
+}
+
+op op_526 {
+    call resource_size;
+}
+
+op op_528 {
+    call vmxnet3_alloc_pci_resources;
+}
+
+op op_529 {
+    mmio readl_529 {
+        direction=r;
+        region=1;
+        address=0x0;
+        size=4;
+    }
+}
+
+op op_530 {
+    mmio writel_530 {
+        direction=w;
+        region=1;
+        address=0x0;
+        size=4;
+        data=phi(0x40, 0x20, 0x10, 0x8, 0x4, 0x2, 0x1);
+    }
+}
+
+op op_531 {
+    mmio readl_531 {
+        direction=r;
+        region=1;
+        address=0x8;
+        size=4;
+    }
+}
+
+op op_532 {
+    mmio writel_532 {
+        direction=w;
+        region=1;
+        address=0x8;
+        size=4;
+        data=0x1;
+    }
+}
+
+op op_533 {
+    mmio readl_533 {
+        direction=r;
+        region=1;
+        address=0x48;
+        size=4;
+    }
+}
+
+op op_534 {
+    mmio readl_534 {
+        direction=r;
+        region=1;
+        address=0x88;
+        size=4;
+    }
+}
+
+op op_535 {
+    mmio writel_535 {
+        direction=w;
+        region=1;
+        address=0x48;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_536 {
+    mmio writel_536 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xf00d0012;
+    }
+}
+
+op op_537 {
+    mmio readl_537 {
+        direction=r;
+        region=1;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_538 {
+    mmio writel_538 {
+        direction=w;
+        region=1;
+        address=0x20;
+        size=4;
+        data=0xf00d000f;
+    }
+}
+
+op op_539 {
+    mmio readl_539 {
+        direction=r;
+        region=1;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_147 {
+    call __rounddown_pow_of_two;
+}
+
+op op_147 {
+    call __rounddown_pow_of_two;
+}
+
+op op_542 {
+    call vmxnet3_declare_features;
+}
+
+op op_20 {
+    call vmxnet3_alloc_intr_resources;
+}
+
+op op_544 {
+    call vmxnet3_read_mac_addr;
+}
+
+op op_269 {
+    call dev_addr_set;
+}
+
+op op_546 {
+    call lockdep_init_map;
+}
+
+op op_547 {
+    call INIT_LIST_HEAD;
+}
+
+op op_129 {
+    call vmxnet3_check_link;
+}
+
+op op_141 {
+    call dma_free_coherent;
+}
+
+op op_7 {
+    call vmxnet3_free_intr_resources;
+}
+
+op op_141 {
+    call dma_free_coherent;
+}
+
+op op_141 {
+    call dma_free_coherent;
+}
+
+op op_141 {
+    call dma_free_coherent;
+}
+
+op op_340 {
+    call vmxnet3_free_pci_resources;
+}
+
+op op_141 {
+    call dma_free_coherent;
+}
+
+op op_23 {
+    call dma_unmap_single_attrs;
+}
+
+
+bb vmxnet3_tq_destroy_473 {
+    op op_141;
+}
+
+bb vmxnet3_process_events_1092 {
+    op op_377;
+}
+
+bb vmxnet3_tq_xmit_745 {
+    op op_182;
+}
+
+bb vmxnet3_remove_device_1019 {
+    op op_141;
+    op op_141;
+    op op_141;
+    op op_141;
+    op op_23;
+}
+
+bb vmxnet3_init_rssfields_380 {
+    op op_101;
+}
+
+bb vmxnet3_set_mc_407 {
+    op op_116;
+    op op_117;
+}
+
+bb vmxnet3_rq_init_269 {
+    op op_70;
+}
+
+bb __vlan_get_protocol.26_1385 {
+    op op_450;
+}
+
+bb ipv6_hdr_642 {
+    op op_213;
+}
+
+bb vmxnet3_features_check_1390 {
+    op op_460;
+}
+
+bb vmxnet3_set_rxnfc_936 {
+    op op_331;
+}
+
+bb vmxnet3_get_rss_hash_opts_921 {
+    op op_318;
+    op op_319;
+}
+
+bb vmxnet3_set_mc_391 {
+    op op_83;
+}
+
+bb vmxnet3_rq_rx_complete_1193 {
+    op op_406;
+}
+
+bb vmxnet3_alloc_pci_resources_1644 {
+    op op_526;
+}
+
+bb vmxnet3_rq_destroy_514 {
+    op op_141;
+}
+
+bb vmxnet3_declare_features_1123 {
+    op op_387;
+    op op_388;
+    op op_389;
+}
+
+bb vmxnet3_enable_all_intrs_432 {
+    op op_133;
+}
+
+bb vmxnet3_rq_create_all_775 {
+    op op_156;
+}
+
+bb vmxnet3_change_mtu_786 {
+    op op_137;
+}
+
+bb netif_stop_subqueue_424 {
+    op op_123;
+}
+
+bb vmxnet3_build_skb_1608 {
+    op op_518;
+    op op_519;
+}
+
+bb vmxnet3_msix_tx_1039 {
+    op op_4;
+}
+
+bb vmxnet3_resume_441 {
+    op op_137;
+}
+
+bb vmxnet3_reset_work_1136 {
+    op op_178;
+    op op_53;
+    op op_136;
+}
+
+bb vmxnet3_tq_tx_complete_1079 {
+    op op_11;
+}
+
+bb vmxnet3_rq_alloc_rx_buf_246 {
+    op op_65;
+}
+
+bb tcp_v6_gso_csum_prep_641 {
+    op op_217;
+    op op_212;
+    op op_219;
+}
+
+bb vmxnet3_rq_rx_complete_1201 {
+    op op_65;
+}
+
+bb vmxnet3_unmap_tx_buf_110 {
+    op op_23;
+}
+
+bb eth_hdr_1279 {
+    op op_427;
+}
+
+bb vmxnet3_reset_work_1135 {
+    op op_2;
+}
+
+bb skb_inner_transport_offset_654 {
+    op op_200;
+}
+
+bb vmxnet3_rx_error_1159 {
+    op op_401;
+}
+
+bb vmxnet3_rq_destroy_520 {
+    op op_141;
+}
+
+bb vmxnet3_unmap_pkt_1059 {
+    op op_24;
+    op op_26;
+}
+
+bb vmxnet3_activate_dev_275 {
+    op op_79;
+}
+
+bb skb_mac_header_1280 {
+    op op_426;
+}
+
+bb vmxnet3_restore_vlan_353 {
+    op op_81;
+}
+
+bb vmxnet3_probe_device_1712 {
+    op op_141;
+}
+
+bb vmxnet3_rq_create_505 {
+    op op_140;
+}
+
+bb vmxnet3_rq_rx_complete_1323 {
+    op op_69;
+}
+
+bb skb_header_pointer.29_1377 {
+    op op_451;
+    op op_452;
+}
+
+bb folio_put_testzero_175 {
+    op op_43;
+}
+
+bb vmxnet3_map_pkt_729 {
+    op op_258;
+    op op_65;
+}
+
+bb vmxnet3_msix_event_1102 {
+    op op_133;
+}
+
+bb vmxnet3_netpoll_806 {
+    op op_293;
+}
+
+bb csum_tcpudp_magic_623 {
+    op op_204;
+    op op_205;
+}
+
+bb vmxnet3_activate_dev_359 {
+    op op_96;
+    op op_98;
+    op op_110;
+}
+
+bb vmxnet3_resume_73 {
+    op op_20;
+    op op_21;
+    op op_29;
+    op op_51;
+    op op_53;
+    op op_136;
+}
+
+bb vmxnet3_get_hdr_len_1278 {
+    op op_428;
+}
+
+bb writel.4_1359 {
+    op op_448;
+}
+
+bb vmxnet3_get_regs_829 {
+    op op_305;
+}
+
+bb vmxnet3_get_regs_826 {
+    op op_304;
+}
+
+bb inner_tcp_hdr_618 {
+    op op_200;
+}
+
+bb vmxnet3_tq_xmit_709 {
+    op op_248;
+    op op_262;
+}
+
+bb vmxnet3_enable_encap_offloads_1412 {
+    op op_101;
+}
+
+bb udp_hdr_1395 {
+    op op_462;
+}
+
+bb vmxnet3_shutdown_device_1020 {
+    op op_1;
+}
+
+bb skb_checksum_start_offset_662 {
+    op op_233;
+}
+
+bb vmxnet3_do_poll_1337 {
+    op op_379;
+}
+
+bb vmxnet3_append_frag_1228 {
+    op op_414;
+    op op_182;
+}
+
+bb vmxnet3_rq_init_232 {
+    op op_70;
+}
+
+bb vmxnet3_tq_xmit_572 {
+    op op_184;
+    op op_191;
+    op op_191;
+    op op_182;
+}
+
+bb netdev_alloc_skb_ip_align_1194 {
+    op op_64;
+}
+
+bb vmxnet3_enable_encap_offloads_1408 {
+    op op_101;
+}
+
+bb vmxnet3_build_skb_1607 {
+    op op_502;
+}
+
+bb page_pool_put_full_page_142 {
+    op op_32;
+}
+
+bb vmxnet3_probe_device_1685 {
+    op op_147;
+    op op_147;
+}
+
+bb vmxnet3_open_453 {
+    op op_161;
+}
+
+bb vmxnet3_tq_tx_complete_1075 {
+    op op_368;
+}
+
+bb readl_1028 {
+    op op_352;
+}
+
+bb vmxnet3_tq_destroy_475 {
+    op op_141;
+}
+
+bb trace_xdp_exception_1590 {
+    op op_512;
+}
+
+bb vmxnet3_open_547 {
+    op op_136;
+}
+
+bb vmxnet3_setup_driver_shared_352 {
+    op op_83;
+    op op_86;
+}
+
+bb vmxnet3_probe_device_1668 {
+    op op_533;
+    op op_534;
+}
+
+bb vmxnet3_run_xdp_1552 {
+    op op_502;
+}
+
+bb vmxnet3_rq_rx_complete_1223 {
+    op op_65;
+}
+
+bb skb_set_hash_1237 {
+    op op_417;
+}
+
+bb vmxnet3_rq_rx_complete_1203 {
+    op op_23;
+}
+
+bb vmxnet3_run_xdp_1534 {
+    op op_494;
+    op op_496;
+}
+
+bb vmxnet3_parse_hdr_656 {
+    op op_229;
+    op op_232;
+}
+
+bb vmxnet3_rq_rx_complete_1225 {
+    op op_416;
+}
+
+bb vmxnet3_rq_cleanup_195 {
+    op op_34;
+}
+
+bb vmxnet3_tq_xmit_763 {
+    op op_265;
+}
+
+bb vmxnet3_remove_device_1012 {
+    op op_336;
+    op op_337;
+}
+
+bb vmxnet3_close_556 {
+    op op_178;
+    op op_164;
+    op op_160;
+}
+
+bb vmxnet3_probe_device_1708 {
+    op op_141;
+}
+
+bb vmxnet3_disable_all_intrs_12 {
+    op op_4;
+}
+
+bb __vlan_get_protocol_581 {
+    op op_185;
+}
+
+bb vmxnet3_declare_features_1121 {
+    op op_101;
+}
+
+bb vmxnet3_rq_cleanup_140 {
+    op op_34;
+}
+
+bb vmxnet3_run_xdp_1576 {
+    op op_510;
+}
+
+bb vmxnet3_set_ringparam_891 {
+    op op_308;
+}
+
+bb vmxnet3_declare_features_1115 {
+    op op_101;
+}
+
+bb vmxnet3_tq_xmit_646 {
+    op op_198;
+}
+
+bb skb_frag_dma_map_730 {
+    op op_256;
+    op op_257;
+}
+
+bb vlan_get_protocol_580 {
+    op op_190;
+}
+
+bb vmxnet3_run_xdp_1565 {
+    op op_504;
+}
+
+bb vmxnet3_run_xdp_1603 {
+    op op_502;
+}
+
+bb vmxnet3_tq_destroy_all_544 {
+    op op_144;
+}
+
+bb vmxnet3_parse_hdr_653 {
+    op op_225;
+    op op_227;
+}
+
+bb vmxnet3_set_rss_hash_opt_974 {
+    op op_325;
+    op op_326;
+    op op_327;
+}
+
+bb vmxnet3_enable_encap_offloads_1420 {
+    op op_470;
+    op op_471;
+    op op_472;
+}
+
+bb vmxnet3_msix_tx_1081 {
+    op op_370;
+}
+
+bb vmxnet3_map_pkt_722 {
+    op op_65;
+}
+
+bb vmxnet3_declare_features_1113 {
+    op op_101;
+}
+
+bb vmxnet3_set_coalesce_866 {
+    op op_309;
+}
+
+bb vmxnet3_map_pkt_718 {
+    op op_69;
+}
+
+bb rcu_read_unlock_57 {
+    op op_10;
+}
+
+bb vmxnet3_vlan_rx_kill_vid_795 {
+    op op_286;
+}
+
+bb vmxnet3_tq_xmit_613 {
+    op op_181;
+}
+
+bb vmxnet3_rq_cleanup_194 {
+    op op_23;
+}
+
+bb vmxnet3_xdp_xmit_frame_1496 {
+    op op_486;
+}
+
+bb __vlan_get_protocol_588 {
+    op op_188;
+}
+
+bb vmxnet3_rq_init_219 {
+    op op_61;
+}
+
+bb vmxnet3_tq_cleanup_122 {
+    op op_26;
+}
+
+bb vmxnet3_parse_hdr_661 {
+    op op_234;
+}
+
+bb __rounddown_pow_of_two_486 {
+    op op_146;
+}
+
+bb vmxnet3_suspend_65 {
+    op op_11;
+}
+
+bb vmxnet3_init_bufsize_361 {
+    op op_95;
+}
+
+bb page_pool_is_last_frag.80_1557 {
+    op op_498;
+}
+
+bb vmxnet3_prepare_tso_630 {
+    op op_212;
+}
+
+bb vmxnet3_init_rssfields_383 {
+    op op_104;
+    op op_105;
+    op op_106;
+}
+
+bb vmxnet3_rq_rx_complete_1239 {
+    op op_421;
+}
+
+bb vmxnet3_open_548 {
+    op op_164;
+    op op_160;
+}
+
+bb vmxnet3_tq_xmit_708 {
+    op op_128;
+}
+
+bb put_devmap_managed_page_166 {
+    op op_39;
+}
+
+bb vmxnet3_xdp_set_1459 {
+    op op_480;
+}
+
+bb vmxnet3_probe_device_1666 {
+    op op_532;
+}
+
+bb vmxnet3_alloc_intr_resources_74 {
+    op op_17;
+    op op_18;
+}
+
+bb vmxnet3_tq_xmit_629 {
+    op op_221;
+}
+
+bb vmxnet3_rq_destroy_526 {
+    op op_141;
+}
+
+bb vmxnet3_tq_create_468 {
+    op op_144;
+}
+
+bb vmxnet3_probe_device_1633 {
+    op op_65;
+}
+
+bb vmxnet3_probe_device_1655 {
+    op op_529;
+}
+
+bb page_pool_put_full_page.78_1554 {
+    op op_500;
+}
+
+bb vmxnet3_check_link_414 {
+    op op_125;
+}
+
+bb vmxnet3_change_mtu_772 {
+    op op_2;
+}
+
+bb vmxnet3_adjust_rx_ring_size_485 {
+    op op_147;
+    op op_147;
+}
+
+bb vmxnet3_rq_alloc_rx_buf_243 {
+    op op_64;
+}
+
+bb vlan_get_protocol.19_1368 {
+    op op_455;
+}
+
+bb vmxnet3_rq_create_507 {
+    op op_155;
+}
+
+bb vmxnet3_tq_xmit_765 {
+    op op_25;
+}
+
+bb vmxnet3_process_events_1090 {
+    op op_129;
+}
+
+bb vmxnet3_probe_device_1674 {
+    op op_535;
+}
+
+bb put_devmap_managed_page_refs_168 {
+    op op_38;
+}
+
+bb vmxnet3_enable_encap_offloads_1414 {
+    op op_101;
+}
+
+bb vmxnet3_rq_rx_complete_1300 {
+    op op_182;
+}
+
+bb pskb_may_pull_682 {
+    op op_243;
+}
+
+bb vmxnet3_suspend_1 {
+    op op_1;
+    op op_2;
+}
+
+bb vmxnet3_set_mc_409 {
+    op op_23;
+}
+
+bb u64_stats_add_1537 {
+    op op_495;
+}
+
+bb page_pool_put_page_143 {
+    op op_31;
+}
+
+bb vmxnet3_map_pkt_738 {
+    op op_182;
+}
+
+bb vmxnet3_parse_hdr_669 {
+    op op_214;
+}
+
+bb vmxnet3_parse_hdr_665 {
+    op op_203;
+}
+
+bb vmxnet3_rq_cleanup_all_134 {
+    op op_50;
+}
+
+bb vmxnet3_set_features_1405 {
+    op op_473;
+}
+
+bb vmxnet3_change_mtu_783 {
+    op op_136;
+}
+
+bb vmxnet3_probe_device_1694 {
+    op op_542;
+    op op_20;
+}
+
+bb vmxnet3_parse_hdr_671 {
+    op op_217;
+}
+
+bb vmxnet3_disable_encap_offloads_1429 {
+    op op_474;
+    op op_475;
+    op op_476;
+}
+
+bb vmxnet3_fix_features_1360 {
+    op op_449;
+}
+
+bb netif_start_subqueue_416 {
+    op op_123;
+}
+
+bb vmxnet3_set_features_1431 {
+    op op_478;
+}
+
+bb vmxnet3_open_452 {
+    op op_138;
+    op op_139;
+}
+
+bb vmxnet3_rq_init_all_210 {
+    op op_72;
+}
+
+bb vmxnet3_run_xdp_1588 {
+    op op_514;
+}
+
+bb vmxnet3_close_554 {
+    op op_166;
+}
+
+bb vmxnet3_probe_device_1705 {
+    op op_129;
+}
+
+bb vmxnet3_rq_rx_complete_1188 {
+    op op_56;
+}
+
+bb vmxnet3_xdp_xmit_back_1578 {
+    op op_506;
+    op op_507;
+    op op_491;
+    op op_509;
+}
+
+bb vmxnet3_suspend_6 {
+    op op_5;
+    op op_6;
+    op op_7;
+}
+
+bb netif_wake_queue_1139 {
+    op op_123;
+}
+
+bb vmxnet3_enable_encap_offloads_1410 {
+    op op_101;
+}
+
+bb vmxnet3_xmit_frame_571 {
+    op op_267;
+}
+
+bb vmxnet3_ack_events_1089 {
+    op op_374;
+}
+
+bb lockdep_init_map_1130 {
+    op op_393;
+}
+
+bb vmxnet3_intr_811 {
+    op op_288;
+}
+
+bb vmxnet3_set_mc_395 {
+    op op_114;
+}
+
+bb vmxnet3_rq_alloc_rx_buf_254 {
+    op op_46;
+}
+
+bb vmxnet3_set_mc_401 {
+    op op_65;
+}
+
+bb vmxnet3_rq_destroy_518 {
+    op op_141;
+}
+
+bb ip_hdr.20_1388 {
+    op op_457;
+}
+
+bb vmxnet3_map_pkt_719 {
+    op op_181;
+}
+
+bb xdp_convert_buff_to_frame_1568 {
+    op op_503;
+}
+
+bb vmxnet3_tq_wake_1076 {
+    op op_367;
+}
+
+bb put_page_156 {
+    op op_36;
+    op op_40;
+}
+
+bb vmxnet3_poll_1343 {
+    op op_134;
+}
+
+bb vmxnet3_activate_dev_358 {
+    op op_92;
+    op op_93;
+    op op_6;
+}
+
+bb vmxnet3_set_rss_hash_opt_960 {
+    op op_308;
+}
+
+bb vmxnet3_enable_intr_433 {
+    op op_132;
+}
+
+bb vmxnet3_set_rss_hash_opt_963 {
+    op op_101;
+}
+
+bb vmxnet3_restore_vlan_355 {
+    op op_81;
+}
+
+bb vmxnet3_intr_808 {
+    op op_290;
+}
+
+bb vmxnet3_set_rss_hash_opt_975 {
+    op op_328;
+    op op_329;
+    op op_330;
+}
+
+bb vmxnet3_tq_tx_complete_1073 {
+    op op_365;
+}
+
+bb vmxnet3_tq_cleanup_119 {
+    op op_25;
+}
+
+bb vmxnet3_rq_rx_complete_1204 {
+    op op_409;
+}
+
+bb vmxnet3_tq_create_465 {
+    op op_140;
+}
+
+bb vmxnet3_probe_device_1665 {
+    op op_531;
+}
+
+bb vmxnet3_rq_rx_complete_1311 {
+    op op_246;
+}
+
+bb vmxnet3_create_queues_536 {
+    op op_158;
+}
+
+bb vmxnet3_request_irqs_298 {
+    op op_74;
+}
+
+bb vmxnet3_change_mtu_771 {
+    op op_166;
+}
+
+bb vmxnet3_enable_encap_offloads_1418 {
+    op op_101;
+}
+
+bb vmxnet3_remove_device_1014 {
+    op op_7;
+    op op_340;
+}
+
+bb vmxnet3_set_ringparam_881 {
+    op op_311;
+    op op_311;
+    op op_311;
+}
+
+bb vmxnet3_append_frag_1226 {
+    op op_182;
+}
+
+bb vmxnet3_msix_rx_802 {
+    op op_288;
+}
+
+bb vmxnet3_shutdown_device_1021 {
+    op op_166;
+}
+
+bb writel_1027 {
+    op op_351;
+}
+
+bb vmxnet3_rx_csum_1266 {
+    op op_419;
+}
+
+bb vmxnet3_set_rss_996 {
+    op op_332;
+}
+
+bb vmxnet3_tq_xmit_702 {
+    op op_246;
+}
+
+bb vmxnet3_msix_event_1084 {
+    op op_4;
+}
+
+bb vmxnet3_enable_encap_offloads_1416 {
+    op op_101;
+}
+
+bb vmxnet3_rq_rx_complete_1270 {
+    op op_182;
+    op op_182;
+    op op_182;
+}
+
+bb vmxnet3_probe_device_1699 {
+    op op_544;
+    op op_269;
+    op op_546;
+    op op_547;
+}
+
+bb page_pool_recycle_direct_141 {
+    op op_33;
+}
+
+bb vmxnet3_activate_dev_388 {
+    op op_120;
+    op op_129;
+    op op_131;
+}
+
+bb vmxnet3_get_rxnfc_919 {
+    op op_320;
+}
+
+bb vmxnet3_set_mac_addr_767 {
+    op op_269;
+    op op_86;
+}
+
+bb vmxnet3_probe_device_1710 {
+    op op_141;
+}
+
+bb vmxnet3_tq_start_415 {
+    op op_124;
+}
+
+bb vmxnet3_init_coalesce_364 {
+    op op_97;
+}
+
+bb vmxnet3_parse_hdr_674 {
+    op op_227;
+}
+
+bb vmxnet3_probe_device_1638 {
+    op op_528;
+}
+
+bb vmxnet3_map_pkt_737 {
+    op op_69;
+}
+
+bb vmxnet3_suspend_69 {
+    op op_14;
+}
+
+bb vmxnet3_unmap_pkt_1060 {
+    op op_24;
+    op op_26;
+}
+
+bb vmxnet3_prepare_inner_tso_626 {
+    op op_208;
+}
+
+bb vmxnet3_tq_cleanup_126 {
+    op op_11;
+}
+
+bb vmxnet3_request_irqs_293 {
+    op op_74;
+}
+
+bb __vlan_get_protocol.26_1376 {
+    op op_453;
+}
+
+bb vmxnet3_quiesce_dev_560 {
+    op op_174;
+    op op_29;
+    op op_51;
+    op op_6;
+}
+
+bb vmxnet3_process_xdp_small_1605 {
+    op op_520;
+}
+
+bb vmxnet3_tq_cleanup_102 {
+    op op_8;
+}
+
+bb vmxnet3_rq_alloc_rx_buf_257 {
+    op op_69;
+}
+
+bb vmxnet3_activate_dev_321 {
+    op op_87;
+    op op_88;
+    op op_89;
+    op op_90;
+    op op_91;
+}
+
+bb vmxnet3_msix_rx_801 {
+    op op_4;
+}
+
+bb vmxnet3_alloc_intr_resources_84 {
+    op op_19;
+}
+
+bb netif_tx_wake_all_queues_427 {
+    op op_123;
+}
+
+bb vmxnet3_request_irqs_280 {
+    op op_74;
+}
+
+bb page_pool_put_page.79_1555 {
+    op op_499;
+}
+
+bb vmxnet3_tq_xmit_606 {
+    op op_198;
+}
+
+bb vmxnet3_tq_stop_423 {
+    op op_127;
+}
+
+bb vmxnet3_rq_rx_complete_1163 {
+    op op_56;
+}
+
+bb vmxnet3_init_rssfields_376 {
+    op op_101;
+}
+
+bb vmxnet3_create_queues_542 {
+    op op_160;
+}
+
+bb vmxnet3_msix_event_1086 {
+    op op_379;
+}
+
+bb vmxnet3_probe_device_1675 {
+    op op_536;
+    op op_537;
+}
+
+bb vmxnet3_process_xdp_small_1532 {
+    op op_516;
+}
+
+bb tcp_hdr_631 {
+    op op_211;
+}
+
+bb vmxnet3_rq_rx_complete_1224 {
+    op op_46;
+}
+
+bb vmxnet3_suspend_66 {
+    op op_11;
+}
+
+bb vmxnet3_get_regs_832 {
+    op op_306;
+    op op_307;
+}
+
+bb vmxnet3_poll_1335 {
+    op op_445;
+}
+
+bb page_pool_is_last_frag_145 {
+    op op_30;
+}
+
+bb vmxnet3_xdp_xmit_frame_1499 {
+    op op_487;
+}
+
+bb vmxnet3_tx_timeout_788 {
+    op op_284;
+}
+
+bb ip_hdr_637 {
+    op op_213;
+}
+
+bb vmxnet3_set_rss_hash_opt_971 {
+    op op_101;
+}
+
+bb vmxnet3_declare_features_1117 {
+    op op_101;
+}
+
+bb vmxnet3_set_mc_408 {
+    op op_118;
+}
+
+bb vmxnet3_map_pkt_713 {
+    op op_181;
+}
+
+bb vmxnet3_probe_device_1713 {
+    op op_23;
+}
+
+bb vmxnet3_write_mac_addr_357 {
+    op op_84;
+    op op_85;
+}
+
+bb vmxnet3_rq_cleanup_191 {
+    op op_46;
+}
+
+bb vmxnet3_suspend_51 {
+    op op_11;
+}
+
+bb vmxnet3_process_xdp_1620 {
+    op op_516;
+}
+
+bb __rounddown_pow_of_two.39_882 {
+    op op_310;
+}
+
+bb vmxnet3_tq_xmit_649 {
+    op op_245;
+}
+
+bb vmxnet3_set_rss_hash_opt_967 {
+    op op_101;
+}
+
+bb inner_ipv6_hdr_627 {
+    op op_202;
+}
+
+bb skb_transport_offset_657 {
+    op op_211;
+}
+
+bb vmxnet3_parse_hdr_678 {
+    op op_181;
+}
+
+bb vmxnet3_unmap_pkt_1063 {
+    op op_25;
+}
+
+bb vmxnet3_xdp_xmit_back_1577 {
+    op op_484;
+}
+
+bb vmxnet3_alloc_pci_resources_1649 {
+    op op_526;
+}
+
+bb vmxnet3_activate_dev_430 {
+    op op_134;
+}
+
+bb vmxnet3_set_ringparam_889 {
+    op op_314;
+}
+
+bb vmxnet3_prepare_tso_640 {
+    op op_220;
+}
+
+bb vmxnet3_tq_cleanup_all_101 {
+    op op_28;
+}
+
+bb vmxnet3_xdp_1441 {
+    op op_482;
+}
+
+bb schedule_work_789 {
+    op op_283;
+}
+
+bb vmxnet3_do_poll_1341 {
+    op op_440;
+}
+
+bb vmxnet3_parse_hdr_667 {
+    op op_208;
+}
+
+bb vmxnet3_create_queues_495 {
+    op op_156;
+}
+
+bb vmxnet3_pp_get_buff_237 {
+    op op_62;
+}
+
+bb skb_transport_header_632 {
+    op op_210;
+}
+
+bb vmxnet3_declare_features_1119 {
+    op op_101;
+}
+
+bb vmxnet3_remove_device_1009 {
+    op op_1;
+}
+
+bb vmxnet3_remove_device_1018 {
+    op op_141;
+}
+
+bb netif_tx_disable_561 {
+    op op_169;
+}
+
+bb vmxnet3_xdp_xmit_frame_1503 {
+    op op_488;
+    op op_489;
+}
+
+bb vmxnet3_shutdown_device_1024 {
+    op op_349;
+    op op_5;
+}
+
+bb vmxnet3_rq_rx_complete_1327 {
+    op op_361;
+}
+
+bb vmxnet3_rq_cleanup_155 {
+    op op_46;
+}
+
+bb vmxnet3_do_poll_1340 {
+    op op_370;
+}
+
+bb __vlan_get_protocol_596 {
+    op op_185;
+}
+
+bb vmxnet3_rq_alloc_rx_buf_253 {
+    op op_65;
+}
+
+bb lockdep_init_map_wait_1131 {
+    op op_392;
+}
+
+bb put_page_testzero_176 {
+    op op_41;
+}
+
+bb vmxnet3_rx_csum_1262 {
+    op op_419;
+}
+
+bb netif_tx_disable_563 {
+    op op_123;
+    op op_171;
+    op op_172;
+}
+
+bb vmxnet3_rq_rx_complete_1304 {
+    op op_434;
+}
+
+bb skb_linearize_609 {
+    op op_197;
+}
+
+bb vmxnet3_activate_dev_202 {
+    op op_55;
+    op op_73;
+}
+
+bb vmxnet3_process_xdp_1613 {
+    op op_487;
+    op op_522;
+}
+
+bb vmxnet3_tq_tx_complete_1069 {
+    op op_11;
+}
+
+bb vmxnet3_rq_rx_complete_1236 {
+    op op_418;
+}
+
+bb skb_frag_fill_page_desc_1229 {
+    op op_413;
+}
+
+bb vmxnet3_rq_rx_complete_1301 {
+    op op_182;
+    op op_182;
+}
+
+bb is_zone_device_page_169 {
+    op op_37;
+}
+
+bb vmxnet3_rq_rx_complete_1302 {
+    op op_182;
+}
+
+bb vmxnet3_probe_device_1706 {
+    op op_141;
+}
+
+bb vmxnet3_parse_hdr_675 {
+    op op_232;
+}
+
+bb vmxnet3_check_link_422 {
+    op op_128;
+}
+
+bb vmxnet3_create_pp_222 {
+    op op_59;
+}
+
+bb vmxnet3_xdp_xmit_1489 {
+    op op_491;
+}
+
+bb vmxnet3_tq_xmit_598 {
+    op op_195;
+}
+
+bb txd_estimate_573 {
+    op op_181;
+    op op_182;
+}
+
+bb vmxnet3_map_pkt_728 {
+    op op_183;
+}
+
+bb vmxnet3_rq_rx_complete_1155 {
+    op op_402;
+}
+
+bb vmxnet3_xdp_get_tq_1484 {
+    op op_483;
+}
+
+bb skb_linearize_607 {
+    op op_196;
+}
+
+bb vmxnet3_rq_init_214 {
+    op op_56;
+}
+
+bb readl.34_1433 {
+    op op_479;
+}
+
+bb put_page_173 {
+    op op_45;
+}
+
+bb vmxnet3_rq_create_all_780 {
+    op op_158;
+}
+
+bb vmxnet3_request_irqs_299 {
+    op op_74;
+}
+
+bb vmxnet3_get_stats64_1351 {
+    op op_447;
+}
+
+bb skb_transport_header.22_1396 {
+    op op_461;
+}
+
+bb vmxnet3_reset_dev_199 {
+    op op_52;
+}
+
+bb vmxnet3_prepare_tso_636 {
+    op op_214;
+    op op_206;
+}
+
+bb vmxnet3_poll_rx_only_1142 {
+    op op_370;
+}
+
+bb vmxnet3_tq_tx_complete_1072 {
+    op op_246;
+}
+
+bb vmxnet3_request_irqs_297 {
+    op op_74;
+}
+
+bb vmxnet3_quiesce_dev_558 {
+    op op_167;
+    op op_5;
+}
+
+bb vmxnet3_tq_destroy_470 {
+    op op_141;
+}
+
+bb writel.69_1519 {
+    op op_492;
+}
+
+bb vmxnet3_get_ethtool_stats_907 {
+    op op_316;
+}
+
+bb u64_stats_inc_1535 {
+    op op_493;
+}
+
+bb vmxnet3_msix_tx_1082 {
+    op op_133;
+}
+
+bb vmxnet3_rq_rx_complete_1316 {
+    op op_246;
+}
+
+bb vmxnet3_set_features_1426 {
+    op op_477;
+}
+
+bb inner_tcp_hdrlen_655 {
+    op op_201;
+}
+
+bb vmxnet3_create_pp_220 {
+    op op_56;
+    op op_58;
+}
+
+bb vmxnet3_tq_xmit_616 {
+    op op_209;
+}
+
+bb page_pool_recycle_direct.77_1553 {
+    op op_501;
+}
+
+bb vmxnet3_rq_cleanup_153 {
+    op op_23;
+}
+
+bb vmxnet3_probe_device_1711 {
+    op op_340;
+}
+
+bb vmxnet3_create_queues_478 {
+    op op_149;
+}
+
+bb vmxnet3_xdp_xmit_frame_1508 {
+    op op_490;
+}
+
+bb vmxnet3_xdp_set_1462 {
+    op op_481;
+}
+
+bb inner_ip_hdr_620 {
+    op op_202;
+}
+
+bb vmxnet3_change_mtu_773 {
+    op op_178;
+    op op_53;
+    op op_164;
+    op op_149;
+    op op_280;
+}
+
+bb vmxnet3_get_link_ksettings_1006 {
+    op op_333;
+    op op_333;
+}
+
+bb vmxnet3_process_xdp_1621 {
+    op op_520;
+}
+
+bb vmxnet3_vlan_rx_add_vid_792 {
+    op op_285;
+}
+
+bb vmxnet3_xdp_xmit_frame_1490 {
+    op op_485;
+}
+
+bb tcp_hdrlen_658 {
+    op op_212;
+    op op_231;
+}
+
+bb skb_header_cloned_600 {
+    op op_182;
+}
+
+bb vmxnet3_tq_init_all_204 {
+    op op_54;
+}
+
+bb vmxnet3_create_pp_224 {
+    op op_60;
+}
+
+bb vmxnet3_process_events_1088 {
+    op op_375;
+}
+
+bb __vlan_get_protocol.26_1369 {
+    op op_450;
+}
+
+bb vmxnet3_rq_alloc_rx_buf_247 {
+    op op_25;
+}
+
+bb vmxnet3_setup_driver_shared_341 {
+    op op_80;
+}
+
+bb vmxnet3_probe_device_1709 {
+    op op_141;
+}
+
+bb vmxnet3_probe_device_1707 {
+    op op_7;
+}
+
+bb vmxnet3_set_coalesce_864 {
+    op op_308;
+}
+
+bb vmxnet3_rq_destroy_all_550 {
+    op op_155;
+}
+
+bb vmxnet3_read_mac_addr_1129 {
+    op op_390;
+    op op_391;
+}
+
+bb folio_put_174 {
+    op op_44;
+}
+
+bb vmxnet3_features_check_1367 {
+    op op_456;
+}
+
+bb vmxnet3_map_pkt_727 {
+    op op_69;
+}
+
+bb vmxnet3_activate_dev_439 {
+    op op_51;
+}
+
+bb vmxnet3_netpoll_799 {
+    op op_289;
+}
+
+bb vmxnet3_init_rssfields_371 {
+    op op_101;
+}
+
+bb vmxnet3_msix_tx_1042 {
+    op op_370;
+}
+
+bb vmxnet3_get_hdr_len_1277 {
+    op op_181;
+}
+
+bb vmxnet3_probe_device_1663 {
+    op op_530;
+}
+
+bb dev_addr_set_768 {
+    op op_268;
+}
+
+bb vmxnet3_prepare_inner_tso_622 {
+    op op_206;
+}
+
+bb vmxnet3_get_regs_825 {
+    op op_294;
+    op op_295;
+    op op_296;
+    op op_297;
+    op op_298;
+    op op_299;
+    op op_300;
+    op op_301;
+    op op_302;
+    op op_303;
+}
+
+bb vmxnet3_probe_device_1679 {
+    op op_538;
+    op op_539;
+}
+
+bb vmxnet3_intr_810 {
+    op op_5;
+}
+
+bb netif_wake_subqueue_1077 {
+    op op_123;
+}
+
+bb vmxnet3_check_link_411 {
+    op op_121;
+    op op_122;
+}
+
+bb skb_header_pointer_589 {
+    op op_181;
+    op op_187;
+}
+
+bb netif_tx_disable_566 {
+    op op_173;
+}
+
+bb vmxnet3_tq_cleanup_108 {
+    op op_24;
+}
+
+bb vmxnet3_run_xdp_1543 {
+    op op_497;
+}
+
+bb vmxnet3_suspend_38 {
+    op op_8;
+}
+
+bb vmxnet3_rq_destroy_all_rxdataring_539 {
+    op op_141;
+}
+
+bb vmxnet3_tq_xmit_648 {
+    op op_181;
+}
+
+bb vmxnet3_xdp_xmit_1481 {
+    op op_484;
+}
+
+bb vmxnet3_rq_alloc_rx_buf_235 {
+    op op_63;
+}
+
+bb vmxnet3_init_rssfields_368 {
+    op op_99;
+    op op_100;
+}
+
+bb vmxnet3_declare_features_1111 {
+    op op_101;
+}
+
+bb vmxnet3_suspend_44 {
+    op op_9;
+}
+
+bb vmxnet3_resume_71 {
+    op op_1;
+    op op_2;
+}
+
+bb vmxnet3_activate_dev_387 {
+    op op_111;
+    op op_112;
+}
+
+bb vmxnet3_run_xdp_1585 {
+    op op_502;
+}
+
+bb pskb_may_pull_reason_685 {
+    op op_181;
+}
+
+bb vmxnet3_tq_tx_complete_1049 {
+    op op_360;
+    op op_361;
+}
+
+bb vmxnet3_poll_rx_only_1143 {
+    op op_440;
+}
+
+bb vmxnet3_rq_rx_complete_1274 {
+    op op_429;
+}
+
+bb vmxnet3_init_rssfields_384 {
+    op op_107;
+    op op_108;
+    op op_109;
+}
+
+bb vmxnet3_prepare_inner_tso_617 {
+    op op_201;
+    op op_203;
+}
+
+bb vmxnet3_reset_work_1138 {
+    op op_399;
+}
+
+bb vmxnet3_create_queues_456 {
+    op op_145;
+}
+
+bb vmxnet3_poll_rx_only_1332 {
+    op op_133;
+}
+
+bb vmxnet3_features_check_1387 {
+    op op_458;
+}
+
+bb vmxnet3_disable_intr_13 {
+    op op_3;
+}
+
+bb vmxnet3_map_pkt_721 {
+    op op_182;
+}
+
+bb vmxnet3_get_rss_hash_opts_920 {
+    op op_308;
+}
+
+bb vmxnet3_rq_create_all_776 {
+    op op_164;
+}
+
+bb trace_xdp_exception_1598 {
+    op op_512;
+}
+
+bb vmxnet3_remove_device_1013 {
+    op op_147;
+}
+
+bb vmxnet3_tq_tx_complete_1043 {
+    op op_8;
+}
+
+bb vmxnet3_process_events_1100 {
+    op op_284;
+}
+
+bb vmxnet3_parse_hdr_681 {
+    op op_244;
+}
+
+bb put_page_testzero_179 {
+    op op_42;
+}
+
+bb vmxnet3_features_check_1394 {
+    op op_463;
+}
+
+bb ipv6_hdr.21_1391 {
+    op op_457;
+}
+
+bb vmxnet3_tq_tx_complete_1070 {
+    op op_363;
+}
+
+bb vmxnet3_tq_xmit_757 {
+    op op_264;
+}
+
+bb vmxnet3_rq_rx_complete_1326 {
+    op op_438;
+}
+
+bb txd_estimate_577 {
+    op op_183;
+}
+
+path vmxnet3_adjust_rx_ring_size_0 {
+    bb bb_485
+}
+
+path vmxnet3_tq_wake_0 {
+    bb bb_1076
+}
+
+path vmxnet3_tq_xmit_13 {
+    bb bb_572
+    bb bb_649
+    bb bb_765
+}
+
+path vmxnet3_tq_xmit_3 {
+    bb bb_572
+    bb bb_598
+    bb bb_629
+}
+
+path vmxnet3_tq_xmit_8 {
+    bb bb_572
+    bb bb_646
+    bb bb_648
+    bb bb_649
+    bb bb_765
+}
+
+path vmxnet3_tq_xmit_7 {
+    bb bb_572
+    bb bb_646
+    bb bb_648
+    bb bb_649
+    bb bb_702
+    bb bb_709
+    bb bb_765
+}
+
+path vmxnet3_tq_xmit_12 {
+    bb bb_572
+    bb bb_649
+    bb bb_702
+    bb bb_709
+    bb bb_765
+}
+
+path vmxnet3_tq_xmit_2 {
+    bb bb_572
+    bb bb_598
+    bb bb_616
+}
+
+path vmxnet3_tq_xmit_11 {
+    bb bb_572
+    bb bb_649
+    bb bb_702
+    bb bb_709
+    bb bb_757
+    bb bb_763
+}
+
+path vmxnet3_tq_xmit_6 {
+    bb bb_572
+    bb bb_646
+    bb bb_648
+    bb bb_649
+    bb bb_702
+    bb bb_709
+    bb bb_757
+    bb bb_763
+}
+
+path vmxnet3_tq_xmit_1 {
+    bb bb_572
+    bb bb_598
+    bb bb_606
+    bb bb_613
+    bb bb_629
+}
+
+path vmxnet3_tq_xmit_10 {
+    bb bb_572
+    bb bb_649
+    bb bb_702
+    bb bb_709
+    bb bb_745
+}
+
+path vmxnet3_tq_xmit_5 {
+    bb bb_572
+    bb bb_646
+    bb bb_648
+    bb bb_649
+    bb bb_702
+    bb bb_709
+    bb bb_745
+}
+
+path vmxnet3_tq_xmit_0 {
+    bb bb_572
+    bb bb_598
+    bb bb_606
+    bb bb_613
+    bb bb_616
+}
+
+path vmxnet3_tq_xmit_9 {
+    bb bb_572
+    bb bb_649
+    bb bb_702
+    bb bb_708
+}
+
+path vmxnet3_tq_xmit_4 {
+    bb bb_572
+    bb bb_646
+    bb bb_648
+    bb bb_649
+    bb bb_702
+    bb bb_708
+}
+
+path vmxnet3_open_1 {
+    bb bb_453
+    bb bb_547
+    bb bb_548
+}
+
+path vmxnet3_open_0 {
+    bb bb_452
+    bb bb_453
+    bb bb_547
+    bb bb_548
+}
+
+path trace_xdp_exception_0 {
+    bb bb_1590
+    bb bb_1598
+}
+
+path trace_xdp_exception_1 {
+    bb bb_1598
+}
+
+path vmxnet3_rq_destroy_all_rxdataring_0 {
+    bb bb_539
+}
+
+path writel.4_0 {
+    bb bb_1359
+}
+
+path vmxnet3_init_bufsize_0 {
+    bb bb_361
+}
+
+path put_page_testzero_0 {
+    bb bb_176
+    bb bb_179
+}
+
+path vmxnet3_get_rss_hash_opts_0 {
+    bb bb_920
+    bb bb_921
+}
+
+path netif_start_subqueue_0 {
+    bb bb_416
+}
+
+path vmxnet3_poll_0 {
+    bb bb_1335
+    bb bb_1343
+}
+
+path vmxnet3_check_link_1 {
+    bb bb_411
+    bb bb_422
+}
+
+path vmxnet3_check_link_0 {
+    bb bb_411
+    bb bb_414
+}
+
+path vmxnet3_prepare_tso_0 {
+    bb bb_630
+    bb bb_636
+}
+
+path vmxnet3_prepare_tso_1 {
+    bb bb_630
+    bb bb_640
+}
+
+path vmxnet3_rq_cleanup_5 {
+    bb bb_191
+}
+
+path vmxnet3_rq_cleanup_2 {
+    bb bb_140
+    bb bb_195
+}
+
+path vmxnet3_rq_cleanup_7 {
+    bb bb_195
+}
+
+path vmxnet3_rq_cleanup_1 {
+    bb bb_140
+    bb bb_194
+}
+
+path vmxnet3_rq_cleanup_3 {
+    bb bb_153
+}
+
+path vmxnet3_rq_cleanup_4 {
+    bb bb_155
+}
+
+path vmxnet3_rq_cleanup_6 {
+    bb bb_194
+}
+
+path vmxnet3_rq_cleanup_0 {
+    bb bb_140
+    bb bb_191
+}
+
+path schedule_work_0 {
+    bb bb_789
+}
+
+path eth_hdr_0 {
+    bb bb_1279
+}
+
+path vmxnet3_tq_start_0 {
+    bb bb_415
+}
+
+path vmxnet3_poll_rx_only_1 {
+    bb bb_1143
+    bb bb_1332
+}
+
+path vmxnet3_poll_rx_only_0 {
+    bb bb_1142
+    bb bb_1143
+    bb bb_1332
+}
+
+path page_pool_put_full_page.78_0 {
+    bb bb_1554
+}
+
+path vmxnet3_enable_all_intrs_0 {
+    bb bb_432
+}
+
+path netif_wake_subqueue_0 {
+    bb bb_1077
+}
+
+path vmxnet3_features_check_0 {
+    bb bb_1367
+    bb bb_1387
+    bb bb_1394
+}
+
+path vmxnet3_features_check_1 {
+    bb bb_1367
+    bb bb_1390
+    bb bb_1394
+}
+
+path vmxnet3_tq_stop_0 {
+    bb bb_423
+}
+
+path vmxnet3_fix_features_0 {
+    bb bb_1360
+}
+
+path vmxnet3_xdp_set_0 {
+    bb bb_1459
+    bb bb_1462
+}
+
+path u64_stats_add_0 {
+    bb bb_1537
+}
+
+path page_pool_put_full_page_0 {
+    bb bb_142
+}
+
+path vmxnet3_unmap_tx_buf_0 {
+    bb bb_110
+}
+
+path u64_stats_inc_0 {
+    bb bb_1535
+}
+
+path readl_0 {
+    bb bb_1028
+}
+
+path page_pool_is_last_frag.80_0 {
+    bb bb_1557
+}
+
+path vmxnet3_set_rss_0 {
+    bb bb_996
+}
+
+path lockdep_init_map_0 {
+    bb bb_1130
+}
+
+path skb_transport_header_0 {
+    bb bb_632
+}
+
+path vmxnet3_set_rxnfc_0 {
+    bb bb_936
+}
+
+path skb_mac_header_0 {
+    bb bb_1280
+}
+
+path vmxnet3_get_ethtool_stats_0 {
+    bb bb_907
+}
+
+path skb_set_hash_0 {
+    bb bb_1237
+}
+
+path vmxnet3_rq_init_all_0 {
+    bb bb_210
+}
+
+path vmxnet3_set_mac_addr_0 {
+    bb bb_767
+}
+
+path vmxnet3_build_skb_0 {
+    bb bb_1607
+}
+
+path vmxnet3_build_skb_1 {
+    bb bb_1608
+}
+
+path vmxnet3_xdp_0 {
+    bb bb_1441
+}
+
+path udp_hdr_0 {
+    bb bb_1395
+}
+
+path vmxnet3_xdp_xmit_back_0 {
+    bb bb_1577
+    bb bb_1578
+}
+
+path readl.34_0 {
+    bb bb_1433
+}
+
+path skb_header_pointer_0 {
+    bb bb_589
+}
+
+path vmxnet3_close_1 {
+    bb bb_556
+}
+
+path vmxnet3_close_0 {
+    bb bb_554
+    bb bb_556
+}
+
+path pskb_may_pull_0 {
+    bb bb_682
+}
+
+path skb_transport_header.22_0 {
+    bb bb_1396
+}
+
+path vmxnet3_msix_tx_1 {
+    bb bb_1039
+    bb bb_1081
+}
+
+path vmxnet3_msix_tx_4 {
+    bb bb_1081
+}
+
+path vmxnet3_msix_tx_2 {
+    bb bb_1039
+    bb bb_1082
+}
+
+path vmxnet3_msix_tx_0 {
+    bb bb_1039
+    bb bb_1042
+    bb bb_1082
+}
+
+path vmxnet3_msix_tx_5 {
+    bb bb_1082
+}
+
+path vmxnet3_msix_tx_3 {
+    bb bb_1042
+    bb bb_1082
+}
+
+path vmxnet3_do_poll_3 {
+    bb bb_1341
+}
+
+path vmxnet3_do_poll_0 {
+    bb bb_1337
+    bb bb_1340
+    bb bb_1341
+}
+
+path vmxnet3_do_poll_1 {
+    bb bb_1337
+    bb bb_1341
+}
+
+path vmxnet3_do_poll_2 {
+    bb bb_1340
+    bb bb_1341
+}
+
+path vmxnet3_probe_device_16 {
+    bb bb_1633
+    bb bb_1638
+    bb bb_1712
+    bb bb_1713
+}
+
+path vmxnet3_probe_device_10 {
+    bb bb_1633
+    bb bb_1638
+    bb bb_1655
+    bb bb_1663
+    bb bb_1665
+    bb bb_1666
+    bb bb_1668
+    bb bb_1675
+    bb bb_1679
+    bb bb_1708
+    bb bb_1709
+    bb bb_1710
+}
+
+path vmxnet3_probe_device_15 {
+    bb bb_1633
+    bb bb_1638
+    bb bb_1655
+    bb bb_1711
+    bb bb_1712
+    bb bb_1713
+}
+
+path vmxnet3_probe_device_1 {
+    bb bb_1633
+    bb bb_1638
+    bb bb_1655
+    bb bb_1663
+    bb bb_1665
+    bb bb_1666
+    bb bb_1668
+    bb bb_1674
+    bb bb_1675
+    bb bb_1679
+    bb bb_1694
+    bb bb_1699
+    bb bb_1706
+    bb bb_1707
+    bb bb_1708
+    bb bb_1709
+    bb bb_1710
+}
+
+path vmxnet3_probe_device_14 {
+    bb bb_1633
+    bb bb_1638
+    bb bb_1655
+    bb bb_1663
+    bb bb_1665
+    bb bb_1711
+    bb bb_1712
+    bb bb_1713
+}
+
+path vmxnet3_probe_device_0 {
+    bb bb_1633
+    bb bb_1638
+    bb bb_1655
+    bb bb_1663
+    bb bb_1665
+    bb bb_1666
+    bb bb_1668
+    bb bb_1674
+    bb bb_1675
+    bb bb_1679
+    bb bb_1694
+    bb bb_1699
+    bb bb_1705
+}
+
+path vmxnet3_probe_device_5 {
+    bb bb_1633
+    bb bb_1638
+    bb bb_1655
+    bb bb_1663
+    bb bb_1665
+    bb bb_1666
+    bb bb_1668
+    bb bb_1674
+    bb bb_1675
+    bb bb_1679
+    bb bb_1710
+}
+
+path vmxnet3_probe_device_4 {
+    bb bb_1633
+    bb bb_1638
+    bb bb_1655
+    bb bb_1663
+    bb bb_1665
+    bb bb_1666
+    bb bb_1668
+    bb bb_1674
+    bb bb_1675
+    bb bb_1679
+    bb bb_1709
+    bb bb_1710
+}
+
+path vmxnet3_probe_device_9 {
+    bb bb_1633
+    bb bb_1638
+    bb bb_1655
+    bb bb_1663
+    bb bb_1665
+    bb bb_1666
+    bb bb_1668
+    bb bb_1675
+    bb bb_1679
+    bb bb_1694
+    bb bb_1699
+    bb bb_1707
+    bb bb_1708
+    bb bb_1709
+    bb bb_1710
+}
+
+path vmxnet3_probe_device_3 {
+    bb bb_1633
+    bb bb_1638
+    bb bb_1655
+    bb bb_1663
+    bb bb_1665
+    bb bb_1666
+    bb bb_1668
+    bb bb_1674
+    bb bb_1675
+    bb bb_1679
+    bb bb_1708
+    bb bb_1709
+    bb bb_1710
+}
+
+path vmxnet3_probe_device_13 {
+    bb bb_1633
+    bb bb_1638
+    bb bb_1655
+    bb bb_1663
+    bb bb_1665
+    bb bb_1666
+    bb bb_1668
+    bb bb_1675
+    bb bb_1685
+}
+
+path vmxnet3_probe_device_8 {
+    bb bb_1633
+    bb bb_1638
+    bb bb_1655
+    bb bb_1663
+    bb bb_1665
+    bb bb_1666
+    bb bb_1668
+    bb bb_1675
+    bb bb_1679
+    bb bb_1694
+    bb bb_1699
+    bb bb_1706
+    bb bb_1707
+    bb bb_1708
+    bb bb_1709
+    bb bb_1710
+}
+
+path vmxnet3_probe_device_7 {
+    bb bb_1633
+    bb bb_1638
+    bb bb_1655
+    bb bb_1663
+    bb bb_1665
+    bb bb_1666
+    bb bb_1668
+    bb bb_1675
+    bb bb_1679
+    bb bb_1694
+    bb bb_1699
+    bb bb_1705
+}
+
+path vmxnet3_probe_device_2 {
+    bb bb_1633
+    bb bb_1638
+    bb bb_1655
+    bb bb_1663
+    bb bb_1665
+    bb bb_1666
+    bb bb_1668
+    bb bb_1674
+    bb bb_1675
+    bb bb_1679
+    bb bb_1694
+    bb bb_1699
+    bb bb_1707
+    bb bb_1708
+    bb bb_1709
+    bb bb_1710
+}
+
+path vmxnet3_probe_device_17 {
+    bb bb_1633
+    bb bb_1713
+}
+
+path vmxnet3_probe_device_12 {
+    bb bb_1633
+    bb bb_1638
+    bb bb_1655
+    bb bb_1663
+    bb bb_1665
+    bb bb_1666
+    bb bb_1668
+    bb bb_1675
+    bb bb_1679
+    bb bb_1710
+}
+
+path vmxnet3_probe_device_6 {
+    bb bb_1633
+    bb bb_1638
+    bb bb_1655
+    bb bb_1663
+    bb bb_1665
+    bb bb_1666
+    bb bb_1668
+    bb bb_1674
+    bb bb_1675
+    bb bb_1685
+}
+
+path vmxnet3_probe_device_11 {
+    bb bb_1633
+    bb bb_1638
+    bb bb_1655
+    bb bb_1663
+    bb bb_1665
+    bb bb_1666
+    bb bb_1668
+    bb bb_1675
+    bb bb_1679
+    bb bb_1709
+    bb bb_1710
+}
+
+path tcp_hdrlen_0 {
+    bb bb_658
+}
+
+path vmxnet3_unmap_pkt_1 {
+    bb bb_1059
+    bb bb_1063
+}
+
+path vmxnet3_unmap_pkt_0 {
+    bb bb_1059
+    bb bb_1060
+}
+
+path vmxnet3_unmap_pkt_2 {
+    bb bb_1063
+}
+
+path vmxnet3_msix_rx_0 {
+    bb bb_801
+    bb bb_802
+}
+
+path vmxnet3_msix_rx_1 {
+    bb bb_802
+}
+
+path pskb_may_pull_reason_0 {
+    bb bb_685
+}
+
+path vmxnet3_tq_tx_complete_0 {
+    bb bb_1043
+    bb bb_1049
+    bb bb_1069
+    bb bb_1070
+    bb bb_1072
+    bb bb_1073
+    bb bb_1075
+}
+
+path vmxnet3_tq_tx_complete_1 {
+    bb bb_1043
+    bb bb_1079
+}
+
+path vmxnet3_disable_intr_0 {
+    bb bb_13
+}
+
+path vmxnet3_get_stats64_0 {
+    bb bb_1351
+}
+
+path rcu_read_unlock_0 {
+    bb bb_57
+}
+
+path netif_wake_queue_0 {
+    bb bb_1139
+}
+
+path ip_hdr_0 {
+    bb bb_637
+}
+
+path tcp_hdr_0 {
+    bb bb_631
+}
+
+path vmxnet3_process_xdp_small_0 {
+    bb bb_1532
+    bb bb_1605
+}
+
+path vmxnet3_process_xdp_small_1 {
+    bb bb_1605
+}
+
+path vlan_get_protocol_0 {
+    bb bb_580
+}
+
+path vmxnet3_set_features_0 {
+    bb bb_1405
+}
+
+path vmxnet3_set_features_1 {
+    bb bb_1426
+    bb bb_1431
+}
+
+path vmxnet3_set_features_2 {
+    bb bb_1431
+}
+
+path skb_frag_dma_map_0 {
+    bb bb_730
+}
+
+path vmxnet3_set_mc_0 {
+    bb bb_391
+    bb bb_395
+    bb bb_401
+    bb bb_407
+    bb bb_408
+    bb bb_409
+}
+
+path vmxnet3_set_mc_11 {
+    bb bb_408
+    bb bb_409
+}
+
+path vmxnet3_set_mc_4 {
+    bb bb_391
+    bb bb_407
+    bb bb_408
+    bb bb_409
+}
+
+path vmxnet3_set_mc_1 {
+    bb bb_391
+    bb bb_395
+    bb bb_401
+    bb bb_408
+    bb bb_409
+}
+
+path vmxnet3_set_mc_8 {
+    bb bb_395
+    bb bb_407
+    bb bb_408
+    bb bb_409
+}
+
+path vmxnet3_set_mc_5 {
+    bb bb_391
+    bb bb_408
+    bb bb_409
+}
+
+path vmxnet3_set_mc_2 {
+    bb bb_391
+    bb bb_395
+    bb bb_407
+    bb bb_408
+    bb bb_409
+}
+
+path vmxnet3_set_mc_6 {
+    bb bb_395
+    bb bb_401
+    bb bb_407
+    bb bb_408
+    bb bb_409
+}
+
+path vmxnet3_set_mc_9 {
+    bb bb_395
+    bb bb_408
+    bb bb_409
+}
+
+path vmxnet3_set_mc_3 {
+    bb bb_391
+    bb bb_395
+    bb bb_408
+    bb bb_409
+}
+
+path vmxnet3_set_mc_10 {
+    bb bb_407
+    bb bb_408
+    bb bb_409
+}
+
+path vmxnet3_set_mc_7 {
+    bb bb_395
+    bb bb_401
+    bb bb_408
+    bb bb_409
+}
+
+path vmxnet3_rq_alloc_rx_buf_0 {
+    bb bb_235
+    bb bb_257
+}
+
+path vmxnet3_rq_alloc_rx_buf_1 {
+    bb bb_243
+    bb bb_246
+    bb bb_247
+}
+
+path vmxnet3_rq_alloc_rx_buf_2 {
+    bb bb_243
+    bb bb_246
+    bb bb_257
+}
+
+path vmxnet3_rq_alloc_rx_buf_3 {
+    bb bb_253
+    bb bb_254
+}
+
+path vmxnet3_parse_hdr_7 {
+    bb bb_661
+    bb bb_671
+    bb bb_675
+    bb bb_681
+}
+
+path vmxnet3_parse_hdr_1 {
+    bb bb_656
+}
+
+path vmxnet3_parse_hdr_4 {
+    bb bb_661
+    bb bb_669
+    bb bb_675
+    bb bb_681
+}
+
+path vmxnet3_parse_hdr_3 {
+    bb bb_661
+    bb bb_669
+    bb bb_674
+}
+
+path vmxnet3_parse_hdr_8 {
+    bb bb_661
+    bb bb_671
+    bb bb_681
+}
+
+path vmxnet3_parse_hdr_6 {
+    bb bb_661
+    bb bb_671
+    bb bb_674
+}
+
+path vmxnet3_parse_hdr_10 {
+    bb bb_678
+    bb bb_681
+}
+
+path vmxnet3_parse_hdr_0 {
+    bb bb_653
+}
+
+path vmxnet3_parse_hdr_2 {
+    bb bb_661
+    bb bb_665
+    bb bb_667
+}
+
+path vmxnet3_parse_hdr_5 {
+    bb bb_661
+    bb bb_669
+    bb bb_681
+}
+
+path vmxnet3_parse_hdr_9 {
+    bb bb_661
+    bb bb_681
+}
+
+path vlan_get_protocol.19_0 {
+    bb bb_1368
+}
+
+path vmxnet3_disable_all_intrs_0 {
+    bb bb_12
+}
+
+path vmxnet3_tx_timeout_0 {
+    bb bb_788
+}
+
+path vmxnet3_suspend_1 {
+    bb bb_1
+    bb bb_6
+    bb bb_38
+    bb bb_44
+    bb bb_65
+}
+
+path vmxnet3_suspend_0 {
+    bb bb_1
+    bb bb_6
+    bb bb_38
+    bb bb_44
+    bb bb_51
+    bb bb_69
+}
+
+path vmxnet3_suspend_3 {
+    bb bb_1
+    bb bb_6
+    bb bb_69
+}
+
+path vmxnet3_suspend_2 {
+    bb bb_1
+    bb bb_6
+    bb bb_38
+    bb bb_44
+    bb bb_66
+}
+
+path ip_hdr.20_0 {
+    bb bb_1388
+}
+
+path vmxnet3_disable_encap_offloads_0 {
+    bb bb_1429
+}
+
+path vmxnet3_reset_work_1 {
+    bb bb_1135
+    bb bb_1138
+}
+
+path vmxnet3_reset_work_0 {
+    bb bb_1135
+    bb bb_1136
+    bb bb_1138
+}
+
+path vmxnet3_request_irqs_4 {
+    bb bb_298
+}
+
+path vmxnet3_request_irqs_1 {
+    bb bb_280
+    bb bb_297
+}
+
+path vmxnet3_request_irqs_3 {
+    bb bb_297
+}
+
+path vmxnet3_request_irqs_5 {
+    bb bb_299
+}
+
+path vmxnet3_request_irqs_0 {
+    bb bb_280
+    bb bb_293
+    bb bb_297
+}
+
+path vmxnet3_request_irqs_2 {
+    bb bb_293
+    bb bb_297
+}
+
+path netif_stop_subqueue_0 {
+    bb bb_424
+}
+
+path skb_header_cloned_0 {
+    bb bb_600
+}
+
+path vmxnet3_intr_0 {
+    bb bb_808
+    bb bb_810
+    bb bb_811
+}
+
+path vmxnet3_intr_1 {
+    bb bb_808
+    bb bb_811
+}
+
+path vmxnet3_intr_2 {
+    bb bb_810
+    bb bb_811
+}
+
+path vmxnet3_intr_3 {
+    bb bb_811
+}
+
+path skb_header_pointer.29_0 {
+    bb bb_1377
+}
+
+path vmxnet3_pp_get_buff_0 {
+    bb bb_237
+}
+
+path vmxnet3_tq_destroy_0 {
+    bb bb_470
+    bb bb_473
+    bb bb_475
+}
+
+path vmxnet3_tq_destroy_3 {
+    bb bb_475
+}
+
+path vmxnet3_tq_destroy_2 {
+    bb bb_473
+    bb bb_475
+}
+
+path vmxnet3_tq_destroy_1 {
+    bb bb_470
+    bb bb_475
+}
+
+path vmxnet3_reset_dev_0 {
+    bb bb_199
+}
+
+path dev_addr_set_0 {
+    bb bb_768
+}
+
+path vmxnet3_alloc_pci_resources_1 {
+    bb bb_1649
+}
+
+path vmxnet3_alloc_pci_resources_0 {
+    bb bb_1644
+    bb bb_1649
+}
+
+path vmxnet3_rq_destroy_all_0 {
+    bb bb_550
+}
+
+path inner_tcp_hdrlen_0 {
+    bb bb_655
+}
+
+path writel.69_0 {
+    bb bb_1519
+}
+
+path vmxnet3_tq_destroy_all_0 {
+    bb bb_544
+}
+
+path vmxnet3_setup_driver_shared_1 {
+    bb bb_352
+}
+
+path vmxnet3_setup_driver_shared_0 {
+    bb bb_341
+    bb bb_352
+}
+
+path page_pool_put_page_0 {
+    bb bb_143
+}
+
+path vmxnet3_set_coalesce_0 {
+    bb bb_864
+    bb bb_866
+}
+
+path vmxnet3_tq_create_1 {
+    bb bb_468
+}
+
+path vmxnet3_tq_create_0 {
+    bb bb_465
+    bb bb_468
+}
+
+path put_devmap_managed_page_refs_0 {
+    bb bb_168
+}
+
+path vmxnet3_enable_intr_0 {
+    bb bb_433
+}
+
+path csum_tcpudp_magic_0 {
+    bb bb_623
+}
+
+path vmxnet3_shutdown_device_0 {
+    bb bb_1020
+    bb bb_1021
+    bb bb_1024
+}
+
+path vmxnet3_shutdown_device_1 {
+    bb bb_1020
+    bb bb_1024
+}
+
+path vmxnet3_init_coalesce_0 {
+    bb bb_364
+}
+
+path page_pool_put_page.79_0 {
+    bb bb_1555
+}
+
+path vmxnet3_xdp_xmit_0 {
+    bb bb_1481
+    bb bb_1489
+}
+
+path __vlan_get_protocol_0 {
+    bb bb_581
+    bb bb_588
+    bb bb_596
+}
+
+path ipv6_hdr_0 {
+    bb bb_642
+}
+
+path vmxnet3_vlan_rx_add_vid_0 {
+    bb bb_792
+}
+
+path vmxnet3_netpoll_0 {
+    bb bb_799
+}
+
+path vmxnet3_netpoll_1 {
+    bb bb_806
+}
+
+path page_pool_recycle_direct.77_0 {
+    bb bb_1553
+}
+
+path page_pool_is_last_frag_0 {
+    bb bb_145
+}
+
+path vmxnet3_append_frag_0 {
+    bb bb_1226
+    bb bb_1228
+}
+
+path vmxnet3_rq_create_all_2 {
+    bb bb_780
+}
+
+path vmxnet3_rq_create_all_0 {
+    bb bb_775
+    bb bb_776
+}
+
+path vmxnet3_rq_create_all_1 {
+    bb bb_775
+    bb bb_780
+}
+
+path netif_tx_disable_0 {
+    bb bb_561
+    bb bb_563
+    bb bb_566
+}
+
+path netif_tx_disable_1 {
+    bb bb_561
+    bb bb_566
+}
+
+path vmxnet3_ack_events_0 {
+    bb bb_1089
+}
+
+path put_page_0 {
+    bb bb_156
+    bb bb_173
+}
+
+path vmxnet3_rq_cleanup_all_0 {
+    bb bb_134
+}
+
+path vmxnet3_rq_rx_complete_22 {
+    bb bb_1163
+    bb bb_1236
+}
+
+path vmxnet3_rq_rx_complete_42 {
+    bb bb_1223
+    bb bb_1224
+}
+
+path vmxnet3_rq_rx_complete_62 {
+    bb bb_1239
+    bb bb_1274
+    bb bb_1300
+    bb bb_1302
+}
+
+path vmxnet3_rq_rx_complete_9 {
+    bb bb_1163
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1274
+    bb bb_1300
+    bb bb_1302
+}
+
+path vmxnet3_rq_rx_complete_29 {
+    bb bb_1163
+    bb bb_1239
+    bb bb_1304
+    bb bb_1311
+    bb bb_1316
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_49 {
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1304
+    bb bb_1311
+    bb bb_1316
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_69 {
+    bb bb_1239
+    bb bb_1311
+    bb bb_1316
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_0 {
+    bb bb_1155
+}
+
+path vmxnet3_rq_rx_complete_20 {
+    bb bb_1163
+    bb bb_1223
+    bb bb_1225
+    bb bb_1311
+    bb bb_1316
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_40 {
+    bb bb_1193
+    bb bb_1201
+    bb bb_1203
+    bb bb_1204
+}
+
+path vmxnet3_rq_rx_complete_60 {
+    bb bb_1239
+    bb bb_1270
+}
+
+path vmxnet3_rq_rx_complete_15 {
+    bb bb_1163
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_35 {
+    bb bb_1163
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_55 {
+    bb bb_1223
+    bb bb_1225
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_6 {
+    bb bb_1163
+    bb bb_1223
+    bb bb_1225
+    bb bb_1236
+}
+
+path vmxnet3_rq_rx_complete_26 {
+    bb bb_1163
+    bb bb_1239
+    bb bb_1304
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_46 {
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1274
+    bb bb_1300
+    bb bb_1302
+}
+
+path vmxnet3_rq_rx_complete_66 {
+    bb bb_1239
+    bb bb_1304
+    bb bb_1311
+    bb bb_1316
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_13 {
+    bb bb_1163
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1304
+    bb bb_1311
+    bb bb_1316
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_33 {
+    bb bb_1163
+    bb bb_1239
+    bb bb_1311
+    bb bb_1316
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_53 {
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1311
+    bb bb_1316
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_4 {
+    bb bb_1163
+    bb bb_1193
+    bb bb_1204
+}
+
+path vmxnet3_rq_rx_complete_73 {
+    bb bb_1311
+    bb bb_1316
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_24 {
+    bb bb_1163
+    bb bb_1239
+    bb bb_1274
+    bb bb_1300
+    bb bb_1301
+}
+
+path vmxnet3_rq_rx_complete_44 {
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1270
+}
+
+path vmxnet3_rq_rx_complete_64 {
+    bb bb_1239
+    bb bb_1304
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_19 {
+    bb bb_1163
+    bb bb_1223
+    bb bb_1225
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_39 {
+    bb bb_1188
+    bb bb_1193
+    bb bb_1204
+}
+
+path vmxnet3_rq_rx_complete_59 {
+    bb bb_1236
+}
+
+path vmxnet3_rq_rx_complete_10 {
+    bb bb_1163
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1304
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_30 {
+    bb bb_1163
+    bb bb_1239
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_50 {
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1304
+    bb bb_1311
+    bb bb_1316
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_70 {
+    bb bb_1239
+    bb bb_1311
+    bb bb_1316
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_17 {
+    bb bb_1163
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1311
+    bb bb_1316
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_37 {
+    bb bb_1163
+    bb bb_1311
+    bb bb_1316
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_57 {
+    bb bb_1223
+    bb bb_1225
+    bb bb_1311
+    bb bb_1316
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_8 {
+    bb bb_1163
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1274
+    bb bb_1300
+    bb bb_1301
+}
+
+path vmxnet3_rq_rx_complete_28 {
+    bb bb_1163
+    bb bb_1239
+    bb bb_1304
+    bb bb_1311
+    bb bb_1316
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_48 {
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1304
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_3 {
+    bb bb_1163
+    bb bb_1193
+    bb bb_1201
+    bb bb_1203
+    bb bb_1204
+}
+
+path vmxnet3_rq_rx_complete_68 {
+    bb bb_1239
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_23 {
+    bb bb_1163
+    bb bb_1239
+    bb bb_1270
+}
+
+path vmxnet3_rq_rx_complete_43 {
+    bb bb_1223
+    bb bb_1225
+    bb bb_1236
+}
+
+path vmxnet3_rq_rx_complete_63 {
+    bb bb_1239
+    bb bb_1304
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_14 {
+    bb bb_1163
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_34 {
+    bb bb_1163
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_54 {
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1311
+    bb bb_1316
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_1 {
+    bb bb_1163
+    bb bb_1188
+    bb bb_1193
+    bb bb_1201
+    bb bb_1203
+    bb bb_1204
+}
+
+path vmxnet3_rq_rx_complete_74 {
+    bb bb_1311
+    bb bb_1316
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_21 {
+    bb bb_1163
+    bb bb_1223
+    bb bb_1225
+    bb bb_1311
+    bb bb_1316
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_41 {
+    bb bb_1193
+    bb bb_1204
+}
+
+path vmxnet3_rq_rx_complete_61 {
+    bb bb_1239
+    bb bb_1274
+    bb bb_1300
+    bb bb_1301
+}
+
+path vmxnet3_rq_rx_complete_12 {
+    bb bb_1163
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1304
+    bb bb_1311
+    bb bb_1316
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_32 {
+    bb bb_1163
+    bb bb_1239
+    bb bb_1311
+    bb bb_1316
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_52 {
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_7 {
+    bb bb_1163
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1270
+}
+
+path vmxnet3_rq_rx_complete_72 {
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_27 {
+    bb bb_1163
+    bb bb_1239
+    bb bb_1304
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_47 {
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1304
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_67 {
+    bb bb_1239
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_18 {
+    bb bb_1163
+    bb bb_1223
+    bb bb_1225
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_38 {
+    bb bb_1188
+    bb bb_1193
+    bb bb_1201
+    bb bb_1203
+    bb bb_1204
+}
+
+path vmxnet3_rq_rx_complete_58 {
+    bb bb_1223
+    bb bb_1225
+    bb bb_1311
+    bb bb_1316
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_5 {
+    bb bb_1163
+    bb bb_1223
+    bb bb_1224
+}
+
+path vmxnet3_rq_rx_complete_25 {
+    bb bb_1163
+    bb bb_1239
+    bb bb_1274
+    bb bb_1300
+    bb bb_1302
+}
+
+path vmxnet3_rq_rx_complete_45 {
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1274
+    bb bb_1300
+    bb bb_1301
+}
+
+path vmxnet3_rq_rx_complete_65 {
+    bb bb_1239
+    bb bb_1304
+    bb bb_1311
+    bb bb_1316
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_16 {
+    bb bb_1163
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1311
+    bb bb_1316
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_36 {
+    bb bb_1163
+    bb bb_1311
+    bb bb_1316
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_56 {
+    bb bb_1223
+    bb bb_1225
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_11 {
+    bb bb_1163
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1304
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_31 {
+    bb bb_1163
+    bb bb_1239
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_51 {
+    bb bb_1223
+    bb bb_1225
+    bb bb_1239
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_rq_rx_complete_2 {
+    bb bb_1163
+    bb bb_1188
+    bb bb_1193
+    bb bb_1204
+}
+
+path vmxnet3_rq_rx_complete_71 {
+    bb bb_1311
+    bb bb_1316
+    bb bb_1323
+    bb bb_1326
+    bb bb_1327
+}
+
+path vmxnet3_create_queues_3 {
+    bb bb_456
+    bb bb_542
+}
+
+path vmxnet3_create_queues_6 {
+    bb bb_478
+    bb bb_536
+}
+
+path vmxnet3_create_queues_1 {
+    bb bb_456
+    bb bb_478
+    bb bb_495
+    bb bb_542
+}
+
+path vmxnet3_create_queues_4 {
+    bb bb_478
+    bb bb_495
+    bb bb_536
+}
+
+path vmxnet3_create_queues_2 {
+    bb bb_456
+    bb bb_478
+    bb bb_536
+}
+
+path vmxnet3_create_queues_0 {
+    bb bb_456
+    bb bb_478
+    bb bb_495
+    bb bb_536
+}
+
+path vmxnet3_create_queues_5 {
+    bb bb_478
+    bb bb_495
+    bb bb_542
+}
+
+path lockdep_init_map_wait_0 {
+    bb bb_1131
+}
+
+path vmxnet3_change_mtu_2 {
+    bb bb_772
+    bb bb_773
+    bb bb_783
+    bb bb_786
+}
+
+path vmxnet3_change_mtu_1 {
+    bb bb_771
+    bb bb_772
+    bb bb_773
+    bb bb_786
+}
+
+path vmxnet3_change_mtu_0 {
+    bb bb_771
+    bb bb_772
+    bb bb_773
+    bb bb_783
+    bb bb_786
+}
+
+path vmxnet3_change_mtu_3 {
+    bb bb_772
+    bb bb_773
+    bb bb_786
+}
+
+path vmxnet3_get_hdr_len_0 {
+    bb bb_1277
+    bb bb_1278
+}
+
+path vmxnet3_read_mac_addr_0 {
+    bb bb_1129
+}
+
+path vmxnet3_restore_vlan_0 {
+    bb bb_353
+    bb bb_355
+}
+
+path vmxnet3_map_pkt_4 {
+    bb bb_713
+    bb bb_719
+    bb bb_721
+    bb bb_728
+    bb bb_729
+    bb bb_737
+    bb bb_738
+}
+
+path vmxnet3_map_pkt_3 {
+    bb bb_713
+    bb bb_718
+    bb bb_719
+    bb bb_722
+    bb bb_727
+    bb bb_721
+    bb bb_728
+    bb bb_738
+}
+
+path vmxnet3_map_pkt_6 {
+    bb bb_713
+    bb bb_719
+    bb bb_722
+    bb bb_727
+    bb bb_721
+    bb bb_728
+    bb bb_729
+    bb bb_737
+    bb bb_738
+}
+
+path vmxnet3_map_pkt_0 {
+    bb bb_713
+    bb bb_718
+    bb bb_719
+    bb bb_721
+    bb bb_728
+    bb bb_729
+    bb bb_737
+    bb bb_738
+}
+
+path vmxnet3_map_pkt_5 {
+    bb bb_713
+    bb bb_719
+    bb bb_721
+    bb bb_728
+    bb bb_738
+}
+
+path vmxnet3_map_pkt_2 {
+    bb bb_713
+    bb bb_718
+    bb bb_719
+    bb bb_722
+    bb bb_727
+    bb bb_721
+    bb bb_728
+    bb bb_729
+    bb bb_737
+    bb bb_738
+}
+
+path vmxnet3_map_pkt_7 {
+    bb bb_713
+    bb bb_719
+    bb bb_722
+    bb bb_727
+    bb bb_721
+    bb bb_728
+    bb bb_738
+}
+
+path vmxnet3_map_pkt_1 {
+    bb bb_713
+    bb bb_718
+    bb bb_719
+    bb bb_721
+    bb bb_728
+    bb bb_738
+}
+
+path vmxnet3_rq_create_0 {
+    bb bb_505
+}
+
+path vmxnet3_rq_create_1 {
+    bb bb_507
+}
+
+path vmxnet3_tq_init_all_0 {
+    bb bb_204
+}
+
+path vmxnet3_remove_device_3 {
+    bb bb_1009
+    bb bb_1013
+    bb bb_1014
+    bb bb_1019
+}
+
+path vmxnet3_remove_device_2 {
+    bb bb_1009
+    bb bb_1013
+    bb bb_1014
+    bb bb_1018
+    bb bb_1019
+}
+
+path vmxnet3_remove_device_1 {
+    bb bb_1009
+    bb bb_1012
+    bb bb_1014
+    bb bb_1019
+}
+
+path vmxnet3_remove_device_0 {
+    bb bb_1009
+    bb bb_1012
+    bb bb_1014
+    bb bb_1018
+    bb bb_1019
+}
+
+path folio_put_0 {
+    bb bb_174
+}
+
+path vmxnet3_prepare_inner_tso_1 {
+    bb bb_617
+    bb bb_626
+}
+
+path vmxnet3_prepare_inner_tso_0 {
+    bb bb_617
+    bb bb_622
+}
+
+path vmxnet3_xdp_get_tq_0 {
+    bb bb_1484
+}
+
+path vmxnet3_activate_dev_3 {
+    bb bb_202
+    bb bb_275
+    bb bb_439
+}
+
+path vmxnet3_activate_dev_0 {
+    bb bb_202
+    bb bb_275
+    bb bb_321
+    bb bb_358
+    bb bb_439
+}
+
+path vmxnet3_activate_dev_1 {
+    bb bb_202
+    bb bb_275
+    bb bb_321
+    bb bb_359
+    bb bb_387
+    bb bb_388
+    bb bb_430
+}
+
+path vmxnet3_activate_dev_2 {
+    bb bb_202
+    bb bb_275
+    bb bb_321
+    bb bb_359
+    bb bb_388
+    bb bb_430
+}
+
+path vmxnet3_write_mac_addr_0 {
+    bb bb_357
+}
+
+path vmxnet3_set_rss_hash_opt_8 {
+    bb bb_960
+    bb bb_975
+}
+
+path vmxnet3_set_rss_hash_opt_7 {
+    bb bb_960
+    bb bb_974
+    bb bb_975
+}
+
+path vmxnet3_set_rss_hash_opt_2 {
+    bb bb_960
+    bb bb_963
+    bb bb_971
+    bb bb_974
+    bb bb_975
+}
+
+path vmxnet3_set_rss_hash_opt_5 {
+    bb bb_960
+    bb bb_967
+    bb bb_974
+    bb bb_975
+}
+
+path vmxnet3_set_rss_hash_opt_0 {
+    bb bb_960
+    bb bb_963
+    bb bb_967
+    bb bb_971
+    bb bb_974
+    bb bb_975
+}
+
+path vmxnet3_set_rss_hash_opt_3 {
+    bb bb_960
+    bb bb_963
+    bb bb_974
+    bb bb_975
+}
+
+path vmxnet3_set_rss_hash_opt_1 {
+    bb bb_960
+    bb bb_963
+    bb bb_967
+    bb bb_974
+    bb bb_975
+}
+
+path vmxnet3_set_rss_hash_opt_6 {
+    bb bb_960
+    bb bb_971
+    bb bb_974
+    bb bb_975
+}
+
+path vmxnet3_set_rss_hash_opt_4 {
+    bb bb_960
+    bb bb_967
+    bb bb_971
+    bb bb_974
+    bb bb_975
+}
+
+path __rounddown_pow_of_two.39_0 {
+    bb bb_882
+}
+
+path folio_put_testzero_0 {
+    bb bb_175
+}
+
+path vmxnet3_run_xdp_9 {
+    bb bb_1534
+    bb bb_1603
+}
+
+path vmxnet3_run_xdp_3 {
+    bb bb_1534
+    bb bb_1543
+    bb bb_1588
+    bb bb_1603
+}
+
+path vmxnet3_run_xdp_4 {
+    bb bb_1534
+    bb bb_1543
+    bb bb_1603
+}
+
+path vmxnet3_run_xdp_16 {
+    bb bb_1565
+    bb bb_1576
+    bb bb_1585
+}
+
+path vmxnet3_run_xdp_13 {
+    bb bb_1543
+    bb bb_1588
+    bb bb_1603
+}
+
+path vmxnet3_run_xdp_7 {
+    bb bb_1534
+    bb bb_1565
+    bb bb_1585
+}
+
+path vmxnet3_run_xdp_8 {
+    bb bb_1534
+    bb bb_1588
+    bb bb_1603
+}
+
+path vmxnet3_run_xdp_2 {
+    bb bb_1534
+    bb bb_1543
+    bb bb_1565
+    bb bb_1585
+}
+
+path vmxnet3_run_xdp_19 {
+    bb bb_1603
+}
+
+path vmxnet3_run_xdp_11 {
+    bb bb_1543
+    bb bb_1565
+    bb bb_1576
+    bb bb_1585
+}
+
+path vmxnet3_run_xdp_12 {
+    bb bb_1543
+    bb bb_1565
+    bb bb_1585
+}
+
+path vmxnet3_run_xdp_6 {
+    bb bb_1534
+    bb bb_1565
+    bb bb_1576
+    bb bb_1585
+}
+
+path vmxnet3_run_xdp_18 {
+    bb bb_1588
+    bb bb_1603
+}
+
+path vmxnet3_run_xdp_15 {
+    bb bb_1552
+}
+
+path vmxnet3_run_xdp_1 {
+    bb bb_1534
+    bb bb_1543
+    bb bb_1565
+    bb bb_1576
+    bb bb_1585
+}
+
+path vmxnet3_run_xdp_10 {
+    bb bb_1543
+    bb bb_1552
+}
+
+path vmxnet3_run_xdp_5 {
+    bb bb_1534
+    bb bb_1552
+}
+
+path vmxnet3_run_xdp_14 {
+    bb bb_1543
+    bb bb_1603
+}
+
+path vmxnet3_run_xdp_0 {
+    bb bb_1534
+    bb bb_1543
+    bb bb_1552
+}
+
+path vmxnet3_run_xdp_17 {
+    bb bb_1565
+    bb bb_1585
+}
+
+path txd_estimate_0 {
+    bb bb_573
+    bb bb_577
+}
+
+path vmxnet3_set_ringparam_3 {
+    bb bb_891
+}
+
+path vmxnet3_set_ringparam_2 {
+    bb bb_889
+    bb bb_891
+}
+
+path vmxnet3_set_ringparam_1 {
+    bb bb_881
+    bb bb_891
+}
+
+path vmxnet3_set_ringparam_0 {
+    bb bb_881
+    bb bb_889
+    bb bb_891
+}
+
+path vmxnet3_rq_init_0 {
+    bb bb_214
+    bb bb_219
+    bb bb_232
+    bb bb_269
+}
+
+path vmxnet3_rq_init_1 {
+    bb bb_219
+    bb bb_232
+    bb bb_269
+}
+
+path vmxnet3_enable_encap_offloads_0 {
+    bb bb_1408
+    bb bb_1410
+    bb bb_1412
+    bb bb_1414
+    bb bb_1416
+    bb bb_1418
+    bb bb_1420
+}
+
+path vmxnet3_tq_cleanup_2 {
+    bb bb_102
+    bb bb_126
+}
+
+path vmxnet3_tq_cleanup_0 {
+    bb bb_102
+    bb bb_108
+    bb bb_119
+    bb bb_122
+    bb bb_126
+}
+
+path vmxnet3_tq_cleanup_1 {
+    bb bb_102
+    bb bb_108
+    bb bb_122
+    bb bb_126
+}
+
+path inner_tcp_hdr_0 {
+    bb bb_618
+}
+
+path xdp_convert_buff_to_frame_0 {
+    bb bb_1568
+}
+
+path inner_ip_hdr_0 {
+    bb bb_620
+}
+
+path ipv6_hdr.21_0 {
+    bb bb_1391
+}
+
+path vmxnet3_create_pp_1 {
+    bb bb_220
+    bb bb_224
+}
+
+path vmxnet3_create_pp_0 {
+    bb bb_220
+    bb bb_222
+}
+
+path vmxnet3_get_link_ksettings_0 {
+    bb bb_1006
+}
+
+path vmxnet3_rx_csum_1 {
+    bb bb_1266
+}
+
+path vmxnet3_rx_csum_0 {
+    bb bb_1262
+}
+
+path vmxnet3_msix_event_0 {
+    bb bb_1084
+    bb bb_1086
+    bb bb_1102
+}
+
+path vmxnet3_msix_event_1 {
+    bb bb_1084
+    bb bb_1102
+}
+
+path vmxnet3_msix_event_2 {
+    bb bb_1086
+    bb bb_1102
+}
+
+path vmxnet3_msix_event_3 {
+    bb bb_1102
+}
+
+path skb_inner_transport_offset_0 {
+    bb bb_654
+}
+
+path tcp_v6_gso_csum_prep_0 {
+    bb bb_641
+}
+
+path vmxnet3_quiesce_dev_0 {
+    bb bb_558
+    bb bb_560
+}
+
+path netif_tx_wake_all_queues_0 {
+    bb bb_427
+}
+
+path vmxnet3_declare_features_0 {
+    bb bb_1111
+    bb bb_1113
+    bb bb_1115
+    bb bb_1117
+    bb bb_1119
+    bb bb_1121
+    bb bb_1123
+}
+
+path skb_transport_offset_0 {
+    bb bb_657
+}
+
+path vmxnet3_alloc_intr_resources_0 {
+    bb bb_74
+    bb bb_84
+}
+
+path vmxnet3_xdp_xmit_frame_1 {
+    bb bb_1490
+    bb bb_1499
+    bb bb_1503
+    bb bb_1508
+}
+
+path vmxnet3_xdp_xmit_frame_0 {
+    bb bb_1490
+    bb bb_1496
+    bb bb_1503
+    bb bb_1508
+}
+
+path vmxnet3_resume_0 {
+    bb bb_71
+    bb bb_73
+    bb bb_441
+}
+
+path is_zone_device_page_0 {
+    bb bb_169
+}
+
+path vmxnet3_init_rssfields_9 {
+    bb bb_384
+}
+
+path vmxnet3_init_rssfields_5 {
+    bb bb_376
+    bb bb_380
+    bb bb_383
+    bb bb_384
+}
+
+path vmxnet3_init_rssfields_7 {
+    bb bb_380
+    bb bb_383
+    bb bb_384
+}
+
+path vmxnet3_init_rssfields_0 {
+    bb bb_368
+}
+
+path vmxnet3_init_rssfields_2 {
+    bb bb_371
+    bb bb_376
+    bb bb_383
+    bb bb_384
+}
+
+path vmxnet3_init_rssfields_8 {
+    bb bb_383
+    bb bb_384
+}
+
+path vmxnet3_init_rssfields_1 {
+    bb bb_371
+    bb bb_376
+    bb bb_380
+    bb bb_383
+    bb bb_384
+}
+
+path vmxnet3_init_rssfields_4 {
+    bb bb_371
+    bb bb_383
+    bb bb_384
+}
+
+path vmxnet3_init_rssfields_3 {
+    bb bb_371
+    bb bb_380
+    bb bb_383
+    bb bb_384
+}
+
+path vmxnet3_init_rssfields_6 {
+    bb bb_376
+    bb bb_383
+    bb bb_384
+}
+
+path page_pool_recycle_direct_0 {
+    bb bb_141
+}
+
+path __rounddown_pow_of_two_0 {
+    bb bb_486
+}
+
+path vmxnet3_tq_cleanup_all_0 {
+    bb bb_101
+}
+
+path vmxnet3_vlan_rx_kill_vid_0 {
+    bb bb_795
+}
+
+path vmxnet3_rq_destroy_0 {
+    bb bb_514
+    bb bb_518
+    bb bb_520
+}
+
+path vmxnet3_rq_destroy_6 {
+    bb bb_526
+    bb bb_518
+    bb bb_520
+}
+
+path vmxnet3_rq_destroy_3 {
+    bb bb_514
+    bb bb_526
+    bb bb_520
+}
+
+path vmxnet3_rq_destroy_4 {
+    bb bb_518
+    bb bb_520
+}
+
+path vmxnet3_rq_destroy_1 {
+    bb bb_514
+    bb bb_520
+}
+
+path vmxnet3_rq_destroy_7 {
+    bb bb_526
+    bb bb_520
+}
+
+path vmxnet3_rq_destroy_2 {
+    bb bb_514
+    bb bb_526
+    bb bb_518
+    bb bb_520
+}
+
+path vmxnet3_rq_destroy_5 {
+    bb bb_520
+}
+
+path writel_0 {
+    bb bb_1027
+}
+
+path vmxnet3_rx_error_0 {
+    bb bb_1159
+}
+
+path vmxnet3_process_events_1 {
+    bb bb_1088
+    bb bb_1092
+    bb bb_1100
+}
+
+path vmxnet3_process_events_0 {
+    bb bb_1088
+    bb bb_1090
+    bb bb_1092
+    bb bb_1100
+}
+
+path skb_frag_fill_page_desc_0 {
+    bb bb_1229
+}
+
+path vmxnet3_process_xdp_1 {
+    bb bb_1613
+    bb bb_1621
+}
+
+path vmxnet3_process_xdp_0 {
+    bb bb_1613
+    bb bb_1620
+    bb bb_1621
+}
+
+path netdev_alloc_skb_ip_align_0 {
+    bb bb_1194
+}
+
+path skb_checksum_start_offset_0 {
+    bb bb_662
+}
+
+path vmxnet3_get_rxnfc_0 {
+    bb bb_919
+}
+
+path vmxnet3_xmit_frame_0 {
+    bb bb_571
+}
+
+path inner_ipv6_hdr_0 {
+    bb bb_627
+}
+
+path skb_linearize_0 {
+    bb bb_607
+    bb bb_609
+}
+
+path vmxnet3_get_regs_0 {
+    bb bb_825
+    bb bb_826
+    bb bb_829
+    bb bb_832
+}
+
+path vmxnet3_get_regs_1 {
+    bb bb_825
+    bb bb_826
+    bb bb_832
+}
+
+path vmxnet3_get_regs_2 {
+    bb bb_825
+    bb bb_829
+    bb bb_832
+}
+
+path vmxnet3_get_regs_3 {
+    bb bb_825
+    bb bb_832
+}
+
+path put_devmap_managed_page_0 {
+    bb bb_166
+}
+
+path __vlan_get_protocol.26_0 {
+    bb bb_1369
+    bb bb_1376
+    bb bb_1385
+}
+
+func vmxnet3_adjust_rx_ring_size {
+    path path_vmxnet3_adjust_rx_ring_size_0;
+}
+
+func vmxnet3_tq_wake {
+    path path_vmxnet3_tq_wake_0;
+}
+
+func vmxnet3_tq_xmit {
+    path path_vmxnet3_tq_xmit_13;
+    path path_vmxnet3_tq_xmit_3;
+    path path_vmxnet3_tq_xmit_8;
+    path path_vmxnet3_tq_xmit_7;
+    path path_vmxnet3_tq_xmit_12;
+    path path_vmxnet3_tq_xmit_2;
+    path path_vmxnet3_tq_xmit_11;
+    path path_vmxnet3_tq_xmit_6;
+    path path_vmxnet3_tq_xmit_1;
+    path path_vmxnet3_tq_xmit_10;
+    path path_vmxnet3_tq_xmit_5;
+    path path_vmxnet3_tq_xmit_0;
+    path path_vmxnet3_tq_xmit_9;
+    path path_vmxnet3_tq_xmit_4;
+}
+
+func vmxnet3_open {
+    path path_vmxnet3_open_1;
+    path path_vmxnet3_open_0;
+}
+
+func trace_xdp_exception {
+    path path_trace_xdp_exception_0;
+    path path_trace_xdp_exception_1;
+}
+
+func vmxnet3_rq_destroy_all_rxdataring {
+    path path_vmxnet3_rq_destroy_all_rxdataring_0;
+}
+
+func writel.4 {
+    path path_writel.4_0;
+}
+
+func vmxnet3_init_bufsize {
+    path path_vmxnet3_init_bufsize_0;
+}
+
+func put_page_testzero {
+    path path_put_page_testzero_0;
+}
+
+func vmxnet3_get_rss_hash_opts {
+    path path_vmxnet3_get_rss_hash_opts_0;
+}
+
+func netif_start_subqueue {
+    path path_netif_start_subqueue_0;
+}
+
+func vmxnet3_poll {
+    path path_vmxnet3_poll_0;
+}
+
+func vmxnet3_check_link {
+    path path_vmxnet3_check_link_1;
+    path path_vmxnet3_check_link_0;
+}
+
+func vmxnet3_prepare_tso {
+    path path_vmxnet3_prepare_tso_0;
+    path path_vmxnet3_prepare_tso_1;
+}
+
+func vmxnet3_rq_cleanup {
+    path path_vmxnet3_rq_cleanup_5;
+    path path_vmxnet3_rq_cleanup_2;
+    path path_vmxnet3_rq_cleanup_7;
+    path path_vmxnet3_rq_cleanup_1;
+    path path_vmxnet3_rq_cleanup_3;
+    path path_vmxnet3_rq_cleanup_4;
+    path path_vmxnet3_rq_cleanup_6;
+    path path_vmxnet3_rq_cleanup_0;
+}
+
+func schedule_work {
+    path path_schedule_work_0;
+}
+
+func eth_hdr {
+    path path_eth_hdr_0;
+}
+
+func vmxnet3_tq_start {
+    path path_vmxnet3_tq_start_0;
+}
+
+func vmxnet3_poll_rx_only {
+    path path_vmxnet3_poll_rx_only_1;
+    path path_vmxnet3_poll_rx_only_0;
+}
+
+func page_pool_put_full_page.78 {
+    path path_page_pool_put_full_page.78_0;
+}
+
+func vmxnet3_enable_all_intrs {
+    path path_vmxnet3_enable_all_intrs_0;
+}
+
+func netif_wake_subqueue {
+    path path_netif_wake_subqueue_0;
+}
+
+func vmxnet3_features_check {
+    path path_vmxnet3_features_check_0;
+    path path_vmxnet3_features_check_1;
+}
+
+func vmxnet3_tq_stop {
+    path path_vmxnet3_tq_stop_0;
+}
+
+func vmxnet3_fix_features {
+    path path_vmxnet3_fix_features_0;
+}
+
+func vmxnet3_xdp_set {
+    path path_vmxnet3_xdp_set_0;
+}
+
+func u64_stats_add {
+    path path_u64_stats_add_0;
+}
+
+func page_pool_put_full_page {
+    path path_page_pool_put_full_page_0;
+}
+
+func vmxnet3_unmap_tx_buf {
+    path path_vmxnet3_unmap_tx_buf_0;
+}
+
+func u64_stats_inc {
+    path path_u64_stats_inc_0;
+}
+
+func readl {
+    path path_readl_0;
+}
+
+func page_pool_is_last_frag.80 {
+    path path_page_pool_is_last_frag.80_0;
+}
+
+func vmxnet3_set_rss {
+    path path_vmxnet3_set_rss_0;
+}
+
+func lockdep_init_map {
+    path path_lockdep_init_map_0;
+}
+
+func skb_transport_header {
+    path path_skb_transport_header_0;
+}
+
+func vmxnet3_set_rxnfc {
+    path path_vmxnet3_set_rxnfc_0;
+}
+
+func skb_mac_header {
+    path path_skb_mac_header_0;
+}
+
+func vmxnet3_get_ethtool_stats {
+    path path_vmxnet3_get_ethtool_stats_0;
+}
+
+func skb_set_hash {
+    path path_skb_set_hash_0;
+}
+
+func vmxnet3_rq_init_all {
+    path path_vmxnet3_rq_init_all_0;
+}
+
+func vmxnet3_set_mac_addr {
+    path path_vmxnet3_set_mac_addr_0;
+}
+
+func vmxnet3_build_skb {
+    path path_vmxnet3_build_skb_0;
+    path path_vmxnet3_build_skb_1;
+}
+
+func vmxnet3_xdp {
+    path path_vmxnet3_xdp_0;
+}
+
+func udp_hdr {
+    path path_udp_hdr_0;
+}
+
+func vmxnet3_xdp_xmit_back {
+    path path_vmxnet3_xdp_xmit_back_0;
+}
+
+func readl.34 {
+    path path_readl.34_0;
+}
+
+func skb_header_pointer {
+    path path_skb_header_pointer_0;
+}
+
+func vmxnet3_close {
+    path path_vmxnet3_close_1;
+    path path_vmxnet3_close_0;
+}
+
+func pskb_may_pull {
+    path path_pskb_may_pull_0;
+}
+
+func skb_transport_header.22 {
+    path path_skb_transport_header.22_0;
+}
+
+func vmxnet3_msix_tx {
+    path path_vmxnet3_msix_tx_1;
+    path path_vmxnet3_msix_tx_4;
+    path path_vmxnet3_msix_tx_2;
+    path path_vmxnet3_msix_tx_0;
+    path path_vmxnet3_msix_tx_5;
+    path path_vmxnet3_msix_tx_3;
+}
+
+func vmxnet3_do_poll {
+    path path_vmxnet3_do_poll_3;
+    path path_vmxnet3_do_poll_0;
+    path path_vmxnet3_do_poll_1;
+    path path_vmxnet3_do_poll_2;
+}
+
+func vmxnet3_probe_device {
+    path path_vmxnet3_probe_device_16;
+    path path_vmxnet3_probe_device_10;
+    path path_vmxnet3_probe_device_15;
+    path path_vmxnet3_probe_device_1;
+    path path_vmxnet3_probe_device_14;
+    path path_vmxnet3_probe_device_0;
+    path path_vmxnet3_probe_device_5;
+    path path_vmxnet3_probe_device_4;
+    path path_vmxnet3_probe_device_9;
+    path path_vmxnet3_probe_device_3;
+    path path_vmxnet3_probe_device_13;
+    path path_vmxnet3_probe_device_8;
+    path path_vmxnet3_probe_device_7;
+    path path_vmxnet3_probe_device_2;
+    path path_vmxnet3_probe_device_17;
+    path path_vmxnet3_probe_device_12;
+    path path_vmxnet3_probe_device_6;
+    path path_vmxnet3_probe_device_11;
+}
+
+func tcp_hdrlen {
+    path path_tcp_hdrlen_0;
+}
+
+func vmxnet3_unmap_pkt {
+    path path_vmxnet3_unmap_pkt_1;
+    path path_vmxnet3_unmap_pkt_0;
+    path path_vmxnet3_unmap_pkt_2;
+}
+
+func vmxnet3_msix_rx {
+    path path_vmxnet3_msix_rx_0;
+    path path_vmxnet3_msix_rx_1;
+}
+
+func pskb_may_pull_reason {
+    path path_pskb_may_pull_reason_0;
+}
+
+func vmxnet3_tq_tx_complete {
+    path path_vmxnet3_tq_tx_complete_0;
+    path path_vmxnet3_tq_tx_complete_1;
+}
+
+func vmxnet3_disable_intr {
+    path path_vmxnet3_disable_intr_0;
+}
+
+func vmxnet3_get_stats64 {
+    path path_vmxnet3_get_stats64_0;
+}
+
+func rcu_read_unlock {
+    path path_rcu_read_unlock_0;
+}
+
+func netif_wake_queue {
+    path path_netif_wake_queue_0;
+}
+
+func ip_hdr {
+    path path_ip_hdr_0;
+}
+
+func tcp_hdr {
+    path path_tcp_hdr_0;
+}
+
+func vmxnet3_process_xdp_small {
+    path path_vmxnet3_process_xdp_small_0;
+    path path_vmxnet3_process_xdp_small_1;
+}
+
+func vlan_get_protocol {
+    path path_vlan_get_protocol_0;
+}
+
+func vmxnet3_set_features {
+    path path_vmxnet3_set_features_0;
+    path path_vmxnet3_set_features_1;
+    path path_vmxnet3_set_features_2;
+}
+
+func skb_frag_dma_map {
+    path path_skb_frag_dma_map_0;
+}
+
+func vmxnet3_set_mc {
+    path path_vmxnet3_set_mc_0;
+    path path_vmxnet3_set_mc_11;
+    path path_vmxnet3_set_mc_4;
+    path path_vmxnet3_set_mc_1;
+    path path_vmxnet3_set_mc_8;
+    path path_vmxnet3_set_mc_5;
+    path path_vmxnet3_set_mc_2;
+    path path_vmxnet3_set_mc_6;
+    path path_vmxnet3_set_mc_9;
+    path path_vmxnet3_set_mc_3;
+    path path_vmxnet3_set_mc_10;
+    path path_vmxnet3_set_mc_7;
+}
+
+func vmxnet3_rq_alloc_rx_buf {
+    path path_vmxnet3_rq_alloc_rx_buf_0;
+    path path_vmxnet3_rq_alloc_rx_buf_1;
+    path path_vmxnet3_rq_alloc_rx_buf_2;
+    path path_vmxnet3_rq_alloc_rx_buf_3;
+}
+
+func vmxnet3_parse_hdr {
+    path path_vmxnet3_parse_hdr_7;
+    path path_vmxnet3_parse_hdr_1;
+    path path_vmxnet3_parse_hdr_4;
+    path path_vmxnet3_parse_hdr_3;
+    path path_vmxnet3_parse_hdr_8;
+    path path_vmxnet3_parse_hdr_6;
+    path path_vmxnet3_parse_hdr_10;
+    path path_vmxnet3_parse_hdr_0;
+    path path_vmxnet3_parse_hdr_2;
+    path path_vmxnet3_parse_hdr_5;
+    path path_vmxnet3_parse_hdr_9;
+}
+
+func vlan_get_protocol.19 {
+    path path_vlan_get_protocol.19_0;
+}
+
+func vmxnet3_disable_all_intrs {
+    path path_vmxnet3_disable_all_intrs_0;
+}
+
+func vmxnet3_tx_timeout {
+    path path_vmxnet3_tx_timeout_0;
+}
+
+func vmxnet3_suspend {
+    path path_vmxnet3_suspend_1;
+    path path_vmxnet3_suspend_0;
+    path path_vmxnet3_suspend_3;
+    path path_vmxnet3_suspend_2;
+}
+
+func ip_hdr.20 {
+    path path_ip_hdr.20_0;
+}
+
+func vmxnet3_disable_encap_offloads {
+    path path_vmxnet3_disable_encap_offloads_0;
+}
+
+func vmxnet3_reset_work {
+    path path_vmxnet3_reset_work_1;
+    path path_vmxnet3_reset_work_0;
+}
+
+func vmxnet3_request_irqs {
+    path path_vmxnet3_request_irqs_4;
+    path path_vmxnet3_request_irqs_1;
+    path path_vmxnet3_request_irqs_3;
+    path path_vmxnet3_request_irqs_5;
+    path path_vmxnet3_request_irqs_0;
+    path path_vmxnet3_request_irqs_2;
+}
+
+func netif_stop_subqueue {
+    path path_netif_stop_subqueue_0;
+}
+
+func skb_header_cloned {
+    path path_skb_header_cloned_0;
+}
+
+func vmxnet3_intr {
+    path path_vmxnet3_intr_0;
+    path path_vmxnet3_intr_1;
+    path path_vmxnet3_intr_2;
+    path path_vmxnet3_intr_3;
+}
+
+func skb_header_pointer.29 {
+    path path_skb_header_pointer.29_0;
+}
+
+func vmxnet3_pp_get_buff {
+    path path_vmxnet3_pp_get_buff_0;
+}
+
+func vmxnet3_tq_destroy {
+    path path_vmxnet3_tq_destroy_0;
+    path path_vmxnet3_tq_destroy_3;
+    path path_vmxnet3_tq_destroy_2;
+    path path_vmxnet3_tq_destroy_1;
+}
+
+func vmxnet3_reset_dev {
+    path path_vmxnet3_reset_dev_0;
+}
+
+func dev_addr_set {
+    path path_dev_addr_set_0;
+}
+
+func vmxnet3_alloc_pci_resources {
+    path path_vmxnet3_alloc_pci_resources_1;
+    path path_vmxnet3_alloc_pci_resources_0;
+}
+
+func vmxnet3_rq_destroy_all {
+    path path_vmxnet3_rq_destroy_all_0;
+}
+
+func inner_tcp_hdrlen {
+    path path_inner_tcp_hdrlen_0;
+}
+
+func writel.69 {
+    path path_writel.69_0;
+}
+
+func vmxnet3_tq_destroy_all {
+    path path_vmxnet3_tq_destroy_all_0;
+}
+
+func vmxnet3_setup_driver_shared {
+    path path_vmxnet3_setup_driver_shared_1;
+    path path_vmxnet3_setup_driver_shared_0;
+}
+
+func page_pool_put_page {
+    path path_page_pool_put_page_0;
+}
+
+func vmxnet3_set_coalesce {
+    path path_vmxnet3_set_coalesce_0;
+}
+
+func vmxnet3_tq_create {
+    path path_vmxnet3_tq_create_1;
+    path path_vmxnet3_tq_create_0;
+}
+
+func put_devmap_managed_page_refs {
+    path path_put_devmap_managed_page_refs_0;
+}
+
+func vmxnet3_enable_intr {
+    path path_vmxnet3_enable_intr_0;
+}
+
+func csum_tcpudp_magic {
+    path path_csum_tcpudp_magic_0;
+}
+
+func vmxnet3_shutdown_device {
+    path path_vmxnet3_shutdown_device_0;
+    path path_vmxnet3_shutdown_device_1;
+}
+
+func vmxnet3_init_coalesce {
+    path path_vmxnet3_init_coalesce_0;
+}
+
+func page_pool_put_page.79 {
+    path path_page_pool_put_page.79_0;
+}
+
+func vmxnet3_xdp_xmit {
+    path path_vmxnet3_xdp_xmit_0;
+}
+
+func __vlan_get_protocol {
+    path path___vlan_get_protocol_0;
+}
+
+func ipv6_hdr {
+    path path_ipv6_hdr_0;
+}
+
+func vmxnet3_vlan_rx_add_vid {
+    path path_vmxnet3_vlan_rx_add_vid_0;
+}
+
+func vmxnet3_netpoll {
+    path path_vmxnet3_netpoll_0;
+    path path_vmxnet3_netpoll_1;
+}
+
+func page_pool_recycle_direct.77 {
+    path path_page_pool_recycle_direct.77_0;
+}
+
+func page_pool_is_last_frag {
+    path path_page_pool_is_last_frag_0;
+}
+
+func vmxnet3_append_frag {
+    path path_vmxnet3_append_frag_0;
+}
+
+func vmxnet3_rq_create_all {
+    path path_vmxnet3_rq_create_all_2;
+    path path_vmxnet3_rq_create_all_0;
+    path path_vmxnet3_rq_create_all_1;
+}
+
+func netif_tx_disable {
+    path path_netif_tx_disable_0;
+    path path_netif_tx_disable_1;
+}
+
+func vmxnet3_ack_events {
+    path path_vmxnet3_ack_events_0;
+}
+
+func put_page {
+    path path_put_page_0;
+}
+
+func vmxnet3_rq_cleanup_all {
+    path path_vmxnet3_rq_cleanup_all_0;
+}
+
+func vmxnet3_rq_rx_complete {
+    path path_vmxnet3_rq_rx_complete_22;
+    path path_vmxnet3_rq_rx_complete_42;
+    path path_vmxnet3_rq_rx_complete_62;
+    path path_vmxnet3_rq_rx_complete_9;
+    path path_vmxnet3_rq_rx_complete_29;
+    path path_vmxnet3_rq_rx_complete_49;
+    path path_vmxnet3_rq_rx_complete_69;
+    path path_vmxnet3_rq_rx_complete_0;
+    path path_vmxnet3_rq_rx_complete_20;
+    path path_vmxnet3_rq_rx_complete_40;
+    path path_vmxnet3_rq_rx_complete_60;
+    path path_vmxnet3_rq_rx_complete_15;
+    path path_vmxnet3_rq_rx_complete_35;
+    path path_vmxnet3_rq_rx_complete_55;
+    path path_vmxnet3_rq_rx_complete_6;
+    path path_vmxnet3_rq_rx_complete_26;
+    path path_vmxnet3_rq_rx_complete_46;
+    path path_vmxnet3_rq_rx_complete_66;
+    path path_vmxnet3_rq_rx_complete_13;
+    path path_vmxnet3_rq_rx_complete_33;
+    path path_vmxnet3_rq_rx_complete_53;
+    path path_vmxnet3_rq_rx_complete_4;
+    path path_vmxnet3_rq_rx_complete_73;
+    path path_vmxnet3_rq_rx_complete_24;
+    path path_vmxnet3_rq_rx_complete_44;
+    path path_vmxnet3_rq_rx_complete_64;
+    path path_vmxnet3_rq_rx_complete_19;
+    path path_vmxnet3_rq_rx_complete_39;
+    path path_vmxnet3_rq_rx_complete_59;
+    path path_vmxnet3_rq_rx_complete_10;
+    path path_vmxnet3_rq_rx_complete_30;
+    path path_vmxnet3_rq_rx_complete_50;
+    path path_vmxnet3_rq_rx_complete_70;
+    path path_vmxnet3_rq_rx_complete_17;
+    path path_vmxnet3_rq_rx_complete_37;
+    path path_vmxnet3_rq_rx_complete_57;
+    path path_vmxnet3_rq_rx_complete_8;
+    path path_vmxnet3_rq_rx_complete_28;
+    path path_vmxnet3_rq_rx_complete_48;
+    path path_vmxnet3_rq_rx_complete_3;
+    path path_vmxnet3_rq_rx_complete_68;
+    path path_vmxnet3_rq_rx_complete_23;
+    path path_vmxnet3_rq_rx_complete_43;
+    path path_vmxnet3_rq_rx_complete_63;
+    path path_vmxnet3_rq_rx_complete_14;
+    path path_vmxnet3_rq_rx_complete_34;
+    path path_vmxnet3_rq_rx_complete_54;
+    path path_vmxnet3_rq_rx_complete_1;
+    path path_vmxnet3_rq_rx_complete_74;
+    path path_vmxnet3_rq_rx_complete_21;
+    path path_vmxnet3_rq_rx_complete_41;
+    path path_vmxnet3_rq_rx_complete_61;
+    path path_vmxnet3_rq_rx_complete_12;
+    path path_vmxnet3_rq_rx_complete_32;
+    path path_vmxnet3_rq_rx_complete_52;
+    path path_vmxnet3_rq_rx_complete_7;
+    path path_vmxnet3_rq_rx_complete_72;
+    path path_vmxnet3_rq_rx_complete_27;
+    path path_vmxnet3_rq_rx_complete_47;
+    path path_vmxnet3_rq_rx_complete_67;
+    path path_vmxnet3_rq_rx_complete_18;
+    path path_vmxnet3_rq_rx_complete_38;
+    path path_vmxnet3_rq_rx_complete_58;
+    path path_vmxnet3_rq_rx_complete_5;
+    path path_vmxnet3_rq_rx_complete_25;
+    path path_vmxnet3_rq_rx_complete_45;
+    path path_vmxnet3_rq_rx_complete_65;
+    path path_vmxnet3_rq_rx_complete_16;
+    path path_vmxnet3_rq_rx_complete_36;
+    path path_vmxnet3_rq_rx_complete_56;
+    path path_vmxnet3_rq_rx_complete_11;
+    path path_vmxnet3_rq_rx_complete_31;
+    path path_vmxnet3_rq_rx_complete_51;
+    path path_vmxnet3_rq_rx_complete_2;
+    path path_vmxnet3_rq_rx_complete_71;
+}
+
+func vmxnet3_create_queues {
+    path path_vmxnet3_create_queues_3;
+    path path_vmxnet3_create_queues_6;
+    path path_vmxnet3_create_queues_1;
+    path path_vmxnet3_create_queues_4;
+    path path_vmxnet3_create_queues_2;
+    path path_vmxnet3_create_queues_0;
+    path path_vmxnet3_create_queues_5;
+}
+
+func lockdep_init_map_wait {
+    path path_lockdep_init_map_wait_0;
+}
+
+func vmxnet3_change_mtu {
+    path path_vmxnet3_change_mtu_2;
+    path path_vmxnet3_change_mtu_1;
+    path path_vmxnet3_change_mtu_0;
+    path path_vmxnet3_change_mtu_3;
+}
+
+func vmxnet3_get_hdr_len {
+    path path_vmxnet3_get_hdr_len_0;
+}
+
+func vmxnet3_read_mac_addr {
+    path path_vmxnet3_read_mac_addr_0;
+}
+
+func vmxnet3_restore_vlan {
+    path path_vmxnet3_restore_vlan_0;
+}
+
+func vmxnet3_map_pkt {
+    path path_vmxnet3_map_pkt_4;
+    path path_vmxnet3_map_pkt_3;
+    path path_vmxnet3_map_pkt_6;
+    path path_vmxnet3_map_pkt_0;
+    path path_vmxnet3_map_pkt_5;
+    path path_vmxnet3_map_pkt_2;
+    path path_vmxnet3_map_pkt_7;
+    path path_vmxnet3_map_pkt_1;
+}
+
+func vmxnet3_rq_create {
+    path path_vmxnet3_rq_create_0;
+    path path_vmxnet3_rq_create_1;
+}
+
+func vmxnet3_tq_init_all {
+    path path_vmxnet3_tq_init_all_0;
+}
+
+func vmxnet3_remove_device {
+    path path_vmxnet3_remove_device_3;
+    path path_vmxnet3_remove_device_2;
+    path path_vmxnet3_remove_device_1;
+    path path_vmxnet3_remove_device_0;
+}
+
+func folio_put {
+    path path_folio_put_0;
+}
+
+func vmxnet3_prepare_inner_tso {
+    path path_vmxnet3_prepare_inner_tso_1;
+    path path_vmxnet3_prepare_inner_tso_0;
+}
+
+func vmxnet3_xdp_get_tq {
+    path path_vmxnet3_xdp_get_tq_0;
+}
+
+func vmxnet3_activate_dev {
+    path path_vmxnet3_activate_dev_3;
+    path path_vmxnet3_activate_dev_0;
+    path path_vmxnet3_activate_dev_1;
+    path path_vmxnet3_activate_dev_2;
+}
+
+func vmxnet3_write_mac_addr {
+    path path_vmxnet3_write_mac_addr_0;
+}
+
+func vmxnet3_set_rss_hash_opt {
+    path path_vmxnet3_set_rss_hash_opt_8;
+    path path_vmxnet3_set_rss_hash_opt_7;
+    path path_vmxnet3_set_rss_hash_opt_2;
+    path path_vmxnet3_set_rss_hash_opt_5;
+    path path_vmxnet3_set_rss_hash_opt_0;
+    path path_vmxnet3_set_rss_hash_opt_3;
+    path path_vmxnet3_set_rss_hash_opt_1;
+    path path_vmxnet3_set_rss_hash_opt_6;
+    path path_vmxnet3_set_rss_hash_opt_4;
+}
+
+func __rounddown_pow_of_two.39 {
+    path path___rounddown_pow_of_two.39_0;
+}
+
+func folio_put_testzero {
+    path path_folio_put_testzero_0;
+}
+
+func vmxnet3_run_xdp {
+    path path_vmxnet3_run_xdp_9;
+    path path_vmxnet3_run_xdp_3;
+    path path_vmxnet3_run_xdp_4;
+    path path_vmxnet3_run_xdp_16;
+    path path_vmxnet3_run_xdp_13;
+    path path_vmxnet3_run_xdp_7;
+    path path_vmxnet3_run_xdp_8;
+    path path_vmxnet3_run_xdp_2;
+    path path_vmxnet3_run_xdp_19;
+    path path_vmxnet3_run_xdp_11;
+    path path_vmxnet3_run_xdp_12;
+    path path_vmxnet3_run_xdp_6;
+    path path_vmxnet3_run_xdp_18;
+    path path_vmxnet3_run_xdp_15;
+    path path_vmxnet3_run_xdp_1;
+    path path_vmxnet3_run_xdp_10;
+    path path_vmxnet3_run_xdp_5;
+    path path_vmxnet3_run_xdp_14;
+    path path_vmxnet3_run_xdp_0;
+    path path_vmxnet3_run_xdp_17;
+}
+
+func txd_estimate {
+    path path_txd_estimate_0;
+}
+
+func vmxnet3_set_ringparam {
+    path path_vmxnet3_set_ringparam_3;
+    path path_vmxnet3_set_ringparam_2;
+    path path_vmxnet3_set_ringparam_1;
+    path path_vmxnet3_set_ringparam_0;
+}
+
+func vmxnet3_rq_init {
+    path path_vmxnet3_rq_init_0;
+    path path_vmxnet3_rq_init_1;
+}
+
+func vmxnet3_enable_encap_offloads {
+    path path_vmxnet3_enable_encap_offloads_0;
+}
+
+func vmxnet3_tq_cleanup {
+    path path_vmxnet3_tq_cleanup_2;
+    path path_vmxnet3_tq_cleanup_0;
+    path path_vmxnet3_tq_cleanup_1;
+}
+
+func inner_tcp_hdr {
+    path path_inner_tcp_hdr_0;
+}
+
+func xdp_convert_buff_to_frame {
+    path path_xdp_convert_buff_to_frame_0;
+}
+
+func inner_ip_hdr {
+    path path_inner_ip_hdr_0;
+}
+
+func ipv6_hdr.21 {
+    path path_ipv6_hdr.21_0;
+}
+
+func vmxnet3_create_pp {
+    path path_vmxnet3_create_pp_1;
+    path path_vmxnet3_create_pp_0;
+}
+
+func vmxnet3_get_link_ksettings {
+    path path_vmxnet3_get_link_ksettings_0;
+}
+
+func vmxnet3_rx_csum {
+    path path_vmxnet3_rx_csum_1;
+    path path_vmxnet3_rx_csum_0;
+}
+
+func vmxnet3_msix_event {
+    path path_vmxnet3_msix_event_0;
+    path path_vmxnet3_msix_event_1;
+    path path_vmxnet3_msix_event_2;
+    path path_vmxnet3_msix_event_3;
+}
+
+func skb_inner_transport_offset {
+    path path_skb_inner_transport_offset_0;
+}
+
+func tcp_v6_gso_csum_prep {
+    path path_tcp_v6_gso_csum_prep_0;
+}
+
+func vmxnet3_quiesce_dev {
+    path path_vmxnet3_quiesce_dev_0;
+}
+
+func netif_tx_wake_all_queues {
+    path path_netif_tx_wake_all_queues_0;
+}
+
+func vmxnet3_declare_features {
+    path path_vmxnet3_declare_features_0;
+}
+
+func skb_transport_offset {
+    path path_skb_transport_offset_0;
+}
+
+func vmxnet3_alloc_intr_resources {
+    path path_vmxnet3_alloc_intr_resources_0;
+}
+
+func vmxnet3_xdp_xmit_frame {
+    path path_vmxnet3_xdp_xmit_frame_1;
+    path path_vmxnet3_xdp_xmit_frame_0;
+}
+
+func vmxnet3_resume {
+    path path_vmxnet3_resume_0;
+}
+
+func is_zone_device_page {
+    path path_is_zone_device_page_0;
+}
+
+func vmxnet3_init_rssfields {
+    path path_vmxnet3_init_rssfields_9;
+    path path_vmxnet3_init_rssfields_5;
+    path path_vmxnet3_init_rssfields_7;
+    path path_vmxnet3_init_rssfields_0;
+    path path_vmxnet3_init_rssfields_2;
+    path path_vmxnet3_init_rssfields_8;
+    path path_vmxnet3_init_rssfields_1;
+    path path_vmxnet3_init_rssfields_4;
+    path path_vmxnet3_init_rssfields_3;
+    path path_vmxnet3_init_rssfields_6;
+}
+
+func page_pool_recycle_direct {
+    path path_page_pool_recycle_direct_0;
+}
+
+func __rounddown_pow_of_two {
+    path path___rounddown_pow_of_two_0;
+}
+
+func vmxnet3_tq_cleanup_all {
+    path path_vmxnet3_tq_cleanup_all_0;
+}
+
+func vmxnet3_vlan_rx_kill_vid {
+    path path_vmxnet3_vlan_rx_kill_vid_0;
+}
+
+func vmxnet3_rq_destroy {
+    path path_vmxnet3_rq_destroy_0;
+    path path_vmxnet3_rq_destroy_6;
+    path path_vmxnet3_rq_destroy_3;
+    path path_vmxnet3_rq_destroy_4;
+    path path_vmxnet3_rq_destroy_1;
+    path path_vmxnet3_rq_destroy_7;
+    path path_vmxnet3_rq_destroy_2;
+    path path_vmxnet3_rq_destroy_5;
+}
+
+func writel {
+    path path_writel_0;
+}
+
+func vmxnet3_rx_error {
+    path path_vmxnet3_rx_error_0;
+}
+
+func vmxnet3_process_events {
+    path path_vmxnet3_process_events_1;
+    path path_vmxnet3_process_events_0;
+}
+
+func skb_frag_fill_page_desc {
+    path path_skb_frag_fill_page_desc_0;
+}
+
+func vmxnet3_process_xdp {
+    path path_vmxnet3_process_xdp_1;
+    path path_vmxnet3_process_xdp_0;
+}
+
+func netdev_alloc_skb_ip_align {
+    path path_netdev_alloc_skb_ip_align_0;
+}
+
+func skb_checksum_start_offset {
+    path path_skb_checksum_start_offset_0;
+}
+
+func vmxnet3_get_rxnfc {
+    path path_vmxnet3_get_rxnfc_0;
+}
+
+func vmxnet3_xmit_frame {
+    path path_vmxnet3_xmit_frame_0;
+}
+
+func inner_ipv6_hdr {
+    path path_inner_ipv6_hdr_0;
+}
+
+func skb_linearize {
+    path path_skb_linearize_0;
+}
+
+func vmxnet3_get_regs {
+    path path_vmxnet3_get_regs_0;
+    path path_vmxnet3_get_regs_1;
+    path path_vmxnet3_get_regs_2;
+    path path_vmxnet3_get_regs_3;
+}
+
+func put_devmap_managed_page {
+    path path_put_devmap_managed_page_0;
+}
+
+func __vlan_get_protocol.26 {
+    path path___vlan_get_protocol.26_0;
+}
+

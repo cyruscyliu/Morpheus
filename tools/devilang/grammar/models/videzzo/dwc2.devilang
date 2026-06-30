@@ -1,0 +1,87 @@
+struct DWC2_SETUP_BUF {
+    setup_buf0: u8 flag [
+        bits 0..1;
+        bits 2..4 = 0;
+        bits 5..6;
+        bits 7..7;
+    ];
+    setup_buf1: u8 immediate [
+        imm 0;
+        imm 1;
+        imm 2;
+        imm 3;
+        imm 4;
+        imm 5;
+        imm 6;
+        imm 7;
+        imm 8;
+        imm 9;
+        imm 10;
+        imm 11;
+        imm 12;
+        imm 48;
+        imm 49;
+        imm 254;
+        imm 255;
+    ];
+    setup_buf2: u8 random;
+    setup_buf3: u8 random;
+    setup_buf4: u8 random;
+    setup_buf5: u8 random;
+    setup_buf6: u8 random;
+    setup_buf7: u8 immediate [
+        imm 0;
+        imm 1;
+        imm 2;
+        imm 3;
+        imm 4;
+        imm 5;
+        imm 6;
+        imm 7;
+        imm 8;
+        imm 9;
+        imm 10;
+        imm 11;
+        imm 12;
+        imm 13;
+        imm 14;
+        imm 15;
+        imm 16;
+        imm 17;
+        imm 18;
+    ];
+    reserved_8: bytes[0x10000] random;
+}
+struct DWC2_USB_MSD_CBW {
+    sig: u32 immediate [
+        imm 0;
+        imm 0x43425355;
+    ];
+    tag: u32 random;
+    data_len: u32 flag [
+        bits 0..1;
+        bits 2..29 = 0;
+        bits 30..31;
+    ];
+    flags: u8 flag [
+        bits 0..6;
+        bits 7..7;
+    ];
+    lun: u8 immediate [
+        imm 0;
+        imm 1;
+    ];
+    cmd_len: u8 random;
+    cmd: bytes[16] random;
+}
+
+head {
+    to = DWC2_SETUP_BUF DWC2_USB_MSD_CBW;
+    position = [
+        filename = hcd-dwc2.c;
+        caller = dwc2_handle_packet;
+        callee = dma_memory_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}

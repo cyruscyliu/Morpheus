@@ -1,0 +1,119 @@
+struct E1000_TX_DESC0 {
+    buffer_addr: ptr<u64> align 0;
+    flags: u32 flag [
+        bits 0..15;
+        bits 16..19;
+        bits 20..20;
+        bits 21..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..31;
+    ];
+    fields: u32 flag [
+        bits 0..3;
+        bits 4..4;
+        bits 5..15;
+        bits 16..23;
+        bits 24..31;
+    ];
+}
+
+pointer {
+    from = E1000_TX_DESC0.buffer_addr;
+    to = E1000E_BUF0;
+    align = 0;
+}
+struct E1000E_BUF0 {
+    buf: bytes[0x1000] random;
+}
+struct E1000_CONTEXT_DESC {
+    ip_fields: u32 flag [
+        bits 0..7;
+        bits 8..15;
+        bits 16..31;
+    ];
+    tcp_fields: u32 flag [
+        bits 0..7;
+        bits 8..15;
+        bits 16..31;
+    ];
+    cmd_and_length: u32 flag [
+        bits 0..15;
+        bits 16..19;
+        bits 20..20;
+        bits 21..23;
+        bits 24..24;
+        bits 25..25;
+        bits 26..26;
+        bits 27..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+    fields: u32 flag [
+        bits 0..7;
+        bits 8..15;
+        bits 16..31;
+    ];
+}
+
+head {
+    to = E1000_TX_DESC0 E1000_CONTEXT_DESC;
+    position = [
+        filename = e1000e_core.c;
+        caller = e1000e_start_xmit;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = e1000.c;
+        caller = start_xmit;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevE1000.cpp;
+        caller = _ZL15e1kDumpTxDCacheP11PDMDEVINSR3P8E1KSTATEP13E1kTxDContext;
+        callee = _ZL20PDMDevHlpPCIPhysReadP11PDMDEVINSR3mPvm;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevE1000.cpp;
+        caller = _ZL14e1kTxDLoadMoreP11PDMDEVINSR3P8E1KSTATEP13E1kTxDContext;
+        callee = _ZL20PDMDevHlpPCIPhysReadP11PDMDEVINSR3mPvm;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevE1000.cpp;
+        caller = _ZL14e1kTxDLoadMoreP11PDMDEVINSR3P8E1KSTATEP13E1kTxDContext;
+        callee = _ZL20PDMDevHlpPCIPhysReadP11PDMDEVINSR3mPvm;
+        call_depth = 1;
+        argument_index = 1;
+    ]
+}
+struct E1000E_READ_RX_DESC {
+    buffer_addr0: ptr<u64> align 0;
+    buffer_addr1: u64 random;
+    buffer_addr2: u64 random;
+    buffer_addr3: u64 random;
+}
+
+pointer {
+    from = E1000E_READ_RX_DESC.buffer_addr0;
+    to = E1000E_BUF1;
+    align = 0;
+}
+struct E1000E_BUF1 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = E1000E_READ_RX_DESC;
+    position = [
+        filename = e1000e_core.c;
+        caller = e1000e_write_packet_to_guest;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}

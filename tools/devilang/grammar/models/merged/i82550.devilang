@@ -1,0 +1,3320 @@
+op op_1 {
+    call pci_get_drvdata;
+}
+
+op op_2 {
+    call netif_running;
+}
+
+op op_3 {
+    call netdev_get_tx_queue;
+}
+
+op op_4 {
+    call netif_stop_queue;
+}
+
+op op_5 {
+    call e100_hw_reset;
+}
+
+op op_6 {
+    call del_timer_sync;
+}
+
+op op_7 {
+    call dma_unmap_single_attrs;
+}
+
+op op_8 {
+    call e100_clean_cbs;
+}
+
+op op_7 {
+    call dma_unmap_single_attrs;
+}
+
+op op_10 {
+    call e100_rx_clean_list;
+}
+
+op op_11 {
+    call e100_down;
+}
+
+op op_12 {
+    call e100_asf;
+}
+
+op op_13 {
+    call mdio_read;
+}
+
+op op_14 {
+    call mdio_write;
+}
+
+op op_15 {
+    call __e100_shutdown;
+}
+
+op op_13 {
+    call mdio_read;
+}
+
+op op_14 {
+    call mdio_write;
+}
+
+op op_2 {
+    call netif_running;
+}
+
+op op_19 {
+    call __netdev_alloc_skb_ip_align;
+}
+
+op op_20 {
+    call netdev_alloc_skb_ip_align;
+}
+
+op op_21 {
+    call skb_copy_to_linear_data;
+}
+
+op op_22 {
+    call dma_mapping_error;
+}
+
+op op_23 {
+    call dev_kfree_skb_any;
+}
+
+op op_24 {
+    call put_unaligned_le32;
+}
+
+op op_25 {
+    call e100_rx_alloc_skb;
+}
+
+op op_10 {
+    call e100_rx_clean_list;
+}
+
+op op_27 {
+    call e100_rx_alloc_list;
+}
+
+op op_28 {
+    call dma_pool_zalloc;
+}
+
+op op_29 {
+    call e100_alloc_cbs;
+}
+
+op op_5 {
+    call e100_hw_reset;
+}
+
+op op_31 {
+    mmio iowrite32_31 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=4;
+        data=num_1 | 0x1;
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_33 {
+    call e100_disable_irq;
+}
+
+op op_34 {
+    call e100_self_test;
+}
+
+op op_35 {
+    call e100_phy_init;
+}
+
+op op_36 {
+    mmio ioread8_36 {
+        direction=r;
+        region=0;
+        address=0x2;
+        size=1;
+    }
+}
+
+op op_37 {
+    mmio iowrite32_37 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=arg(0, 0, 0, num_1, 0, num_2, num_3, 0);
+    }
+}
+
+op op_38 {
+    mmio iowrite8_38 {
+        direction=w;
+        region=0;
+        address=0x2;
+        size=1;
+        data=arg(0, 0x60, 0x6, 0x40, 0x70, 0x1, phi(0x20, num_1), 0x70);
+    }
+}
+
+op op_39 {
+    call e100_exec_cmd;
+}
+
+op op_39 {
+    call e100_exec_cmd;
+}
+
+op op_41 {
+    call ERR_PTR;
+}
+
+op op_41 {
+    call ERR_PTR;
+}
+
+op op_41 {
+    call ERR_PTR;
+}
+
+op op_44 {
+    call e100_request_firmware;
+}
+
+op op_45 {
+    call IS_ERR_OR_NULL;
+}
+
+op op_46 {
+    call IS_ERR;
+}
+
+op op_47 {
+    call PTR_ERR;
+}
+
+op op_48 {
+    call PTR_ERR_OR_ZERO;
+}
+
+op op_39 {
+    call e100_exec_cmd;
+}
+
+op op_50 {
+    call queue_work;
+}
+
+op op_51 {
+    call schedule_work;
+}
+
+op op_52 {
+    call e100_exec_cb;
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_54 {
+    mmio iowrite8_54 {
+        direction=w;
+        region=0;
+        address=0x1;
+        size=1;
+        data=0xff;
+    }
+}
+
+op op_55 {
+    call e100_load_ucode_wait;
+}
+
+op op_52 {
+    call e100_exec_cb;
+}
+
+op op_52 {
+    call e100_exec_cb;
+}
+
+op op_39 {
+    call e100_exec_cmd;
+}
+
+op op_39 {
+    call e100_exec_cmd;
+}
+
+op op_33 {
+    call e100_disable_irq;
+}
+
+op op_61 {
+    call e100_hw_init;
+}
+
+op op_52 {
+    call e100_exec_cb;
+}
+
+op op_52 {
+    call e100_exec_cb;
+}
+
+op op_64 {
+    call e100_set_multicast_list;
+}
+
+op op_39 {
+    call e100_exec_cmd;
+}
+
+op op_66 {
+    call e100_start_receiver;
+}
+
+op op_67 {
+    call request_irq;
+}
+
+op op_3 {
+    call netdev_get_tx_queue;
+}
+
+op op_69 {
+    call netif_wake_queue;
+}
+
+op op_70 {
+    mmio iowrite8_70 {
+        direction=w;
+        region=0;
+        address=0x3;
+        size=1;
+        data=0;
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_72 {
+    call e100_enable_irq;
+}
+
+op op_6 {
+    call del_timer_sync;
+}
+
+op op_8 {
+    call e100_clean_cbs;
+}
+
+op op_10 {
+    call e100_rx_clean_list;
+}
+
+op op_76 {
+    call e100_up;
+}
+
+op op_76 {
+    call e100_up;
+}
+
+op op_11 {
+    call e100_down;
+}
+
+op op_39 {
+    call e100_exec_cmd;
+}
+
+op op_52 {
+    call e100_exec_cb;
+}
+
+op op_4 {
+    call netif_stop_queue;
+}
+
+op op_82 {
+    call is_valid_ether_addr;
+}
+
+op op_83 {
+    call eth_hw_addr_set;
+}
+
+op op_52 {
+    call e100_exec_cb;
+}
+
+op op_85 {
+    call if_mii;
+}
+
+op op_51 {
+    call schedule_work;
+}
+
+op op_33 {
+    call e100_disable_irq;
+}
+
+op op_88 {
+    mmio ioread8_88 {
+        direction=r;
+        region=0;
+        address=0x1;
+        size=1;
+    }
+}
+
+op op_89 {
+    mmio iowrite8_89 {
+        direction=w;
+        region=0;
+        address=0x1;
+        size=1;
+        data=call_1();
+    }
+}
+
+op op_33 {
+    call e100_disable_irq;
+}
+
+op op_91 {
+    call e100_intr;
+}
+
+op op_7 {
+    call dma_unmap_single_attrs;
+}
+
+op op_23 {
+    call dev_kfree_skb_any;
+}
+
+op op_3 {
+    call netdev_get_tx_queue;
+}
+
+op op_95 {
+    call netif_tx_queue_stopped;
+}
+
+op op_96 {
+    call netif_queue_stopped;
+}
+
+op op_69 {
+    call netif_wake_queue;
+}
+
+op op_98 {
+    call e100_tx_clean;
+}
+
+op op_72 {
+    call e100_enable_irq;
+}
+
+op op_52 {
+    call e100_exec_cb;
+}
+
+op op_101 {
+    mmio ioread8_101 {
+        direction=r;
+        region=0;
+        address=0x3;
+        size=1;
+    }
+}
+
+op op_102 {
+    mmio ioread8_102 {
+        direction=r;
+        region=0;
+        address=0x2;
+        size=1;
+    }
+}
+
+op op_103 {
+    mmio ioread16_103 {
+        direction=r;
+        region=0;
+        address=0x0;
+        size=2;
+    }
+}
+
+op op_13 {
+    call mdio_read;
+}
+
+op op_52 {
+    call e100_exec_cb;
+}
+
+op op_106 {
+    call device_can_wakeup;
+}
+
+op op_52 {
+    call e100_exec_cb;
+}
+
+op op_108 {
+    call e100_eeprom_read;
+}
+
+op op_109 {
+    mmio iowrite8_109 {
+        direction=w;
+        region=0;
+        address=0xe;
+        size=1;
+        data=0x3;
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_111 {
+    mmio iowrite8_111 {
+        direction=w;
+        region=0;
+        address=0xe;
+        size=1;
+        data=select(0x2, 0x6);
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_113 {
+    mmio iowrite8_113 {
+        direction=w;
+        region=0;
+        address=0xe;
+        size=1;
+        data=select(0x2, 0x6) | 0x1;
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_115 {
+    mmio iowrite8_115 {
+        direction=w;
+        region=0;
+        address=0xe;
+        size=1;
+        data=0;
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_117 {
+    mmio iowrite8_117 {
+        direction=w;
+        region=0;
+        address=0xe;
+        size=1;
+        data=0x3;
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_119 {
+    mmio iowrite8_119 {
+        direction=w;
+        region=0;
+        address=0xe;
+        size=1;
+        data=select(0x2, 0x6);
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_121 {
+    mmio iowrite8_121 {
+        direction=w;
+        region=0;
+        address=0xe;
+        size=1;
+        data=select(0x2, 0x6) | 0x1;
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_123 {
+    mmio iowrite8_123 {
+        direction=w;
+        region=0;
+        address=0xe;
+        size=1;
+        data=0;
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_125 {
+    mmio iowrite8_125 {
+        direction=w;
+        region=0;
+        address=0xe;
+        size=1;
+        data=0x3;
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_127 {
+    mmio iowrite8_127 {
+        direction=w;
+        region=0;
+        address=0xe;
+        size=1;
+        data=select(0x2, 0x6);
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_129 {
+    mmio iowrite8_129 {
+        direction=w;
+        region=0;
+        address=0xe;
+        size=1;
+        data=select(0x2, 0x6) | 0x1;
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_131 {
+    mmio iowrite8_131 {
+        direction=w;
+        region=0;
+        address=0xe;
+        size=1;
+        data=0;
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_133 {
+    call e100_eeprom_write;
+}
+
+op op_133 {
+    call e100_eeprom_write;
+}
+
+op op_135 {
+    call e100_eeprom_save;
+}
+
+op op_2 {
+    call netif_running;
+}
+
+op op_11 {
+    call e100_down;
+}
+
+op op_2 {
+    call netif_running;
+}
+
+op op_76 {
+    call e100_up;
+}
+
+op op_140 {
+    call e100_eeprom_load;
+}
+
+op op_2 {
+    call netif_running;
+}
+
+op op_11 {
+    call e100_down;
+}
+
+op op_34 {
+    call e100_self_test;
+}
+
+op op_27 {
+    call e100_rx_alloc_list;
+}
+
+op op_29 {
+    call e100_alloc_cbs;
+}
+
+op op_61 {
+    call e100_hw_init;
+}
+
+op op_14 {
+    call mdio_write;
+}
+
+op op_66 {
+    call e100_start_receiver;
+}
+
+op op_149 {
+    call netdev_alloc_skb;
+}
+
+op op_150 {
+    call e100_xmit_frame;
+}
+
+op op_14 {
+    call mdio_write;
+}
+
+op op_8 {
+    call e100_clean_cbs;
+}
+
+op op_5 {
+    call e100_hw_reset;
+}
+
+op op_10 {
+    call e100_rx_clean_list;
+}
+
+op op_155 {
+    call e100_loopback_test;
+}
+
+op op_155 {
+    call e100_loopback_test;
+}
+
+op op_2 {
+    call netif_running;
+}
+
+op op_76 {
+    call e100_up;
+}
+
+op op_14 {
+    call mdio_write;
+}
+
+op op_14 {
+    call mdio_write;
+}
+
+op op_52 {
+    call e100_exec_cb;
+}
+
+op op_1 {
+    call pci_get_drvdata;
+}
+
+op op_163 {
+    call e100_free;
+}
+
+op op_15 {
+    call __e100_shutdown;
+}
+
+op op_165 {
+    call __e100_power_off;
+}
+
+op op_166 {
+    mmio ioread8_166 {
+        direction=r;
+        region=0;
+        address=0x0;
+        size=1;
+    }
+}
+
+op op_7 {
+    call dma_unmap_single_attrs;
+}
+
+op op_168 {
+    mmio ioread8_168 {
+        direction=r;
+        region=0;
+        address=0x0;
+        size=1;
+    }
+}
+
+op op_169 {
+    call skb_reserve;
+}
+
+op op_23 {
+    call dev_kfree_skb_any;
+}
+
+op op_23 {
+    call dev_kfree_skb_any;
+}
+
+op op_172 {
+    call e100_rx_indicate;
+}
+
+op op_25 {
+    call e100_rx_alloc_skb;
+}
+
+op op_174 {
+    mmio iowrite8_174 {
+        direction=w;
+        region=0;
+        address=0x1;
+        size=1;
+        data=0x10;
+    }
+}
+
+op op_66 {
+    call e100_start_receiver;
+}
+
+op op_176 {
+    call e100_rx_clean;
+}
+
+op op_98 {
+    call e100_tx_clean;
+}
+
+op op_72 {
+    call e100_enable_irq;
+}
+
+op op_179 {
+    mmio ioread32_179 {
+        direction=r;
+        region=0;
+        address=0x10;
+        size=4;
+    }
+}
+
+op op_180 {
+    mmio iowrite32_180 {
+        direction=w;
+        region=0;
+        address=0x10;
+        size=4;
+        data=(((arg(num_1) << 0x15) | arg(num_4)) | (arg(num_7) << 0x10)) | arg(phi(num_11, (var_11 | 0x2100), (((num_13 << 0x6) & 0x2000) | var_11)));
+    }
+}
+
+op op_181 {
+    mmio ioread32_181 {
+        direction=r;
+        region=0;
+        address=0x10;
+        size=4;
+    }
+}
+
+op op_182 {
+    call ethtool_cmd_speed;
+}
+
+op op_183 {
+    call netif_carrier_ok;
+}
+
+op op_183 {
+    call netif_carrier_ok;
+}
+
+op op_185 {
+    mmio ioread8_185 {
+        direction=r;
+        region=0;
+        address=0x3;
+        size=1;
+    }
+}
+
+op op_186 {
+    mmio iowrite8_186 {
+        direction=w;
+        region=0;
+        address=0x3;
+        size=1;
+        data=call_1() | 0x2;
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_39 {
+    call e100_exec_cmd;
+}
+
+op op_189 {
+    call e100_update_stats;
+}
+
+op op_52 {
+    call e100_exec_cb;
+}
+
+op op_191 {
+    call e100_adjust_adaptive_ifs;
+}
+
+op op_64 {
+    call e100_set_multicast_list;
+}
+
+op op_193 {
+    mmio ioread8_193 {
+        direction=r;
+        region=0;
+        address=0x0;
+        size=1;
+    }
+}
+
+op op_2 {
+    call netif_running;
+}
+
+op op_11 {
+    call e100_down;
+}
+
+op op_76 {
+    call e100_up;
+}
+
+op op_197 {
+    call e100_phy_supports_mii;
+}
+
+op op_2 {
+    call netif_running;
+}
+
+op op_22 {
+    call dma_mapping_error;
+}
+
+op op_200 {
+    call skb_end_pointer;
+}
+
+op op_201 {
+    call skb_tx_timestamp;
+}
+
+op op_13 {
+    call mdio_read;
+}
+
+op op_203 {
+    call mdio_ctrl_hw;
+}
+
+op op_1 {
+    call pci_get_drvdata;
+}
+
+op op_2 {
+    call netif_running;
+}
+
+op op_11 {
+    call e100_down;
+}
+
+op op_1 {
+    call pci_get_drvdata;
+}
+
+op op_5 {
+    call e100_hw_reset;
+}
+
+op op_35 {
+    call e100_phy_init;
+}
+
+op op_1 {
+    call pci_get_drvdata;
+}
+
+op op_2 {
+    call netif_running;
+}
+
+op op_212 {
+    call e100_open;
+}
+
+op op_213 {
+    call e100_get_defaults;
+}
+
+op op_214 {
+    mmio iowrite32_214 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=4;
+        data=0x2;
+    }
+}
+
+op op_215 {
+    mmio ioread8_215 {
+        direction=r;
+        region=0;
+        address=0x0;
+        size=1;
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_217 {
+    mmio iowrite32_217 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=4;
+        data=0;
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_219 {
+    mmio iowrite8_219 {
+        direction=w;
+        region=0;
+        address=0x3;
+        size=1;
+        data=0x1;
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_33 {
+    call e100_disable_irq;
+}
+
+op op_5 {
+    call e100_hw_reset;
+}
+
+op op_223 {
+    call lockdep_init_map_waits;
+}
+
+op op_224 {
+    call lockdep_init_map_wait;
+}
+
+op op_225 {
+    call lockdep_init_map;
+}
+
+op op_226 {
+    call INIT_LIST_HEAD;
+}
+
+op op_227 {
+    call e100_alloc;
+}
+
+op op_228 {
+    mmio iowrite8_228 {
+        direction=w;
+        region=0;
+        address=0xe;
+        size=1;
+        data=0x3;
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_230 {
+    mmio iowrite8_230 {
+        direction=w;
+        region=0;
+        address=0xe;
+        size=1;
+        data=select(0x2, 0x6);
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_232 {
+    mmio iowrite8_232 {
+        direction=w;
+        region=0;
+        address=0xe;
+        size=1;
+        data=select(0x2, 0x6) | 0x1;
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_234 {
+    mmio ioread8_234 {
+        direction=r;
+        region=0;
+        address=0xe;
+        size=1;
+    }
+}
+
+op op_235 {
+    mmio iowrite8_235 {
+        direction=w;
+        region=0;
+        address=0xe;
+        size=1;
+        data=0;
+    }
+}
+
+op op_32 {
+    call e100_write_flush;
+}
+
+op op_108 {
+    call e100_eeprom_read;
+}
+
+op op_108 {
+    call e100_eeprom_read;
+}
+
+op op_140 {
+    call e100_eeprom_load;
+}
+
+op op_13 {
+    call mdio_read;
+}
+
+op op_13 {
+    call mdio_read;
+}
+
+op op_13 {
+    call mdio_read;
+}
+
+op op_243 {
+    call e100_phy_check_without_mii;
+}
+
+op op_13 {
+    call mdio_read;
+}
+
+op op_13 {
+    call mdio_read;
+}
+
+op op_13 {
+    call mdio_read;
+}
+
+op op_14 {
+    call mdio_write;
+}
+
+op op_14 {
+    call mdio_write;
+}
+
+op op_13 {
+    call mdio_read;
+}
+
+op op_14 {
+    call mdio_write;
+}
+
+op op_13 {
+    call mdio_read;
+}
+
+op op_14 {
+    call mdio_write;
+}
+
+op op_13 {
+    call mdio_read;
+}
+
+op op_14 {
+    call mdio_write;
+}
+
+op op_13 {
+    call mdio_read;
+}
+
+op op_14 {
+    call mdio_write;
+}
+
+op op_35 {
+    call e100_phy_init;
+}
+
+op op_258 {
+    call __dev_addr_set;
+}
+
+op op_83 {
+    call eth_hw_addr_set;
+}
+
+op op_260 {
+    call is_multicast_ether_addr;
+}
+
+op op_261 {
+    call is_zero_ether_addr;
+}
+
+op op_82 {
+    call is_valid_ether_addr;
+}
+
+op op_263 {
+    call dma_free_coherent;
+}
+
+op op_163 {
+    call e100_free;
+}
+
+
+bb e100_poll_338 {
+    op op_176;
+    op op_98;
+}
+
+bb e100_rx_indicate_364 {
+    op op_23;
+}
+
+bb e100_rx_alloc_skb_54 {
+    op op_20;
+}
+
+bb e100_xmit_prepare_486 {
+    op op_201;
+}
+
+bb e100_set_ringparam_288 {
+    op op_2;
+}
+
+bb e100_up_70 {
+    op op_29;
+}
+
+bb e100_netpoll_215 {
+    op op_33;
+    op op_91;
+    op op_98;
+    op op_72;
+}
+
+bb e100_probe_553 {
+    op op_140;
+}
+
+bb e100_loopback_test_302 {
+    op op_150;
+}
+
+bb e100_request_firmware_126 {
+    op op_41;
+}
+
+bb e100_update_stats_414 {
+    op op_39;
+}
+
+bb e100_load_ucode_wait_156 {
+    op op_32;
+}
+
+bb e100_watchdog_401 {
+    op op_182;
+}
+
+bb e100_open_193 {
+    op op_76;
+}
+
+bb lockdep_init_map_wait_547 {
+    op op_223;
+}
+
+bb e100_rx_alloc_skb_57 {
+    op op_21;
+    op op_22;
+}
+
+bb e100_rx_clean_list_25 {
+    op op_7;
+}
+
+bb e100_rx_indicate_357 {
+    op op_168;
+}
+
+bb e100_io_slot_reset_510 {
+    op op_1;
+}
+
+bb e100_loopback_test_303 {
+    op op_14;
+    op op_8;
+    op op_5;
+}
+
+bb e100_xmit_frame_199 {
+    op op_39;
+}
+
+bb e100_eeprom_write_275 {
+    op op_131;
+    op op_32;
+}
+
+bb e100_hw_init_168 {
+    op op_33;
+}
+
+bb e100_diag_test_291 {
+    op op_140;
+}
+
+bb e100_hw_init_167 {
+    op op_39;
+}
+
+bb e100_hw_init_164 {
+    op op_52;
+}
+
+bb e100_hw_init_95 {
+    op op_35;
+}
+
+bb e100_phy_init_589 {
+    op op_13;
+}
+
+bb e100_shutdown_329 {
+    op op_15;
+}
+
+bb mdio_ctrl_phy_82552_v_500 {
+    op op_13;
+}
+
+bb e100_phy_init_574 {
+    op op_243;
+}
+
+bb lockdep_init_map_546 {
+    op op_224;
+}
+
+bb __e100_shutdown_2 {
+    op op_1;
+    op op_2;
+}
+
+bb e100_watchdog_407 {
+    op op_183;
+}
+
+bb e100_poll_385 {
+    op op_72;
+}
+
+bb e100_tx_timeout_task_428 {
+    op op_2;
+}
+
+bb e100_phy_init_601 {
+    op op_13;
+}
+
+bb e100_set_link_ksettings_321 {
+    op op_14;
+    op op_52;
+}
+
+bb e100_set_ringparam_289 {
+    op op_76;
+}
+
+bb e100_set_phys_id_316 {
+    op op_14;
+}
+
+bb e100_self_test_88 {
+    op op_31;
+    op op_32;
+    op op_33;
+}
+
+bb e100_up_189 {
+    op op_10;
+}
+
+bb e100_eeprom_read_559 {
+    op op_235;
+    op op_32;
+}
+
+bb __e100_shutdown_36 {
+    op op_13;
+    op op_14;
+}
+
+bb e100_hw_init_166 {
+    op op_39;
+}
+
+bb mdio_ctrl_hw_393 {
+    op op_181;
+}
+
+bb mdio_ctrl_hw_392 {
+    op op_180;
+}
+
+bb e100_configure_444 {
+    op op_197;
+}
+
+bb e100_xmit_frame_203 {
+    op op_52;
+}
+
+bb e100_eeprom_save_278 {
+    op op_133;
+}
+
+bb e100_request_firmware_130 {
+    op op_41;
+}
+
+bb e100_hw_reset_543 {
+    op op_214;
+    op op_32;
+    op op_217;
+    op op_32;
+    op op_33;
+}
+
+bb e100_io_resume_516 {
+    op op_212;
+}
+
+bb e100_loopback_test_299 {
+    op op_14;
+}
+
+bb e100_phy_init_594 {
+    op op_14;
+}
+
+bb e100_tx_clean_232 {
+    op op_96;
+}
+
+bb e100_request_firmware_119 {
+    op op_41;
+}
+
+bb e100_intr_222 {
+    op op_33;
+}
+
+bb e100_rx_clean_375 {
+    op op_25;
+}
+
+bb e100_up_188 {
+    op op_8;
+}
+
+bb e100_rx_clean_340 {
+    op op_172;
+}
+
+bb e100_phy_init_590 {
+    op op_14;
+}
+
+bb __e100_shutdown_30 {
+    op op_12;
+}
+
+bb e100_tx_timeout_task_427 {
+    op op_193;
+}
+
+bb e100_intr_219 {
+    op op_89;
+}
+
+bb is_valid_ether_addr_609 {
+    op op_261;
+}
+
+bb e100_probe_542 {
+    op op_5;
+    op op_225;
+    op op_226;
+    op op_227;
+}
+
+bb e100_diag_test_294 {
+    op op_34;
+    op op_155;
+    op op_155;
+    op op_2;
+}
+
+bb e100_tx_timeout_task_429 {
+    op op_11;
+    op op_76;
+}
+
+bb e100_phy_init_603 {
+    op op_14;
+}
+
+bb netdev_alloc_skb_ip_align_55 {
+    op op_19;
+}
+
+bb e100_tx_timeout_214 {
+    op op_51;
+}
+
+bb e100_hw_init_106 {
+    op op_39;
+}
+
+bb e100_free_631 {
+    op op_263;
+}
+
+bb netif_queue_stopped_233 {
+    op op_3;
+    op op_95;
+}
+
+bb e100_set_wol_252 {
+    op op_106;
+}
+
+bb e100_hw_init_107 {
+    op op_55;
+}
+
+bb e100_rx_alloc_list_66 {
+    op op_10;
+}
+
+bb e100_rx_indicate_366 {
+    op op_23;
+}
+
+bb e100_rx_clean_381 {
+    op op_174;
+    op op_66;
+}
+
+bb e100_do_ioctl_212 {
+    op op_85;
+}
+
+bb e100_rx_indicate_359 {
+    op op_169;
+}
+
+bb e100_down_6 {
+    op op_4;
+    op op_5;
+    op op_6;
+    op op_8;
+    op op_10;
+}
+
+bb e100_set_ringparam_285 {
+    op op_11;
+}
+
+bb e100_hw_init_96 {
+    op op_39;
+}
+
+bb e100_get_regs_247 {
+    op op_101;
+    op op_102;
+    op op_103;
+}
+
+bb e100_hw_init_87 {
+    op op_34;
+}
+
+bb e100_eeprom_write_272 {
+    op op_119;
+    op op_32;
+    op op_121;
+    op op_32;
+}
+
+bb e100_exec_cb_149 {
+    op op_51;
+}
+
+bb PTR_ERR_OR_ZERO_135 {
+    op op_46;
+}
+
+bb e100_clean_cbs_16 {
+    op op_7;
+}
+
+bb e100_rx_alloc_list_53 {
+    op op_25;
+}
+
+bb e100_eeprom_read_556 {
+    op op_230;
+    op op_32;
+    op op_232;
+    op op_32;
+    op op_234;
+}
+
+bb e100_rx_alloc_skb_63 {
+    op op_24;
+}
+
+bb e100_exec_cmd_98 {
+    op op_36;
+}
+
+bb e100_diag_test_292 {
+    op op_2;
+}
+
+bb e100_set_features_238 {
+    op op_52;
+}
+
+bb e100_io_error_detected_505 {
+    op op_1;
+}
+
+bb e100_hw_init_85 {
+    op op_5;
+}
+
+bb e100_phy_init_598 {
+    op op_13;
+    op op_14;
+    op op_13;
+    op op_14;
+}
+
+bb e100_set_multicast_list_177 {
+    op op_52;
+    op op_52;
+}
+
+bb e100_eeprom_save_264 {
+    op op_108;
+}
+
+bb e100_rx_indicate_348 {
+    op op_166;
+}
+
+bb e100_up_44 {
+    op op_27;
+}
+
+bb e100_load_ucode_wait_140 {
+    op op_52;
+}
+
+bb e100_phy_init_596 {
+    op op_13;
+    op op_14;
+}
+
+bb e100_eeprom_load_560 {
+    op op_108;
+}
+
+bb PTR_ERR_OR_ZERO_137 {
+    op op_47;
+}
+
+bb e100_exec_cmd_104 {
+    op op_38;
+}
+
+bb schedule_work_150 {
+    op op_50;
+}
+
+bb e100_loopback_test_296 {
+    op op_29;
+}
+
+bb e100_eeprom_write_271 {
+    op op_115;
+    op op_32;
+    op op_117;
+    op op_32;
+}
+
+bb e100_load_ucode_wait_159 {
+    op op_54;
+}
+
+bb e100_exec_cmd_103 {
+    op op_37;
+}
+
+bb e100_rx_indicate_355 {
+    op op_7;
+}
+
+bb e100_start_receiver_181 {
+    op op_39;
+}
+
+bb e100_phy_init_570 {
+    op op_13;
+    op op_13;
+    op op_13;
+}
+
+bb e100_set_mac_address_210 {
+    op op_83;
+    op op_52;
+}
+
+bb e100_shutdown_330 {
+    op op_165;
+}
+
+bb e100_resume_43 {
+    op op_76;
+}
+
+bb e100_rx_alloc_skb_60 {
+    op op_23;
+}
+
+bb e100_get_regs_249 {
+    op op_52;
+}
+
+bb e100_eeprom_write_269 {
+    op op_109;
+    op op_32;
+}
+
+bb e100_exec_cb_147 {
+    op op_39;
+}
+
+bb mdio_ctrl_hw_389 {
+    op op_179;
+}
+
+bb e100_remove_327 {
+    op op_163;
+}
+
+bb netif_stop_queue_7 {
+    op op_3;
+}
+
+bb e100_up_187 {
+    op op_6;
+}
+
+bb e100_xmit_prepare_480 {
+    op op_22;
+}
+
+bb skb_tx_timestamp_487 {
+    op op_200;
+}
+
+bb e100_watchdog_424 {
+    op op_64;
+}
+
+bb e100_probe_537 {
+    op op_213;
+}
+
+bb e100_io_slot_reset_513 {
+    op op_5;
+    op op_35;
+}
+
+bb e100_up_84 {
+    op op_61;
+}
+
+bb e100_resume_42 {
+    op op_2;
+}
+
+bb e100_eeprom_load_554 {
+    op op_108;
+}
+
+bb e100_alloc_cbs_71 {
+    op op_28;
+}
+
+bb e100_xmit_frame_207 {
+    op op_4;
+}
+
+bb e100_eeprom_write_273 {
+    op op_123;
+    op op_32;
+    op op_125;
+    op op_32;
+}
+
+bb e100_get_regs_248 {
+    op op_13;
+}
+
+bb e100_loopback_test_295 {
+    op op_27;
+}
+
+bb is_valid_ether_addr_607 {
+    op op_260;
+}
+
+bb mdio_ctrl_phy_82552_v_503 {
+    op op_203;
+}
+
+bb e100_intr_216 {
+    op op_88;
+}
+
+bb e100_eeprom_read_555 {
+    op op_228;
+    op op_32;
+}
+
+bb e100_watchdog_403 {
+    op op_183;
+}
+
+bb e100_remove_326 {
+    op op_1;
+}
+
+bb e100_eeprom_save_268 {
+    op op_133;
+}
+
+bb e100_loopback_test_304 {
+    op op_10;
+}
+
+bb e100_resume_41 {
+    op op_13;
+    op op_14;
+}
+
+bb e100_phy_init_584 {
+    op op_13;
+    op op_13;
+}
+
+bb e100_adjust_adaptive_ifs_422 {
+    op op_52;
+}
+
+bb e100_io_resume_515 {
+    op op_1;
+    op op_2;
+}
+
+bb e100_set_wol_254 {
+    op op_52;
+}
+
+bb __e100_shutdown_5 {
+    op op_11;
+}
+
+bb e100_enable_irq_186 {
+    op op_70;
+    op op_32;
+}
+
+bb e100_close_197 {
+    op op_11;
+}
+
+bb e100_configure_454 {
+    op op_2;
+}
+
+bb e100_eeprom_write_270 {
+    op op_111;
+    op op_32;
+    op op_113;
+    op op_32;
+}
+
+bb e100_set_mac_address_209 {
+    op op_82;
+}
+
+bb e100_io_error_detected_506 {
+    op op_2;
+}
+
+bb e100_tx_clean_235 {
+    op op_69;
+}
+
+bb e100_eeprom_write_274 {
+    op op_127;
+    op op_32;
+    op op_129;
+    op op_32;
+}
+
+bb e100_diag_test_306 {
+    op op_76;
+}
+
+bb e100_write_flush_544 {
+    op op_215;
+}
+
+bb e100_loopback_test_297 {
+    op op_61;
+}
+
+bb e100_io_error_detected_507 {
+    op op_11;
+}
+
+bb e100_probe_568 {
+    op op_35;
+    op op_83;
+    op op_82;
+}
+
+bb e100_disable_irq_545 {
+    op op_219;
+    op op_32;
+}
+
+bb e100_watchdog_409 {
+    op op_185;
+    op op_186;
+    op op_32;
+    op op_189;
+    op op_191;
+}
+
+bb e100_probe_629 {
+    op op_163;
+}
+
+bb e100_set_ringparam_284 {
+    op op_2;
+}
+
+bb e100_load_ucode_wait_108 {
+    op op_44;
+    op op_45;
+}
+
+bb e100_suspend_1 {
+    op op_15;
+}
+
+bb e100_tx_clean_229 {
+    op op_7;
+    op op_23;
+}
+
+bb e100_hw_init_165 {
+    op op_52;
+}
+
+bb e100_up_184 {
+    op op_69;
+    op op_72;
+}
+
+bb eth_hw_addr_set_605 {
+    op op_258;
+}
+
+bb e100_set_eeprom_263 {
+    op op_135;
+}
+
+bb e100_loopback_test_300 {
+    op op_66;
+    op op_149;
+}
+
+bb e100_load_ucode_wait_134 {
+    op op_48;
+}
+
+bb netif_wake_queue_185 {
+    op op_3;
+}
+
+bb e100_diag_test_293 {
+    op op_11;
+}
+
+bb e100_up_170 {
+    op op_64;
+    op op_66;
+    op op_67;
+}
+
+path e100_io_resume_0 {
+    bb bb_515
+    bb bb_516
+}
+
+path e100_io_error_detected_0 {
+    bb bb_505
+    bb bb_506
+    bb bb_507
+}
+
+path e100_self_test_0 {
+    bb bb_88
+}
+
+path e100_free_0 {
+    bb bb_631
+}
+
+path e100_set_multicast_list_0 {
+    bb bb_177
+}
+
+path e100_load_ucode_wait_1 {
+    bb bb_108
+    bb bb_140
+    bb bb_156
+    bb bb_159
+}
+
+path e100_load_ucode_wait_0 {
+    bb bb_108
+    bb bb_134
+}
+
+path e100_tx_clean_0 {
+    bb bb_229
+    bb bb_232
+    bb bb_235
+}
+
+path e100_tx_clean_1 {
+    bb bb_232
+    bb bb_235
+}
+
+path e100_set_ringparam_0 {
+    bb bb_284
+    bb bb_285
+    bb bb_288
+    bb bb_289
+}
+
+path e100_set_ringparam_1 {
+    bb bb_284
+    bb bb_288
+    bb bb_289
+}
+
+path e100_exec_cmd_0 {
+    bb bb_98
+    bb bb_103
+    bb bb_104
+}
+
+path e100_exec_cmd_1 {
+    bb bb_98
+    bb bb_104
+}
+
+path e100_eeprom_read_0 {
+    bb bb_555
+    bb bb_556
+    bb bb_559
+}
+
+path e100_xmit_frame_0 {
+    bb bb_199
+    bb bb_203
+    bb bb_207
+}
+
+path e100_xmit_frame_1 {
+    bb bb_203
+    bb bb_207
+}
+
+path e100_tx_timeout_task_0 {
+    bb bb_427
+    bb bb_428
+    bb bb_429
+}
+
+path e100_tx_timeout_task_1 {
+    bb bb_428
+    bb bb_429
+}
+
+path lockdep_init_map_wait_0 {
+    bb bb_547
+}
+
+path netdev_alloc_skb_ip_align_0 {
+    bb bb_55
+}
+
+path e100_close_0 {
+    bb bb_197
+}
+
+path e100_probe_0 {
+    bb bb_537
+    bb bb_542
+    bb bb_553
+    bb bb_568
+    bb bb_629
+}
+
+path is_valid_ether_addr_0 {
+    bb bb_607
+    bb bb_609
+}
+
+path e100_enable_irq_0 {
+    bb bb_186
+}
+
+path e100_rx_alloc_list_0 {
+    bb bb_53
+    bb bb_66
+}
+
+path e100_exec_cb_0 {
+    bb bb_147
+    bb bb_149
+}
+
+path e100_start_receiver_0 {
+    bb bb_181
+}
+
+path e100_alloc_cbs_0 {
+    bb bb_71
+}
+
+path e100_eeprom_load_0 {
+    bb bb_554
+    bb bb_560
+}
+
+path e100_rx_clean_0 {
+    bb bb_340
+    bb bb_375
+    bb bb_381
+}
+
+path e100_rx_clean_1 {
+    bb bb_375
+    bb bb_381
+}
+
+path netif_queue_stopped_0 {
+    bb bb_233
+}
+
+path mdio_ctrl_phy_82552_v_1 {
+    bb bb_503
+}
+
+path mdio_ctrl_phy_82552_v_0 {
+    bb bb_500
+    bb bb_503
+}
+
+path e100_shutdown_0 {
+    bb bb_329
+    bb bb_330
+}
+
+path e100_set_wol_0 {
+    bb bb_252
+    bb bb_254
+}
+
+path e100_configure_0 {
+    bb bb_444
+    bb bb_454
+}
+
+path e100_remove_0 {
+    bb bb_326
+    bb bb_327
+}
+
+path e100_update_stats_0 {
+    bb bb_414
+}
+
+path netif_wake_queue_0 {
+    bb bb_185
+}
+
+path e100_suspend_0 {
+    bb bb_1
+}
+
+path e100_rx_indicate_0 {
+    bb bb_348
+}
+
+path e100_rx_indicate_4 {
+    bb bb_355
+    bb bb_359
+    bb bb_366
+}
+
+path e100_rx_indicate_3 {
+    bb bb_355
+    bb bb_359
+    bb bb_364
+}
+
+path e100_rx_indicate_2 {
+    bb bb_355
+    bb bb_357
+    bb bb_359
+    bb bb_366
+}
+
+path e100_rx_indicate_1 {
+    bb bb_355
+    bb bb_357
+    bb bb_359
+    bb bb_364
+}
+
+path e100_tx_timeout_0 {
+    bb bb_214
+}
+
+path e100_poll_0 {
+    bb bb_338
+    bb bb_385
+}
+
+path e100_adjust_adaptive_ifs_0 {
+    bb bb_422
+}
+
+path e100_loopback_test_3 {
+    bb bb_295
+    bb bb_296
+    bb bb_297
+    bb bb_300
+    bb bb_303
+    bb bb_304
+}
+
+path e100_loopback_test_2 {
+    bb bb_295
+    bb bb_296
+    bb bb_297
+    bb bb_300
+    bb bb_302
+    bb bb_303
+    bb bb_304
+}
+
+path e100_loopback_test_1 {
+    bb bb_295
+    bb bb_296
+    bb bb_297
+    bb bb_299
+    bb bb_300
+    bb bb_303
+    bb bb_304
+}
+
+path e100_loopback_test_0 {
+    bb bb_295
+    bb bb_296
+    bb bb_297
+    bb bb_299
+    bb bb_300
+    bb bb_302
+    bb bb_303
+    bb bb_304
+}
+
+path e100_loopback_test_4 {
+    bb bb_295
+    bb bb_296
+    bb bb_304
+}
+
+path schedule_work_0 {
+    bb bb_150
+}
+
+path e100_set_phys_id_0 {
+    bb bb_316
+}
+
+path e100_hw_init_0 {
+    bb bb_85
+    bb bb_87
+    bb bb_95
+    bb bb_96
+    bb bb_106
+    bb bb_107
+    bb bb_164
+    bb bb_165
+    bb bb_166
+    bb bb_167
+    bb bb_168
+}
+
+path __e100_shutdown_1 {
+    bb bb_2
+    bb bb_5
+    bb bb_30
+    bb bb_36
+}
+
+path __e100_shutdown_0 {
+    bb bb_2
+    bb bb_30
+    bb bb_36
+}
+
+path e100_hw_reset_0 {
+    bb bb_543
+}
+
+path e100_get_regs_0 {
+    bb bb_247
+    bb bb_248
+    bb bb_249
+}
+
+path e100_disable_irq_0 {
+    bb bb_545
+}
+
+path e100_io_slot_reset_0 {
+    bb bb_510
+    bb bb_513
+}
+
+path lockdep_init_map_0 {
+    bb bb_546
+}
+
+path e100_eeprom_save_0 {
+    bb bb_264
+    bb bb_268
+    bb bb_278
+}
+
+path e100_eeprom_save_1 {
+    bb bb_264
+    bb bb_278
+}
+
+path PTR_ERR_OR_ZERO_0 {
+    bb bb_135
+    bb bb_137
+}
+
+path e100_set_mac_address_0 {
+    bb bb_209
+    bb bb_210
+}
+
+path netif_stop_queue_0 {
+    bb bb_7
+}
+
+path e100_set_link_ksettings_0 {
+    bb bb_321
+}
+
+path e100_down_0 {
+    bb bb_6
+}
+
+path e100_request_firmware_2 {
+    bb bb_130
+}
+
+path e100_request_firmware_1 {
+    bb bb_126
+}
+
+path e100_request_firmware_0 {
+    bb bb_119
+}
+
+path e100_rx_alloc_skb_0 {
+    bb bb_54
+    bb bb_57
+    bb bb_60
+}
+
+path e100_rx_alloc_skb_1 {
+    bb bb_54
+    bb bb_57
+    bb bb_63
+}
+
+path e100_intr_0 {
+    bb bb_216
+    bb bb_219
+    bb bb_222
+}
+
+path e100_write_flush_0 {
+    bb bb_544
+}
+
+path e100_netpoll_0 {
+    bb bb_215
+}
+
+path e100_diag_test_1 {
+    bb bb_291
+    bb bb_292
+    bb bb_294
+    bb bb_306
+}
+
+path e100_diag_test_0 {
+    bb bb_291
+    bb bb_292
+    bb bb_293
+    bb bb_294
+    bb bb_306
+}
+
+path e100_xmit_prepare_0 {
+    bb bb_480
+    bb bb_486
+}
+
+path e100_open_0 {
+    bb bb_193
+}
+
+path e100_up_1 {
+    bb bb_44
+    bb bb_70
+    bb bb_84
+    bb bb_170
+    bb bb_184
+}
+
+path e100_up_0 {
+    bb bb_44
+    bb bb_70
+    bb bb_189
+}
+
+path e100_up_3 {
+    bb bb_44
+    bb bb_70
+    bb bb_84
+    bb bb_188
+    bb bb_189
+}
+
+path e100_up_2 {
+    bb bb_44
+    bb bb_70
+    bb bb_84
+    bb bb_170
+    bb bb_187
+    bb bb_188
+    bb bb_189
+}
+
+path e100_set_eeprom_0 {
+    bb bb_263
+}
+
+path mdio_ctrl_hw_0 {
+    bb bb_389
+    bb bb_392
+    bb bb_393
+}
+
+path e100_clean_cbs_0 {
+    bb bb_16
+}
+
+path e100_watchdog_0 {
+    bb bb_401
+    bb bb_403
+    bb bb_407
+    bb bb_409
+    bb bb_424
+}
+
+path e100_watchdog_1 {
+    bb bb_401
+    bb bb_407
+    bb bb_409
+    bb bb_424
+}
+
+path e100_eeprom_write_0 {
+    bb bb_269
+    bb bb_270
+    bb bb_271
+    bb bb_272
+    bb bb_273
+    bb bb_274
+    bb bb_275
+}
+
+path e100_do_ioctl_0 {
+    bb bb_212
+}
+
+path e100_phy_init_4 {
+    bb bb_570
+    bb bb_584
+    bb bb_589
+    bb bb_590
+    bb bb_594
+    bb bb_598
+}
+
+path e100_phy_init_34 {
+    bb bb_570
+    bb bb_584
+    bb bb_598
+}
+
+path e100_phy_init_17 {
+    bb bb_570
+    bb bb_584
+    bb bb_590
+    bb bb_594
+    bb bb_601
+    bb bb_603
+}
+
+path e100_phy_init_11 {
+    bb bb_570
+    bb bb_584
+    bb bb_589
+    bb bb_590
+    bb bb_601
+    bb bb_603
+}
+
+path e100_phy_init_5 {
+    bb bb_570
+    bb bb_584
+    bb bb_589
+    bb bb_590
+    bb bb_594
+    bb bb_601
+    bb bb_603
+}
+
+path e100_phy_init_35 {
+    bb bb_570
+    bb bb_584
+    bb bb_601
+    bb bb_603
+}
+
+path e100_phy_init_24 {
+    bb bb_570
+    bb bb_584
+    bb bb_590
+    bb bb_603
+}
+
+path e100_phy_init_18 {
+    bb bb_570
+    bb bb_584
+    bb bb_590
+    bb bb_594
+    bb bb_603
+}
+
+path e100_phy_init_12 {
+    bb bb_570
+    bb bb_584
+    bb bb_589
+    bb bb_590
+    bb bb_603
+}
+
+path e100_phy_init_6 {
+    bb bb_570
+    bb bb_584
+    bb bb_589
+    bb bb_590
+    bb bb_594
+    bb bb_603
+}
+
+path e100_phy_init_36 {
+    bb bb_570
+    bb bb_584
+    bb bb_603
+}
+
+path e100_phy_init_25 {
+    bb bb_570
+    bb bb_584
+    bb bb_594
+    bb bb_596
+    bb bb_598
+}
+
+path e100_phy_init_19 {
+    bb bb_570
+    bb bb_584
+    bb bb_590
+    bb bb_596
+    bb bb_598
+}
+
+path e100_phy_init_13 {
+    bb bb_570
+    bb bb_584
+    bb bb_590
+    bb bb_594
+    bb bb_596
+    bb bb_598
+}
+
+path e100_phy_init_7 {
+    bb bb_570
+    bb bb_584
+    bb bb_589
+    bb bb_590
+    bb bb_596
+    bb bb_598
+}
+
+path e100_phy_init_26 {
+    bb bb_570
+    bb bb_584
+    bb bb_594
+    bb bb_596
+    bb bb_601
+    bb bb_603
+}
+
+path e100_phy_init_20 {
+    bb bb_570
+    bb bb_584
+    bb bb_590
+    bb bb_596
+    bb bb_601
+    bb bb_603
+}
+
+path e100_phy_init_14 {
+    bb bb_570
+    bb bb_584
+    bb bb_590
+    bb bb_594
+    bb bb_596
+    bb bb_601
+    bb bb_603
+}
+
+path e100_phy_init_27 {
+    bb bb_570
+    bb bb_584
+    bb bb_594
+    bb bb_596
+    bb bb_603
+}
+
+path e100_phy_init_21 {
+    bb bb_570
+    bb bb_584
+    bb bb_590
+    bb bb_596
+    bb bb_603
+}
+
+path e100_phy_init_15 {
+    bb bb_570
+    bb bb_584
+    bb bb_590
+    bb bb_594
+    bb bb_596
+    bb bb_603
+}
+
+path e100_phy_init_28 {
+    bb bb_570
+    bb bb_584
+    bb bb_594
+    bb bb_598
+}
+
+path e100_phy_init_22 {
+    bb bb_570
+    bb bb_584
+    bb bb_590
+    bb bb_598
+}
+
+path e100_phy_init_0 {
+    bb bb_570
+    bb bb_574
+}
+
+path e100_phy_init_29 {
+    bb bb_570
+    bb bb_584
+    bb bb_594
+    bb bb_601
+    bb bb_603
+}
+
+path e100_phy_init_23 {
+    bb bb_570
+    bb bb_584
+    bb bb_590
+    bb bb_601
+    bb bb_603
+}
+
+path e100_phy_init_1 {
+    bb bb_570
+    bb bb_584
+    bb bb_589
+    bb bb_590
+    bb bb_594
+    bb bb_596
+    bb bb_598
+}
+
+path e100_phy_init_30 {
+    bb bb_570
+    bb bb_584
+    bb bb_594
+    bb bb_603
+}
+
+path e100_phy_init_8 {
+    bb bb_570
+    bb bb_584
+    bb bb_589
+    bb bb_590
+    bb bb_596
+    bb bb_601
+    bb bb_603
+}
+
+path e100_phy_init_2 {
+    bb bb_570
+    bb bb_584
+    bb bb_589
+    bb bb_590
+    bb bb_594
+    bb bb_596
+    bb bb_601
+    bb bb_603
+}
+
+path e100_phy_init_32 {
+    bb bb_570
+    bb bb_584
+    bb bb_596
+    bb bb_601
+    bb bb_603
+}
+
+path e100_phy_init_31 {
+    bb bb_570
+    bb bb_584
+    bb bb_596
+    bb bb_598
+}
+
+path e100_phy_init_9 {
+    bb bb_570
+    bb bb_584
+    bb bb_589
+    bb bb_590
+    bb bb_596
+    bb bb_603
+}
+
+path e100_phy_init_3 {
+    bb bb_570
+    bb bb_584
+    bb bb_589
+    bb bb_590
+    bb bb_594
+    bb bb_596
+    bb bb_603
+}
+
+path e100_phy_init_33 {
+    bb bb_570
+    bb bb_584
+    bb bb_596
+    bb bb_603
+}
+
+path e100_phy_init_16 {
+    bb bb_570
+    bb bb_584
+    bb bb_590
+    bb bb_594
+    bb bb_598
+}
+
+path e100_phy_init_10 {
+    bb bb_570
+    bb bb_584
+    bb bb_589
+    bb bb_590
+    bb bb_598
+}
+
+path e100_resume_0 {
+    bb bb_41
+    bb bb_42
+    bb bb_43
+}
+
+path e100_resume_1 {
+    bb bb_42
+    bb bb_43
+}
+
+path e100_set_features_0 {
+    bb bb_238
+}
+
+path skb_tx_timestamp_0 {
+    bb bb_487
+}
+
+path eth_hw_addr_set_0 {
+    bb bb_605
+}
+
+path e100_rx_clean_list_0 {
+    bb bb_25
+}
+
+func e100_io_resume {
+    path path_e100_io_resume_0;
+}
+
+func e100_io_error_detected {
+    path path_e100_io_error_detected_0;
+}
+
+func e100_self_test {
+    path path_e100_self_test_0;
+}
+
+func e100_free {
+    path path_e100_free_0;
+}
+
+func e100_set_multicast_list {
+    path path_e100_set_multicast_list_0;
+}
+
+func e100_load_ucode_wait {
+    path path_e100_load_ucode_wait_1;
+    path path_e100_load_ucode_wait_0;
+}
+
+func e100_tx_clean {
+    path path_e100_tx_clean_0;
+    path path_e100_tx_clean_1;
+}
+
+func e100_set_ringparam {
+    path path_e100_set_ringparam_0;
+    path path_e100_set_ringparam_1;
+}
+
+func e100_exec_cmd {
+    path path_e100_exec_cmd_0;
+    path path_e100_exec_cmd_1;
+}
+
+func e100_eeprom_read {
+    path path_e100_eeprom_read_0;
+}
+
+func e100_xmit_frame {
+    path path_e100_xmit_frame_0;
+    path path_e100_xmit_frame_1;
+}
+
+func e100_tx_timeout_task {
+    path path_e100_tx_timeout_task_0;
+    path path_e100_tx_timeout_task_1;
+}
+
+func lockdep_init_map_wait {
+    path path_lockdep_init_map_wait_0;
+}
+
+func netdev_alloc_skb_ip_align {
+    path path_netdev_alloc_skb_ip_align_0;
+}
+
+func e100_close {
+    path path_e100_close_0;
+}
+
+func e100_probe {
+    path path_e100_probe_0;
+}
+
+func is_valid_ether_addr {
+    path path_is_valid_ether_addr_0;
+}
+
+func e100_enable_irq {
+    path path_e100_enable_irq_0;
+}
+
+func e100_rx_alloc_list {
+    path path_e100_rx_alloc_list_0;
+}
+
+func e100_exec_cb {
+    path path_e100_exec_cb_0;
+}
+
+func e100_start_receiver {
+    path path_e100_start_receiver_0;
+}
+
+func e100_alloc_cbs {
+    path path_e100_alloc_cbs_0;
+}
+
+func e100_eeprom_load {
+    path path_e100_eeprom_load_0;
+}
+
+func e100_rx_clean {
+    path path_e100_rx_clean_0;
+    path path_e100_rx_clean_1;
+}
+
+func netif_queue_stopped {
+    path path_netif_queue_stopped_0;
+}
+
+func mdio_ctrl_phy_82552_v {
+    path path_mdio_ctrl_phy_82552_v_1;
+    path path_mdio_ctrl_phy_82552_v_0;
+}
+
+func e100_shutdown {
+    path path_e100_shutdown_0;
+}
+
+func e100_set_wol {
+    path path_e100_set_wol_0;
+}
+
+func e100_configure {
+    path path_e100_configure_0;
+}
+
+func e100_remove {
+    path path_e100_remove_0;
+}
+
+func e100_update_stats {
+    path path_e100_update_stats_0;
+}
+
+func netif_wake_queue {
+    path path_netif_wake_queue_0;
+}
+
+func e100_suspend {
+    path path_e100_suspend_0;
+}
+
+func e100_rx_indicate {
+    path path_e100_rx_indicate_0;
+    path path_e100_rx_indicate_4;
+    path path_e100_rx_indicate_3;
+    path path_e100_rx_indicate_2;
+    path path_e100_rx_indicate_1;
+}
+
+func e100_tx_timeout {
+    path path_e100_tx_timeout_0;
+}
+
+func e100_poll {
+    path path_e100_poll_0;
+}
+
+func e100_adjust_adaptive_ifs {
+    path path_e100_adjust_adaptive_ifs_0;
+}
+
+func e100_loopback_test {
+    path path_e100_loopback_test_3;
+    path path_e100_loopback_test_2;
+    path path_e100_loopback_test_1;
+    path path_e100_loopback_test_0;
+    path path_e100_loopback_test_4;
+}
+
+func schedule_work {
+    path path_schedule_work_0;
+}
+
+func e100_set_phys_id {
+    path path_e100_set_phys_id_0;
+}
+
+func e100_hw_init {
+    path path_e100_hw_init_0;
+}
+
+func __e100_shutdown {
+    path path___e100_shutdown_1;
+    path path___e100_shutdown_0;
+}
+
+func e100_hw_reset {
+    path path_e100_hw_reset_0;
+}
+
+func e100_get_regs {
+    path path_e100_get_regs_0;
+}
+
+func e100_disable_irq {
+    path path_e100_disable_irq_0;
+}
+
+func e100_io_slot_reset {
+    path path_e100_io_slot_reset_0;
+}
+
+func lockdep_init_map {
+    path path_lockdep_init_map_0;
+}
+
+func e100_eeprom_save {
+    path path_e100_eeprom_save_0;
+    path path_e100_eeprom_save_1;
+}
+
+func PTR_ERR_OR_ZERO {
+    path path_PTR_ERR_OR_ZERO_0;
+}
+
+func e100_set_mac_address {
+    path path_e100_set_mac_address_0;
+}
+
+func netif_stop_queue {
+    path path_netif_stop_queue_0;
+}
+
+func e100_set_link_ksettings {
+    path path_e100_set_link_ksettings_0;
+}
+
+func e100_down {
+    path path_e100_down_0;
+}
+
+func e100_request_firmware {
+    path path_e100_request_firmware_2;
+    path path_e100_request_firmware_1;
+    path path_e100_request_firmware_0;
+}
+
+func e100_rx_alloc_skb {
+    path path_e100_rx_alloc_skb_0;
+    path path_e100_rx_alloc_skb_1;
+}
+
+func e100_intr {
+    path path_e100_intr_0;
+}
+
+func e100_write_flush {
+    path path_e100_write_flush_0;
+}
+
+func e100_netpoll {
+    path path_e100_netpoll_0;
+}
+
+func e100_diag_test {
+    path path_e100_diag_test_1;
+    path path_e100_diag_test_0;
+}
+
+func e100_xmit_prepare {
+    path path_e100_xmit_prepare_0;
+}
+
+func e100_open {
+    path path_e100_open_0;
+}
+
+func e100_up {
+    path path_e100_up_1;
+    path path_e100_up_0;
+    path path_e100_up_3;
+    path path_e100_up_2;
+}
+
+func e100_set_eeprom {
+    path path_e100_set_eeprom_0;
+}
+
+func mdio_ctrl_hw {
+    path path_mdio_ctrl_hw_0;
+}
+
+func e100_clean_cbs {
+    path path_e100_clean_cbs_0;
+}
+
+func e100_watchdog {
+    path path_e100_watchdog_0;
+    path path_e100_watchdog_1;
+}
+
+func e100_eeprom_write {
+    path path_e100_eeprom_write_0;
+}
+
+func e100_do_ioctl {
+    path path_e100_do_ioctl_0;
+}
+
+func e100_phy_init {
+    path path_e100_phy_init_4;
+    path path_e100_phy_init_34;
+    path path_e100_phy_init_17;
+    path path_e100_phy_init_11;
+    path path_e100_phy_init_5;
+    path path_e100_phy_init_35;
+    path path_e100_phy_init_24;
+    path path_e100_phy_init_18;
+    path path_e100_phy_init_12;
+    path path_e100_phy_init_6;
+    path path_e100_phy_init_36;
+    path path_e100_phy_init_25;
+    path path_e100_phy_init_19;
+    path path_e100_phy_init_13;
+    path path_e100_phy_init_7;
+    path path_e100_phy_init_26;
+    path path_e100_phy_init_20;
+    path path_e100_phy_init_14;
+    path path_e100_phy_init_27;
+    path path_e100_phy_init_21;
+    path path_e100_phy_init_15;
+    path path_e100_phy_init_28;
+    path path_e100_phy_init_22;
+    path path_e100_phy_init_0;
+    path path_e100_phy_init_29;
+    path path_e100_phy_init_23;
+    path path_e100_phy_init_1;
+    path path_e100_phy_init_30;
+    path path_e100_phy_init_8;
+    path path_e100_phy_init_2;
+    path path_e100_phy_init_32;
+    path path_e100_phy_init_31;
+    path path_e100_phy_init_9;
+    path path_e100_phy_init_3;
+    path path_e100_phy_init_33;
+    path path_e100_phy_init_16;
+    path path_e100_phy_init_10;
+}
+
+func e100_resume {
+    path path_e100_resume_0;
+    path path_e100_resume_1;
+}
+
+func e100_set_features {
+    path path_e100_set_features_0;
+}
+
+func skb_tx_timestamp {
+    path path_skb_tx_timestamp_0;
+}
+
+func eth_hw_addr_set {
+    path path_eth_hw_addr_set_0;
+}
+
+func e100_rx_clean_list {
+    path path_e100_rx_clean_list_0;
+}
+

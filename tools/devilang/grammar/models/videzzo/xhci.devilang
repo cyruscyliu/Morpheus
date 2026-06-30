@@ -1,0 +1,398 @@
+struct XHCI_BUF2 {
+    buf: bytes[256] random;
+}
+struct XHCITRB0 {
+    parameter: ptr<u64> align 0;
+    status: u32 flag [
+        bits 0..15;
+        bits 16..21;
+        bits 22..31;
+    ];
+    control: u32 flag immediate [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..8;
+        bits 9..9;
+        bits 10..15 = 0;
+        bits 16..17;
+        bits 18..20 = 0;
+        bits 21..23;
+        bits 24..24;
+        bits 25..29 = 0;
+        bits 30..31 = 0;
+    ];
+    addr: u64 random;
+    ccs: u8 random;
+}
+
+pointer {
+    from = XHCITRB0.parameter;
+    to = XHCI_BUF2;
+    align = 0;
+}
+
+head {
+    to = XHCITRB0;
+    position = [
+        filename = hcd-xhci.c;
+        caller = xhci_ring_fetch;
+        callee = dma_memory_read;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = hcd-xhci.c;
+        caller = xhci_ring_chain_length;
+        callee = dma_memory_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct XHCITRB1 {
+    parameter: ptr<u64> align 0;
+    status: u32 flag [
+        bits 0..15;
+        bits 16..21;
+        bits 22..31;
+    ];
+    control: u32 flag immediate [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..8;
+        bits 9..9;
+        bits 10..15 = 0;
+        bits 16..17;
+        bits 18..20 = 0;
+        bits 21..23;
+        bits 24..29;
+        bits 30..31 = 0;
+    ];
+    addr: u64 random;
+    ccs: u8 random;
+}
+
+pointer {
+    from = XHCITRB1.parameter;
+    to = XHCI_BUF0;
+    align = 0;
+}
+struct XHCI_BUF0 {
+    buf: bytes[256] random;
+}
+struct XHCIEvRingSeg {
+    addr: ptr<u64> align 0;
+    size: u32 flag [
+        bits 0..3;
+        bits 4..11;
+        bits 12..31 = 0;
+    ];
+    rsvd: u32 random;
+}
+
+pointer {
+    from = XHCIEvRingSeg.addr;
+    to = XHCITRB1;
+    align = 0;
+}
+
+head {
+    to = XHCIEvRingSeg;
+    position = [
+        filename = hcd-xhci.c;
+        caller = xhci_er_reset;
+        callee = dma_memory_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct XHCI_POCTX {
+    poctx: ptr<u64> align 0;
+}
+
+pointer {
+    from = XHCI_POCTX.poctx;
+    to = XHCI_BUF1;
+    align = 0;
+}
+struct XHCI_BUF1 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = XHCI_POCTX;
+    position = [
+        filename = hcd-xhci.c;
+        caller = xhci_address_slot;
+        callee = ldq_le_dma;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = hcd-xhci.c;
+        caller = usb_xhci_post_load;
+        callee = ldq_le_dma;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct XHCI_CTX {
+    ctx0: u32 flag [
+        bits 0..0;
+        bits 1..3;
+        bits 4..31;
+    ];
+    ctx1: u32 random;
+}
+
+head {
+    to = XHCI_CTX;
+    position = [
+        filename = hcd-xhci.c;
+        caller = xhci_find_stream;
+        callee = xhci_dma_read_u32s;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = hcd-xhci.c;
+        caller = xhci_set_ep_state;
+        callee = xhci_dma_read_u32s;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = hcd-xhci.c;
+        caller = xhci_set_ep_state;
+        callee = xhci_dma_read_u32s;
+        call_depth = 1;
+        argument_index = 1;
+    ]
+}
+struct XHCI_CTL_CTX_93 {
+    ctl_ctx0: u32 immediate [
+        imm 0;
+    ];
+    ctl_ctx1: u32 immediate [
+        imm 3;
+    ];
+}
+
+head {
+    to = XHCI_CTL_CTX_93;
+    position = [
+        filename = hcd-xhci.c;
+        caller = xhci_address_slot;
+        callee = xhci_dma_read_u32s;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct XHCI_CTL_CTX_77 {
+    ctl_ctx0: u32 immediate [
+        imm 0;
+    ];
+    ctl_ctx1: u32 immediate [
+        imm 0;
+    ];
+}
+
+head {
+    to = XHCI_CTL_CTX_77;
+    position = [
+        filename = hcd-xhci.c;
+        caller = xhci_evaluate_slot;
+        callee = xhci_dma_read_u32s;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct XHCI_CTL_CTX_76 {
+    ctl_ctx0: u32 flag [
+        bits 0..1 = 0;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+        bits 8..8;
+        bits 9..9;
+        bits 10..10;
+        bits 11..11;
+        bits 12..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+        bits 16..16;
+        bits 17..17;
+        bits 18..18;
+        bits 19..19;
+        bits 20..20;
+        bits 21..21;
+        bits 22..22;
+        bits 23..23;
+        bits 24..24;
+        bits 25..25;
+        bits 26..26;
+        bits 27..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+    ctl_ctx1: u32 flag [
+        bits 0..1 = 1;
+        bits 2..31;
+    ];
+}
+
+head {
+    to = XHCI_CTL_CTX_76;
+    position = [
+        filename = hcd-xhci.c;
+        caller = xhci_configure_slot;
+        callee = xhci_dma_read_u32s;
+        call_depth = 1;
+        argument_index = 1;
+    ]
+}
+struct XHCI_SLOT_CTX {
+    slot_ctx0: u32 flag [
+        bits 0..3 = 0;
+        bits 8..11;
+        bits 12..15;
+        bits 16..19;
+        bits 20..23;
+        bits 24..31;
+    ];
+    slot_ctx1: u32 flag immediate [
+        bits 0..15;
+        bits 16..23 = 0;
+        bits 24..31;
+    ];
+    slot_ctx2: u32 flag [
+        bits 0..21;
+        bits 22..31;
+    ];
+    slot_ctx3: u32 flag [
+        bits 0..26;
+        bits 27..31;
+    ];
+}
+
+head {
+    to = XHCI_SLOT_CTX;
+    position = [
+        filename = hcd-xhci.c;
+        caller = xhci_evaluate_slot;
+        callee = xhci_dma_read_u32s;
+        call_depth = 1;
+        argument_index = 1;
+    ] | [
+        filename = hcd-xhci.c;
+        caller = xhci_evaluate_slot;
+        callee = xhci_dma_read_u32s;
+        call_depth = 2;
+        argument_index = 1;
+    ] | [
+        filename = hcd-xhci.c;
+        caller = xhci_reset_slot;
+        callee = xhci_dma_read_u32s;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = hcd-xhci.c;
+        caller = xhci_configure_slot;
+        callee = xhci_dma_read_u32s;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = hcd-xhci.c;
+        caller = xhci_configure_slot;
+        callee = xhci_dma_read_u32s;
+        call_depth = 2;
+        argument_index = 1;
+    ] | [
+        filename = hcd-xhci.c;
+        caller = xhci_configure_slot;
+        callee = xhci_dma_read_u32s;
+        call_depth = 3;
+        argument_index = 1;
+    ] | [
+        filename = hcd-xhci.c;
+        caller = xhci_address_slot;
+        callee = xhci_dma_read_u32s;
+        call_depth = 1;
+        argument_index = 1;
+    ] | [
+        filename = hcd-xhci.c;
+        caller = usb_xhci_post_load;
+        callee = xhci_dma_read_u32s;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct XHCI_EP0_CTX {
+    ep0_ctx0: u32 flag [
+        bits 0..2;
+        bits 3..9;
+        bits 10..24;
+        bits 15..15;
+        bits 16..23;
+        bits 24..31;
+    ];
+    ep0_ctx1: u32 flag [
+        bits 0..2;
+        bits 3..5;
+        bits 6..7;
+        bits 8..15;
+        bits 16..31;
+    ];
+    ep0_ctx2: u32 flag [
+        bits 0..0;
+        bits 1..3;
+        bits 4..31;
+    ];
+    ep0_ctx3: u32 random;
+    ep0_ctx4: u32 random;
+}
+
+head {
+    to = XHCI_EP0_CTX;
+    position = [
+        filename = hcd-xhci.c;
+        caller = xhci_evaluate_slot;
+        callee = xhci_dma_read_u32s;
+        call_depth = 3;
+        argument_index = 1;
+    ] | [
+        filename = hcd-xhci.c;
+        caller = xhci_evaluate_slot;
+        callee = xhci_dma_read_u32s;
+        call_depth = 4;
+        argument_index = 1;
+    ] | [
+        filename = hcd-xhci.c;
+        caller = xhci_configure_slot;
+        callee = xhci_dma_read_u32s;
+        call_depth = 4;
+        argument_index = 1;
+    ] | [
+        filename = hcd-xhci.c;
+        caller = xhci_address_slot;
+        callee = xhci_dma_read_u32s;
+        call_depth = 2;
+        argument_index = 1;
+    ] | [
+        filename = hcd-xhci.c;
+        caller = usb_xhci_post_load;
+        callee = xhci_dma_read_u32s;
+        call_depth = 1;
+        argument_index = 1;
+    ]
+}

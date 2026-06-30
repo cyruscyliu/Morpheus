@@ -1,0 +1,272 @@
+struct MEGASAS_REPLY_QUEUE_TAIL {
+    reply_qeueu_tail: u32 random;
+}
+
+head {
+    to = MEGASAS_REPLY_QUEUE_TAIL;
+    position = [
+        filename = megasas.c;
+        caller = megasas_enqueue_frame;
+        callee = ldl_le_pci_dma;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = megasas.c;
+        caller = megasas_complete_frame;
+        callee = ldl_le_pci_dma;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = megasas.c;
+        caller = megasas_complete_frame;
+        callee = ldl_le_pci_dma;
+        call_depth = 1;
+        argument_index = 1;
+    ] | [
+        filename = megasas.c;
+        caller = megasas_init_firmware;
+        callee = ldl_le_pci_dma;
+        call_depth = 1;
+        argument_index = 1;
+    ]
+}
+struct MEGASAS_REPLY_QUEUE_HEAD {
+    reply_qeueu_head: u32 random;
+}
+
+head {
+    to = MEGASAS_REPLY_QUEUE_HEAD;
+    position = [
+        filename = megasas.c;
+        caller = megasas_init_firmware;
+        callee = ldl_le_pci_dma;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct MEGASAS_MFI_INIT_QINFO {
+    flags1: u32 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..31;
+    ];
+    rq_entries: u32 random;
+    rq_addr: u64 random;
+    pi_addr: u64 random;
+    ci_addr: u64 random;
+}
+struct MEGASAS_MFI_FRAME_INIT {
+    frame_cmd: u8 immediate [
+        imm 0;
+    ];
+    sense_len: u8 random;
+    cmd_status: u8 random;
+    scsi_status: u8 random;
+    target_id: u8 random;
+    lun_id: u8 random;
+    cdb_len: u8 random;
+    sge_count: u8 random;
+    context: u64 random;
+    flags0: u16 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..31;
+    ];
+    timeout: u16 random;
+    data_len: u32 random;
+    qinfo_new_addr: ptr<u64> align 0;
+    qinfo_old_addr: ptr<u64> align 0;
+    reserved_7: bytes[24] random;
+}
+
+pointer {
+    from = MEGASAS_MFI_FRAME_INIT.qinfo_new_addr;
+    to = MEGASAS_MFI_INIT_QINFO;
+    align = 0;
+}
+
+pointer {
+    from = MEGASAS_MFI_FRAME_INIT.qinfo_old_addr;
+    to = MEGASAS_MFI_INIT_QINFO;
+    align = 0;
+}
+struct MEGASAS_MFI_FRAME_DCMD {
+    frame_cmd: u8 immediate [
+        imm 5;
+    ];
+    sense_len: u8 random;
+    cmd_status: u8 random;
+    scsi_status: u8 random;
+    target_id: u8 random;
+    lun_id: u8 random;
+    cdb_len: u8 random;
+    sge_count: u8 random;
+    context: u64 random;
+    flags0: u16 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..31;
+    ];
+    timeout: u16 random;
+    data_len: u32 random;
+    opcode: u32 immediate [
+        imm 0x100e100;
+        imm 0x1010000;
+        imm 0x1020100;
+        imm 0x1020200;
+        imm 0x1030000;
+        imm 0x1030100;
+        imm 0x1030200;
+        imm 0x1030300;
+        imm 0x1030400;
+        imm 0x1030500;
+        imm 0x1040100;
+        imm 0x1040200;
+        imm 0x1040300;
+        imm 0x1040400;
+        imm 0x1040500;
+        imm 0x1050000;
+        imm 0x1060000;
+        imm 0x1080101;
+        imm 0x1080102;
+        imm 0x10c0100;
+        imm 0x10c0200;
+        imm 0x10d0000;
+        imm 0x10e0201;
+        imm 0x10e0202;
+        imm 0x1101000;
+        imm 0x2010000;
+        imm 0x2010100;
+        imm 0x2020000;
+        imm 0x2030100;
+        imm 0x2040100;
+        imm 0x2070100;
+        imm 0x2070200;
+        imm 0x3010000;
+        imm 0x3010100;
+        imm 0x3020000;
+        imm 0x3030000;
+        imm 0x3040000;
+        imm 0x3090000;
+        imm 0x4010000;
+        imm 0x4020000;
+        imm 0x4030000;
+        imm 0x4060100;
+        imm 0x4060400;
+        imm 0x5010000;
+        imm 0x5020000;
+        imm 0x5030000;
+        imm 0x5050100;
+        imm 0x8000000;
+        imm 0x8010100;
+        imm 0x8010200;
+    ];
+    mbox: bytes[12] random;
+    addr: u64 random;
+    len: u32 random;
+    flag: u32 random;
+}
+struct MEGASAS_MFI_FRAME_ABORT {
+    frame_cmd: u8 immediate [
+        imm 6;
+    ];
+    sense_len: u8 random;
+    cmd_status: u8 random;
+    scsi_status: u8 random;
+    target_id: u8 random;
+    lun_id: u8 random;
+    cdb_len: u8 random;
+    sge_count: u8 random;
+    context: u64 random;
+    flags0: u16 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..31;
+    ];
+    timeout: u16 random;
+    data_len: u32 random;
+    abort_context: u64 random;
+    abort_mfi_addr: u64 random;
+    reserved1: bytes[24] random;
+}
+struct MEGASAS_MFI_FRAME_SCSI {
+    frame_cmd: u8 immediate [
+        imm 3;
+        imm 4;
+    ];
+    sense_len: u8 random;
+    cmd_status: u8 random;
+    scsi_status: u8 random;
+    target_id: u8 random;
+    lun_id: u8 random;
+    cdb_len: u8 random;
+    sge_count: u8 random;
+    context: u64 random;
+    flags0: u16 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..31;
+    ];
+    timeout: u16 random;
+    data_len: u32 random;
+}
+struct MEGASAS_MFI_FRAME_IO {
+    frame_cmd: u8 immediate [
+        imm 1;
+        imm 2;
+    ];
+    sense_len: u8 random;
+    cmd_status: u8 random;
+    scsi_status: u8 random;
+    target_id: u8 random;
+    lun_id: u8 random;
+    cdb_len: u8 random;
+    sge_count: u8 random;
+    context: u64 random;
+    flags0: u16 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..31;
+    ];
+    timeout: u16 random;
+    data_len: u32 random;
+    sense_addr: ptr<u64> align 0;
+    lba: u64 random;
+    addr: u64 random;
+    len: u32 random;
+    flag: u32 random;
+}
+
+pointer {
+    from = MEGASAS_MFI_FRAME_IO.sense_addr;
+    to = MEGASAS_MFI_SENSE_BUF;
+    align = 0;
+}
+struct MEGASAS_MFI_SENSE_BUF {
+    sense_buf: bytes[252] random;
+}
+
+head {
+    to = MEGASAS_MFI_FRAME_INIT MEGASAS_MFI_FRAME_DCMD MEGASAS_MFI_FRAME_ABORT MEGASAS_MFI_FRAME_SCSI MEGASAS_MFI_FRAME_IO;
+    position = [
+        filename = megasas.c;
+        caller = megasas_handle_frame;
+        callee = megasas_frame_get_context;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct MEGASAS_MFI_FRAME_HEADER_SENSE {
+    context: u64 random;
+}
+
+head {
+    to = MEGASAS_MFI_FRAME_HEADER_SENSE;
+    position = [
+        filename = megasas.c;
+        caller = megasas_frame_get_context;
+        callee = ldq_le_pci_dma;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}

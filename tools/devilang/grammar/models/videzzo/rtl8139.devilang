@@ -1,0 +1,199 @@
+struct RTL8139_RX_RING_DESC_RXDW0 {
+    rxdw0: u32 flag [
+        bits 0..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+        bits 16..16;
+        bits 17..17;
+        bits 18..18;
+        bits 19..19;
+        bits 20..23;
+        bits 24..24;
+        bits 25..25;
+        bits 26..26;
+        bits 27..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+}
+
+head {
+    to = RTL8139_RX_RING_DESC_RXDW0;
+    position = [
+        filename = rtl8139.c;
+        caller = rtl8139_do_receive;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct RTL8139_RX_RING_DESC_RXDW1 {
+    rxdw1: u32 flag [
+        bits 0..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+        bits 16..16;
+        bits 17..17;
+        bits 18..18;
+        bits 19..19;
+        bits 20..23;
+        bits 24..24;
+        bits 25..25;
+        bits 26..26;
+        bits 27..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+}
+
+head {
+    to = RTL8139_RX_RING_DESC_RXDW1;
+    position = [
+        filename = rtl8139.c;
+        caller = rtl8139_do_receive;
+        callee = pci_dma_read;
+        call_depth = 1;
+        argument_index = 1;
+    ]
+}
+struct RTL8139_RX_RING_DESC_BUF {
+    buf: bytes[256] random;
+}
+struct RTL8139_RX_RING_DESC_RXBUFLO {
+    rxbuflo: ptr<u32> align 0;
+}
+
+pointer {
+    from = RTL8139_RX_RING_DESC_RXBUFLO.rxbuflo;
+    to = RTL8139_RX_RING_DESC_BUF;
+    align = 0;
+}
+
+head {
+    to = RTL8139_RX_RING_DESC_RXBUFLO;
+    position = [
+        filename = rtl8139.c;
+        caller = rtl8139_do_receive;
+        callee = pci_dma_read;
+        call_depth = 2;
+        argument_index = 1;
+    ]
+}
+struct RTL8139_RX_RING_DESC_RXBUFHI {
+    rxbufhi: u32 immediate [
+        imm 0;
+    ];
+}
+
+head {
+    to = RTL8139_RX_RING_DESC_RXBUFHI;
+    position = [
+        filename = rtl8139.c;
+        caller = rtl8139_do_receive;
+        callee = pci_dma_read;
+        call_depth = 3;
+        argument_index = 1;
+    ]
+}
+struct RTL8139_BUF {
+    buf: bytes[0x2000] random;
+}
+
+head {
+    to = RTL8139_BUF;
+    position = [
+        filename = rtl8139.c;
+        caller = rtl8139_transmit_one;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct RTL8139_TX_RING_DESC_TXDW0 {
+    txdw0: u32 flag [
+        bits 0..15;
+        bits 16..16;
+        bits 17..17;
+        bits 18..26;
+        bits 27..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+}
+
+head {
+    to = RTL8139_TX_RING_DESC_TXDW0;
+    position = [
+        filename = rtl8139.c;
+        caller = rtl8139_cplus_transmit_one;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct RTL8139_TX_RING_DESC_TXDW1 {
+    txdw1: u32 flag [
+        bits 0..15;
+        bits 16..16;
+        bits 17..17;
+        bits 18..31;
+    ];
+}
+
+head {
+    to = RTL8139_TX_RING_DESC_TXDW1;
+    position = [
+        filename = rtl8139.c;
+        caller = rtl8139_cplus_transmit_one;
+        callee = pci_dma_read;
+        call_depth = 1;
+        argument_index = 1;
+    ]
+}
+struct RTL8139_TX_RING_DESC_BUF {
+    buf: bytes[256] random;
+}
+struct RTL8139_TX_RING_DESC_TXBUFLO {
+    txbuflo: ptr<u32> align 0;
+}
+
+pointer {
+    from = RTL8139_TX_RING_DESC_TXBUFLO.txbuflo;
+    to = RTL8139_TX_RING_DESC_BUF;
+    align = 0;
+}
+
+head {
+    to = RTL8139_TX_RING_DESC_TXBUFLO;
+    position = [
+        filename = rtl8139.c;
+        caller = rtl8139_cplus_transmit_one;
+        callee = pci_dma_read;
+        call_depth = 2;
+        argument_index = 1;
+    ]
+}
+struct RTL8139_TX_RING_DESC_TXBUFHI {
+    txbufhi: u32 immediate [
+        imm 0;
+    ];
+}
+
+head {
+    to = RTL8139_TX_RING_DESC_TXBUFHI;
+    position = [
+        filename = rtl8139.c;
+        caller = rtl8139_cplus_transmit_one;
+        callee = pci_dma_read;
+        call_depth = 3;
+        argument_index = 1;
+    ]
+}

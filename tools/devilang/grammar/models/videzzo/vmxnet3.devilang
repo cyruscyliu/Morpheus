@@ -1,0 +1,162 @@
+struct Vmxnet3_TxDesc {
+    addr: ptr<u64> align 0;
+    val1: u32 flag [
+        bits 0..13;
+        bits 14..14;
+        bits 15..15;
+        bits 16..16;
+        bits 17..17;
+        bits 18..31;
+    ];
+    val2: u32 flag [
+        bits 0..9;
+        bits 10..11;
+        bits 12..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+        bits 16..31;
+    ];
+}
+
+pointer {
+    from = Vmxnet3_TxDesc.addr;
+    to = Vmxnet3_TxDesc_Buf;
+    align = 0;
+}
+struct Vmxnet3_TxDesc_Buf {
+    buf: bytes[0x4000] random;
+}
+struct Vmxnet3_TxCompDesc {
+    val1: u32 flag [
+        bits 0..11;
+        bits 12..31;
+    ];
+    ext2: u32 random;
+    ext3: u32 random;
+    val2: u32 flag [
+        bits 0..23;
+        bits 24..30;
+        bits 31..31;
+    ];
+}
+struct Vmxnet3_TxQueueDesc {
+    txNumDeferred: u32 random;
+    txThreshold: u32 random;
+    reserved_0: u64 random;
+    txRingBasePA: ptr<u64> align 0;
+    dataRingBasePA: u64 random;
+    compRingBasePA: ptr<u64> align 0;
+    ddPA: u64 random;
+    reserved_1: u64 random;
+    txRingSize: u32 random;
+    dataRingSize: u32 random;
+    compRingSize: u32 random;
+    ddLen: u32 random;
+    intrIdx: u8 random;
+    _pad_0: bytes[7] random;
+    stopped: u8 random;
+    _pad_1: bytes[3] random;
+    reserved_2: u64 random;
+    LROPktsRxOK: u64 random;
+    LROBytesRxOK: u64 random;
+    ucastPktsRxOK: u64 random;
+    ucastBytesRxOK: u64 random;
+    mcastPktsRxOK: u64 random;
+    mcastBytesRxOK: u64 random;
+    bcastPktsRxOK: u64 random;
+    bcastBytesRxOK: u64 random;
+    pktsRxOutOfBuf: u64 random;
+    pktsRxError: u64 random;
+    _pad_2: bytes[136] random;
+}
+
+pointer {
+    from = Vmxnet3_TxQueueDesc.txRingBasePA;
+    to = Vmxnet3_TxDesc;
+    align = 0;
+}
+
+pointer {
+    from = Vmxnet3_TxQueueDesc.compRingBasePA;
+    to = Vmxnet3_TxCompDesc;
+    align = 0;
+}
+struct Vmxnet3_MACADDR {
+    addr0: u8 random;
+    addr1: u8 random;
+    addr2: u8 random;
+    addr3: u8 random;
+    addr4: u8 random;
+    addr5: u8 random;
+}
+struct Vmxnet3_DriverShared {
+    magic: u32 immediate [
+        imm 0xbabefee1;
+    ];
+    pad_3: u32 random;
+    version: u32 random;
+    gos: u32 flag [
+        bits 0..1;
+        bits 2..5;
+        bits 6..21;
+        bits 22..31;
+    ];
+    vmxnet3RevSpt: u32 random;
+    uptVerSpt: u32 random;
+    uptFeature: u64 random;
+    ddPA: u64 random;
+    queueDescPA: ptr<u64> align 0;
+    ddLen: u32 random;
+    queueDescLen: u32 random;
+    mtu: u32 random;
+    maxNumRxSG: u16 random;
+    numTxQueues: u8 random;
+    numRxQueues: u8 random;
+    reserved_3: bytes[16] random;
+    autoMask: u8 random;
+    numIntrs: u8 random;
+    eventIntrIdx: u8 random;
+    modLevels: bytes[25] random;
+    intrCtrl: u32 random;
+    reserved_4: u64 random;
+    rxMode: u32 random;
+    mfTableLen: u16 random;
+    _pad_4: u16 random;
+    mfTablePA: ptr<u64> align 0;
+    vfTable: bytes[0x2000] random;
+    confVer_0: u32 random;
+    confLen_0: u32 random;
+    confPA_0: u64 random;
+    confVer_1: u32 random;
+    confLen_1: u32 random;
+    confPA_1: u64 random;
+    confVer_2: u32 random;
+    confLen_2: u32 random;
+    confPA_2: u64 random;
+    ecr: u32 random;
+    reserved_5: bytes[20] random;
+}
+
+pointer {
+    from = Vmxnet3_DriverShared.queueDescPA;
+    to = Vmxnet3_TxQueueDesc;
+    align = 0;
+}
+
+pointer {
+    from = Vmxnet3_DriverShared.mfTablePA;
+    to = Vmxnet3_MACADDR;
+    align = 0;
+}
+
+head {
+    to = Vmxnet3_DriverShared;
+    position = [
+        filename = vmxnet3.c;
+        caller = vmxnet3_activate_device;
+        callee = vmxnet3_verify_driver_magic;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}

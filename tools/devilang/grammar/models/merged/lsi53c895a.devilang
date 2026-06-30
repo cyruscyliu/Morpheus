@@ -1,0 +1,189 @@
+struct LSI53C895A_BUF0 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = LSI53C895A_BUF0;
+    position = [
+        filename = lsi53c895a.c;
+        caller = lsi_mem_read;
+        callee = address_space_read;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = lsi53c895a.c;
+        caller = lsi_mem_read;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct LSI53C895A_BUF1 {
+    sfbr: u8 random;
+    pad_4: u8 random;
+    reserved_6: u64 random;
+}
+
+head {
+    to = LSI53C895A_BUF1;
+    position = [
+        filename = lsi53c895a.c;
+        caller = lsi_do_command;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct LSI53C895A_BUF2 {
+    sfbr: u8 random;
+}
+
+head {
+    to = LSI53C895A_BUF2;
+    position = [
+        filename = lsi53c895a.c;
+        caller = lsi_get_msgbyte;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct LSI53C895A_BUF3 {
+    dbc: u32 flag [
+        bits 0..7;
+        bits 8..9;
+        bits 10..15;
+        bits 16..23;
+        bits 24..31;
+    ];
+    addr: u32 random;
+}
+
+head {
+    to = LSI53C895A_BUF3;
+    position = [
+        filename = lsi53c895a.c;
+        caller = lsi_execute_script;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct LSI53C895A_INST {
+    inst: u32 flag [
+        bits 0..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..5;
+        bits 6..6;
+        bits 7..8;
+        bits 9..9;
+        bits 10..15;
+        bits 16..23;
+        bits 24..24;
+        bits 25..25;
+        bits 26..26;
+        bits 27..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..31;
+    ];
+}
+
+head {
+    to = LSI53C895A_INST;
+    position = [
+        filename = lsi53c895a.c;
+        caller = lsi_execute_script;
+        callee = read_dword;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct LSI53C895A_BUF4 {
+    buf: bytes[256] random;
+}
+struct LSI53C895A_BUF5 {
+    addr: ptr<u32> align 0;
+}
+
+pointer {
+    from = LSI53C895A_BUF5.addr;
+    to = LSI53C895A_BUF4;
+    align = 0;
+}
+
+head {
+    to = LSI53C895A_BUF5;
+    position = [
+        filename = lsi53c895a.c;
+        caller = lsi_execute_script;
+        callee = read_dword;
+        call_depth = 1;
+        argument_index = 1;
+    ] | [
+        filename = lsi53c895a.c;
+        caller = lsi_execute_script;
+        callee = read_dword;
+        call_depth = 2;
+        argument_index = 1;
+    ] | [
+        filename = lsi53c895a.c;
+        caller = lsi_execute_script;
+        callee = read_dword;
+        call_depth = 3;
+        argument_index = 1;
+    ] | [
+        filename = lsi53c895a.c;
+        caller = lsi_execute_script;
+        callee = read_dword;
+        call_depth = 5;
+        argument_index = 1;
+    ]
+}
+struct LSI53C895A_ID {
+    id: u32 flag [
+        bits 0..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..5;
+        bits 6..6;
+        bits 7..8;
+        bits 9..9;
+        bits 10..15;
+        bits 16..19;
+        bits 20..23;
+        bits 24..24;
+        bits 25..25;
+        bits 26..26;
+        bits 27..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..31;
+    ];
+}
+
+head {
+    to = LSI53C895A_ID;
+    position = [
+        filename = lsi53c895a.c;
+        caller = lsi_execute_script;
+        callee = read_dword;
+        call_depth = 4;
+        argument_index = 1;
+    ]
+}
+struct LSI53C895A_DATA {
+    data: u64 random;
+}
+
+head {
+    to = LSI53C895A_DATA;
+    position = [
+        filename = lsi53c895a.c;
+        caller = lsi_execute_script;
+        callee = pci_dma_read;
+        call_depth = 1;
+        argument_index = 1;
+    ]
+}

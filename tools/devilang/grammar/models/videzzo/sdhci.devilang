@@ -1,0 +1,105 @@
+struct SDHCI_FIFO_BUFFER0 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = SDHCI_FIFO_BUFFER0;
+    position = [
+        filename = sdhci.c;
+        caller = sdhci_sdma_transfer_multi_blocks;
+        callee = dma_memory_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct SDHCI_FIFO_BUFFER1 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = SDHCI_FIFO_BUFFER1;
+    position = [
+        filename = sdhci.c;
+        caller = sdhci_sdma_transfer_single_block;
+        callee = dma_memory_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct SDHCI_ADMA2 {
+    attr: u8 random;
+    reserved: u8 random;
+    length: u16 random;
+    addr: ptr<u32> align 0;
+}
+
+pointer {
+    from = SDHCI_ADMA2.addr;
+    to = SDHCI_ADMA2_BUF;
+    align = 0;
+}
+struct SDHCI_ADMA2_BUF {
+    buf: bytes[256] random;
+}
+
+head {
+    to = SDHCI_ADMA2;
+    position = [
+        filename = sdhci.c;
+        caller = get_adma_description;
+        callee = dma_memory_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct SDHCI_ADMA1 {
+    adma1: ptr<u32> flag align 7 [
+        bits 0..6;
+    ];
+}
+
+pointer {
+    from = SDHCI_ADMA1.adma1;
+    to = SDHCI_ADMA1_BUF;
+    align = 7;
+}
+struct SDHCI_ADMA1_BUF {
+    buf: bytes[256] random;
+}
+
+head {
+    to = SDHCI_ADMA1;
+    position = [
+        filename = sdhci.c;
+        caller = get_adma_description;
+        callee = dma_memory_read;
+        call_depth = 1;
+        argument_index = 1;
+    ]
+}
+struct SDHCI_ADMA2_64 {
+    attr: u8 random;
+    reserved: u8 random;
+    length: u16 random;
+    addr: ptr<u64> align 0;
+}
+
+pointer {
+    from = SDHCI_ADMA2_64.addr;
+    to = SDHCI_ADMA2_64_BUF;
+    align = 0;
+}
+struct SDHCI_ADMA2_64_BUF {
+    buf: bytes[256] random;
+}
+
+head {
+    to = SDHCI_ADMA2_64;
+    position = [
+        filename = sdhci.c;
+        caller = get_adma_description;
+        callee = dma_memory_read;
+        call_depth = 2;
+        argument_index = 1;
+    ]
+}

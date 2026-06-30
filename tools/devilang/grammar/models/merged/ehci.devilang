@@ -1,0 +1,594 @@
+struct entry {
+    entry: ptr<u32> flag align 0 [
+        bits 0..0;
+        bits 1..2;
+    ];
+}
+
+pointer {
+    from = entry.entry;
+    to = entry_buf;
+    align = 0;
+}
+struct entry_buf {
+    buf: bytes[256] random;
+}
+
+head {
+    to = entry;
+    position = [
+        filename = hcd-ehci.c;
+        caller = ehci_advance_periodic_state;
+        callee = get_dwords;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct EHCIqtd_BUF0 {
+    buf: bytes[256] random;
+}
+struct EHCIqtd {
+    next: ptr<u32> flag align 0 [
+        bits 0..0;
+    ];
+    altnext: ptr<u32> flag align 0 [
+        bits 0..0;
+    ];
+    token: u32 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+        bits 8..9;
+        bits 10..11;
+        bits 12..14;
+        bits 15..15;
+        bits 16..30;
+        bits 31..31;
+    ];
+    bufptr0: ptr<u32> align 0;
+    bufptr1: ptr<u32> align 0;
+    bufptr2: ptr<u32> align 0;
+    bufptr3: ptr<u32> align 0;
+    bufptr4: ptr<u32> align 0;
+}
+
+pointer {
+    from = EHCIqtd.next;
+    to = EHCIqtd_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIqtd.altnext;
+    to = EHCIqtd_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIqtd.bufptr0;
+    to = EHCIqtd_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIqtd.bufptr1;
+    to = EHCIqtd_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIqtd.bufptr2;
+    to = EHCIqtd_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIqtd.bufptr3;
+    to = EHCIqtd_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIqtd.bufptr4;
+    to = EHCIqtd_BUF0;
+    align = 0;
+}
+
+head {
+    to = EHCIqtd;
+    position = [
+        filename = hcd-ehci.c;
+        caller = ehci_writeback_async_complete_packet;
+        callee = get_dwords;
+        call_depth = 1;
+        argument_index = 1;
+    ] | [
+        filename = hcd-ehci.c;
+        caller = ehci_fill_queue;
+        callee = get_dwords;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct EHCIqtd_TOKEN {
+    token: u32 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+        bits 8..9;
+        bits 10..11;
+        bits 12..14;
+        bits 15..15;
+        bits 16..30;
+        bits 31..31;
+    ];
+}
+
+head {
+    to = EHCIqtd_TOKEN;
+    position = [
+        filename = hcd-ehci.c;
+        caller = ehci_state_fetchqtd;
+        callee = get_dwords;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct EHCIqtd_BUF1 {
+    buf: bytes[256] random;
+}
+struct EHCIqtd_NEXT {
+    next: ptr<u32> flag align 0 [
+        bits 0..0;
+    ];
+}
+
+pointer {
+    from = EHCIqtd_NEXT.next;
+    to = EHCIqtd_BUF1;
+    align = 0;
+}
+
+head {
+    to = EHCIqtd_NEXT;
+    position = [
+        filename = hcd-ehci.c;
+        caller = ehci_state_fetchqtd;
+        callee = get_dwords;
+        call_depth = 1;
+        argument_index = 1;
+    ]
+}
+struct EHCIqtd_BUF2 {
+    buf: bytes[256] random;
+}
+struct EHCIqtd_ALTNEXT {
+    altnext: ptr<u32> flag align 0 [
+        bits 0..0;
+    ];
+}
+
+pointer {
+    from = EHCIqtd_ALTNEXT.altnext;
+    to = EHCIqtd_BUF2;
+    align = 0;
+}
+
+head {
+    to = EHCIqtd_ALTNEXT;
+    position = [
+        filename = hcd-ehci.c;
+        caller = ehci_state_fetchqtd;
+        callee = get_dwords;
+        call_depth = 2;
+        argument_index = 1;
+    ]
+}
+struct EHCIqtd_BUF3 {
+    buf: bytes[256] random;
+}
+struct EHCIqtd_BUFPTRS {
+    bufptr0: ptr<u32> align 0;
+    bufptr1: ptr<u32> align 0;
+    bufptr2: ptr<u32> align 0;
+    bufptr3: ptr<u32> align 0;
+    bufptr4: ptr<u32> align 0;
+}
+
+pointer {
+    from = EHCIqtd_BUFPTRS.bufptr0;
+    to = EHCIqtd_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = EHCIqtd_BUFPTRS.bufptr1;
+    to = EHCIqtd_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = EHCIqtd_BUFPTRS.bufptr2;
+    to = EHCIqtd_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = EHCIqtd_BUFPTRS.bufptr3;
+    to = EHCIqtd_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = EHCIqtd_BUFPTRS.bufptr4;
+    to = EHCIqtd_BUF3;
+    align = 0;
+}
+
+head {
+    to = EHCIqtd_BUFPTRS;
+    position = [
+        filename = hcd-ehci.c;
+        caller = ehci_state_fetchqtd;
+        callee = get_dwords;
+        call_depth = 3;
+        argument_index = 1;
+    ]
+}
+struct EHCIqh_BUF0 {
+    buf: bytes[256] random;
+}
+struct EHCIqh {
+    next: ptr<u32> align 0;
+    epchar: u32 flag [
+        bits 0..6 = 0;
+        bits 7..7;
+        bits 8..11;
+        bits 12..13;
+        bits 14..14;
+        bits 15..15;
+        bits 16..26;
+        bits 27..27;
+        bits 28..31;
+    ];
+    epcap: u32 flag [
+        bits 0..7;
+        bits 8..15;
+        bits 16..19;
+        bits 23..29;
+        bits 30..31;
+    ];
+    current_qtd: ptr<u32> flag align 0 [
+        bits 0..0;
+    ];
+    next_qtd: ptr<u32> flag align 0 [
+        bits 0..0;
+    ];
+    altnext_qtd: ptr<u32> flag align 0 [
+        bits 0..0;
+    ];
+    token: u32 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+        bits 8..9;
+        bits 10..11;
+        bits 12..14;
+        bits 15..15;
+        bits 16..30;
+        bits 31..31;
+    ];
+    bufptr0: ptr<u32> align 0;
+    bufptr1: ptr<u32> align 0;
+    bufptr2: ptr<u32> align 0;
+    bufptr3: ptr<u32> align 0;
+    bufptr4: ptr<u32> align 0;
+}
+
+pointer {
+    from = EHCIqh.next;
+    to = EHCIqh_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIqh.current_qtd;
+    to = EHCIqh_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIqh.next_qtd;
+    to = EHCIqh_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIqh.altnext_qtd;
+    to = EHCIqh_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIqh.bufptr0;
+    to = EHCIqh_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIqh.bufptr1;
+    to = EHCIqh_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIqh.bufptr2;
+    to = EHCIqh_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIqh.bufptr3;
+    to = EHCIqh_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIqh.bufptr4;
+    to = EHCIqh_BUF0;
+    align = 0;
+}
+
+head {
+    to = EHCIqh;
+    position = [
+        filename = hcd-ehci.c;
+        caller = ehci_writeback_async_complete_packet;
+        callee = get_dwords;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = hcd-ehci.c;
+        caller = ehci_state_waitlisthead;
+        callee = get_dwords;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = hcd-ehci.c;
+        caller = ehci_state_fetchqh;
+        callee = get_dwords;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct EHCIitd_BUF0 {
+    buf: bytes[256] random;
+}
+struct EHCIitd {
+    next: ptr<u32> align 0;
+    transact0: u32 flag [
+        bits 0..11;
+        bits 12..14;
+        bits 15..15;
+        bits 16..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+    transact1: u32 flag [
+        bits 0..11;
+        bits 12..14;
+        bits 15..15;
+        bits 16..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+    transact2: u32 flag [
+        bits 0..11;
+        bits 12..14;
+        bits 15..15;
+        bits 16..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+    transact3: u32 flag [
+        bits 0..11;
+        bits 12..14;
+        bits 15..15;
+        bits 16..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+    transact4: u32 flag [
+        bits 0..11;
+        bits 12..14;
+        bits 15..15;
+        bits 16..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+    transact5: u32 flag [
+        bits 0..11;
+        bits 12..14;
+        bits 15..15;
+        bits 16..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+    transact6: u32 flag [
+        bits 0..11;
+        bits 12..14;
+        bits 15..15;
+        bits 16..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+    transact7: u32 flag [
+        bits 0..11;
+        bits 12..14;
+        bits 15..15;
+        bits 16..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+    bufptr0: ptr<u32> flag align 0 [
+        bits 0..6 = 0;
+        bits 8..11;
+    ];
+    bufptr1: ptr<u32> flag align 0 [
+        bits 0..10;
+        bits 11..11;
+    ];
+    bufptr2: ptr<u32> flag align 0 [
+        bits 0..1;
+    ];
+    bufptr3: ptr<u32> align 0;
+    bufptr4: ptr<u32> align 0;
+    bufptr5: ptr<u32> align 0;
+    bufptr6: ptr<u32> align 0;
+}
+
+pointer {
+    from = EHCIitd.next;
+    to = EHCIitd_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIitd.bufptr0;
+    to = EHCIitd_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIitd.bufptr1;
+    to = EHCIitd_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIitd.bufptr2;
+    to = EHCIitd_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIitd.bufptr3;
+    to = EHCIitd_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIitd.bufptr4;
+    to = EHCIitd_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIitd.bufptr5;
+    to = EHCIitd_BUF0;
+    align = 0;
+}
+
+pointer {
+    from = EHCIitd.bufptr6;
+    to = EHCIitd_BUF0;
+    align = 0;
+}
+
+head {
+    to = EHCIitd;
+    position = [
+        filename = hcd-ehci.c;
+        caller = ehci_state_fetchitd;
+        callee = get_dwords;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct EHCIsitd_BUF0 {
+    buf: bytes[256] random;
+}
+struct EHCIsitd {
+    next: ptr<u32> align 0;
+    epchar: u32 flag [
+        bits 0..6;
+        bits 7..7;
+        bits 8..11;
+        bits 12..15;
+        bits 16..22;
+        bits 23..23;
+        bits 24..30;
+        bits 31..31;
+    ];
+    uframe: u32 flag [
+        bits 0..7;
+        bits 8..15;
+        bits 16..31;
+    ];
+    results: u32 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+        bits 8..15;
+        bits 16..26;
+        bits 27..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+    bufptr0: u32 random;
+    bufptr1: u32 random;
+    backptr: u32 random;
+}
+
+pointer {
+    from = EHCIsitd.next;
+    to = EHCIsitd_BUF0;
+    align = 0;
+}
+
+head {
+    to = EHCIsitd;
+    position = [
+        filename = hcd-ehci.c;
+        caller = ehci_state_fetchsitd;
+        callee = get_dwords;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}

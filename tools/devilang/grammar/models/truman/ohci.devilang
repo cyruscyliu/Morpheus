@@ -1,0 +1,11172 @@
+op op_1 {
+    call fill_buffer;
+}
+
+op op_2 {
+    call kzalloc;
+}
+
+op op_3 {
+    call alloc_buffer;
+}
+
+op op_3 {
+    call alloc_buffer;
+}
+
+op op_3 {
+    call alloc_buffer;
+}
+
+op op_6 {
+    call hcd_to_ohci.30;
+}
+
+op op_7 {
+    mmio _ohci_readl_7 {
+        direction=r;
+        region=0;
+        address=0xc;
+        size=4;
+    }
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_9 {
+    mmio _ohci_readl_9 {
+        direction=r;
+        region=0;
+        address=0x10;
+        size=4;
+    }
+}
+
+op op_10 {
+    call quirk_nec;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_12 {
+    mmio _ohci_writel_12 {
+        direction=w;
+        region=0;
+        address=0x14;
+        size=4;
+        data=0x10;
+    }
+}
+
+op op_13 {
+    call queue_work;
+}
+
+op op_14 {
+    call schedule_work;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_16 {
+    mmio _ohci_readl_16 {
+        direction=r;
+        region=0;
+        address=0x0;
+        size=4;
+    }
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_18 {
+    call rh_state_string;
+}
+
+op op_19 {
+    mmio _ohci_readl_19 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_21 {
+    call hcfs2string;
+}
+
+op op_18 {
+    call rh_state_string;
+}
+
+op op_23 {
+    mmio _ohci_readl_23 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_21 {
+    call hcfs2string;
+}
+
+op op_25 {
+    mmio _ohci_readl_25 {
+        direction=r;
+        region=0;
+        address=0x8;
+        size=4;
+    }
+}
+
+op op_26 {
+    mmio _ohci_readl_26 {
+        direction=r;
+        region=0;
+        address=0x8;
+        size=4;
+    }
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_28 {
+    mmio _ohci_readl_28 {
+        direction=r;
+        region=0;
+        address=0xc;
+        size=4;
+    }
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_30 {
+    call ohci_dump_intr_mask;
+}
+
+op op_31 {
+    mmio _ohci_readl_31 {
+        direction=r;
+        region=0;
+        address=0x10;
+        size=4;
+    }
+}
+
+op op_30 {
+    call ohci_dump_intr_mask;
+}
+
+op op_33 {
+    mmio _ohci_readl_33 {
+        direction=r;
+        region=0;
+        address=0x1c;
+        size=4;
+    }
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_35 {
+    call maybe_print_eds;
+}
+
+op op_36 {
+    mmio _ohci_readl_36 {
+        direction=r;
+        region=0;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_35 {
+    call maybe_print_eds;
+}
+
+op op_38 {
+    mmio _ohci_readl_38 {
+        direction=r;
+        region=0;
+        address=0x24;
+        size=4;
+    }
+}
+
+op op_35 {
+    call maybe_print_eds;
+}
+
+op op_40 {
+    mmio _ohci_readl_40 {
+        direction=r;
+        region=0;
+        address=0x28;
+        size=4;
+    }
+}
+
+op op_35 {
+    call maybe_print_eds;
+}
+
+op op_42 {
+    mmio _ohci_readl_42 {
+        direction=r;
+        region=0;
+        address=0x2c;
+        size=4;
+    }
+}
+
+op op_35 {
+    call maybe_print_eds;
+}
+
+op op_44 {
+    mmio _ohci_readl_44 {
+        direction=r;
+        region=0;
+        address=0x30;
+        size=4;
+    }
+}
+
+op op_35 {
+    call maybe_print_eds;
+}
+
+op op_46 {
+    call ohci_dump_status;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_48 {
+    call ohci_frame_no;
+}
+
+op op_49 {
+    mmio _ohci_readl_49 {
+        direction=r;
+        region=0;
+        address=0x48;
+        size=4;
+    }
+}
+
+op op_50 {
+    mmio _ohci_readl_50 {
+        direction=r;
+        region=0;
+        address=0x48;
+        size=4;
+    }
+}
+
+op op_51 {
+    call roothub_a;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_53 {
+    mmio _ohci_readl_53 {
+        direction=r;
+        region=0;
+        address=0x4c;
+        size=4;
+    }
+}
+
+op op_54 {
+    call roothub_b;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_54 {
+    call roothub_b;
+}
+
+op op_57 {
+    mmio _ohci_readl_57 {
+        direction=r;
+        region=0;
+        address=0x50;
+        size=4;
+    }
+}
+
+op op_58 {
+    call roothub_status;
+}
+
+op op_58 {
+    call roothub_status;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_61 {
+    mmio _ohci_readl_61 {
+        direction=r;
+        region=0;
+        address=0xdeadc0de;
+        size=4;
+    }
+}
+
+op op_62 {
+    mmio _ohci_readl_62 {
+        direction=r;
+        region=0;
+        address=0xdeadc0de;
+        size=4;
+    }
+}
+
+op op_63 {
+    call roothub_portstatus;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_65 {
+    call ohci_dump_roothub;
+}
+
+op op_66 {
+    call ohci_dump;
+}
+
+op op_67 {
+    mmio _ohci_readl_67 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_68 {
+    mmio _ohci_writel_68 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=call_1() & 0x200;
+    }
+}
+
+op op_69 {
+    call ohci_usb_reset;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_71 {
+    call _msecs_to_jiffies;
+}
+
+op op_72 {
+    mmio _ohci_writel_72 {
+        direction=w;
+        region=0;
+        address=0xc;
+        size=4;
+        data=0x48;
+    }
+}
+
+op op_73 {
+    mmio _ohci_writel_73 {
+        direction=w;
+        region=0;
+        address=0x14;
+        size=4;
+        data=0x40;
+    }
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_75 {
+    mmio _ohci_writel_75 {
+        direction=w;
+        region=0;
+        address=0xc;
+        size=4;
+        data=0x8;
+    }
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_77 {
+    mmio _ohci_readl_77 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_78 {
+    mmio _ohci_writel_78 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=(call_1() & 0xffffff03) | 0x40;
+    }
+}
+
+op op_79 {
+    mmio _ohci_readl_79 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_81 {
+    mmio _ohci_readl_81 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_82 {
+    mmio _ohci_writel_82 {
+        direction=w;
+        region=0;
+        address=0x10;
+        size=4;
+        data=0x40000000;
+    }
+}
+
+op op_83 {
+    mmio _ohci_writel_83 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=4;
+        data=0x8;
+    }
+}
+
+op op_84 {
+    mmio _ohci_readl_84 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_69 {
+    call ohci_usb_reset;
+}
+
+op op_86 {
+    mmio _ohci_writel_86 {
+        direction=w;
+        region=0;
+        address=0x14;
+        size=4;
+        data=0x80000000;
+    }
+}
+
+op op_87 {
+    mmio _ohci_readl_87 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_51 {
+    call roothub_a;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_90 {
+    call ohci_mem_init;
+}
+
+op op_6 {
+    call hcd_to_ohci.30;
+}
+
+op op_66 {
+    call ohci_dump;
+}
+
+op op_10 {
+    call quirk_nec;
+}
+
+op op_94 {
+    call del_timer_sync;
+}
+
+op op_95 {
+    mmio _ohci_writel_95 {
+        direction=w;
+        region=0;
+        address=0x14;
+        size=4;
+        data=0x80000000;
+    }
+}
+
+op op_69 {
+    call ohci_usb_reset;
+}
+
+op op_97 {
+    call quirk_amdiso;
+}
+
+op op_98 {
+    call remove_debug_files;
+}
+
+op op_99 {
+    call ohci_mem_cleanup;
+}
+
+op op_100 {
+    call gen_pool_free;
+}
+
+op op_101 {
+    call dma_free_coherent;
+}
+
+op op_102 {
+    call ohci_stop;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_104 {
+    call create_debug_files;
+}
+
+op op_105 {
+    call ohci_init;
+}
+
+op op_106 {
+    call list_empty;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_108 {
+    mmio _ohci_writel_108 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=num_1 & 0xffffffef;
+    }
+}
+
+op op_109 {
+    call hc32_to_cpup;
+}
+
+op op_110 {
+    mmio _ohci_writel_110 {
+        direction=w;
+        region=0;
+        address=0x20;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_111 {
+    mmio _ohci_writel_111 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=num_1 & 0xffffffdf;
+    }
+}
+
+op op_109 {
+    call hc32_to_cpup;
+}
+
+op op_113 {
+    mmio _ohci_writel_113 {
+        direction=w;
+        region=0;
+        address=0x28;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_115 {
+    call periodic_unlink;
+}
+
+op op_116 {
+    call ed_deschedule;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_109 {
+    call hc32_to_cpup;
+}
+
+op op_119 {
+    call __list_del;
+}
+
+op op_120 {
+    call __list_del_entry;
+}
+
+op op_121 {
+    call list_del;
+}
+
+op op_122 {
+    call ohci_hwPSWp;
+}
+
+op op_123 {
+    call hc16_to_cpup;
+}
+
+op op_124 {
+    call ohci_hwPSW;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_109 {
+    call hc32_to_cpup;
+}
+
+op op_109 {
+    call hc32_to_cpup;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_129 {
+    call td_done;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_100 {
+    call gen_pool_free;
+}
+
+op op_133 {
+    call td_free;
+}
+
+op op_121 {
+    call list_del;
+}
+
+op op_135 {
+    call urb_free_priv;
+}
+
+op op_97 {
+    call quirk_amdiso;
+}
+
+op op_137 {
+    call quirk_amdprefetch;
+}
+
+op op_138 {
+    mmio _ohci_writel_138 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=num_1 & 0xfffffff3;
+    }
+}
+
+op op_106 {
+    call list_empty;
+}
+
+op op_140 {
+    call finish_urb;
+}
+
+op op_106 {
+    call list_empty;
+}
+
+op op_116 {
+    call ed_deschedule;
+}
+
+op op_143 {
+    mmio _ohci_writel_143 {
+        direction=w;
+        region=0;
+        address=0xc;
+        size=4;
+        data=0x4;
+    }
+}
+
+op op_144 {
+    mmio _ohci_writel_144 {
+        direction=w;
+        region=0;
+        address=0x10;
+        size=4;
+        data=0x4;
+    }
+}
+
+op op_145 {
+    mmio _ohci_readl_145 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_48 {
+    call ohci_frame_no;
+}
+
+op op_147 {
+    call start_ed_unlink;
+}
+
+op op_148 {
+    mmio _ohci_writel_148 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=4;
+        data=0x2;
+    }
+}
+
+op op_149 {
+    mmio _ohci_writel_149 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=4;
+        data=0x4;
+    }
+}
+
+op op_150 {
+    call takeback_td;
+}
+
+op op_151 {
+    call process_done_list;
+}
+
+op op_48 {
+    call ohci_frame_no;
+}
+
+op op_106 {
+    call list_empty;
+}
+
+op op_154 {
+    call list_is_head;
+}
+
+op op_109 {
+    call hc32_to_cpup;
+}
+
+op op_129 {
+    call td_done;
+}
+
+op op_140 {
+    call finish_urb;
+}
+
+op op_154 {
+    call list_is_head;
+}
+
+op op_106 {
+    call list_empty;
+}
+
+op op_106 {
+    call list_empty;
+}
+
+op op_121 {
+    call list_del;
+}
+
+op op_162 {
+    mmio _ohci_writel_162 {
+        direction=w;
+        region=0;
+        address=0x20;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_163 {
+    mmio _ohci_writel_163 {
+        direction=w;
+        region=0;
+        address=0x24;
+        size=4;
+        data=0;
+    }
+}
+
+op op_164 {
+    mmio _ohci_writel_164 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_165 {
+    mmio _ohci_writel_165 {
+        direction=w;
+        region=0;
+        address=0x28;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_166 {
+    mmio _ohci_writel_166 {
+        direction=w;
+        region=0;
+        address=0x2c;
+        size=4;
+        data=0;
+    }
+}
+
+op op_167 {
+    mmio _ohci_writel_167 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_168 {
+    call balance;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_172 {
+    call periodic_link;
+}
+
+op op_173 {
+    call ed_schedule;
+}
+
+op op_174 {
+    call quirk_zfmicro;
+}
+
+op op_175 {
+    mmio _ohci_writel_175 {
+        direction=w;
+        region=0;
+        address=0x24;
+        size=4;
+        data=0;
+    }
+}
+
+op op_174 {
+    call quirk_zfmicro;
+}
+
+op op_177 {
+    mmio _ohci_writel_177 {
+        direction=w;
+        region=0;
+        address=0x2c;
+        size=4;
+        data=0;
+    }
+}
+
+op op_174 {
+    call quirk_zfmicro;
+}
+
+op op_179 {
+    mmio _ohci_writel_179 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=phi(num_1, var_1 | phi((phi(0, 0x10, 0) | 0x20), var_2));
+    }
+}
+
+op op_174 {
+    call quirk_zfmicro;
+}
+
+op op_181 {
+    mmio _ohci_writel_181 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=4;
+        data=phi(phi(phi(0x2, 0x2, 0) | 0x4, phi(var_2, var_1)), var_3);
+    }
+}
+
+op op_182 {
+    call finish_unlinks;
+}
+
+op op_183 {
+    call ohci_work;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_185 {
+    mmio _ohci_readl_185 {
+        direction=r;
+        region=0;
+        address=0x34;
+        size=4;
+    }
+}
+
+op op_186 {
+    mmio _ohci_writel_186 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=phi(phi(num_1, var_1), phi(var_2 & 0x200, (var_2 & 0x200) | 0x40));
+    }
+}
+
+op op_187 {
+    mmio _ohci_readl_187 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_188 {
+    mmio _ohci_writel_188 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=4;
+        data=0x1;
+    }
+}
+
+op op_189 {
+    mmio _ohci_readl_189 {
+        direction=r;
+        region=0;
+        address=0x8;
+        size=4;
+    }
+}
+
+op op_190 {
+    mmio _ohci_readl_190 {
+        direction=r;
+        region=0;
+        address=0x8;
+        size=4;
+    }
+}
+
+op op_191 {
+    mmio _ohci_writel_191 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_192 {
+    mmio _ohci_readl_192 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_193 {
+    mmio _ohci_writel_193 {
+        direction=w;
+        region=0;
+        address=0x20;
+        size=4;
+        data=0;
+    }
+}
+
+op op_194 {
+    mmio _ohci_writel_194 {
+        direction=w;
+        region=0;
+        address=0x28;
+        size=4;
+        data=0;
+    }
+}
+
+op op_195 {
+    mmio _ohci_writel_195 {
+        direction=w;
+        region=0;
+        address=0x18;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_196 {
+    mmio _ohci_readl_196 {
+        direction=r;
+        region=0;
+        address=0x34;
+        size=4;
+    }
+}
+
+op op_197 {
+    mmio _ohci_writel_197 {
+        direction=w;
+        region=0;
+        address=0x34;
+        size=4;
+        data=num_1 | num_2;
+    }
+}
+
+op op_198 {
+    mmio _ohci_writel_198 {
+        direction=w;
+        region=0;
+        address=0x40;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_199 {
+    call periodic_reinit;
+}
+
+op op_200 {
+    mmio _ohci_readl_200 {
+        direction=r;
+        region=0;
+        address=0x34;
+        size=4;
+    }
+}
+
+op op_201 {
+    mmio _ohci_readl_201 {
+        direction=r;
+        region=0;
+        address=0x40;
+        size=4;
+    }
+}
+
+op op_202 {
+    mmio _ohci_readl_202 {
+        direction=r;
+        region=0;
+        address=0x34;
+        size=4;
+    }
+}
+
+op op_203 {
+    mmio _ohci_readl_203 {
+        direction=r;
+        region=0;
+        address=0x40;
+        size=4;
+    }
+}
+
+op op_204 {
+    mmio _ohci_writel_204 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=(num_1 & 0x200) | 0x83;
+    }
+}
+
+op op_205 {
+    mmio _ohci_writel_205 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=4;
+        data=0x8000;
+    }
+}
+
+op op_206 {
+    mmio _ohci_writel_206 {
+        direction=w;
+        region=0;
+        address=0xc;
+        size=4;
+        data=0xffffffff;
+    }
+}
+
+op op_207 {
+    mmio _ohci_writel_207 {
+        direction=w;
+        region=0;
+        address=0x10;
+        size=4;
+        data=0x8000005a;
+    }
+}
+
+op op_51 {
+    call roothub_a;
+}
+
+op op_209 {
+    mmio _ohci_writel_209 {
+        direction=w;
+        region=0;
+        address=0x48;
+        size=4;
+        data=phi((num_1 & 0xffe4ff) | 0x1000, select(0x800, 0xa00) | (var_1 & 0xffffe7ff));
+    }
+}
+
+op op_210 {
+    mmio _ohci_writel_210 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=4;
+        data=0x10000;
+    }
+}
+
+op op_211 {
+    mmio _ohci_writel_211 {
+        direction=w;
+        region=0;
+        address=0x4c;
+        size=4;
+        data=select(0xffff0000, 0);
+    }
+}
+
+op op_212 {
+    mmio _ohci_readl_212 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_71 {
+    call _msecs_to_jiffies;
+}
+
+op op_66 {
+    call ohci_dump;
+}
+
+op op_215 {
+    call ohci_run;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_218 {
+    call ohci_restart;
+}
+
+op op_219 {
+    mmio _ohci_readl_219 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_220 {
+    mmio _ohci_writel_220 {
+        direction=w;
+        region=0;
+        address=0x20;
+        size=4;
+        data=0;
+    }
+}
+
+op op_221 {
+    mmio _ohci_writel_221 {
+        direction=w;
+        region=0;
+        address=0x24;
+        size=4;
+        data=0;
+    }
+}
+
+op op_222 {
+    mmio _ohci_writel_222 {
+        direction=w;
+        region=0;
+        address=0x28;
+        size=4;
+        data=0;
+    }
+}
+
+op op_223 {
+    mmio _ohci_writel_223 {
+        direction=w;
+        region=0;
+        address=0x2c;
+        size=4;
+        data=0;
+    }
+}
+
+op op_224 {
+    mmio _ohci_writel_224 {
+        direction=w;
+        region=0;
+        address=0x1c;
+        size=4;
+        data=0;
+    }
+}
+
+op op_225 {
+    mmio _ohci_writel_225 {
+        direction=w;
+        region=0;
+        address=0x18;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_199 {
+    call periodic_reinit;
+}
+
+op op_227 {
+    mmio _ohci_writel_227 {
+        direction=w;
+        region=0;
+        address=0x10;
+        size=4;
+        data=0x8000005a;
+    }
+}
+
+op op_228 {
+    mmio _ohci_writel_228 {
+        direction=w;
+        region=0;
+        address=0x10;
+        size=4;
+        data=0x4;
+    }
+}
+
+op op_229 {
+    mmio _ohci_writel_229 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=0x80;
+    }
+}
+
+op op_230 {
+    mmio _ohci_readl_230 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_231 {
+    mmio _ohci_writel_231 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=(num_1 & 0x200) | 0x83;
+    }
+}
+
+op op_232 {
+    mmio _ohci_readl_232 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_233 {
+    mmio _ohci_writel_233 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=(num_1 & 0x200) | 0x83;
+    }
+}
+
+op op_234 {
+    mmio _ohci_readl_234 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_71 {
+    call _msecs_to_jiffies;
+}
+
+op op_236 {
+    call find_head;
+}
+
+op op_237 {
+    mmio _ohci_writel_237 {
+        direction=w;
+        region=0;
+        address=0x20;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_236 {
+    call find_head;
+}
+
+op op_239 {
+    mmio _ohci_writel_239 {
+        direction=w;
+        region=0;
+        address=0x28;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_240 {
+    mmio _ohci_writel_240 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=num_1 | phi((phi(0, (phi(0x10, 0) | 0x20), var_2) | 0xc), var_4);
+    }
+}
+
+op op_241 {
+    mmio _ohci_writel_241 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=4;
+        data=phi(0, phi(0x2, 0) | 0x4, var_1);
+    }
+}
+
+op op_242 {
+    mmio _ohci_readl_242 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_243 {
+    call ohci_rh_resume;
+}
+
+op op_109 {
+    call hc32_to_cpup;
+}
+
+op op_245 {
+    call dma_to_td;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_109 {
+    call hc32_to_cpup;
+}
+
+op op_121 {
+    call list_del;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_250 {
+    call ed_halted;
+}
+
+op op_109 {
+    call hc32_to_cpup;
+}
+
+op op_252 {
+    call add_to_done_list;
+}
+
+op op_253 {
+    call update_done_list;
+}
+
+op op_183 {
+    call ohci_work;
+}
+
+op op_255 {
+    mmio _ohci_writel_255 {
+        direction=w;
+        region=0;
+        address=0x14;
+        size=4;
+        data=0x4;
+    }
+}
+
+op op_256 {
+    mmio _ohci_writel_256 {
+        direction=w;
+        region=0;
+        address=0xc;
+        size=4;
+        data=call_1() & call_2();
+    }
+}
+
+op op_257 {
+    mmio _ohci_writel_257 {
+        direction=w;
+        region=0;
+        address=0x10;
+        size=4;
+        data=0x80000000;
+    }
+}
+
+op op_258 {
+    mmio _ohci_readl_258 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_6 {
+    call hcd_to_ohci.30;
+}
+
+op op_260 {
+    call INIT_LIST_HEAD.54;
+}
+
+op op_260 {
+    call INIT_LIST_HEAD.54;
+}
+
+op op_262 {
+    call ohci_hcd_init;
+}
+
+op op_105 {
+    call ohci_init;
+}
+
+op op_6 {
+    call hcd_to_ohci.30;
+}
+
+op op_215 {
+    call ohci_run;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_102 {
+    call ohci_stop;
+}
+
+op op_6 {
+    call hcd_to_ohci.30;
+}
+
+op op_6 {
+    call hcd_to_ohci.30;
+}
+
+op op_270 {
+    mmio _ohci_writel_270 {
+        direction=w;
+        region=0;
+        address=0x14;
+        size=4;
+        data=0xffffffff;
+    }
+}
+
+op op_271 {
+    mmio _ohci_writel_271 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=4;
+        data=0x1;
+    }
+}
+
+op op_272 {
+    mmio _ohci_readl_272 {
+        direction=r;
+        region=0;
+        address=0x8;
+        size=4;
+    }
+}
+
+op op_273 {
+    mmio _ohci_writel_273 {
+        direction=w;
+        region=0;
+        address=0x34;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_274 {
+    call _ohci_shutdown;
+}
+
+op op_6 {
+    call hcd_to_ohci.30;
+}
+
+op op_48 {
+    call ohci_frame_no;
+}
+
+op op_6 {
+    call hcd_to_ohci.30;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_279 {
+    call dma_pool_zalloc;
+}
+
+op op_260 {
+    call INIT_LIST_HEAD.54;
+}
+
+op op_281 {
+    call ed_alloc;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_279 {
+    call dma_pool_zalloc;
+}
+
+op op_284 {
+    call td_alloc;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_100 {
+    call gen_pool_free;
+}
+
+op op_287 {
+    call ed_free;
+}
+
+op op_288 {
+    call usb_endpoint_maxp;
+}
+
+op op_288 {
+    call usb_endpoint_maxp;
+}
+
+op op_290 {
+    call ed_get;
+}
+
+op op_291 {
+    call number_of_tds;
+}
+
+op op_292 {
+    call usb_pipe_endpoint;
+}
+
+op op_288 {
+    call usb_endpoint_maxp;
+}
+
+op op_294 {
+    call usb_maxpacket;
+}
+
+op op_295 {
+    call size_mul;
+}
+
+op op_296 {
+    call size_add;
+}
+
+op op_2 {
+    call kzalloc;
+}
+
+op op_260 {
+    call INIT_LIST_HEAD.54;
+}
+
+op op_284 {
+    call td_alloc;
+}
+
+op op_135 {
+    call urb_free_priv;
+}
+
+op op_173 {
+    call ed_schedule;
+}
+
+op op_106 {
+    call list_empty;
+}
+
+op op_48 {
+    call ohci_frame_no;
+}
+
+op op_71 {
+    call _msecs_to_jiffies;
+}
+
+op op_305 {
+    call __list_add;
+}
+
+op op_306 {
+    call list_add;
+}
+
+op op_48 {
+    call ohci_frame_no;
+}
+
+op op_48 {
+    call ohci_frame_no;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_306 {
+    call list_add;
+}
+
+op op_122 {
+    call ohci_hwPSWp;
+}
+
+op op_305 {
+    call __list_add;
+}
+
+op op_314 {
+    call list_add_tail;
+}
+
+op op_315 {
+    call td_fill;
+}
+
+op op_315 {
+    call td_fill;
+}
+
+op op_317 {
+    mmio _ohci_writel_317 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=4;
+        data=0x4;
+    }
+}
+
+op op_315 {
+    call td_fill;
+}
+
+op op_315 {
+    call td_fill;
+}
+
+op op_315 {
+    call td_fill;
+}
+
+op op_321 {
+    mmio _ohci_writel_321 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=4;
+        data=0x2;
+    }
+}
+
+op op_315 {
+    call td_fill;
+}
+
+op op_97 {
+    call quirk_amdiso;
+}
+
+op op_137 {
+    call quirk_amdprefetch;
+}
+
+op op_325 {
+    mmio _ohci_writel_325 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=num_1 | 0xc;
+    }
+}
+
+op op_326 {
+    call td_submit_urb;
+}
+
+op op_135 {
+    call urb_free_priv;
+}
+
+op op_6 {
+    call hcd_to_ohci.30;
+}
+
+op op_147 {
+    call start_ed_unlink;
+}
+
+op op_183 {
+    call ohci_work;
+}
+
+op op_6 {
+    call hcd_to_ohci.30;
+}
+
+op op_183 {
+    call ohci_work;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_106 {
+    call list_empty;
+}
+
+op op_133 {
+    call td_free;
+}
+
+op op_287 {
+    call ed_free;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_106 {
+    call list_empty;
+}
+
+op op_133 {
+    call td_free;
+}
+
+op op_6 {
+    call hcd_to_ohci.30;
+}
+
+op op_51 {
+    call roothub_a;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_343 {
+    mmio _ohci_readl_343 {
+        direction=r;
+        region=0;
+        address=0x48;
+        size=4;
+    }
+}
+
+op op_58 {
+    call roothub_status;
+}
+
+op op_345 {
+    mmio _ohci_writel_345 {
+        direction=w;
+        region=0;
+        address=0xc;
+        size=4;
+        data=0x40;
+    }
+}
+
+op op_346 {
+    mmio _ohci_readl_346 {
+        direction=r;
+        region=0;
+        address=0xc;
+        size=4;
+    }
+}
+
+op op_63 {
+    call roothub_portstatus;
+}
+
+op op_348 {
+    mmio _ohci_readl_348 {
+        direction=r;
+        region=0;
+        address=0x10;
+        size=4;
+    }
+}
+
+op op_349 {
+    mmio _ohci_writel_349 {
+        direction=w;
+        region=0;
+        address=0x10;
+        size=4;
+        data=0x40;
+    }
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_351 {
+    call device_may_wakeup;
+}
+
+op op_71 {
+    call _msecs_to_jiffies;
+}
+
+op op_353 {
+    mmio _ohci_readl_353 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_355 {
+    mmio _ohci_writel_355 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=num_1 & 0xffffff3f;
+    }
+}
+
+op op_356 {
+    mmio _ohci_readl_356 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_360 {
+    mmio _ohci_writel_360 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=num_1 & 0xffffffc3;
+    }
+}
+
+op op_361 {
+    mmio _ohci_readl_361 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_362 {
+    mmio _ohci_writel_362 {
+        direction=w;
+        region=0;
+        address=0xc;
+        size=4;
+        data=0x4;
+    }
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_253 {
+    call update_done_list;
+}
+
+op op_183 {
+    call ohci_work;
+}
+
+op op_366 {
+    mmio _ohci_writel_366 {
+        direction=w;
+        region=0;
+        address=0x14;
+        size=4;
+        data=0x4;
+    }
+}
+
+op op_367 {
+    mmio _ohci_readl_367 {
+        direction=r;
+        region=0;
+        address=0x54;
+        size=4;
+    }
+}
+
+op op_368 {
+    mmio _ohci_writel_368 {
+        direction=w;
+        region=0;
+        address=0x54;
+        size=4;
+        data=0x4;
+    }
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_370 {
+    mmio _ohci_writel_370 {
+        direction=w;
+        region=0;
+        address=0x14;
+        size=4;
+        data=0x48;
+    }
+}
+
+op op_371 {
+    mmio _ohci_writel_371 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=phi((num_1 & 0xfffffbff), (var_1 | 0x400)) | 0xc0;
+    }
+}
+
+op op_372 {
+    mmio _ohci_readl_372 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_71 {
+    call _msecs_to_jiffies;
+}
+
+op op_374 {
+    call ohci_rh_suspend;
+}
+
+op op_243 {
+    call ohci_rh_resume;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_378 {
+    mmio _ohci_writel_378 {
+        direction=w;
+        region=0;
+        address=0x10;
+        size=4;
+        data=0x40;
+    }
+}
+
+op op_379 {
+    call ohci_root_hub_state_changes;
+}
+
+op op_6 {
+    call hcd_to_ohci.30;
+}
+
+op op_381 {
+    mmio _ohci_writel_381 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=4;
+        data=0x20000;
+    }
+}
+
+op op_382 {
+    mmio _ohci_writel_382 {
+        direction=w;
+        region=0;
+        address=unknown;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_51 {
+    call roothub_a;
+}
+
+op op_54 {
+    call roothub_b;
+}
+
+op op_385 {
+    call ohci_hub_descriptor;
+}
+
+op op_58 {
+    call roothub_status;
+}
+
+op op_387 {
+    call put_unaligned_le32;
+}
+
+op op_63 {
+    call roothub_portstatus;
+}
+
+op op_387 {
+    call put_unaligned_le32;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_391 {
+    mmio _ohci_writel_391 {
+        direction=w;
+        region=0;
+        address=unknown;
+        size=4;
+        data=0x4;
+    }
+}
+
+op op_392 {
+    mmio _ohci_writel_392 {
+        direction=w;
+        region=0;
+        address=unknown;
+        size=4;
+        data=0x100;
+    }
+}
+
+op op_393 {
+    mmio _ohci_readl_393 {
+        direction=r;
+        region=0;
+        address=0x3c;
+        size=4;
+    }
+}
+
+op op_394 {
+    mmio _ohci_readl_394 {
+        direction=r;
+        region=0;
+        address=0xdeadc0de;
+        size=4;
+    }
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_396 {
+    mmio _ohci_writel_396 {
+        direction=w;
+        region=0;
+        address=unknown;
+        size=4;
+        data=0x100000;
+    }
+}
+
+op op_397 {
+    mmio _ohci_writel_397 {
+        direction=w;
+        region=0;
+        address=unknown;
+        size=4;
+        data=0x10;
+    }
+}
+
+op op_398 {
+    mmio _ohci_readl_398 {
+        direction=r;
+        region=0;
+        address=0x3c;
+        size=4;
+    }
+}
+
+op op_399 {
+    call root_port_reset;
+}
+
+op op_6 {
+    call hcd_to_ohci.30;
+}
+
+op op_374 {
+    call ohci_rh_suspend;
+}
+
+op op_94 {
+    call del_timer_sync;
+}
+
+op op_6 {
+    call hcd_to_ohci.30;
+}
+
+op op_243 {
+    call ohci_rh_resume;
+}
+
+op op_6 {
+    call hcd_to_ohci.30;
+}
+
+op op_406 {
+    mmio _ohci_readl_406 {
+        direction=r;
+        region=0;
+        address=0xdeadc0de;
+        size=4;
+    }
+}
+
+op op_407 {
+    mmio _ohci_writel_407 {
+        direction=w;
+        region=0;
+        address=unknown;
+        size=4;
+        data=0x10;
+    }
+}
+
+op op_408 {
+    call pci_get_drvdata;
+}
+
+op op_409 {
+    call device_may_wakeup.72;
+}
+
+op op_410 {
+    call check_root_hub_suspended;
+}
+
+op op_411 {
+    call suspend_common;
+}
+
+op op_408 {
+    call pci_get_drvdata;
+}
+
+op op_413 {
+    call for_each_companion;
+}
+
+op op_414 {
+    call resume_common;
+}
+
+op op_414 {
+    call resume_common;
+}
+
+op op_408 {
+    call pci_get_drvdata;
+}
+
+op op_409 {
+    call device_may_wakeup.72;
+}
+
+op op_408 {
+    call pci_get_drvdata;
+}
+
+op op_410 {
+    call check_root_hub_suspended;
+}
+
+op op_409 {
+    call device_may_wakeup.72;
+}
+
+op op_421 {
+    call pci_power_name;
+}
+
+op op_411 {
+    call suspend_common;
+}
+
+op op_414 {
+    call resume_common;
+}
+
+op op_424 {
+    call hcd_to_ohci;
+}
+
+op op_425 {
+    call device_can_wakeup;
+}
+
+op op_424 {
+    call hcd_to_ohci;
+}
+
+op op_427 {
+    call ohci_to_hcd;
+}
+
+op op_428 {
+    call device_init_wakeup;
+}
+
+op op_429 {
+    call broken_suspend;
+}
+
+op op_424 {
+    call hcd_to_ohci;
+}
+
+op op_427 {
+    call ohci_to_hcd;
+}
+
+op op_424 {
+    call hcd_to_ohci;
+}
+
+op op_427 {
+    call ohci_to_hcd;
+}
+
+op op_424 {
+    call hcd_to_ohci;
+}
+
+op op_427 {
+    call ohci_to_hcd;
+}
+
+op op_424 {
+    call hcd_to_ohci;
+}
+
+op op_427 {
+    call ohci_to_hcd;
+}
+
+op op_424 {
+    call hcd_to_ohci;
+}
+
+op op_439 {
+    call lockdep_init_map_waits;
+}
+
+op op_440 {
+    call lockdep_init_map_wait;
+}
+
+op op_441 {
+    call lockdep_init_map;
+}
+
+op op_442 {
+    call INIT_LIST_HEAD;
+}
+
+op op_427 {
+    call ohci_to_hcd;
+}
+
+op op_424 {
+    call hcd_to_ohci;
+}
+
+op op_427 {
+    call ohci_to_hcd;
+}
+
+op op_424 {
+    call hcd_to_ohci;
+}
+
+op op_427 {
+    call ohci_to_hcd;
+}
+
+op op_427 {
+    call ohci_to_hcd;
+}
+
+op op_6 {
+    call hcd_to_ohci.30;
+}
+
+op op_450 {
+    mmio _ohci_writel_450 {
+        direction=w;
+        region=0;
+        address=0x14;
+        size=4;
+        data=0x80000000;
+    }
+}
+
+op op_451 {
+    mmio _ohci_readl_451 {
+        direction=r;
+        region=0;
+        address=0x14;
+        size=4;
+    }
+}
+
+op op_6 {
+    call hcd_to_ohci.30;
+}
+
+op op_69 {
+    call ohci_usb_reset;
+}
+
+op op_454 {
+    mmio _ohci_readl_454 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_243 {
+    call ohci_rh_resume;
+}
+
+op op_374 {
+    call ohci_rh_suspend;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_458 {
+    mmio _ohci_writel_458 {
+        direction=w;
+        region=0;
+        address=unknown;
+        size=4;
+        data=0x100;
+    }
+}
+
+op op_459 {
+    mmio _ohci_writel_459 {
+        direction=w;
+        region=0;
+        address=0x10;
+        size=4;
+        data=0x80000000;
+    }
+}
+
+op op_460 {
+    mmio _ohci_readl_460 {
+        direction=r;
+        region=0;
+        address=0x10;
+        size=4;
+    }
+}
+
+op op_461 {
+    call ohci_resume;
+}
+
+op op_462 {
+    mmio writel_462 {
+        direction=w;
+        region=0;
+        address=0x14;
+        size=4;
+        data=arg(0x80000000, 0x100, 0x80000000, call_1() & 0x200, (call_3() & 0xffffff03) | 0x40, 0, 0, 0, 0, 0, num_6, 0x8000005a, 0x4, 0x80, (num_7 & 0x200) | 0x83, (var_7 & 0x200) | 0x83, num_12, num_13, var_7 | phi((phi(0, (phi(0x10, 0) | 0x20), var_14) | 0xc), var_16), phi(0, phi(0x2, 0) | 0x4, var_20), num_23 & 0xffffff3f, var_23 & 0xffffffc3, 0x4, 0x4, 0x4, 0x48, phi((var_23 & 0xfffffbff), (var_23 | 0x400)) | 0xc0, 0, 0, phi(num_30, var_30 | phi((phi(0, 0x10, 0) | 0x20), var_31)), phi(phi(phi(0x2, 0x2, 0) | 0x4, phi(var_37, var_36)), var_38), num_41 & 0xfffffff3, num_43, 0, num_44, num_45, 0, num_46, 0x2, 0x4, 0x4, 0x4, num_47 & 0xffffffef, num_49, num_50 & 0xffffffdf, num_52, num_53 | num_54, num_56, 0x40000000, 0x8, 0x80000000, phi(phi(num_57, var_57), phi(var_58 & 0x200, (var_58 & 0x200) | 0x40)), 0x1, var_57, 0, 0, num_64, (var_57 & 0x200) | 0x83, 0x8000, 0xffffffff, 0x8000005a, phi((num_67 & 0xffe4ff) | 0x1000, select(0x800, 0xa00) | (var_67 & 0xffffe7ff)), 0x10000, select(0xffff0000, 0), 0x80000000, 0xffffffff, 0x1, num_75, 0x10, 0x48, 0x40, 0x8, 0x4, call_76() & call_77(), 0x80000000, 0x40, 0x20000, num_79, 0x4, 0x100, 0x10, 0x100000, 0x10, 0x40, 0x40, 0x4, 0x2, num_80 | 0xc);
+    }
+}
+
+op op_463 {
+    mmio readl_463 {
+        direction=r;
+        region=0;
+        address=0x14;
+        size=4;
+    }
+}
+
+op op_464 {
+    mmio _ohci_readl_464 {
+        direction=r;
+        region=0;
+        address=0xc;
+        size=4;
+    }
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_66 {
+    call ohci_dump;
+}
+
+op op_274 {
+    call _ohci_shutdown;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_252 {
+    call add_to_done_list;
+}
+
+op op_183 {
+    call ohci_work;
+}
+
+op op_48 {
+    call ohci_frame_no;
+}
+
+op op_63 {
+    call roothub_portstatus;
+}
+
+op op_106 {
+    call list_empty;
+}
+
+op op_474 {
+    mmio _ohci_readl_474 {
+        direction=r;
+        region=0;
+        address=0x30;
+        size=4;
+    }
+}
+
+op op_71 {
+    call _msecs_to_jiffies;
+}
+
+op op_8 {
+    call ohci_to_hcd.33;
+}
+
+op op_46 {
+    call ohci_dump_status;
+}
+
+op op_48 {
+    call ohci_frame_no;
+}
+
+op op_479 {
+    mmio _ohci_readl_479 {
+        direction=r;
+        region=0;
+        address=0x34;
+        size=4;
+    }
+}
+
+op op_480 {
+    mmio _ohci_readl_480 {
+        direction=r;
+        region=0;
+        address=0x38;
+        size=4;
+    }
+}
+
+op op_481 {
+    mmio _ohci_readl_481 {
+        direction=r;
+        region=0;
+        address=0x40;
+        size=4;
+    }
+}
+
+op op_482 {
+    mmio _ohci_readl_482 {
+        direction=r;
+        region=0;
+        address=0x44;
+        size=4;
+    }
+}
+
+op op_65 {
+    call ohci_dump_roothub;
+}
+
+op op_154 {
+    call list_is_head;
+}
+
+op op_154 {
+    call list_is_head;
+}
+
+op op_109 {
+    call hc32_to_cpup;
+}
+
+op op_109 {
+    call hc32_to_cpup;
+}
+
+op op_109 {
+    call hc32_to_cpup;
+}
+
+op op_154 {
+    call list_is_head;
+}
+
+op op_490 {
+    call show_list;
+}
+
+op op_490 {
+    call show_list;
+}
+
+op op_492 {
+    mmio readl_492 {
+        direction=r;
+        region=0;
+        address=0x14;
+        size=4;
+    }
+}
+
+op op_493 {
+    mmio writel_493 {
+        direction=w;
+        region=0;
+        address=0x14;
+        size=4;
+        data=arg(arg(0x80000000, 0x100, 0x80000000, call_1() & 0x200, (call_3() & 0xffffff03) | 0x40, 0, 0, 0, 0, 0, num_6, 0x8000005a, 0x4, 0x80, (num_7 & 0x200) | 0x83, (var_7 & 0x200) | 0x83, num_12, num_13, var_7 | phi((phi(0, (phi(0x10, 0) | 0x20), var_14) | 0xc), var_16), phi(0, phi(0x2, 0) | 0x4, var_20), num_23 & 0xffffff3f, var_23 & 0xffffffc3, 0x4, 0x4, 0x4, 0x48, phi((var_23 & 0xfffffbff), (var_23 | 0x400)) | 0xc0, 0, 0, phi(num_30, var_30 | phi((phi(0, 0x10, 0) | 0x20), var_31)), phi(phi(phi(0x2, 0x2, 0) | 0x4, phi(var_37, var_36)), var_38), num_41 & 0xfffffff3, num_43, 0, num_44, num_45, 0, num_46, 0x2, 0x4, 0x4, 0x4, num_47 & 0xffffffef, num_49, num_50 & 0xffffffdf, num_52, num_53 | num_54, num_56, 0x40000000, 0x8, 0x80000000, phi(phi(num_57, var_57), phi(var_58 & 0x200, (var_58 & 0x200) | 0x40)), 0x1, var_57, 0, 0, num_64, (var_57 & 0x200) | 0x83, 0x8000, 0xffffffff, 0x8000005a, phi((num_67 & 0xffe4ff) | 0x1000, select(0x800, 0xa00) | (var_67 & 0xffffe7ff)), 0x10000, select(0xffff0000, 0), 0x80000000, 0xffffffff, 0x1, num_75, 0x10, 0x48, 0x40, 0x8, 0x4, call_76() & call_77(), 0x80000000, 0x40, 0x20000, num_79, 0x4, 0x100, 0x10, 0x100000, 0x10, 0x40, 0x40, 0x4, 0x2, num_80 | 0xc));
+    }
+}
+
+op op_494 {
+    call is_ohci_or_uhci;
+}
+
+op op_408 {
+    call pci_get_drvdata;
+}
+
+op op_408 {
+    call pci_get_drvdata;
+}
+
+op op_497 {
+    call pm_runtime_get_noresume;
+}
+
+op op_413 {
+    call for_each_companion;
+}
+
+op op_494 {
+    call is_ohci_or_uhci;
+}
+
+op op_494 {
+    call is_ohci_or_uhci;
+}
+
+op op_501 {
+    call device_lock;
+}
+
+op op_494 {
+    call is_ohci_or_uhci;
+}
+
+op op_503 {
+    call device_unlock;
+}
+
+op op_494 {
+    call is_ohci_or_uhci;
+}
+
+op op_505 {
+    call resource_size;
+}
+
+op op_505 {
+    call resource_size;
+}
+
+op op_408 {
+    call pci_get_drvdata;
+}
+
+op op_413 {
+    call for_each_companion;
+}
+
+op op_413 {
+    call for_each_companion;
+}
+
+op op_413 {
+    call for_each_companion;
+}
+
+op op_511 {
+    call pm_runtime_put_noidle;
+}
+
+
+bb ohci_init_146 {
+    op op_51;
+}
+
+bb ohci_dump_roothub_84 {
+    op op_54;
+    op op_58;
+}
+
+bb finish_unlinks_414 {
+    op op_179;
+}
+
+bb td_fill_638 {
+    op op_122;
+}
+
+bb ohci_suspend_940 {
+    op op_6;
+    op op_450;
+    op op_451;
+}
+
+bb td_done_266 {
+    op op_8;
+}
+
+bb hcd_pci_suspend_818 {
+    op op_411;
+}
+
+bb takeback_td_309 {
+    op op_148;
+}
+
+bb td_alloc_554 {
+    op op_279;
+}
+
+bb ohci_rh_resume_128 {
+    op op_218;
+}
+
+bb ohci_run_443 {
+    op op_201;
+}
+
+bb td_done_263 {
+    op op_109;
+}
+
+bb ohci_root_hub_state_changes_705 {
+    op op_8;
+    op op_351;
+}
+
+bb finish_unlinks_412 {
+    op op_174;
+}
+
+bb ehci_post_add_1082 {
+    op op_494;
+}
+
+bb finish_unlinks_339 {
+    op op_121;
+}
+
+bb ed_schedule_373 {
+    op op_172;
+}
+
+bb ohci_urb_enqueue_603 {
+    op op_48;
+    op op_71;
+}
+
+bb ed_schedule_372 {
+    op op_8;
+}
+
+bb td_done_253 {
+    op op_8;
+}
+
+bb lockdep_init_map_921 {
+    op op_440;
+}
+
+bb ohci_usb_reset_100 {
+    op op_67;
+    op op_68;
+}
+
+bb finish_unlinks_410 {
+    op op_177;
+}
+
+bb finish_unlinks_337 {
+    op op_106;
+}
+
+bb ohci_rh_resume_485 {
+    op op_241;
+}
+
+bb ohci_hub_control_764 {
+    op op_381;
+}
+
+bb create_debug_files_176 {
+    op op_8;
+}
+
+bb roothub_status_85 {
+    op op_57;
+}
+
+bb ohci_hub_status_data_693 {
+    op op_58;
+}
+
+bb hcd_pci_poweroff_late_865 {
+    op op_409;
+}
+
+bb ohci_dump_status_55 {
+    op op_8;
+}
+
+bb ohci_run_423 {
+    op op_8;
+}
+
+bb usb_hcd_pci_probe_1141 {
+    op op_413;
+}
+
+bb ohci_get_frame_540 {
+    op op_6;
+    op op_48;
+}
+
+bb hcd_pci_suspend_noirq_871 {
+    op op_409;
+}
+
+bb finish_unlinks_335 {
+    op op_154;
+}
+
+bb ohci_urb_enqueue_591 {
+    op op_284;
+}
+
+bb hcd_pci_restore_862 {
+    op op_414;
+}
+
+bb ohci_restart_185 {
+    op op_116;
+}
+
+bb ohci_run_440 {
+    op op_191;
+    op op_192;
+}
+
+bb ed_deschedule_190 {
+    op op_109;
+    op op_110;
+}
+
+bb roothub_a_73 {
+    op op_49;
+}
+
+bb hcd_pci_resume_847 {
+    op op_414;
+}
+
+bb ohci_rh_suspend_731 {
+    op op_8;
+}
+
+bb periodic_unlink_218 {
+    op op_8;
+}
+
+bb ohci_endpoint_disable_685 {
+    op op_133;
+    op op_287;
+}
+
+bb ed_get_568 {
+    op op_288;
+}
+
+bb ohci_irq_491 {
+    op op_253;
+}
+
+bb ohci_rh_resume_111 {
+    op op_8;
+    op op_77;
+}
+
+bb ohci_irq_34 {
+    op op_12;
+    op op_14;
+}
+
+bb td_submit_urb_649 {
+    op op_315;
+}
+
+bb ohci_hcd_init_533 {
+    op op_260;
+    op op_260;
+}
+
+bb finish_unlinks_407 {
+    op op_174;
+}
+
+bb ed_alloc_546 {
+    op op_279;
+}
+
+bb ohci_rh_resume_477 {
+    op op_236;
+    op op_239;
+}
+
+bb ohci_work_313 {
+    op op_182;
+}
+
+bb ohci_bus_resume_807 {
+    op op_6;
+}
+
+bb root_port_reset_788 {
+    op op_393;
+}
+
+bb update_done_list_511 {
+    op op_109;
+    op op_252;
+}
+
+bb ohci_rh_resume_469 {
+    op op_233;
+    op op_234;
+}
+
+bb ohci_irq_109 {
+    op op_75;
+}
+
+bb ohci_root_hub_state_changes_752 {
+    op op_378;
+}
+
+bb roothub_portstatus_93 {
+    op op_62;
+}
+
+bb update_done_list_499 {
+    op op_109;
+}
+
+bb ed_get_551 {
+    op op_284;
+}
+
+bb ed_deschedule_208 {
+    op op_115;
+}
+
+bb ohci_bus_suspend_805 {
+    op op_94;
+}
+
+bb ohci_dump_roothub_89 {
+    op op_63;
+}
+
+bb td_done_254 {
+    op op_109;
+}
+
+bb ed_schedule_359 {
+    op op_166;
+    op op_167;
+}
+
+bb ohci_rh_resume_462 {
+    op op_219;
+}
+
+bb ohci_hub_status_data_691 {
+    op op_51;
+}
+
+bb ohci_rh_resume_467 {
+    op op_229;
+    op op_230;
+}
+
+bb ohci_hwPSW_245 {
+    op op_122;
+    op op_123;
+}
+
+bb ohci_rh_suspend_741 {
+    op op_370;
+}
+
+bb update_done_list_493 {
+    op op_245;
+}
+
+bb ohci_irq_26 {
+    op op_8;
+}
+
+bb td_submit_urb_621 {
+    op op_306;
+}
+
+bb ed_schedule_350 {
+    op op_163;
+    op op_164;
+}
+
+bb io_watchdog_func_989 {
+    op op_474;
+    op op_71;
+}
+
+bb ohci_urb_enqueue_611 {
+    op op_48;
+}
+
+bb lockdep_init_map_wait_922 {
+    op op_439;
+}
+
+bb usb_maxpacket_581 {
+    op op_292;
+}
+
+bb ohci_dump_69 {
+    op op_8;
+    op op_48;
+}
+
+bb ohci_suspend_942 {
+    op op_461;
+}
+
+bb ohci_urb_enqueue_618 {
+    op op_326;
+}
+
+bb ohci_init_138 {
+    op op_82;
+    op op_83;
+}
+
+bb ohci_dump_status_53 {
+    op op_18;
+    op op_23;
+    op op_21;
+    op op_25;
+}
+
+bb ohci_run_454 {
+    op op_66;
+}
+
+bb ohci_resume_951 {
+    op op_458;
+}
+
+bb ohci_init_175 {
+    op op_104;
+}
+
+bb ohci_rh_suspend_743 {
+    op op_71;
+}
+
+bb start_ed_unlink_305 {
+    op op_116;
+    op op_143;
+    op op_144;
+    op op_145;
+    op op_48;
+}
+
+bb ohci_dump_roothub_86 {
+    op op_58;
+}
+
+bb finish_unlinks_338 {
+    op op_106;
+}
+
+bb roothub_a_76 {
+    op op_50;
+}
+
+bb usb_maxpacket_583 {
+    op op_288;
+}
+
+bb td_submit_urb_664 {
+    op op_325;
+}
+
+bb ohci_hub_control_787 {
+    op op_399;
+}
+
+bb ohci_irq_103 {
+    op op_8;
+}
+
+bb update_done_list_501 {
+    op op_250;
+}
+
+bb hcd_pci_runtime_resume_884 {
+    op op_414;
+}
+
+bb ohci_urb_enqueue_589 {
+    op op_260;
+}
+
+bb ed_free_559 {
+    op op_8;
+}
+
+bb ed_schedule_361 {
+    op op_168;
+}
+
+bb ohci_hub_status_data_692 {
+    op op_8;
+    op op_343;
+}
+
+bb ohci_restart_182 {
+    op op_8;
+}
+
+bb ohci_irq_527 {
+    op op_256;
+}
+
+bb ohci_urb_dequeue_669 {
+    op op_6;
+}
+
+bb fill_periodic_buffer_1013 {
+    op op_154;
+}
+
+bb td_submit_urb_657 {
+    op op_97;
+}
+
+bb periodic_link_375 {
+    op op_8;
+}
+
+bb ohci_hub_control_776 {
+    op op_63;
+    op op_387;
+}
+
+bb root_port_reset_798 {
+    op op_397;
+    op op_398;
+}
+
+bb td_submit_urb_659 {
+    op op_137;
+}
+
+bb ohci_init_152 {
+    op op_90;
+}
+
+bb finish_unlinks_319 {
+    op op_106;
+}
+
+bb ohci_init_139 {
+    op op_84;
+}
+
+bb usb_hcd_pci_shutdown_1045 {
+    op op_408;
+}
+
+bb td_submit_urb_633 {
+    op op_315;
+}
+
+bb hcd_pci_suspend_noirq_876 {
+    op op_421;
+}
+
+bb ohci_root_hub_state_changes_748 {
+    op op_8;
+}
+
+bb ohci_mem_init_153 {
+    op op_8;
+}
+
+bb ohci_root_hub_state_changes_700 {
+    op op_348;
+}
+
+bb ohci_rh_suspend_739 {
+    op op_8;
+}
+
+bb ohci_urb_enqueue_573 {
+    op op_291;
+}
+
+bb ohci_endpoint_disable_675 {
+    op op_6;
+}
+
+bb ohci_resume_949 {
+    op op_8;
+}
+
+bb _ohci_shutdown_539 {
+    op op_6;
+    op op_270;
+    op op_271;
+    op op_272;
+    op op_273;
+}
+
+bb resume_common_848 {
+    op op_408;
+}
+
+bb ohci_urb_enqueue_609 {
+    op op_48;
+}
+
+bb ohci_irq_522 {
+    op op_183;
+}
+
+bb ed_deschedule_189 {
+    op op_108;
+}
+
+bb ohci_quirk_zfmicro_917 {
+    op op_427;
+}
+
+bb ehci_wait_for_companions_1040 {
+    op op_494;
+}
+
+bb ohci_hub_control_786 {
+    op op_392;
+}
+
+bb ed_halted_504 {
+    op op_121;
+}
+
+bb ed_get_543 {
+    op op_281;
+}
+
+bb ohci_run_434 {
+    op op_186;
+    op op_187;
+}
+
+bb td_fill_640 {
+    op op_314;
+}
+
+bb ohci_quirk_opti_908 {
+    op op_424;
+    op op_427;
+}
+
+bb ohci_rh_suspend_725 {
+    op op_8;
+}
+
+bb ohci_start_port_reset_816 {
+    op op_407;
+}
+
+bb ohci_restart_456 {
+    op op_8;
+}
+
+bb td_done_238 {
+    op op_109;
+    op op_121;
+}
+
+bb ohci_init_135 {
+    op op_81;
+}
+
+bb ohci_rh_resume_468 {
+    op op_231;
+    op op_232;
+}
+
+bb ohci_irq_110 {
+    op op_243;
+}
+
+bb io_watchdog_func_967 {
+    op op_252;
+}
+
+bb ohci_quirk_nec_925 {
+    op op_427;
+}
+
+bb ohci_rh_resume_466 {
+    op op_228;
+}
+
+bb ohci_setup_532 {
+    op op_6;
+    op op_262;
+    op op_105;
+}
+
+bb ohci_hub_status_data_695 {
+    op op_345;
+    op op_346;
+}
+
+bb ohci_dump_status_44 {
+    op op_8;
+    op op_18;
+}
+
+bb writel_1035 {
+    op op_493;
+}
+
+bb ohci_quirk_amd700_927 {
+    op op_424;
+}
+
+bb schedule_work_35 {
+    op op_13;
+}
+
+bb ohci_rh_suspend_737 {
+    op op_368;
+}
+
+bb update_done_list_492 {
+    op op_109;
+}
+
+bb usb_hcd_pci_probe_1144 {
+    op op_413;
+}
+
+bb ohci_dump_status_49 {
+    op op_8;
+    op op_21;
+}
+
+bb maybe_print_eds_66 {
+    op op_8;
+}
+
+bb finish_urb_270 {
+    op op_135;
+}
+
+bb ohci_resume_945 {
+    op op_454;
+}
+
+bb ehci_pre_add_1078 {
+    op op_494;
+}
+
+bb ohci_hub_status_data_699 {
+    op op_379;
+}
+
+bb ohci_stop_161 {
+    op op_94;
+    op op_95;
+    op op_69;
+    op op_97;
+}
+
+bb ohci_hub_control_785 {
+    op op_391;
+}
+
+bb ohci_run_441 {
+    op op_193;
+    op op_194;
+    op op_195;
+    op op_199;
+    op op_200;
+}
+
+bb hcd_pci_poweroff_late_863 {
+    op op_408;
+}
+
+bb root_port_reset_794 {
+    op op_8;
+}
+
+bb ohci_dump_roothub_83 {
+    op op_8;
+}
+
+bb ohci_dump_status_48 {
+    op op_19;
+}
+
+bb ohci_start_536 {
+    op op_8;
+    op op_102;
+}
+
+bb usb_hcd_pci_probe_1148 {
+    op op_511;
+}
+
+bb td_submit_urb_619 {
+    op op_8;
+}
+
+bb ohci_rh_resume_486 {
+    op op_242;
+}
+
+bb finish_unlinks_325 {
+    op op_154;
+}
+
+bb ohci_rh_resume_465 {
+    op op_227;
+}
+
+bb ohci_start_535 {
+    op op_6;
+    op op_215;
+}
+
+bb fill_async_buffer_1022 {
+    op op_490;
+    op op_490;
+}
+
+bb io_watchdog_func_966 {
+    op op_8;
+}
+
+bb ohci_run_438 {
+    op op_190;
+}
+
+bb ohci_hub_status_data_696 {
+    op op_63;
+}
+
+bb ohci_endpoint_disable_678 {
+    op op_183;
+}
+
+bb resume_common_858 {
+    op op_413;
+}
+
+bb debug_output_2 {
+    op op_1;
+}
+
+bb td_alloc_552 {
+    op op_8;
+}
+
+bb fill_registers_buffer_995 {
+    op op_48;
+}
+
+bb io_watchdog_func_986 {
+    op op_63;
+}
+
+bb ohci_urb_dequeue_673 {
+    op op_183;
+}
+
+bb ehci_post_add_1087 {
+    op op_503;
+}
+
+bb _ohci_readl_956 {
+    op op_463;
+}
+
+bb ohci_dump_41 {
+    op op_46;
+}
+
+bb takeback_td_237 {
+    op op_129;
+}
+
+bb ohci_dump_intr_mask_60 {
+    op op_8;
+}
+
+bb ohci_pci_reset_892 {
+    op op_424;
+}
+
+bb ohci_root_hub_state_changes_712 {
+    op op_71;
+}
+
+bb ohci_bus_suspend_804 {
+    op op_374;
+}
+
+bb td_submit_urb_646 {
+    op op_315;
+}
+
+bb show_list_1030 {
+    op op_154;
+}
+
+bb ohci_work_231 {
+    op op_151;
+}
+
+bb ohci_rh_suspend_733 {
+    op op_253;
+    op op_183;
+    op op_366;
+}
+
+bb ohci_stop_169 {
+    op op_100;
+}
+
+bb io_watchdog_func_988 {
+    op op_106;
+}
+
+bb ehci_remove_1073 {
+    op op_494;
+}
+
+bb ohci_run_435 {
+    op op_188;
+    op op_189;
+}
+
+bb ohci_root_hub_state_changes_702 {
+    op op_349;
+}
+
+bb ohci_stop_171 {
+    op op_101;
+}
+
+bb ohci_irq_525 {
+    op op_255;
+}
+
+bb ohci_quirk_ns_914 {
+    op op_427;
+}
+
+bb finish_unlinks_334 {
+    op op_140;
+}
+
+bb ohci_rh_resume_464 {
+    op op_220;
+    op op_221;
+    op op_222;
+    op op_223;
+    op op_224;
+    op op_225;
+    op op_199;
+}
+
+bb ohci_irq_38 {
+    op op_66;
+    op op_69;
+}
+
+bb takeback_td_310 {
+    op op_149;
+}
+
+bb ed_alloc_549 {
+    op op_260;
+}
+
+bb ohci_dump_status_42 {
+    op op_16;
+}
+
+bb io_watchdog_func_983 {
+    op op_183;
+}
+
+bb list_add_605 {
+    op op_305;
+}
+
+bb ohci_quirk_toshiba_scc_919 {
+    op op_424;
+    op op_427;
+}
+
+bb ohci_quirk_amd756_904 {
+    op op_429;
+}
+
+bb ohci_urb_enqueue_598 {
+    op op_173;
+}
+
+bb debug_periodic_open_21 {
+    op op_3;
+}
+
+bb ohci_hub_control_778 {
+    op op_8;
+}
+
+bb ohci_urb_enqueue_541 {
+    op op_6;
+    op op_290;
+}
+
+bb td_submit_urb_650 {
+    op op_315;
+}
+
+bb ohci_endpoint_disable_681 {
+    op op_8;
+}
+
+bb usb_hcd_pci_probe_1123 {
+    op op_505;
+}
+
+bb takeback_td_302 {
+    op op_106;
+}
+
+bb ohci_run_447 {
+    op op_202;
+    op op_203;
+}
+
+bb finish_urb_297 {
+    op op_138;
+}
+
+bb show_list_1025 {
+    op op_154;
+}
+
+bb ed_schedule_346 {
+    op op_162;
+}
+
+bb ohci_irq_104 {
+    op op_71;
+    op op_72;
+    op op_73;
+}
+
+bb suspend_common_820 {
+    op op_409;
+}
+
+bb list_del_239 {
+    op op_120;
+}
+
+bb debug_async_open_11 {
+    op op_3;
+}
+
+bb ohci_rh_suspend_742 {
+    op op_371;
+    op op_372;
+}
+
+bb ohci_rh_suspend_720 {
+    op op_355;
+    op op_356;
+}
+
+bb root_port_reset_790 {
+    op op_394;
+}
+
+bb ohci_urb_enqueue_666 {
+    op op_135;
+}
+
+bb ed_alloc_544 {
+    op op_8;
+}
+
+bb finish_unlinks_333 {
+    op op_129;
+}
+
+bb ohci_dump_40 {
+    op op_8;
+}
+
+bb debug_registers_open_22 {
+    op op_3;
+}
+
+bb ohci_dump_roothub_80 {
+    op op_8;
+}
+
+bb ohci_rh_suspend_727 {
+    op op_8;
+}
+
+bb finish_unlinks_341 {
+    op op_173;
+}
+
+bb periodic_reinit_442 {
+    op op_196;
+    op op_197;
+    op op_198;
+}
+
+bb ed_deschedule_201 {
+    op op_109;
+    op op_113;
+}
+
+bb ohci_urb_enqueue_592 {
+    op op_135;
+}
+
+bb ohci_restart_129 {
+    op op_105;
+    op op_106;
+}
+
+bb ohci_dump_status_56 {
+    op op_28;
+    op op_30;
+    op op_31;
+    op op_30;
+    op op_33;
+    op op_35;
+    op op_36;
+    op op_35;
+    op op_38;
+    op op_35;
+    op op_40;
+    op op_35;
+    op op_42;
+    op op_35;
+    op op_44;
+    op op_35;
+}
+
+bb finish_urb_289 {
+    op op_97;
+}
+
+bb ohci_hub_descriptor_770 {
+    op op_51;
+    op op_54;
+}
+
+bb ohci_rh_suspend_717 {
+    op op_353;
+}
+
+bb fill_registers_buffer_992 {
+    op op_8;
+}
+
+bb finish_urb_269 {
+    op op_8;
+}
+
+bb ohci_start_port_reset_815 {
+    op op_6;
+    op op_406;
+}
+
+bb ohci_root_hub_state_changes_750 {
+    op op_8;
+}
+
+bb ohci_irq_29 {
+    op op_9;
+}
+
+bb ohci_init_143 {
+    op op_86;
+    op op_87;
+}
+
+bb ohci_irq_23 {
+    op op_6;
+    op op_7;
+}
+
+bb ohci_run_451 {
+    op op_209;
+    op op_210;
+    op op_211;
+    op op_212;
+    op op_71;
+}
+
+bb ohci_quirk_nec_920 {
+    op op_424;
+    op op_441;
+    op op_442;
+}
+
+bb ohci_root_hub_state_changes_747 {
+    op op_243;
+}
+
+bb ohci_init_130 {
+    op op_8;
+}
+
+bb alloc_buffer_12 {
+    op op_2;
+}
+
+bb ohci_dump_roothub_97 {
+    op op_8;
+}
+
+bb ohci_rh_resume_484 {
+    op op_240;
+}
+
+bb ohci_urb_dequeue_671 {
+    op op_147;
+}
+
+bb root_port_reset_797 {
+    op op_396;
+}
+
+bb ohci_irq_108 {
+    op op_8;
+}
+
+bb td_submit_urb_654 {
+    op op_315;
+}
+
+bb finish_unlinks_401 {
+    op op_174;
+}
+
+bb td_done_244 {
+    op op_124;
+}
+
+bb ohci_endpoint_disable_683 {
+    op op_106;
+}
+
+bb urb_free_priv_287 {
+    op op_121;
+}
+
+bb ohci_run_424 {
+    op op_185;
+}
+
+bb finish_unlinks_405 {
+    op op_175;
+}
+
+bb update_done_list_498 {
+    op op_8;
+}
+
+bb process_done_list_236 {
+    op op_150;
+}
+
+bb ohci_stop_165 {
+    op op_98;
+    op op_99;
+}
+
+bb ohci_quirk_nec_worker_937 {
+    op op_427;
+}
+
+bb ohci_shutdown_538 {
+    op op_6;
+    op op_274;
+}
+
+bb ohci_quirk_qemu_934 {
+    op op_427;
+}
+
+bb ohci_resume_947 {
+    op op_243;
+    op op_374;
+}
+
+bb ohci_resume_944 {
+    op op_69;
+}
+
+bb urb_free_priv_274 {
+    op op_133;
+}
+
+bb ohci_quirk_amd700_931 {
+    op op_427;
+}
+
+bb ohci_quirk_amd756_902 {
+    op op_427;
+}
+
+bb ohci_root_hub_state_changes_716 {
+    op op_374;
+}
+
+bb ohci_rh_resume_117 {
+    op op_78;
+    op op_79;
+}
+
+bb ohci_hub_control_773 {
+    op op_58;
+    op op_387;
+}
+
+bb ohci_rh_resume_472 {
+    op op_236;
+    op op_237;
+}
+
+bb takeback_td_268 {
+    op op_140;
+}
+
+bb ohci_pci_reset_897 {
+    op op_425;
+}
+
+bb ohci_hub_control_769 {
+    op op_385;
+}
+
+bb ed_schedule_355 {
+    op op_165;
+}
+
+bb ohci_quirk_amd756_901 {
+    op op_424;
+}
+
+bb ohci_urb_enqueue_601 {
+    op op_106;
+}
+
+bb ohci_restart_227 {
+    op op_183;
+    op op_215;
+}
+
+bb ohci_resume_952 {
+    op op_459;
+    op op_460;
+}
+
+bb td_free_277 {
+    op op_8;
+}
+
+bb hcd_pci_suspend_noirq_867 {
+    op op_408;
+    op op_410;
+}
+
+bb ohci_stop_159 {
+    op op_6;
+    op op_66;
+    op op_10;
+}
+
+bb finish_unlinks_418 {
+    op op_181;
+}
+
+bb td_free_283 {
+    op op_100;
+}
+
+bb list_add_tail_641 {
+    op op_305;
+}
+
+bb io_watchdog_func_960 {
+    op op_8;
+    op op_66;
+    op op_274;
+}
+
+bb fill_registers_buffer_996 {
+    op op_479;
+    op op_480;
+    op op_481;
+    op op_482;
+    op op_65;
+}
+
+bb fill_registers_buffer_994 {
+    op op_46;
+}
+
+bb ohci_rh_suspend_730 {
+    op op_360;
+    op op_361;
+    op op_362;
+}
+
+bb ohci_bus_suspend_802 {
+    op op_6;
+}
+
+bb finish_urb_291 {
+    op op_137;
+}
+
+bb io_watchdog_func_984 {
+    op op_48;
+}
+
+bb ohci_endpoint_disable_686 {
+    op op_8;
+    op op_106;
+    op op_133;
+}
+
+bb finish_unlinks_329 {
+    op op_109;
+}
+
+bb ohci_dump_71 {
+    op op_65;
+}
+
+bb roothub_portstatus_90 {
+    op op_61;
+}
+
+bb io_watchdog_func_957 {
+    op op_464;
+}
+
+bb ohci_hub_control_768 {
+    op op_382;
+}
+
+bb ohci_rh_suspend_719 {
+    op op_8;
+}
+
+bb ed_halted_509 {
+    op op_8;
+}
+
+bb ohci_irq_529 {
+    op op_257;
+    op op_258;
+}
+
+bb ehci_pre_add_1079 {
+    op op_501;
+}
+
+bb ohci_quirk_qemu_933 {
+    op op_424;
+}
+
+bb ohci_dump_status_54 {
+    op op_26;
+}
+
+bb takeback_td_304 {
+    op op_147;
+}
+
+bb ohci_urb_enqueue_616 {
+    op op_8;
+}
+
+bb usb_hcd_pci_probe_1113 {
+    op op_505;
+}
+
+bb show_list_1026 {
+    op op_109;
+    op op_109;
+    op op_109;
+}
+
+bb ed_free_560 {
+    op op_100;
+}
+
+bb ohci_init_141 {
+    op op_69;
+}
+
+bb suspend_common_824 {
+    op op_410;
+}
+
+bb ed_get_558 {
+    op op_287;
+}
+
+bb periodic_link_391 {
+    op op_8;
+}
+
+bb td_submit_urb_651 {
+    op op_315;
+    op op_321;
+}
+
+bb ohci_dump_roothub_81 {
+    op op_54;
+}
+
+bb ohci_restart_458 {
+    op op_8;
+}
+
+bb readl_1034 {
+    op op_492;
+}
+
+bb for_each_companion_1135 {
+    op op_408;
+}
+
+bb ohci_run_448 {
+    op op_204;
+    op op_205;
+    op op_206;
+    op op_207;
+    op op_51;
+}
+
+bb hcd_pci_runtime_suspend_881 {
+    op op_411;
+}
+
+bb usb_hcd_pci_remove_1053 {
+    op op_408;
+}
+
+bb ohci_rh_suspend_722 {
+    op op_8;
+}
+
+bb ohci_restart_223 {
+    op op_8;
+}
+
+bb ohci_resume_943 {
+    op op_6;
+}
+
+bb usb_hcd_pci_probe_1129 {
+    op op_413;
+}
+
+bb ohci_dump_roothub_87 {
+    op op_8;
+}
+
+bb ohci_urb_enqueue_586 {
+    op op_295;
+    op op_296;
+    op op_2;
+}
+
+bb ed_get_563 {
+    op op_288;
+}
+
+bb finish_urb_298 {
+    op op_106;
+}
+
+bb ohci_urb_enqueue_580 {
+    op op_294;
+}
+
+bb ed_deschedule_200 {
+    op op_111;
+}
+
+bb ohci_rh_suspend_736 {
+    op op_367;
+}
+
+bb td_submit_urb_648 {
+    op op_317;
+}
+
+bb ohci_irq_32 {
+    op op_10;
+    op op_8;
+}
+
+bb finish_unlinks_314 {
+    op op_48;
+}
+
+bb usb_hcd_pci_remove_1055 {
+    op op_497;
+}
+
+bb roothub_b_82 {
+    op op_53;
+}
+
+bb ohci_init_158 {
+    op op_102;
+}
+
+bb finish_unlinks_416 {
+    op op_174;
+}
+
+bb ohci_quirk_zfmicro_916 {
+    op op_424;
+}
+
+bb ohci_hub_control_761 {
+    op op_6;
+}
+
+bb non_ehci_add_1090 {
+    op op_494;
+}
+
+bb ohci_hub_status_data_689 {
+    op op_6;
+}
+
+bb suspend_common_819 {
+    op op_408;
+}
+
+bb ohci_urb_enqueue_604 {
+    op op_306;
+}
+
+bb ohci_dump_roothub_72 {
+    op op_51;
+}
+
+bb broken_suspend_905 {
+    op op_428;
+}
+
+bb _ohci_writel_955 {
+    op op_462;
+}
+
+bb usb_hcd_pci_remove_1066 {
+    op op_413;
+}
+
+bb __list_del_entry_241 {
+    op op_119;
+}
+
+bb ohci_quirk_ns_913 {
+    op op_424;
+}
+
+bb ohci_rh_resume_470 {
+    op op_71;
+}
+
+bb ohci_bus_resume_811 {
+    op op_243;
+}
+
+path ohci_quirk_amd700_0 {
+    bb bb_927
+    bb bb_931
+}
+
+path ohci_quirk_qemu_0 {
+    bb bb_933
+    bb bb_934
+}
+
+path ehci_pre_add_0 {
+    bb bb_1078
+    bb bb_1079
+}
+
+path ohci_stop_0 {
+    bb bb_159
+    bb bb_161
+    bb bb_165
+    bb bb_169
+}
+
+path ohci_stop_1 {
+    bb bb_159
+    bb bb_161
+    bb bb_165
+    bb bb_171
+}
+
+path ohci_mem_init_0 {
+    bb bb_153
+}
+
+path takeback_td_4 {
+    bb bb_237
+    bb bb_302
+    bb bb_309
+}
+
+path takeback_td_5 {
+    bb bb_237
+    bb bb_302
+    bb bb_310
+}
+
+path takeback_td_0 {
+    bb bb_237
+    bb bb_268
+    bb bb_302
+    bb bb_304
+}
+
+path takeback_td_2 {
+    bb bb_237
+    bb bb_268
+    bb bb_302
+    bb bb_310
+}
+
+path takeback_td_1 {
+    bb bb_237
+    bb bb_268
+    bb bb_302
+    bb bb_309
+}
+
+path takeback_td_3 {
+    bb bb_237
+    bb bb_302
+    bb bb_304
+}
+
+path _ohci_readl_0 {
+    bb bb_956
+}
+
+path _ohci_writel_0 {
+    bb bb_955
+}
+
+path io_watchdog_func_2 {
+    bb bb_957
+    bb bb_966
+    bb bb_967
+    bb bb_983
+    bb bb_984
+    bb bb_986
+    bb bb_988
+    bb bb_989
+}
+
+path io_watchdog_func_7 {
+    bb bb_957
+    bb bb_983
+    bb bb_984
+    bb bb_986
+    bb bb_960
+}
+
+path io_watchdog_func_0 {
+    bb bb_957
+    bb bb_960
+}
+
+path io_watchdog_func_5 {
+    bb bb_957
+    bb bb_967
+    bb bb_983
+    bb bb_984
+    bb bb_986
+    bb bb_988
+    bb bb_989
+}
+
+path io_watchdog_func_9 {
+    bb bb_957
+    bb bb_983
+    bb bb_984
+    bb bb_988
+    bb bb_989
+}
+
+path io_watchdog_func_3 {
+    bb bb_957
+    bb bb_966
+    bb bb_967
+    bb bb_983
+    bb bb_984
+    bb bb_988
+    bb bb_989
+}
+
+path io_watchdog_func_1 {
+    bb bb_957
+    bb bb_966
+    bb bb_967
+    bb bb_983
+    bb bb_984
+    bb bb_986
+    bb bb_960
+}
+
+path io_watchdog_func_6 {
+    bb bb_957
+    bb bb_967
+    bb bb_983
+    bb bb_984
+    bb bb_988
+    bb bb_989
+}
+
+path io_watchdog_func_4 {
+    bb bb_957
+    bb bb_967
+    bb bb_983
+    bb bb_984
+    bb bb_986
+    bb bb_960
+}
+
+path io_watchdog_func_8 {
+    bb bb_957
+    bb bb_983
+    bb bb_984
+    bb bb_986
+    bb bb_988
+    bb bb_989
+}
+
+path ehci_post_add_0 {
+    bb bb_1082
+    bb bb_1087
+}
+
+path ohci_hwPSW_0 {
+    bb bb_245
+}
+
+path hcd_pci_restore_0 {
+    bb bb_862
+}
+
+path roothub_portstatus_0 {
+    bb bb_90
+    bb bb_93
+}
+
+path ohci_quirk_zfmicro_0 {
+    bb bb_916
+    bb bb_917
+}
+
+path periodic_link_0 {
+    bb bb_375
+    bb bb_391
+}
+
+path periodic_link_1 {
+    bb bb_391
+}
+
+path ohci_dump_0 {
+    bb bb_40
+    bb bb_41
+    bb bb_69
+}
+
+path ohci_dump_3 {
+    bb bb_41
+    bb bb_71
+}
+
+path ohci_dump_2 {
+    bb bb_41
+    bb bb_69
+}
+
+path ohci_dump_1 {
+    bb bb_40
+    bb bb_41
+    bb bb_71
+}
+
+path list_add_0 {
+    bb bb_605
+}
+
+path start_ed_unlink_0 {
+    bb bb_305
+}
+
+path hcd_pci_poweroff_late_0 {
+    bb bb_863
+    bb bb_865
+}
+
+path ohci_get_frame_0 {
+    bb bb_540
+}
+
+path ohci_dump_status_3 {
+    bb bb_42
+    bb bb_44
+    bb bb_48
+    bb bb_54
+    bb bb_56
+}
+
+path ohci_dump_status_5 {
+    bb bb_42
+    bb bb_48
+    bb bb_49
+    bb bb_54
+    bb bb_56
+}
+
+path ohci_dump_status_0 {
+    bb bb_42
+    bb bb_44
+    bb bb_48
+    bb bb_49
+    bb bb_54
+    bb bb_55
+    bb bb_56
+}
+
+path ohci_dump_status_7 {
+    bb bb_42
+    bb bb_48
+    bb bb_54
+    bb bb_56
+}
+
+path ohci_dump_status_2 {
+    bb bb_42
+    bb bb_44
+    bb bb_48
+    bb bb_54
+    bb bb_55
+    bb bb_56
+}
+
+path ohci_dump_status_8 {
+    bb bb_42
+    bb bb_53
+}
+
+path ohci_dump_status_4 {
+    bb bb_42
+    bb bb_48
+    bb bb_49
+    bb bb_54
+    bb bb_55
+    bb bb_56
+}
+
+path ohci_dump_status_6 {
+    bb bb_42
+    bb bb_48
+    bb bb_54
+    bb bb_55
+    bb bb_56
+}
+
+path ohci_dump_status_1 {
+    bb bb_42
+    bb bb_44
+    bb bb_48
+    bb bb_49
+    bb bb_54
+    bb bb_56
+}
+
+path ohci_hub_descriptor_0 {
+    bb bb_770
+}
+
+path hcd_pci_runtime_resume_0 {
+    bb bb_884
+}
+
+path ohci_setup_0 {
+    bb bb_532
+}
+
+path roothub_a_0 {
+    bb bb_73
+    bb bb_76
+}
+
+path broken_suspend_0 {
+    bb bb_905
+}
+
+path fill_registers_buffer_0 {
+    bb bb_992
+    bb bb_994
+    bb bb_995
+    bb bb_996
+}
+
+path fill_registers_buffer_1 {
+    bb bb_992
+    bb bb_994
+    bb bb_996
+}
+
+path ohci_init_4 {
+    bb bb_130
+    bb bb_135
+    bb bb_143
+    bb bb_146
+    bb bb_152
+    bb bb_158
+}
+
+path ohci_init_2 {
+    bb bb_130
+    bb bb_135
+    bb bb_138
+    bb bb_139
+    bb bb_141
+    bb bb_143
+    bb bb_152
+    bb bb_158
+}
+
+path ohci_init_7 {
+    bb bb_130
+    bb bb_135
+    bb bb_143
+    bb bb_152
+    bb bb_175
+}
+
+path ohci_init_5 {
+    bb bb_130
+    bb bb_135
+    bb bb_143
+    bb bb_146
+    bb bb_152
+    bb bb_175
+}
+
+path ohci_init_0 {
+    bb bb_130
+    bb bb_135
+    bb bb_138
+    bb bb_139
+    bb bb_141
+    bb bb_143
+    bb bb_146
+    bb bb_152
+    bb bb_158
+}
+
+path ohci_init_3 {
+    bb bb_130
+    bb bb_135
+    bb bb_138
+    bb bb_139
+    bb bb_141
+    bb bb_143
+    bb bb_152
+    bb bb_175
+}
+
+path ohci_init_1 {
+    bb bb_130
+    bb bb_135
+    bb bb_138
+    bb bb_139
+    bb bb_141
+    bb bb_143
+    bb bb_146
+    bb bb_152
+    bb bb_175
+}
+
+path ohci_init_6 {
+    bb bb_130
+    bb bb_135
+    bb bb_143
+    bb bb_152
+    bb bb_158
+}
+
+path td_free_0 {
+    bb bb_277
+    bb bb_283
+}
+
+path ohci_run_12 {
+    bb bb_423
+    bb bb_434
+    bb bb_435
+    bb bb_438
+    bb bb_440
+    bb bb_441
+    bb bb_443
+    bb bb_447
+}
+
+path ohci_run_6 {
+    bb bb_423
+    bb bb_424
+    bb bb_434
+    bb bb_435
+    bb bb_440
+    bb bb_441
+    bb bb_443
+    bb bb_447
+}
+
+path ohci_run_16 {
+    bb bb_423
+    bb bb_434
+    bb bb_435
+    bb bb_438
+    bb bb_441
+    bb bb_443
+    bb bb_448
+    bb bb_451
+    bb bb_454
+}
+
+path ohci_run_15 {
+    bb bb_423
+    bb bb_434
+    bb bb_435
+    bb bb_438
+    bb bb_441
+    bb bb_443
+    bb bb_447
+}
+
+path ohci_run_19 {
+    bb bb_423
+    bb bb_434
+    bb bb_435
+    bb bb_440
+    bb bb_441
+    bb bb_443
+    bb bb_448
+    bb bb_451
+    bb bb_454
+}
+
+path ohci_run_14 {
+    bb bb_423
+    bb bb_434
+    bb bb_435
+    bb bb_438
+    bb bb_440
+    bb bb_441
+    bb bb_447
+}
+
+path ohci_run_18 {
+    bb bb_423
+    bb bb_434
+    bb bb_435
+    bb bb_440
+    bb bb_441
+    bb bb_443
+    bb bb_447
+}
+
+path ohci_run_1 {
+    bb bb_423
+    bb bb_424
+    bb bb_434
+    bb bb_435
+    bb bb_438
+    bb bb_440
+    bb bb_441
+    bb bb_443
+    bb bb_448
+    bb bb_451
+    bb bb_454
+}
+
+path ohci_run_21 {
+    bb bb_423
+    bb bb_434
+    bb bb_435
+    bb bb_441
+    bb bb_443
+    bb bb_447
+}
+
+path ohci_run_0 {
+    bb bb_423
+    bb bb_424
+    bb bb_434
+    bb bb_435
+    bb bb_438
+    bb bb_440
+    bb bb_441
+    bb bb_443
+    bb bb_447
+}
+
+path ohci_run_20 {
+    bb bb_423
+    bb bb_434
+    bb bb_435
+    bb bb_440
+    bb bb_441
+    bb bb_447
+}
+
+path ohci_run_9 {
+    bb bb_423
+    bb bb_424
+    bb bb_434
+    bb bb_435
+    bb bb_441
+    bb bb_443
+    bb bb_447
+}
+
+path ohci_run_3 {
+    bb bb_423
+    bb bb_424
+    bb bb_434
+    bb bb_435
+    bb bb_438
+    bb bb_441
+    bb bb_443
+    bb bb_447
+}
+
+path ohci_run_23 {
+    bb bb_423
+    bb bb_434
+    bb bb_435
+    bb bb_441
+    bb bb_447
+}
+
+path ohci_run_8 {
+    bb bb_423
+    bb bb_424
+    bb bb_434
+    bb bb_435
+    bb bb_440
+    bb bb_441
+    bb bb_447
+}
+
+path ohci_run_2 {
+    bb bb_423
+    bb bb_424
+    bb bb_434
+    bb bb_435
+    bb bb_438
+    bb bb_440
+    bb bb_441
+    bb bb_447
+}
+
+path ohci_run_22 {
+    bb bb_423
+    bb bb_434
+    bb bb_435
+    bb bb_441
+    bb bb_443
+    bb bb_448
+    bb bb_451
+    bb bb_454
+}
+
+path ohci_run_11 {
+    bb bb_423
+    bb bb_424
+    bb bb_434
+    bb bb_435
+    bb bb_441
+    bb bb_447
+}
+
+path ohci_run_5 {
+    bb bb_423
+    bb bb_424
+    bb bb_434
+    bb bb_435
+    bb bb_438
+    bb bb_441
+    bb bb_447
+}
+
+path ohci_run_10 {
+    bb bb_423
+    bb bb_424
+    bb bb_434
+    bb bb_435
+    bb bb_441
+    bb bb_443
+    bb bb_448
+    bb bb_451
+    bb bb_454
+}
+
+path ohci_run_4 {
+    bb bb_423
+    bb bb_424
+    bb bb_434
+    bb bb_435
+    bb bb_438
+    bb bb_441
+    bb bb_443
+    bb bb_448
+    bb bb_451
+    bb bb_454
+}
+
+path ohci_run_13 {
+    bb bb_423
+    bb bb_434
+    bb bb_435
+    bb bb_438
+    bb bb_440
+    bb bb_441
+    bb bb_443
+    bb bb_448
+    bb bb_451
+    bb bb_454
+}
+
+path ohci_run_7 {
+    bb bb_423
+    bb bb_424
+    bb bb_434
+    bb bb_435
+    bb bb_440
+    bb bb_441
+    bb bb_443
+    bb bb_448
+    bb bb_451
+    bb bb_454
+}
+
+path ohci_run_17 {
+    bb bb_423
+    bb bb_434
+    bb bb_435
+    bb bb_438
+    bb bb_441
+    bb bb_447
+}
+
+path ohci_quirk_amd756_1 {
+    bb bb_901
+    bb bb_904
+}
+
+path ohci_quirk_amd756_0 {
+    bb bb_901
+    bb bb_902
+    bb bb_904
+}
+
+path td_alloc_0 {
+    bb bb_552
+    bb bb_554
+}
+
+path _ohci_shutdown_0 {
+    bb bb_539
+}
+
+path ohci_hub_control_2 {
+    bb bb_761
+    bb bb_769
+}
+
+path ohci_hub_control_0 {
+    bb bb_761
+    bb bb_764
+}
+
+path ohci_hub_control_7 {
+    bb bb_761
+    bb bb_787
+}
+
+path ohci_hub_control_5 {
+    bb bb_761
+    bb bb_785
+}
+
+path ohci_hub_control_6 {
+    bb bb_761
+    bb bb_786
+}
+
+path ohci_hub_control_3 {
+    bb bb_761
+    bb bb_773
+}
+
+path ohci_hub_control_4 {
+    bb bb_761
+    bb bb_776
+    bb bb_778
+}
+
+path ohci_hub_control_1 {
+    bb bb_761
+    bb bb_768
+}
+
+path for_each_companion_0 {
+    bb bb_1135
+}
+
+path ohci_bus_resume_0 {
+    bb bb_807
+    bb bb_811
+}
+
+path td_done_1 {
+    bb bb_238
+    bb bb_254
+    bb bb_263
+    bb bb_266
+}
+
+path td_done_2 {
+    bb bb_238
+    bb bb_254
+    bb bb_266
+}
+
+path td_done_0 {
+    bb bb_238
+    bb bb_244
+    bb bb_253
+}
+
+path hcd_pci_resume_0 {
+    bb bb_847
+}
+
+path hcd_pci_suspend_noirq_0 {
+    bb bb_867
+    bb bb_871
+    bb bb_876
+}
+
+path hcd_pci_suspend_noirq_1 {
+    bb bb_867
+    bb bb_876
+}
+
+path debug_periodic_open_0 {
+    bb bb_21
+}
+
+path ohci_dump_intr_mask_0 {
+    bb bb_60
+}
+
+path ohci_hcd_init_0 {
+    bb bb_533
+}
+
+path list_add_tail_0 {
+    bb bb_641
+}
+
+path ehci_remove_0 {
+    bb bb_1073
+}
+
+path non_ehci_add_0 {
+    bb bb_1090
+}
+
+path ehci_wait_for_companions_0 {
+    bb bb_1040
+}
+
+path resume_common_0 {
+    bb bb_848
+    bb bb_858
+}
+
+path update_done_list_1 {
+    bb bb_492
+    bb bb_493
+    bb bb_499
+    bb bb_501
+}
+
+path update_done_list_0 {
+    bb bb_492
+    bb bb_493
+    bb bb_498
+}
+
+path update_done_list_2 {
+    bb bb_492
+    bb bb_493
+    bb bb_499
+    bb bb_511
+}
+
+path ed_get_1 {
+    bb bb_543
+    bb bb_551
+    bb bb_563
+    bb bb_568
+}
+
+path ed_get_0 {
+    bb bb_543
+    bb bb_551
+    bb bb_558
+}
+
+path fill_async_buffer_0 {
+    bb bb_1022
+}
+
+path fill_periodic_buffer_0 {
+    bb bb_1013
+}
+
+path finish_unlinks_83 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_22 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_339
+}
+
+path finish_unlinks_62 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_92 {
+    bb bb_314
+    bb bb_319
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_3 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_100 {
+    bb bb_314
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_43 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_339
+}
+
+path finish_unlinks_73 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_12 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_17 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_57 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_87 {
+    bb bb_314
+    bb bb_319
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_26 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_34 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_64 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_339
+}
+
+path finish_unlinks_7 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_104 {
+    bb bb_314
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_47 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_77 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_48 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_21 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_61 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_91 {
+    bb bb_314
+    bb bb_319
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_30 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_99 {
+    bb bb_314
+    bb bb_401
+    bb bb_405
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_38 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_68 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_11 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_52 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_82 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_25 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_33 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_95 {
+    bb bb_314
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_2 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_103 {
+    bb bb_314
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_42 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_72 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_15 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_16 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_56 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_86 {
+    bb bb_314
+    bb bb_319
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_29 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_37 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_67 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_6 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_46 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_51 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_76 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_81 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_20 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_60 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_1 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_339
+}
+
+path finish_unlinks_90 {
+    bb bb_314
+    bb bb_319
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_41 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_98 {
+    bb bb_314
+    bb bb_401
+    bb bb_405
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_71 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_10 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_55 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_85 {
+    bb bb_314
+    bb bb_319
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_24 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_32 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_5 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_94 {
+    bb bb_314
+    bb bb_319
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_45 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_102 {
+    bb bb_314
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_75 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_14 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_19 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_59 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_89 {
+    bb bb_314
+    bb bb_319
+    bb bb_401
+    bb bb_405
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_28 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_97 {
+    bb bb_314
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_36 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_9 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_66 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_79 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_50 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_80 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_23 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_63 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_93 {
+    bb bb_314
+    bb bb_319
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_0 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_334
+}
+
+path finish_unlinks_101 {
+    bb bb_314
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_40 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_70 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_13 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_54 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_84 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_27 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_35 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_65 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_4 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_44 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_74 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_49 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_407
+    bb bb_410
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_18 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_58 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_31 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_88 {
+    bb bb_314
+    bb bb_319
+    bb bb_401
+    bb bb_405
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_39 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_338
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_96 {
+    bb bb_314
+    bb bb_401
+    bb bb_405
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_69 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_341
+    bb bb_401
+    bb bb_405
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_8 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_329
+    bb bb_333
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_407
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_53 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_337
+    bb bb_338
+    bb bb_341
+    bb bb_416
+    bb bb_418
+}
+
+path finish_unlinks_78 {
+    bb bb_314
+    bb bb_319
+    bb bb_325
+    bb bb_335
+    bb bb_338
+    bb bb_401
+    bb bb_405
+    bb bb_412
+    bb bb_414
+    bb bb_416
+    bb bb_418
+}
+
+path ed_schedule_5 {
+    bb bb_361
+    bb bb_373
+}
+
+path ed_schedule_2 {
+    bb bb_355
+    bb bb_359
+}
+
+path ed_schedule_0 {
+    bb bb_346
+    bb bb_350
+}
+
+path ed_schedule_3 {
+    bb bb_359
+}
+
+path ed_schedule_4 {
+    bb bb_361
+    bb bb_372
+}
+
+path ed_schedule_1 {
+    bb bb_350
+}
+
+path debug_async_open_0 {
+    bb bb_11
+}
+
+path ed_halted_1 {
+    bb bb_509
+}
+
+path ed_halted_0 {
+    bb bb_504
+    bb bb_509
+}
+
+path schedule_work_0 {
+    bb bb_35
+}
+
+path usb_maxpacket_0 {
+    bb bb_581
+    bb bb_583
+}
+
+path ohci_hub_status_data_0 {
+    bb bb_689
+    bb bb_691
+    bb bb_692
+}
+
+path ohci_hub_status_data_3 {
+    bb bb_689
+    bb bb_693
+    bb bb_695
+    bb bb_696
+    bb bb_699
+}
+
+path ohci_hub_status_data_2 {
+    bb bb_689
+    bb bb_691
+    bb bb_693
+    bb bb_695
+    bb bb_699
+}
+
+path ohci_hub_status_data_1 {
+    bb bb_689
+    bb bb_691
+    bb bb_693
+    bb bb_695
+    bb bb_696
+    bb bb_699
+}
+
+path ohci_hub_status_data_4 {
+    bb bb_689
+    bb bb_693
+    bb bb_695
+    bb bb_699
+}
+
+path ohci_irq_20 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_34
+    bb bb_38
+    bb bb_109
+    bb bb_110
+}
+
+path ohci_irq_41 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_38
+    bb bb_491
+    bb bb_522
+    bb bb_525
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_29 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_38
+    bb bb_103
+    bb bb_104
+}
+
+path ohci_irq_1 {
+    bb bb_23
+    bb bb_29
+    bb bb_103
+    bb bb_104
+}
+
+path ohci_irq_34 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_38
+    bb bb_108
+    bb bb_109
+    bb bb_522
+    bb bb_525
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_22 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_34
+    bb bb_38
+    bb bb_109
+    bb bb_491
+    bb bb_522
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_43 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_38
+    bb bb_522
+    bb bb_525
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_31 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_38
+    bb bb_108
+    bb bb_109
+    bb bb_110
+}
+
+path ohci_irq_3 {
+    bb bb_23
+    bb bb_29
+    bb bb_108
+    bb bb_109
+    bb bb_110
+}
+
+path ohci_irq_48 {
+    bb bb_23
+    bb bb_29
+    bb bb_522
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_36 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_38
+    bb bb_109
+    bb bb_110
+}
+
+path ohci_irq_8 {
+    bb bb_23
+    bb bb_29
+    bb bb_109
+    bb bb_110
+}
+
+path ohci_irq_45 {
+    bb bb_23
+    bb bb_29
+    bb bb_491
+    bb bb_522
+    bb bb_525
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_17 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_34
+    bb bb_38
+    bb bb_108
+    bb bb_109
+    bb bb_491
+    bb bb_522
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_5 {
+    bb bb_23
+    bb bb_29
+    bb bb_108
+    bb bb_109
+    bb bb_491
+    bb bb_522
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_38 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_38
+    bb bb_109
+    bb bb_491
+    bb bb_522
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_10 {
+    bb bb_23
+    bb bb_29
+    bb bb_109
+    bb bb_491
+    bb bb_522
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_47 {
+    bb bb_23
+    bb bb_29
+    bb bb_522
+    bb bb_525
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_19 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_34
+    bb bb_38
+    bb bb_108
+    bb bb_109
+    bb bb_522
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_7 {
+    bb bb_23
+    bb bb_29
+    bb bb_108
+    bb bb_109
+    bb bb_522
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_24 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_34
+    bb bb_38
+    bb bb_109
+    bb bb_522
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_12 {
+    bb bb_23
+    bb bb_29
+    bb bb_109
+    bb bb_522
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_33 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_38
+    bb bb_108
+    bb bb_109
+    bb bb_491
+    bb bb_522
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_21 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_34
+    bb bb_38
+    bb bb_109
+    bb bb_491
+    bb bb_522
+    bb bb_525
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_26 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_34
+    bb bb_38
+    bb bb_491
+    bb bb_522
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_14 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_34
+    bb bb_38
+    bb bb_104
+}
+
+path ohci_irq_35 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_38
+    bb bb_108
+    bb bb_109
+    bb bb_522
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_23 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_34
+    bb bb_38
+    bb bb_109
+    bb bb_522
+    bb bb_525
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_40 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_38
+    bb bb_109
+    bb bb_522
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_28 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_34
+    bb bb_38
+    bb bb_522
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_0 {
+    bb bb_23
+    bb bb_26
+}
+
+path ohci_irq_37 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_38
+    bb bb_109
+    bb bb_491
+    bb bb_522
+    bb bb_525
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_9 {
+    bb bb_23
+    bb bb_29
+    bb bb_109
+    bb bb_491
+    bb bb_522
+    bb bb_525
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_42 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_38
+    bb bb_491
+    bb bb_522
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_30 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_38
+    bb bb_104
+}
+
+path ohci_irq_2 {
+    bb bb_23
+    bb bb_29
+    bb bb_104
+}
+
+path ohci_irq_39 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_38
+    bb bb_109
+    bb bb_522
+    bb bb_525
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_11 {
+    bb bb_23
+    bb bb_29
+    bb bb_109
+    bb bb_522
+    bb bb_525
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_44 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_38
+    bb bb_522
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_16 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_34
+    bb bb_38
+    bb bb_108
+    bb bb_109
+    bb bb_491
+    bb bb_522
+    bb bb_525
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_4 {
+    bb bb_23
+    bb bb_29
+    bb bb_108
+    bb bb_109
+    bb bb_491
+    bb bb_522
+    bb bb_525
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_25 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_34
+    bb bb_38
+    bb bb_491
+    bb bb_522
+    bb bb_525
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_13 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_34
+    bb bb_38
+    bb bb_103
+    bb bb_104
+}
+
+path ohci_irq_46 {
+    bb bb_23
+    bb bb_29
+    bb bb_491
+    bb bb_522
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_18 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_34
+    bb bb_38
+    bb bb_108
+    bb bb_109
+    bb bb_522
+    bb bb_525
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_6 {
+    bb bb_23
+    bb bb_29
+    bb bb_108
+    bb bb_109
+    bb bb_522
+    bb bb_525
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_27 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_34
+    bb bb_38
+    bb bb_522
+    bb bb_525
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_irq_15 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_34
+    bb bb_38
+    bb bb_108
+    bb bb_109
+    bb bb_110
+}
+
+path ohci_irq_32 {
+    bb bb_23
+    bb bb_29
+    bb bb_32
+    bb bb_38
+    bb bb_108
+    bb bb_109
+    bb bb_491
+    bb bb_522
+    bb bb_525
+    bb bb_527
+    bb bb_529
+}
+
+path ohci_work_0 {
+    bb bb_231
+    bb bb_313
+}
+
+path ohci_usb_reset_0 {
+    bb bb_100
+}
+
+path ohci_suspend_0 {
+    bb bb_940
+    bb bb_942
+}
+
+path ed_alloc_1 {
+    bb bb_544
+    bb bb_549
+}
+
+path ed_alloc_0 {
+    bb bb_544
+    bb bb_546
+    bb bb_549
+}
+
+path finish_urb_2 {
+    bb bb_269
+    bb bb_270
+    bb bb_297
+    bb bb_298
+}
+
+path finish_urb_3 {
+    bb bb_269
+    bb bb_270
+    bb bb_298
+}
+
+path finish_urb_0 {
+    bb bb_269
+    bb bb_270
+    bb bb_289
+    bb bb_291
+    bb bb_297
+    bb bb_298
+}
+
+path finish_urb_1 {
+    bb bb_269
+    bb bb_270
+    bb bb_289
+    bb bb_291
+    bb bb_298
+}
+
+path ohci_urb_enqueue_1 {
+    bb bb_541
+    bb bb_573
+    bb bb_586
+    bb bb_589
+    bb bb_591
+    bb bb_592
+}
+
+path ohci_urb_enqueue_4 {
+    bb bb_541
+    bb bb_573
+    bb bb_586
+    bb bb_589
+    bb bb_591
+    bb bb_598
+    bb bb_601
+    bb bb_604
+    bb bb_609
+    bb bb_618
+}
+
+path ohci_urb_enqueue_15 {
+    bb bb_541
+    bb bb_573
+    bb bb_586
+    bb bb_589
+    bb bb_666
+}
+
+path ohci_urb_enqueue_0 {
+    bb bb_541
+    bb bb_573
+    bb bb_580
+}
+
+path ohci_urb_enqueue_11 {
+    bb bb_541
+    bb bb_573
+    bb bb_586
+    bb bb_589
+    bb bb_598
+    bb bb_601
+    bb bb_604
+    bb bb_609
+    bb bb_618
+}
+
+path ohci_urb_enqueue_14 {
+    bb bb_541
+    bb bb_573
+    bb bb_586
+    bb bb_589
+    bb bb_611
+    bb bb_616
+}
+
+path ohci_urb_enqueue_10 {
+    bb bb_541
+    bb bb_573
+    bb bb_586
+    bb bb_589
+    bb bb_598
+    bb bb_601
+    bb bb_603
+    bb bb_604
+    bb bb_618
+}
+
+path ohci_urb_enqueue_7 {
+    bb bb_541
+    bb bb_573
+    bb bb_586
+    bb bb_589
+    bb bb_591
+    bb bb_611
+    bb bb_616
+}
+
+path ohci_urb_enqueue_13 {
+    bb bb_541
+    bb bb_573
+    bb bb_586
+    bb bb_589
+    bb bb_598
+    bb bb_666
+}
+
+path ohci_urb_enqueue_6 {
+    bb bb_541
+    bb bb_573
+    bb bb_586
+    bb bb_589
+    bb bb_591
+    bb bb_598
+    bb bb_666
+}
+
+path ohci_urb_enqueue_3 {
+    bb bb_541
+    bb bb_573
+    bb bb_586
+    bb bb_589
+    bb bb_591
+    bb bb_598
+    bb bb_601
+    bb bb_603
+    bb bb_604
+    bb bb_618
+}
+
+path ohci_urb_enqueue_12 {
+    bb bb_541
+    bb bb_573
+    bb bb_586
+    bb bb_589
+    bb bb_598
+    bb bb_601
+    bb bb_604
+    bb bb_618
+}
+
+path ohci_urb_enqueue_9 {
+    bb bb_541
+    bb bb_573
+    bb bb_586
+    bb bb_589
+    bb bb_598
+    bb bb_601
+    bb bb_603
+    bb bb_604
+    bb bb_609
+    bb bb_618
+}
+
+path ohci_urb_enqueue_2 {
+    bb bb_541
+    bb bb_573
+    bb bb_586
+    bb bb_589
+    bb bb_591
+    bb bb_598
+    bb bb_601
+    bb bb_603
+    bb bb_604
+    bb bb_609
+    bb bb_618
+}
+
+path ohci_urb_enqueue_8 {
+    bb bb_541
+    bb bb_573
+    bb bb_586
+    bb bb_589
+    bb bb_591
+    bb bb_666
+}
+
+path ohci_urb_enqueue_5 {
+    bb bb_541
+    bb bb_573
+    bb bb_586
+    bb bb_589
+    bb bb_591
+    bb bb_598
+    bb bb_601
+    bb bb_604
+    bb bb_618
+}
+
+path ohci_pci_reset_0 {
+    bb bb_892
+    bb bb_897
+}
+
+path usb_hcd_pci_shutdown_0 {
+    bb bb_1045
+}
+
+path hcd_pci_runtime_suspend_0 {
+    bb bb_881
+}
+
+path ohci_rh_suspend_5 {
+    bb bb_717
+    bb bb_727
+    bb bb_733
+    bb bb_736
+    bb bb_737
+    bb bb_739
+    bb bb_741
+    bb bb_742
+    bb bb_743
+}
+
+path ohci_rh_suspend_0 {
+    bb bb_717
+    bb bb_719
+    bb bb_720
+    bb bb_722
+}
+
+path ohci_rh_suspend_15 {
+    bb bb_717
+    bb bb_733
+    bb bb_736
+    bb bb_739
+    bb bb_742
+    bb bb_743
+}
+
+path ohci_rh_suspend_10 {
+    bb bb_717
+    bb bb_727
+    bb bb_733
+    bb bb_739
+    bb bb_742
+    bb bb_743
+}
+
+path ohci_rh_suspend_3 {
+    bb bb_717
+    bb bb_725
+}
+
+path ohci_rh_suspend_4 {
+    bb bb_717
+    bb bb_727
+    bb bb_730
+    bb bb_731
+}
+
+path ohci_rh_suspend_14 {
+    bb bb_717
+    bb bb_733
+    bb bb_736
+    bb bb_739
+    bb bb_741
+    bb bb_742
+    bb bb_743
+}
+
+path ohci_rh_suspend_7 {
+    bb bb_717
+    bb bb_727
+    bb bb_733
+    bb bb_736
+    bb bb_739
+    bb bb_741
+    bb bb_742
+    bb bb_743
+}
+
+path ohci_rh_suspend_9 {
+    bb bb_717
+    bb bb_727
+    bb bb_733
+    bb bb_739
+    bb bb_741
+    bb bb_742
+    bb bb_743
+}
+
+path ohci_rh_suspend_2 {
+    bb bb_717
+    bb bb_722
+}
+
+path ohci_rh_suspend_17 {
+    bb bb_717
+    bb bb_733
+    bb bb_739
+    bb bb_742
+    bb bb_743
+}
+
+path ohci_rh_suspend_6 {
+    bb bb_717
+    bb bb_727
+    bb bb_733
+    bb bb_736
+    bb bb_737
+    bb bb_739
+    bb bb_742
+    bb bb_743
+}
+
+path ohci_rh_suspend_13 {
+    bb bb_717
+    bb bb_733
+    bb bb_736
+    bb bb_737
+    bb bb_739
+    bb bb_742
+    bb bb_743
+}
+
+path ohci_rh_suspend_8 {
+    bb bb_717
+    bb bb_727
+    bb bb_733
+    bb bb_736
+    bb bb_739
+    bb bb_742
+    bb bb_743
+}
+
+path ohci_rh_suspend_16 {
+    bb bb_717
+    bb bb_733
+    bb bb_739
+    bb bb_741
+    bb bb_742
+    bb bb_743
+}
+
+path ohci_rh_suspend_1 {
+    bb bb_717
+    bb bb_720
+    bb bb_722
+}
+
+path ohci_rh_suspend_12 {
+    bb bb_717
+    bb bb_733
+    bb bb_736
+    bb bb_737
+    bb bb_739
+    bb bb_741
+    bb bb_742
+    bb bb_743
+}
+
+path ohci_rh_suspend_11 {
+    bb bb_717
+    bb bb_730
+    bb bb_731
+}
+
+path writel_0 {
+    bb bb_1035
+}
+
+path maybe_print_eds_0 {
+    bb bb_66
+}
+
+path ohci_rh_resume_3 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_68 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_43 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_108 {
+    bb bb_111
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_128 {
+    bb bb_111
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_14 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_83 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_123 {
+    bb bb_111
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_54 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_21 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_94 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_61 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_101 {
+    bb bb_111
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_32 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_7 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_72 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_47 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_112 {
+    bb bb_111
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_18 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_87 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_127 {
+    bb bb_111
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_58 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_25 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_98 {
+    bb bb_111
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_65 {
+    bb bb_111
+    bb bb_128
+}
+
+path ohci_rh_resume_105 {
+    bb bb_111
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_36 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_11 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_76 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_51 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_116 {
+    bb bb_111
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_91 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_22 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_62 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_29 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_102 {
+    bb bb_111
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_0 {
+    bb bb_111
+    bb bb_117
+    bb bb_128
+}
+
+path ohci_rh_resume_69 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_40 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_109 {
+    bb bb_111
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_129 {
+    bb bb_111
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_15 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_80 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_55 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_120 {
+    bb bb_111
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_26 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_95 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_66 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_33 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_106 {
+    bb bb_111
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_4 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_73 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_44 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_113 {
+    bb bb_111
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_19 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_84 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_59 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_124 {
+    bb bb_111
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_30 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_99 {
+    bb bb_111
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_70 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_37 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_110 {
+    bb bb_111
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_8 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_77 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_48 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_117 {
+    bb bb_111
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_23 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_88 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_63 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_103 {
+    bb bb_111
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_34 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_1 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_74 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_41 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_114 {
+    bb bb_111
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_12 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_81 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_121 {
+    bb bb_111
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_52 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_27 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_92 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_67 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_38 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_107 {
+    bb bb_111
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_5 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_78 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_45 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_118 {
+    bb bb_111
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_85 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_16 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_56 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_125 {
+    bb bb_111
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_31 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_96 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_2 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_71 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_42 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_111 {
+    bb bb_111
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_9 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_82 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_49 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_122 {
+    bb bb_111
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_20 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_89 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_60 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_35 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_100 {
+    bb bb_111
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_6 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_75 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_115 {
+    bb bb_111
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_46 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_13 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_86 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_53 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_126 {
+    bb bb_111
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_24 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_93 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_64 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_39 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_104 {
+    bb bb_111
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_10 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_79 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_466
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_119 {
+    bb bb_111
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_50 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_17 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_468
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_90 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_57 {
+    bb bb_111
+    bb bb_117
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_477
+    bb bb_484
+    bb bb_485
+    bb bb_486
+}
+
+path ohci_rh_resume_97 {
+    bb bb_111
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_rh_resume_28 {
+    bb bb_111
+    bb bb_117
+    bb bb_462
+    bb bb_464
+    bb bb_465
+    bb bb_467
+    bb bb_469
+    bb bb_470
+    bb bb_472
+    bb bb_484
+    bb bb_486
+}
+
+path ohci_start_port_reset_0 {
+    bb bb_815
+    bb bb_816
+}
+
+path periodic_reinit_0 {
+    bb bb_442
+}
+
+path td_fill_1 {
+    bb bb_640
+}
+
+path td_fill_0 {
+    bb bb_638
+    bb bb_640
+}
+
+path show_list_0 {
+    bb bb_1025
+    bb bb_1026
+    bb bb_1030
+}
+
+path ohci_quirk_ns_0 {
+    bb bb_913
+    bb bb_914
+}
+
+path process_done_list_0 {
+    bb bb_236
+}
+
+path suspend_common_1 {
+    bb bb_819
+    bb bb_824
+}
+
+path suspend_common_0 {
+    bb bb_819
+    bb bb_820
+    bb bb_824
+}
+
+path debug_output_0 {
+    bb bb_2
+}
+
+path ohci_resume_1 {
+    bb bb_943
+    bb bb_944
+    bb bb_945
+    bb bb_949
+    bb bb_951
+    bb bb_952
+}
+
+path ohci_resume_8 {
+    bb bb_943
+    bb bb_945
+    bb bb_951
+    bb bb_952
+}
+
+path ohci_resume_3 {
+    bb bb_943
+    bb bb_944
+    bb bb_945
+    bb bb_951
+    bb bb_952
+}
+
+path ohci_resume_0 {
+    bb bb_943
+    bb bb_944
+    bb bb_945
+    bb bb_947
+}
+
+path ohci_resume_5 {
+    bb bb_943
+    bb bb_945
+    bb bb_947
+}
+
+path ohci_resume_7 {
+    bb bb_943
+    bb bb_945
+    bb bb_949
+    bb bb_952
+}
+
+path ohci_resume_2 {
+    bb bb_943
+    bb bb_944
+    bb bb_945
+    bb bb_949
+    bb bb_952
+}
+
+path ohci_resume_9 {
+    bb bb_943
+    bb bb_945
+    bb bb_952
+}
+
+path ohci_resume_4 {
+    bb bb_943
+    bb bb_944
+    bb bb_945
+    bb bb_952
+}
+
+path ohci_resume_6 {
+    bb bb_943
+    bb bb_945
+    bb bb_949
+    bb bb_951
+    bb bb_952
+}
+
+path td_submit_urb_6 {
+    bb bb_619
+    bb bb_621
+    bb bb_654
+    bb bb_657
+    bb bb_659
+}
+
+path td_submit_urb_0 {
+    bb bb_619
+    bb bb_621
+    bb bb_633
+    bb bb_646
+    bb bb_648
+    bb bb_664
+}
+
+path td_submit_urb_5 {
+    bb bb_619
+    bb bb_621
+    bb bb_649
+    bb bb_651
+}
+
+path td_submit_urb_2 {
+    bb bb_619
+    bb bb_621
+    bb bb_633
+    bb bb_648
+    bb bb_664
+}
+
+path td_submit_urb_7 {
+    bb bb_619
+    bb bb_621
+    bb bb_657
+    bb bb_659
+}
+
+path td_submit_urb_1 {
+    bb bb_619
+    bb bb_621
+    bb bb_633
+    bb bb_646
+    bb bb_664
+}
+
+path td_submit_urb_3 {
+    bb bb_619
+    bb bb_621
+    bb bb_633
+    bb bb_664
+}
+
+path td_submit_urb_4 {
+    bb bb_619
+    bb bb_621
+    bb bb_649
+    bb bb_650
+    bb bb_651
+}
+
+path ohci_quirk_opti_0 {
+    bb bb_908
+}
+
+path ohci_bus_suspend_0 {
+    bb bb_802
+    bb bb_804
+    bb bb_805
+}
+
+path ohci_shutdown_0 {
+    bb bb_538
+}
+
+path ohci_quirk_toshiba_scc_0 {
+    bb bb_919
+}
+
+path readl_0 {
+    bb bb_1034
+}
+
+path ohci_dump_roothub_1 {
+    bb bb_72
+    bb bb_80
+    bb bb_81
+    bb bb_83
+    bb bb_86
+    bb bb_89
+    bb bb_97
+}
+
+path ohci_dump_roothub_4 {
+    bb bb_72
+    bb bb_81
+    bb bb_83
+    bb bb_86
+    bb bb_87
+    bb bb_89
+    bb bb_97
+}
+
+path ohci_dump_roothub_6 {
+    bb bb_72
+    bb bb_81
+    bb bb_86
+    bb bb_87
+    bb bb_89
+    bb bb_97
+}
+
+path ohci_dump_roothub_3 {
+    bb bb_72
+    bb bb_80
+    bb bb_81
+    bb bb_86
+    bb bb_89
+    bb bb_97
+}
+
+path ohci_dump_roothub_5 {
+    bb bb_72
+    bb bb_81
+    bb bb_83
+    bb bb_86
+    bb bb_89
+    bb bb_97
+}
+
+path ohci_dump_roothub_7 {
+    bb bb_72
+    bb bb_81
+    bb bb_86
+    bb bb_89
+    bb bb_97
+}
+
+path ohci_dump_roothub_0 {
+    bb bb_72
+    bb bb_80
+    bb bb_81
+    bb bb_83
+    bb bb_86
+    bb bb_87
+    bb bb_89
+    bb bb_97
+}
+
+path ohci_dump_roothub_2 {
+    bb bb_72
+    bb bb_80
+    bb bb_81
+    bb bb_86
+    bb bb_87
+    bb bb_89
+    bb bb_97
+}
+
+path ohci_dump_roothub_8 {
+    bb bb_72
+    bb bb_84
+}
+
+path ohci_root_hub_state_changes_9 {
+    bb bb_700
+    bb bb_752
+}
+
+path ohci_root_hub_state_changes_5 {
+    bb bb_700
+    bb bb_716
+}
+
+path ohci_root_hub_state_changes_7 {
+    bb bb_700
+    bb bb_748
+}
+
+path ohci_root_hub_state_changes_0 {
+    bb bb_700
+    bb bb_702
+    bb bb_705
+}
+
+path ohci_root_hub_state_changes_2 {
+    bb bb_700
+    bb bb_702
+    bb bb_716
+}
+
+path ohci_root_hub_state_changes_8 {
+    bb bb_700
+    bb bb_750
+    bb bb_752
+}
+
+path ohci_root_hub_state_changes_4 {
+    bb bb_700
+    bb bb_712
+}
+
+path ohci_root_hub_state_changes_1 {
+    bb bb_700
+    bb bb_702
+    bb bb_712
+}
+
+path ohci_root_hub_state_changes_6 {
+    bb bb_700
+    bb bb_747
+}
+
+path ohci_root_hub_state_changes_3 {
+    bb bb_700
+    bb bb_705
+}
+
+path lockdep_init_map_wait_0 {
+    bb bb_922
+}
+
+path root_port_reset_0 {
+    bb bb_788
+    bb bb_790
+    bb bb_794
+}
+
+path root_port_reset_1 {
+    bb bb_788
+    bb bb_790
+    bb bb_797
+    bb bb_798
+}
+
+path root_port_reset_2 {
+    bb bb_788
+    bb bb_790
+    bb bb_798
+}
+
+path alloc_buffer_0 {
+    bb bb_12
+}
+
+path roothub_status_0 {
+    bb bb_85
+}
+
+path __list_del_entry_0 {
+    bb bb_241
+}
+
+path hcd_pci_suspend_0 {
+    bb bb_818
+}
+
+path ed_deschedule_1 {
+    bb bb_190
+}
+
+path ed_deschedule_0 {
+    bb bb_189
+}
+
+path ed_deschedule_3 {
+    bb bb_201
+}
+
+path ed_deschedule_4 {
+    bb bb_208
+}
+
+path ed_deschedule_2 {
+    bb bb_200
+}
+
+path ohci_endpoint_disable_3 {
+    bb bb_675
+    bb bb_683
+    bb bb_686
+}
+
+path ohci_endpoint_disable_0 {
+    bb bb_675
+    bb bb_678
+}
+
+path ohci_endpoint_disable_1 {
+    bb bb_675
+    bb bb_681
+    bb bb_678
+}
+
+path ohci_endpoint_disable_4 {
+    bb bb_675
+    bb bb_686
+}
+
+path ohci_endpoint_disable_2 {
+    bb bb_675
+    bb bb_683
+    bb bb_685
+}
+
+path usb_hcd_pci_probe_6 {
+    bb bb_1129
+    bb bb_1141
+    bb bb_1148
+}
+
+path usb_hcd_pci_probe_3 {
+    bb bb_1123
+    bb bb_1129
+    bb bb_1141
+    bb bb_1148
+}
+
+path usb_hcd_pci_probe_1 {
+    bb bb_1113
+    bb bb_1144
+    bb bb_1148
+}
+
+path usb_hcd_pci_probe_4 {
+    bb bb_1123
+    bb bb_1144
+    bb bb_1148
+}
+
+path usb_hcd_pci_probe_7 {
+    bb bb_1144
+    bb bb_1148
+}
+
+path usb_hcd_pci_probe_8 {
+    bb bb_1148
+}
+
+path usb_hcd_pci_probe_5 {
+    bb bb_1123
+    bb bb_1148
+}
+
+path usb_hcd_pci_probe_2 {
+    bb bb_1113
+    bb bb_1148
+}
+
+path usb_hcd_pci_probe_0 {
+    bb bb_1113
+    bb bb_1129
+    bb bb_1141
+    bb bb_1148
+}
+
+path ohci_restart_5 {
+    bb bb_129
+    bb bb_185
+}
+
+path ohci_restart_0 {
+    bb bb_129
+    bb bb_182
+    bb bb_185
+}
+
+path ohci_restart_9 {
+    bb bb_129
+    bb bb_227
+    bb bb_458
+}
+
+path ohci_restart_3 {
+    bb bb_129
+    bb bb_182
+    bb bb_227
+    bb bb_456
+}
+
+path ohci_restart_1 {
+    bb bb_129
+    bb bb_182
+    bb bb_223
+    bb bb_227
+    bb bb_456
+}
+
+path ohci_restart_6 {
+    bb bb_129
+    bb bb_223
+    bb bb_227
+    bb bb_456
+}
+
+path ohci_restart_4 {
+    bb bb_129
+    bb bb_182
+    bb bb_227
+    bb bb_458
+}
+
+path ohci_restart_8 {
+    bb bb_129
+    bb bb_227
+    bb bb_456
+}
+
+path ohci_restart_2 {
+    bb bb_129
+    bb bb_182
+    bb bb_223
+    bb bb_227
+    bb bb_458
+}
+
+path ohci_restart_7 {
+    bb bb_129
+    bb bb_223
+    bb bb_227
+    bb bb_458
+}
+
+path roothub_b_0 {
+    bb bb_82
+}
+
+path usb_hcd_pci_remove_1 {
+    bb bb_1053
+    bb bb_1066
+}
+
+path usb_hcd_pci_remove_0 {
+    bb bb_1053
+    bb bb_1055
+    bb bb_1066
+}
+
+path urb_free_priv_1 {
+    bb bb_287
+}
+
+path urb_free_priv_0 {
+    bb bb_274
+    bb bb_287
+}
+
+path create_debug_files_0 {
+    bb bb_176
+}
+
+path periodic_unlink_0 {
+    bb bb_218
+}
+
+path lockdep_init_map_0 {
+    bb bb_921
+}
+
+path list_del_0 {
+    bb bb_239
+}
+
+path ed_free_0 {
+    bb bb_559
+    bb bb_560
+}
+
+path ohci_quirk_nec_worker_0 {
+    bb bb_937
+}
+
+path ohci_quirk_nec_0 {
+    bb bb_920
+    bb bb_925
+}
+
+path debug_registers_open_0 {
+    bb bb_22
+}
+
+path ohci_urb_dequeue_1 {
+    bb bb_669
+    bb bb_673
+}
+
+path ohci_urb_dequeue_0 {
+    bb bb_669
+    bb bb_671
+    bb bb_673
+}
+
+path ohci_start_0 {
+    bb bb_535
+    bb bb_536
+}
+
+func ohci_quirk_amd700 {
+    path path_ohci_quirk_amd700_0;
+}
+
+func ohci_quirk_qemu {
+    path path_ohci_quirk_qemu_0;
+}
+
+func ehci_pre_add {
+    path path_ehci_pre_add_0;
+}
+
+func ohci_stop {
+    path path_ohci_stop_0;
+    path path_ohci_stop_1;
+}
+
+func ohci_mem_init {
+    path path_ohci_mem_init_0;
+}
+
+func takeback_td {
+    path path_takeback_td_4;
+    path path_takeback_td_5;
+    path path_takeback_td_0;
+    path path_takeback_td_2;
+    path path_takeback_td_1;
+    path path_takeback_td_3;
+}
+
+func _ohci_readl {
+    path path__ohci_readl_0;
+}
+
+func _ohci_writel {
+    path path__ohci_writel_0;
+}
+
+func io_watchdog_func {
+    path path_io_watchdog_func_2;
+    path path_io_watchdog_func_7;
+    path path_io_watchdog_func_0;
+    path path_io_watchdog_func_5;
+    path path_io_watchdog_func_9;
+    path path_io_watchdog_func_3;
+    path path_io_watchdog_func_1;
+    path path_io_watchdog_func_6;
+    path path_io_watchdog_func_4;
+    path path_io_watchdog_func_8;
+}
+
+func ehci_post_add {
+    path path_ehci_post_add_0;
+}
+
+func ohci_hwPSW {
+    path path_ohci_hwPSW_0;
+}
+
+func hcd_pci_restore {
+    path path_hcd_pci_restore_0;
+}
+
+func roothub_portstatus {
+    path path_roothub_portstatus_0;
+}
+
+func ohci_quirk_zfmicro {
+    path path_ohci_quirk_zfmicro_0;
+}
+
+func periodic_link {
+    path path_periodic_link_0;
+    path path_periodic_link_1;
+}
+
+func ohci_dump {
+    path path_ohci_dump_0;
+    path path_ohci_dump_3;
+    path path_ohci_dump_2;
+    path path_ohci_dump_1;
+}
+
+func list_add {
+    path path_list_add_0;
+}
+
+func start_ed_unlink {
+    path path_start_ed_unlink_0;
+}
+
+func hcd_pci_poweroff_late {
+    path path_hcd_pci_poweroff_late_0;
+}
+
+func ohci_get_frame {
+    path path_ohci_get_frame_0;
+}
+
+func ohci_dump_status {
+    path path_ohci_dump_status_3;
+    path path_ohci_dump_status_5;
+    path path_ohci_dump_status_0;
+    path path_ohci_dump_status_7;
+    path path_ohci_dump_status_2;
+    path path_ohci_dump_status_8;
+    path path_ohci_dump_status_4;
+    path path_ohci_dump_status_6;
+    path path_ohci_dump_status_1;
+}
+
+func ohci_hub_descriptor {
+    path path_ohci_hub_descriptor_0;
+}
+
+func hcd_pci_runtime_resume {
+    path path_hcd_pci_runtime_resume_0;
+}
+
+func ohci_setup {
+    path path_ohci_setup_0;
+}
+
+func roothub_a {
+    path path_roothub_a_0;
+}
+
+func broken_suspend {
+    path path_broken_suspend_0;
+}
+
+func fill_registers_buffer {
+    path path_fill_registers_buffer_0;
+    path path_fill_registers_buffer_1;
+}
+
+func ohci_init {
+    path path_ohci_init_4;
+    path path_ohci_init_2;
+    path path_ohci_init_7;
+    path path_ohci_init_5;
+    path path_ohci_init_0;
+    path path_ohci_init_3;
+    path path_ohci_init_1;
+    path path_ohci_init_6;
+}
+
+func td_free {
+    path path_td_free_0;
+}
+
+func ohci_run {
+    path path_ohci_run_12;
+    path path_ohci_run_6;
+    path path_ohci_run_16;
+    path path_ohci_run_15;
+    path path_ohci_run_19;
+    path path_ohci_run_14;
+    path path_ohci_run_18;
+    path path_ohci_run_1;
+    path path_ohci_run_21;
+    path path_ohci_run_0;
+    path path_ohci_run_20;
+    path path_ohci_run_9;
+    path path_ohci_run_3;
+    path path_ohci_run_23;
+    path path_ohci_run_8;
+    path path_ohci_run_2;
+    path path_ohci_run_22;
+    path path_ohci_run_11;
+    path path_ohci_run_5;
+    path path_ohci_run_10;
+    path path_ohci_run_4;
+    path path_ohci_run_13;
+    path path_ohci_run_7;
+    path path_ohci_run_17;
+}
+
+func ohci_quirk_amd756 {
+    path path_ohci_quirk_amd756_1;
+    path path_ohci_quirk_amd756_0;
+}
+
+func td_alloc {
+    path path_td_alloc_0;
+}
+
+func _ohci_shutdown {
+    path path__ohci_shutdown_0;
+}
+
+func ohci_hub_control {
+    path path_ohci_hub_control_2;
+    path path_ohci_hub_control_0;
+    path path_ohci_hub_control_7;
+    path path_ohci_hub_control_5;
+    path path_ohci_hub_control_6;
+    path path_ohci_hub_control_3;
+    path path_ohci_hub_control_4;
+    path path_ohci_hub_control_1;
+}
+
+func for_each_companion {
+    path path_for_each_companion_0;
+}
+
+func ohci_bus_resume {
+    path path_ohci_bus_resume_0;
+}
+
+func td_done {
+    path path_td_done_1;
+    path path_td_done_2;
+    path path_td_done_0;
+}
+
+func hcd_pci_resume {
+    path path_hcd_pci_resume_0;
+}
+
+func hcd_pci_suspend_noirq {
+    path path_hcd_pci_suspend_noirq_0;
+    path path_hcd_pci_suspend_noirq_1;
+}
+
+func debug_periodic_open {
+    path path_debug_periodic_open_0;
+}
+
+func ohci_dump_intr_mask {
+    path path_ohci_dump_intr_mask_0;
+}
+
+func ohci_hcd_init {
+    path path_ohci_hcd_init_0;
+}
+
+func list_add_tail {
+    path path_list_add_tail_0;
+}
+
+func ehci_remove {
+    path path_ehci_remove_0;
+}
+
+func non_ehci_add {
+    path path_non_ehci_add_0;
+}
+
+func ehci_wait_for_companions {
+    path path_ehci_wait_for_companions_0;
+}
+
+func resume_common {
+    path path_resume_common_0;
+}
+
+func update_done_list {
+    path path_update_done_list_1;
+    path path_update_done_list_0;
+    path path_update_done_list_2;
+}
+
+func ed_get {
+    path path_ed_get_1;
+    path path_ed_get_0;
+}
+
+func fill_async_buffer {
+    path path_fill_async_buffer_0;
+}
+
+func fill_periodic_buffer {
+    path path_fill_periodic_buffer_0;
+}
+
+func finish_unlinks {
+    path path_finish_unlinks_83;
+    path path_finish_unlinks_22;
+    path path_finish_unlinks_62;
+    path path_finish_unlinks_92;
+    path path_finish_unlinks_3;
+    path path_finish_unlinks_100;
+    path path_finish_unlinks_43;
+    path path_finish_unlinks_73;
+    path path_finish_unlinks_12;
+    path path_finish_unlinks_17;
+    path path_finish_unlinks_57;
+    path path_finish_unlinks_87;
+    path path_finish_unlinks_26;
+    path path_finish_unlinks_34;
+    path path_finish_unlinks_64;
+    path path_finish_unlinks_7;
+    path path_finish_unlinks_104;
+    path path_finish_unlinks_47;
+    path path_finish_unlinks_77;
+    path path_finish_unlinks_48;
+    path path_finish_unlinks_21;
+    path path_finish_unlinks_61;
+    path path_finish_unlinks_91;
+    path path_finish_unlinks_30;
+    path path_finish_unlinks_99;
+    path path_finish_unlinks_38;
+    path path_finish_unlinks_68;
+    path path_finish_unlinks_11;
+    path path_finish_unlinks_52;
+    path path_finish_unlinks_82;
+    path path_finish_unlinks_25;
+    path path_finish_unlinks_33;
+    path path_finish_unlinks_95;
+    path path_finish_unlinks_2;
+    path path_finish_unlinks_103;
+    path path_finish_unlinks_42;
+    path path_finish_unlinks_72;
+    path path_finish_unlinks_15;
+    path path_finish_unlinks_16;
+    path path_finish_unlinks_56;
+    path path_finish_unlinks_86;
+    path path_finish_unlinks_29;
+    path path_finish_unlinks_37;
+    path path_finish_unlinks_67;
+    path path_finish_unlinks_6;
+    path path_finish_unlinks_46;
+    path path_finish_unlinks_51;
+    path path_finish_unlinks_76;
+    path path_finish_unlinks_81;
+    path path_finish_unlinks_20;
+    path path_finish_unlinks_60;
+    path path_finish_unlinks_1;
+    path path_finish_unlinks_90;
+    path path_finish_unlinks_41;
+    path path_finish_unlinks_98;
+    path path_finish_unlinks_71;
+    path path_finish_unlinks_10;
+    path path_finish_unlinks_55;
+    path path_finish_unlinks_85;
+    path path_finish_unlinks_24;
+    path path_finish_unlinks_32;
+    path path_finish_unlinks_5;
+    path path_finish_unlinks_94;
+    path path_finish_unlinks_45;
+    path path_finish_unlinks_102;
+    path path_finish_unlinks_75;
+    path path_finish_unlinks_14;
+    path path_finish_unlinks_19;
+    path path_finish_unlinks_59;
+    path path_finish_unlinks_89;
+    path path_finish_unlinks_28;
+    path path_finish_unlinks_97;
+    path path_finish_unlinks_36;
+    path path_finish_unlinks_9;
+    path path_finish_unlinks_66;
+    path path_finish_unlinks_79;
+    path path_finish_unlinks_50;
+    path path_finish_unlinks_80;
+    path path_finish_unlinks_23;
+    path path_finish_unlinks_63;
+    path path_finish_unlinks_93;
+    path path_finish_unlinks_0;
+    path path_finish_unlinks_101;
+    path path_finish_unlinks_40;
+    path path_finish_unlinks_70;
+    path path_finish_unlinks_13;
+    path path_finish_unlinks_54;
+    path path_finish_unlinks_84;
+    path path_finish_unlinks_27;
+    path path_finish_unlinks_35;
+    path path_finish_unlinks_65;
+    path path_finish_unlinks_4;
+    path path_finish_unlinks_44;
+    path path_finish_unlinks_74;
+    path path_finish_unlinks_49;
+    path path_finish_unlinks_18;
+    path path_finish_unlinks_58;
+    path path_finish_unlinks_31;
+    path path_finish_unlinks_88;
+    path path_finish_unlinks_39;
+    path path_finish_unlinks_96;
+    path path_finish_unlinks_69;
+    path path_finish_unlinks_8;
+    path path_finish_unlinks_53;
+    path path_finish_unlinks_78;
+}
+
+func ed_schedule {
+    path path_ed_schedule_5;
+    path path_ed_schedule_2;
+    path path_ed_schedule_0;
+    path path_ed_schedule_3;
+    path path_ed_schedule_4;
+    path path_ed_schedule_1;
+}
+
+func debug_async_open {
+    path path_debug_async_open_0;
+}
+
+func ed_halted {
+    path path_ed_halted_1;
+    path path_ed_halted_0;
+}
+
+func schedule_work {
+    path path_schedule_work_0;
+}
+
+func usb_maxpacket {
+    path path_usb_maxpacket_0;
+}
+
+func ohci_hub_status_data {
+    path path_ohci_hub_status_data_0;
+    path path_ohci_hub_status_data_3;
+    path path_ohci_hub_status_data_2;
+    path path_ohci_hub_status_data_1;
+    path path_ohci_hub_status_data_4;
+}
+
+func ohci_irq {
+    path path_ohci_irq_20;
+    path path_ohci_irq_41;
+    path path_ohci_irq_29;
+    path path_ohci_irq_1;
+    path path_ohci_irq_34;
+    path path_ohci_irq_22;
+    path path_ohci_irq_43;
+    path path_ohci_irq_31;
+    path path_ohci_irq_3;
+    path path_ohci_irq_48;
+    path path_ohci_irq_36;
+    path path_ohci_irq_8;
+    path path_ohci_irq_45;
+    path path_ohci_irq_17;
+    path path_ohci_irq_5;
+    path path_ohci_irq_38;
+    path path_ohci_irq_10;
+    path path_ohci_irq_47;
+    path path_ohci_irq_19;
+    path path_ohci_irq_7;
+    path path_ohci_irq_24;
+    path path_ohci_irq_12;
+    path path_ohci_irq_33;
+    path path_ohci_irq_21;
+    path path_ohci_irq_26;
+    path path_ohci_irq_14;
+    path path_ohci_irq_35;
+    path path_ohci_irq_23;
+    path path_ohci_irq_40;
+    path path_ohci_irq_28;
+    path path_ohci_irq_0;
+    path path_ohci_irq_37;
+    path path_ohci_irq_9;
+    path path_ohci_irq_42;
+    path path_ohci_irq_30;
+    path path_ohci_irq_2;
+    path path_ohci_irq_39;
+    path path_ohci_irq_11;
+    path path_ohci_irq_44;
+    path path_ohci_irq_16;
+    path path_ohci_irq_4;
+    path path_ohci_irq_25;
+    path path_ohci_irq_13;
+    path path_ohci_irq_46;
+    path path_ohci_irq_18;
+    path path_ohci_irq_6;
+    path path_ohci_irq_27;
+    path path_ohci_irq_15;
+    path path_ohci_irq_32;
+}
+
+func ohci_work {
+    path path_ohci_work_0;
+}
+
+func ohci_usb_reset {
+    path path_ohci_usb_reset_0;
+}
+
+func ohci_suspend {
+    path path_ohci_suspend_0;
+}
+
+func ed_alloc {
+    path path_ed_alloc_1;
+    path path_ed_alloc_0;
+}
+
+func finish_urb {
+    path path_finish_urb_2;
+    path path_finish_urb_3;
+    path path_finish_urb_0;
+    path path_finish_urb_1;
+}
+
+func ohci_urb_enqueue {
+    path path_ohci_urb_enqueue_1;
+    path path_ohci_urb_enqueue_4;
+    path path_ohci_urb_enqueue_15;
+    path path_ohci_urb_enqueue_0;
+    path path_ohci_urb_enqueue_11;
+    path path_ohci_urb_enqueue_14;
+    path path_ohci_urb_enqueue_10;
+    path path_ohci_urb_enqueue_7;
+    path path_ohci_urb_enqueue_13;
+    path path_ohci_urb_enqueue_6;
+    path path_ohci_urb_enqueue_3;
+    path path_ohci_urb_enqueue_12;
+    path path_ohci_urb_enqueue_9;
+    path path_ohci_urb_enqueue_2;
+    path path_ohci_urb_enqueue_8;
+    path path_ohci_urb_enqueue_5;
+}
+
+func ohci_pci_reset {
+    path path_ohci_pci_reset_0;
+}
+
+func usb_hcd_pci_shutdown {
+    path path_usb_hcd_pci_shutdown_0;
+}
+
+func hcd_pci_runtime_suspend {
+    path path_hcd_pci_runtime_suspend_0;
+}
+
+func ohci_rh_suspend {
+    path path_ohci_rh_suspend_5;
+    path path_ohci_rh_suspend_0;
+    path path_ohci_rh_suspend_15;
+    path path_ohci_rh_suspend_10;
+    path path_ohci_rh_suspend_3;
+    path path_ohci_rh_suspend_4;
+    path path_ohci_rh_suspend_14;
+    path path_ohci_rh_suspend_7;
+    path path_ohci_rh_suspend_9;
+    path path_ohci_rh_suspend_2;
+    path path_ohci_rh_suspend_17;
+    path path_ohci_rh_suspend_6;
+    path path_ohci_rh_suspend_13;
+    path path_ohci_rh_suspend_8;
+    path path_ohci_rh_suspend_16;
+    path path_ohci_rh_suspend_1;
+    path path_ohci_rh_suspend_12;
+    path path_ohci_rh_suspend_11;
+}
+
+func writel {
+    path path_writel_0;
+}
+
+func maybe_print_eds {
+    path path_maybe_print_eds_0;
+}
+
+func ohci_rh_resume {
+    path path_ohci_rh_resume_3;
+    path path_ohci_rh_resume_68;
+    path path_ohci_rh_resume_43;
+    path path_ohci_rh_resume_108;
+    path path_ohci_rh_resume_128;
+    path path_ohci_rh_resume_14;
+    path path_ohci_rh_resume_83;
+    path path_ohci_rh_resume_123;
+    path path_ohci_rh_resume_54;
+    path path_ohci_rh_resume_21;
+    path path_ohci_rh_resume_94;
+    path path_ohci_rh_resume_61;
+    path path_ohci_rh_resume_101;
+    path path_ohci_rh_resume_32;
+    path path_ohci_rh_resume_7;
+    path path_ohci_rh_resume_72;
+    path path_ohci_rh_resume_47;
+    path path_ohci_rh_resume_112;
+    path path_ohci_rh_resume_18;
+    path path_ohci_rh_resume_87;
+    path path_ohci_rh_resume_127;
+    path path_ohci_rh_resume_58;
+    path path_ohci_rh_resume_25;
+    path path_ohci_rh_resume_98;
+    path path_ohci_rh_resume_65;
+    path path_ohci_rh_resume_105;
+    path path_ohci_rh_resume_36;
+    path path_ohci_rh_resume_11;
+    path path_ohci_rh_resume_76;
+    path path_ohci_rh_resume_51;
+    path path_ohci_rh_resume_116;
+    path path_ohci_rh_resume_91;
+    path path_ohci_rh_resume_22;
+    path path_ohci_rh_resume_62;
+    path path_ohci_rh_resume_29;
+    path path_ohci_rh_resume_102;
+    path path_ohci_rh_resume_0;
+    path path_ohci_rh_resume_69;
+    path path_ohci_rh_resume_40;
+    path path_ohci_rh_resume_109;
+    path path_ohci_rh_resume_129;
+    path path_ohci_rh_resume_15;
+    path path_ohci_rh_resume_80;
+    path path_ohci_rh_resume_55;
+    path path_ohci_rh_resume_120;
+    path path_ohci_rh_resume_26;
+    path path_ohci_rh_resume_95;
+    path path_ohci_rh_resume_66;
+    path path_ohci_rh_resume_33;
+    path path_ohci_rh_resume_106;
+    path path_ohci_rh_resume_4;
+    path path_ohci_rh_resume_73;
+    path path_ohci_rh_resume_44;
+    path path_ohci_rh_resume_113;
+    path path_ohci_rh_resume_19;
+    path path_ohci_rh_resume_84;
+    path path_ohci_rh_resume_59;
+    path path_ohci_rh_resume_124;
+    path path_ohci_rh_resume_30;
+    path path_ohci_rh_resume_99;
+    path path_ohci_rh_resume_70;
+    path path_ohci_rh_resume_37;
+    path path_ohci_rh_resume_110;
+    path path_ohci_rh_resume_8;
+    path path_ohci_rh_resume_77;
+    path path_ohci_rh_resume_48;
+    path path_ohci_rh_resume_117;
+    path path_ohci_rh_resume_23;
+    path path_ohci_rh_resume_88;
+    path path_ohci_rh_resume_63;
+    path path_ohci_rh_resume_103;
+    path path_ohci_rh_resume_34;
+    path path_ohci_rh_resume_1;
+    path path_ohci_rh_resume_74;
+    path path_ohci_rh_resume_41;
+    path path_ohci_rh_resume_114;
+    path path_ohci_rh_resume_12;
+    path path_ohci_rh_resume_81;
+    path path_ohci_rh_resume_121;
+    path path_ohci_rh_resume_52;
+    path path_ohci_rh_resume_27;
+    path path_ohci_rh_resume_92;
+    path path_ohci_rh_resume_67;
+    path path_ohci_rh_resume_38;
+    path path_ohci_rh_resume_107;
+    path path_ohci_rh_resume_5;
+    path path_ohci_rh_resume_78;
+    path path_ohci_rh_resume_45;
+    path path_ohci_rh_resume_118;
+    path path_ohci_rh_resume_85;
+    path path_ohci_rh_resume_16;
+    path path_ohci_rh_resume_56;
+    path path_ohci_rh_resume_125;
+    path path_ohci_rh_resume_31;
+    path path_ohci_rh_resume_96;
+    path path_ohci_rh_resume_2;
+    path path_ohci_rh_resume_71;
+    path path_ohci_rh_resume_42;
+    path path_ohci_rh_resume_111;
+    path path_ohci_rh_resume_9;
+    path path_ohci_rh_resume_82;
+    path path_ohci_rh_resume_49;
+    path path_ohci_rh_resume_122;
+    path path_ohci_rh_resume_20;
+    path path_ohci_rh_resume_89;
+    path path_ohci_rh_resume_60;
+    path path_ohci_rh_resume_35;
+    path path_ohci_rh_resume_100;
+    path path_ohci_rh_resume_6;
+    path path_ohci_rh_resume_75;
+    path path_ohci_rh_resume_115;
+    path path_ohci_rh_resume_46;
+    path path_ohci_rh_resume_13;
+    path path_ohci_rh_resume_86;
+    path path_ohci_rh_resume_53;
+    path path_ohci_rh_resume_126;
+    path path_ohci_rh_resume_24;
+    path path_ohci_rh_resume_93;
+    path path_ohci_rh_resume_64;
+    path path_ohci_rh_resume_39;
+    path path_ohci_rh_resume_104;
+    path path_ohci_rh_resume_10;
+    path path_ohci_rh_resume_79;
+    path path_ohci_rh_resume_119;
+    path path_ohci_rh_resume_50;
+    path path_ohci_rh_resume_17;
+    path path_ohci_rh_resume_90;
+    path path_ohci_rh_resume_57;
+    path path_ohci_rh_resume_97;
+    path path_ohci_rh_resume_28;
+}
+
+func ohci_start_port_reset {
+    path path_ohci_start_port_reset_0;
+}
+
+func periodic_reinit {
+    path path_periodic_reinit_0;
+}
+
+func td_fill {
+    path path_td_fill_1;
+    path path_td_fill_0;
+}
+
+func show_list {
+    path path_show_list_0;
+}
+
+func ohci_quirk_ns {
+    path path_ohci_quirk_ns_0;
+}
+
+func process_done_list {
+    path path_process_done_list_0;
+}
+
+func suspend_common {
+    path path_suspend_common_1;
+    path path_suspend_common_0;
+}
+
+func debug_output {
+    path path_debug_output_0;
+}
+
+func ohci_resume {
+    path path_ohci_resume_1;
+    path path_ohci_resume_8;
+    path path_ohci_resume_3;
+    path path_ohci_resume_0;
+    path path_ohci_resume_5;
+    path path_ohci_resume_7;
+    path path_ohci_resume_2;
+    path path_ohci_resume_9;
+    path path_ohci_resume_4;
+    path path_ohci_resume_6;
+}
+
+func td_submit_urb {
+    path path_td_submit_urb_6;
+    path path_td_submit_urb_0;
+    path path_td_submit_urb_5;
+    path path_td_submit_urb_2;
+    path path_td_submit_urb_7;
+    path path_td_submit_urb_1;
+    path path_td_submit_urb_3;
+    path path_td_submit_urb_4;
+}
+
+func ohci_quirk_opti {
+    path path_ohci_quirk_opti_0;
+}
+
+func ohci_bus_suspend {
+    path path_ohci_bus_suspend_0;
+}
+
+func ohci_shutdown {
+    path path_ohci_shutdown_0;
+}
+
+func ohci_quirk_toshiba_scc {
+    path path_ohci_quirk_toshiba_scc_0;
+}
+
+func readl {
+    path path_readl_0;
+}
+
+func ohci_dump_roothub {
+    path path_ohci_dump_roothub_1;
+    path path_ohci_dump_roothub_4;
+    path path_ohci_dump_roothub_6;
+    path path_ohci_dump_roothub_3;
+    path path_ohci_dump_roothub_5;
+    path path_ohci_dump_roothub_7;
+    path path_ohci_dump_roothub_0;
+    path path_ohci_dump_roothub_2;
+    path path_ohci_dump_roothub_8;
+}
+
+func ohci_root_hub_state_changes {
+    path path_ohci_root_hub_state_changes_9;
+    path path_ohci_root_hub_state_changes_5;
+    path path_ohci_root_hub_state_changes_7;
+    path path_ohci_root_hub_state_changes_0;
+    path path_ohci_root_hub_state_changes_2;
+    path path_ohci_root_hub_state_changes_8;
+    path path_ohci_root_hub_state_changes_4;
+    path path_ohci_root_hub_state_changes_1;
+    path path_ohci_root_hub_state_changes_6;
+    path path_ohci_root_hub_state_changes_3;
+}
+
+func lockdep_init_map_wait {
+    path path_lockdep_init_map_wait_0;
+}
+
+func root_port_reset {
+    path path_root_port_reset_0;
+    path path_root_port_reset_1;
+    path path_root_port_reset_2;
+}
+
+func alloc_buffer {
+    path path_alloc_buffer_0;
+}
+
+func roothub_status {
+    path path_roothub_status_0;
+}
+
+func __list_del_entry {
+    path path___list_del_entry_0;
+}
+
+func hcd_pci_suspend {
+    path path_hcd_pci_suspend_0;
+}
+
+func ed_deschedule {
+    path path_ed_deschedule_1;
+    path path_ed_deschedule_0;
+    path path_ed_deschedule_3;
+    path path_ed_deschedule_4;
+    path path_ed_deschedule_2;
+}
+
+func ohci_endpoint_disable {
+    path path_ohci_endpoint_disable_3;
+    path path_ohci_endpoint_disable_0;
+    path path_ohci_endpoint_disable_1;
+    path path_ohci_endpoint_disable_4;
+    path path_ohci_endpoint_disable_2;
+}
+
+func usb_hcd_pci_probe {
+    path path_usb_hcd_pci_probe_6;
+    path path_usb_hcd_pci_probe_3;
+    path path_usb_hcd_pci_probe_1;
+    path path_usb_hcd_pci_probe_4;
+    path path_usb_hcd_pci_probe_7;
+    path path_usb_hcd_pci_probe_8;
+    path path_usb_hcd_pci_probe_5;
+    path path_usb_hcd_pci_probe_2;
+    path path_usb_hcd_pci_probe_0;
+}
+
+func ohci_restart {
+    path path_ohci_restart_5;
+    path path_ohci_restart_0;
+    path path_ohci_restart_9;
+    path path_ohci_restart_3;
+    path path_ohci_restart_1;
+    path path_ohci_restart_6;
+    path path_ohci_restart_4;
+    path path_ohci_restart_8;
+    path path_ohci_restart_2;
+    path path_ohci_restart_7;
+}
+
+func roothub_b {
+    path path_roothub_b_0;
+}
+
+func usb_hcd_pci_remove {
+    path path_usb_hcd_pci_remove_1;
+    path path_usb_hcd_pci_remove_0;
+}
+
+func urb_free_priv {
+    path path_urb_free_priv_1;
+    path path_urb_free_priv_0;
+}
+
+func create_debug_files {
+    path path_create_debug_files_0;
+}
+
+func periodic_unlink {
+    path path_periodic_unlink_0;
+}
+
+func lockdep_init_map {
+    path path_lockdep_init_map_0;
+}
+
+func list_del {
+    path path_list_del_0;
+}
+
+func ed_free {
+    path path_ed_free_0;
+}
+
+func ohci_quirk_nec_worker {
+    path path_ohci_quirk_nec_worker_0;
+}
+
+func ohci_quirk_nec {
+    path path_ohci_quirk_nec_0;
+}
+
+func debug_registers_open {
+    path path_debug_registers_open_0;
+}
+
+func ohci_urb_dequeue {
+    path path_ohci_urb_dequeue_1;
+    path path_ohci_urb_dequeue_0;
+}
+
+func ohci_start {
+    path path_ohci_start_0;
+}
+

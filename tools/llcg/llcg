@@ -34,6 +34,9 @@ from interfaces import (  # noqa: E402
     resolve_pre_presets,
     write_groups_file,
 )
+from group_scopes import (  # noqa: E402
+    collect_group_mutator_payload,
+)
 from registry import (  # noqa: E402
     apply_default_post_mutators,
 )
@@ -68,6 +71,18 @@ def first_existing(candidates):
         if candidate and candidate.exists():
             return candidate
     return None
+
+
+def resolve_existing_path(raw_path: str) -> Path:
+    candidate = Path(raw_path).expanduser()
+    if candidate.is_absolute():
+        return candidate.resolve()
+    resolved = first_existing([
+        (Path.cwd() / candidate).resolve(),
+        (REPO_ROOT / candidate).resolve(),
+        (REPO_ROOT.parent.parent / candidate).resolve(),
+    ])
+    return resolved or candidate.resolve()
 
 
 def run_logged(cmd, **kwargs):
@@ -217,6 +232,7 @@ def load_groups_files(paths: list[Path]) -> list[dict]:
         return {
             "label": "",
             "entry_point": False,
+            "entry_point_override": "",
             "discard_unreachable": False,
             "rank_hint": "",
             "members": [],
@@ -264,7 +280,10 @@ def load_groups_files(paths: list[Path]) -> list[dict]:
                 groups.append(current)
                 groups_by_label[current["label"]] = current
                 return
-            existing["entry_point"] = existing["entry_point"] or current["entry_point"]
+            if current.get("entry_point_override") == "set":
+                existing["entry_point"] = True
+            elif current.get("entry_point_override") == "clear":
+                existing["entry_point"] = False
             merge_group_metadata(existing, current)
             existing["discard_unreachable"] = (
                 existing["discard_unreachable"] or current["discard_unreachable"]
@@ -289,7 +308,10 @@ def load_groups_files(paths: list[Path]) -> list[dict]:
 
         existing = groups_by_label.get(current["label"])
         if existing is not None:
-            existing["entry_point"] = existing["entry_point"] or current["entry_point"]
+            if current.get("entry_point_override") == "set":
+                existing["entry_point"] = True
+            elif current.get("entry_point_override") == "clear":
+                existing["entry_point"] = False
             merge_group_metadata(existing, current)
             existing["discard_unreachable"] = (
                 existing["discard_unreachable"] or current["discard_unreachable"]
@@ -344,7 +366,13 @@ def load_groups_files(paths: list[Path]) -> list[dict]:
                 while True:
                     if line.startswith("[entry_point]"):
                         current["entry_point"] = True
+                        current["entry_point_override"] = "set"
                         line = line[len("[entry_point]"):].strip()
+                        continue
+                    if line.startswith("[no_entry_point]"):
+                        current["entry_point"] = False
+                        current["entry_point_override"] = "clear"
+                        line = line[len("[no_entry_point]"):].strip()
                         continue
                     if line.startswith("[not_reach_then_discard]"):
                         current["discard_unreachable"] = True
@@ -500,97 +528,6 @@ def format_struct_group_html_label(group: dict, visible_members: list[str]) -> s
             )
     rows.append("</TABLE>")
     return "<" + "".join(rows) + ">"
-
-
-def collapse_graph_by_groups(graph: dict, groups: list[dict]) -> dict:
-    member_to_group: dict[str, str] = {}
-    nodes_in_graph = graph_nodes_in_use(graph)
-    node_labels: dict[str, str] = {}
-    node_html_labels: dict[str, str] = {}
-
-    def format_collapsed_group_label(group: dict, visible_members: list[str]) -> str:
-        struct_type = group.get("struct_type") or "struct"
-        source_file = group.get("source_file") or "unknown"
-        source_line = group.get("source_line") or 0
-        location = f"{source_file}:{source_line}" if source_line else source_file
-        member_labels = group.get("member_labels", {})
-        lines = [
-            f"struct {struct_type}",
-            group["label"],
-            f"in file {location}",
-        ]
-        pointer_lines = [
-            member_labels.get(member, member)
-            for member in visible_members
-        ]
-        if pointer_lines:
-            lines.extend(["", "function pointers:", *pointer_lines])
-        return "\n".join(lines)
-
-    for group in groups:
-        member_to_group[group["label"]] = group["label"]
-        for member in group["members"]:
-            member_to_group[member] = group["label"]
-        visible_members = [member for member in group["members"] if member in nodes_in_graph]
-        if visible_members:
-            node_labels[group["label"]] = format_collapsed_group_label(group, visible_members)
-            node_html_labels[group["label"]] = format_struct_group_html_label(group, visible_members)
-
-    grouped_nodes = {node for node in nodes_in_graph if node in member_to_group}
-    collapsed = {
-        "nodes": set(),
-        "edges": {},
-        "edge_labels": {},
-        "node_labels": node_labels,
-        "node_html_labels": node_html_labels,
-    }
-
-    for src in grouped_nodes:
-        src_group = member_to_group[src]
-        collapsed["nodes"].add(src_group)
-        collapsed["edges"].setdefault(src_group, set())
-        visited = {src}
-        worklist = collections.deque([src])
-        while worklist:
-            current = worklist.popleft()
-            for nxt in graph["edges"].get(current, set()):
-                if nxt in visited:
-                    continue
-                visited.add(nxt)
-                dst_group = member_to_group.get(nxt)
-                if dst_group:
-                    if dst_group != src_group:
-                        collapsed["nodes"].add(dst_group)
-                        collapsed["edges"].setdefault(dst_group, set())
-                        collapsed["edges"][src_group].add(dst_group)
-                        collapsed["edge_labels"].setdefault((src_group, dst_group), set()).add(
-                            f"{src} -> {nxt}"
-                        )
-                    continue
-                worklist.append(nxt)
-
-    remove_isolated_nodes(collapsed)
-    active_edges = {
-        (src, dst)
-        for src, dsts in collapsed["edges"].items()
-        for dst in dsts
-    }
-    collapsed["edge_labels"] = {
-        edge: labels
-        for edge, labels in collapsed.get("edge_labels", {}).items()
-        if edge in active_edges
-    }
-    collapsed["node_labels"] = {
-        node: label
-        for node, label in collapsed.get("node_labels", {}).items()
-        if node in collapsed["nodes"]
-    }
-    collapsed["node_html_labels"] = {
-        node: label
-        for node, label in collapsed.get("node_html_labels", {}).items()
-        if node in collapsed["nodes"]
-    }
-    return collapsed
 
 
 def write_dot_graph(
@@ -1004,31 +941,6 @@ def build_output_stem(scope_label: str, kernel_version: str, arch: str, bc_list_
     return "_".join(part for part in stem_parts if part)
 
 
-def render_graphviz(dot_path: Path):
-    dot_bin = shutil.which("dot")
-    if not dot_bin:
-        LOGGER.warning("Graphviz 'dot' not found; skipping render for %s", dot_path)
-        return None, None
-    if not dot_path.is_file():
-        LOGGER.warning("DOT file not found; skipping render for %s", dot_path)
-        return None, None
-
-    svg_path = dot_path.with_suffix(".svg")
-    pdf_path = dot_path.with_suffix(".pdf")
-    run_logged([dot_bin, "-Tsvg", str(dot_path), "-o", str(svg_path)])
-    run_logged([dot_bin, "-Tpdf", str(dot_path), "-o", str(pdf_path)])
-    LOGGER.debug("Rendered SVG: %s", svg_path)
-    LOGGER.debug("Rendered PDF: %s", pdf_path)
-    return svg_path, pdf_path
-
-
-def remove_stale_collapsed_outputs(out_dir: Path, stem: str) -> None:
-    for suffix in (".dot", ".svg", ".pdf"):
-        candidate = out_dir / f"{stem}_cg_collapsed{suffix}"
-        if candidate.exists():
-            candidate.unlink()
-
-
 def collect_interface_mutator_payload(
     *,
     kernel_root: Path,
@@ -1212,7 +1124,7 @@ def load_mutator_manifest(path: Path) -> dict:
     payload = read_json(path)
     if payload.get("command") != "mutator":
         raise ValueError(f"{path} is not a llcg mutator manifest")
-    if payload.get("mutator_kind") not in {"interfaces", "files"}:
+    if payload.get("mutator_kind") not in {"interfaces", "files", "groups"}:
         raise ValueError(f"{path} is not a supported mutator manifest")
     return payload
 
@@ -1289,6 +1201,10 @@ def merge_mutator_payloads(mutator_payloads: list[tuple[Path, dict]], out_dir: P
         if kind == "interfaces":
             values = list(details.get("interfaces", []))
             label = details.get("interface_label", "")
+            rel_files = list(details.get("scanned_files", []))
+        elif kind == "groups":
+            values = []
+            label = details.get("scope_label", "")
             rel_files = list(details.get("scanned_files", []))
         else:
             values = list(details.get("files", []))
@@ -1372,6 +1288,13 @@ def prepare_mutator_context(args, out_dir: Path) -> dict:
             "scope_label": "",
         }
     post_mutators.update(apply_default_post_mutators(args=args, context=context))
+    explicit_extra_edges = resolve_existing_path(args.extra_edges_file) if args.extra_edges_file else None
+    if explicit_extra_edges:
+        extra_edges = list(post_mutators.get("extra_edges", []))
+        explicit_extra_edges_str = str(explicit_extra_edges)
+        if explicit_extra_edges_str not in extra_edges:
+            extra_edges.append(explicit_extra_edges_str)
+        post_mutators["extra_edges"] = extra_edges
     groups_file = combine_groups_files(
         merged["groups_files"],
         out_dir,
@@ -1584,7 +1507,7 @@ def run_pipeline(
             str(kallgraph_bin),
             f"@{bc_list_path}",
             f"-OutputDir={kallgraph_root}",
-            "-ThreadNum=1",
+            f"-ThreadNum={max(1, int(os.environ.get('LLCG_JOBS', '1') or '1'))}",
         ]
         + ([f"-ExtAPIPath={(DEFAULT_BUILD_DIR / 'svf' / 'lib' / 'extapi.bc').resolve()}"])
     )
@@ -1654,29 +1577,10 @@ def run_pipeline(
 
     kallgraph_copy = out_dir / f"{stem}_kallgraph.txt"
     shutil.copy2(latest_callgraph, kallgraph_copy)
-    dot_svg_path, dot_pdf_path = render_graphviz(dot_path)
-    collapsed_path = None
-    collapsed_svg_path = None
-    collapsed_pdf_path = None
-    if groups:
-        collapsed_graph = collapse_graph_by_groups(graph, groups)
-        collapsed_edges = sum(len(dsts) for dsts in collapsed_graph["edges"].values())
-        if collapsed_graph["nodes"] or collapsed_edges:
-            collapsed_path = out_dir / f"{stem}_cg_collapsed.dot"
-            write_dot_graph(collapsed_path, collapsed_graph)
-            collapsed_svg_path, collapsed_pdf_path = render_graphviz(collapsed_path)
-        else:
-            LOGGER.debug("Skipping collapsed graph because mutator groups did not match graph nodes")
-            remove_stale_collapsed_outputs(out_dir, stem)
-    else:
-        remove_stale_collapsed_outputs(out_dir, stem)
-
     LOGGER.debug("KallGraph output dir: %s", kallgraph_output)
     LOGGER.debug("KallGraph callgraph: %s", kallgraph_copy)
     LOGGER.debug("Raw callgraph DOT (internal): %s", raw_dot_path)
     LOGGER.debug("Final callgraph DOT: %s", dot_path)
-    if collapsed_path:
-        LOGGER.debug("Collapsed callgraph DOT: %s", collapsed_path)
     LOGGER.debug("Callgraph log: %s", log_path)
     return {
         "scope_label": scope_label,
@@ -1684,11 +1588,6 @@ def run_pipeline(
         "groups": groups_path,
         "kallgraph": kallgraph_copy,
         "dot": dot_path,
-        "dot_svg": dot_svg_path,
-        "dot_pdf": dot_pdf_path,
-        "collapsed": collapsed_path,
-        "collapsed_svg": collapsed_svg_path,
-        "collapsed_pdf": collapsed_pdf_path,
         "log": log_path,
     }
 
@@ -1734,18 +1633,8 @@ def build_run_manifest(
         result_paths = {
             "kallgraph_text": stable_path(Path(result["kallgraph"]), out_dir),
             "cg_dot": stable_path(Path(result["dot"]), out_dir),
-            "cg_svg": stable_path(Path(result["dot_svg"]), out_dir) if result.get("dot_svg") else "",
-            "cg_pdf": stable_path(Path(result["dot_pdf"]), out_dir) if result.get("dot_pdf") else "",
             "log_file": stable_path(Path(result["log"]), out_dir),
         }
-        if result.get("collapsed"):
-            result_paths.update(
-                {
-                    "cg_collapsed_dot": stable_path(Path(result["collapsed"]), out_dir),
-                    "cg_collapsed_svg": stable_path(Path(result["collapsed_svg"]), out_dir) if result.get("collapsed_svg") else "",
-                    "cg_collapsed_pdf": stable_path(Path(result["collapsed_pdf"]), out_dir) if result.get("collapsed_pdf") else "",
-                }
-            )
         detail_paths.update(result_paths)
 
     path_entries: dict[str, Path] = {"manifest": manifest_path.resolve()}
@@ -1902,6 +1791,33 @@ def command_genmutator_files(args) -> int:
     return print_result(payload, args.json)
 
 
+def command_genmutator_groups(args) -> int:
+    LOGGER.debug("Handling genmutator groups command")
+    kernel_root = Path(args.source_dir).resolve()
+    out_dir = Path(args.output).resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    payload, _manifest_path = collect_group_mutator_payload(
+        kernel_root=kernel_root,
+        files=args.files,
+        scope_name=args.scope_name,
+        arch=args.arch,
+        out_dir=out_dir,
+        scope_list=Path(args.scope_list).resolve() if args.scope_list else None,
+        groups_extension=resolve_existing_path(args.groups_extension) if args.groups_extension else None,
+        normalize_scope_files=normalize_scope_files,
+        read_lines=read_lines,
+        sanitize_tag=sanitize_tag,
+        scope_name_from_files=scope_name_from_files,
+        stable_path=stable_path,
+        path_view=path_view,
+        artifact_entry=artifact_entry,
+        emit_runtime_payload=emit_runtime_payload,
+        write_json=write_json,
+        write_lines=write_lines,
+    )
+    return print_result(payload, args.json)
+
+
 def command_inspect(args) -> int:
     LOGGER.debug("Handling inspect command")
     manifest_path = Path(args.target).resolve()
@@ -2005,11 +1921,25 @@ def build_parser() -> argparse.ArgumentParser:
     genmutator_files.add_argument("--arch", default="x86_64")
     genmutator_files.add_argument("--json", action="store_true")
     genmutator_files.set_defaults(handler=command_genmutator_files)
+    genmutator_groups = genmutator_subparsers.add_parser(
+        "groups",
+        help="Generate a group-only mutator manifest from scoped kernel sources.",
+    )
+    genmutator_groups.add_argument("--source-dir", required=True)
+    genmutator_groups.add_argument("--file", dest="files", action="append", default=[])
+    genmutator_groups.add_argument("--scope-name", default="")
+    genmutator_groups.add_argument("--scope-list", default="")
+    genmutator_groups.add_argument("--groups-extension", default="")
+    genmutator_groups.add_argument("--output", "-o", default=str(DEFAULT_OUT_DIR))
+    genmutator_groups.add_argument("--arch", default="x86_64")
+    genmutator_groups.add_argument("--json", action="store_true")
+    genmutator_groups.set_defaults(handler=command_genmutator_groups)
 
     run_parser = subparsers.add_parser("run", help="Run KallGraph and the LLVM callgraph pass using prebuilt native components.")
     run_parser.add_argument("--bitcode-list", default="")
     run_parser.add_argument("--llbic-json", default="")
     run_parser.add_argument("--all-bc-list", default="")
+    run_parser.add_argument("--extra-edges-file", default="")
     run_parser.add_argument("--filter", dest="filters", action="append", default=[])
     run_parser.add_argument("--scope-name", default="")
     add_common_runtime_flags(run_parser)

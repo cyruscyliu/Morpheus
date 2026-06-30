@@ -2,6 +2,8 @@
 set -euo pipefail
 
 tool_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${tool_root}/../_shared/scripts/parallelism.sh"
+repo_root="$(cd "${tool_root}/../.." && pwd)"
 legacy="${tool_root}/llcg"
 runtime_helper_default="$(cd "${tool_root}/../llbase/scripts" && pwd)/runtime.sh"
 result_file="${MORPHEUS_LLCG_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
@@ -11,11 +13,14 @@ clang="${MORPHEUS_LLCG_CLANG:-15}"
 generator="${MORPHEUS_LLCG_GENERATOR:-}"
 source_dir="${MORPHEUS_LLCG_SOURCE_DIR:-}"
 scope_list="${MORPHEUS_LLCG_SCOPE_LIST:-}"
+groups_extension="${MORPHEUS_LLCG_GROUPS_EXTENSION:-}"
+extra_edges_file="${MORPHEUS_LLCG_EXTRA_EDGES_FILE:-}"
 file_list="${MORPHEUS_LLCG_FILE_FILE:-}"
 inline_files="${MORPHEUS_LLCG_FILE:-}"
 filter_list="${MORPHEUS_LLCG_FILTER_FILE:-}"
 inline_filters="${MORPHEUS_LLCG_FILTER:-}"
 llbase_contract="${MORPHEUS_LLCG_LLBASE_CONTRACT:-}"
+jobs="${MORPHEUS_LLCG_JOBS:-$(morpheus_default_jobs)}"
 kernel_version=""
 llbic_source_dir=""
 python_deps_dir="${output_dir}/python-deps"
@@ -25,6 +30,14 @@ if [ -z "${file_list}" ] && [ -s ".morpheus-file.txt" ]; then
 fi
 if [ -z "${filter_list}" ] && [ -s ".morpheus-filter.txt" ]; then
   filter_list="$(pwd)/.morpheus-filter.txt"
+fi
+
+if [ -n "${groups_extension}" ] && [[ "${groups_extension}" != /* ]]; then
+  groups_extension="${repo_root}/${groups_extension#./}"
+fi
+
+if [ -n "${extra_edges_file}" ] && [[ "${extra_edges_file}" != /* ]]; then
+  extra_edges_file="${repo_root}/${extra_edges_file#./}"
 fi
 
 filter_mounts=()
@@ -106,6 +119,27 @@ if [ -n "${generator}" ]; then
       [ -n "${scope_list}" ] && cmd+=("--scope-list" "${scope_list}")
       [ -n "${MORPHEUS_LLCG_ARCH:-}" ] && cmd+=("--arch" "${MORPHEUS_LLCG_ARCH}")
       ;;
+    groups)
+      cmd=("${legacy}" genmutator groups "--source-dir" "${source_dir}" "--output" "${output_dir}" "--json")
+      [ -n "${MORPHEUS_LLCG_SCOPE_NAME:-}" ] && cmd+=("--scope-name" "${MORPHEUS_LLCG_SCOPE_NAME}")
+      [ -n "${scope_list}" ] && cmd+=("--scope-list" "${scope_list}")
+      [ -n "${groups_extension}" ] && cmd+=("--groups-extension" "${groups_extension}")
+      [ -n "${MORPHEUS_LLCG_ARCH:-}" ] && cmd+=("--arch" "${MORPHEUS_LLCG_ARCH}")
+      if [ -n "${inline_files}" ]; then
+        while IFS= read -r item; do
+          [ -n "${item}" ] || continue
+          cmd+=("--file" "${item}")
+        done <<< "${inline_files}"
+      elif [ -n "${file_list}" ] && [ -s "${file_list}" ]; then
+        while IFS= read -r item; do
+          [ -n "${item}" ] || continue
+          cmd+=("--file" "${item}")
+        done < "${file_list}"
+      elif [ -z "${scope_list}" ]; then
+        echo "llcg exec with generator=groups requires --scope-list or at least one --file" >&2
+        exit 1
+      fi
+      ;;
     *)
       echo "unsupported llcg generator: ${generator}" >&2
       exit 1
@@ -123,6 +157,7 @@ if [ -n "${generator}" ]; then
     "${output_dir}" \
     "${python_deps_dir}" \
     "${source_dir}" \
+    "${groups_extension}" \
     "${llbase_contract}" \
     "${file_list}" \
     "${scope_list}" \
@@ -200,6 +235,7 @@ cmd=("${legacy}" run "--output" "${output_dir}" "--clang" "${clang}" "--json")
 [ -n "${MORPHEUS_LLCG_BITCODE_LIST:-}" ] && cmd+=("--bitcode-list" "${MORPHEUS_LLCG_BITCODE_LIST}")
 [ -n "${MORPHEUS_LLCG_LLBIC_JSON:-}" ] && cmd+=("--llbic-json" "${MORPHEUS_LLCG_LLBIC_JSON}")
 [ -n "${MORPHEUS_LLCG_ALL_BC_LIST:-}" ] && cmd+=("--all-bc-list" "${MORPHEUS_LLCG_ALL_BC_LIST}")
+[ -n "${extra_edges_file}" ] && cmd+=("--extra-edges-file" "${extra_edges_file}")
 [ -n "${MORPHEUS_LLCG_SCOPE_NAME:-}" ] && cmd+=("--scope-name" "${MORPHEUS_LLCG_SCOPE_NAME}")
 
 if [ -n "${inline_filters}" ]; then
@@ -226,6 +262,7 @@ llbase_exec_in_container \
   "${llbase_contract}" \
   "${filter_list}" \
   "${filter_mounts[@]}" \
+  "${extra_edges_file}" \
   "${MORPHEUS_LLCG_BITCODE_LIST:-}" \
   "${MORPHEUS_LLCG_LLBIC_JSON:-}" \
   "${MORPHEUS_LLCG_ALL_BC_LIST:-}" \
@@ -233,12 +270,12 @@ llbase_exec_in_container \
   -- \
   env \
   "LLCG_BUILD_DIR=${build_dir}" \
+  "LLCG_JOBS=${jobs}" \
   "${cmd[@]}" \
   > "${tmp_json}" 2> "${tmp_err}"
 llcg_rc=$?
 set -e
 node - "${tmp_json}" "${tmp_err}" "${result_file}" "${output_dir}" "${llcg_rc}" <<'EOF'
-const cp = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
@@ -283,45 +320,10 @@ function pathView(filePath) {
     exists: fs.existsSync(filePath),
   };
 }
-function resolveDetailPath(detailPath) {
-  if (!detailPath) {
-    return "";
-  }
-  return path.isAbsolute(detailPath)
-    ? detailPath
-    : path.resolve(outputDir, detailPath);
-}
-function renderMissingGraphviz(dotKey, svgKey, pdfKey) {
-  const details = payload.details && typeof payload.details === "object" ? payload.details : {};
-  const dotPath = resolveDetailPath(details[dotKey]);
-  if (!dotPath || !fs.existsSync(dotPath)) {
-    return;
-  }
-  const svgPath = dotPath.replace(/\.dot$/, ".svg");
-  const pdfPath = dotPath.replace(/\.dot$/, ".pdf");
-  const dotBin = cp.spawnSync("which", ["dot"], { encoding: "utf8" }).stdout.trim();
-  if (!dotBin) {
-    return;
-  }
-  for (const [format, outputPath] of [["svg", svgPath], ["pdf", pdfPath]]) {
-    const result = cp.spawnSync(dotBin, [`-T${format}`, dotPath, "-o", outputPath], {
-      encoding: "utf8",
-    });
-    if (result.status !== 0) {
-      return;
-    }
-  }
-  payload.details[svgKey] = stablePath(svgPath);
-  payload.details[pdfKey] = stablePath(pdfPath);
-  pathEntries[svgKey] = pathView(svgPath);
-  pathEntries[pdfKey] = pathView(pdfPath);
-}
 if (payload.status === "success") {
   if (!payload.details || typeof payload.details !== "object") {
     payload.details = {};
   }
-  renderMissingGraphviz("cg_dot", "cg_svg", "cg_pdf");
-  renderMissingGraphviz("cg_collapsed_dot", "cg_collapsed_svg", "cg_collapsed_pdf");
   if (payload.paths && typeof payload.paths === "object") {
     payload.paths = pathEntries;
   }

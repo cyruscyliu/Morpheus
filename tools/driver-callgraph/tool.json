@@ -16,10 +16,24 @@
         ],
         "path": true
       },
-      "llcg-manifest": {
+      "llcg-dot": {
         "aliases": [
-          "llcg-manifest",
-          "llcgManifest"
+          "llcg-dot",
+          "llcgDot"
+        ],
+        "path": true
+      },
+      "groups-file": {
+        "aliases": [
+          "groups-file",
+          "groupsFile"
+        ],
+        "path": true
+      },
+      "prefix-file": {
+        "aliases": [
+          "prefix-file",
+          "prefixFile"
         ],
         "path": true
       },
@@ -45,14 +59,41 @@
         "manifest": {
           "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph-manifest.json"
         },
-        "graph-dot": {
-          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph.dot"
+        "graph-display-dot": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph-display.dot"
         },
-        "graph-svg": {
-          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph.svg"
+        "graph-llcg-input-dot": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph-llcg-input.dot"
         },
-        "graph-pdf": {
-          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph.pdf"
+        "graph-slice-dot": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph-slice.dot"
+        },
+        "graph-collapsed-dot": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph-collapsed.dot"
+        },
+        "debug-json": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph-debug.json"
+        },
+        "roots-json": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph-roots.json"
+        },
+        "groups-json": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph-groups.json"
+        },
+        "graph-raw-dot": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph-raw.dot"
+        },
+        "graph-display-svg": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph-display.svg"
+        },
+        "graph-raw-svg": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph-raw.svg"
+        },
+        "graph-display-pdf": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph-display.pdf"
+        },
+        "graph-raw-pdf": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph-raw.pdf"
         },
         "build-log": {
           "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/build.log"
@@ -61,11 +102,14 @@
       "commands": {
         "build": {
           "requiredFlags": [
-            "llcg-manifest",
+            "llcg-dot",
             "output"
           ],
           "scalarFlags": [
-            "llcg-manifest",
+            "build-dir-key",
+            "llcg-dot",
+            "groups-file",
+            "prefix-file",
             "output",
             "title"
           ],
@@ -86,8 +130,14 @@
             },
             "details": {
               "output": "{output}",
-              "llcg_manifest": {
-                "fromFlag": "llcg-manifest"
+              "llcg_dot": {
+                "fromFlag": "llcg-dot"
+              },
+              "groups_file": {
+                "fromFlag": "groups-file"
+              },
+              "prefix_file": {
+                "fromFlag": "prefix-file"
               }
             }
           }

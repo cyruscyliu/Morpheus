@@ -74,6 +74,8 @@ private:
 		// If true, group members are execution entry points (distinct visual style).
 		// Members are included in the reachability target set.
 		bool entryPoint = false;
+		enum class EntryPointOverride { None, Set, Clear } entryPointOverride =
+			EntryPointOverride::None;
 		// Rank hint for DOT layout: force cluster to top (rank=min) or bottom (rank=max).
 		enum class Rank { None, Top, Bottom } rankHint = Rank::None;
 	};
@@ -87,11 +89,6 @@ private:
 				   const std::string &path,
 				   const std::vector<Group> &groups = {});
 
-	/// Export collapsed DOT: each group is merged into a single node.
-	void exportCollapsedDOT(const DevilangCGResult::AdjList &adj,
-							const std::string &path,
-							const std::vector<Group> &groups);
-
 	/// Dispatch pruning based on selected policies.
 	void pruneGraph(DevilangCGResult::AdjList &adj,
 					const std::vector<Group> &groups);
@@ -102,11 +99,6 @@ private:
 
 	/// Remove nodes matching regex patterns loaded from blocklist.
 	void pruneBlocklist(DevilangCGResult::AdjList &adj);
-
-	/// Keep only grouped nodes and add direct edges when one grouped node can
-	/// reach another grouped node (including within the same group).
-	void pruneGroupReachabilityCollapse(DevilangCGResult::AdjList &adj,
-										const std::vector<Group> &groups);
 
 	/// Load entries from file: one per line, skipping blank and '#' comment lines.
 	std::vector<std::string> loadFileLines(const std::string &path);

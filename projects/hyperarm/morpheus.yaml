@@ -173,23 +173,20 @@ tools:
       - bitcode_list
       - kallgraph_text
       - cg_dot
-      - cg_collapsed_dot
-      - cg_svg
-      - cg_pdf
-      - cg_collapsed_svg
-      - cg_collapsed_pdf
       - log_file
   driver-callgraph:
     mode: local
-    build-dir-key: boot-virtio-base
-    llcg-manifest: ./.cache/hyperarm/tools/llcg/builds/arm64-clang15/output/llcg-manifest.json
+    build-dir-key: booting-virtio-base
     title: HyperArm Driver Init / Deinit Base Graph
     artifacts:
       - output-dir
       - manifest
-      - graph-dot
-      - graph-svg
-      - graph-pdf
+      - graph-display-dot
+      - graph-raw-dot
+      - graph-display-svg
+      - graph-raw-svg
+      - graph-display-pdf
+      - graph-raw-pdf
       - build-log
   pkvm-aarch64:
     mode: local
@@ -1216,104 +1213,38 @@ workflows:
         args:
           - --run-dir
           - "{{steps.libvmm_exec.details.run_dir}}"
-  hyperarm-kernel-callgraphs:
-    category: run
-    metadata: "paper section 4.2"
+  driver-callgraph-booting-build:
+    category: build
     steps:
-      - id: llbase_latest
+      - id: llbase_build
         tool: llbase
         command: build
-      - id: llbic_6_18_16
+      - id: llbic_build
         tool: llbic
         command: build
         args:
           - --llbase-contract
-          - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
           - --build-version
           - "6.18.16"
-      - id: llcg_build_6_18_16
+      - id: llcg_build
         tool: llcg
         command: build
         args:
           - --llbase-contract
-          - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
-      # Disabled while focusing on the boot callgraph.
-      # - id: net_mutator_6_18_16
-      #   tool: llcg
-      #   command: exec
-      #   args:
-      #     - --llbase-contract
-      #     - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
-      #     - --generator
-      #     - interfaces
-      #     - --source-dir
-      #     - "{{steps.llbic_6_18_16.artifacts.source-dir.location}}"
-      #     - --interfaces
-      #     - networking
-      # - id: storage_mutator_6_18_16
-      #   tool: llcg
-      #   command: exec
-      #   args:
-      #     - --llbase-contract
-      #     - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
-      #     - --generator
-      #     - interfaces
-      #     - --source-dir
-      #     - "{{steps.llbic_6_18_16.artifacts.source-dir.location}}"
-      #     - --interfaces
-      #     - storage
-      # - id: net_cg_6_18_16
-      #   tool: llcg
-      #   command: exec
-      #   args:
-      #     - --llbase-contract
-      #     - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
-      #     - --llbic-json
-      #     - "{{steps.llbic_6_18_16.artifacts.llbic-json.location}}"
-      #     - --all-bc-list
-      #     - "{{steps.llbic_6_18_16.artifacts.bitcode-files.location}}"
-      #     - --filter
-      #     - "{{steps.net_mutator_6_18_16.artifacts.mutator_manifest.location}}"
-      #     - --scope-name
-      #     - networking-6.18.16
-      # - id: storage_cg_6_18_16
-      #   tool: llcg
-      #   command: exec
-      #   args:
-      #     - --llbase-contract
-      #     - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
-      #     - --llbic-json
-      #     - "{{steps.llbic_6_18_16.artifacts.llbic-json.location}}"
-      #     - --all-bc-list
-      #     - "{{steps.llbic_6_18_16.artifacts.bitcode-files.location}}"
-      #     - --filter
-      #     - "{{steps.storage_mutator_6_18_16.artifacts.mutator_manifest.location}}"
-      #     - --scope-name
-      #     - storage-6.18.16
-      - id: boot_virtio_scope_6_18_16
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+      - id: driver_callgraph_scope
         tool: llcg
         command: exec
         args:
           - --llbase-contract
-          - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
           - --generator
           - files
           - --source-dir
-          - "{{steps.llbic_6_18_16.artifacts.source-dir.location}}"
+          - "{{steps.llbic_build.artifacts.source-dir.location}}"
           - --scope-name
-          - boot-virtio
-          - --file
-          - init/main.c
-          - --file
-          - drivers/base/bus.c
-          - --file
-          - drivers/base/core.c
-          - --file
-          - drivers/base/dd.c
-          - --file
-          - drivers/base/driver.c
-          - --file
-          - drivers/base/platform.c
+          - driver-callgraph-virtio
           - --file
           - drivers/virtio/virtio.c
           - --file
@@ -1321,59 +1252,130 @@ workflows:
           - --file
           - drivers/virtio/virtio_mmio.c
           - --file
-          - drivers/block/virtio_blk.c
-          - --file
-          - drivers/char/hw_random/virtio-rng.c
-          - --file
-          - drivers/char/virtio_console.c
+          - drivers/virtio/virtio_ring.c
           - --file
           - drivers/net/virtio_net.c
-          - --file
-          - drivers/remoteproc/remoteproc_virtio.c
-          - --file
-          - drivers/rpmsg/virtio_rpmsg_bus.c
-          - --file
-          - drivers/virtio/virtio_balloon.c
-          - --file
-          - net/9p/trans_virtio.c
-      - id: boot_networking_mutator_6_18_16
+      - id: driver_callgraph_groups
         tool: llcg
         command: exec
         args:
           - --llbase-contract
-          - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
           - --generator
-          - interfaces
+          - groups
           - --source-dir
-          - "{{steps.llbic_6_18_16.artifacts.source-dir.location}}"
-          - --interfaces
-          - boot-networking
+          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - --scope-name
+          - driver-callgraph-virtio-groups
           - --scope-list
-          - "{{steps.boot_virtio_scope_6_18_16.artifacts.source_list.location}}"
-      - id: boot_virtio_cg_6_18_16
+          - "{{steps.driver_callgraph_scope.artifacts.source_list.location}}"
+          - --groups-extension
+          - "projects/hyperarm/workspace/tools/driver-callgraph/groups.txt"
+      - id: driver_callgraph_llcg
         tool: llcg
         command: exec
         args:
           - --llbase-contract
-          - "{{steps.llbase_latest.artifacts.runtime-contract.location}}"
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
           - --llbic-json
-          - "{{steps.llbic_6_18_16.artifacts.llbic-json.location}}"
+          - "{{steps.llbic_build.artifacts.llbic-json.location}}"
           - --all-bc-list
-          - "{{steps.llbic_6_18_16.artifacts.bitcode-files.location}}"
+          - "{{steps.llbic_build.artifacts.bitcode-files.location}}"
           - --filter
-          - "{{steps.boot_virtio_scope_6_18_16.artifacts.mutator_manifest.location}}"
+          - "{{steps.driver_callgraph_scope.artifacts.mutator_manifest.location}}"
           - --filter
-          - "{{steps.boot_networking_mutator_6_18_16.artifacts.mutator_manifest.location}}"
+          - "{{steps.driver_callgraph_groups.artifacts.mutator_manifest.location}}"
           - --scope-name
-          - boot-virtio-networking-6.18.16
-  driver-callgraph-build:
-    category: build
-    steps:
+          - driver-callgraph-virtio-6.18.16
       - id: driver_callgraph_build
         tool: driver-callgraph
         command: build
         args:
-          - --llcg-manifest
-          - "./.cache/hyperarm/tools/llcg/builds/arm64-clang15/output/llcg-manifest.json"
+          - --build-dir-key
+          - booting-virtio-base
+          - --llcg-dot
+          - "{{steps.driver_callgraph_llcg.artifacts.cg_dot.location}}"
+          - --groups-file
+          - "{{steps.driver_callgraph_llcg.artifacts.groups_file.location}}"
+          - --prefix-file
+          - "projects/hyperarm/workspace/tools/driver-callgraph/prefix.json"
           - --title
           - "HyperArm Driver Init / Deinit Base Graph"
+  driver-callgraph-runtime-build:
+    category: build
+    steps:
+      - id: llbase_build
+        tool: llbase
+        command: build
+      - id: llbic_build
+        tool: llbic
+        command: build
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --build-version
+          - "6.18.16"
+      - id: llcg_build
+        tool: llcg
+        command: build
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+      - id: driver_callgraph_runtime_interface
+        tool: llcg
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --generator
+          - interfaces
+          - --source-dir
+          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - --interfaces
+          - networking
+      - id: driver_callgraph_runtime_groups
+        tool: llcg
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --generator
+          - groups
+          - --source-dir
+          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - --scope-name
+          - driver-callgraph-runtime-virtio-groups
+          - --scope-list
+          - "{{steps.driver_callgraph_runtime_interface.artifacts.source_list.location}}"
+          - --groups-extension
+          - "projects/hyperarm/workspace/tools/driver-callgraph/runtime-groups.txt"
+      - id: driver_callgraph_runtime_llcg
+        tool: llcg
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --llbic-json
+          - "{{steps.llbic_build.artifacts.llbic-json.location}}"
+          - --all-bc-list
+          - "{{steps.llbic_build.artifacts.bitcode-files.location}}"
+          - --filter
+          - "{{steps.driver_callgraph_runtime_interface.artifacts.mutator_manifest.location}}"
+          - --filter
+          - "{{steps.driver_callgraph_runtime_groups.artifacts.mutator_manifest.location}}"
+          - --extra-edges-file
+          - "projects/hyperarm/workspace/tools/llcg/runtime-extra-edges.txt"
+          - --scope-name
+          - driver-callgraph-runtime-virtio-6.18.16
+      - id: driver_callgraph_runtime_build
+        tool: driver-callgraph
+        command: build
+        args:
+          - --build-dir-key
+          - runtime-virtio-networking
+          - --llcg-dot
+          - "{{steps.driver_callgraph_runtime_llcg.artifacts.cg_dot.location}}"
+          - --groups-file
+          - "{{steps.driver_callgraph_runtime_llcg.artifacts.groups_file.location}}"
+          - --title
+          - "HyperArm Driver Runtime Graph"

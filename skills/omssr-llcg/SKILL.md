@@ -23,8 +23,8 @@ generation or callgraph runs.
 - `llvm-cg` generates one raw DOT callgraph from the direct plus resolved
   indirect edges.
 - Python mutators handle graph-side post-processing such as blocklist pruning,
-  extra-edge injection, reachability pruning, grouped rendering, and collapsed
-  graph generation.
+  extra-edge injection, reachability pruning, and grouped rendering for the
+  raw llcg output.
 
 The main user-facing commands are:
 
@@ -117,7 +117,9 @@ tools/llcg/llcg inspect <manifest.json>
 - Public user terminology is `mutator`, even though the `run` flag remains
   `--filter`.
 - `llvm-cg` should be treated as raw callgraph generation only.
-- Post-processing belongs in Python mutators, not in `llvm-cg`.
+- `llcg` should be treated as raw callgraph production plus scope metadata.
+- Higher-level graph composition, collapse, and display optimization belong in
+  downstream tools such as `driver-callgraph`, not in `llcg`.
 - Output naming now prefers a short stem:
   `<scope>_<kernel>_<arch>`.
 
@@ -125,12 +127,7 @@ Typical run artifacts are:
 
 - `<stem>_kallgraph.txt`
 - `<stem>_cg_raw.dot`
-- `<stem>_cg_mutated.dot`
-- `<stem>_cg_mutated_collapsed.dot`
-- `<stem>_cg_mutated.svg`
-- `<stem>_cg_mutated.pdf`
-- `<stem>_cg_mutated_collapsed.svg`
-- `<stem>_cg_mutated_collapsed.pdf`
+- `<stem>_cg.dot`
 - `<stem>_callgraph.log`
 - `llcg-manifest.json`
 

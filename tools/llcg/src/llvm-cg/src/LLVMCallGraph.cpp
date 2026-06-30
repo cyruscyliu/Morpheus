@@ -412,130 +412,6 @@ void DevilangCG::exportDOT(const DevilangCGResult::AdjList &adj,
 	out << "}\n";
 }
 
-void DevilangCG::exportCollapsedDOT(const DevilangCGResult::AdjList &adj,
-									const std::string &path,
-									const std::vector<Group> &groups) {
-	std::error_code EC;
-	raw_fd_ostream out(path, EC, sys::fs::OF_Text);
-	if (EC) {
-		errs() << "DevilangCG: cannot open collapsed DOT file " << path
-			   << ": " << EC.message() << "\n";
-		return;
-	}
-
-	// Map each group member (and the label itself) to its group label.
-	std::unordered_map<std::string, std::string> memberToGroup;
-	for (const auto &g : groups) {
-		memberToGroup[g.label] = g.label;
-		for (const auto &m : g.members)
-			memberToGroup[m] = g.label;
-	}
-
-	// Collect all group members present in the graph.
-	std::unordered_set<std::string> groupedInGraph;
-	for (const auto &kv : adj) {
-		if (memberToGroup.count(kv.first))
-			groupedInGraph.insert(kv.first);
-		for (const auto &callee : kv.second)
-			if (memberToGroup.count(callee))
-				groupedInGraph.insert(callee);
-	}
-
-	// For each grouped source node, BFS forward through ungrouped
-	// intermediaries to find reachable grouped destination nodes.
-	// This captures transitive connections like:
-	//   Group A member -> ungrouped_func -> ... -> Group B member
-	std::unordered_map<std::string, std::set<std::string>> collapsedAdj;
-	for (const auto &src : groupedInGraph) {
-		const std::string &srcGroup = memberToGroup[src];
-		collapsedAdj[srcGroup]; // ensure node exists
-
-		std::unordered_set<std::string> visited;
-		std::queue<std::string> q;
-		visited.insert(src);
-		q.push(src);
-
-		while (!q.empty()) {
-			std::string cur = std::move(q.front());
-			q.pop();
-			auto it = adj.find(cur);
-			if (it == adj.end())
-				continue;
-			for (const auto &nxt : it->second) {
-				if (visited.count(nxt))
-					continue;
-				visited.insert(nxt);
-				auto gIt = memberToGroup.find(nxt);
-				if (gIt != memberToGroup.end()) {
-					// Reached another grouped node — record group edge,
-					// but don't BFS through it (stop at group boundary).
-					if (gIt->second != srcGroup)
-						collapsedAdj[srcGroup].insert(gIt->second);
-				} else {
-					// Ungrouped node — continue BFS through it.
-					q.push(nxt);
-				}
-			}
-		}
-	}
-
-	// Remove isolated group nodes (no outgoing and no incoming edges).
-	std::unordered_set<std::string> hasInEdge;
-	for (const auto &kv : collapsedAdj)
-		for (const auto &dst : kv.second)
-			hasInEdge.insert(dst);
-
-	std::size_t isolated = 0;
-	for (auto it = collapsedAdj.begin(); it != collapsedAdj.end(); ) {
-		if (it->second.empty() && !hasInEdge.count(it->first)) {
-			it = collapsedAdj.erase(it);
-			++isolated;
-		} else {
-			++it;
-		}
-	}
-
-	// Build a map from group label to its Group for styling.
-	std::unordered_map<std::string, const Group *> labelToGroup;
-	for (const auto &g : groups)
-		labelToGroup[g.label] = &g;
-
-	out << "digraph DevilangCG_collapsed {\n";
-	out << "    rankdir=LR;\n";
-	out << "    node [shape=box, style=filled, fillcolor=lightyellow];\n\n";
-
-	// Emit group nodes with distinct styling.
-	for (const auto &kv : collapsedAdj) {
-		auto it = labelToGroup.find(kv.first);
-		if (it == labelToGroup.end())
-			continue;
-		const Group &g = *it->second;
-		out << "    \"" << kv.first << "\" [";
-		if (g.entryPoint)
-			out << "fillcolor=\"#eeffee\", color=darkgreen, penwidth=2, fontcolor=darkgreen";
-		else
-			out << "fillcolor=\"#ddeeff\", color=steelblue, penwidth=2, fontcolor=steelblue";
-		out << "];\n";
-	}
-	out << "\n";
-
-	// Emit edges (group-to-group only).
-	for (const auto &kv : collapsedAdj) {
-		for (const auto &dst : kv.second)
-			out << "    \"" << kv.first << "\" -> \"" << dst << "\";\n";
-	}
-
-	out << "}\n";
-
-	std::size_t collapsedNodes = collapsedAdj.size();
-	std::size_t collapsedEdges = 0;
-	for (const auto &kv : collapsedAdj)
-		collapsedEdges += kv.second.size();
-	errs() << "DevilangCG: collapsed DOT: groups=" << collapsedNodes
-		   << " (isolated=" << isolated << ")"
-		   << ", edges=" << collapsedEdges << "\n";
-}
-
 std::vector<DevilangCG::Group> DevilangCG::loadGroups(const std::string &path) {
 	std::vector<Group> groups;
 	if (path.empty())
@@ -628,9 +504,11 @@ std::vector<DevilangCG::Group> DevilangCG::loadGroups(const std::string &path) {
 					target.members.push_back(m);
 				}
 			}
-			// Merge markers: if the modify block sets entry_point or rank, apply.
-			if (cur.entryPoint)
+			// Merge markers: a modify block may set or clear entry_point.
+			if (cur.entryPointOverride == Group::EntryPointOverride::Set)
 				target.entryPoint = true;
+			else if (cur.entryPointOverride == Group::EntryPointOverride::Clear)
+				target.entryPoint = false;
 			if (cur.rankHint != Group::Rank::None)
 				target.rankHint = cur.rankHint;
 		} else {
@@ -703,6 +581,7 @@ std::vector<DevilangCG::Group> DevilangCG::loadGroups(const std::string &path) {
 				// Optional markers on group label line (can be combined, e.g.
 				// "[entry_point][rank_max] group_name"):
 			//   [entry_point]             entry-point visual style + reachability anchor
+			//   [no_entry_point]          clear inherited entry-point behavior
 			//   [rank_min]               force cluster to top of layout (rank=min)
 			//   [rank_max]               force cluster to bottom of layout (rank=max)
 			bool parsedMarker = true;
@@ -710,6 +589,12 @@ std::vector<DevilangCG::Group> DevilangCG::loadGroups(const std::string &path) {
 				parsedMarker = false;
 				if (trimmed.consume_front("[entry_point]")) {
 					current.entryPoint = true;
+					current.entryPointOverride = Group::EntryPointOverride::Set;
+					trimmed = trimmed.trim();
+					parsedMarker = true;
+					} else if (trimmed.consume_front("[no_entry_point]")) {
+						current.entryPoint = false;
+						current.entryPointOverride = Group::EntryPointOverride::Clear;
 					trimmed = trimmed.trim();
 					parsedMarker = true;
 					} else if (trimmed.consume_front("[rank_min]")) {
@@ -822,126 +707,6 @@ void DevilangCG::pruneBlocklist(DevilangCGResult::AdjList &adj) {
 
 	errs() << "DevilangCG: blocklist pruned " << removeSet.size()
 		   << " nodes using " << regexes.size() << " patterns\n";
-}
-
-void DevilangCG::pruneGroupReachabilityCollapse(DevilangCGResult::AdjList &adj,
-												 const std::vector<Group> &groups) {
-	if (groups.empty()) {
-		errs() << "DevilangCG: group-reachability-collapse skipped (no groups)\n";
-		return;
-	}
-
-	// Collect all member nodes from groups.
-	std::unordered_set<std::string> groupedMembers;
-	std::unordered_map<std::string, std::unordered_set<size_t>> memberGroups;
-	for (size_t gi = 0; gi < groups.size(); ++gi) {
-		for (const auto &m : groups[gi].members) {
-			groupedMembers.insert(m);
-			memberGroups[m].insert(gi);
-		}
-	}
-	if (groupedMembers.empty()) {
-		errs() << "DevilangCG: group-reachability-collapse skipped (empty group members)\n";
-		return;
-	}
-
-	// Build node presence map (caller or callee).
-	std::unordered_set<std::string> nodesInGraph;
-	for (const auto &kv : adj) {
-		nodesInGraph.insert(kv.first);
-		for (const auto &callee : kv.second)
-			nodesInGraph.insert(callee);
-	}
-
-	std::vector<std::string> sources;
-	sources.reserve(groupedMembers.size());
-	for (const auto &m : groupedMembers) {
-		if (nodesInGraph.count(m))
-			sources.push_back(m);
-	}
-	if (sources.empty()) {
-		errs() << "DevilangCG: group-reachability-collapse skipped "
-		       << "(no group members present in graph)\n";
-		return;
-	}
-
-	DevilangCGResult::AdjList collapsed;
-	for (const auto &s : sources)
-		collapsed.emplace(s, std::set<std::string>{});
-
-	// For each grouped source/destination pair, add a direct edge only if there
-	// exists a path that does not traverse a third group:
-	// allowed grouped nodes on the path must belong only to source and/or
-	// destination groups.
-	std::size_t directEdges = 0;
-	for (const auto &src : sources) {
-		const auto &srcGroups = memberGroups[src];
-		for (const auto &dst : sources) {
-			if (src == dst)
-				continue;
-
-			std::unordered_set<size_t> allowedGroups = srcGroups;
-			const auto &dstGroups = memberGroups[dst];
-			allowedGroups.insert(dstGroups.begin(), dstGroups.end());
-
-			std::unordered_set<std::string> visited;
-			std::queue<std::string> q;
-			visited.insert(src);
-			q.push(src);
-			bool reachable = false;
-
-			while (!q.empty() && !reachable) {
-				std::string cur = std::move(q.front());
-				q.pop();
-				auto it = adj.find(cur);
-				if (it == adj.end())
-					continue;
-				for (const auto &nxt : it->second) {
-					if (visited.count(nxt))
-						continue;
-
-					// If this is a grouped node, it must not belong to a
-					// third group outside {groups(src) U groups(dst)}.
-					if (groupedMembers.count(nxt)) {
-						bool crossesThirdGroup = false;
-						const auto &nxtGroups = memberGroups[nxt];
-						for (size_t gi : nxtGroups) {
-							if (!allowedGroups.count(gi)) {
-								crossesThirdGroup = true;
-								break;
-							}
-						}
-						if (crossesThirdGroup)
-							continue;
-					}
-
-					visited.insert(nxt);
-					if (nxt == dst) {
-						reachable = true;
-						break;
-					}
-					q.push(nxt);
-				}
-			}
-
-			if (reachable) {
-				if (collapsed[src].insert(dst).second)
-					++directEdges;
-			}
-		}
-	}
-
-	std::size_t oldNodes = adj.size();
-	std::size_t oldEdges = 0;
-	for (const auto &kv : adj)
-		oldEdges += kv.second.size();
-
-	adj = std::move(collapsed);
-
-	errs() << "DevilangCG: group-reachability-collapse "
-	       << "old nodes=" << oldNodes << ", old edges=" << oldEdges
-	       << ", collapsed nodes=" << adj.size()
-	       << ", collapsed direct edges=" << directEdges << "\n";
 }
 
 void DevilangCG::pruneGraph(DevilangCGResult::AdjList &adj,
@@ -1202,15 +967,6 @@ bool DevilangCG::processModule(Module &M, DevilangCGResult::AdjList *outGraph) {
 	errs() << "DevilangCG: exporting DOT to " << DevilangDotOutput
 		   << " (groups=" << groups.size() << ")\n";
 	exportDOT(merged, DevilangDotOutput, groups);
-
-	std::string collapsedDotPath = DevilangDotOutput;
-	if (StringRef(collapsedDotPath).endswith(".dot"))
-		collapsedDotPath = StringRef(collapsedDotPath).drop_back(4).str() + "_collapsed.dot";
-	else
-		collapsedDotPath += "_collapsed.dot";
-
-	errs() << "DevilangCG: exporting collapsed DOT to " << collapsedDotPath << "\n";
-	exportCollapsedDOT(merged, collapsedDotPath, groups);
 
 	errs() << "DevilangCG: done."
 		   << " merged nodes=" << merged.size() << ", merged edges=" << mergedEdges << "\n";

@@ -80,6 +80,13 @@
         ],
         "path": true
       },
+      "groups-extension": {
+        "aliases": [
+          "groups-extension",
+          "groupsExtension"
+        ],
+        "path": true
+      },
       "bitcode-list": {
         "aliases": [
           "bitcode-list",
@@ -98,6 +105,13 @@
         "aliases": [
           "all-bc-list",
           "allBcList"
+        ],
+        "path": true
+      },
+      "extra-edges-file": {
+        "aliases": [
+          "extra-edges-file",
+          "extraEdgesFile"
         ],
         "path": true
       },
@@ -205,8 +219,10 @@
             "bitcode-list",
             "llbic-json",
             "all-bc-list",
+            "extra-edges-file",
             "scope-name",
             "scope-list",
+            "groups-extension",
             "arch",
             "llbase-contract"
           ],

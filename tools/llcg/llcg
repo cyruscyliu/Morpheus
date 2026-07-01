@@ -1533,6 +1533,7 @@ def run_pipeline(
 
     raw_dot_path = out_dir / f".{stem}_cg_raw.dot"
     dot_path = out_dir / f"{stem}_cg.dot"
+    callback_trace_path = out_dir / f".{stem}_cg_raw_callback_trace.txt"
     cmd = [
         opt_bin,
     ]
@@ -1588,6 +1589,7 @@ def run_pipeline(
         "groups": groups_path,
         "kallgraph": kallgraph_copy,
         "dot": dot_path,
+        "callback_trace": callback_trace_path,
         "log": log_path,
     }
 
@@ -1633,6 +1635,8 @@ def build_run_manifest(
         result_paths = {
             "kallgraph_text": stable_path(Path(result["kallgraph"]), out_dir),
             "cg_dot": stable_path(Path(result["dot"]), out_dir),
+            "callback_trace": stable_path(Path(result["callback_trace"]), out_dir)
+            if result.get("callback_trace") else "",
             "log_file": stable_path(Path(result["log"]), out_dir),
         }
         detail_paths.update(result_paths)

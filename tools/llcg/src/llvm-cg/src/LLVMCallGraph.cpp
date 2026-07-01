@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <sstream>
 #include <queue>
 #include <regex>
 #include <utility>
@@ -132,7 +133,157 @@ DevilangCG::buildDebugLocMap(Module &M) {
 	return locMap;
 }
 
-DevilangCGResult::AdjList DevilangCG::buildDirectCallGraph(Module &M) {
+static bool valueFlowsToCalledOperand(Value *root) {
+	if (!root)
+		return false;
+
+	std::queue<Value *> work;
+	std::unordered_set<Value *> seen;
+	work.push(root);
+	seen.insert(root);
+
+	while (!work.empty()) {
+		Value *current = work.front();
+		work.pop();
+		Value *strippedCurrent = current->stripPointerCasts();
+
+		for (User *user : current->users()) {
+			if (auto *CB = dyn_cast<CallBase>(user)) {
+				Value *called = CB->getCalledOperand();
+				if (called && called->stripPointerCasts() == strippedCurrent)
+					return true;
+			}
+
+			if (isa<BitCastInst>(user) ||
+			    isa<AddrSpaceCastInst>(user) ||
+			    isa<PHINode>(user) ||
+			    isa<SelectInst>(user) ||
+			    isa<FreezeInst>(user) ||
+			    isa<PtrToIntInst>(user) ||
+			    isa<IntToPtrInst>(user) ||
+			    isa<ConstantExpr>(user)) {
+				Value *next = cast<Value>(user);
+				if (seen.insert(next).second)
+					work.push(next);
+			}
+		}
+	}
+
+	return false;
+}
+
+static std::string valueNameOrOpcode(Value *value) {
+	if (!value)
+		return "<null>";
+	if (value->hasName())
+		return value->getName().str();
+	if (auto *I = dyn_cast<Instruction>(value))
+		return std::string(I->getOpcodeName());
+	return "<anon>";
+}
+
+static std::string formatUserDetail(User *user) {
+	if (auto *I = dyn_cast<Instruction>(user)) {
+		std::string s;
+		raw_string_ostream os(s);
+		os << I->getOpcodeName();
+		if (I->hasName())
+			os << " %" << I->getName();
+		return os.str();
+	}
+	if (auto *CE = dyn_cast<ConstantExpr>(user)) {
+		std::string s;
+		raw_string_ostream os(s);
+		os << "constexpr opcode=" << CE->getOpcodeName();
+		return os.str();
+	}
+	return valueNameOrOpcode(cast<Value>(user));
+}
+
+static DevilangCGResult::CallbackTraceRecord analyzeCallbackArgumentFlow(
+	const std::string &callerName,
+	const std::string &calleeName,
+	unsigned argIndex,
+	const std::string &targetName,
+	Argument *formalArg) {
+	DevilangCGResult::CallbackTraceRecord record;
+	record.caller = callerName;
+	record.callee = calleeName;
+	record.argIndex = argIndex;
+	record.target = targetName;
+
+	if (!formalArg)
+		return record;
+
+	std::queue<Value *> work;
+	std::unordered_set<Value *> seen;
+	work.push(formalArg);
+	seen.insert(formalArg);
+
+	while (!work.empty()) {
+		Value *current = work.front();
+		work.pop();
+		Value *strippedCurrent = current->stripPointerCasts();
+
+		for (User *user : current->users()) {
+			if (auto *CB = dyn_cast<CallBase>(user)) {
+				Value *called = CB->getCalledOperand();
+				if (called && called->stripPointerCasts() == strippedCurrent) {
+					record.invoked = true;
+					record.events.push_back({
+						"direct_call",
+						formatUserDetail(user),
+					});
+					continue;
+				}
+
+				record.events.push_back({
+					"passed_to_call",
+					formatUserDetail(user),
+				});
+				continue;
+			}
+
+			if (isa<StoreInst>(user)) {
+				record.events.push_back({
+					"stored",
+					formatUserDetail(user),
+				});
+				continue;
+			}
+
+			if (isa<BitCastInst>(user) ||
+			    isa<AddrSpaceCastInst>(user) ||
+			    isa<PHINode>(user) ||
+			    isa<SelectInst>(user) ||
+			    isa<FreezeInst>(user) ||
+			    isa<PtrToIntInst>(user) ||
+			    isa<IntToPtrInst>(user) ||
+			    isa<ConstantExpr>(user)) {
+				record.events.push_back({
+					"assigned",
+					formatUserDetail(user),
+				});
+				Value *next = cast<Value>(user);
+				if (seen.insert(next).second)
+					work.push(next);
+				continue;
+			}
+
+			record.events.push_back({
+				"other_use",
+				formatUserDetail(user),
+			});
+		}
+	}
+
+	return record;
+}
+
+DevilangCGResult::AdjList DevilangCG::buildDirectCallGraph(
+	Module &M,
+	DevilangCGResult::EdgeAdjList *callbackAdj,
+	DevilangCGResult::CallbackTraceRecords *callbackTrace) {
 	DevilangCGResult::AdjList adj;
 
 	for (auto &F : M) {
@@ -149,9 +300,18 @@ DevilangCGResult::AdjList DevilangCG::buildDirectCallGraph(Module &M) {
 				if (callee && !callee->isIntrinsic())
 					adj[callerName].insert(callee->getName().str());
 
-				// Also capture callback-style indirection where a concrete
-				// function symbol is passed as a call argument.
+				// Only capture callback-style argument edges when the
+				// callee IR actually invokes the corresponding formal
+				// parameter. Passing a function symbol into a registration
+				// API is not enough on its own.
+				if (!callee || callee->isDeclaration())
+					continue;
+
+				unsigned argIndex = 0;
 				for (const auto &arg : CB->args()) {
+					if (argIndex >= callee->arg_size())
+						break;
+					Argument *formalArg = callee->getArg(argIndex++);
 					Value *v = arg.get();
 					if (!v)
 						continue;
@@ -159,13 +319,48 @@ DevilangCGResult::AdjList DevilangCG::buildDirectCallGraph(Module &M) {
 					Function *argFunc = dyn_cast<Function>(v);
 					if (!argFunc || argFunc->isIntrinsic())
 						continue;
+					auto trace = analyzeCallbackArgumentFlow(
+						callerName,
+						callee->getName().str(),
+						argIndex - 1,
+						argFunc->getName().str(),
+						formalArg);
+					if (callbackTrace && (!trace.invoked || !trace.events.empty()))
+						callbackTrace->push_back(trace);
+					if (!trace.invoked)
+						continue;
 					adj[callerName].insert(argFunc->getName().str());
+					if (callbackAdj)
+						(*callbackAdj)[callerName].insert(argFunc->getName().str());
 				}
 			}
 		}
 	}
 
 	return adj;
+}
+
+void DevilangCG::exportCallbackTrace(
+	const DevilangCGResult::CallbackTraceRecords &records,
+	const std::string &path) {
+	std::error_code EC;
+	raw_fd_ostream out(path, EC, sys::fs::OF_Text);
+	if (EC) {
+		errs() << "DevilangCG: cannot open callback trace file " << path
+			   << ": " << EC.message() << "\n";
+		return;
+	}
+
+	for (const auto &record : records) {
+		out << "caller: " << record.caller << "\n";
+		out << "callee: " << record.callee << "\n";
+		out << "arg_index: " << record.argIndex << "\n";
+		out << "target: " << record.target << "\n";
+		out << "invoked: " << (record.invoked ? "yes" : "no") << "\n";
+		for (const auto &event : record.events)
+			out << "  - " << event.kind << ": " << event.detail << "\n";
+		out << "\n";
+	}
 }
 
 std::string DevilangCG::resolveCallerName(
@@ -331,7 +526,8 @@ DevilangCGResult::AdjList DevilangCG::buildAdjListFromKallgraph(
 
 void DevilangCG::exportDOT(const DevilangCGResult::AdjList &adj,
 						   const std::string &path,
-						   const std::vector<Group> &groups) {
+						   const std::vector<Group> &groups,
+						   const DevilangCGResult::EdgeAdjList *callbackAdj) {
 	std::error_code EC;
 	raw_fd_ostream out(path, EC, sys::fs::OF_Text);
 	if (EC) {
@@ -404,9 +600,20 @@ void DevilangCG::exportDOT(const DevilangCGResult::AdjList &adj,
 			continue;
 		}
 
-		for (const std::string &callee : callees) {
-			out << "    \"" << caller << "\" -> \"" << callee << "\";\n";
-		}
+			for (const std::string &callee : callees) {
+				bool isCallbackEdge = false;
+				if (callbackAdj) {
+					auto it = callbackAdj->find(caller);
+					isCallbackEdge = it != callbackAdj->end() &&
+							 it->second.find(callee) != it->second.end();
+				}
+				out << "    \"" << caller << "\" -> \"" << callee << "\"";
+				if (isCallbackEdge)
+					out << " [edge_kind=\"callback_registration\", style=dashed, color=gray40];";
+				else
+					out << ";";
+				out << "\n";
+			}
 	}
 
 	out << "}\n";
@@ -872,7 +1079,9 @@ bool DevilangCG::processModule(Module &M, DevilangCGResult::AdjList *outGraph) {
 	errs() << "DevilangCG: debug location map entries (main module)=" << debugLocMap.size() << "\n";
 
 	// Build and merge direct call graph from LLVM IR.
-	auto directAdj = buildDirectCallGraph(M);
+	DevilangCGResult::EdgeAdjList callbackAdj;
+	DevilangCGResult::CallbackTraceRecords callbackTrace;
+	auto directAdj = buildDirectCallGraph(M, &callbackAdj, &callbackTrace);
 
 	if (!DevilangBCList.empty()) {
 		auto bcPaths = loadFileLines(DevilangBCList);
@@ -891,11 +1100,19 @@ bool DevilangCG::processModule(Module &M, DevilangCGResult::AdjList *outGraph) {
 			// Also extract direct calls from this module so declarations in
 			// the main module (stripped by llvm-link -only-needed) get their
 			// outgoing edges populated.
-			auto extraAdj = buildDirectCallGraph(*extraMod);
-			for (auto &kv : extraAdj)
-				directAdj[kv.first].insert(kv.second.begin(), kv.second.end());
-			++loaded;
-		}
+				DevilangCGResult::EdgeAdjList extraCallbackAdj;
+				DevilangCGResult::CallbackTraceRecords extraCallbackTrace;
+				auto extraAdj = buildDirectCallGraph(*extraMod, &extraCallbackAdj,
+													 &extraCallbackTrace);
+				for (auto &kv : extraAdj)
+					directAdj[kv.first].insert(kv.second.begin(), kv.second.end());
+				for (auto &kv : extraCallbackAdj)
+					callbackAdj[kv.first].insert(kv.second.begin(), kv.second.end());
+				callbackTrace.insert(callbackTrace.end(),
+								   extraCallbackTrace.begin(),
+								   extraCallbackTrace.end());
+				++loaded;
+			}
 		errs() << "DevilangCG: augmented from bc-list: loaded=" << loaded
 			   << ", failed=" << failed
 			   << ", debug map entries=" << debugLocMap.size()
@@ -966,7 +1183,15 @@ bool DevilangCG::processModule(Module &M, DevilangCGResult::AdjList *outGraph) {
 
 	errs() << "DevilangCG: exporting DOT to " << DevilangDotOutput
 		   << " (groups=" << groups.size() << ")\n";
-	exportDOT(merged, DevilangDotOutput, groups);
+	exportDOT(merged, DevilangDotOutput, groups, &callbackAdj);
+	std::string callbackTracePath = DevilangDotOutput;
+	if (StringRef(callbackTracePath).endswith(".dot"))
+		callbackTracePath =
+			StringRef(callbackTracePath).drop_back(4).str() + "_callback_trace.txt";
+	else
+		callbackTracePath += "_callback_trace.txt";
+	errs() << "DevilangCG: exporting callback trace to " << callbackTracePath << "\n";
+	exportCallbackTrace(callbackTrace, callbackTracePath);
 
 	errs() << "DevilangCG: done."
 		   << " merged nodes=" << merged.size() << ", merged edges=" << mergedEdges << "\n";

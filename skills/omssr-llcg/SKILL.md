@@ -153,3 +153,25 @@ python3 -m py_compile kernel-callgraph mutators/*.py
 
 When changing the native pipeline, rerun a real scoped example and inspect the
 resulting manifest.
+
+## TODO
+
+- Investigate KallGraph false negatives before relying on project-local
+  `extra_edges` overlays.
+- Current known gap: some indirect calls through stored struct fields are still
+  missed by KallGraph and only appear later via `llcg` extra-edge injection.
+- Confirmed example: `dst_output()` in `include/net/dst.h:464`.
+  In the runtime virtio networking scope, raw `llcg` output contains
+  `ip_local_out -> dst_output` but does not naturally contain
+  `dst_output -> ip_output`.
+  The final dot only gets `dst_output -> ip_output` from
+  `projects/hyperarm/workspace/tools/llcg/runtime-extra-edges.txt`.
+- This appears related to KallGraph not recovering targets for function
+  pointers stored into route/dst objects, such as stores to `dst_entry.output`
+  in:
+  `net/ipv4/route.c` and `net/ipv6/route.c`.
+- By contrast, some other indirect-call cases already work naturally and are
+  useful as control examples:
+  `sock_sendmsg_nosec -> inet_sendmsg`,
+  `inet_sendmsg -> tcp_sendmsg`,
+  `inet_sendmsg -> udp_sendmsg`.

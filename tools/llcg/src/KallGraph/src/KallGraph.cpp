@@ -67,6 +67,109 @@ struct TaskContext {
   LocalMaps &local;
 };
 
+static void collectFunctionValuesFromNode(
+    PAGNode *node,
+    unordered_set<PAGNode *> &visitedNodes,
+    unordered_set<const Function *> &targets) {
+  if (!node || !visitedNodes.insert(node).second) {
+    return;
+  }
+
+  if (const auto *value = getLLVMValue(node); value) {
+    if (const auto *func = dyn_cast<Function>(value)) {
+      targets.insert(func);
+    }
+  }
+
+  for (auto edge : node->getIncomingEdges(PAGEdge::Addr)) {
+    if (const auto *value = getLLVMValue(edge->getSrcNode());
+        isa<Function>(value)) {
+      targets.insert(dyn_cast<Function>(value));
+    }
+  }
+
+  for (auto edge : node->getIncomingEdges(PAGEdge::Copy)) {
+    collectFunctionValuesFromNode(edge->getSrcNode(), visitedNodes, targets);
+  }
+}
+
+static void collectStoredFunctionTargets(
+    PAGNode *node,
+    unordered_set<PAGNode *> &visitedAliasNodes,
+    unordered_set<const Function *> &targets) {
+  if (!node || !visitedAliasNodes.insert(node).second) {
+    return;
+  }
+
+  for (auto edge : node->getIncomingEdges(PAGEdge::Store)) {
+    unordered_set<PAGNode *> visitedValueNodes;
+    collectFunctionValuesFromNode(edge->getSrcNode(), visitedValueNodes,
+                                  targets);
+  }
+
+  for (auto edge : node->getIncomingEdges(PAGEdge::Copy)) {
+    collectStoredFunctionTargets(edge->getSrcNode(), visitedAliasNodes, targets);
+  }
+
+  for (auto edge : node->getOutgoingEdges(PAGEdge::Copy)) {
+    collectStoredFunctionTargets(edge->getDstNode(), visitedAliasNodes, targets);
+  }
+
+  for (auto edge : node->getIncomingEdges(PAGEdge::Addr)) {
+    collectStoredFunctionTargets(edge->getSrcNode(), visitedAliasNodes, targets);
+  }
+
+  for (auto edge : node->getOutgoingEdges(PAGEdge::Addr)) {
+    collectStoredFunctionTargets(edge->getDstNode(), visitedAliasNodes, targets);
+  }
+
+  for (auto edge : node->getIncomingEdges(PAGEdge::Gep)) {
+    collectStoredFunctionTargets(edge->getSrcNode(), visitedAliasNodes, targets);
+  }
+
+  for (auto edge : node->getOutgoingEdges(PAGEdge::Gep)) {
+    collectStoredFunctionTargets(edge->getDstNode(), visitedAliasNodes, targets);
+  }
+}
+
+static bool isDstOutputDebugCallsite(const CallInst *icall) {
+  if (!icall) {
+    return false;
+  }
+  if (const auto dbginfo = icall->getDebugLoc()) {
+    return dbginfo->getLine() == 464 &&
+           dbginfo->getFilename().str().find("include/net/dst.h") != string::npos;
+  }
+  return false;
+}
+
+static void debugAliasBucketsForCallsite(const CallInst *icall, Algo *res) {
+  if (!isDstOutputDebugCallsite(icall) || !res) {
+    return;
+  }
+
+  errs() << "[kallgraph-debug] dst_output callsite buckets begin\n";
+  for (const auto &aliasBucket : res->Aliases) {
+    errs() << "[kallgraph-debug] offset=" << aliasBucket.first
+           << " size=" << aliasBucket.second.size() << "\n";
+    for (auto alias : aliasBucket.second) {
+      errs() << "  alias-node id=" << alias->getId();
+      if (const auto *value = getLLVMValue(alias)) {
+        errs() << " value=" << printVal(value);
+      }
+      errs() << "\n";
+      for (auto edge : alias->getIncomingEdges(PAGEdge::Store)) {
+        errs() << "    store-src id=" << edge->getSrcNode()->getId();
+        if (const auto *value = getLLVMValue(edge->getSrcNode())) {
+          errs() << " value=" << printVal(value);
+        }
+        errs() << "\n";
+      }
+    }
+  }
+  errs() << "[kallgraph-debug] dst_output callsite buckets end\n";
+}
+
 void createOutputFolder() {
   if (OutputDir.empty()) {
     perror("Please specify -OutputDir=/path/to/your/output/folder !\n");
@@ -262,23 +365,33 @@ void eachThread(SVFIR *pag, TaskContext &task) {
   } else {
     auto res =
         performAnalysis(icall->getCalledOperand()->stripPointerCasts(), pag);
-    for (auto alias : res->Aliases[0]) {
-      if (const auto *value = getLLVMValue(alias)) {
-        if (auto func = dyn_cast<Function>(value)) {
-          if (alias->getId() == getValueNode(func) &&
-              icall->arg_size() == func->arg_size()) {
-            if (checkIfMatch(icall, func)) {
-              if (task.local.localcallgraph.find(icall) ==
-                  task.local.localcallgraph.end()) {
-                task.local.localnewicalls.insert(icall);
-              } else if (task.local.localcallgraph[icall].find(func) ==
-                         task.local.localcallgraph[icall].end()) {
-                task.local.localnewtargets.insert(func);
+    debugAliasBucketsForCallsite(icall, res);
+    unordered_set<const Function *> candidateFuncs;
+    for (const auto &aliasBucket : res->Aliases) {
+      for (auto alias : aliasBucket.second) {
+        if (aliasBucket.first == 0) {
+          if (const auto *value = getLLVMValue(alias)) {
+            if (auto func = dyn_cast<Function>(value)) {
+              if (alias->getId() == getValueNode(func)) {
+                candidateFuncs.insert(func);
               }
-              task.local.localcallgraph[icall].insert(func);
             }
           }
         }
+        unordered_set<PAGNode *> visitedAliasNodes;
+        collectStoredFunctionTargets(alias, visitedAliasNodes, candidateFuncs);
+      }
+    }
+    for (auto func : candidateFuncs) {
+      if (icall->arg_size() == func->arg_size() && checkIfMatch(icall, func)) {
+        if (task.local.localcallgraph.find(icall) ==
+            task.local.localcallgraph.end()) {
+          task.local.localnewicalls.insert(icall);
+        } else if (task.local.localcallgraph[icall].find(func) ==
+                   task.local.localcallgraph[icall].end()) {
+          task.local.localnewtargets.insert(func);
+        }
+        task.local.localcallgraph[icall].insert(func);
       }
     }
     for (auto func : res->depFuncs) {

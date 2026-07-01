@@ -9,6 +9,7 @@
 #include "llvm/Support/FileSystem.h"
 
 #include <set>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -21,6 +22,20 @@ public:
 	static char ID;
 
 	using AdjList = std::unordered_map<std::string, std::set<std::string>>;
+	using EdgeAdjList = std::unordered_map<std::string, std::set<std::string>>;
+	struct CallbackTraceEvent {
+		std::string kind;
+		std::string detail;
+	};
+	struct CallbackTraceRecord {
+		std::string caller;
+		std::string callee;
+		unsigned argIndex = 0;
+		std::string target;
+		bool invoked = false;
+		std::vector<CallbackTraceEvent> events;
+	};
+	using CallbackTraceRecords = std::vector<CallbackTraceRecord>;
 
 	DevilangCGResult() : llvm::ImmutablePass(ID) {}
 
@@ -56,7 +71,10 @@ private:
 		const std::unordered_map<std::string, std::set<std::string>> &debugLocMap);
 
 	/// Build direct call graph from LLVM IR (non-indirect, non-intrinsic calls only).
-	DevilangCGResult::AdjList buildDirectCallGraph(llvm::Module &M);
+	DevilangCGResult::AdjList buildDirectCallGraph(
+		llvm::Module &M,
+		DevilangCGResult::EdgeAdjList *callbackAdj = nullptr,
+		DevilangCGResult::CallbackTraceRecords *callbackTrace = nullptr);
 
 	/// Build a map: "file:line" -> {function names} from module debug locations.
 	std::unordered_map<std::string, std::set<std::string>>
@@ -87,7 +105,12 @@ private:
 	/// Export graph as DOT, optionally annotating clusters from groups.
 	void exportDOT(const DevilangCGResult::AdjList &adj,
 				   const std::string &path,
-				   const std::vector<Group> &groups = {});
+				   const std::vector<Group> &groups = {},
+				   const DevilangCGResult::EdgeAdjList *callbackAdj = nullptr);
+
+	/// Export callback-argument flow analysis as a sidecar text report.
+	void exportCallbackTrace(const DevilangCGResult::CallbackTraceRecords &records,
+							 const std::string &path);
 
 	/// Dispatch pruning based on selected policies.
 	void pruneGraph(DevilangCGResult::AdjList &adj,

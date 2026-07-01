@@ -5,6 +5,7 @@ result_file="${MORPHEUS_DRIVER_CALLGRAPH_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_F
 output_dir="${MORPHEUS_DRIVER_CALLGRAPH_OUTPUT:?}"
 llcg_dot="${MORPHEUS_DRIVER_CALLGRAPH_LLCG_DOT:?}"
 groups_file="${MORPHEUS_DRIVER_CALLGRAPH_GROUPS_FILE:-}"
+groups_overlay_file="${MORPHEUS_DRIVER_CALLGRAPH_GROUPS_OVERLAY_FILE:-}"
 prefix_file="${MORPHEUS_DRIVER_CALLGRAPH_PREFIX_FILE:-}"
 title="${MORPHEUS_DRIVER_CALLGRAPH_TITLE:-HyperArm Driver Init / Deinit Base Graph}"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -48,6 +49,19 @@ cmd=(
 
 if [ -n "${groups_file}" ]; then
   cmd+=(--groups-file "${groups_file}")
+fi
+
+if [ -n "${groups_overlay_file}" ] && [ ! -f "${groups_overlay_file}" ] && [[ "${groups_overlay_file}" != /* ]]; then
+  groups_overlay_file="${repo_root}/${groups_overlay_file#./}"
+fi
+
+if [ -n "${groups_overlay_file}" ] && [ ! -f "${groups_overlay_file}" ]; then
+  echo "missing groups overlay file: ${groups_overlay_file}" >&2
+  exit 1
+fi
+
+if [ -n "${groups_overlay_file}" ]; then
+  cmd+=(--groups-overlay-file "${groups_overlay_file}")
 fi
 
 if [ -n "${prefix_file}" ]; then

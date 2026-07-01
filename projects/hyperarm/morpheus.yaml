@@ -1297,6 +1297,8 @@ workflows:
           - "{{steps.driver_callgraph_llcg.artifacts.cg_dot.location}}"
           - --groups-file
           - "{{steps.driver_callgraph_llcg.artifacts.groups_file.location}}"
+          - --groups-overlay-file
+          - "projects/hyperarm/workspace/tools/driver-callgraph/scripts/groups.txt"
           - --prefix-file
           - "projects/hyperarm/workspace/tools/driver-callgraph/scripts/prefix.json"
           - --title
@@ -1364,7 +1366,7 @@ workflows:
           - --filter
           - "{{steps.driver_callgraph_runtime_groups.artifacts.mutator_manifest.location}}"
           - --extra-edges-file
-          - "projects/hyperarm/workspace/tools/llcg/runtime-extra-edges.txt"
+          - "projects/hyperarm/workspace/tools/llcg/runtime-extra-edges-6.18.16.txt"
           - --scope-name
           - driver-callgraph-runtime-virtio-6.18.16
       - id: driver_callgraph_runtime_build
@@ -1377,5 +1379,87 @@ workflows:
           - "{{steps.driver_callgraph_runtime_llcg.artifacts.cg_dot.location}}"
           - --groups-file
           - "{{steps.driver_callgraph_runtime_llcg.artifacts.groups_file.location}}"
+          - --groups-overlay-file
+          - "projects/hyperarm/workspace/tools/driver-callgraph/scripts/runtime-groups.txt"
           - --title
           - "HyperArm Driver Runtime Graph"
+  driver-callgraph-runtime-build-virtnet-subgraph:
+    category: build
+    steps:
+      - id: llbase_build
+        tool: llbase
+        command: build
+      - id: llbic_build
+        tool: llbic
+        command: build
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --build-version
+          - "6.18.16"
+      - id: llcg_build
+        tool: llcg
+        command: build
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+      - id: driver_callgraph_runtime_interface
+        tool: llcg
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --generator
+          - interfaces
+          - --source-dir
+          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - --interfaces
+          - networking
+      - id: driver_callgraph_runtime_groups
+        tool: llcg
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --generator
+          - groups
+          - --source-dir
+          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - --scope-name
+          - driver-callgraph-runtime-virtnet-subgraph-groups
+          - --scope-list
+          - "{{steps.driver_callgraph_runtime_interface.artifacts.source_list.location}}"
+          - --groups-extension
+          - "projects/hyperarm/workspace/tools/driver-callgraph/scripts/runtime-groups-virtnet-subgraph.txt"
+      - id: driver_callgraph_runtime_llcg
+        tool: llcg
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --llbic-json
+          - "{{steps.llbic_build.artifacts.llbic-json.location}}"
+          - --all-bc-list
+          - "{{steps.llbic_build.artifacts.bitcode-files.location}}"
+          - --filter
+          - "{{steps.driver_callgraph_runtime_interface.artifacts.mutator_manifest.location}}"
+          - --filter
+          - "{{steps.driver_callgraph_runtime_groups.artifacts.mutator_manifest.location}}"
+          - --extra-edges-file
+          - "projects/hyperarm/workspace/tools/llcg/runtime-extra-edges-6.18.16.txt"
+          - --scope-name
+          - driver-callgraph-runtime-virtnet-subgraph-6.18.16
+      - id: driver_callgraph_runtime_build
+        tool: driver-callgraph
+        command: build
+        args:
+          - --build-dir-key
+          - runtime-virtio-networking-virtnet-subgraph
+          - --llcg-dot
+          - "{{steps.driver_callgraph_runtime_llcg.artifacts.cg_dot.location}}"
+          - --groups-file
+          - "{{steps.driver_callgraph_runtime_llcg.artifacts.groups_file.location}}"
+          - --groups-overlay-file
+          - "projects/hyperarm/workspace/tools/driver-callgraph/scripts/runtime-groups-virtnet-subgraph.txt"
+          - --title
+          - "HyperArm Driver Runtime Virtnet Subgraph"

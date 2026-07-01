@@ -63,6 +63,26 @@ function stableLocation(baseDir, filePath) {
   return filePath;
 }
 
+function parseDotAttrs(text) {
+  const attrs = {};
+  if (!text) {
+    return attrs;
+  }
+  const pattern = /([A-Za-z_][A-Za-z0-9_]*)=("([^"\\]|\\.)*"|[^,\]]+)/g;
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    const key = match[1];
+    let value = match[2].trim();
+    if (value.startsWith("\"") && value.endsWith("\"")) {
+      value = value.slice(1, -1)
+        .replace(/\\\\/g, "\\")
+        .replace(/\\"/g, "\"");
+    }
+    attrs[key] = value;
+  }
+  return attrs;
+}
+
 function parseDot(text) {
   const nodes = new Set();
   const edges = [];
@@ -71,13 +91,14 @@ function parseDot(text) {
     if (!line) {
       continue;
     }
-    const edgeMatch = line.match(/^"([^"]+)"\s*->\s*"([^"]+)"/);
+    const edgeMatch = line.match(/^"([^"]+)"\s*->\s*"([^"]+)"(?:\s*\[(.*)\])?;?$/);
     if (edgeMatch) {
       const src = edgeMatch[1];
       const dst = edgeMatch[2];
+      const attrs = parseDotAttrs(edgeMatch[3] || "");
       nodes.add(src);
       nodes.add(dst);
-      edges.push({ src, dst });
+      edges.push({ src, dst, attrs });
       continue;
     }
     const nodeMatch = line.match(/^"([^"]+)"(?:\s*\[.*\])?;$/);
@@ -126,7 +147,7 @@ function renderSimpleDot(title, graph) {
     lines.push(renderNode(dotQuote(node), { label: node }));
   }
   for (const edge of graph.edges || []) {
-    lines.push(renderEdge(dotQuote(edge.src), dotQuote(edge.dst)));
+    lines.push(renderEdge(dotQuote(edge.src), dotQuote(edge.dst), edge.attrs || {}));
   }
   lines.push("}");
   lines.push("");
@@ -179,6 +200,32 @@ function loadPrefixGraph(filePath) {
   return payload;
 }
 
+function mergeGroupTags(existingTags = [], incomingTags = []) {
+  const merged = [];
+  const seen = new Set();
+  for (const tag of [...existingTags, ...incomingTags]) {
+    if (tag === "entry_point") {
+      const noEntryIndex = merged.indexOf("no_entry_point");
+      if (noEntryIndex !== -1) {
+        merged.splice(noEntryIndex, 1);
+        seen.delete("no_entry_point");
+      }
+    } else if (tag === "no_entry_point") {
+      const entryIndex = merged.indexOf("entry_point");
+      if (entryIndex !== -1) {
+        merged.splice(entryIndex, 1);
+        seen.delete("entry_point");
+      }
+    }
+    if (seen.has(tag)) {
+      continue;
+    }
+    merged.push(tag);
+    seen.add(tag);
+  }
+  return merged;
+}
+
 function parseGroupsFile(filePath) {
   if (!filePath || !fs.existsSync(filePath)) {
     return [];
@@ -188,13 +235,14 @@ function parseGroupsFile(filePath) {
   let current = null;
 
   function flushCurrent() {
-    if (!current || current.members.length === 0) {
+    if (!current || !current.label) {
       current = null;
       return;
     }
     const modifying = current.members.some((member) => member.startsWith("+") || member.startsWith("-"));
     const existing = groupsByLabel.get(current.label);
     if (modifying && existing) {
+      existing.tags = mergeGroupTags(existing.tags || [], current.tags || []);
       for (const member of current.members) {
         const op = member[0];
         const name = member.slice(1).trim();
@@ -218,6 +266,7 @@ function parseGroupsFile(filePath) {
         .map((member) => member.startsWith("+") ? member.slice(1).trim() : member);
     }
     if (existing) {
+      existing.tags = mergeGroupTags(existing.tags || [], current.tags || []);
       for (const member of current.members) {
         if (!existing.members.includes(member)) {
           existing.members.push(member);
@@ -264,6 +313,65 @@ function parseGroupsFile(filePath) {
   return groups;
 }
 
+function loadGroups(baseFilePath, overlayFilePath = "") {
+  const groups = parseGroupsFile(baseFilePath);
+  if (!overlayFilePath || !fs.existsSync(overlayFilePath)) {
+    return groups;
+  }
+  const merged = new Map(groups.map((group) => [group.label, {
+    ...group,
+    tags: [...(group.tags || [])],
+    members: [...group.members],
+  }]));
+  const ordered = groups.map((group) => group.label);
+  for (const group of parseGroupsFile(overlayFilePath)) {
+    const existing = merged.get(group.label);
+    const modifying = group.members.some((member) => member.startsWith("+") || member.startsWith("-"));
+    if (!existing) {
+      const normalizedMembers = modifying
+        ? group.members
+          .filter((member) => !member.startsWith("-"))
+          .map((member) => member.startsWith("+") ? member.slice(1).trim() : member)
+        : [...group.members];
+      merged.set(group.label, {
+        ...group,
+        tags: [...(group.tags || [])],
+        members: normalizedMembers,
+      });
+      ordered.push(group.label);
+      continue;
+    }
+    existing.tags = mergeGroupTags(existing.tags || [], group.tags || []);
+    if (!modifying) {
+      if (group.members.length === 0) {
+        continue;
+      }
+      existing.members = [...group.members];
+      continue;
+    }
+    for (const member of group.members) {
+      if (member.startsWith("+")) {
+        const name = member.slice(1).trim();
+        if (name && !existing.members.includes(name)) {
+          existing.members.push(name);
+        }
+        continue;
+      }
+      if (member.startsWith("-")) {
+        const name = member.slice(1).trim();
+        if (name) {
+          existing.members = existing.members.filter((entry) => entry !== name);
+        }
+        continue;
+      }
+      if (!existing.members.includes(member)) {
+        existing.members.push(member);
+      }
+    }
+  }
+  return ordered.map((label) => merged.get(label));
+}
+
 function collectReachableSliceFromRoots(graph, roots) {
   const selectedRoots = roots.filter((name) => graph.nodes.has(name));
 
@@ -308,15 +416,11 @@ function collectReachableSliceFromRoots(graph, roots) {
 
 function selectLifecycleRoots(graph, groups, prefix = {}) {
   const prefixRoots = stableUnique(Array.isArray(prefix.roots) ? prefix.roots : []);
-  if (prefixRoots.length > 0) {
-    return prefixRoots;
-  }
-  return stableUnique(
-    groups
-      .filter((group) => Array.isArray(group.tags) && group.tags.includes("entry_point"))
-      .flatMap((group) => group.members)
-      .filter((name) => graph.nodes.has(name)),
-  );
+  const groupEntryPoints = groups
+    .filter((group) => Array.isArray(group.tags) && group.tags.includes("entry_point"))
+    .flatMap((group) => group.members)
+    .filter((name) => graph.nodes.has(name));
+  return stableUnique([...prefixRoots, ...groupEntryPoints]);
 }
 
 function buildAdjacency(edges) {
@@ -457,10 +561,17 @@ function pruneByGroupPaths(graph, groups, availableNodes = graph.nodes) {
   };
 }
 
-function renderGraph(title, llcgDotPath, groupsFilePath, prefixFilePath, mode = "node") {
+function renderGraph(
+  title,
+  llcgDotPath,
+  groupsFilePath,
+  groupsOverlayFilePath,
+  prefixFilePath,
+  mode = "node",
+) {
   const graph = parseDot(readText(llcgDotPath));
   const prefix = loadPrefixGraph(prefixFilePath);
-  const groups = parseGroupsFile(groupsFilePath);
+  const groups = loadGroups(groupsFilePath, groupsOverlayFilePath);
   const lifecycleRoots = selectLifecycleRoots(graph, groups, prefix);
   const lifecycle = collectReachableSliceFromRoots(graph, lifecycleRoots);
   const collapsed = pruneByGroupPaths(lifecycle, groups, graph.nodes);
@@ -714,10 +825,11 @@ function renderGraph(title, llcgDotPath, groupsFilePath, prefixFilePath, mode = 
 function renderGraphviz(dotPath) {
   const dotBin = cp.spawnSync("which", ["dot"], { encoding: "utf8" }).stdout.trim();
   if (!dotBin) {
-    return { svgPath: "", pdfPath: "" };
+    return { svgPath: "", pdfPath: "", pngPath: "" };
   }
   const svgPath = dotPath.replace(/\.dot$/, ".svg");
   const pdfPath = dotPath.replace(/\.dot$/, ".pdf");
+  const pngPath = dotPath.replace(/\.dot$/, ".png");
   const svg = cp.spawnSync(dotBin, ["-Tsvg", dotPath, "-o", svgPath], {
     encoding: "utf8",
   });
@@ -730,7 +842,13 @@ function renderGraphviz(dotPath) {
   if (pdf.status !== 0) {
     throw new Error(pdf.stderr || "failed to render pdf");
   }
-  return { svgPath, pdfPath };
+  const png = cp.spawnSync(dotBin, ["-Tpng", "-Gdpi=300", dotPath, "-o", pngPath], {
+    encoding: "utf8",
+  });
+  if (png.status !== 0) {
+    throw new Error(png.stderr || "failed to render png");
+  }
+  return { svgPath, pdfPath, pngPath };
 }
 
 function writeResult(resultFile, value) {
@@ -745,6 +863,9 @@ function commandCompose(flags) {
   const llcgDot = flags["llcg-dot"] ? path.resolve(String(flags["llcg-dot"])) : "";
   const groupsFile = flags["groups-file"]
     ? path.resolve(String(flags["groups-file"]))
+    : "";
+  const groupsOverlayFile = flags["groups-overlay-file"]
+    ? path.resolve(String(flags["groups-overlay-file"]))
     : "";
   const prefixFile = flags["prefix-file"]
     ? path.resolve(String(flags["prefix-file"]))
@@ -781,7 +902,7 @@ function commandCompose(flags) {
   const manifestPath = path.join(outputDir, "driver-callgraph-manifest.json");
   const logPath = path.join(outputDir, "build.log");
   const parsedGraph = parseDot(readText(llcgDot));
-  const groups = parseGroupsFile(groupsFile);
+  const groups = loadGroups(groupsFile, groupsOverlayFile);
   const prefix = loadPrefixGraph(prefixFile);
   const lifecycleRoots = selectLifecycleRoots(parsedGraph, groups, prefix);
   if (lifecycleRoots.length === 0) {
@@ -798,8 +919,22 @@ function commandCompose(flags) {
     lifecycle.nodes,
     collapsed.nodes,
   );
-  const nodeDotText = renderGraph(title, llcgDot, groupsFile, prefixFile, "node");
-  const dotText = renderGraph(title, llcgDot, groupsFile, prefixFile, "projected");
+  const nodeDotText = renderGraph(
+    title,
+    llcgDot,
+    groupsFile,
+    groupsOverlayFile,
+    prefixFile,
+    "node",
+  );
+  const dotText = renderGraph(
+    title,
+    llcgDot,
+    groupsFile,
+    groupsOverlayFile,
+    prefixFile,
+    "projected",
+  );
   fs.writeFileSync(llcgInputDotPath, readText(llcgDot), "utf8");
   fs.writeFileSync(sliceDotPath, renderSimpleDot(`${title} Slice`, lifecycle), "utf8");
   fs.writeFileSync(
@@ -821,6 +956,7 @@ function commandCompose(flags) {
   writeJson(debugJsonPath, {
     llcg_dot: llcgDot,
     groups_file: groupsFile,
+    groups_overlay_file: groupsOverlayFile,
     prefix_file: prefixFile,
     runtime_roots: runtimeRoots,
     lifecycle_roots: lifecycle.roots || [],
@@ -845,8 +981,12 @@ function commandCompose(flags) {
   });
   fs.writeFileSync(nodeDotPath, nodeDotText, "utf8");
   fs.writeFileSync(dotPath, dotText, "utf8");
-  const { svgPath: nodeSvgPath, pdfPath: nodePdfPath } = renderGraphviz(nodeDotPath);
-  const { svgPath, pdfPath } = renderGraphviz(dotPath);
+  const {
+    svgPath: nodeSvgPath,
+    pdfPath: nodePdfPath,
+    pngPath: nodePngPath,
+  } = renderGraphviz(nodeDotPath);
+  const { svgPath, pdfPath, pngPath } = renderGraphviz(dotPath);
 
   const manifest = {
     command: "build",
@@ -856,6 +996,7 @@ function commandCompose(flags) {
       title,
       llcg_dot: llcgDot,
       groups_file: groupsFile,
+      groups_overlay_file: groupsOverlayFile,
       prefix_file: prefixFile,
       llcg_input_dot: llcgInputDotPath,
       slice_dot: sliceDotPath,
@@ -866,9 +1007,11 @@ function commandCompose(flags) {
       graph_node_dot: nodeDotPath,
       graph_node_svg: nodeSvgPath,
       graph_node_pdf: nodePdfPath,
+      graph_node_png: nodePngPath,
       graph_dot: dotPath,
       graph_svg: svgPath,
       graph_pdf: pdfPath,
+      graph_png: pngPath,
     },
   };
   writeJson(manifestPath, manifest);
@@ -877,11 +1020,13 @@ function commandCompose(flags) {
     [
       `title=${title}`,
       `llcg_dot=${llcgDot}`,
+      `groups_overlay_file=${groupsOverlayFile}`,
       `roots_json=${rootsJsonPath}`,
       `groups_json=${groupsJsonPath}`,
       `graph_dot=${dotPath}`,
       `graph_svg=${svgPath}`,
       `graph_pdf=${pdfPath}`,
+      `graph_png=${pngPath}`,
     ].join("\n") + "\n",
     "utf8",
   );
@@ -891,6 +1036,7 @@ function commandCompose(flags) {
     details: {
       output: outputDir,
       llcg_dot: llcgDot,
+      groups_overlay_file: groupsOverlayFile,
       prefix_file: prefixFile,
       llcg_input_dot: llcgInputDotPath,
       slice_dot: sliceDotPath,
@@ -901,9 +1047,11 @@ function commandCompose(flags) {
       node_dot: nodeDotPath,
       node_svg: nodeSvgPath,
       node_pdf: nodePdfPath,
+      node_png: nodePngPath,
       dot: dotPath,
       svg: svgPath,
       pdf: pdfPath,
+      png: pngPath,
       manifest: manifestPath,
       log: logPath,
     },
@@ -919,9 +1067,11 @@ function commandCompose(flags) {
       { path: "graph-raw-dot", location: nodeDotPath },
       { path: "graph-raw-svg", location: nodeSvgPath },
       { path: "graph-raw-pdf", location: nodePdfPath },
+      { path: "graph-raw-png", location: nodePngPath },
       { path: "graph-display-dot", location: dotPath },
       { path: "graph-display-svg", location: svgPath },
       { path: "graph-display-pdf", location: pdfPath },
+      { path: "graph-display-png", location: pngPath },
       { path: "build-log", location: logPath },
     ],
   };

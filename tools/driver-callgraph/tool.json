@@ -30,6 +30,13 @@
         ],
         "path": true
       },
+      "groups-overlay-file": {
+        "aliases": [
+          "groups-overlay-file",
+          "groupsOverlayFile"
+        ],
+        "path": true
+      },
       "prefix-file": {
         "aliases": [
           "prefix-file",
@@ -92,8 +99,14 @@
         "graph-display-pdf": {
           "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph-display.pdf"
         },
+        "graph-display-png": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph-display.png"
+        },
         "graph-raw-pdf": {
           "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph-raw.pdf"
+        },
+        "graph-raw-png": {
+          "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/driver-callgraph-raw.png"
         },
         "build-log": {
           "pathTemplate": "tools/driver-callgraph/builds/{buildDirKey}/output/build.log"
@@ -109,6 +122,7 @@
             "build-dir-key",
             "llcg-dot",
             "groups-file",
+            "groups-overlay-file",
             "prefix-file",
             "output",
             "title"
@@ -135,6 +149,9 @@
               },
               "groups_file": {
                 "fromFlag": "groups-file"
+              },
+              "groups_overlay_file": {
+                "fromFlag": "groups-overlay-file"
               },
               "prefix_file": {
                 "fromFlag": "prefix-file"

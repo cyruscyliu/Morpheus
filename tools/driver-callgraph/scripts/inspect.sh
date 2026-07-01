@@ -16,6 +16,8 @@ svg_path="${output_dir}/driver-callgraph-display.svg"
 node_svg_path="${output_dir}/driver-callgraph-raw.svg"
 pdf_path="${output_dir}/driver-callgraph-display.pdf"
 node_pdf_path="${output_dir}/driver-callgraph-raw.pdf"
+png_path="${output_dir}/driver-callgraph-display.png"
+node_png_path="${output_dir}/driver-callgraph-raw.png"
 log_path="${output_dir}/build.log"
 
 if [ ! -f "${manifest_path}" ]; then
@@ -44,6 +46,8 @@ cat > "${result_file}" <<EOF
     { "path": "graph-raw-svg", "location": "${node_svg_path}" },
     { "path": "graph-display-pdf", "location": "${pdf_path}" },
     { "path": "graph-raw-pdf", "location": "${node_pdf_path}" },
+    { "path": "graph-display-png", "location": "${png_path}" },
+    { "path": "graph-raw-png", "location": "${node_png_path}" },
     { "path": "build-log", "location": "${log_path}" }
   ]
 }

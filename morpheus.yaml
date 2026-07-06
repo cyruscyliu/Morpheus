@@ -31,6 +31,15 @@ tools:
       - output-dir
       - runtime-helper
       - runtime-contract
+  devilang:
+    mode: local
+    build-dir-key: fixture
+    clang: 15
+    artifacts:
+      - build-dir
+      - output-dir
+      - manifest
+      - log-file
   nqc2:
     build-version: dev
     build-dir-key: default
@@ -84,6 +93,18 @@ workflows:
         args:
           - --target
           - ./tools/llcg/tests/fixtures/minimal-llcg-output/llcg-manifest.json
+  devilang-build-ci:
+    category: build
+    steps:
+      - id: llbic_inspect
+        tool: llbic
+        command: inspect
+        args:
+          - --target
+          - ./tools/llbic/tests/fixtures/linux-6.18.16-arm64-clang15/llbic.json
+      - id: devilang_build
+        tool: devilang
+        command: build
   libafl-build-ci:
     category: build
     steps:

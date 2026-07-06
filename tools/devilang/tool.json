@@ -1,0 +1,193 @@
+{
+  "name": "devilang",
+  "runtime": null,
+  "cli-contract": "build,exec,inspect,logs",
+  "config": {
+    "fields": {
+      "mode": { "aliases": ["mode"] },
+      "build-dir-key": {
+        "aliases": ["build-dir-key", "buildDirKey"]
+      },
+      "build-dir": {
+        "aliases": ["build-dir", "buildDir"],
+        "path": true
+      },
+      "output": {
+        "aliases": ["output"],
+        "path": true
+      },
+      "target": {
+        "aliases": ["target"],
+        "path": true
+      },
+      "clang": {
+        "aliases": ["clang"]
+      },
+      "llbase-contract": {
+        "aliases": ["llbase-contract", "llbaseContract"],
+        "path": true
+      },
+      "llbic-json": {
+        "aliases": ["llbic-json", "llbicJson"],
+        "path": true
+      },
+      "module": {
+        "aliases": ["module"],
+        "repeatable": true,
+        "path": true
+      },
+      "module-relative": {
+        "aliases": ["module-relative", "moduleRelative"],
+        "repeatable": true
+      },
+      "filter": {
+        "aliases": ["filter"],
+        "path": true
+      },
+      "booting-entry": {
+        "aliases": ["booting-entry", "bootingEntry"],
+        "repeatable": true
+      },
+      "runtime-entry": {
+        "aliases": ["runtime-entry", "runtimeEntry"],
+        "repeatable": true
+      },
+      "booting-machine-name": {
+        "aliases": ["booting-machine-name", "bootingMachineName"]
+      },
+      "runtime-machine-name": {
+        "aliases": ["runtime-machine-name", "runtimeMachineName"]
+      },
+      "artifacts": {
+        "aliases": ["artifacts"],
+        "repeatable": true
+      }
+    }
+  },
+  "inputs": {
+    "build": {
+      "dependencies": {
+        "llbase": { "flag": "llbase-contract" }
+      }
+    },
+    "exec": {
+      "dependencies": {
+        "llbase": { "flag": "llbase-contract" },
+        "llbic": { "flag": "llbic-json" },
+        "llcg": { "flag": "filter" }
+      }
+    }
+  },
+  "managed": {
+    "schemaVersion": 1,
+    "modes": ["local"],
+    "local": {
+      "sourceTemplate": "tools/devilang/source",
+      "buildDirTemplate": "tools/devilang/build",
+      "outputDirTemplate": "tools/devilang/builds/{buildDirKey}/output",
+      "artifacts": {
+        "build-dir": {
+          "pathTemplate": "tools/devilang/build"
+        },
+        "output-dir": {
+          "pathTemplate": "tools/devilang/builds/{buildDirKey}/output"
+        },
+        "manifest": {
+          "pathTemplate": "tools/devilang/builds/{buildDirKey}/output/devilang-manifest.json"
+        },
+        "log-file": {
+          "pathTemplate": "tools/devilang/builds/{buildDirKey}/output/devilang.log"
+        }
+      },
+      "commands": {
+        "build": {
+          "requiredFlags": ["llbase-contract"],
+          "scalarFlags": ["build-dir", "clang", "llbase-contract"],
+          "repeatableFlags": [],
+          "pathFlags": {
+            "build-dir": "tools/devilang/build"
+          },
+          "script": {
+            "path": "scripts/build.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "built devilang native artifacts",
+            "errorSummary": "devilang native build failed",
+            "manifestTemplate": "{build-dir}/manifest.json",
+            "artifact": {
+              "path": "build-dir",
+              "locationTemplate": "{build-dir}"
+            },
+            "details": {
+              "build_dir": "{build-dir}"
+            }
+          }
+        },
+        "exec": {
+          "requiredFlags": ["output", "llbase-contract"],
+          "scalarFlags": [
+            "output",
+            "build-dir",
+            "clang",
+            "llbase-contract",
+            "llbic-json",
+            "filter",
+            "booting-machine-name",
+            "runtime-machine-name"
+          ],
+          "repeatableFlags": [
+            "module",
+            "module-relative",
+            "booting-entry",
+            "runtime-entry"
+          ],
+          "pathFlags": {
+            "build-dir": "tools/devilang/build",
+            "output": "tools/devilang/builds/{buildDirKey}/output"
+          },
+          "script": {
+            "path": "scripts/exec.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "generated devilang state artifacts",
+            "errorSummary": "devilang state generation failed",
+            "manifestTemplate": "{output}/manifest.json",
+            "artifact": {
+              "path": "manifest",
+              "locationTemplate": "{output}/devilang-manifest.json"
+            },
+            "details": {
+              "output": "{output}"
+            }
+          }
+        },
+        "inspect": {
+          "requiredFlags": ["target"],
+          "scalarFlags": ["target"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/inspect.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "inspected existing devilang manifest"
+          }
+        },
+        "logs": {
+          "requiredFlags": ["target"],
+          "scalarFlags": ["target"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/logs.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "read devilang log"
+          }
+        }
+      }
+    }
+  }
+}

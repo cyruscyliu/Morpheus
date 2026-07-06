@@ -29,8 +29,11 @@ public:
     T__86 = 87, T__87 = 88, T__88 = 89, T__89 = 90, T__90 = 91, T__91 = 92, 
     T__92 = 93, T__93 = 94, T__94 = 95, T__95 = 96, T__96 = 97, T__97 = 98, 
     T__98 = 99, T__99 = 100, T__100 = 101, T__101 = 102, T__102 = 103, T__103 = 104, 
-    T__104 = 105, T__105 = 106, T__106 = 107, IDENT = 108, INT = 109, WS = 110, 
-    LINE_COMMENT = 111, BLOCK_COMMENT = 112
+    T__104 = 105, T__105 = 106, T__106 = 107, T__107 = 108, T__108 = 109, 
+    T__109 = 110, T__110 = 111, T__111 = 112, T__112 = 113, T__113 = 114, 
+    T__114 = 115, T__115 = 116, T__116 = 117, T__117 = 118, T__118 = 119, 
+    T__119 = 120, T__120 = 121, T__121 = 122, IDENT = 123, INT = 124, STRING = 125, 
+    WS = 126, LINE_COMMENT = 127, BLOCK_COMMENT = 128
   };
 
   enum {
@@ -47,13 +50,18 @@ public:
     RuleOpDecl = 41, RuleOpBody = 42, RuleCallOp = 43, RuleMmioOpDecl = 44, 
     RuleExtendedName = 45, RuleMmioField = 46, RuleMmioDir = 47, RuleTopBbDecl = 48, 
     RuleTopBbItem = 49, RuleTopPathDecl = 50, RuleTopPathItem = 51, RuleTopFuncDecl = 52, 
-    RuleTopFuncItem = 53, RuleStateDecl = 54, RuleStateStmt = 55, RuleStateBlock = 56, 
-    RuleStateStep = 57, RuleStateTerminator = 58, RuleIoStateStep = 59, 
-    RuleIoVerb = 60, RuleIoValue = 61, RuleCallStateStep = 62, RuleEllipsisStateStep = 63, 
-    RuleOpExpr = 64, RuleOpOrExpr = 65, RuleOpAndExpr = 66, RuleOpAddExpr = 67, 
-    RuleOpShiftExpr = 68, RuleOpPrimaryExpr = 69, RuleFuncCall = 70, RuleFuncArgs = 71, 
-    RuleQualifiedName = 72, RuleFileName = 73, RuleRef = 74, RuleFieldRef = 75, 
-    RuleBitRef = 76, RuleExpr = 77, RulePrimary = 78, RuleBoolLiteral = 79
+    RuleTopFuncItem = 53, RuleMachineDecl = 54, RuleMachineItem = 55, RuleImportDecl = 56, 
+    RuleInitialDecl = 57, RuleScratchDecl = 58, RuleScratchField = 59, RuleMachineStateDecl = 60, 
+    RuleTraceDecl = 61, RuleTraceItem = 62, RuleTraceBlock = 63, RuleTraceLabelBlock = 64, 
+    RuleTraceInstr = 65, RuleTraceAssign = 66, RuleTraceWrite = 67, RuleTraceCall = 68, 
+    RuleTraceArgs = 69, RuleTraceNeqj = 70, RuleTraceBug = 71, RuleTraceWarn = 72, 
+    RuleEllipsisInstr = 73, RuleLabelRef = 74, RuleTransitionDecl = 75, 
+    RuleTraceExpr = 76, RuleTraceOrExpr = 77, RuleTraceShiftExpr = 78, RuleTraceAddExpr = 79, 
+    RuleTracePrimaryExpr = 80, RuleReadExpr = 81, RuleOpExpr = 82, RuleOpOrExpr = 83, 
+    RuleOpAndExpr = 84, RuleOpAddExpr = 85, RuleOpShiftExpr = 86, RuleOpPrimaryExpr = 87, 
+    RuleFuncCall = 88, RuleFuncArgs = 89, RuleQualifiedName = 90, RuleFileName = 91, 
+    RuleRef = 92, RuleFieldRef = 93, RuleBitRef = 94, RuleExpr = 95, RulePrimary = 96, 
+    RuleBoolLiteral = 97
   };
 
   explicit devilangParser(antlr4::TokenStream *input);
@@ -120,16 +128,34 @@ public:
   class TopPathItemContext;
   class TopFuncDeclContext;
   class TopFuncItemContext;
-  class StateDeclContext;
-  class StateStmtContext;
-  class StateBlockContext;
-  class StateStepContext;
-  class StateTerminatorContext;
-  class IoStateStepContext;
-  class IoVerbContext;
-  class IoValueContext;
-  class CallStateStepContext;
-  class EllipsisStateStepContext;
+  class MachineDeclContext;
+  class MachineItemContext;
+  class ImportDeclContext;
+  class InitialDeclContext;
+  class ScratchDeclContext;
+  class ScratchFieldContext;
+  class MachineStateDeclContext;
+  class TraceDeclContext;
+  class TraceItemContext;
+  class TraceBlockContext;
+  class TraceLabelBlockContext;
+  class TraceInstrContext;
+  class TraceAssignContext;
+  class TraceWriteContext;
+  class TraceCallContext;
+  class TraceArgsContext;
+  class TraceNeqjContext;
+  class TraceBugContext;
+  class TraceWarnContext;
+  class EllipsisInstrContext;
+  class LabelRefContext;
+  class TransitionDeclContext;
+  class TraceExprContext;
+  class TraceOrExprContext;
+  class TraceShiftExprContext;
+  class TraceAddExprContext;
+  class TracePrimaryExprContext;
+  class ReadExprContext;
   class OpExprContext;
   class OpOrExprContext;
   class OpAndExprContext;
@@ -173,7 +199,7 @@ public:
     TopBbDeclContext *topBbDecl();
     TopPathDeclContext *topPathDecl();
     TopFuncDeclContext *topFuncDecl();
-    StateDeclContext *stateDecl();
+    MachineDeclContext *machineDecl();
 
     virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
@@ -937,68 +963,283 @@ public:
 
   TopFuncItemContext* topFuncItem();
 
-  class  StateDeclContext : public antlr4::ParserRuleContext {
+  class  MachineDeclContext : public antlr4::ParserRuleContext {
   public:
-    StateDeclContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    MachineDeclContext(antlr4::ParserRuleContext *parent, size_t invokingState);
     virtual size_t getRuleIndex() const override;
-    ExtendedNameContext *extendedName();
-    std::vector<StateStmtContext *> stateStmt();
-    StateStmtContext* stateStmt(size_t i);
+    IdentContext *ident();
+    std::vector<ImportDeclContext *> importDecl();
+    ImportDeclContext* importDecl(size_t i);
+    std::vector<MachineItemContext *> machineItem();
+    MachineItemContext* machineItem(size_t i);
 
     virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
    
   };
 
-  StateDeclContext* stateDecl();
+  MachineDeclContext* machineDecl();
 
-  class  StateStmtContext : public antlr4::ParserRuleContext {
+  class  MachineItemContext : public antlr4::ParserRuleContext {
   public:
-    StateStmtContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    MachineItemContext(antlr4::ParserRuleContext *parent, size_t invokingState);
     virtual size_t getRuleIndex() const override;
-    StateBlockContext *stateBlock();
-    StateStepContext *stateStep();
+    InitialDeclContext *initialDecl();
+    ScratchDeclContext *scratchDecl();
+    MachineStateDeclContext *machineStateDecl();
+    TraceDeclContext *traceDecl();
+    TransitionDeclContext *transitionDecl();
 
     virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
    
   };
 
-  StateStmtContext* stateStmt();
+  MachineItemContext* machineItem();
 
-  class  StateBlockContext : public antlr4::ParserRuleContext {
+  class  ImportDeclContext : public antlr4::ParserRuleContext {
   public:
-    StateBlockContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    ImportDeclContext(antlr4::ParserRuleContext *parent, size_t invokingState);
     virtual size_t getRuleIndex() const override;
-    std::vector<StateStmtContext *> stateStmt();
-    StateStmtContext* stateStmt(size_t i);
+    antlr4::tree::TerminalNode *STRING();
 
     virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
    
   };
 
-  StateBlockContext* stateBlock();
+  ImportDeclContext* importDecl();
 
-  class  StateStepContext : public antlr4::ParserRuleContext {
+  class  InitialDeclContext : public antlr4::ParserRuleContext {
   public:
-    StateStepContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    InitialDeclContext(antlr4::ParserRuleContext *parent, size_t invokingState);
     virtual size_t getRuleIndex() const override;
-    IoStateStepContext *ioStateStep();
-    StateTerminatorContext *stateTerminator();
-    CallStateStepContext *callStateStep();
-    EllipsisStateStepContext *ellipsisStateStep();
+    IdentContext *ident();
 
     virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
    
   };
 
-  StateStepContext* stateStep();
+  InitialDeclContext* initialDecl();
 
-  class  StateTerminatorContext : public antlr4::ParserRuleContext {
+  class  ScratchDeclContext : public antlr4::ParserRuleContext {
   public:
-    StateTerminatorContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    ScratchDeclContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    std::vector<ScratchFieldContext *> scratchField();
+    ScratchFieldContext* scratchField(size_t i);
+
+    virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
+    virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
+   
+  };
+
+  ScratchDeclContext* scratchDecl();
+
+  class  ScratchFieldContext : public antlr4::ParserRuleContext {
+  public:
+    ScratchFieldContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    QualifiedNameContext *qualifiedName();
+
+    virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
+    virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
+   
+  };
+
+  ScratchFieldContext* scratchField();
+
+  class  MachineStateDeclContext : public antlr4::ParserRuleContext {
+  public:
+    MachineStateDeclContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    IdentContext *ident();
+
+    virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
+    virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
+   
+  };
+
+  MachineStateDeclContext* machineStateDecl();
+
+  class  TraceDeclContext : public antlr4::ParserRuleContext {
+  public:
+    TraceDeclContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    IdentContext *ident();
+    std::vector<TraceItemContext *> traceItem();
+    TraceItemContext* traceItem(size_t i);
+
+    virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
+    virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
+   
+  };
+
+  TraceDeclContext* traceDecl();
+
+  class  TraceItemContext : public antlr4::ParserRuleContext {
+  public:
+    TraceItemContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    TraceBlockContext *traceBlock();
+    TraceLabelBlockContext *traceLabelBlock();
+
+    virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
+    virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
+   
+  };
+
+  TraceItemContext* traceItem();
+
+  class  TraceBlockContext : public antlr4::ParserRuleContext {
+  public:
+    TraceBlockContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    std::vector<TraceInstrContext *> traceInstr();
+    TraceInstrContext* traceInstr(size_t i);
+
+    virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
+    virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
+   
+  };
+
+  TraceBlockContext* traceBlock();
+
+  class  TraceLabelBlockContext : public antlr4::ParserRuleContext {
+  public:
+    TraceLabelBlockContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    LabelRefContext *labelRef();
+    TraceBlockContext *traceBlock();
+
+    virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
+    virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
+   
+  };
+
+  TraceLabelBlockContext* traceLabelBlock();
+
+  class  TraceInstrContext : public antlr4::ParserRuleContext {
+  public:
+    TraceInstrContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    TraceBlockContext *traceBlock();
+    TraceAssignContext *traceAssign();
+    TraceWriteContext *traceWrite();
+    TraceCallContext *traceCall();
+    TraceNeqjContext *traceNeqj();
+    TraceBugContext *traceBug();
+    TraceWarnContext *traceWarn();
+    EllipsisInstrContext *ellipsisInstr();
+
+    virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
+    virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
+   
+  };
+
+  TraceInstrContext* traceInstr();
+
+  class  TraceAssignContext : public antlr4::ParserRuleContext {
+  public:
+    TraceAssignContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    QualifiedNameContext *qualifiedName();
+    TraceExprContext *traceExpr();
+
+    virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
+    virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
+   
+  };
+
+  TraceAssignContext* traceAssign();
+
+  class  TraceWriteContext : public antlr4::ParserRuleContext {
+  public:
+    TraceWriteContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    std::vector<TraceExprContext *> traceExpr();
+    TraceExprContext* traceExpr(size_t i);
+
+    virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
+    virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
+   
+  };
+
+  TraceWriteContext* traceWrite();
+
+  class  TraceCallContext : public antlr4::ParserRuleContext {
+  public:
+    TraceCallContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    QualifiedNameContext *qualifiedName();
+    TraceArgsContext *traceArgs();
+
+    virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
+    virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
+   
+  };
+
+  TraceCallContext* traceCall();
+
+  class  TraceArgsContext : public antlr4::ParserRuleContext {
+  public:
+    TraceArgsContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    std::vector<TraceExprContext *> traceExpr();
+    TraceExprContext* traceExpr(size_t i);
+
+    virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
+    virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
+   
+  };
+
+  TraceArgsContext* traceArgs();
+
+  class  TraceNeqjContext : public antlr4::ParserRuleContext {
+  public:
+    TraceNeqjContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    std::vector<TraceExprContext *> traceExpr();
+    TraceExprContext* traceExpr(size_t i);
+    LabelRefContext *labelRef();
+
+    virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
+    virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
+   
+  };
+
+  TraceNeqjContext* traceNeqj();
+
+  class  TraceBugContext : public antlr4::ParserRuleContext {
+  public:
+    TraceBugContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    TraceExprContext *traceExpr();
+
+    virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
+    virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
+   
+  };
+
+  TraceBugContext* traceBug();
+
+  class  TraceWarnContext : public antlr4::ParserRuleContext {
+  public:
+    TraceWarnContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    TraceExprContext *traceExpr();
+
+    virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
+    virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
+   
+  };
+
+  TraceWarnContext* traceWarn();
+
+  class  EllipsisInstrContext : public antlr4::ParserRuleContext {
+  public:
+    EllipsisInstrContext(antlr4::ParserRuleContext *parent, size_t invokingState);
     virtual size_t getRuleIndex() const override;
 
     virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
@@ -1006,73 +1247,119 @@ public:
    
   };
 
-  StateTerminatorContext* stateTerminator();
+  EllipsisInstrContext* ellipsisInstr();
 
-  class  IoStateStepContext : public antlr4::ParserRuleContext {
+  class  LabelRefContext : public antlr4::ParserRuleContext {
   public:
-    IoStateStepContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    LabelRefContext(antlr4::ParserRuleContext *parent, size_t invokingState);
     virtual size_t getRuleIndex() const override;
-    IoVerbContext *ioVerb();
-    OpExprContext *opExpr();
-    IoValueContext *ioValue();
+    IdentContext *ident();
 
     virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
    
   };
 
-  IoStateStepContext* ioStateStep();
+  LabelRefContext* labelRef();
 
-  class  IoVerbContext : public antlr4::ParserRuleContext {
+  class  TransitionDeclContext : public antlr4::ParserRuleContext {
   public:
-    IoVerbContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    TransitionDeclContext(antlr4::ParserRuleContext *parent, size_t invokingState);
     virtual size_t getRuleIndex() const override;
+    std::vector<IdentContext *> ident();
+    IdentContext* ident(size_t i);
 
     virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
    
   };
 
-  IoVerbContext* ioVerb();
+  TransitionDeclContext* transitionDecl();
 
-  class  IoValueContext : public antlr4::ParserRuleContext {
+  class  TraceExprContext : public antlr4::ParserRuleContext {
   public:
-    IoValueContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    TraceExprContext(antlr4::ParserRuleContext *parent, size_t invokingState);
     virtual size_t getRuleIndex() const override;
-    OpExprContext *opExpr();
+    TraceOrExprContext *traceOrExpr();
 
     virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
    
   };
 
-  IoValueContext* ioValue();
+  TraceExprContext* traceExpr();
 
-  class  CallStateStepContext : public antlr4::ParserRuleContext {
+  class  TraceOrExprContext : public antlr4::ParserRuleContext {
   public:
-    CallStateStepContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    TraceOrExprContext(antlr4::ParserRuleContext *parent, size_t invokingState);
     virtual size_t getRuleIndex() const override;
-    ExtendedNameContext *extendedName();
-    FuncArgsContext *funcArgs();
+    std::vector<TraceShiftExprContext *> traceShiftExpr();
+    TraceShiftExprContext* traceShiftExpr(size_t i);
 
     virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
    
   };
 
-  CallStateStepContext* callStateStep();
+  TraceOrExprContext* traceOrExpr();
 
-  class  EllipsisStateStepContext : public antlr4::ParserRuleContext {
+  class  TraceShiftExprContext : public antlr4::ParserRuleContext {
   public:
-    EllipsisStateStepContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    TraceShiftExprContext(antlr4::ParserRuleContext *parent, size_t invokingState);
     virtual size_t getRuleIndex() const override;
+    std::vector<TraceAddExprContext *> traceAddExpr();
+    TraceAddExprContext* traceAddExpr(size_t i);
 
     virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
     virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
    
   };
 
-  EllipsisStateStepContext* ellipsisStateStep();
+  TraceShiftExprContext* traceShiftExpr();
+
+  class  TraceAddExprContext : public antlr4::ParserRuleContext {
+  public:
+    TraceAddExprContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    std::vector<TracePrimaryExprContext *> tracePrimaryExpr();
+    TracePrimaryExprContext* tracePrimaryExpr(size_t i);
+
+    virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
+    virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
+   
+  };
+
+  TraceAddExprContext* traceAddExpr();
+
+  class  TracePrimaryExprContext : public antlr4::ParserRuleContext {
+  public:
+    TracePrimaryExprContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    antlr4::tree::TerminalNode *INT();
+    QualifiedNameContext *qualifiedName();
+    ReadExprContext *readExpr();
+    FuncCallContext *funcCall();
+    TraceExprContext *traceExpr();
+
+    virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
+    virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
+   
+  };
+
+  TracePrimaryExprContext* tracePrimaryExpr();
+
+  class  ReadExprContext : public antlr4::ParserRuleContext {
+  public:
+    ReadExprContext(antlr4::ParserRuleContext *parent, size_t invokingState);
+    virtual size_t getRuleIndex() const override;
+    TraceExprContext *traceExpr();
+
+    virtual void enterRule(antlr4::tree::ParseTreeListener *listener) override;
+    virtual void exitRule(antlr4::tree::ParseTreeListener *listener) override;
+   
+  };
+
+  ReadExprContext* readExpr();
 
   class  OpExprContext : public antlr4::ParserRuleContext {
   public:

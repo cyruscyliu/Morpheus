@@ -14,7 +14,7 @@ decl
     | topBbDecl
     | topPathDecl
     | topFuncDecl
-    | stateDecl
+    | machineDecl
     ;
 
 // ----- structs -----
@@ -27,17 +27,25 @@ field
     : ident ':' type_ modifier* bitBlock? immBlock? ';'
     ;
 
-// ident allows keywords to be used as identifiers in certain contexts
+// ident allows selected keywords to be used as identifiers in reference
+// positions and struct fields.
 ident
     : IDENT
     | 'count' | 'size' | 'head' | 'tail' | 'next' | 'prev' | 'base'
     | 'align' | 'from' | 'to' | 'sentinel' | 'position' | 'link'
     | 'status' | 'command' | 'control' | 'flags' | 'data' | 'addr'
     | 'buf' | 'buffer' | 'tag' | 'id' | 'sig' | 'ctrl' | 'token' | 'inst'
-    | 'arg' | 'call' | 'op' | 'bb' | 'path' | 'func' | 'mmio' | 'direction' | 'region' | 'address'
+    | 'arg' | 'call' | 'op' | 'bb' | 'path' | 'func' | 'mmio'
+    | 'direction' | 'region' | 'address'
+    | 'r' | 'w'
     | 'unknown' | 'phi' | 'select' | 'num' | 'var'
     | 'flag' | 'random' | 'immediate'
     | 'state' | 'seq' | 'repeat' | 'value'
+    | 'machine' | 'initial' | 'final' | 'scratch' | 'trace'
+    | 'import' | 'transition' | 'on' | 'sequence'
+    | 'read8' | 'read16' | 'read32' | 'read64'
+    | 'write8' | 'write16' | 'write32' | 'write64'
+    | 'BUG' | 'BUG_ON' | 'WARN_ON' | 'neqj'
     ;
 
 type_
@@ -68,8 +76,6 @@ modifier
     | 'align' INT
     ;
 
-//   [ bits 0..6; ]
-//   [ bits 0..6 = 0; 1..2; ]
 bitBlock
     : '[' (bitEntry (bitSep bitEntry)* bitSep?)? ']'
     ;
@@ -92,8 +98,6 @@ bitSep
     | ','
     ;
 
-//   [ imm 0; imm 1; ]
-//   [ range 0..6; ]
 immBlock
     : '[' (immEntry (immSep immEntry)* immSep?)? ']'
     ;
@@ -134,7 +138,6 @@ pointerField
     | 'sentinel'  '=' bitRefList  ';'
     ;
 
-// bitRefList allows multiple bit references: ref[n] | ref[m]
 bitRefList
     : bitRef ('|' bitRef)*
     ;
@@ -156,7 +159,7 @@ ringbufDecl
     ;
 
 typeList
-    : ident ( '|' ident )*
+    : ident ('|' ident)*
     ;
 
 spaceTypeList
@@ -167,8 +170,8 @@ listBody
     : 'head' '=' ref ';'
       'tail' '=' ref ';'
       'next' '=' fieldRefOrList ';'
-      ( 'sentinel' '=' bitRefList ';' )?
-      ( 'align' '=' INT ';' )?
+      ('sentinel' '=' bitRefList ';')?
+      ('align' '=' INT ';')?
     ;
 
 dlistBody
@@ -176,17 +179,16 @@ dlistBody
       'tail' '=' ref ';'
       'next' '=' fieldRefOrList ';'
       'prev' '=' fieldRefOrList ';'
-      ( 'sentinel' '=' bitRefList ';' )?
-      ( 'align' '=' INT ';' )?
+      ('sentinel' '=' bitRefList ';')?
+      ('align' '=' INT ';')?
     ;
 
 ringBody
     : 'head' '=' ref ';'
       'next' '=' fieldRefOrList ';'
-      ( 'align' '=' INT ';' )?
+      ('align' '=' INT ';')?
     ;
 
-// fieldRefOrList allows: .field, field, or field | field (for polymorphic lists)
 fieldRefOrList
     : fieldRef ('|' fieldRef)*
     | ident ('|' ident)*
@@ -195,12 +197,12 @@ fieldRefOrList
 ringbufBody
     : 'base' '=' expr ';'
       (
-          'size'  '=' INT ';'
+          'size' '=' INT ';'
         | 'count' '=' ref ';'
       )
       'head' '=' ref ';'
       'tail' '=' ref ';'
-      ( 'align' '=' INT ';' )?
+      ('align' '=' INT ';')?
     ;
 
 // ----- head topology -----
@@ -216,34 +218,31 @@ headName
 headField
     : 'position' '=' headPosition
     | 'to'       '=' spaceTypeList ';'
-    | 'align'    '=' INT           ';'
+    | 'align'    '=' INT ';'
     ;
 
-// position = loc ('|' loc)* ;
 headPosition
     : headLocation ('|' headLocation)*
     ;
 
-//   [filename = ac97.c; caller = fetch_bd; callee = pci_dma_read; call_depth = 0; argument_index = 1;]
-//   [qemu, ac97.c, fetch_bd, pci_dma_read, 0, 1]
 headLocation
     : '[' (
             headKeyValue (';' headKeyValue)* ';'?
-          | headAtom     (',' headAtom    )*
+          | headAtom (',' headAtom)*
           ) ']'
     ;
 
 headKeyValue
-    : 'backend'        '=' qualifiedName
-    | 'file'           '=' fileName
-    | 'filename'       '=' fileName
-    | 'func'           '=' qualifiedName
-    | 'caller'         '=' qualifiedName
-    | 'target'         '=' qualifiedName
-    | 'callee'         '=' qualifiedName
-    | 'depth'          '=' INT
-    | 'call_depth'     '=' INT
-    | 'arg'            '=' INT
+    : 'backend' '=' qualifiedName
+    | 'file' '=' fileName
+    | 'filename' '=' fileName
+    | 'func' '=' qualifiedName
+    | 'caller' '=' qualifiedName
+    | 'target' '=' qualifiedName
+    | 'callee' '=' qualifiedName
+    | 'depth' '=' INT
+    | 'call_depth' '=' INT
+    | 'arg' '=' INT
     | 'argument_index' '=' INT
     ;
 
@@ -277,8 +276,6 @@ mmioOpDecl
     : 'mmio' extendedName '{' mmioField* '}'
     ;
 
-// extendedName allows dots followed by numbers/idents (e.g., readl.157_341, netif_running.156)
-// After a dot, allow sequences like "157_341" which lexes as INT IDENT
 extendedName
     : ident ('.' (ident | INT)+)*
     ;
@@ -322,61 +319,147 @@ topFuncItem
     : 'path' extendedName ';'
     ;
 
-// ----- state models -----
+// ----- machine/state/trace models -----
 
-stateDecl
-    : 'state' extendedName '{' stateStmt+ '}'
+machineDecl
+    : importDecl* 'machine' ident '{' machineItem* '}'
     ;
 
-stateStmt
-    : stateBlock
-    | stateStep
+machineItem
+    : initialDecl
+    | scratchDecl
+    | machineStateDecl
+    | traceDecl
+    | transitionDecl
     ;
 
-stateBlock
-    : 'seq' '{' stateStmt* '}'
-    | 'repeat' '{' stateStmt* '}'
+importDecl
+    : 'import' STRING ';'?
     ;
 
-stateStep
-    : ioStateStep stateTerminator?
-    | callStateStep stateTerminator?
-    | ellipsisStateStep stateTerminator?
+initialDecl
+    : 'initial' ident
     ;
 
-stateTerminator
-    : ';'
+scratchDecl
+    : 'scratch' '{' scratchField+ '}'
     ;
 
-ioStateStep
-    : ioVerb opExpr ioValue?
+scratchField
+    : qualifiedName ';'
     ;
 
-ioVerb
-    : 'read8'
-    | 'read16'
-    | 'read32'
-    | 'read64'
-    | 'write8'
-    | 'write16'
-    | 'write32'
-    | 'write64'
+machineStateDecl
+    : 'final'? 'state' ident
     ;
 
-ioValue
-    : 'value' opExpr
+traceDecl
+    : 'trace' ident '{' traceItem+ '}'
     ;
 
-callStateStep
-    : 'call' extendedName ('(' funcArgs? ')')?
+traceItem
+    : traceBlock
+    | traceLabelBlock
     ;
 
-ellipsisStateStep
-    : '...'
+traceBlock
+    : 'sequence' '{' traceInstr* '}'
+    | 'repeat' '{' traceInstr* '}'
     ;
 
-// ----- op expressions (support function calls and bitwise ops) -----
-// Precedence (lowest to highest): | & + << >> primary
+traceLabelBlock
+    : labelRef ':' traceBlock
+    ;
+
+traceInstr
+    : traceBlock
+    | traceAssign
+    | traceWrite
+    | traceCall
+    | traceNeqj
+    | traceBug
+    | traceWarn
+    | ellipsisInstr
+    ;
+
+traceAssign
+    : qualifiedName '=' traceExpr ';'
+    ;
+
+traceWrite
+    : 'write8' '(' traceExpr ',' traceExpr ')' ';'
+    | 'write16' '(' traceExpr ',' traceExpr ')' ';'
+    | 'write32' '(' traceExpr ',' traceExpr ')' ';'
+    | 'write64' '(' traceExpr ',' traceExpr ')' ';'
+    ;
+
+traceCall
+    : 'call' qualifiedName '(' traceArgs? ')' ';'
+    | 'call' qualifiedName ';'
+    ;
+
+traceArgs
+    : traceExpr (',' traceExpr)*
+    ;
+
+traceNeqj
+    : 'neqj' traceExpr ',' traceExpr ',' labelRef ';'
+    ;
+
+traceBug
+    : 'BUG' '(' ')' ';'
+    | 'BUG_ON' '(' traceExpr ')' ';'
+    ;
+
+traceWarn
+    : 'WARN_ON' '(' traceExpr ')' ';'
+    ;
+
+ellipsisInstr
+    : '...' ';'?
+    ;
+
+labelRef
+    : '@' ident
+    ;
+
+transitionDecl
+    : 'transition' ident '->' ident 'on' ident
+    ;
+
+traceExpr
+    : traceOrExpr
+    ;
+
+traceOrExpr
+    : traceShiftExpr ('|' traceShiftExpr)*
+    ;
+
+traceShiftExpr
+    : traceAddExpr (('<<' | '>>') traceAddExpr)*
+    ;
+
+traceAddExpr
+    : tracePrimaryExpr (('+' | '-') tracePrimaryExpr)*
+    ;
+
+tracePrimaryExpr
+    : INT
+    | 'unknown'
+    | qualifiedName
+    | readExpr
+    | funcCall
+    | '(' traceExpr ')'
+    ;
+
+readExpr
+    : 'read8' '(' traceExpr ')'
+    | 'read16' '(' traceExpr ')'
+    | 'read32' '(' traceExpr ')'
+    | 'read64' '(' traceExpr ')'
+    ;
+
+// ----- expressions and references -----
 
 opExpr
     : opOrExpr
@@ -414,13 +497,10 @@ funcArgs
     : opExpr (',' opExpr)*
     ;
 
-// ----- references & expressions -----
-
 qualifiedName
     : ident ('.' ident)*
     ;
 
-// filename allows hyphens: e.g., hcd-dwc2.c, DevIchAc97.cpp
 fileName
     : ident ('-' ident)* ('.' ident)?
     ;
@@ -463,6 +543,10 @@ IDENT
 INT
     : '0x' [0-9a-fA-F]+
     | [0-9]+
+    ;
+
+STRING
+    : '"' (~["\\\r\n] | '\\' .)* '"'
     ;
 
 WS

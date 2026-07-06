@@ -176,35 +176,89 @@ public:
   virtual void enterTopFuncItem(devilangParser::TopFuncItemContext *ctx) = 0;
   virtual void exitTopFuncItem(devilangParser::TopFuncItemContext *ctx) = 0;
 
-  virtual void enterStateDecl(devilangParser::StateDeclContext *ctx) = 0;
-  virtual void exitStateDecl(devilangParser::StateDeclContext *ctx) = 0;
+  virtual void enterMachineDecl(devilangParser::MachineDeclContext *ctx) = 0;
+  virtual void exitMachineDecl(devilangParser::MachineDeclContext *ctx) = 0;
 
-  virtual void enterStateStmt(devilangParser::StateStmtContext *ctx) = 0;
-  virtual void exitStateStmt(devilangParser::StateStmtContext *ctx) = 0;
+  virtual void enterMachineItem(devilangParser::MachineItemContext *ctx) = 0;
+  virtual void exitMachineItem(devilangParser::MachineItemContext *ctx) = 0;
 
-  virtual void enterStateBlock(devilangParser::StateBlockContext *ctx) = 0;
-  virtual void exitStateBlock(devilangParser::StateBlockContext *ctx) = 0;
+  virtual void enterImportDecl(devilangParser::ImportDeclContext *ctx) = 0;
+  virtual void exitImportDecl(devilangParser::ImportDeclContext *ctx) = 0;
 
-  virtual void enterStateStep(devilangParser::StateStepContext *ctx) = 0;
-  virtual void exitStateStep(devilangParser::StateStepContext *ctx) = 0;
+  virtual void enterInitialDecl(devilangParser::InitialDeclContext *ctx) = 0;
+  virtual void exitInitialDecl(devilangParser::InitialDeclContext *ctx) = 0;
 
-  virtual void enterStateTerminator(devilangParser::StateTerminatorContext *ctx) = 0;
-  virtual void exitStateTerminator(devilangParser::StateTerminatorContext *ctx) = 0;
+  virtual void enterScratchDecl(devilangParser::ScratchDeclContext *ctx) = 0;
+  virtual void exitScratchDecl(devilangParser::ScratchDeclContext *ctx) = 0;
 
-  virtual void enterIoStateStep(devilangParser::IoStateStepContext *ctx) = 0;
-  virtual void exitIoStateStep(devilangParser::IoStateStepContext *ctx) = 0;
+  virtual void enterScratchField(devilangParser::ScratchFieldContext *ctx) = 0;
+  virtual void exitScratchField(devilangParser::ScratchFieldContext *ctx) = 0;
 
-  virtual void enterIoVerb(devilangParser::IoVerbContext *ctx) = 0;
-  virtual void exitIoVerb(devilangParser::IoVerbContext *ctx) = 0;
+  virtual void enterMachineStateDecl(devilangParser::MachineStateDeclContext *ctx) = 0;
+  virtual void exitMachineStateDecl(devilangParser::MachineStateDeclContext *ctx) = 0;
 
-  virtual void enterIoValue(devilangParser::IoValueContext *ctx) = 0;
-  virtual void exitIoValue(devilangParser::IoValueContext *ctx) = 0;
+  virtual void enterTraceDecl(devilangParser::TraceDeclContext *ctx) = 0;
+  virtual void exitTraceDecl(devilangParser::TraceDeclContext *ctx) = 0;
 
-  virtual void enterCallStateStep(devilangParser::CallStateStepContext *ctx) = 0;
-  virtual void exitCallStateStep(devilangParser::CallStateStepContext *ctx) = 0;
+  virtual void enterTraceItem(devilangParser::TraceItemContext *ctx) = 0;
+  virtual void exitTraceItem(devilangParser::TraceItemContext *ctx) = 0;
 
-  virtual void enterEllipsisStateStep(devilangParser::EllipsisStateStepContext *ctx) = 0;
-  virtual void exitEllipsisStateStep(devilangParser::EllipsisStateStepContext *ctx) = 0;
+  virtual void enterTraceBlock(devilangParser::TraceBlockContext *ctx) = 0;
+  virtual void exitTraceBlock(devilangParser::TraceBlockContext *ctx) = 0;
+
+  virtual void enterTraceLabelBlock(devilangParser::TraceLabelBlockContext *ctx) = 0;
+  virtual void exitTraceLabelBlock(devilangParser::TraceLabelBlockContext *ctx) = 0;
+
+  virtual void enterTraceInstr(devilangParser::TraceInstrContext *ctx) = 0;
+  virtual void exitTraceInstr(devilangParser::TraceInstrContext *ctx) = 0;
+
+  virtual void enterTraceAssign(devilangParser::TraceAssignContext *ctx) = 0;
+  virtual void exitTraceAssign(devilangParser::TraceAssignContext *ctx) = 0;
+
+  virtual void enterTraceWrite(devilangParser::TraceWriteContext *ctx) = 0;
+  virtual void exitTraceWrite(devilangParser::TraceWriteContext *ctx) = 0;
+
+  virtual void enterTraceCall(devilangParser::TraceCallContext *ctx) = 0;
+  virtual void exitTraceCall(devilangParser::TraceCallContext *ctx) = 0;
+
+  virtual void enterTraceArgs(devilangParser::TraceArgsContext *ctx) = 0;
+  virtual void exitTraceArgs(devilangParser::TraceArgsContext *ctx) = 0;
+
+  virtual void enterTraceNeqj(devilangParser::TraceNeqjContext *ctx) = 0;
+  virtual void exitTraceNeqj(devilangParser::TraceNeqjContext *ctx) = 0;
+
+  virtual void enterTraceBug(devilangParser::TraceBugContext *ctx) = 0;
+  virtual void exitTraceBug(devilangParser::TraceBugContext *ctx) = 0;
+
+  virtual void enterTraceWarn(devilangParser::TraceWarnContext *ctx) = 0;
+  virtual void exitTraceWarn(devilangParser::TraceWarnContext *ctx) = 0;
+
+  virtual void enterEllipsisInstr(devilangParser::EllipsisInstrContext *ctx) = 0;
+  virtual void exitEllipsisInstr(devilangParser::EllipsisInstrContext *ctx) = 0;
+
+  virtual void enterLabelRef(devilangParser::LabelRefContext *ctx) = 0;
+  virtual void exitLabelRef(devilangParser::LabelRefContext *ctx) = 0;
+
+  virtual void enterTransitionDecl(devilangParser::TransitionDeclContext *ctx) = 0;
+  virtual void exitTransitionDecl(devilangParser::TransitionDeclContext *ctx) = 0;
+
+  virtual void enterTraceExpr(devilangParser::TraceExprContext *ctx) = 0;
+  virtual void exitTraceExpr(devilangParser::TraceExprContext *ctx) = 0;
+
+  virtual void enterTraceOrExpr(devilangParser::TraceOrExprContext *ctx) = 0;
+  virtual void exitTraceOrExpr(devilangParser::TraceOrExprContext *ctx) = 0;
+
+  virtual void enterTraceShiftExpr(devilangParser::TraceShiftExprContext *ctx) = 0;
+  virtual void exitTraceShiftExpr(devilangParser::TraceShiftExprContext *ctx) = 0;
+
+  virtual void enterTraceAddExpr(devilangParser::TraceAddExprContext *ctx) = 0;
+  virtual void exitTraceAddExpr(devilangParser::TraceAddExprContext *ctx) = 0;
+
+  virtual void enterTracePrimaryExpr(devilangParser::TracePrimaryExprContext *ctx) = 0;
+  virtual void exitTracePrimaryExpr(devilangParser::TracePrimaryExprContext *ctx) = 0;
+
+  virtual void enterReadExpr(devilangParser::ReadExprContext *ctx) = 0;
+  virtual void exitReadExpr(devilangParser::ReadExprContext *ctx) = 0;
 
   virtual void enterOpExpr(devilangParser::OpExprContext *ctx) = 0;
   virtual void exitOpExpr(devilangParser::OpExprContext *ctx) = 0;

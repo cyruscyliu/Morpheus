@@ -178,35 +178,89 @@ public:
   virtual void enterTopFuncItem(devilangParser::TopFuncItemContext * /*ctx*/) override { }
   virtual void exitTopFuncItem(devilangParser::TopFuncItemContext * /*ctx*/) override { }
 
-  virtual void enterStateDecl(devilangParser::StateDeclContext * /*ctx*/) override { }
-  virtual void exitStateDecl(devilangParser::StateDeclContext * /*ctx*/) override { }
+  virtual void enterMachineDecl(devilangParser::MachineDeclContext * /*ctx*/) override { }
+  virtual void exitMachineDecl(devilangParser::MachineDeclContext * /*ctx*/) override { }
 
-  virtual void enterStateStmt(devilangParser::StateStmtContext * /*ctx*/) override { }
-  virtual void exitStateStmt(devilangParser::StateStmtContext * /*ctx*/) override { }
+  virtual void enterMachineItem(devilangParser::MachineItemContext * /*ctx*/) override { }
+  virtual void exitMachineItem(devilangParser::MachineItemContext * /*ctx*/) override { }
 
-  virtual void enterStateBlock(devilangParser::StateBlockContext * /*ctx*/) override { }
-  virtual void exitStateBlock(devilangParser::StateBlockContext * /*ctx*/) override { }
+  virtual void enterImportDecl(devilangParser::ImportDeclContext * /*ctx*/) override { }
+  virtual void exitImportDecl(devilangParser::ImportDeclContext * /*ctx*/) override { }
 
-  virtual void enterStateStep(devilangParser::StateStepContext * /*ctx*/) override { }
-  virtual void exitStateStep(devilangParser::StateStepContext * /*ctx*/) override { }
+  virtual void enterInitialDecl(devilangParser::InitialDeclContext * /*ctx*/) override { }
+  virtual void exitInitialDecl(devilangParser::InitialDeclContext * /*ctx*/) override { }
 
-  virtual void enterStateTerminator(devilangParser::StateTerminatorContext * /*ctx*/) override { }
-  virtual void exitStateTerminator(devilangParser::StateTerminatorContext * /*ctx*/) override { }
+  virtual void enterScratchDecl(devilangParser::ScratchDeclContext * /*ctx*/) override { }
+  virtual void exitScratchDecl(devilangParser::ScratchDeclContext * /*ctx*/) override { }
 
-  virtual void enterIoStateStep(devilangParser::IoStateStepContext * /*ctx*/) override { }
-  virtual void exitIoStateStep(devilangParser::IoStateStepContext * /*ctx*/) override { }
+  virtual void enterScratchField(devilangParser::ScratchFieldContext * /*ctx*/) override { }
+  virtual void exitScratchField(devilangParser::ScratchFieldContext * /*ctx*/) override { }
 
-  virtual void enterIoVerb(devilangParser::IoVerbContext * /*ctx*/) override { }
-  virtual void exitIoVerb(devilangParser::IoVerbContext * /*ctx*/) override { }
+  virtual void enterMachineStateDecl(devilangParser::MachineStateDeclContext * /*ctx*/) override { }
+  virtual void exitMachineStateDecl(devilangParser::MachineStateDeclContext * /*ctx*/) override { }
 
-  virtual void enterIoValue(devilangParser::IoValueContext * /*ctx*/) override { }
-  virtual void exitIoValue(devilangParser::IoValueContext * /*ctx*/) override { }
+  virtual void enterTraceDecl(devilangParser::TraceDeclContext * /*ctx*/) override { }
+  virtual void exitTraceDecl(devilangParser::TraceDeclContext * /*ctx*/) override { }
 
-  virtual void enterCallStateStep(devilangParser::CallStateStepContext * /*ctx*/) override { }
-  virtual void exitCallStateStep(devilangParser::CallStateStepContext * /*ctx*/) override { }
+  virtual void enterTraceItem(devilangParser::TraceItemContext * /*ctx*/) override { }
+  virtual void exitTraceItem(devilangParser::TraceItemContext * /*ctx*/) override { }
 
-  virtual void enterEllipsisStateStep(devilangParser::EllipsisStateStepContext * /*ctx*/) override { }
-  virtual void exitEllipsisStateStep(devilangParser::EllipsisStateStepContext * /*ctx*/) override { }
+  virtual void enterTraceBlock(devilangParser::TraceBlockContext * /*ctx*/) override { }
+  virtual void exitTraceBlock(devilangParser::TraceBlockContext * /*ctx*/) override { }
+
+  virtual void enterTraceLabelBlock(devilangParser::TraceLabelBlockContext * /*ctx*/) override { }
+  virtual void exitTraceLabelBlock(devilangParser::TraceLabelBlockContext * /*ctx*/) override { }
+
+  virtual void enterTraceInstr(devilangParser::TraceInstrContext * /*ctx*/) override { }
+  virtual void exitTraceInstr(devilangParser::TraceInstrContext * /*ctx*/) override { }
+
+  virtual void enterTraceAssign(devilangParser::TraceAssignContext * /*ctx*/) override { }
+  virtual void exitTraceAssign(devilangParser::TraceAssignContext * /*ctx*/) override { }
+
+  virtual void enterTraceWrite(devilangParser::TraceWriteContext * /*ctx*/) override { }
+  virtual void exitTraceWrite(devilangParser::TraceWriteContext * /*ctx*/) override { }
+
+  virtual void enterTraceCall(devilangParser::TraceCallContext * /*ctx*/) override { }
+  virtual void exitTraceCall(devilangParser::TraceCallContext * /*ctx*/) override { }
+
+  virtual void enterTraceArgs(devilangParser::TraceArgsContext * /*ctx*/) override { }
+  virtual void exitTraceArgs(devilangParser::TraceArgsContext * /*ctx*/) override { }
+
+  virtual void enterTraceNeqj(devilangParser::TraceNeqjContext * /*ctx*/) override { }
+  virtual void exitTraceNeqj(devilangParser::TraceNeqjContext * /*ctx*/) override { }
+
+  virtual void enterTraceBug(devilangParser::TraceBugContext * /*ctx*/) override { }
+  virtual void exitTraceBug(devilangParser::TraceBugContext * /*ctx*/) override { }
+
+  virtual void enterTraceWarn(devilangParser::TraceWarnContext * /*ctx*/) override { }
+  virtual void exitTraceWarn(devilangParser::TraceWarnContext * /*ctx*/) override { }
+
+  virtual void enterEllipsisInstr(devilangParser::EllipsisInstrContext * /*ctx*/) override { }
+  virtual void exitEllipsisInstr(devilangParser::EllipsisInstrContext * /*ctx*/) override { }
+
+  virtual void enterLabelRef(devilangParser::LabelRefContext * /*ctx*/) override { }
+  virtual void exitLabelRef(devilangParser::LabelRefContext * /*ctx*/) override { }
+
+  virtual void enterTransitionDecl(devilangParser::TransitionDeclContext * /*ctx*/) override { }
+  virtual void exitTransitionDecl(devilangParser::TransitionDeclContext * /*ctx*/) override { }
+
+  virtual void enterTraceExpr(devilangParser::TraceExprContext * /*ctx*/) override { }
+  virtual void exitTraceExpr(devilangParser::TraceExprContext * /*ctx*/) override { }
+
+  virtual void enterTraceOrExpr(devilangParser::TraceOrExprContext * /*ctx*/) override { }
+  virtual void exitTraceOrExpr(devilangParser::TraceOrExprContext * /*ctx*/) override { }
+
+  virtual void enterTraceShiftExpr(devilangParser::TraceShiftExprContext * /*ctx*/) override { }
+  virtual void exitTraceShiftExpr(devilangParser::TraceShiftExprContext * /*ctx*/) override { }
+
+  virtual void enterTraceAddExpr(devilangParser::TraceAddExprContext * /*ctx*/) override { }
+  virtual void exitTraceAddExpr(devilangParser::TraceAddExprContext * /*ctx*/) override { }
+
+  virtual void enterTracePrimaryExpr(devilangParser::TracePrimaryExprContext * /*ctx*/) override { }
+  virtual void exitTracePrimaryExpr(devilangParser::TracePrimaryExprContext * /*ctx*/) override { }
+
+  virtual void enterReadExpr(devilangParser::ReadExprContext * /*ctx*/) override { }
+  virtual void exitReadExpr(devilangParser::ReadExprContext * /*ctx*/) override { }
 
   virtual void enterOpExpr(devilangParser::OpExprContext * /*ctx*/) override { }
   virtual void exitOpExpr(devilangParser::OpExprContext * /*ctx*/) override { }

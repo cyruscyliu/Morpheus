@@ -1,0 +1,180 @@
+machine virtnet_netdev {
+    initial start
+
+    trace virtnet_open_trace {
+        sequence {
+            call enable_delayed_refill(vi);
+            call virtnet_napi_enable(vi);
+            call virtnet_set_queues(vi, vi.curr_queue_pairs);
+            call virtio_device_ready(vi.vdev);
+        }
+    }
+
+    trace virtnet_close_trace {
+        sequence {
+            call disable_delayed_refill(vi);
+            call virtio_config_driver_disable(vi.vdev);
+            call cancel_work_sync(vi.config_work);
+        }
+    }
+
+    trace start_xmit_trace {
+        sequence {
+            call free_old_xmit_skbs(sq, false);
+            call xmit_skb(sq, skb);
+        }
+    }
+
+    trace eth_validate_addr_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_set_mac_address_trace {
+        sequence {
+            standby = virtio_has_feature(vi.vdev, VIRTIO_NET_F_STANDBY);
+            neqj standby, 0, @set_mac_ctrl_vq;
+        }
+
+        @set_mac_ctrl_vq: sequence {
+            ctrl_mac_addr = virtio_has_feature(vdev, VIRTIO_NET_F_CTRL_MAC_ADDR);
+            neqj ctrl_mac_addr, 0, @set_mac_legacy;
+            call sg_init_one(sg, addr.sa_data, dev.addr_len);
+            mac_cmd_ok = virtnet_send_command(vi, VIRTIO_NET_CTRL_MAC, VIRTIO_NET_CTRL_MAC_ADDR_SET, sg);
+            neqj mac_cmd_ok, 0, @set_mac_out;
+        }
+
+        @set_mac_legacy: sequence {
+            has_mac = virtio_has_feature(vdev, VIRTIO_NET_F_MAC);
+            neqj has_mac, 0, @set_mac_out;
+            version1 = virtio_has_feature(vdev, VIRTIO_F_VERSION_1);
+            neqj version1, 0, @set_mac_out;
+            repeat {
+                call virtio_cwrite8(vdev, virtio_net_config.mac_i, addr.sa_data_i);
+            }
+        }
+
+        @set_mac_out: sequence {
+        }
+    }
+
+    trace virtnet_set_rx_mode_trace {
+        sequence {
+            neqj vi.rx_mode_work_enabled, 0, @set_rx_mode_schedule;
+        }
+
+        @set_rx_mode_schedule: sequence {
+            call schedule_work(vi.rx_mode_work);
+        }
+    }
+
+    trace virtnet_stats_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_rx_mode_work_trace {
+        sequence {
+            ctrl_rx = virtio_has_feature(vi.vdev, VIRTIO_NET_F_CTRL_RX);
+            neqj ctrl_rx, 0, @rx_mode_promisc;
+        }
+
+        @rx_mode_promisc: sequence {
+            call sg_init_one(sg, promisc_allmulti, sizeof_promisc);
+            promisc_ok = virtnet_send_command(vi, VIRTIO_NET_CTRL_RX, VIRTIO_NET_CTRL_RX_PROMISC, sg);
+            neqj promisc_ok, 0, @rx_mode_allmulti;
+        }
+
+        @rx_mode_allmulti: sequence {
+            call sg_init_one(sg, promisc_allmulti, sizeof_promisc);
+            allmulti_ok = virtnet_send_command(vi, VIRTIO_NET_CTRL_RX, VIRTIO_NET_CTRL_RX_ALLMULTI, sg);
+            neqj allmulti_ok, 0, @rx_mode_mac_table;
+        }
+
+        @rx_mode_mac_table: sequence {
+            call sg_init_one(sg0, mac_data, sizeof_uc_entries);
+            call sg_init_one(sg1, mac_data_tail, sizeof_mc_entries);
+            mac_table_ok = virtnet_send_command(vi, VIRTIO_NET_CTRL_MAC, VIRTIO_NET_CTRL_MAC_TABLE_SET, sg);
+            neqj mac_table_ok, 0, @rx_mode_out;
+        }
+
+        @rx_mode_out: sequence {
+        }
+    }
+
+    trace virtnet_vlan_rx_add_vid_trace {
+        sequence {
+            call sg_init_one(sg, vid_ptr, sizeof_vid);
+            vlan_add_ok = virtnet_send_command(vi, VIRTIO_NET_CTRL_VLAN, VIRTIO_NET_CTRL_VLAN_ADD, sg);
+            neqj vlan_add_ok, 0, @vlan_add_out;
+        }
+
+        @vlan_add_out: sequence {
+        }
+    }
+
+    trace virtnet_vlan_rx_kill_vid_trace {
+        sequence {
+            call sg_init_one(sg, vid_ptr, sizeof_vid);
+            vlan_del_ok = virtnet_send_command(vi, VIRTIO_NET_CTRL_VLAN, VIRTIO_NET_CTRL_VLAN_DEL, sg);
+            neqj vlan_del_ok, 0, @vlan_del_out;
+        }
+
+        @vlan_del_out: sequence {
+        }
+    }
+
+    trace virtnet_set_guest_offloads_trace {
+        sequence {
+            call sg_init_one(sg, offloads_ptr, sizeof_offloads);
+            offloads_ok = virtnet_send_command(vi, VIRTIO_NET_CTRL_GUEST_OFFLOADS, VIRTIO_NET_CTRL_GUEST_OFFLOADS_SET, sg);
+            neqj offloads_ok, 0, @guest_offloads_out;
+        }
+
+        @guest_offloads_out: sequence {
+        }
+    }
+
+    trace virtnet_xdp_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_xdp_xmit_trace {
+        sequence {
+            call __virtnet_xdp_xmit_one(sq, rq, ptr, dma, len, frame_dma);
+        }
+    }
+
+    trace virtnet_xsk_wakeup_trace {
+        sequence {
+            call virtnet_xsk_pool_enable(vi, qid);
+            call virtqueue_napi_schedule(rq.napi, rq.vq);
+        }
+    }
+
+    trace passthru_features_check_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_get_phys_port_name_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_set_features_trace {
+        sequence {
+            call virtnet_clear_guest_offloads(vi);
+            call virtnet_set_guest_offloads(vi, offloads);
+        }
+    }
+
+    trace virtnet_tx_timeout_trace {
+        sequence {
+            call virtqueue_napi_schedule(rq.napi, rq.vq);
+        }
+    }
+
+    state start
+}

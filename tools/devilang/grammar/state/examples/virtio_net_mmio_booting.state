@@ -1,0 +1,575 @@
+import "virtio_mmio_config_ops.state";
+
+machine virtio_net_mmio_booting {
+    initial start
+
+    trace virtio_mmio_probe_trace {
+        sequence {
+            scratch.magic = read32(vm_dev.base + VIRTIO_MMIO_MAGIC_VALUE);
+            neqj scratch.magic, 0x74726976, @bad_magic;
+
+            scratch.version = read32(vm_dev.base + VIRTIO_MMIO_VERSION);
+            neqj scratch.version, 1, @check_v2;
+
+            scratch.device_id = read32(vm_dev.base + VIRTIO_MMIO_DEVICE_ID);
+            neqj scratch.device_id, 0, @read_vendor_legacy;
+        }
+
+        @check_v2: sequence {
+            neqj scratch.version, 2, @unsupported_version;
+            scratch.device_id = read32(vm_dev.base + VIRTIO_MMIO_DEVICE_ID);
+            neqj scratch.device_id, 0, @read_vendor_modern;
+        }
+
+        @read_vendor_legacy: sequence {
+            scratch.vendor_id = read32(vm_dev.base + VIRTIO_MMIO_VENDOR_ID);
+            write32(PAGE_SIZE, vm_dev.base + VIRTIO_MMIO_GUEST_PAGE_SIZE);
+        }
+
+        @read_vendor_modern: sequence {
+            scratch.vendor_id = read32(vm_dev.base + VIRTIO_MMIO_VENDOR_ID);
+        }
+
+        @bad_magic: sequence {
+        }
+
+        @unsupported_version: sequence {
+        }
+
+        @out: sequence {
+        }
+    }
+
+    trace virtnet_probe_trace {
+        sequence {
+            max_queue_pairs = 1;
+            mq_enabled = virtio_has_feature(vdev, VIRTIO_NET_F_MQ);
+            neqj mq_enabled, 0, @read_max_queue_pairs;
+
+            rss_enabled = virtio_has_feature(vdev, VIRTIO_NET_F_RSS);
+            neqj rss_enabled, 0, @read_max_queue_pairs;
+
+            dev = alloc_etherdev_mq(sizeof_virtnet_info, max_queue_pairs);
+            neqj dev, 0, @setup_mac;
+        }
+
+        @read_max_queue_pairs: sequence {
+            max_queue_pairs = virtio_cread16(vdev, virtio_net_config.max_virtqueue_pairs);
+            ctrl_vq_enabled = virtio_has_feature(vdev, VIRTIO_NET_F_CTRL_VQ);
+            queue_pairs_valid = queue_pairs_valid(max_queue_pairs, ctrl_vq_enabled);
+            neqj queue_pairs_valid, 1, @force_single_queue;
+            dev = alloc_etherdev_mq(sizeof_virtnet_info, max_queue_pairs);
+            neqj dev, 0, @setup_mac;
+        }
+
+        @force_single_queue: sequence {
+            max_queue_pairs = 1;
+            dev = alloc_etherdev_mq(sizeof_virtnet_info, max_queue_pairs);
+            neqj dev, 0, @setup_mac;
+        }
+
+        @setup_mac: sequence {
+            has_mac = virtio_has_feature(vdev, VIRTIO_NET_F_MAC);
+            neqj has_mac, 0, @read_mac;
+            random_mac = eth_hw_addr_random(dev);
+            mergeable_rx = virtio_has_feature(vdev, VIRTIO_NET_F_MRG_RXBUF);
+            hash_report = virtio_has_feature(vdev, VIRTIO_NET_F_HASH_REPORT);
+            rss_feature = virtio_has_feature(vdev, VIRTIO_NET_F_RSS);
+            rss_hdr = devm_kzalloc(vdev.dev, virtnet_rss_hdr_size(vi), GFP_KERNEL);
+            neqj rss_hdr, 0, @post_rss_alloc;
+        }
+
+        @read_mac: sequence {
+            mac0 = virtio_cread8(vdev, virtio_net_config.mac_0);
+            mac1 = virtio_cread8(vdev, virtio_net_config.mac_1);
+            mac2 = virtio_cread8(vdev, virtio_net_config.mac_2);
+            mac3 = virtio_cread8(vdev, virtio_net_config.mac_3);
+            mac4 = virtio_cread8(vdev, virtio_net_config.mac_4);
+            mac5 = virtio_cread8(vdev, virtio_net_config.mac_5);
+            mergeable_rx = virtio_has_feature(vdev, VIRTIO_NET_F_MRG_RXBUF);
+            hash_report = virtio_has_feature(vdev, VIRTIO_NET_F_HASH_REPORT);
+            rss_feature = virtio_has_feature(vdev, VIRTIO_NET_F_RSS);
+            rss_hdr = devm_kzalloc(vdev.dev, virtnet_rss_hdr_size(vi), GFP_KERNEL);
+            neqj rss_hdr, 0, @post_rss_alloc;
+        }
+
+        @post_rss_alloc: sequence {
+            rss_or_hash = has_rss_or_hash_report(rss_feature, hash_report);
+            neqj rss_or_hash, 0, @read_rss_caps;
+            guest_udp_tunnel_gso = virtio_has_feature(vdev, VIRTIO_NET_F_GUEST_UDP_TUNNEL_GSO);
+            host_udp_tunnel_gso = virtio_has_feature(vdev, VIRTIO_NET_F_HOST_UDP_TUNNEL_GSO);
+            neqj guest_udp_tunnel_gso, 0, @hdr_len_tunnel;
+            neqj host_udp_tunnel_gso, 0, @hdr_len_tunnel;
+            neqj hash_report, 0, @hdr_len_hash;
+            version1 = virtio_has_feature(vdev, VIRTIO_F_VERSION_1);
+            neqj mergeable_rx, 0, @hdr_len_mrg;
+            neqj version1, 0, @hdr_len_mrg;
+            hdr_len = sizeof_virtio_net_hdr;
+            any_layout = virtio_has_feature(vdev, VIRTIO_F_ANY_LAYOUT);
+            neqj any_layout, 0, @set_any_layout;
+            neqj version1, 0, @set_any_layout;
+            ctrl_vq = virtio_has_feature(vdev, VIRTIO_NET_F_CTRL_VQ);
+            neqj ctrl_vq, 0, @maybe_read_mtu;
+        }
+
+        @read_rss_caps: sequence {
+            scratch.rss_key_size = virtio_cread8(vdev, virtio_net_config.rss_max_key_size);
+            rss_key_size_ok = rss_key_size_ok(scratch.rss_key_size, VIRTIO_NET_RSS_MAX_KEY_SIZE);
+            neqj rss_key_size_ok, 1, @free_netdev;
+            scratch.supported_hash_types = virtio_cread32(vdev, virtio_net_config.scratch.supported_hash_types);
+            guest_udp_tunnel_gso = virtio_has_feature(vdev, VIRTIO_NET_F_GUEST_UDP_TUNNEL_GSO);
+            host_udp_tunnel_gso = virtio_has_feature(vdev, VIRTIO_NET_F_HOST_UDP_TUNNEL_GSO);
+            neqj guest_udp_tunnel_gso, 0, @hdr_len_tunnel;
+            neqj host_udp_tunnel_gso, 0, @hdr_len_tunnel;
+            neqj hash_report, 0, @hdr_len_hash;
+            version1 = virtio_has_feature(vdev, VIRTIO_F_VERSION_1);
+            neqj mergeable_rx, 0, @hdr_len_mrg;
+            neqj version1, 0, @hdr_len_mrg;
+            hdr_len = sizeof_virtio_net_hdr;
+            any_layout = virtio_has_feature(vdev, VIRTIO_F_ANY_LAYOUT);
+            neqj any_layout, 0, @set_any_layout;
+            neqj version1, 0, @set_any_layout;
+            ctrl_vq = virtio_has_feature(vdev, VIRTIO_NET_F_CTRL_VQ);
+            neqj ctrl_vq, 0, @maybe_read_mtu;
+        }
+
+        @hdr_len_tunnel: sequence {
+            hdr_len = sizeof_virtio_net_hdr_v1_hash_tunnel;
+            any_layout = virtio_has_feature(vdev, VIRTIO_F_ANY_LAYOUT);
+            version1 = virtio_has_feature(vdev, VIRTIO_F_VERSION_1);
+            neqj any_layout, 0, @set_any_layout;
+            neqj version1, 0, @set_any_layout;
+            ctrl_vq = virtio_has_feature(vdev, VIRTIO_NET_F_CTRL_VQ);
+            neqj ctrl_vq, 0, @maybe_read_mtu;
+        }
+
+        @hdr_len_hash: sequence {
+            hdr_len = sizeof_virtio_net_hdr_v1_hash;
+            any_layout = virtio_has_feature(vdev, VIRTIO_F_ANY_LAYOUT);
+            version1 = virtio_has_feature(vdev, VIRTIO_F_VERSION_1);
+            neqj any_layout, 0, @set_any_layout;
+            neqj version1, 0, @set_any_layout;
+            ctrl_vq = virtio_has_feature(vdev, VIRTIO_NET_F_CTRL_VQ);
+            neqj ctrl_vq, 0, @maybe_read_mtu;
+        }
+
+        @hdr_len_mrg: sequence {
+            hdr_len = sizeof_virtio_net_hdr_mrg_rxbuf;
+            any_layout = virtio_has_feature(vdev, VIRTIO_F_ANY_LAYOUT);
+            version1 = virtio_has_feature(vdev, VIRTIO_F_VERSION_1);
+            neqj any_layout, 0, @set_any_layout;
+            neqj version1, 0, @set_any_layout;
+            ctrl_vq = virtio_has_feature(vdev, VIRTIO_NET_F_CTRL_VQ);
+            neqj ctrl_vq, 0, @maybe_read_mtu;
+        }
+
+        @set_any_layout: sequence {
+            any_header_sg = 1;
+            ctrl_vq = virtio_has_feature(vdev, VIRTIO_NET_F_CTRL_VQ);
+            neqj ctrl_vq, 0, @maybe_read_mtu;
+        }
+
+        @maybe_read_mtu: sequence {
+            mtu_feature = virtio_has_feature(vdev, VIRTIO_NET_F_MTU);
+            neqj mtu_feature, 0, @read_mtu;
+            call virtnet_set_big_packets(vi, scratch.mtu);
+            online_enough = num_online_cpus_ge(max_queue_pairs);
+            neqj online_enough, 0, @curr_queue_pairs_max;
+            curr_queue_pairs = num_online_cpus();
+            init_vqs_err = init_vqs(vi);
+            neqj init_vqs_err, 0, @free_netdev;
+            notf_coal = virtio_has_feature(vi.vdev, VIRTIO_NET_F_NOTF_COAL);
+            neqj notf_coal, 0, @maybe_vq_notf_coal;
+        }
+
+        @read_mtu: sequence {
+            scratch.mtu = virtio_cread16(vdev, virtio_net_config.scratch.mtu);
+            mtu_ok = mtu_ge_min(scratch.mtu, dev.min_mtu);
+            neqj mtu_ok, 1, @free_netdev;
+            call virtnet_set_big_packets(vi, scratch.mtu);
+            online_enough = num_online_cpus_ge(max_queue_pairs);
+            neqj online_enough, 0, @curr_queue_pairs_max;
+            curr_queue_pairs = num_online_cpus();
+            init_vqs_err = init_vqs(vi);
+            neqj init_vqs_err, 0, @free_netdev;
+            notf_coal = virtio_has_feature(vi.vdev, VIRTIO_NET_F_NOTF_COAL);
+            neqj notf_coal, 0, @maybe_vq_notf_coal;
+        }
+
+        @curr_queue_pairs_max: sequence {
+            curr_queue_pairs = max_queue_pairs;
+            init_vqs_err = init_vqs(vi);
+            neqj init_vqs_err, 0, @free_netdev;
+            notf_coal = virtio_has_feature(vi.vdev, VIRTIO_NET_F_NOTF_COAL);
+            neqj notf_coal, 0, @maybe_vq_notf_coal;
+        }
+
+        @maybe_vq_notf_coal: sequence {
+            vq_notf_coal = virtio_has_feature(vi.vdev, VIRTIO_NET_F_VQ_NOTF_COAL);
+            neqj vq_notf_coal, 0, @init_irq_moder;
+            standby = virtio_has_feature(vdev, VIRTIO_NET_F_STANDBY);
+            neqj standby, 0, @create_failover;
+            rss_or_hash = has_rss_or_hash_report(rss_feature, hash_report);
+            neqj rss_or_hash, 0, @init_default_rss;
+        }
+
+        @init_irq_moder: sequence {
+            irq_moder_err = virtnet_init_irq_moder(vi);
+            neqj irq_moder_err, 0, @free_netdev;
+            standby = virtio_has_feature(vdev, VIRTIO_NET_F_STANDBY);
+            neqj standby, 0, @create_failover;
+            rss_or_hash = has_rss_or_hash_report(rss_feature, hash_report);
+            neqj rss_or_hash, 0, @init_default_rss;
+        }
+
+        @create_failover: sequence {
+            failover = net_failover_create(vi.dev);
+            neqj failover, 0, @free_vqs;
+            rss_or_hash = has_rss_or_hash_report(rss_feature, hash_report);
+            neqj rss_or_hash, 0, @init_default_rss;
+        }
+
+        @init_default_rss: sequence {
+            call virtnet_init_default_rss(vi);
+            call enable_rx_mode_work(vi);
+            register_err = register_netdevice(dev);
+            neqj register_err, 0, @free_failover;
+            call virtio_config_driver_disable(vi.vdev);
+            call virtio_device_ready(vdev);
+            status_feature = virtio_has_feature(vi.vdev, VIRTIO_NET_F_STATUS);
+            neqj status_feature, 0, @config_changed_path;
+            rss_or_hash = has_rss_or_hash_report(rss_feature, hash_report);
+            neqj rss_or_hash, 0, @commit_rss;
+            ctrl_mac_missing = virtio_has_feature(vdev, VIRTIO_NET_F_MAC);
+            neqj ctrl_mac_missing, 0, @maybe_query_stats;
+            ctrl_mac_addr = virtio_has_feature(vi.vdev, VIRTIO_NET_F_CTRL_MAC_ADDR);
+            neqj ctrl_mac_addr, 0, @set_mac_command;
+            stats_feature = virtio_has_feature(vi.vdev, VIRTIO_NET_F_DEVICE_STATS);
+            neqj stats_feature, 0, @query_stats_caps;
+            call netif_carrier_off(dev);
+            repeat {
+                guest_offload_feature = virtio_offload_to_feature(guest_offloads_i);
+            }
+            cpu_notif_err = virtnet_cpu_notif_add(vi);
+            neqj cpu_notif_err, 0, @free_unregister_netdev;
+        }
+
+        @config_changed_path: sequence {
+            scratch.status = read16(vi.vdev.config.scratch.status);
+            rss_or_hash = has_rss_or_hash_report(rss_feature, hash_report);
+            neqj rss_or_hash, 0, @commit_rss;
+            ctrl_mac_missing = virtio_has_feature(vdev, VIRTIO_NET_F_MAC);
+            neqj ctrl_mac_missing, 0, @maybe_query_stats;
+            ctrl_mac_addr = virtio_has_feature(vi.vdev, VIRTIO_NET_F_CTRL_MAC_ADDR);
+            neqj ctrl_mac_addr, 0, @set_mac_command;
+            stats_feature = virtio_has_feature(vi.vdev, VIRTIO_NET_F_DEVICE_STATS);
+            neqj stats_feature, 0, @query_stats_caps;
+            call netif_carrier_off(dev);
+            repeat {
+                guest_offload_feature = virtio_offload_to_feature(guest_offloads_i);
+            }
+            cpu_notif_err = virtnet_cpu_notif_add(vi);
+            neqj cpu_notif_err, 0, @free_unregister_netdev;
+        }
+
+        @commit_rss: sequence {
+            rss_commit_ok = virtnet_commit_rss_command(vi);
+            call virtnet_set_queues(vi, curr_queue_pairs);
+            ctrl_mac_missing = virtio_has_feature(vdev, VIRTIO_NET_F_MAC);
+            neqj ctrl_mac_missing, 0, @maybe_query_stats;
+            ctrl_mac_addr = virtio_has_feature(vi.vdev, VIRTIO_NET_F_CTRL_MAC_ADDR);
+            neqj ctrl_mac_addr, 0, @set_mac_command;
+            stats_feature = virtio_has_feature(vi.vdev, VIRTIO_NET_F_DEVICE_STATS);
+            neqj stats_feature, 0, @query_stats_caps;
+            call netif_carrier_off(dev);
+            repeat {
+                guest_offload_feature = virtio_offload_to_feature(guest_offloads_i);
+            }
+            cpu_notif_err = virtnet_cpu_notif_add(vi);
+            neqj cpu_notif_err, 0, @free_unregister_netdev;
+        }
+
+        @set_mac_command: sequence {
+            mac_cmd_ok = virtnet_send_command(VIRTIO_NET_CTRL_MAC, VIRTIO_NET_CTRL_MAC_ADDR_SET);
+            neqj mac_cmd_ok, 0, @free_unregister_netdev;
+            stats_feature = virtio_has_feature(vi.vdev, VIRTIO_NET_F_DEVICE_STATS);
+            neqj stats_feature, 0, @query_stats_caps;
+            call netif_carrier_off(dev);
+            repeat {
+                guest_offload_feature = virtio_offload_to_feature(guest_offloads_i);
+            }
+            cpu_notif_err = virtnet_cpu_notif_add(vi);
+            neqj cpu_notif_err, 0, @free_unregister_netdev;
+        }
+
+        @maybe_query_stats: sequence {
+            stats_feature = virtio_has_feature(vi.vdev, VIRTIO_NET_F_DEVICE_STATS);
+            neqj stats_feature, 0, @query_stats_caps;
+            call netif_carrier_off(dev);
+            repeat {
+                guest_offload_feature = virtio_offload_to_feature(guest_offloads_i);
+            }
+            cpu_notif_err = virtnet_cpu_notif_add(vi);
+            neqj cpu_notif_err, 0, @free_unregister_netdev;
+        }
+
+        @query_stats_caps: sequence {
+            stats_cmd_ok = virtnet_send_command_reply(VIRTIO_NET_CTRL_STATS, VIRTIO_NET_CTRL_STATS_QUERY);
+            neqj stats_cmd_ok, 0, @free_unregister_netdev;
+            call netif_carrier_off(dev);
+            repeat {
+                guest_offload_feature = virtio_offload_to_feature(guest_offloads_i);
+            }
+            cpu_notif_err = virtnet_cpu_notif_add(vi);
+            neqj cpu_notif_err, 0, @free_unregister_netdev;
+        }
+
+        @free_unregister_netdev: sequence {
+            call unregister_netdev(dev);
+            call net_failover_destroy(vi.failover);
+            call virtio_reset_device(vdev);
+            call virtnet_del_vqs(vi);
+            call free_netdev(dev);
+        }
+
+        @free_failover: sequence {
+            call net_failover_destroy(vi.failover);
+            call virtio_reset_device(vdev);
+            call virtnet_del_vqs(vi);
+            call free_netdev(dev);
+        }
+
+        @free_vqs: sequence {
+            call virtio_reset_device(vdev);
+            call virtnet_del_vqs(vi);
+            call free_netdev(dev);
+        }
+
+        @free_netdev: sequence {
+            call free_netdev(dev);
+        }
+
+        @out: sequence {
+        }
+    }
+
+    trace virtnet_send_command_trace {
+        sequence {
+            call virtnet_send_command_reply(vi, class, cmd, out, NULL);
+        }
+    }
+
+    trace virtnet_send_command_reply_trace {
+        sequence {
+            has_ctrl_vq = virtio_has_feature(vi.vdev, VIRTIO_NET_F_CTRL_VQ);
+            neqj has_ctrl_vq, 1, @bug_on;
+
+            call mutex_lock(vi.cvq_lock);
+            status_init = 0xffffffff;
+            hdr_class = class;
+            hdr_cmd = cmd;
+            call sg_init_one(hdr, vi.ctrl.hdr, sizeof_vi_ctrl_hdr);
+
+            out_present = out;
+            neqj out_present, 0, @add_status_sg;
+        }
+
+        @add_out_sg: sequence {
+            out_num = out_num + 1;
+            call sg_next(out);
+            call sg_next(sgs[out_num]);
+            call sg_next(sgs[in_num]);
+            call sg_init_one(stat, vi.ctrl.scratch.status, sizeof_vi_ctrl_status);
+        }
+
+        @add_status_sg: sequence {
+            call sg_init_one(stat, vi.ctrl.scratch.status, sizeof_vi_ctrl_status);
+            in_present = in;
+            neqj in_present, 0, @submit_vq;
+        }
+
+        @add_in_sg: sequence {
+            in_num = in_num + 1;
+            call sg_next(in);
+            call sg_next(sgs[out_num + in_num]);
+        }
+
+        @submit_vq: sequence {
+            add_ret = virtqueue_add_sgs(vi.cvq, sgs, out_num, in_num, vi, GFP_ATOMIC);
+            neqj add_ret, 0, @add_sgs_failed;
+
+            kick_ok = virtqueue_kick(vi.cvq);
+            neqj kick_ok, 0, @wait_buf;
+        }
+
+        @wait_buf: repeat {
+            got_buf = virtqueue_get_buf(vi.cvq, tmp);
+            neqj got_buf, 0, @unlock;
+            broken = virtqueue_is_broken(vi.cvq);
+            neqj broken, 0, @unlock;
+            call cond_resched();
+            call cpu_relax();
+        }
+
+        @add_sgs_failed: sequence {
+            call mutex_unlock(vi.cvq_lock);
+        }
+
+        @unlock: sequence {
+            ok = vi.ctrl.scratch.status;
+            call mutex_unlock(vi.cvq_lock);
+        }
+
+        @bug_on: sequence {
+        }
+    }
+
+    trace virtqueue_add_sgs_trace {
+        sequence {
+            total_sg = 0;
+            i = 0;
+            call sg_next(sgs_i);
+            repeat {
+                total_sg = total_sg + 1;
+                call sg_next(sg);
+            }
+            add_ret = virtqueue_add(vq, sgs, total_sg, out_sgs, in_sgs, data, NULL, false, gfp);
+        }
+    }
+
+    trace virtqueue_add_trace {
+        sequence {
+            num_free_ok = num_free_ge(descs_used, vq.vq.num_free);
+            neqj num_free_ok, 1, @virtqueue_add_enospc;
+            packed_ring = vq.packed_ring;
+            neqj packed_ring, 0, @virtqueue_add_split;
+        }
+
+        @virtqueue_add_packed: sequence {
+            call vring_map_one_sg(vq, sg, DMA_TO_DEVICE, addr, len, premapped);
+            call vring_map_one_sg(vq, sg, DMA_FROM_DEVICE, addr, len, premapped);
+            call vring_map_single(vq, desc, total_sg * sizeof_vring_packed_desc, DMA_TO_DEVICE);
+        }
+
+        @virtqueue_add_split: sequence {
+            call vring_map_one_sg(vq, sg, DMA_TO_DEVICE, addr, len, premapped);
+            call vring_map_one_sg(vq, sg, DMA_FROM_DEVICE, addr, len, premapped);
+            call vring_map_single(vq, desc, total_sg * sizeof_vring_desc, DMA_TO_DEVICE);
+        }
+
+        @virtqueue_add_enospc: sequence {
+        }
+    }
+
+    trace vring_map_one_sg_trace {
+        sequence {
+            neqj premapped, 0, @vring_map_direct;
+            addr = sg_dma_address(sg);
+            len = sg_dma_len(sg);
+        }
+
+        @vring_map_direct: sequence {
+            len = sg.length;
+            neqj vq.use_map_api, 0, @vring_map_dma;
+            addr = sg_phys(sg);
+        }
+
+        @vring_map_dma: sequence {
+            map_addr = virtqueue_map_page_attrs(vq.vq, sg_page(sg), sg.offset, sg.length, direction, 0);
+            neqj map_addr, DMA_MAPPING_ERROR, @vring_map_dma_ok;
+        }
+
+        @vring_map_dma_ok: sequence {
+            addr = map_addr;
+        }
+    }
+
+    trace vring_map_single_trace {
+        sequence {
+            neqj vq.use_map_api, 0, @vring_map_single_dma;
+            addr = virt_to_phys(cpu_addr);
+        }
+
+        @vring_map_single_dma: sequence {
+            map_addr = virtqueue_map_single_attrs(vq.vq, cpu_addr, size, direction, 0);
+            neqj map_addr, DMA_MAPPING_ERROR, @vring_map_single_dma_ok;
+        }
+
+        @vring_map_single_dma_ok: sequence {
+            addr = map_addr;
+        }
+    }
+
+    trace virtqueue_map_single_attrs_trace {
+        sequence {
+            neqj vq.use_map_api, 0, @virtqueue_map_single_dma;
+            addr = virt_to_phys(ptr);
+        }
+
+        @virtqueue_map_single_dma: sequence {
+            vmalloc_addr = is_vmalloc_addr(ptr);
+            neqj vmalloc_addr, 0, @virtqueue_map_single_error;
+            map_addr = virtqueue_map_page_attrs(vq.vq, virt_to_page(ptr), offset_in_page(ptr), size, dir, attrs);
+            neqj map_addr, DMA_MAPPING_ERROR, @virtqueue_map_single_ok;
+        }
+
+        @virtqueue_map_single_ok: sequence {
+            addr = map_addr;
+        }
+
+        @virtqueue_map_single_error: sequence {
+        }
+    }
+
+    trace virtqueue_map_page_attrs_trace {
+        sequence {
+            has_vdev_map = vdev.map;
+            neqj has_vdev_map, 0, @virtqueue_map_page_dma;
+            map_addr = map_page(vq.map, page, offset, size, dir, attrs);
+            neqj map_addr, DMA_MAPPING_ERROR, @virtqueue_map_page_ok;
+        }
+
+        @virtqueue_map_page_dma: sequence {
+            map_addr = dma_map_page_attrs(vring_dma_dev(vq), page, offset, size, dir, attrs);
+            neqj map_addr, DMA_MAPPING_ERROR, @virtqueue_map_page_ok;
+        }
+
+        @virtqueue_map_page_ok: sequence {
+            addr = map_addr;
+        }
+    }
+
+    trace virtio_cread8_trace {
+        sequence {
+            call vdev.config.get(vdev, offset, ret, sizeof_ret_u8);
+            call vm_get(vdev, offset, ret, sizeof_ret_u8);
+        }
+    }
+
+    trace virtio_cread16_trace {
+        sequence {
+            call vdev.config.get(vdev, offset, ret, sizeof_ret_u16);
+            call vm_get(vdev, offset, ret, sizeof_ret_u16);
+        }
+    }
+
+    trace virtio_cread32_trace {
+        sequence {
+            call vdev.config.get(vdev, offset, ret, sizeof_ret_u32);
+            call vm_get(vdev, offset, ret, sizeof_ret_u32);
+        }
+    }
+
+    trace virtio_has_feature_trace {
+        sequence {
+            feature_bit = __virtio_test_bit(vdev, fbit);
+        }
+    }
+
+    state start
+    state virtio_mmio_probe
+    final state virtnet_probe
+
+    transition start -> virtio_mmio_probe on virtio_mmio_probe_trace
+    transition virtio_mmio_probe -> virtnet_probe on virtnet_probe_trace
+}

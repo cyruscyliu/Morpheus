@@ -47,11 +47,6 @@ EXTRA_KEEP = {
     "virtqueue_notify",
     "vm_notify",
     "vm_notify_with_data",
-    "sg_init_one",
-    "sg_init_table",
-    "sg_set_buf",
-    "sg_set_page",
-    "sg_fill_dma",
     "virtqueue_add_inbuf",
     "virtqueue_add_inbuf_premapped",
     "virtqueue_add_outbuf",
@@ -59,6 +54,10 @@ EXTRA_KEEP = {
     "virtqueue_add_sgs",
     "virtqueue_add",
 }
+
+
+def is_ignored_serial_helper(name: str) -> bool:
+    return name.startswith("sg_") or name == "virtqueue_kick_prepare"
 
 
 def parse_dot(path: Path):
@@ -184,11 +183,18 @@ def main():
             if prev in EXTRA_KEEP:
                 selected.add(prev)
 
+    selected = {node for node in selected if not is_ignored_serial_helper(node)}
+
     edges = sorted(
         (src, dst)
         for src, dsts in adj.items()
         for dst in dsts
-        if src in selected and dst in selected
+        if (
+            src in selected
+            and dst in selected
+            and not is_ignored_serial_helper(src)
+            and not is_ignored_serial_helper(dst)
+        )
     )
 
     connected = {src for src, _ in edges} | {dst for _, dst in edges}

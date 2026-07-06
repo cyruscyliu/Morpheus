@@ -1,451 +1,446 @@
-# virtnet_netdev Call Paths
+# virtnet_netdev SG Analysis
 
 Source baseline:
 - `drivers/net/virtio_net.c`
-- `drivers/virtio/virtio_mmio.c`
 - `drivers/virtio/virtio_ring.c`
-- `include/linux/virtio_config.h`
+- `include/linux/scatterlist.h`
 
 Cached tree used:
 - `/home/debian/Morpheus/.cache/hyperarm/tools/buildroot/builds/arm64-dev/output/build/linux-6.18.16`
 
 This note starts from the `virtnet_netdev` function pointers in
-`drivers/net/virtio_net.c` and traces the paths that reach:
-- `virtio_mmio_config_ops`
-- `virtqueue_add_outbuf`
+`drivers/net/virtio_net.c` and does intra-procedural SG analysis on the real
+code paths that reach:
 - `virtqueue_add_inbuf`
+- `virtqueue_add_inbuf_premapped`
+- `virtqueue_add_outbuf`
+- `virtqueue_add_outbuf_premapped`
 - `virtqueue_add_sgs`
 - `vm_notify`
+- `virtio_mmio_config_ops.set`
 
-It also tracks `sg_init_table` and `sg_set_buf` plus their argument flow.
+Conventions:
+- `in` means device-writable SG submitted via `virtqueue_add_inbuf*`.
+- `out` means device-readable SG submitted via `virtqueue_add_outbuf*` or
+  `virtqueue_add_sgs(..., out_num, in_num, ...)`.
+- If a precise C type is clear from the local function, it is used.
+- Otherwise the entry is listed as `raw bytes`.
+- If a size is symbolic in code, the table keeps the same symbolic form.
 
-## Queue Provenance
+Direction basis:
+- `virtqueue_add_inbuf()` calls `virtqueue_add(vq, &sg, num, 0, 1, ...)`.
+- `virtqueue_add_inbuf_premapped()` calls
+  `virtqueue_add(vq, &sg, num, 0, 1, ..., true, ...)`.
+- So every SG in these RX paths is `in`.
+- References:
+  `drivers/virtio/virtio_ring.c:2573-2579`,
+  `drivers/virtio/virtio_ring.c:2621-2627`.
 
-All runtime `rq->vq`, `sq->vq`, and `vi->cvq` handles come from this setup
-path:
+## net_device_ops Coverage
 
-```text
-virtnet_probe
-  -> init_vqs
-    -> virtnet_alloc_queues
-    -> virtnet_find_vqs
-      -> virtio_find_vqs
-        -> vdev->config->find_vqs
-          -> vm_find_vqs
-            -> vm_setup_vq
-              -> vring_create_virtqueue(..., notify, ...)
-```
-
-Inside `vm_setup_vq`:
-
-```text
-if (__virtio_test_bit(vdev, VIRTIO_F_NOTIFICATION_DATA))
-    notify = vm_notify_with_data;
-else
-    notify = vm_notify;
-```
-
-So every later:
-
-```text
-virtqueue_kick_prepare(vq)
-virtqueue_notify(vq)
-```
-
-ends in:
-
-```text
-virtqueue_notify
-  -> vq->notify(vq)
-    -> vm_notify(vq) or vm_notify_with_data(vq)
-```
-
-For MMIO transport:
-- `vm_notify(vq)` does `writel(vq->index, base + VIRTIO_MMIO_QUEUE_NOTIFY)`
-- `vm_notify_with_data(vq)` does
-  `data = vring_notification_data(vq)` then
-  `writel(data, base + VIRTIO_MMIO_QUEUE_NOTIFY)`
-
-## net_device_ops Summary
-
-From `virtnet_netdev`:
-
-| netdev op | direct path to target |
-| --- | --- |
-| `virtnet_open` | yes, RX refill to `virtqueue_add_inbuf*` then notify |
-| `virtnet_close` | no direct queue submission |
-| `start_xmit` | yes, TX to `virtqueue_add_outbuf` then notify |
-| `virtnet_set_mac_address` | yes, control VQ via `virtqueue_add_sgs`; legacy fallback reaches `vm_set` |
-| `virtnet_set_rx_mode` | yes, deferred control VQ via `virtqueue_add_sgs` |
-| `virtnet_vlan_rx_add_vid` | yes, control VQ via `virtqueue_add_sgs` |
-| `virtnet_vlan_rx_kill_vid` | yes, control VQ via `virtqueue_add_sgs` |
-| `virtnet_xdp` | no direct queue submission from this entry point |
-| `virtnet_xdp_xmit` | yes, TX to `virtqueue_add_outbuf` then notify |
-| `virtnet_xsk_wakeup` | indirect; schedules TX NAPI which reaches `virtqueue_add_outbuf_premapped` then notify |
-| `virtnet_set_features` | yes, control VQ via `virtqueue_add_sgs` on some feature changes |
-| `virtnet_tx_timeout` | no direct queue submission |
+| netdev op | queue path | SG summary |
+| --- | --- | --- |
+| `virtnet_open` | yes | RX refill SGs to `virtqueue_add_inbuf*` |
+| `virtnet_close` | no | no SG submission on this path |
+| `start_xmit` | yes | TX SGs to `virtqueue_add_outbuf` |
+| `virtnet_set_mac_address` | yes | control-VQ SGs via `virtqueue_add_sgs`; legacy MMIO write path has no SG |
+| `virtnet_set_rx_mode` | yes | deferred control-VQ SGs via `virtqueue_add_sgs` |
+| `virtnet_vlan_rx_add_vid` | yes | control-VQ SG via `virtqueue_add_sgs` |
+| `virtnet_vlan_rx_kill_vid` | yes | control-VQ SG via `virtqueue_add_sgs` |
+| `virtnet_xdp` | indirect | reconfig paths call control-VQ helpers and RX refill helpers |
+| `virtnet_xdp_xmit` | yes | TX SGs to `virtqueue_add_outbuf` |
+| `virtnet_xsk_wakeup` | indirect | deferred TX path to `virtqueue_add_outbuf_premapped` |
+| `virtnet_set_features` | yes | control-VQ SGs via guest offload / RSS helpers |
+| `virtnet_tx_timeout` | no | no SG submission on this path |
 
 ## 1. `virtnet_open`
 
-### Main path
+Entry:
+- `drivers/net/virtio_net.c:3220-3248`
 
-```text
-virtnet_open
-  loop i in [0, max_queue_pairs)
-    if i < curr_queue_pairs
-      -> try_fill_recv(vi, &vi->rq[i], GFP_KERNEL)
-    -> virtnet_enable_queue_pair(vi, i)
-```
+Path root:
+- `virtnet_open`
+  -> `try_fill_recv`
+  -> one of:
+  `add_recvbuf_small`,
+  `add_recvbuf_big`,
+  `add_recvbuf_mergeable`,
+  `virtnet_add_recvbuf_xsk`
+  -> `virtqueue_add_inbuf*`
+  -> `virtqueue_notify`
+  -> `vm_notify` / `vm_notify_with_data`
 
-### RX refill path
+### path1
+`virtnet_open -> try_fill_recv -> add_recvbuf_big -> virtqueue_add_inbuf -> virtqueue_add`
 
-```text
-try_fill_recv
-  if rq->xsk_pool
-    -> virtnet_add_recvbuf_xsk
-      -> virtqueue_add_inbuf_premapped
-  else if vi->mergeable_rx_bufs
-    -> add_recvbuf_mergeable
-      -> virtqueue_add_inbuf_premapped
-  else if vi->big_packets
-    -> add_recvbuf_big
-      -> virtqueue_add_inbuf
-  else
-    -> add_recvbuf_small
-      -> virtqueue_add_inbuf_premapped
+Refs:
+- `try_fill_recv`: `drivers/net/virtio_net.c:2833-2864`
+- `add_recvbuf_big`: `drivers/net/virtio_net.c:2706-2752`
 
-  -> virtqueue_kick_prepare(rq->vq)
-  -> virtqueue_notify(rq->vq)
-  -> vm_notify / vm_notify_with_data
-```
+`sg buf count`: `vi->big_packets_num_skbfrags + 2`
 
-### SG details
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0` | `in` | `struct padded_vnet_hdr` | `vi->hdr_len` | `p` | `drivers/net/virtio_net.c:2739` |
+| `buf1` | `in` | `raw bytes` | `PAGE_SIZE - sizeof(struct padded_vnet_hdr)` | `p + offset` | `drivers/net/virtio_net.c:2742-2743` |
+| `buf2..bufN` | `in` | `raw bytes` | `PAGE_SIZE` | `page_address(first)` | `drivers/net/virtio_net.c:2716-2723` |
 
-#### `virtnet_add_recvbuf_xsk`
+Notes:
+- `buf0` and `buf1` share the same page from `p = page_address(first)`.
+- `buf2..bufN` covers `i = 2 .. vi->big_packets_num_skbfrags + 1`.
 
-```text
-len  = xsk_pool_get_rx_frame_size(pool) + vi->hdr_len
-addr = xsk_buff_xdp_get_dma(xsk_buffs[i]) - vi->hdr_len
+### path2
+`virtnet_open -> try_fill_recv -> add_recvbuf_mergeable -> virtqueue_add_inbuf_premapped -> virtqueue_add`
 
-sg_init_table(rq->sg, 1)
-sg_fill_dma(rq->sg, addr, len)
-virtqueue_add_inbuf_premapped(rq->vq, rq->sg, 1, xsk_buffs[i], NULL, gfp)
-```
+Refs:
+- `try_fill_recv`: `drivers/net/virtio_net.c:2833-2864`
+- `add_recvbuf_mergeable`: `drivers/net/virtio_net.c:2772-2824`
+- `virtnet_rq_init_one_sg`: `drivers/net/virtio_net.c:987-1007`
 
-#### `add_recvbuf_small`
+`sg buf count`: `1`
 
-```text
-buf += VIRTNET_RX_PAD + xdp_headroom
-virtnet_rq_init_one_sg(rq, buf, vi->hdr_len + GOOD_PACKET_LEN)
-virtqueue_add_inbuf_premapped(rq->vq, rq->sg, 1, buf, ctx, gfp)
-```
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0` | `in` | `raw bytes` | `len` | premapped DMA for `buf + headroom` | `drivers/net/virtio_net.c:2800,2814,2817` |
 
-`virtnet_rq_init_one_sg`:
+Notes:
+- `buf0` is created by `sg_init_table(rq->sg, 1)` plus
+  `sg_fill_dma(rq->sg, addr, len)`.
+- `len = get_mergeable_buf_len(rq, &rq->mrg_avg_pkt_len, room)`, then may be
+  adjusted by the local hole logic.
 
-```text
-head   = page_address(rq->alloc_frag.page)
-offset = buf - head
-dma    = head
-addr   = dma->addr - sizeof(*dma) + offset
+### path3
+`virtnet_open -> try_fill_recv -> add_recvbuf_small -> virtqueue_add_inbuf_premapped -> virtqueue_add`
 
-sg_init_table(rq->sg, 1)
-sg_fill_dma(rq->sg, addr, len)
-```
+Refs:
+- `try_fill_recv`: `drivers/net/virtio_net.c:2833-2864`
+- `add_recvbuf_small`: `drivers/net/virtio_net.c:2674-2704`
+- `virtnet_rq_init_one_sg`: `drivers/net/virtio_net.c:987-1007`
 
-#### `add_recvbuf_mergeable`
+`sg buf count`: `1`
 
-```text
-virtnet_rq_init_one_sg(rq, buf, len)
-ctx = mergeable_len_to_ctx(len + room, headroom)
-virtqueue_add_inbuf_premapped(rq->vq, rq->sg, 1, buf, ctx, gfp)
-```
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0` | `in` | `raw bytes` | `vi->hdr_len + GOOD_PACKET_LEN` | premapped DMA for `buf + VIRTNET_RX_PAD + xdp_headroom` | `drivers/net/virtio_net.c:2693,2695,2697` |
 
-#### `add_recvbuf_big`
+### path4
+`virtnet_open -> try_fill_recv -> virtnet_add_recvbuf_xsk -> virtqueue_add_inbuf_premapped -> virtqueue_add`
 
-```text
-sg_init_table(rq->sg, vi->big_packets_num_skbfrags + 2)
+Refs:
+- `try_fill_recv`: `drivers/net/virtio_net.c:2833-2864`
+- XSK SG setup: `drivers/net/virtio_net.c:1477-1480`
 
-for i = big_packets_num_skbfrags + 1 down to 2:
-  sg_set_buf(&rq->sg[i], page_address(first), PAGE_SIZE)
+`sg buf count`: `1`
 
-sg_set_buf(&rq->sg[0], p, vi->hdr_len)
-offset = sizeof(struct padded_vnet_hdr)
-sg_set_buf(&rq->sg[1], p + offset, PAGE_SIZE - offset)
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0` | `in` | `raw bytes` | `len` | premapped DMA at `addr = xsk_buff_xdp_get_dma(...) - vi->hdr_len` | `drivers/net/virtio_net.c:1477-1480` |
 
-virtqueue_add_inbuf(rq->vq, rq->sg, vi->big_packets_num_skbfrags + 2, first, gfp)
-```
+Notes:
+- `len = xsk_pool_get_rx_frame_size(pool) + vi->hdr_len` on this path.
 
 ## 2. `start_xmit`
 
-### Main path
+Entry:
+- `drivers/net/virtio_net.c:3376-3435`
 
-```text
-start_xmit
-  -> xmit_skb(sq, skb, !use_napi)
-    -> virtnet_add_outbuf
-      -> virtqueue_add_outbuf
-  -> if kick
-       virtqueue_kick_prepare(sq->vq)
-       virtqueue_notify(sq->vq)
-       vm_notify / vm_notify_with_data
-```
+Path:
+- `start_xmit`
+  -> `xmit_skb`
+  -> `virtnet_add_outbuf`
+  -> `virtqueue_add_outbuf`
+  -> `virtqueue_notify`
+  -> `vm_notify` / `vm_notify_with_data`
 
-### SG details in `xmit_skb`
+SG setup:
+- `drivers/net/virtio_net.c:3337-3373`
 
-```text
-sg_init_table(sq->sg, skb_shinfo(skb)->nr_frags + (can_push ? 1 : 2))
-```
+### path1
+`start_xmit -> xmit_skb(can_push == false) -> virtqueue_add_outbuf -> virtqueue_add`
 
-Two cases:
+`sg buf count`: `skb_shinfo(skb)->nr_frags + 2`
 
-#### `can_push == true`
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0` | `out` | `struct virtio_net_hdr_v1_hash_tunnel` | `hdr_len` | `hdr` | `drivers/net/virtio_net.c:3345,3365` |
+| `buf1..bufN` | `out` | `raw bytes` | `skb_to_sgvec(...)` derived | `skb` payload and frags | `drivers/net/virtio_net.c:3366-3369` |
 
-```text
-__skb_push(skb, hdr_len)
-num_sg = skb_to_sgvec(skb, sq->sg, 0, skb->len)
-__skb_pull(skb, hdr_len)
-```
+### path2
+`start_xmit -> xmit_skb(can_push == true) -> virtqueue_add_outbuf -> virtqueue_add`
 
-No `sg_set_buf` here because the pushed header is folded into the first SG
-element created by `skb_to_sgvec`.
+`sg buf count`: `skb_shinfo(skb)->nr_frags + 1`
 
-#### `can_push == false`
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0..bufN` | `out` | `raw bytes` | `skb_to_sgvec(...)` derived | pushed `skb` data including virtio header | `drivers/net/virtio_net.c:3357-3363` |
 
-```text
-sg_set_buf(sq->sg, hdr, hdr_len)
-num_sg = skb_to_sgvec(skb, sq->sg + 1, 0, skb->len)
-num_sg++
-```
-
-Then:
-
-```text
-virtnet_add_outbuf(sq, num_sg, skb, type)
-  -> virtqueue_add_outbuf(sq->vq, sq->sg, num_sg, packed_ptr, GFP_ATOMIC)
-```
+Notes:
+- Here the virtio header is pushed into the skb head and folded into the first
+  SG element rather than created by an explicit `sg_set_buf()`.
 
 ## 3. `virtnet_xdp_xmit`
 
-### Main path
+Entry:
+- `drivers/net/virtio_net.c:1722-1778`
 
-```text
-virtnet_xdp_xmit
-  loop frames[i]
-    -> __virtnet_xdp_xmit_one
-      -> virtnet_add_outbuf
-        -> virtqueue_add_outbuf
-  if flags & XDP_XMIT_FLUSH
-    -> virtqueue_kick_prepare(sq->vq)
-    -> virtqueue_notify(sq->vq)
-    -> vm_notify / vm_notify_with_data
-```
+Path:
+- `virtnet_xdp_xmit`
+  -> `__virtnet_xdp_xmit_one`
+  -> `virtnet_add_outbuf`
+  -> `virtqueue_add_outbuf`
+  -> `virtqueue_notify`
+  -> `vm_notify` / `vm_notify_with_data`
 
-### SG details in `__virtnet_xdp_xmit_one`
+SG setup:
+- `drivers/net/virtio_net.c:1640-1678`
 
-```text
-sg_init_table(sq->sg, nr_frags + 1)
-sg_set_buf(sq->sg, xdpf->data, xdpf->len)
+`sg buf count`: `nr_frags + 1`
 
-for i in [0, nr_frags):
-  sg_set_page(&sq->sg[i + 1],
-              skb_frag_page(frag),
-              skb_frag_size(frag),
-              skb_frag_off(frag))
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0` | `out` | `raw bytes` | `xdpf->len` | `xdpf->data` | `drivers/net/virtio_net.c:1661-1669` |
+| `buf1..bufN` | `out` | `raw bytes` | `skb_frag_size(frag)` | `skb_frag_page(frag)` + `skb_frag_off(frag)` | `drivers/net/virtio_net.c:1670-1674` |
 
-virtnet_add_outbuf(sq, nr_frags + 1, xdpf, VIRTNET_XMIT_TYPE_XDP)
-  -> virtqueue_add_outbuf(sq->vq, sq->sg, nr_frags + 1, ..., GFP_ATOMIC)
-```
+Notes:
+- `xdpf->data` is first moved backward by `vi->hdr_len`.
+- The front of `buf0` therefore contains a zeroed virtio net header.
 
 ## 4. `virtnet_xsk_wakeup`
 
-This op is indirect. It does not submit to a queue itself.
+Entry:
+- `drivers/net/virtio_net.c:1609-1638`
 
-```text
-virtnet_xsk_wakeup
-  -> xsk_wakeup(sq)
-    -> virtqueue_napi_schedule(&sq->napi, sq->vq)
-      -> TX NAPI later runs virtnet_poll_tx
-        -> virtnet_xsk_xmit
-          -> virtnet_xsk_xmit_batch
-            -> virtnet_xsk_xmit_one
-              -> virtqueue_add_outbuf_premapped
-          -> virtqueue_kick_prepare(sq->vq)
-          -> virtqueue_notify(sq->vq)
-          -> vm_notify / vm_notify_with_data
-```
+Path:
+- `virtnet_xsk_wakeup`
+  -> deferred TX NAPI
+  -> `virtnet_xsk_xmit_one`
+  -> `virtqueue_add_outbuf_premapped`
+  -> `virtqueue_notify`
+  -> `vm_notify` / `vm_notify_with_data`
 
-### SG details in `virtnet_xsk_xmit_one`
+SG setup:
+- `drivers/net/virtio_net.c:1516-1518`
 
-```text
-addr = xsk_buff_raw_get_dma(pool, desc->addr)
+`sg buf count`: `2`
 
-sg_init_table(sq->sg, 2)
-sg_fill_dma(sq->sg,     sq->xsk_hdr_dma_addr, vi->hdr_len)
-sg_fill_dma(sq->sg + 1, addr,                 desc->len)
-
-virtqueue_add_outbuf_premapped(sq->vq, sq->sg, 2, virtnet_xsk_to_ptr(desc->len), GFP_ATOMIC)
-```
-
-No `sg_set_buf` here because the XSK path uses pre-mapped DMA entries.
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0` | `out` | `raw bytes` | `vi->hdr_len` | premapped DMA at `sq->xsk_hdr_dma_addr` | `drivers/net/virtio_net.c:1516-1517` |
+| `buf1` | `out` | `raw bytes` | `desc->len` | premapped DMA at `addr = xsk_buff_raw_get_dma(pool, desc->addr)` | `drivers/net/virtio_net.c:1518` |
 
 ## 5. `virtnet_set_mac_address`
 
-Two relevant transport paths exist.
+Entry:
+- `drivers/net/virtio_net.c:3663-3707`
 
-### Control-VQ path
+### control-vq path
+`virtnet_set_mac_address -> virtnet_send_command -> virtnet_send_command_reply -> virtqueue_add_sgs`
 
-When `VIRTIO_NET_F_CTRL_MAC_ADDR` is negotiated:
+Refs:
+- payload SG: `drivers/net/virtio_net.c:3682-3685`
+- control wrapper: `drivers/net/virtio_net.c:3600-3654`
 
-```text
-virtnet_set_mac_address
-  -> sg_init_one(&sg, addr->sa_data, dev->addr_len)
-  -> virtnet_send_command
-    -> virtnet_send_command_reply
-      -> sg_init_one(&hdr,  &vi->ctrl->hdr,    sizeof(vi->ctrl->hdr))
-      -> sg_init_one(&stat, &vi->ctrl->status, sizeof(vi->ctrl->status))
-      -> virtqueue_add_sgs(vi->cvq, sgs, out_num, in_num, vi, GFP_ATOMIC)
-      -> virtqueue_kick(vi->cvq)
-      -> virtqueue_notify(vi->cvq)
-      -> vm_notify / vm_notify_with_data
-```
+`sg buf count`: `3`
 
-The user payload SG is:
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0` | `out` | `struct virtio_net_ctrl_hdr` | `sizeof(vi->ctrl->hdr)` | `&vi->ctrl->hdr` | `drivers/net/virtio_net.c:3614-3618` |
+| `buf1` | `out` | `raw bytes` | `dev->addr_len` | `addr->sa_data` | `drivers/net/virtio_net.c:3683` |
+| `buf2` | `in` | `u8` | `sizeof(vi->ctrl->status)` | `&vi->ctrl->status` | `drivers/net/virtio_net.c:3623-3625` |
 
-```text
-sg = addr->sa_data
-len = dev->addr_len
-```
+### legacy mmio path
+`virtnet_set_mac_address -> virtio_cwrite8 -> vm_set`
 
-### Legacy config-space write path
+Refs:
+- `drivers/net/virtio_net.c:3691-3699`
 
-When `VIRTIO_NET_F_MAC` is present but `VIRTIO_F_VERSION_1` is absent:
-
-```text
-virtnet_set_mac_address
-  loop i in [0, dev->addr_len):
-    virtio_cwrite8(vdev, offsetof(struct virtio_net_config, mac) + i, addr->sa_data[i])
-      -> vdev->config->set(vdev, offset, &val, sizeof(val))
-      -> virtio_mmio_config_ops.set
-      -> vm_set
-```
-
-This path reaches `virtio_mmio_config_ops` directly instead of a virtqueue.
+Notes:
+- This path reaches `virtio_mmio_config_ops.set`.
+- It does not build SGs.
 
 ## 6. `virtnet_set_rx_mode`
 
-This one is deferred:
+Entry:
+- `drivers/net/virtio_net.c:3957-3963`
 
-```text
-virtnet_set_rx_mode
-  -> schedule_work(&vi->rx_mode_work)
-    -> virtnet_rx_mode_work
-      -> control VQ commands
-```
+Deferred worker:
+- `drivers/net/virtio_net.c:3868-3955`
 
-### Promisc / allmulti toggles
+### promisc path
+`virtnet_set_rx_mode -> virtnet_rx_mode_work -> virtnet_send_command -> virtqueue_add_sgs`
 
-Each toggle does:
+`sg buf count`: `3`
 
-```text
-sg_init_one(sg, promisc_allmulti, sizeof(*promisc_allmulti))
-virtnet_send_command(...)
-  -> virtqueue_add_sgs
-  -> virtqueue_kick
-  -> virtqueue_notify
-  -> vm_notify / vm_notify_with_data
-```
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0` | `out` | `struct virtio_net_ctrl_hdr` | `sizeof(vi->ctrl->hdr)` | `&vi->ctrl->hdr` | `drivers/net/virtio_net.c:3614-3618` |
+| `buf1` | `out` | `u8` | `sizeof(*promisc_allmulti)` | `promisc_allmulti` | `drivers/net/virtio_net.c:3894-3898` |
+| `buf2` | `in` | `u8` | `sizeof(vi->ctrl->status)` | `&vi->ctrl->status` | `drivers/net/virtio_net.c:3623-3625` |
 
-### MAC filter table update
+### allmulti path
+`virtnet_set_rx_mode -> virtnet_rx_mode_work -> virtnet_send_command -> virtqueue_add_sgs`
 
-```text
-sg_init_table(sg, 2)
-sg_set_buf(&sg[0], mac_data,
-           sizeof(mac_data->entries) + uc_count * ETH_ALEN)
-sg_set_buf(&sg[1], mac_data,
-           sizeof(mac_data->entries) + mc_count * ETH_ALEN)
-virtnet_send_command(...)
-  -> virtqueue_add_sgs
-  -> virtqueue_kick
-  -> virtqueue_notify
-  -> vm_notify / vm_notify_with_data
-```
+`sg buf count`: `3`
+
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0` | `out` | `struct virtio_net_ctrl_hdr` | `sizeof(vi->ctrl->hdr)` | `&vi->ctrl->hdr` | `drivers/net/virtio_net.c:3614-3618` |
+| `buf1` | `out` | `u8` | `sizeof(*promisc_allmulti)` | `promisc_allmulti` | `drivers/net/virtio_net.c:3902-3906` |
+| `buf2` | `in` | `u8` | `sizeof(vi->ctrl->status)` | `&vi->ctrl->status` | `drivers/net/virtio_net.c:3623-3625` |
+
+### mac filter table path
+`virtnet_set_rx_mode -> virtnet_rx_mode_work -> virtnet_send_command -> virtqueue_add_sgs`
+
+`sg buf count`: `4`
+
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0` | `out` | `struct virtio_net_ctrl_hdr` | `sizeof(vi->ctrl->hdr)` | `&vi->ctrl->hdr` | `drivers/net/virtio_net.c:3614-3618` |
+| `buf1` | `out` | `struct virtio_net_ctrl_mac` prefix + unicast MAC array | `sizeof(mac_data->entries) + (uc_count * ETH_ALEN)` | `mac_data` | `drivers/net/virtio_net.c:3926-3933` |
+| `buf2` | `out` | `struct virtio_net_ctrl_mac` prefix + multicast MAC array | `sizeof(mac_data->entries) + (mc_count * ETH_ALEN)` | shifted `mac_data` | `drivers/net/virtio_net.c:3936-3946` |
+| `buf3` | `in` | `u8` | `sizeof(vi->ctrl->status)` | `&vi->ctrl->status` | `drivers/net/virtio_net.c:3623-3625` |
 
 ## 7. `virtnet_vlan_rx_add_vid`
 
-```text
-virtnet_vlan_rx_add_vid
-  -> *_vid = cpu_to_virtio16(...)
-  -> sg_init_one(&sg, _vid, sizeof(*_vid))
-  -> virtnet_send_command(...)
-    -> virtqueue_add_sgs
-    -> virtqueue_kick
-    -> virtqueue_notify
-    -> vm_notify / vm_notify_with_data
-```
+Entry:
+- `drivers/net/virtio_net.c:3965-3983`
+
+Path:
+- `virtnet_vlan_rx_add_vid`
+  -> `virtnet_send_command`
+  -> `virtqueue_add_sgs`
+
+`sg buf count`: `3`
+
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0` | `out` | `struct virtio_net_ctrl_hdr` | `sizeof(vi->ctrl->hdr)` | `&vi->ctrl->hdr` | `drivers/net/virtio_net.c:3614-3618` |
+| `buf1` | `out` | `__virtio16` | `sizeof(*_vid)` | `_vid` | `drivers/net/virtio_net.c:3976-3979` |
+| `buf2` | `in` | `u8` | `sizeof(vi->ctrl->status)` | `&vi->ctrl->status` | `drivers/net/virtio_net.c:3623-3625` |
 
 ## 8. `virtnet_vlan_rx_kill_vid`
 
-Same shape as add:
+Entry:
+- `drivers/net/virtio_net.c:3985-4002`
 
-```text
-virtnet_vlan_rx_kill_vid
-  -> sg_init_one(&sg, _vid, sizeof(*_vid))
-  -> virtnet_send_command(...)
-    -> virtqueue_add_sgs
-    -> virtqueue_kick
-    -> virtqueue_notify
-    -> vm_notify / vm_notify_with_data
-```
+Path:
+- `virtnet_vlan_rx_kill_vid`
+  -> `virtnet_send_command`
+  -> `virtqueue_add_sgs`
 
-## 9. `virtnet_set_features`
+`sg buf count`: `3`
 
-Two relevant subpaths.
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0` | `out` | `struct virtio_net_ctrl_hdr` | `sizeof(vi->ctrl->hdr)` | `&vi->ctrl->hdr` | `drivers/net/virtio_net.c:3614-3618` |
+| `buf1` | `out` | `__virtio16` | `sizeof(*_vid)` | `_vid` | `drivers/net/virtio_net.c:3996-3999` |
+| `buf2` | `in` | `u8` | `sizeof(vi->ctrl->status)` | `&vi->ctrl->status` | `drivers/net/virtio_net.c:3623-3625` |
 
-### Guest offloads path
+## 9. `virtnet_xdp`
 
-If `NETIF_F_GRO_HW` toggles:
+Entry:
+- `drivers/net/virtio_net.c:6165-6175`
 
-```text
-virtnet_set_features
-  -> virtnet_set_guest_offloads(vi, offloads)
-    -> sg_init_one(&sg, _offloads, sizeof(*_offloads))
-    -> virtnet_send_command(...)
-      -> virtqueue_add_sgs
-      -> virtqueue_kick
-      -> virtqueue_notify
-      -> vm_notify / vm_notify_with_data
-```
+This is a dispatcher. The SG-relevant subpaths are:
+- `XDP_SETUP_PROG`
+  -> `virtnet_xdp_set`
+  -> may call `virtnet_set_queues`
+  -> `virtnet_commit_rss_command` or `virtnet_send_command`
+- `XDP_SETUP_PROG`
+  -> `virtnet_xdp_set`
+  -> `virtnet_rx_resume_all`
+  -> `try_fill_recv`
+  -> same RX SG paths as `virtnet_open`
+- `XDP_SETUP_XSK_POOL`
+  -> `virtnet_xsk_pool_setup`
+  -> later wakeups use the same deferred XSK TX SG path as `virtnet_xsk_wakeup`
 
-### RSS path
+### queue-pairs control path
+`virtnet_xdp -> virtnet_xdp_set -> virtnet_set_queues -> virtnet_send_command -> virtqueue_add_sgs`
 
-If `NETIF_F_RXHASH` toggles:
+Refs:
+- `drivers/net/virtio_net.c:6049-6163`
+- `drivers/net/virtio_net.c:3771-3837`
 
-```text
-virtnet_set_features
-  -> virtnet_commit_rss_command
-    -> sg_init_table(sgs, 2)
-    -> sg_set_buf(&sgs[0], vi->rss_hdr,     virtnet_rss_hdr_size(vi))
-    -> sg_set_buf(&sgs[1], &vi->rss_trailer, virtnet_rss_trailer_size(vi))
-    -> virtnet_send_command(...)
-      -> virtqueue_add_sgs
-      -> virtqueue_kick
-      -> virtqueue_notify
-      -> vm_notify / vm_notify_with_data
-```
+`sg buf count`: `3`
 
-## 10. Ops with No Direct Target Path
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0` | `out` | `struct virtio_net_ctrl_hdr` | `sizeof(vi->ctrl->hdr)` | `&vi->ctrl->hdr` | `drivers/net/virtio_net.c:3614-3618` |
+| `buf1` | `out` | `struct virtio_net_ctrl_mq` | `sizeof(*mq)` | `mq` | `drivers/net/virtio_net.c:3819-3823` |
+| `buf2` | `in` | `u8` | `sizeof(vi->ctrl->status)` | `&vi->ctrl->status` | `drivers/net/virtio_net.c:3623-3625` |
 
-These `virtnet_netdev` entries do not directly reach the requested endpoints in
-their own call path:
+### rss control path
+`virtnet_xdp -> virtnet_xdp_set -> virtnet_set_queues -> virtnet_commit_rss_command -> virtqueue_add_sgs`
 
+`sg buf count`: `4`
+
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0` | `out` | `struct virtio_net_ctrl_hdr` | `sizeof(vi->ctrl->hdr)` | `&vi->ctrl->hdr` | `drivers/net/virtio_net.c:3614-3618` |
+| `buf1` | `out` | `struct virtio_net_rss_config_hdr` | `virtnet_rss_hdr_size(vi)` | `vi->rss_hdr` | `drivers/net/virtio_net.c:4262-4263` |
+| `buf2` | `out` | `struct virtio_net_rss_config_trailer` | `virtnet_rss_trailer_size(vi)` | `&vi->rss_trailer` | `drivers/net/virtio_net.c:4262-4264` |
+| `buf3` | `in` | `u8` | `sizeof(vi->ctrl->status)` | `&vi->ctrl->status` | `drivers/net/virtio_net.c:3623-3625` |
+
+### guest offload clear/restore path
+`virtnet_xdp -> virtnet_xdp_set -> virtnet_clear_guest_offloads/virtnet_restore_guest_offloads -> virtnet_set_guest_offloads -> virtqueue_add_sgs`
+
+Refs:
+- `drivers/net/virtio_net.c:6111-6114`
+- `drivers/net/virtio_net.c:6126-6130`
+- `drivers/net/virtio_net.c:5824-5840`
+
+`sg buf count`: `3`
+
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0` | `out` | `struct virtio_net_ctrl_hdr` | `sizeof(vi->ctrl->hdr)` | `&vi->ctrl->hdr` | `drivers/net/virtio_net.c:3614-3618` |
+| `buf1` | `out` | `__virtio64` | `sizeof(*_offloads)` | `_offloads` | `drivers/net/virtio_net.c:5830-5835` |
+| `buf2` | `in` | `u8` | `sizeof(vi->ctrl->status)` | `&vi->ctrl->status` | `drivers/net/virtio_net.c:3623-3625` |
+
+## 10. `virtnet_set_features`
+
+Entry:
+- `drivers/net/virtio_net.c:6193-6226`
+
+### guest offloads path
+`virtnet_set_features -> virtnet_set_guest_offloads -> virtnet_send_command -> virtqueue_add_sgs`
+
+Refs:
+- `drivers/net/virtio_net.c:6200-6214`
+- `drivers/net/virtio_net.c:5824-5840`
+
+`sg buf count`: `3`
+
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0` | `out` | `struct virtio_net_ctrl_hdr` | `sizeof(vi->ctrl->hdr)` | `&vi->ctrl->hdr` | `drivers/net/virtio_net.c:3614-3618` |
+| `buf1` | `out` | `__virtio64` | `sizeof(*_offloads)` | `_offloads` | `drivers/net/virtio_net.c:5830-5835` |
+| `buf2` | `in` | `u8` | `sizeof(vi->ctrl->status)` | `&vi->ctrl->status` | `drivers/net/virtio_net.c:3623-3625` |
+
+### rss path
+`virtnet_set_features -> virtnet_commit_rss_command -> virtnet_send_command -> virtqueue_add_sgs`
+
+Refs:
+- `drivers/net/virtio_net.c:6216-6223`
+- `drivers/net/virtio_net.c:4256-4275`
+
+`sg buf count`: `4`
+
+| buf | dir | type | size | source | ref |
+| --- | --- | --- | --- | --- | --- |
+| `buf0` | `out` | `struct virtio_net_ctrl_hdr` | `sizeof(vi->ctrl->hdr)` | `&vi->ctrl->hdr` | `drivers/net/virtio_net.c:3614-3618` |
+| `buf1` | `out` | `struct virtio_net_rss_config_hdr` | `virtnet_rss_hdr_size(vi)` | `vi->rss_hdr` | `drivers/net/virtio_net.c:4262-4263` |
+| `buf2` | `out` | `struct virtio_net_rss_config_trailer` | `virtnet_rss_trailer_size(vi)` | `&vi->rss_trailer` | `drivers/net/virtio_net.c:4262-4264` |
+| `buf3` | `in` | `u8` | `sizeof(vi->ctrl->status)` | `&vi->ctrl->status` | `drivers/net/virtio_net.c:3623-3625` |
+
+## 11. No Direct SG Path
+
+These `virtnet_netdev` entries do not build SGs on their own direct path:
 - `virtnet_close`
-- `virtnet_xdp`
 - `virtnet_tx_timeout`
-- `virtnet_stats`
-- `virtnet_get_phys_port_name`
-- `eth_validate_addr`
-- `passthru_features_check`
 
-`virtnet_xsk_wakeup` is not a direct submission path, but it is an important
-deferred path because it schedules the TX NAPI that later reaches
-`virtqueue_add_outbuf_premapped` and `vm_notify`.
+Indirect-only:
+- `virtnet_xsk_wakeup` schedules later TX work.
+- `virtnet_xdp` dispatches into reconfiguration and refill helpers rather than
+  building SGs directly in the top-level function body.

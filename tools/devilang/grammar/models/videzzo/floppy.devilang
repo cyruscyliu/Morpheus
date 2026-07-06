@@ -1,0 +1,14 @@
+struct FLOPPY_BUF {
+    buf: bytes[256] random;
+}
+
+head {
+    to = FLOPPY_BUF;
+    position = [
+        filename = i8257.c;
+        caller = i8257_dma_read_memory;
+        callee = cpu_physical_memory_read;
+        call_depth = 0;
+        argument_index = 0;
+    ]
+}

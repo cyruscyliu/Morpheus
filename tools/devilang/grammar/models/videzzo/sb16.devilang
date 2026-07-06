@@ -1,0 +1,26 @@
+struct SB16_BUF0 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = SB16_BUF0;
+    position = [
+        filename = i8257.c;
+        caller = i8257_dma_read_memory;
+        callee = cpu_physical_memory_read;
+        call_depth = 0;
+        argument_index = 0;
+    ] | [
+        filename = DevDMA.cpp;
+        caller = _ZL15dmaR3ReadMemoryP11PDMDEVINSR3jPvjj;
+        callee = _ZL17PDMDevHlpPhysReadP11PDMDEVINSR3mPvm;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevDMA.cpp;
+        caller = _ZL15dmaR3ReadMemoryP11PDMDEVINSR3jPvjj;
+        callee = _ZL17PDMDevHlpPhysReadP11PDMDEVINSR3mPvm;
+        call_depth = 1;
+        argument_index = 1;
+    ]
+}

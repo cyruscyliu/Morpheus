@@ -1,0 +1,14 @@
+struct ES1370_TMPBUF {
+    buf: bytes[256] random;
+}
+
+head {
+    to = ES1370_TMPBUF;
+    position = [
+        filename = es1370.c;
+        caller = es1370_transfer_audio;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}

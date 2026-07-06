@@ -1,0 +1,1844 @@
+import "virtnet_netdev.state";
+import "virtnet_ethtool_ops.state";
+
+machine virtio_net_runtime {
+    initial start
+
+    trace ndo_open_trace {
+        sequence {
+            virtnet_open
+        }
+    }
+
+    trace ndo_stop_trace {
+        sequence {
+            virtnet_close
+        }
+    }
+
+    trace ndo_start_xmit_trace {
+        sequence {
+            start_xmit
+        }
+    }
+
+    trace ndo_validate_addr_trace {
+        sequence {
+            eth_validate_addr
+        }
+    }
+
+    trace ndo_set_mac_address_trace {
+        sequence {
+            virtnet_set_mac_address
+        }
+    }
+
+    trace ndo_set_rx_mode_trace {
+        sequence {
+            virtnet_set_rx_mode
+        }
+    }
+
+    trace ndo_get_stats64_trace {
+        sequence {
+            virtnet_stats
+        }
+    }
+
+    trace ndo_vlan_rx_add_vid_trace {
+        sequence {
+            virtnet_vlan_rx_add_vid
+        }
+    }
+
+    trace ndo_vlan_rx_kill_vid_trace {
+        sequence {
+            virtnet_vlan_rx_kill_vid
+        }
+    }
+
+    trace ndo_bpf_trace {
+        sequence {
+            virtnet_xdp
+        }
+    }
+
+    trace ndo_xdp_xmit_trace {
+        sequence {
+            virtnet_xdp_xmit
+        }
+    }
+
+    trace ndo_xsk_wakeup_trace {
+        sequence {
+            virtnet_xsk_wakeup
+        }
+    }
+
+    trace ndo_features_check_trace {
+        sequence {
+            passthru_features_check
+        }
+    }
+
+    trace ndo_get_phys_port_name_trace {
+        sequence {
+            virtnet_get_phys_port_name
+        }
+    }
+
+    trace ndo_set_features_trace {
+        sequence {
+            virtnet_set_features
+        }
+    }
+
+    trace ndo_tx_timeout_trace {
+        sequence {
+            virtnet_tx_timeout
+        }
+    }
+
+    trace get_drvinfo_trace {
+        sequence {
+            virtnet_get_drvinfo
+        }
+    }
+
+    trace get_link_trace {
+        sequence {
+            ethtool_op_get_link
+        }
+    }
+
+    trace get_ringparam_trace {
+        sequence {
+            virtnet_get_ringparam
+        }
+    }
+
+    trace set_ringparam_trace {
+        sequence {
+            virtnet_set_ringparam
+        }
+    }
+
+    trace get_strings_trace {
+        sequence {
+            virtnet_get_strings
+        }
+    }
+
+    trace get_sset_count_trace {
+        sequence {
+            virtnet_get_sset_count
+        }
+    }
+
+    trace get_ethtool_stats_trace {
+        sequence {
+            virtnet_get_ethtool_stats
+        }
+    }
+
+    trace set_channels_trace {
+        sequence {
+            virtnet_set_channels
+        }
+    }
+
+    trace get_channels_trace {
+        sequence {
+            virtnet_get_channels
+        }
+    }
+
+    trace get_ts_info_trace {
+        sequence {
+            ethtool_op_get_ts_info
+        }
+    }
+
+    trace get_link_ksettings_trace {
+        sequence {
+            virtnet_get_link_ksettings
+        }
+    }
+
+    trace set_link_ksettings_trace {
+        sequence {
+            virtnet_set_link_ksettings
+        }
+    }
+
+    trace set_coalesce_trace {
+        sequence {
+            virtnet_set_coalesce
+        }
+    }
+
+    trace get_coalesce_trace {
+        sequence {
+            virtnet_get_coalesce
+        }
+    }
+
+    trace set_per_queue_coalesce_trace {
+        sequence {
+            virtnet_set_per_queue_coalesce
+        }
+    }
+
+    trace get_per_queue_coalesce_trace {
+        sequence {
+            virtnet_get_per_queue_coalesce
+        }
+    }
+
+    trace get_rxfh_key_size_trace {
+        sequence {
+            virtnet_get_rxfh_key_size
+        }
+    }
+
+    trace get_rxfh_indir_size_trace {
+        sequence {
+            virtnet_get_rxfh_indir_size
+        }
+    }
+
+    trace get_rxfh_trace {
+        sequence {
+            virtnet_get_rxfh
+        }
+    }
+
+    trace set_rxfh_trace {
+        sequence {
+            virtnet_set_rxfh
+        }
+    }
+
+    trace get_rxfh_fields_trace {
+        sequence {
+            virtnet_get_hashflow
+        }
+    }
+
+    trace set_rxfh_fields_trace {
+        sequence {
+            virtnet_set_hashflow
+        }
+    }
+
+    trace get_rx_ring_count_trace {
+        sequence {
+            virtnet_get_rx_ring_count
+        }
+    }
+
+    state start
+
+    state virtnet_open
+    state virtnet_close
+    state start_xmit
+    state eth_validate_addr
+    state virtnet_set_mac_address
+    state virtnet_set_rx_mode
+    state virtnet_stats
+    state virtnet_vlan_rx_add_vid
+    state virtnet_vlan_rx_kill_vid
+    state virtnet_xdp
+    state virtnet_xdp_xmit
+    state virtnet_xsk_wakeup
+    state passthru_features_check
+    state virtnet_get_phys_port_name
+    state virtnet_set_features
+    state virtnet_tx_timeout
+    state virtnet_get_drvinfo
+    state ethtool_op_get_link
+    state virtnet_get_ringparam
+    state virtnet_set_ringparam
+    state virtnet_get_strings
+    state virtnet_get_sset_count
+    state virtnet_get_ethtool_stats
+    state virtnet_set_channels
+    state virtnet_get_channels
+    state ethtool_op_get_ts_info
+    state virtnet_get_link_ksettings
+    state virtnet_set_link_ksettings
+    state virtnet_set_coalesce
+    state virtnet_get_coalesce
+    state virtnet_set_per_queue_coalesce
+    state virtnet_get_per_queue_coalesce
+    state virtnet_get_rxfh_key_size
+    state virtnet_get_rxfh_indir_size
+    state virtnet_get_rxfh
+    state virtnet_set_rxfh
+    state virtnet_get_hashflow
+    state virtnet_set_hashflow
+    state virtnet_get_rx_ring_count
+
+    transition start -> virtnet_open on ndo_open_trace
+    transition start -> virtnet_close on ndo_stop_trace
+    transition start -> start_xmit on ndo_start_xmit_trace
+    transition start -> eth_validate_addr on ndo_validate_addr_trace
+    transition start -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition start -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition start -> virtnet_stats on ndo_get_stats64_trace
+    transition start -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition start -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition start -> virtnet_xdp on ndo_bpf_trace
+    transition start -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition start -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition start -> passthru_features_check on ndo_features_check_trace
+    transition start -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition start -> virtnet_set_features on ndo_set_features_trace
+    transition start -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition start -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition start -> ethtool_op_get_link on get_link_trace
+    transition start -> virtnet_get_ringparam on get_ringparam_trace
+    transition start -> virtnet_set_ringparam on set_ringparam_trace
+    transition start -> virtnet_get_strings on get_strings_trace
+    transition start -> virtnet_get_sset_count on get_sset_count_trace
+    transition start -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition start -> virtnet_set_channels on set_channels_trace
+    transition start -> virtnet_get_channels on get_channels_trace
+    transition start -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition start -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition start -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition start -> virtnet_set_coalesce on set_coalesce_trace
+    transition start -> virtnet_get_coalesce on get_coalesce_trace
+    transition start -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition start -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition start -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition start -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition start -> virtnet_get_rxfh on get_rxfh_trace
+    transition start -> virtnet_set_rxfh on set_rxfh_trace
+    transition start -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition start -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition start -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_open -> virtnet_close on ndo_stop_trace
+    transition virtnet_open -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_open -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_open -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_open -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_open -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_open -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_open -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_open -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_open -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_open -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_open -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_open -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_open -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_open -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_open -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_open -> ethtool_op_get_link on get_link_trace
+    transition virtnet_open -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_open -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_open -> virtnet_get_strings on get_strings_trace
+    transition virtnet_open -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_open -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_open -> virtnet_set_channels on set_channels_trace
+    transition virtnet_open -> virtnet_get_channels on get_channels_trace
+    transition virtnet_open -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_open -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_open -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_open -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_open -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_open -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_open -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_open -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_open -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_open -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_open -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_open -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_open -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_open -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_close -> virtnet_open on ndo_open_trace
+    transition virtnet_close -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_close -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_close -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_close -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_close -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_close -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_close -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_close -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_close -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_close -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_close -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_close -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_close -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_close -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_close -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_close -> ethtool_op_get_link on get_link_trace
+    transition virtnet_close -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_close -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_close -> virtnet_get_strings on get_strings_trace
+    transition virtnet_close -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_close -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_close -> virtnet_set_channels on set_channels_trace
+    transition virtnet_close -> virtnet_get_channels on get_channels_trace
+    transition virtnet_close -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_close -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_close -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_close -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_close -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_close -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_close -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_close -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_close -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_close -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_close -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_close -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_close -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_close -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition start_xmit -> virtnet_open on ndo_open_trace
+    transition start_xmit -> virtnet_close on ndo_stop_trace
+    transition start_xmit -> eth_validate_addr on ndo_validate_addr_trace
+    transition start_xmit -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition start_xmit -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition start_xmit -> virtnet_stats on ndo_get_stats64_trace
+    transition start_xmit -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition start_xmit -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition start_xmit -> virtnet_xdp on ndo_bpf_trace
+    transition start_xmit -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition start_xmit -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition start_xmit -> passthru_features_check on ndo_features_check_trace
+    transition start_xmit -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition start_xmit -> virtnet_set_features on ndo_set_features_trace
+    transition start_xmit -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition start_xmit -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition start_xmit -> ethtool_op_get_link on get_link_trace
+    transition start_xmit -> virtnet_get_ringparam on get_ringparam_trace
+    transition start_xmit -> virtnet_set_ringparam on set_ringparam_trace
+    transition start_xmit -> virtnet_get_strings on get_strings_trace
+    transition start_xmit -> virtnet_get_sset_count on get_sset_count_trace
+    transition start_xmit -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition start_xmit -> virtnet_set_channels on set_channels_trace
+    transition start_xmit -> virtnet_get_channels on get_channels_trace
+    transition start_xmit -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition start_xmit -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition start_xmit -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition start_xmit -> virtnet_set_coalesce on set_coalesce_trace
+    transition start_xmit -> virtnet_get_coalesce on get_coalesce_trace
+    transition start_xmit -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition start_xmit -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition start_xmit -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition start_xmit -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition start_xmit -> virtnet_get_rxfh on get_rxfh_trace
+    transition start_xmit -> virtnet_set_rxfh on set_rxfh_trace
+    transition start_xmit -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition start_xmit -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition start_xmit -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition eth_validate_addr -> virtnet_open on ndo_open_trace
+    transition eth_validate_addr -> virtnet_close on ndo_stop_trace
+    transition eth_validate_addr -> start_xmit on ndo_start_xmit_trace
+    transition eth_validate_addr -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition eth_validate_addr -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition eth_validate_addr -> virtnet_stats on ndo_get_stats64_trace
+    transition eth_validate_addr -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition eth_validate_addr -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition eth_validate_addr -> virtnet_xdp on ndo_bpf_trace
+    transition eth_validate_addr -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition eth_validate_addr -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition eth_validate_addr -> passthru_features_check on ndo_features_check_trace
+    transition eth_validate_addr -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition eth_validate_addr -> virtnet_set_features on ndo_set_features_trace
+    transition eth_validate_addr -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition eth_validate_addr -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition eth_validate_addr -> ethtool_op_get_link on get_link_trace
+    transition eth_validate_addr -> virtnet_get_ringparam on get_ringparam_trace
+    transition eth_validate_addr -> virtnet_set_ringparam on set_ringparam_trace
+    transition eth_validate_addr -> virtnet_get_strings on get_strings_trace
+    transition eth_validate_addr -> virtnet_get_sset_count on get_sset_count_trace
+    transition eth_validate_addr -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition eth_validate_addr -> virtnet_set_channels on set_channels_trace
+    transition eth_validate_addr -> virtnet_get_channels on get_channels_trace
+    transition eth_validate_addr -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition eth_validate_addr -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition eth_validate_addr -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition eth_validate_addr -> virtnet_set_coalesce on set_coalesce_trace
+    transition eth_validate_addr -> virtnet_get_coalesce on get_coalesce_trace
+    transition eth_validate_addr -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition eth_validate_addr -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition eth_validate_addr -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition eth_validate_addr -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition eth_validate_addr -> virtnet_get_rxfh on get_rxfh_trace
+    transition eth_validate_addr -> virtnet_set_rxfh on set_rxfh_trace
+    transition eth_validate_addr -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition eth_validate_addr -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition eth_validate_addr -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_set_mac_address -> virtnet_open on ndo_open_trace
+    transition virtnet_set_mac_address -> virtnet_close on ndo_stop_trace
+    transition virtnet_set_mac_address -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_set_mac_address -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_set_mac_address -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_set_mac_address -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_set_mac_address -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_set_mac_address -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_set_mac_address -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_set_mac_address -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_set_mac_address -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_set_mac_address -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_set_mac_address -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_set_mac_address -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_set_mac_address -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_set_mac_address -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_set_mac_address -> ethtool_op_get_link on get_link_trace
+    transition virtnet_set_mac_address -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_set_mac_address -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_set_mac_address -> virtnet_get_strings on get_strings_trace
+    transition virtnet_set_mac_address -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_set_mac_address -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_set_mac_address -> virtnet_set_channels on set_channels_trace
+    transition virtnet_set_mac_address -> virtnet_get_channels on get_channels_trace
+    transition virtnet_set_mac_address -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_set_mac_address -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_set_mac_address -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_set_mac_address -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_set_mac_address -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_set_mac_address -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_set_mac_address -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_set_mac_address -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_set_mac_address -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_set_mac_address -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_set_mac_address -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_set_mac_address -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_set_mac_address -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_set_mac_address -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_set_rx_mode -> virtnet_open on ndo_open_trace
+    transition virtnet_set_rx_mode -> virtnet_close on ndo_stop_trace
+    transition virtnet_set_rx_mode -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_set_rx_mode -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_set_rx_mode -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_set_rx_mode -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_set_rx_mode -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_set_rx_mode -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_set_rx_mode -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_set_rx_mode -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_set_rx_mode -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_set_rx_mode -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_set_rx_mode -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_set_rx_mode -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_set_rx_mode -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_set_rx_mode -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_set_rx_mode -> ethtool_op_get_link on get_link_trace
+    transition virtnet_set_rx_mode -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_set_rx_mode -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_set_rx_mode -> virtnet_get_strings on get_strings_trace
+    transition virtnet_set_rx_mode -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_set_rx_mode -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_set_rx_mode -> virtnet_set_channels on set_channels_trace
+    transition virtnet_set_rx_mode -> virtnet_get_channels on get_channels_trace
+    transition virtnet_set_rx_mode -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_set_rx_mode -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_set_rx_mode -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_set_rx_mode -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_set_rx_mode -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_set_rx_mode -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_set_rx_mode -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_set_rx_mode -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_set_rx_mode -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_set_rx_mode -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_set_rx_mode -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_set_rx_mode -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_set_rx_mode -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_set_rx_mode -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_stats -> virtnet_open on ndo_open_trace
+    transition virtnet_stats -> virtnet_close on ndo_stop_trace
+    transition virtnet_stats -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_stats -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_stats -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_stats -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_stats -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_stats -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_stats -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_stats -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_stats -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_stats -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_stats -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_stats -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_stats -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_stats -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_stats -> ethtool_op_get_link on get_link_trace
+    transition virtnet_stats -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_stats -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_stats -> virtnet_get_strings on get_strings_trace
+    transition virtnet_stats -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_stats -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_stats -> virtnet_set_channels on set_channels_trace
+    transition virtnet_stats -> virtnet_get_channels on get_channels_trace
+    transition virtnet_stats -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_stats -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_stats -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_stats -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_stats -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_stats -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_stats -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_stats -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_stats -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_stats -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_stats -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_stats -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_stats -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_stats -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_vlan_rx_add_vid -> virtnet_open on ndo_open_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_close on ndo_stop_trace
+    transition virtnet_vlan_rx_add_vid -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_vlan_rx_add_vid -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_vlan_rx_add_vid -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_vlan_rx_add_vid -> ethtool_op_get_link on get_link_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_get_strings on get_strings_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_set_channels on set_channels_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_get_channels on get_channels_trace
+    transition virtnet_vlan_rx_add_vid -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_vlan_rx_add_vid -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_vlan_rx_kill_vid -> virtnet_open on ndo_open_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_close on ndo_stop_trace
+    transition virtnet_vlan_rx_kill_vid -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_vlan_rx_kill_vid -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_vlan_rx_kill_vid -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_vlan_rx_kill_vid -> ethtool_op_get_link on get_link_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_get_strings on get_strings_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_set_channels on set_channels_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_get_channels on get_channels_trace
+    transition virtnet_vlan_rx_kill_vid -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_vlan_rx_kill_vid -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_xdp -> virtnet_open on ndo_open_trace
+    transition virtnet_xdp -> virtnet_close on ndo_stop_trace
+    transition virtnet_xdp -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_xdp -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_xdp -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_xdp -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_xdp -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_xdp -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_xdp -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_xdp -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_xdp -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_xdp -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_xdp -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_xdp -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_xdp -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_xdp -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_xdp -> ethtool_op_get_link on get_link_trace
+    transition virtnet_xdp -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_xdp -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_xdp -> virtnet_get_strings on get_strings_trace
+    transition virtnet_xdp -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_xdp -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_xdp -> virtnet_set_channels on set_channels_trace
+    transition virtnet_xdp -> virtnet_get_channels on get_channels_trace
+    transition virtnet_xdp -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_xdp -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_xdp -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_xdp -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_xdp -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_xdp -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_xdp -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_xdp -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_xdp -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_xdp -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_xdp -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_xdp -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_xdp -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_xdp -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_xdp_xmit -> virtnet_open on ndo_open_trace
+    transition virtnet_xdp_xmit -> virtnet_close on ndo_stop_trace
+    transition virtnet_xdp_xmit -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_xdp_xmit -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_xdp_xmit -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_xdp_xmit -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_xdp_xmit -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_xdp_xmit -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_xdp_xmit -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_xdp_xmit -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_xdp_xmit -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_xdp_xmit -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_xdp_xmit -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_xdp_xmit -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_xdp_xmit -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_xdp_xmit -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_xdp_xmit -> ethtool_op_get_link on get_link_trace
+    transition virtnet_xdp_xmit -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_xdp_xmit -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_xdp_xmit -> virtnet_get_strings on get_strings_trace
+    transition virtnet_xdp_xmit -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_xdp_xmit -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_xdp_xmit -> virtnet_set_channels on set_channels_trace
+    transition virtnet_xdp_xmit -> virtnet_get_channels on get_channels_trace
+    transition virtnet_xdp_xmit -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_xdp_xmit -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_xdp_xmit -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_xdp_xmit -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_xdp_xmit -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_xdp_xmit -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_xdp_xmit -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_xdp_xmit -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_xdp_xmit -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_xdp_xmit -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_xdp_xmit -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_xdp_xmit -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_xdp_xmit -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_xdp_xmit -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_xsk_wakeup -> virtnet_open on ndo_open_trace
+    transition virtnet_xsk_wakeup -> virtnet_close on ndo_stop_trace
+    transition virtnet_xsk_wakeup -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_xsk_wakeup -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_xsk_wakeup -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_xsk_wakeup -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_xsk_wakeup -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_xsk_wakeup -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_xsk_wakeup -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_xsk_wakeup -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_xsk_wakeup -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_xsk_wakeup -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_xsk_wakeup -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_xsk_wakeup -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_xsk_wakeup -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_xsk_wakeup -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_xsk_wakeup -> ethtool_op_get_link on get_link_trace
+    transition virtnet_xsk_wakeup -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_xsk_wakeup -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_xsk_wakeup -> virtnet_get_strings on get_strings_trace
+    transition virtnet_xsk_wakeup -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_xsk_wakeup -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_xsk_wakeup -> virtnet_set_channels on set_channels_trace
+    transition virtnet_xsk_wakeup -> virtnet_get_channels on get_channels_trace
+    transition virtnet_xsk_wakeup -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_xsk_wakeup -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_xsk_wakeup -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_xsk_wakeup -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_xsk_wakeup -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_xsk_wakeup -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_xsk_wakeup -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_xsk_wakeup -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_xsk_wakeup -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_xsk_wakeup -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_xsk_wakeup -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_xsk_wakeup -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_xsk_wakeup -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_xsk_wakeup -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition passthru_features_check -> virtnet_open on ndo_open_trace
+    transition passthru_features_check -> virtnet_close on ndo_stop_trace
+    transition passthru_features_check -> start_xmit on ndo_start_xmit_trace
+    transition passthru_features_check -> eth_validate_addr on ndo_validate_addr_trace
+    transition passthru_features_check -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition passthru_features_check -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition passthru_features_check -> virtnet_stats on ndo_get_stats64_trace
+    transition passthru_features_check -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition passthru_features_check -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition passthru_features_check -> virtnet_xdp on ndo_bpf_trace
+    transition passthru_features_check -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition passthru_features_check -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition passthru_features_check -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition passthru_features_check -> virtnet_set_features on ndo_set_features_trace
+    transition passthru_features_check -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition passthru_features_check -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition passthru_features_check -> ethtool_op_get_link on get_link_trace
+    transition passthru_features_check -> virtnet_get_ringparam on get_ringparam_trace
+    transition passthru_features_check -> virtnet_set_ringparam on set_ringparam_trace
+    transition passthru_features_check -> virtnet_get_strings on get_strings_trace
+    transition passthru_features_check -> virtnet_get_sset_count on get_sset_count_trace
+    transition passthru_features_check -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition passthru_features_check -> virtnet_set_channels on set_channels_trace
+    transition passthru_features_check -> virtnet_get_channels on get_channels_trace
+    transition passthru_features_check -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition passthru_features_check -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition passthru_features_check -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition passthru_features_check -> virtnet_set_coalesce on set_coalesce_trace
+    transition passthru_features_check -> virtnet_get_coalesce on get_coalesce_trace
+    transition passthru_features_check -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition passthru_features_check -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition passthru_features_check -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition passthru_features_check -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition passthru_features_check -> virtnet_get_rxfh on get_rxfh_trace
+    transition passthru_features_check -> virtnet_set_rxfh on set_rxfh_trace
+    transition passthru_features_check -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition passthru_features_check -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition passthru_features_check -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_get_phys_port_name -> virtnet_open on ndo_open_trace
+    transition virtnet_get_phys_port_name -> virtnet_close on ndo_stop_trace
+    transition virtnet_get_phys_port_name -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_get_phys_port_name -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_get_phys_port_name -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_get_phys_port_name -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_get_phys_port_name -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_get_phys_port_name -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_get_phys_port_name -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_get_phys_port_name -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_get_phys_port_name -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_get_phys_port_name -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_get_phys_port_name -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_get_phys_port_name -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_get_phys_port_name -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_get_phys_port_name -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_get_phys_port_name -> ethtool_op_get_link on get_link_trace
+    transition virtnet_get_phys_port_name -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_get_phys_port_name -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_get_phys_port_name -> virtnet_get_strings on get_strings_trace
+    transition virtnet_get_phys_port_name -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_get_phys_port_name -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_get_phys_port_name -> virtnet_set_channels on set_channels_trace
+    transition virtnet_get_phys_port_name -> virtnet_get_channels on get_channels_trace
+    transition virtnet_get_phys_port_name -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_get_phys_port_name -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_get_phys_port_name -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_get_phys_port_name -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_get_phys_port_name -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_get_phys_port_name -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_get_phys_port_name -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_get_phys_port_name -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_get_phys_port_name -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_get_phys_port_name -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_get_phys_port_name -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_get_phys_port_name -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_get_phys_port_name -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_get_phys_port_name -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_set_features -> virtnet_open on ndo_open_trace
+    transition virtnet_set_features -> virtnet_close on ndo_stop_trace
+    transition virtnet_set_features -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_set_features -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_set_features -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_set_features -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_set_features -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_set_features -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_set_features -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_set_features -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_set_features -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_set_features -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_set_features -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_set_features -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_set_features -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_set_features -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_set_features -> ethtool_op_get_link on get_link_trace
+    transition virtnet_set_features -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_set_features -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_set_features -> virtnet_get_strings on get_strings_trace
+    transition virtnet_set_features -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_set_features -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_set_features -> virtnet_set_channels on set_channels_trace
+    transition virtnet_set_features -> virtnet_get_channels on get_channels_trace
+    transition virtnet_set_features -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_set_features -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_set_features -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_set_features -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_set_features -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_set_features -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_set_features -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_set_features -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_set_features -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_set_features -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_set_features -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_set_features -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_set_features -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_set_features -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_tx_timeout -> virtnet_open on ndo_open_trace
+    transition virtnet_tx_timeout -> virtnet_close on ndo_stop_trace
+    transition virtnet_tx_timeout -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_tx_timeout -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_tx_timeout -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_tx_timeout -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_tx_timeout -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_tx_timeout -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_tx_timeout -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_tx_timeout -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_tx_timeout -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_tx_timeout -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_tx_timeout -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_tx_timeout -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_tx_timeout -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_tx_timeout -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_tx_timeout -> ethtool_op_get_link on get_link_trace
+    transition virtnet_tx_timeout -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_tx_timeout -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_tx_timeout -> virtnet_get_strings on get_strings_trace
+    transition virtnet_tx_timeout -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_tx_timeout -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_tx_timeout -> virtnet_set_channels on set_channels_trace
+    transition virtnet_tx_timeout -> virtnet_get_channels on get_channels_trace
+    transition virtnet_tx_timeout -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_tx_timeout -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_tx_timeout -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_tx_timeout -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_tx_timeout -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_tx_timeout -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_tx_timeout -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_tx_timeout -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_tx_timeout -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_tx_timeout -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_tx_timeout -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_tx_timeout -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_tx_timeout -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_tx_timeout -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_get_drvinfo -> virtnet_open on ndo_open_trace
+    transition virtnet_get_drvinfo -> virtnet_close on ndo_stop_trace
+    transition virtnet_get_drvinfo -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_get_drvinfo -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_get_drvinfo -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_get_drvinfo -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_get_drvinfo -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_get_drvinfo -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_get_drvinfo -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_get_drvinfo -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_get_drvinfo -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_get_drvinfo -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_get_drvinfo -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_get_drvinfo -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_get_drvinfo -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_get_drvinfo -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_get_drvinfo -> ethtool_op_get_link on get_link_trace
+    transition virtnet_get_drvinfo -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_get_drvinfo -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_get_drvinfo -> virtnet_get_strings on get_strings_trace
+    transition virtnet_get_drvinfo -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_get_drvinfo -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_get_drvinfo -> virtnet_set_channels on set_channels_trace
+    transition virtnet_get_drvinfo -> virtnet_get_channels on get_channels_trace
+    transition virtnet_get_drvinfo -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_get_drvinfo -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_get_drvinfo -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_get_drvinfo -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_get_drvinfo -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_get_drvinfo -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_get_drvinfo -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_get_drvinfo -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_get_drvinfo -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_get_drvinfo -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_get_drvinfo -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_get_drvinfo -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_get_drvinfo -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_get_drvinfo -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition ethtool_op_get_link -> virtnet_open on ndo_open_trace
+    transition ethtool_op_get_link -> virtnet_close on ndo_stop_trace
+    transition ethtool_op_get_link -> start_xmit on ndo_start_xmit_trace
+    transition ethtool_op_get_link -> eth_validate_addr on ndo_validate_addr_trace
+    transition ethtool_op_get_link -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition ethtool_op_get_link -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition ethtool_op_get_link -> virtnet_stats on ndo_get_stats64_trace
+    transition ethtool_op_get_link -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition ethtool_op_get_link -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition ethtool_op_get_link -> virtnet_xdp on ndo_bpf_trace
+    transition ethtool_op_get_link -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition ethtool_op_get_link -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition ethtool_op_get_link -> passthru_features_check on ndo_features_check_trace
+    transition ethtool_op_get_link -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition ethtool_op_get_link -> virtnet_set_features on ndo_set_features_trace
+    transition ethtool_op_get_link -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition ethtool_op_get_link -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition ethtool_op_get_link -> virtnet_get_ringparam on get_ringparam_trace
+    transition ethtool_op_get_link -> virtnet_set_ringparam on set_ringparam_trace
+    transition ethtool_op_get_link -> virtnet_get_strings on get_strings_trace
+    transition ethtool_op_get_link -> virtnet_get_sset_count on get_sset_count_trace
+    transition ethtool_op_get_link -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition ethtool_op_get_link -> virtnet_set_channels on set_channels_trace
+    transition ethtool_op_get_link -> virtnet_get_channels on get_channels_trace
+    transition ethtool_op_get_link -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition ethtool_op_get_link -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition ethtool_op_get_link -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition ethtool_op_get_link -> virtnet_set_coalesce on set_coalesce_trace
+    transition ethtool_op_get_link -> virtnet_get_coalesce on get_coalesce_trace
+    transition ethtool_op_get_link -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition ethtool_op_get_link -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition ethtool_op_get_link -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition ethtool_op_get_link -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition ethtool_op_get_link -> virtnet_get_rxfh on get_rxfh_trace
+    transition ethtool_op_get_link -> virtnet_set_rxfh on set_rxfh_trace
+    transition ethtool_op_get_link -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition ethtool_op_get_link -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition ethtool_op_get_link -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_get_ringparam -> virtnet_open on ndo_open_trace
+    transition virtnet_get_ringparam -> virtnet_close on ndo_stop_trace
+    transition virtnet_get_ringparam -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_get_ringparam -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_get_ringparam -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_get_ringparam -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_get_ringparam -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_get_ringparam -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_get_ringparam -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_get_ringparam -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_get_ringparam -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_get_ringparam -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_get_ringparam -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_get_ringparam -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_get_ringparam -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_get_ringparam -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_get_ringparam -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_get_ringparam -> ethtool_op_get_link on get_link_trace
+    transition virtnet_get_ringparam -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_get_ringparam -> virtnet_get_strings on get_strings_trace
+    transition virtnet_get_ringparam -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_get_ringparam -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_get_ringparam -> virtnet_set_channels on set_channels_trace
+    transition virtnet_get_ringparam -> virtnet_get_channels on get_channels_trace
+    transition virtnet_get_ringparam -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_get_ringparam -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_get_ringparam -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_get_ringparam -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_get_ringparam -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_get_ringparam -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_get_ringparam -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_get_ringparam -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_get_ringparam -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_get_ringparam -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_get_ringparam -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_get_ringparam -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_get_ringparam -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_get_ringparam -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_set_ringparam -> virtnet_open on ndo_open_trace
+    transition virtnet_set_ringparam -> virtnet_close on ndo_stop_trace
+    transition virtnet_set_ringparam -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_set_ringparam -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_set_ringparam -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_set_ringparam -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_set_ringparam -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_set_ringparam -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_set_ringparam -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_set_ringparam -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_set_ringparam -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_set_ringparam -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_set_ringparam -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_set_ringparam -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_set_ringparam -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_set_ringparam -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_set_ringparam -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_set_ringparam -> ethtool_op_get_link on get_link_trace
+    transition virtnet_set_ringparam -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_set_ringparam -> virtnet_get_strings on get_strings_trace
+    transition virtnet_set_ringparam -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_set_ringparam -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_set_ringparam -> virtnet_set_channels on set_channels_trace
+    transition virtnet_set_ringparam -> virtnet_get_channels on get_channels_trace
+    transition virtnet_set_ringparam -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_set_ringparam -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_set_ringparam -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_set_ringparam -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_set_ringparam -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_set_ringparam -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_set_ringparam -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_set_ringparam -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_set_ringparam -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_set_ringparam -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_set_ringparam -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_set_ringparam -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_set_ringparam -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_set_ringparam -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_get_strings -> virtnet_open on ndo_open_trace
+    transition virtnet_get_strings -> virtnet_close on ndo_stop_trace
+    transition virtnet_get_strings -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_get_strings -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_get_strings -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_get_strings -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_get_strings -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_get_strings -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_get_strings -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_get_strings -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_get_strings -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_get_strings -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_get_strings -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_get_strings -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_get_strings -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_get_strings -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_get_strings -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_get_strings -> ethtool_op_get_link on get_link_trace
+    transition virtnet_get_strings -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_get_strings -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_get_strings -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_get_strings -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_get_strings -> virtnet_set_channels on set_channels_trace
+    transition virtnet_get_strings -> virtnet_get_channels on get_channels_trace
+    transition virtnet_get_strings -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_get_strings -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_get_strings -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_get_strings -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_get_strings -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_get_strings -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_get_strings -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_get_strings -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_get_strings -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_get_strings -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_get_strings -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_get_strings -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_get_strings -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_get_strings -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_get_sset_count -> virtnet_open on ndo_open_trace
+    transition virtnet_get_sset_count -> virtnet_close on ndo_stop_trace
+    transition virtnet_get_sset_count -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_get_sset_count -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_get_sset_count -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_get_sset_count -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_get_sset_count -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_get_sset_count -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_get_sset_count -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_get_sset_count -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_get_sset_count -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_get_sset_count -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_get_sset_count -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_get_sset_count -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_get_sset_count -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_get_sset_count -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_get_sset_count -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_get_sset_count -> ethtool_op_get_link on get_link_trace
+    transition virtnet_get_sset_count -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_get_sset_count -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_get_sset_count -> virtnet_get_strings on get_strings_trace
+    transition virtnet_get_sset_count -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_get_sset_count -> virtnet_set_channels on set_channels_trace
+    transition virtnet_get_sset_count -> virtnet_get_channels on get_channels_trace
+    transition virtnet_get_sset_count -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_get_sset_count -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_get_sset_count -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_get_sset_count -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_get_sset_count -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_get_sset_count -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_get_sset_count -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_get_sset_count -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_get_sset_count -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_get_sset_count -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_get_sset_count -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_get_sset_count -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_get_sset_count -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_get_sset_count -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_get_ethtool_stats -> virtnet_open on ndo_open_trace
+    transition virtnet_get_ethtool_stats -> virtnet_close on ndo_stop_trace
+    transition virtnet_get_ethtool_stats -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_get_ethtool_stats -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_get_ethtool_stats -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_get_ethtool_stats -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_get_ethtool_stats -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_get_ethtool_stats -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_get_ethtool_stats -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_get_ethtool_stats -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_get_ethtool_stats -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_get_ethtool_stats -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_get_ethtool_stats -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_get_ethtool_stats -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_get_ethtool_stats -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_get_ethtool_stats -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_get_ethtool_stats -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_get_ethtool_stats -> ethtool_op_get_link on get_link_trace
+    transition virtnet_get_ethtool_stats -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_get_ethtool_stats -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_get_ethtool_stats -> virtnet_get_strings on get_strings_trace
+    transition virtnet_get_ethtool_stats -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_get_ethtool_stats -> virtnet_set_channels on set_channels_trace
+    transition virtnet_get_ethtool_stats -> virtnet_get_channels on get_channels_trace
+    transition virtnet_get_ethtool_stats -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_get_ethtool_stats -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_get_ethtool_stats -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_get_ethtool_stats -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_get_ethtool_stats -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_get_ethtool_stats -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_get_ethtool_stats -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_get_ethtool_stats -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_get_ethtool_stats -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_get_ethtool_stats -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_get_ethtool_stats -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_get_ethtool_stats -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_get_ethtool_stats -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_get_ethtool_stats -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_set_channels -> virtnet_open on ndo_open_trace
+    transition virtnet_set_channels -> virtnet_close on ndo_stop_trace
+    transition virtnet_set_channels -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_set_channels -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_set_channels -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_set_channels -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_set_channels -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_set_channels -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_set_channels -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_set_channels -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_set_channels -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_set_channels -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_set_channels -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_set_channels -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_set_channels -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_set_channels -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_set_channels -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_set_channels -> ethtool_op_get_link on get_link_trace
+    transition virtnet_set_channels -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_set_channels -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_set_channels -> virtnet_get_strings on get_strings_trace
+    transition virtnet_set_channels -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_set_channels -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_set_channels -> virtnet_get_channels on get_channels_trace
+    transition virtnet_set_channels -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_set_channels -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_set_channels -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_set_channels -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_set_channels -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_set_channels -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_set_channels -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_set_channels -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_set_channels -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_set_channels -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_set_channels -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_set_channels -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_set_channels -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_set_channels -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_get_channels -> virtnet_open on ndo_open_trace
+    transition virtnet_get_channels -> virtnet_close on ndo_stop_trace
+    transition virtnet_get_channels -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_get_channels -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_get_channels -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_get_channels -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_get_channels -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_get_channels -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_get_channels -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_get_channels -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_get_channels -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_get_channels -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_get_channels -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_get_channels -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_get_channels -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_get_channels -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_get_channels -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_get_channels -> ethtool_op_get_link on get_link_trace
+    transition virtnet_get_channels -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_get_channels -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_get_channels -> virtnet_get_strings on get_strings_trace
+    transition virtnet_get_channels -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_get_channels -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_get_channels -> virtnet_set_channels on set_channels_trace
+    transition virtnet_get_channels -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_get_channels -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_get_channels -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_get_channels -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_get_channels -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_get_channels -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_get_channels -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_get_channels -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_get_channels -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_get_channels -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_get_channels -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_get_channels -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_get_channels -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_get_channels -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition ethtool_op_get_ts_info -> virtnet_open on ndo_open_trace
+    transition ethtool_op_get_ts_info -> virtnet_close on ndo_stop_trace
+    transition ethtool_op_get_ts_info -> start_xmit on ndo_start_xmit_trace
+    transition ethtool_op_get_ts_info -> eth_validate_addr on ndo_validate_addr_trace
+    transition ethtool_op_get_ts_info -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition ethtool_op_get_ts_info -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition ethtool_op_get_ts_info -> virtnet_stats on ndo_get_stats64_trace
+    transition ethtool_op_get_ts_info -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition ethtool_op_get_ts_info -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition ethtool_op_get_ts_info -> virtnet_xdp on ndo_bpf_trace
+    transition ethtool_op_get_ts_info -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition ethtool_op_get_ts_info -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition ethtool_op_get_ts_info -> passthru_features_check on ndo_features_check_trace
+    transition ethtool_op_get_ts_info -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition ethtool_op_get_ts_info -> virtnet_set_features on ndo_set_features_trace
+    transition ethtool_op_get_ts_info -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition ethtool_op_get_ts_info -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition ethtool_op_get_ts_info -> ethtool_op_get_link on get_link_trace
+    transition ethtool_op_get_ts_info -> virtnet_get_ringparam on get_ringparam_trace
+    transition ethtool_op_get_ts_info -> virtnet_set_ringparam on set_ringparam_trace
+    transition ethtool_op_get_ts_info -> virtnet_get_strings on get_strings_trace
+    transition ethtool_op_get_ts_info -> virtnet_get_sset_count on get_sset_count_trace
+    transition ethtool_op_get_ts_info -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition ethtool_op_get_ts_info -> virtnet_set_channels on set_channels_trace
+    transition ethtool_op_get_ts_info -> virtnet_get_channels on get_channels_trace
+    transition ethtool_op_get_ts_info -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition ethtool_op_get_ts_info -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition ethtool_op_get_ts_info -> virtnet_set_coalesce on set_coalesce_trace
+    transition ethtool_op_get_ts_info -> virtnet_get_coalesce on get_coalesce_trace
+    transition ethtool_op_get_ts_info -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition ethtool_op_get_ts_info -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition ethtool_op_get_ts_info -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition ethtool_op_get_ts_info -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition ethtool_op_get_ts_info -> virtnet_get_rxfh on get_rxfh_trace
+    transition ethtool_op_get_ts_info -> virtnet_set_rxfh on set_rxfh_trace
+    transition ethtool_op_get_ts_info -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition ethtool_op_get_ts_info -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition ethtool_op_get_ts_info -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_get_link_ksettings -> virtnet_open on ndo_open_trace
+    transition virtnet_get_link_ksettings -> virtnet_close on ndo_stop_trace
+    transition virtnet_get_link_ksettings -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_get_link_ksettings -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_get_link_ksettings -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_get_link_ksettings -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_get_link_ksettings -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_get_link_ksettings -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_get_link_ksettings -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_get_link_ksettings -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_get_link_ksettings -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_get_link_ksettings -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_get_link_ksettings -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_get_link_ksettings -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_get_link_ksettings -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_get_link_ksettings -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_get_link_ksettings -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_get_link_ksettings -> ethtool_op_get_link on get_link_trace
+    transition virtnet_get_link_ksettings -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_get_link_ksettings -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_get_link_ksettings -> virtnet_get_strings on get_strings_trace
+    transition virtnet_get_link_ksettings -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_get_link_ksettings -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_get_link_ksettings -> virtnet_set_channels on set_channels_trace
+    transition virtnet_get_link_ksettings -> virtnet_get_channels on get_channels_trace
+    transition virtnet_get_link_ksettings -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_get_link_ksettings -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_get_link_ksettings -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_get_link_ksettings -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_get_link_ksettings -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_get_link_ksettings -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_get_link_ksettings -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_get_link_ksettings -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_get_link_ksettings -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_get_link_ksettings -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_get_link_ksettings -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_get_link_ksettings -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_get_link_ksettings -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_set_link_ksettings -> virtnet_open on ndo_open_trace
+    transition virtnet_set_link_ksettings -> virtnet_close on ndo_stop_trace
+    transition virtnet_set_link_ksettings -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_set_link_ksettings -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_set_link_ksettings -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_set_link_ksettings -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_set_link_ksettings -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_set_link_ksettings -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_set_link_ksettings -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_set_link_ksettings -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_set_link_ksettings -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_set_link_ksettings -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_set_link_ksettings -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_set_link_ksettings -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_set_link_ksettings -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_set_link_ksettings -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_set_link_ksettings -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_set_link_ksettings -> ethtool_op_get_link on get_link_trace
+    transition virtnet_set_link_ksettings -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_set_link_ksettings -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_set_link_ksettings -> virtnet_get_strings on get_strings_trace
+    transition virtnet_set_link_ksettings -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_set_link_ksettings -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_set_link_ksettings -> virtnet_set_channels on set_channels_trace
+    transition virtnet_set_link_ksettings -> virtnet_get_channels on get_channels_trace
+    transition virtnet_set_link_ksettings -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_set_link_ksettings -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_set_link_ksettings -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_set_link_ksettings -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_set_link_ksettings -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_set_link_ksettings -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_set_link_ksettings -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_set_link_ksettings -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_set_link_ksettings -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_set_link_ksettings -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_set_link_ksettings -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_set_link_ksettings -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_set_link_ksettings -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_set_coalesce -> virtnet_open on ndo_open_trace
+    transition virtnet_set_coalesce -> virtnet_close on ndo_stop_trace
+    transition virtnet_set_coalesce -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_set_coalesce -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_set_coalesce -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_set_coalesce -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_set_coalesce -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_set_coalesce -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_set_coalesce -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_set_coalesce -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_set_coalesce -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_set_coalesce -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_set_coalesce -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_set_coalesce -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_set_coalesce -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_set_coalesce -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_set_coalesce -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_set_coalesce -> ethtool_op_get_link on get_link_trace
+    transition virtnet_set_coalesce -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_set_coalesce -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_set_coalesce -> virtnet_get_strings on get_strings_trace
+    transition virtnet_set_coalesce -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_set_coalesce -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_set_coalesce -> virtnet_set_channels on set_channels_trace
+    transition virtnet_set_coalesce -> virtnet_get_channels on get_channels_trace
+    transition virtnet_set_coalesce -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_set_coalesce -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_set_coalesce -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_set_coalesce -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_set_coalesce -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_set_coalesce -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_set_coalesce -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_set_coalesce -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_set_coalesce -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_set_coalesce -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_set_coalesce -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_set_coalesce -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_set_coalesce -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_get_coalesce -> virtnet_open on ndo_open_trace
+    transition virtnet_get_coalesce -> virtnet_close on ndo_stop_trace
+    transition virtnet_get_coalesce -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_get_coalesce -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_get_coalesce -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_get_coalesce -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_get_coalesce -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_get_coalesce -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_get_coalesce -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_get_coalesce -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_get_coalesce -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_get_coalesce -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_get_coalesce -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_get_coalesce -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_get_coalesce -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_get_coalesce -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_get_coalesce -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_get_coalesce -> ethtool_op_get_link on get_link_trace
+    transition virtnet_get_coalesce -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_get_coalesce -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_get_coalesce -> virtnet_get_strings on get_strings_trace
+    transition virtnet_get_coalesce -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_get_coalesce -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_get_coalesce -> virtnet_set_channels on set_channels_trace
+    transition virtnet_get_coalesce -> virtnet_get_channels on get_channels_trace
+    transition virtnet_get_coalesce -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_get_coalesce -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_get_coalesce -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_get_coalesce -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_get_coalesce -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_get_coalesce -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_get_coalesce -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_get_coalesce -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_get_coalesce -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_get_coalesce -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_get_coalesce -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_get_coalesce -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_get_coalesce -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_set_per_queue_coalesce -> virtnet_open on ndo_open_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_close on ndo_stop_trace
+    transition virtnet_set_per_queue_coalesce -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_set_per_queue_coalesce -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_set_per_queue_coalesce -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_set_per_queue_coalesce -> ethtool_op_get_link on get_link_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_get_strings on get_strings_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_set_channels on set_channels_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_get_channels on get_channels_trace
+    transition virtnet_set_per_queue_coalesce -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_set_per_queue_coalesce -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_get_per_queue_coalesce -> virtnet_open on ndo_open_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_close on ndo_stop_trace
+    transition virtnet_get_per_queue_coalesce -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_get_per_queue_coalesce -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_get_per_queue_coalesce -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_get_per_queue_coalesce -> ethtool_op_get_link on get_link_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_get_strings on get_strings_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_set_channels on set_channels_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_get_channels on get_channels_trace
+    transition virtnet_get_per_queue_coalesce -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_get_per_queue_coalesce -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_get_rxfh_key_size -> virtnet_open on ndo_open_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_close on ndo_stop_trace
+    transition virtnet_get_rxfh_key_size -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_get_rxfh_key_size -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_get_rxfh_key_size -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_get_rxfh_key_size -> ethtool_op_get_link on get_link_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_get_strings on get_strings_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_set_channels on set_channels_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_get_channels on get_channels_trace
+    transition virtnet_get_rxfh_key_size -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_get_rxfh_key_size -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_get_rxfh_indir_size -> virtnet_open on ndo_open_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_close on ndo_stop_trace
+    transition virtnet_get_rxfh_indir_size -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_get_rxfh_indir_size -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_get_rxfh_indir_size -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_get_rxfh_indir_size -> ethtool_op_get_link on get_link_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_get_strings on get_strings_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_set_channels on set_channels_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_get_channels on get_channels_trace
+    transition virtnet_get_rxfh_indir_size -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_get_rxfh_indir_size -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_get_rxfh -> virtnet_open on ndo_open_trace
+    transition virtnet_get_rxfh -> virtnet_close on ndo_stop_trace
+    transition virtnet_get_rxfh -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_get_rxfh -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_get_rxfh -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_get_rxfh -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_get_rxfh -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_get_rxfh -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_get_rxfh -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_get_rxfh -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_get_rxfh -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_get_rxfh -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_get_rxfh -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_get_rxfh -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_get_rxfh -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_get_rxfh -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_get_rxfh -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_get_rxfh -> ethtool_op_get_link on get_link_trace
+    transition virtnet_get_rxfh -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_get_rxfh -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_get_rxfh -> virtnet_get_strings on get_strings_trace
+    transition virtnet_get_rxfh -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_get_rxfh -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_get_rxfh -> virtnet_set_channels on set_channels_trace
+    transition virtnet_get_rxfh -> virtnet_get_channels on get_channels_trace
+    transition virtnet_get_rxfh -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_get_rxfh -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_get_rxfh -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_get_rxfh -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_get_rxfh -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_get_rxfh -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_get_rxfh -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_get_rxfh -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_get_rxfh -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_get_rxfh -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_get_rxfh -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_get_rxfh -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_get_rxfh -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_set_rxfh -> virtnet_open on ndo_open_trace
+    transition virtnet_set_rxfh -> virtnet_close on ndo_stop_trace
+    transition virtnet_set_rxfh -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_set_rxfh -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_set_rxfh -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_set_rxfh -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_set_rxfh -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_set_rxfh -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_set_rxfh -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_set_rxfh -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_set_rxfh -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_set_rxfh -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_set_rxfh -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_set_rxfh -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_set_rxfh -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_set_rxfh -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_set_rxfh -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_set_rxfh -> ethtool_op_get_link on get_link_trace
+    transition virtnet_set_rxfh -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_set_rxfh -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_set_rxfh -> virtnet_get_strings on get_strings_trace
+    transition virtnet_set_rxfh -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_set_rxfh -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_set_rxfh -> virtnet_set_channels on set_channels_trace
+    transition virtnet_set_rxfh -> virtnet_get_channels on get_channels_trace
+    transition virtnet_set_rxfh -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_set_rxfh -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_set_rxfh -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_set_rxfh -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_set_rxfh -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_set_rxfh -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_set_rxfh -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_set_rxfh -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_set_rxfh -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_set_rxfh -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_set_rxfh -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_set_rxfh -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_set_rxfh -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_get_hashflow -> virtnet_open on ndo_open_trace
+    transition virtnet_get_hashflow -> virtnet_close on ndo_stop_trace
+    transition virtnet_get_hashflow -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_get_hashflow -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_get_hashflow -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_get_hashflow -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_get_hashflow -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_get_hashflow -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_get_hashflow -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_get_hashflow -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_get_hashflow -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_get_hashflow -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_get_hashflow -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_get_hashflow -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_get_hashflow -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_get_hashflow -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_get_hashflow -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_get_hashflow -> ethtool_op_get_link on get_link_trace
+    transition virtnet_get_hashflow -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_get_hashflow -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_get_hashflow -> virtnet_get_strings on get_strings_trace
+    transition virtnet_get_hashflow -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_get_hashflow -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_get_hashflow -> virtnet_set_channels on set_channels_trace
+    transition virtnet_get_hashflow -> virtnet_get_channels on get_channels_trace
+    transition virtnet_get_hashflow -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_get_hashflow -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_get_hashflow -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_get_hashflow -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_get_hashflow -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_get_hashflow -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_get_hashflow -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_get_hashflow -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_get_hashflow -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_get_hashflow -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_get_hashflow -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_get_hashflow -> virtnet_set_hashflow on set_rxfh_fields_trace
+    transition virtnet_get_hashflow -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_set_hashflow -> virtnet_open on ndo_open_trace
+    transition virtnet_set_hashflow -> virtnet_close on ndo_stop_trace
+    transition virtnet_set_hashflow -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_set_hashflow -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_set_hashflow -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_set_hashflow -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_set_hashflow -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_set_hashflow -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_set_hashflow -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_set_hashflow -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_set_hashflow -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_set_hashflow -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_set_hashflow -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_set_hashflow -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_set_hashflow -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_set_hashflow -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_set_hashflow -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_set_hashflow -> ethtool_op_get_link on get_link_trace
+    transition virtnet_set_hashflow -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_set_hashflow -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_set_hashflow -> virtnet_get_strings on get_strings_trace
+    transition virtnet_set_hashflow -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_set_hashflow -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_set_hashflow -> virtnet_set_channels on set_channels_trace
+    transition virtnet_set_hashflow -> virtnet_get_channels on get_channels_trace
+    transition virtnet_set_hashflow -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_set_hashflow -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_set_hashflow -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_set_hashflow -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_set_hashflow -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_set_hashflow -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_set_hashflow -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_set_hashflow -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_set_hashflow -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_set_hashflow -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_set_hashflow -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_set_hashflow -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_set_hashflow -> virtnet_get_rx_ring_count on get_rx_ring_count_trace
+
+    transition virtnet_get_rx_ring_count -> virtnet_open on ndo_open_trace
+    transition virtnet_get_rx_ring_count -> virtnet_close on ndo_stop_trace
+    transition virtnet_get_rx_ring_count -> start_xmit on ndo_start_xmit_trace
+    transition virtnet_get_rx_ring_count -> eth_validate_addr on ndo_validate_addr_trace
+    transition virtnet_get_rx_ring_count -> virtnet_set_mac_address on ndo_set_mac_address_trace
+    transition virtnet_get_rx_ring_count -> virtnet_set_rx_mode on ndo_set_rx_mode_trace
+    transition virtnet_get_rx_ring_count -> virtnet_stats on ndo_get_stats64_trace
+    transition virtnet_get_rx_ring_count -> virtnet_vlan_rx_add_vid on ndo_vlan_rx_add_vid_trace
+    transition virtnet_get_rx_ring_count -> virtnet_vlan_rx_kill_vid on ndo_vlan_rx_kill_vid_trace
+    transition virtnet_get_rx_ring_count -> virtnet_xdp on ndo_bpf_trace
+    transition virtnet_get_rx_ring_count -> virtnet_xdp_xmit on ndo_xdp_xmit_trace
+    transition virtnet_get_rx_ring_count -> virtnet_xsk_wakeup on ndo_xsk_wakeup_trace
+    transition virtnet_get_rx_ring_count -> passthru_features_check on ndo_features_check_trace
+    transition virtnet_get_rx_ring_count -> virtnet_get_phys_port_name on ndo_get_phys_port_name_trace
+    transition virtnet_get_rx_ring_count -> virtnet_set_features on ndo_set_features_trace
+    transition virtnet_get_rx_ring_count -> virtnet_tx_timeout on ndo_tx_timeout_trace
+    transition virtnet_get_rx_ring_count -> virtnet_get_drvinfo on get_drvinfo_trace
+    transition virtnet_get_rx_ring_count -> ethtool_op_get_link on get_link_trace
+    transition virtnet_get_rx_ring_count -> virtnet_get_ringparam on get_ringparam_trace
+    transition virtnet_get_rx_ring_count -> virtnet_set_ringparam on set_ringparam_trace
+    transition virtnet_get_rx_ring_count -> virtnet_get_strings on get_strings_trace
+    transition virtnet_get_rx_ring_count -> virtnet_get_sset_count on get_sset_count_trace
+    transition virtnet_get_rx_ring_count -> virtnet_get_ethtool_stats on get_ethtool_stats_trace
+    transition virtnet_get_rx_ring_count -> virtnet_set_channels on set_channels_trace
+    transition virtnet_get_rx_ring_count -> virtnet_get_channels on get_channels_trace
+    transition virtnet_get_rx_ring_count -> ethtool_op_get_ts_info on get_ts_info_trace
+    transition virtnet_get_rx_ring_count -> virtnet_get_link_ksettings on get_link_ksettings_trace
+    transition virtnet_get_rx_ring_count -> virtnet_set_link_ksettings on set_link_ksettings_trace
+    transition virtnet_get_rx_ring_count -> virtnet_set_coalesce on set_coalesce_trace
+    transition virtnet_get_rx_ring_count -> virtnet_get_coalesce on get_coalesce_trace
+    transition virtnet_get_rx_ring_count -> virtnet_set_per_queue_coalesce on set_per_queue_coalesce_trace
+    transition virtnet_get_rx_ring_count -> virtnet_get_per_queue_coalesce on get_per_queue_coalesce_trace
+    transition virtnet_get_rx_ring_count -> virtnet_get_rxfh_key_size on get_rxfh_key_size_trace
+    transition virtnet_get_rx_ring_count -> virtnet_get_rxfh_indir_size on get_rxfh_indir_size_trace
+    transition virtnet_get_rx_ring_count -> virtnet_get_rxfh on get_rxfh_trace
+    transition virtnet_get_rx_ring_count -> virtnet_set_rxfh on set_rxfh_trace
+    transition virtnet_get_rx_ring_count -> virtnet_get_hashflow on get_rxfh_fields_trace
+    transition virtnet_get_rx_ring_count -> virtnet_set_hashflow on set_rxfh_fields_trace
+
+}

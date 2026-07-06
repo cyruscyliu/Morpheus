@@ -1,0 +1,3617 @@
+op op_1 {
+    call netif_running;
+}
+
+op op_2 {
+    call netdev_get_tx_queue;
+}
+
+op op_3 {
+    call netif_stop_queue;
+}
+
+op op_4 {
+    mmio writew_4 {
+        direction=w;
+        region=0;
+        address=0x3c;
+        size=2;
+        data=0;
+    }
+}
+
+op op_5 {
+    mmio readb_5 {
+        direction=r;
+        region=0;
+        address=0x37;
+        size=1;
+    }
+}
+
+op op_6 {
+    mmio writeb_6 {
+        direction=w;
+        region=0;
+        address=0x37;
+        size=1;
+        data=call_1();
+    }
+}
+
+op op_1 {
+    call netif_running;
+}
+
+op op_8 {
+    call cp_init_rings_index;
+}
+
+op op_9 {
+    mmio writeb_9 {
+        direction=w;
+        region=0;
+        address=0x37;
+        size=1;
+        data=0x10;
+    }
+}
+
+op op_10 {
+    mmio readb_10 {
+        direction=r;
+        region=0;
+        address=0x37;
+        size=1;
+    }
+}
+
+op op_11 {
+    call cp_reset_hw;
+}
+
+op op_12 {
+    mmio writeb_12 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=1;
+        data=0xc0;
+    }
+}
+
+op op_13 {
+    mmio readb_13 {
+        direction=r;
+        region=0;
+        address=0x50;
+        size=1;
+    }
+}
+
+op op_14 {
+    mmio writel_14 {
+        direction=w;
+        region=0;
+        address=0x0;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_15 {
+    mmio readl_15 {
+        direction=r;
+        region=0;
+        address=0x0;
+        size=4;
+    }
+}
+
+op op_16 {
+    mmio writel_16 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_17 {
+    mmio readl_17 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_18 {
+    mmio writew_18 {
+        direction=w;
+        region=0;
+        address=0xe0;
+        size=2;
+        data=num_1;
+    }
+}
+
+op op_19 {
+    mmio writel_19 {
+        direction=w;
+        region=0;
+        address=0x28;
+        size=4;
+        data=0;
+    }
+}
+
+op op_20 {
+    mmio readl_20 {
+        direction=r;
+        region=0;
+        address=0x28;
+        size=4;
+    }
+}
+
+op op_21 {
+    mmio writel_21 {
+        direction=w;
+        region=0;
+        address=0x2c;
+        size=4;
+        data=0;
+    }
+}
+
+op op_22 {
+    mmio readl_22 {
+        direction=r;
+        region=0;
+        address=0x2c;
+        size=4;
+    }
+}
+
+op op_23 {
+    mmio writel_23 {
+        direction=w;
+        region=0;
+        address=0xe4;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_24 {
+    mmio readl_24 {
+        direction=r;
+        region=0;
+        address=0xe4;
+        size=4;
+    }
+}
+
+op op_25 {
+    mmio writel_25 {
+        direction=w;
+        region=0;
+        address=0xe8;
+        size=4;
+        data=num_1 >> 0x20;
+    }
+}
+
+op op_26 {
+    mmio readl_26 {
+        direction=r;
+        region=0;
+        address=0xe8;
+        size=4;
+    }
+}
+
+op op_27 {
+    mmio writel_27 {
+        direction=w;
+        region=0;
+        address=0x20;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_28 {
+    mmio readl_28 {
+        direction=r;
+        region=0;
+        address=0x20;
+        size=4;
+    }
+}
+
+op op_29 {
+    mmio writel_29 {
+        direction=w;
+        region=0;
+        address=0x24;
+        size=4;
+        data=num_1 >> 0x20;
+    }
+}
+
+op op_30 {
+    mmio readl_30 {
+        direction=r;
+        region=0;
+        address=0x24;
+        size=4;
+    }
+}
+
+op op_31 {
+    mmio writeb_31 {
+        direction=w;
+        region=0;
+        address=0x37;
+        size=1;
+        data=0xc;
+    }
+}
+
+op op_32 {
+    call netdev_reset_queue;
+}
+
+op op_33 {
+    call cp_start_hw;
+}
+
+op op_34 {
+    mmio writeb_34 {
+        direction=w;
+        region=0;
+        address=0xec;
+        size=1;
+        data=0x6;
+    }
+}
+
+op op_35 {
+    call __bitrev8;
+}
+
+op op_35 {
+    call __bitrev8;
+}
+
+op op_37 {
+    call __bitrev16;
+}
+
+op op_37 {
+    call __bitrev16;
+}
+
+op op_39 {
+    call __bitrev32;
+}
+
+op op_40 {
+    mmio writel_40 {
+        direction=w;
+        region=0;
+        address=0x44;
+        size=4;
+        data=phi(0xa40a, 0xa40e, 0xa40f, 0xa40e);
+    }
+}
+
+op op_41 {
+    mmio readl_41 {
+        direction=r;
+        region=0;
+        address=0x44;
+        size=4;
+    }
+}
+
+op op_42 {
+    mmio writel_42 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=4;
+        data=phi(0, num_1, 0xffffffff, 0xffffffff);
+    }
+}
+
+op op_43 {
+    mmio readl_43 {
+        direction=r;
+        region=0;
+        address=0x8;
+        size=4;
+    }
+}
+
+op op_44 {
+    mmio writel_44 {
+        direction=w;
+        region=0;
+        address=0xc;
+        size=4;
+        data=phi(0, num_1, 0xffffffff, 0xffffffff);
+    }
+}
+
+op op_45 {
+    mmio readl_45 {
+        direction=r;
+        region=0;
+        address=0xc;
+        size=4;
+    }
+}
+
+op op_46 {
+    call __cp_set_rx_mode;
+}
+
+op op_47 {
+    mmio writel_47 {
+        direction=w;
+        region=0;
+        address=0x40;
+        size=4;
+        data=0x3000600;
+    }
+}
+
+op op_48 {
+    mmio readl_48 {
+        direction=r;
+        region=0;
+        address=0x40;
+        size=4;
+    }
+}
+
+op op_49 {
+    mmio readb_49 {
+        direction=r;
+        region=0;
+        address=0x52;
+        size=1;
+    }
+}
+
+op op_50 {
+    mmio writeb_50 {
+        direction=w;
+        region=0;
+        address=0x52;
+        size=1;
+        data=call_1() | 0x21;
+    }
+}
+
+op op_51 {
+    mmio writeb_51 {
+        direction=w;
+        region=0;
+        address=0x59;
+        size=1;
+        data=0x40;
+    }
+}
+
+op op_52 {
+    mmio readb_52 {
+        direction=r;
+        region=0;
+        address=0xd8;
+        size=1;
+    }
+}
+
+op op_53 {
+    mmio writeb_53 {
+        direction=w;
+        region=0;
+        address=0xd8;
+        size=1;
+        data=call_1() & 0x1;
+    }
+}
+
+op op_54 {
+    mmio writew_54 {
+        direction=w;
+        region=0;
+        address=0x5c;
+        size=2;
+        data=0;
+    }
+}
+
+op op_55 {
+    mmio writeb_55 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=1;
+        data=0;
+    }
+}
+
+op op_56 {
+    mmio readb_56 {
+        direction=r;
+        region=0;
+        address=0x50;
+        size=1;
+    }
+}
+
+op op_57 {
+    call cp_init_hw;
+}
+
+op op_58 {
+    mmio writew_58 {
+        direction=w;
+        region=0;
+        address=0x3c;
+        size=2;
+        data=0x80ff;
+    }
+}
+
+op op_59 {
+    mmio readw_59 {
+        direction=r;
+        region=0;
+        address=0x3c;
+        size=2;
+    }
+}
+
+op op_60 {
+    call cp_enable_irq;
+}
+
+op op_2 {
+    call netdev_get_tx_queue;
+}
+
+op op_62 {
+    call netif_start_queue;
+}
+
+op op_8 {
+    call cp_init_rings_index;
+}
+
+op op_64 {
+    call __netdev_alloc_skb_ip_align;
+}
+
+op op_65 {
+    call netdev_alloc_skb_ip_align;
+}
+
+op op_66 {
+    call dma_mapping_error;
+}
+
+op op_67 {
+    call kfree_skb;
+}
+
+op op_65 {
+    call netdev_alloc_skb_ip_align;
+}
+
+op op_69 {
+    call dma_unmap_single_attrs;
+}
+
+op op_70 {
+    call dev_kfree_skb_any;
+}
+
+op op_69 {
+    call dma_unmap_single_attrs;
+}
+
+op op_70 {
+    call dev_kfree_skb_any;
+}
+
+op op_32 {
+    call netdev_reset_queue;
+}
+
+op op_74 {
+    call cp_clean_rings;
+}
+
+op op_75 {
+    call cp_refill_rx;
+}
+
+op op_76 {
+    call cp_init_rings;
+}
+
+op op_77 {
+    call dma_free_coherent;
+}
+
+op op_78 {
+    call cp_alloc_rings;
+}
+
+op op_57 {
+    call cp_init_hw;
+}
+
+op op_80 {
+    call request_irq;
+}
+
+op op_60 {
+    call cp_enable_irq;
+}
+
+op op_62 {
+    call netif_start_queue;
+}
+
+op op_83 {
+    call cp_stop_hw;
+}
+
+op op_74 {
+    call cp_clean_rings;
+}
+
+op op_77 {
+    call dma_free_coherent;
+}
+
+op op_86 {
+    call cp_free_rings;
+}
+
+op op_3 {
+    call netif_stop_queue;
+}
+
+op op_83 {
+    call cp_stop_hw;
+}
+
+op op_86 {
+    call cp_free_rings;
+}
+
+op op_90 {
+    call skb_end_pointer;
+}
+
+op op_3 {
+    call netif_stop_queue;
+}
+
+op op_92 {
+    call netdev_reg_state;
+}
+
+op op_93 {
+    call cp_tx_vlan_tag;
+}
+
+op op_94 {
+    call skb_network_header;
+}
+
+op op_95 {
+    call ip_hdr;
+}
+
+op op_90 {
+    call skb_end_pointer;
+}
+
+op op_66 {
+    call dma_mapping_error;
+}
+
+op op_98 {
+    call skb_headlen;
+}
+
+op op_66 {
+    call dma_mapping_error;
+}
+
+op op_90 {
+    call skb_end_pointer;
+}
+
+op op_101 {
+    call skb_frag_size;
+}
+
+op op_102 {
+    call skb_frag_page;
+}
+
+op op_103 {
+    call skb_frag_off;
+}
+
+op op_104 {
+    call skb_frag_address;
+}
+
+op op_66 {
+    call dma_mapping_error;
+}
+
+op op_90 {
+    call skb_end_pointer;
+}
+
+op op_101 {
+    call skb_frag_size;
+}
+
+op op_69 {
+    call dma_unmap_single_attrs;
+}
+
+op op_109 {
+    call unwind_tx_frag_mapping;
+}
+
+op op_90 {
+    call skb_end_pointer;
+}
+
+op op_90 {
+    call skb_end_pointer;
+}
+
+op op_2 {
+    call netdev_get_tx_queue;
+}
+
+op op_113 {
+    call dql_queued;
+}
+
+op op_114 {
+    call dql_avail;
+}
+
+op op_114 {
+    call dql_avail;
+}
+
+op op_116 {
+    call netdev_tx_sent_queue;
+}
+
+op op_117 {
+    call netdev_sent_queue;
+}
+
+op op_3 {
+    call netif_stop_queue;
+}
+
+op op_119 {
+    mmio writeb_119 {
+        direction=w;
+        region=0;
+        address=0xd9;
+        size=1;
+        data=0x40;
+    }
+}
+
+op op_70 {
+    call dev_kfree_skb_any;
+}
+
+op op_90 {
+    call skb_end_pointer;
+}
+
+op op_122 {
+    call eth_type_vlan;
+}
+
+op op_98 {
+    call skb_headlen;
+}
+
+op op_124 {
+    call pskb_may_pull_reason;
+}
+
+op op_125 {
+    call pskb_may_pull;
+}
+
+op op_126 {
+    call skb_vlan_eth_hdr;
+}
+
+op op_122 {
+    call eth_type_vlan;
+}
+
+op op_128 {
+    call skb_vlan_tagged_multi;
+}
+
+op op_129 {
+    call vlan_features_check;
+}
+
+op op_46 {
+    call __cp_set_rx_mode;
+}
+
+op op_131 {
+    call is_multicast_ether_addr;
+}
+
+op op_132 {
+    call is_zero_ether_addr;
+}
+
+op op_133 {
+    call is_valid_ether_addr;
+}
+
+op op_134 {
+    call eth_hw_addr_set;
+}
+
+op op_135 {
+    mmio writeb_135 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=1;
+        data=0xc0;
+    }
+}
+
+op op_136 {
+    mmio readb_136 {
+        direction=r;
+        region=0;
+        address=0x50;
+        size=1;
+    }
+}
+
+op op_137 {
+    mmio writel_137 {
+        direction=w;
+        region=0;
+        address=0x0;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_138 {
+    mmio readl_138 {
+        direction=r;
+        region=0;
+        address=0x0;
+        size=4;
+    }
+}
+
+op op_139 {
+    mmio writel_139 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_140 {
+    mmio readl_140 {
+        direction=r;
+        region=0;
+        address=0x4;
+        size=4;
+    }
+}
+
+op op_141 {
+    mmio writeb_141 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=1;
+        data=0;
+    }
+}
+
+op op_142 {
+    mmio readb_142 {
+        direction=r;
+        region=0;
+        address=0x50;
+        size=1;
+    }
+}
+
+op op_1 {
+    call netif_running;
+}
+
+op op_144 {
+    call if_mii;
+}
+
+op op_1 {
+    call netif_running;
+}
+
+op op_146 {
+    call cp_set_rxbufsize;
+}
+
+op op_147 {
+    call cp_close;
+}
+
+op op_146 {
+    call cp_set_rxbufsize;
+}
+
+op op_149 {
+    call cp_open;
+}
+
+op op_150 {
+    mmio readb_150 {
+        direction=r;
+        region=0;
+        address=0x37;
+        size=1;
+    }
+}
+
+op op_151 {
+    mmio readw_151 {
+        direction=r;
+        region=0;
+        address=0xe0;
+        size=2;
+    }
+}
+
+op op_152 {
+    mmio readw_152 {
+        direction=r;
+        region=0;
+        address=0x3e;
+        size=2;
+    }
+}
+
+op op_153 {
+    mmio readw_153 {
+        direction=r;
+        region=0;
+        address=0x3c;
+        size=2;
+    }
+}
+
+op op_154 {
+    mmio readw_154 {
+        direction=r;
+        region=0;
+        address=0x82;
+        size=2;
+    }
+}
+
+op op_83 {
+    call cp_stop_hw;
+}
+
+op op_74 {
+    call cp_clean_rings;
+}
+
+op op_76 {
+    call cp_init_rings;
+}
+
+op op_33 {
+    call cp_start_hw;
+}
+
+op op_46 {
+    call __cp_set_rx_mode;
+}
+
+op op_160 {
+    mmio writew_160 {
+        direction=w;
+        region=0;
+        address=0x3c;
+        size=2;
+        data=0x80ac;
+    }
+}
+
+op op_161 {
+    mmio readw_161 {
+        direction=r;
+        region=0;
+        address=0x3c;
+        size=2;
+    }
+}
+
+op op_2 {
+    call netdev_get_tx_queue;
+}
+
+op op_163 {
+    call netif_wake_queue;
+}
+
+op op_164 {
+    call napi_schedule_irqoff;
+}
+
+op op_1 {
+    call netif_running;
+}
+
+op op_166 {
+    call netif_device_present;
+}
+
+op op_167 {
+    mmio readl_167 {
+        direction=r;
+        region=0;
+        address=0x4c;
+        size=4;
+    }
+}
+
+op op_168 {
+    mmio writel_168 {
+        direction=w;
+        region=0;
+        address=0x4c;
+        size=4;
+        data=0;
+    }
+}
+
+op op_169 {
+    call __cp_get_stats;
+}
+
+op op_170 {
+    mmio readw_170 {
+        direction=r;
+        region=0;
+        address=0x3c;
+        size=2;
+    }
+}
+
+op op_171 {
+    mmio readw_171 {
+        direction=r;
+        region=0;
+        address=0x3e;
+        size=2;
+    }
+}
+
+op op_172 {
+    mmio readb_172 {
+        direction=r;
+        region=0;
+        address=0x37;
+        size=1;
+    }
+}
+
+op op_173 {
+    mmio readw_173 {
+        direction=r;
+        region=0;
+        address=0xe0;
+        size=2;
+    }
+}
+
+op op_174 {
+    mmio writew_174 {
+        direction=w;
+        region=0;
+        address=0x3e;
+        size=2;
+        data=call_1() & 0xffac;
+    }
+}
+
+op op_1 {
+    call netif_running;
+}
+
+op op_176 {
+    mmio writew_176 {
+        direction=w;
+        region=0;
+        address=0x3c;
+        size=2;
+        data=0;
+    }
+}
+
+op op_177 {
+    mmio writew_177 {
+        direction=w;
+        region=0;
+        address=0x3c;
+        size=2;
+        data=0x80ac;
+    }
+}
+
+op op_178 {
+    mmio readw_178 {
+        direction=r;
+        region=0;
+        address=0x3c;
+        size=2;
+    }
+}
+
+op op_69 {
+    call dma_unmap_single_attrs;
+}
+
+op op_180 {
+    call dev_consume_skb_irq;
+}
+
+op op_2 {
+    call netdev_get_tx_queue;
+}
+
+op op_114 {
+    call dql_avail;
+}
+
+op op_183 {
+    call netdev_tx_completed_queue;
+}
+
+op op_184 {
+    call netdev_completed_queue;
+}
+
+op op_163 {
+    call netif_wake_queue;
+}
+
+op op_186 {
+    call cp_tx;
+}
+
+op op_187 {
+    mmio pci_read_config_word_187 {
+        direction=r;
+        region=0;
+        address=0x6;
+        size=2;
+    }
+}
+
+op op_188 {
+    mmio pci_write_config_word_188 {
+        direction=w;
+        region=0;
+        address=0x6;
+        size=2;
+        data=num_1;
+    }
+}
+
+op op_189 {
+    call cp_interrupt;
+}
+
+op op_190 {
+    mmio writew_190 {
+        direction=w;
+        region=0;
+        address=0xe0;
+        size=2;
+        data=((num_1 & 0xff9f) | ((num_3 >> 0x23) & 0x20)) | ((var_3 >> 0x2) & 0x40);
+    }
+}
+
+op op_191 {
+    mmio readw_191 {
+        direction=r;
+        region=0;
+        address=0xe0;
+        size=2;
+    }
+}
+
+op op_192 {
+    mmio readb_192 {
+        direction=r;
+        region=0;
+        address=0x59;
+        size=1;
+    }
+}
+
+op op_193 {
+    mmio readb_193 {
+        direction=r;
+        region=0;
+        address=0xd8;
+        size=1;
+    }
+}
+
+op op_194 {
+    call netdev_get_wol;
+}
+
+op op_195 {
+    mmio readb_195 {
+        direction=r;
+        region=0;
+        address=0x59;
+        size=1;
+    }
+}
+
+op op_196 {
+    mmio writeb_196 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=1;
+        data=0xc0;
+    }
+}
+
+op op_197 {
+    mmio writeb_197 {
+        direction=w;
+        region=0;
+        address=0x59;
+        size=1;
+        data=phi(call_1() & 0xcf, ((num_3 & 0x20) | var_2) | ((var_3 << 0x4) & 0x10));
+    }
+}
+
+op op_198 {
+    mmio writeb_198 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=1;
+        data=0;
+    }
+}
+
+op op_199 {
+    mmio readb_199 {
+        direction=r;
+        region=0;
+        address=0xd8;
+        size=1;
+    }
+}
+
+op op_200 {
+    mmio writeb_200 {
+        direction=w;
+        region=0;
+        address=0xd8;
+        size=1;
+        data=phi(call_1() & 0x8f, ((((num_3 << 0x3) & 0x10) | var_2) | (var_4 & 0x40)) | (var_4 & 0x20));
+    }
+}
+
+op op_201 {
+    call netdev_set_wol;
+}
+
+op op_202 {
+    call read_eeprom;
+}
+
+op op_202 {
+    call read_eeprom;
+}
+
+op op_202 {
+    call read_eeprom;
+}
+
+op op_202 {
+    call read_eeprom;
+}
+
+op op_202 {
+    call read_eeprom;
+}
+
+op op_202 {
+    call read_eeprom;
+}
+
+op op_202 {
+    call read_eeprom;
+}
+
+op op_209 {
+    call eeprom_cmd_start;
+}
+
+op op_210 {
+    call eeprom_cmd;
+}
+
+op op_211 {
+    call eeprom_cmd_end;
+}
+
+op op_212 {
+    call eeprom_extend_cmd;
+}
+
+op op_209 {
+    call eeprom_cmd_start;
+}
+
+op op_210 {
+    call eeprom_cmd;
+}
+
+op op_210 {
+    call eeprom_cmd;
+}
+
+op op_211 {
+    call eeprom_cmd_end;
+}
+
+op op_209 {
+    call eeprom_cmd_start;
+}
+
+op op_218 {
+    mmio readb_218 {
+        direction=r;
+        region=0;
+        address=0x50;
+        size=1;
+    }
+}
+
+op op_211 {
+    call eeprom_cmd_end;
+}
+
+op op_212 {
+    call eeprom_extend_cmd;
+}
+
+op op_221 {
+    call write_eeprom;
+}
+
+op op_221 {
+    call write_eeprom;
+}
+
+op op_202 {
+    call read_eeprom;
+}
+
+op op_221 {
+    call write_eeprom;
+}
+
+op op_225 {
+    mmio writel_225 {
+        direction=w;
+        region=0;
+        address=0x14;
+        size=4;
+        data=num_1 >> 0x20;
+    }
+}
+
+op op_226 {
+    mmio writel_226 {
+        direction=w;
+        region=0;
+        address=0x10;
+        size=4;
+        data=num_1 | 0x8;
+    }
+}
+
+op op_227 {
+    mmio readl_227 {
+        direction=r;
+        region=0;
+        address=0x10;
+        size=4;
+    }
+}
+
+op op_228 {
+    mmio readl_228 {
+        direction=r;
+        region=0;
+        address=0x10;
+        size=4;
+    }
+}
+
+op op_229 {
+    mmio writel_229 {
+        direction=w;
+        region=0;
+        address=0x10;
+        size=4;
+        data=0;
+    }
+}
+
+op op_230 {
+    mmio writel_230 {
+        direction=w;
+        region=0;
+        address=0x14;
+        size=4;
+        data=0;
+    }
+}
+
+op op_231 {
+    mmio readl_231 {
+        direction=r;
+        region=0;
+        address=0x10;
+        size=4;
+    }
+}
+
+op op_77 {
+    call dma_free_coherent;
+}
+
+op op_233 {
+    call pci_get_drvdata;
+}
+
+op op_234 {
+    mmio readw_234 {
+        direction=r;
+        region=0;
+        address=0xdeadbeef;
+        size=2;
+    }
+}
+
+op op_235 {
+    mmio writeb_235 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=1;
+        data=0xc0;
+    }
+}
+
+op op_236 {
+    mmio writew_236 {
+        direction=w;
+        region=0;
+        address=0x62;
+        size=2;
+        data=num_1;
+    }
+}
+
+op op_237 {
+    mmio writeb_237 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=1;
+        data=0;
+    }
+}
+
+op op_238 {
+    mmio writew_238 {
+        direction=w;
+        region=0;
+        address=unknown;
+        size=2;
+        data=num_1;
+    }
+}
+
+op op_239 {
+    mmio writew_239 {
+        direction=w;
+        region=0;
+        address=0x3e;
+        size=2;
+        data=0x53;
+    }
+}
+
+op op_240 {
+    call cp_rx_err_acct;
+}
+
+op op_240 {
+    call cp_rx_err_acct;
+}
+
+op op_242 {
+    call napi_alloc_skb;
+}
+
+op op_66 {
+    call dma_mapping_error;
+}
+
+op op_67 {
+    call kfree_skb;
+}
+
+op op_69 {
+    call dma_unmap_single_attrs;
+}
+
+op op_246 {
+    call cp_rx_csum_ok;
+}
+
+op op_247 {
+    call skb_checksum_none_assert;
+}
+
+op op_248 {
+    call __vlan_hwaccel_put_tag;
+}
+
+op op_249 {
+    call cp_rx_skb;
+}
+
+op op_250 {
+    mmio writew_250 {
+        direction=w;
+        region=0;
+        address=0x3c;
+        size=2;
+        data=0x80ff;
+    }
+}
+
+op op_251 {
+    mmio readw_251 {
+        direction=r;
+        region=0;
+        address=0x3c;
+        size=2;
+    }
+}
+
+op op_252 {
+    mmio readw_252 {
+        direction=r;
+        region=0;
+        address=0xdeadbeef;
+        size=2;
+    }
+}
+
+op op_253 {
+    mmio writeb_253 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=1;
+        data=arg(0xc0, 0, 0, 0x8c, 0x88, 0x80, 0x88, select(0x88, 0x8a), var_1 | 0x4, 0x88, 0, 0x40, 0xc0, 0, 0xc0, 0x6, call_3() | 0x21, 0x40, call_5() & 0x1, 0, 0x10, 0xc, 0xc0, phi(call_7() & 0xcf, ((num_9 & 0x20) | var_8) | ((var_9 << 0x4) & 0x10)), 0, phi(call_16() & 0x8f, ((((var_9 << 0x3) & 0x10) | var_17) | (var_18 & 0x40)) | (var_18 & 0x20)), call_26());
+    }
+}
+
+op op_254 {
+    mmio writew_254 {
+        direction=w;
+        region=0;
+        address=0x62;
+        size=2;
+        data=arg(num_1, var_1, num_2, 0, 0, num_3, 0x53, 0x80ff, 0x80ac, ((num_4 & 0xff9f) | ((num_6 >> 0x23) & 0x20)) | ((var_6 >> 0x2) & 0x40), 0, call_13() & 0xffac, 0, 0x80ac, 0x80ff, num_15, 0);
+    }
+}
+
+op op_255 {
+    mmio readb_255 {
+        direction=r;
+        region=0;
+        address=0x50;
+        size=1;
+    }
+}
+
+op op_256 {
+    mmio writel_256 {
+        direction=w;
+        region=0;
+        address=0x0;
+        size=4;
+        data=arg(num_1, num_2, num_3, num_4, 0x3000600, 0, 0, num_5, var_5 >> 0x20, num_7, var_7 >> 0x20, phi(0xa40a, 0xa40e, 0xa40f, 0xa40e), phi(0, num_10, 0xffffffff, 0xffffffff), phi(0, num_12, 0xffffffff, 0xffffffff), 0, num_14 >> 0x20, var_14 | 0x8, 0, 0);
+    }
+}
+
+op op_257 {
+    mmio readl_257 {
+        direction=r;
+        region=0;
+        address=0x0;
+        size=4;
+    }
+}
+
+op op_146 {
+    call cp_set_rxbufsize;
+}
+
+op op_259 {
+    call resource_size;
+}
+
+op op_259 {
+    call resource_size;
+}
+
+op op_261 {
+    mmio readw_261 {
+        direction=r;
+        region=0;
+        address=0x3e;
+        size=2;
+    }
+}
+
+op op_262 {
+    mmio writew_262 {
+        direction=w;
+        region=0;
+        address=0x3e;
+        size=2;
+        data=num_1;
+    }
+}
+
+op op_263 {
+    mmio writew_263 {
+        direction=w;
+        region=0;
+        address=0x3c;
+        size=2;
+        data=0;
+    }
+}
+
+op op_264 {
+    mmio readw_264 {
+        direction=r;
+        region=0;
+        address=0x3c;
+        size=2;
+    }
+}
+
+op op_265 {
+    mmio writeb_265 {
+        direction=w;
+        region=0;
+        address=0x37;
+        size=1;
+        data=0;
+    }
+}
+
+op op_266 {
+    mmio writew_266 {
+        direction=w;
+        region=0;
+        address=0xe0;
+        size=2;
+        data=0;
+    }
+}
+
+op op_267 {
+    mmio readw_267 {
+        direction=r;
+        region=0;
+        address=0xe0;
+        size=2;
+    }
+}
+
+op op_268 {
+    mmio readw_268 {
+        direction=r;
+        region=0;
+        address=0x3e;
+        size=2;
+    }
+}
+
+op op_269 {
+    mmio writew_269 {
+        direction=w;
+        region=0;
+        address=0x3e;
+        size=2;
+        data=num_1;
+    }
+}
+
+op op_270 {
+    mmio readw_270 {
+        direction=r;
+        region=0;
+        address=0x3e;
+        size=2;
+    }
+}
+
+op op_2 {
+    call netdev_get_tx_queue;
+}
+
+op op_272 {
+    call netdev_tx_reset_queue;
+}
+
+op op_32 {
+    call netdev_reset_queue;
+}
+
+op op_83 {
+    call cp_stop_hw;
+}
+
+op op_275 {
+    mmio writeb_275 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=1;
+        data=0x80;
+    }
+}
+
+op op_276 {
+    mmio writeb_276 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=1;
+        data=0x88;
+    }
+}
+
+op op_277 {
+    mmio readb_277 {
+        direction=r;
+        region=0;
+        address=0x50;
+        size=1;
+    }
+}
+
+op op_209 {
+    call eeprom_cmd_start;
+}
+
+op op_279 {
+    mmio writeb_279 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=1;
+        data=select(0x88, 0x8a);
+    }
+}
+
+op op_280 {
+    mmio readb_280 {
+        direction=r;
+        region=0;
+        address=0x50;
+        size=1;
+    }
+}
+
+op op_281 {
+    mmio writeb_281 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=1;
+        data=select(0x88, 0x8a) | 0x4;
+    }
+}
+
+op op_282 {
+    mmio readb_282 {
+        direction=r;
+        region=0;
+        address=0x50;
+        size=1;
+    }
+}
+
+op op_283 {
+    mmio writeb_283 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=1;
+        data=0x88;
+    }
+}
+
+op op_284 {
+    mmio readb_284 {
+        direction=r;
+        region=0;
+        address=0x50;
+        size=1;
+    }
+}
+
+op op_210 {
+    call eeprom_cmd;
+}
+
+op op_286 {
+    mmio writeb_286 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=1;
+        data=0x8c;
+    }
+}
+
+op op_287 {
+    mmio readb_287 {
+        direction=r;
+        region=0;
+        address=0x50;
+        size=1;
+    }
+}
+
+op op_288 {
+    mmio readb_288 {
+        direction=r;
+        region=0;
+        address=0x50;
+        size=1;
+    }
+}
+
+op op_289 {
+    mmio writeb_289 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=1;
+        data=0x88;
+    }
+}
+
+op op_290 {
+    mmio readb_290 {
+        direction=r;
+        region=0;
+        address=0x50;
+        size=1;
+    }
+}
+
+op op_291 {
+    mmio writeb_291 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=1;
+        data=0;
+    }
+}
+
+op op_292 {
+    mmio readb_292 {
+        direction=r;
+        region=0;
+        address=0x50;
+        size=1;
+    }
+}
+
+op op_211 {
+    call eeprom_cmd_end;
+}
+
+op op_202 {
+    call read_eeprom;
+}
+
+op op_202 {
+    call read_eeprom;
+}
+
+op op_202 {
+    call read_eeprom;
+}
+
+op op_202 {
+    call read_eeprom;
+}
+
+op op_298 {
+    call __dev_addr_set;
+}
+
+op op_134 {
+    call eth_hw_addr_set;
+}
+
+op op_300 {
+    call cp_set_d3_state;
+}
+
+
+bb cp_ioctl_154 {
+    op op_1;
+}
+
+bb cp_set_features_235 {
+    op op_190;
+    op op_191;
+}
+
+bb cp_reset_hw_10 {
+    op op_9;
+}
+
+bb write_eeprom_282 {
+    op op_218;
+}
+
+bb cp_rx_poll_351 {
+    op op_66;
+}
+
+bb eeprom_extend_cmd_281 {
+    op op_209;
+    op op_210;
+    op op_211;
+}
+
+bb cp_start_xmit_102 {
+    op op_101;
+    op op_104;
+    op op_66;
+}
+
+bb cp_tx_200 {
+    op op_69;
+}
+
+bb cp_change_mtu_158 {
+    op op_1;
+}
+
+bb cp_tx_216 {
+    op op_180;
+}
+
+bb ip_hdr_89 {
+    op op_94;
+}
+
+bb write_eeprom_283 {
+    op op_211;
+    op op_212;
+}
+
+bb cp_get_stats_176 {
+    op op_166;
+}
+
+bb cp_tx_timeout_164 {
+    op op_154;
+}
+
+bb cp_start_xmit_99 {
+    op op_98;
+    op op_66;
+}
+
+bb cp_start_xmit_112 {
+    op op_90;
+    op op_90;
+}
+
+bb cp_get_eeprom_271 {
+    op op_202;
+}
+
+bb cp_start_xmit_84 {
+    op op_93;
+}
+
+bb cp_set_eeprom_287 {
+    op op_202;
+    op op_221;
+}
+
+bb cp_tx_226 {
+    op op_163;
+}
+
+bb cp_init_rings_34 {
+    op op_8;
+    op op_75;
+}
+
+bb cp_start_xmit_107 {
+    op op_109;
+}
+
+bb netdev_completed_queue_220 {
+    op op_2;
+    op op_183;
+}
+
+bb cp_get_eeprom_273 {
+    op op_202;
+}
+
+bb read_eeprom_431 {
+    op op_286;
+    op op_287;
+    op op_288;
+    op op_289;
+    op op_290;
+}
+
+bb cp_clean_rings_48 {
+    op op_69;
+    op op_70;
+}
+
+bb __bitrev16_21 {
+    op op_35;
+    op op_35;
+}
+
+bb netdev_get_wol_249 {
+    op op_192;
+}
+
+bb cp_refill_rx_38 {
+    op op_66;
+}
+
+bb eth_hw_addr_set_434 {
+    op op_298;
+}
+
+bb cp_rx_poll_328 {
+    op op_240;
+}
+
+bb pskb_may_pull_136 {
+    op op_124;
+}
+
+bb cp_set_mac_address_146 {
+    op op_133;
+}
+
+bb cp_rx_poll_370 {
+    op op_250;
+    op op_251;
+}
+
+bb cp_set_eeprom_285 {
+    op op_221;
+}
+
+bb netdev_set_wol_263 {
+    op op_196;
+    op op_197;
+    op op_198;
+    op op_199;
+}
+
+bb cp_refill_rx_44 {
+    op op_74;
+}
+
+bb cp_set_eeprom_279 {
+    op op_202;
+    op op_221;
+}
+
+bb cp_start_xmit_78 {
+    op op_92;
+}
+
+bb skb_vlan_tagged_multi_143 {
+    op op_122;
+}
+
+bb cp_rx_poll_358 {
+    op op_247;
+}
+
+bb netdev_set_wol_265 {
+    op op_200;
+}
+
+bb netif_wake_queue_171 {
+    op op_2;
+}
+
+bb pskb_may_pull_reason_137 {
+    op op_98;
+}
+
+bb cp_remove_one_305 {
+    op op_233;
+}
+
+bb cp_clean_rings_54 {
+    op op_70;
+}
+
+bb cp_resume_7 {
+    op op_8;
+    op op_57;
+    op op_60;
+    op op_62;
+}
+
+bb readb_376 {
+    op op_255;
+}
+
+bb cp_get_ethtool_stats_296 {
+    op op_228;
+}
+
+bb cp_start_xmit_94 {
+    op op_90;
+}
+
+bb cp_get_eeprom_len_269 {
+    op op_202;
+}
+
+bb cp_interrupt_189 {
+    op op_174;
+    op op_1;
+}
+
+bb skb_vlan_tagged_multi_135 {
+    op op_125;
+}
+
+bb cp_interrupt_193 {
+    op op_177;
+    op op_178;
+}
+
+bb eeprom_cmd_end_433 {
+    op op_291;
+    op op_292;
+}
+
+bb cp_init_hw_9 {
+    op op_11;
+    op op_12;
+    op op_13;
+    op op_14;
+    op op_15;
+    op op_16;
+    op op_17;
+    op op_33;
+    op op_34;
+    op op_46;
+    op op_47;
+    op op_48;
+    op op_49;
+    op op_50;
+    op op_51;
+    op op_52;
+    op op_53;
+    op op_54;
+    op op_55;
+    op op_56;
+}
+
+bb cp_set_wol_260 {
+    op op_201;
+}
+
+bb cp_tx_timeout_170 {
+    op op_83;
+    op op_74;
+    op op_76;
+    op op_33;
+    op op_46;
+    op op_160;
+    op op_161;
+    op op_163;
+    op op_164;
+}
+
+bb cp_free_rings_67 {
+    op op_74;
+    op op_77;
+}
+
+bb readw_373 {
+    op op_252;
+}
+
+bb cp_interrupt_188 {
+    op op_172;
+    op op_173;
+}
+
+bb cp_stop_hw_420 {
+    op op_261;
+    op op_262;
+    op op_263;
+    op op_264;
+    op op_265;
+    op op_266;
+    op op_267;
+    op op_268;
+    op op_269;
+    op op_270;
+    op op_32;
+}
+
+bb cp_suspend_1 {
+    op op_1;
+}
+
+bb skb_vlan_tagged_multi_141 {
+    op op_126;
+}
+
+bb cp_start_xmit_127 {
+    op op_119;
+}
+
+bb cp_enable_irq_25 {
+    op op_58;
+    op op_59;
+}
+
+bb cp_init_one_417 {
+    op op_259;
+}
+
+bb __cp_set_rx_mode_19 {
+    op op_39;
+}
+
+bb mdio_write_318 {
+    op op_238;
+}
+
+bb is_valid_ether_addr_147 {
+    op op_131;
+}
+
+bb unwind_tx_frag_mapping_110 {
+    op op_90;
+    op op_101;
+    op op_69;
+}
+
+bb netdev_tx_sent_queue_118 {
+    op op_113;
+    op op_114;
+}
+
+bb netdev_get_wol_253 {
+    op op_193;
+}
+
+bb cp_clean_rings_53 {
+    op op_69;
+}
+
+bb mdio_write_315 {
+    op op_235;
+    op op_236;
+    op op_237;
+}
+
+bb cp_start_hw_15 {
+    op op_18;
+    op op_19;
+    op op_20;
+    op op_21;
+    op op_22;
+    op op_23;
+    op op_24;
+    op op_25;
+    op op_26;
+    op op_27;
+    op op_28;
+    op op_29;
+    op op_30;
+    op op_31;
+    op op_32;
+}
+
+bb writew_375 {
+    op op_254;
+}
+
+bb netdev_tx_completed_queue_222 {
+    op op_114;
+}
+
+bb cp_alloc_rings_60 {
+    op op_77;
+}
+
+bb cp_open_65 {
+    op op_60;
+    op op_62;
+}
+
+bb cp_interrupt_190 {
+    op op_176;
+}
+
+bb writeb_374 {
+    op op_253;
+}
+
+bb cp_interrupt_183 {
+    op op_170;
+}
+
+bb cp_set_eeprom_278 {
+    op op_202;
+}
+
+bb cp_start_xmit_126 {
+    op op_3;
+}
+
+bb write_eeprom_280 {
+    op op_212;
+    op op_209;
+    op op_210;
+    op op_210;
+    op op_211;
+    op op_209;
+}
+
+bb cp_get_stats_178 {
+    op op_169;
+}
+
+bb cp_set_rx_mode_145 {
+    op op_46;
+}
+
+bb cp_start_xmit_128 {
+    op op_70;
+}
+
+bb cp_start_xmit_101 {
+    op op_90;
+}
+
+bb cp_start_xmit_88 {
+    op op_95;
+}
+
+bb cp_rx_poll_344 {
+    op op_240;
+}
+
+bb cp_start_xmit_116 {
+    op op_117;
+}
+
+bb cp_alloc_rings_33 {
+    op op_76;
+}
+
+bb cp_refill_rx_35 {
+    op op_65;
+}
+
+bb cp_tx_219 {
+    op op_184;
+}
+
+bb cp_rx_poll_362 {
+    op op_249;
+}
+
+bb is_valid_ether_addr_149 {
+    op op_132;
+}
+
+bb cp_interrupt_195 {
+    op op_186;
+}
+
+bb cp_features_check_130 {
+    op op_90;
+    op op_129;
+}
+
+bb netif_stop_queue_4 {
+    op op_2;
+}
+
+bb cp_get_wol_247 {
+    op op_194;
+}
+
+bb cp_ioctl_155 {
+    op op_144;
+}
+
+bb cp_refill_rx_40 {
+    op op_67;
+}
+
+bb cp_get_ethtool_stats_298 {
+    op op_229;
+    op op_230;
+    op op_231;
+    op op_77;
+}
+
+bb vlan_features_check_131 {
+    op op_128;
+}
+
+bb netdev_sent_queue_117 {
+    op op_2;
+    op op_116;
+}
+
+bb cp_open_63 {
+    op op_57;
+    op op_80;
+}
+
+bb netdev_tx_sent_queue_123 {
+    op op_114;
+}
+
+bb cp_change_mtu_160 {
+    op op_147;
+    op op_146;
+    op op_149;
+}
+
+bb eeprom_cmd_429 {
+    op op_279;
+    op op_280;
+    op op_281;
+    op op_282;
+}
+
+bb netdev_set_wol_261 {
+    op op_195;
+}
+
+bb cp_rx_poll_353 {
+    op op_69;
+    op op_246;
+}
+
+bb cp_rx_poll_352 {
+    op op_67;
+}
+
+bb cp_rx_poll_323 {
+    op op_239;
+}
+
+bb netif_start_queue_26 {
+    op op_2;
+}
+
+bb cp_close_72 {
+    op op_3;
+    op op_83;
+    op op_86;
+}
+
+bb cp_start_xmit_95 {
+    op op_66;
+}
+
+bb cp_start_xmit_73 {
+    op op_90;
+}
+
+bb __bitrev32_20 {
+    op op_37;
+    op op_37;
+}
+
+bb cp_get_stats_175 {
+    op op_1;
+}
+
+bb cp_reset_hw_11 {
+    op op_10;
+}
+
+bb cp_open_31 {
+    op op_78;
+}
+
+bb cp_start_xmit_75 {
+    op op_3;
+}
+
+bb cp_rx_poll_348 {
+    op op_242;
+}
+
+bb cp_init_one_437 {
+    op op_300;
+}
+
+bb netdev_reset_queue_421 {
+    op op_2;
+    op op_272;
+}
+
+bb cp_interrupt_231 {
+    op op_187;
+    op op_188;
+}
+
+bb skb_vlan_tagged_multi_133 {
+    op op_122;
+}
+
+bb eeprom_cmd_430 {
+    op op_283;
+    op op_284;
+}
+
+bb eeprom_cmd_start_427 {
+    op op_275;
+    op op_276;
+    op op_277;
+}
+
+bb skb_frag_address_104 {
+    op op_102;
+    op op_103;
+}
+
+bb cp_set_mac_address_152 {
+    op op_134;
+    op op_135;
+    op op_136;
+    op op_137;
+    op op_138;
+    op op_139;
+    op op_140;
+    op op_141;
+    op op_142;
+}
+
+bb cp_init_one_419 {
+    op op_83;
+    op op_202;
+    op op_202;
+    op op_202;
+    op op_202;
+    op op_134;
+}
+
+bb cp_suspend_3 {
+    op op_3;
+    op op_4;
+    op op_5;
+    op op_6;
+}
+
+bb readl_388 {
+    op op_257;
+}
+
+bb read_eeprom_432 {
+    op op_211;
+}
+
+bb netdev_alloc_skb_ip_align_36 {
+    op op_64;
+}
+
+bb __cp_get_stats_179 {
+    op op_167;
+    op op_168;
+}
+
+bb __cp_set_rx_mode_24 {
+    op op_40;
+    op op_41;
+    op op_42;
+    op op_43;
+    op op_44;
+    op op_45;
+}
+
+bb mdio_read_312 {
+    op op_234;
+}
+
+bb cp_rx_skb_364 {
+    op op_248;
+}
+
+bb cp_get_eeprom_275 {
+    op op_202;
+}
+
+bb cp_init_one_402 {
+    op op_146;
+}
+
+bb cp_interrupt_184 {
+    op op_171;
+}
+
+bb read_eeprom_426 {
+    op op_209;
+    op op_210;
+}
+
+bb cp_resume_6 {
+    op op_1;
+}
+
+bb cp_change_mtu_159 {
+    op op_146;
+}
+
+bb writel_387 {
+    op op_256;
+}
+
+bb cp_tx_timeout_162 {
+    op op_150;
+    op op_151;
+    op op_152;
+    op op_153;
+}
+
+bb cp_init_one_409 {
+    op op_259;
+}
+
+bb cp_get_eeprom_270 {
+    op op_202;
+}
+
+bb cp_open_66 {
+    op op_83;
+    op op_86;
+}
+
+bb cp_refill_rx_43 {
+    op op_65;
+}
+
+bb cp_get_ethtool_stats_295 {
+    op op_225;
+    op op_226;
+    op op_227;
+}
+
+bb cp_poll_controller_181 {
+    op op_189;
+}
+
+bb cp_clean_rings_57 {
+    op op_32;
+}
+
+path cp_init_rings_0 {
+    bb bb_34
+}
+
+path writeb_0 {
+    bb bb_374
+}
+
+path eeprom_cmd_1 {
+    bb bb_430
+}
+
+path eeprom_cmd_0 {
+    bb bb_429
+    bb bb_430
+}
+
+path unwind_tx_frag_mapping_0 {
+    bb bb_110
+}
+
+path cp_get_ethtool_stats_0 {
+    bb bb_295
+    bb bb_296
+    bb bb_298
+}
+
+path cp_tx_2 {
+    bb bb_219
+    bb bb_226
+}
+
+path cp_tx_1 {
+    bb bb_200
+    bb bb_219
+    bb bb_226
+}
+
+path cp_tx_0 {
+    bb bb_200
+    bb bb_216
+    bb bb_219
+    bb bb_226
+}
+
+path eeprom_cmd_start_0 {
+    bb bb_427
+}
+
+path cp_get_wol_0 {
+    bb bb_247
+}
+
+path cp_get_stats_0 {
+    bb bb_175
+    bb bb_176
+    bb bb_178
+}
+
+path cp_get_eeprom_len_0 {
+    bb bb_269
+}
+
+path cp_start_xmit_2 {
+    bb bb_73
+    bb bb_78
+    bb bb_128
+    bb bb_127
+}
+
+path cp_start_xmit_4 {
+    bb bb_73
+    bb bb_84
+    bb bb_88
+    bb bb_94
+    bb bb_99
+    bb bb_101
+    bb bb_102
+    bb bb_107
+}
+
+path cp_start_xmit_1 {
+    bb bb_73
+    bb bb_75
+}
+
+path cp_start_xmit_3 {
+    bb bb_73
+    bb bb_84
+    bb bb_88
+    bb bb_94
+    bb bb_95
+    bb bb_116
+    bb bb_126
+    bb bb_127
+}
+
+path cp_start_xmit_5 {
+    bb bb_73
+    bb bb_84
+    bb bb_88
+    bb bb_94
+    bb bb_99
+    bb bb_101
+    bb bb_102
+    bb bb_112
+}
+
+path cp_start_xmit_0 {
+    bb bb_73
+    bb bb_128
+    bb bb_127
+}
+
+path netdev_set_wol_0 {
+    bb bb_261
+    bb bb_263
+    bb bb_265
+}
+
+path is_valid_ether_addr_0 {
+    bb bb_147
+    bb bb_149
+}
+
+path cp_remove_one_0 {
+    bb bb_305
+}
+
+path cp_poll_controller_0 {
+    bb bb_181
+}
+
+path cp_refill_rx_1 {
+    bb bb_35
+    bb bb_38
+    bb bb_43
+    bb bb_44
+}
+
+path cp_refill_rx_0 {
+    bb bb_35
+    bb bb_38
+    bb bb_40
+}
+
+path cp_refill_rx_2 {
+    bb bb_35
+    bb bb_44
+}
+
+path cp_resume_0 {
+    bb bb_6
+    bb bb_7
+}
+
+path cp_stop_hw_0 {
+    bb bb_420
+}
+
+path writew_0 {
+    bb bb_375
+}
+
+path netif_wake_queue_0 {
+    bb bb_171
+}
+
+path mdio_write_0 {
+    bb bb_315
+}
+
+path mdio_write_1 {
+    bb bb_318
+}
+
+path read_eeprom_0 {
+    bb bb_426
+    bb bb_431
+    bb bb_432
+}
+
+path cp_clean_rings_3 {
+    bb bb_53
+    bb bb_54
+    bb bb_57
+}
+
+path cp_clean_rings_0 {
+    bb bb_48
+    bb bb_53
+    bb bb_54
+    bb bb_57
+}
+
+path cp_clean_rings_2 {
+    bb bb_48
+    bb bb_57
+}
+
+path cp_clean_rings_5 {
+    bb bb_57
+}
+
+path cp_clean_rings_4 {
+    bb bb_53
+    bb bb_57
+}
+
+path cp_clean_rings_1 {
+    bb bb_48
+    bb bb_53
+    bb bb_57
+}
+
+path cp_init_one_0 {
+    bb bb_402
+    bb bb_409
+    bb bb_417
+}
+
+path cp_init_one_1 {
+    bb bb_402
+    bb bb_409
+    bb bb_419
+    bb bb_437
+}
+
+path eth_hw_addr_set_0 {
+    bb bb_434
+}
+
+path cp_change_mtu_1 {
+    bb bb_158
+    bb bb_160
+}
+
+path cp_change_mtu_0 {
+    bb bb_158
+    bb bb_159
+}
+
+path cp_features_check_0 {
+    bb bb_130
+}
+
+path cp_reset_hw_0 {
+    bb bb_10
+    bb bb_11
+}
+
+path cp_open_1 {
+    bb bb_31
+    bb bb_63
+    bb bb_66
+}
+
+path cp_open_0 {
+    bb bb_31
+    bb bb_63
+    bb bb_65
+}
+
+path __cp_set_rx_mode_1 {
+    bb bb_24
+}
+
+path __cp_set_rx_mode_0 {
+    bb bb_19
+    bb bb_24
+}
+
+path readb_0 {
+    bb bb_376
+}
+
+path writel_0 {
+    bb bb_387
+}
+
+path netdev_completed_queue_0 {
+    bb bb_220
+}
+
+path cp_ioctl_0 {
+    bb bb_154
+    bb bb_155
+}
+
+path cp_set_eeprom_1 {
+    bb bb_278
+    bb bb_279
+    bb bb_287
+}
+
+path cp_set_eeprom_2 {
+    bb bb_278
+    bb bb_285
+    bb bb_287
+}
+
+path cp_set_eeprom_3 {
+    bb bb_278
+    bb bb_287
+}
+
+path cp_set_eeprom_0 {
+    bb bb_278
+    bb bb_279
+    bb bb_285
+    bb bb_287
+}
+
+path cp_init_hw_0 {
+    bb bb_9
+}
+
+path cp_alloc_rings_0 {
+    bb bb_33
+    bb bb_60
+}
+
+path cp_set_rx_mode_0 {
+    bb bb_145
+}
+
+path netif_stop_queue_0 {
+    bb bb_4
+}
+
+path cp_tx_timeout_1 {
+    bb bb_162
+    bb bb_170
+}
+
+path cp_tx_timeout_0 {
+    bb bb_162
+    bb bb_164
+}
+
+path cp_get_eeprom_1 {
+    bb bb_270
+    bb bb_271
+    bb bb_275
+}
+
+path cp_get_eeprom_2 {
+    bb bb_270
+    bb bb_273
+    bb bb_275
+}
+
+path cp_get_eeprom_3 {
+    bb bb_270
+    bb bb_275
+}
+
+path cp_get_eeprom_0 {
+    bb bb_270
+    bb bb_271
+    bb bb_273
+    bb bb_275
+}
+
+path netdev_sent_queue_0 {
+    bb bb_117
+}
+
+path netdev_reset_queue_0 {
+    bb bb_421
+}
+
+path pskb_may_pull_reason_0 {
+    bb bb_137
+}
+
+path __cp_get_stats_0 {
+    bb bb_179
+}
+
+path readw_0 {
+    bb bb_373
+}
+
+path cp_set_mac_address_0 {
+    bb bb_146
+    bb bb_152
+}
+
+path cp_set_features_0 {
+    bb bb_235
+}
+
+path netdev_get_wol_0 {
+    bb bb_249
+    bb bb_253
+}
+
+path ip_hdr_0 {
+    bb bb_89
+}
+
+path write_eeprom_0 {
+    bb bb_280
+    bb bb_282
+    bb bb_283
+}
+
+path cp_rx_skb_0 {
+    bb bb_364
+}
+
+path cp_set_wol_0 {
+    bb bb_260
+}
+
+path cp_close_0 {
+    bb bb_72
+}
+
+path cp_rx_poll_5 {
+    bb bb_323
+    bb bb_348
+    bb bb_370
+}
+
+path cp_rx_poll_2 {
+    bb bb_323
+    bb bb_348
+    bb bb_351
+    bb bb_352
+}
+
+path cp_rx_poll_0 {
+    bb bb_323
+    bb bb_328
+}
+
+path cp_rx_poll_6 {
+    bb bb_323
+    bb bb_370
+}
+
+path cp_rx_poll_3 {
+    bb bb_323
+    bb bb_348
+    bb bb_351
+    bb bb_353
+    bb bb_358
+    bb bb_362
+    bb bb_370
+}
+
+path cp_rx_poll_1 {
+    bb bb_323
+    bb bb_344
+}
+
+path cp_rx_poll_4 {
+    bb bb_323
+    bb bb_348
+    bb bb_351
+    bb bb_353
+    bb bb_362
+    bb bb_370
+}
+
+path eeprom_extend_cmd_0 {
+    bb bb_281
+}
+
+path netdev_tx_sent_queue_0 {
+    bb bb_118
+    bb bb_123
+}
+
+path vlan_features_check_0 {
+    bb bb_131
+}
+
+path cp_enable_irq_0 {
+    bb bb_25
+}
+
+path cp_suspend_0 {
+    bb bb_1
+    bb bb_3
+}
+
+path netdev_alloc_skb_ip_align_0 {
+    bb bb_36
+}
+
+path pskb_may_pull_0 {
+    bb bb_136
+}
+
+path __bitrev16_0 {
+    bb bb_21
+}
+
+path eeprom_cmd_end_0 {
+    bb bb_433
+}
+
+path cp_free_rings_0 {
+    bb bb_67
+}
+
+path mdio_read_0 {
+    bb bb_312
+}
+
+path __bitrev32_0 {
+    bb bb_20
+}
+
+path skb_vlan_tagged_multi_0 {
+    bb bb_133
+    bb bb_135
+    bb bb_141
+    bb bb_143
+}
+
+path skb_vlan_tagged_multi_1 {
+    bb bb_143
+}
+
+path netdev_tx_completed_queue_0 {
+    bb bb_222
+}
+
+path cp_interrupt_1 {
+    bb bb_183
+    bb bb_184
+    bb bb_189
+    bb bb_190
+}
+
+path cp_interrupt_4 {
+    bb bb_183
+    bb bb_184
+    bb bb_189
+    bb bb_195
+    bb bb_231
+}
+
+path cp_interrupt_3 {
+    bb bb_183
+    bb bb_184
+    bb bb_189
+    bb bb_193
+    bb bb_231
+}
+
+path cp_interrupt_0 {
+    bb bb_183
+    bb bb_184
+    bb bb_188
+}
+
+path cp_interrupt_2 {
+    bb bb_183
+    bb bb_184
+    bb bb_189
+    bb bb_193
+    bb bb_195
+    bb bb_231
+}
+
+path cp_interrupt_5 {
+    bb bb_183
+    bb bb_184
+    bb bb_189
+    bb bb_231
+}
+
+path cp_start_hw_0 {
+    bb bb_15
+}
+
+path netif_start_queue_0 {
+    bb bb_26
+}
+
+path readl_0 {
+    bb bb_388
+}
+
+path skb_frag_address_0 {
+    bb bb_104
+}
+
+func cp_init_rings {
+    path path_cp_init_rings_0;
+}
+
+func writeb {
+    path path_writeb_0;
+}
+
+func eeprom_cmd {
+    path path_eeprom_cmd_1;
+    path path_eeprom_cmd_0;
+}
+
+func unwind_tx_frag_mapping {
+    path path_unwind_tx_frag_mapping_0;
+}
+
+func cp_get_ethtool_stats {
+    path path_cp_get_ethtool_stats_0;
+}
+
+func cp_tx {
+    path path_cp_tx_2;
+    path path_cp_tx_1;
+    path path_cp_tx_0;
+}
+
+func eeprom_cmd_start {
+    path path_eeprom_cmd_start_0;
+}
+
+func cp_get_wol {
+    path path_cp_get_wol_0;
+}
+
+func cp_get_stats {
+    path path_cp_get_stats_0;
+}
+
+func cp_get_eeprom_len {
+    path path_cp_get_eeprom_len_0;
+}
+
+func cp_start_xmit {
+    path path_cp_start_xmit_2;
+    path path_cp_start_xmit_4;
+    path path_cp_start_xmit_1;
+    path path_cp_start_xmit_3;
+    path path_cp_start_xmit_5;
+    path path_cp_start_xmit_0;
+}
+
+func netdev_set_wol {
+    path path_netdev_set_wol_0;
+}
+
+func is_valid_ether_addr {
+    path path_is_valid_ether_addr_0;
+}
+
+func cp_remove_one {
+    path path_cp_remove_one_0;
+}
+
+func cp_poll_controller {
+    path path_cp_poll_controller_0;
+}
+
+func cp_refill_rx {
+    path path_cp_refill_rx_1;
+    path path_cp_refill_rx_0;
+    path path_cp_refill_rx_2;
+}
+
+func cp_resume {
+    path path_cp_resume_0;
+}
+
+func cp_stop_hw {
+    path path_cp_stop_hw_0;
+}
+
+func writew {
+    path path_writew_0;
+}
+
+func netif_wake_queue {
+    path path_netif_wake_queue_0;
+}
+
+func mdio_write {
+    path path_mdio_write_0;
+    path path_mdio_write_1;
+}
+
+func read_eeprom {
+    path path_read_eeprom_0;
+}
+
+func cp_clean_rings {
+    path path_cp_clean_rings_3;
+    path path_cp_clean_rings_0;
+    path path_cp_clean_rings_2;
+    path path_cp_clean_rings_5;
+    path path_cp_clean_rings_4;
+    path path_cp_clean_rings_1;
+}
+
+func cp_init_one {
+    path path_cp_init_one_0;
+    path path_cp_init_one_1;
+}
+
+func eth_hw_addr_set {
+    path path_eth_hw_addr_set_0;
+}
+
+func cp_change_mtu {
+    path path_cp_change_mtu_1;
+    path path_cp_change_mtu_0;
+}
+
+func cp_features_check {
+    path path_cp_features_check_0;
+}
+
+func cp_reset_hw {
+    path path_cp_reset_hw_0;
+}
+
+func cp_open {
+    path path_cp_open_1;
+    path path_cp_open_0;
+}
+
+func __cp_set_rx_mode {
+    path path___cp_set_rx_mode_1;
+    path path___cp_set_rx_mode_0;
+}
+
+func readb {
+    path path_readb_0;
+}
+
+func writel {
+    path path_writel_0;
+}
+
+func netdev_completed_queue {
+    path path_netdev_completed_queue_0;
+}
+
+func cp_ioctl {
+    path path_cp_ioctl_0;
+}
+
+func cp_set_eeprom {
+    path path_cp_set_eeprom_1;
+    path path_cp_set_eeprom_2;
+    path path_cp_set_eeprom_3;
+    path path_cp_set_eeprom_0;
+}
+
+func cp_init_hw {
+    path path_cp_init_hw_0;
+}
+
+func cp_alloc_rings {
+    path path_cp_alloc_rings_0;
+}
+
+func cp_set_rx_mode {
+    path path_cp_set_rx_mode_0;
+}
+
+func netif_stop_queue {
+    path path_netif_stop_queue_0;
+}
+
+func cp_tx_timeout {
+    path path_cp_tx_timeout_1;
+    path path_cp_tx_timeout_0;
+}
+
+func cp_get_eeprom {
+    path path_cp_get_eeprom_1;
+    path path_cp_get_eeprom_2;
+    path path_cp_get_eeprom_3;
+    path path_cp_get_eeprom_0;
+}
+
+func netdev_sent_queue {
+    path path_netdev_sent_queue_0;
+}
+
+func netdev_reset_queue {
+    path path_netdev_reset_queue_0;
+}
+
+func pskb_may_pull_reason {
+    path path_pskb_may_pull_reason_0;
+}
+
+func __cp_get_stats {
+    path path___cp_get_stats_0;
+}
+
+func readw {
+    path path_readw_0;
+}
+
+func cp_set_mac_address {
+    path path_cp_set_mac_address_0;
+}
+
+func cp_set_features {
+    path path_cp_set_features_0;
+}
+
+func netdev_get_wol {
+    path path_netdev_get_wol_0;
+}
+
+func ip_hdr {
+    path path_ip_hdr_0;
+}
+
+func write_eeprom {
+    path path_write_eeprom_0;
+}
+
+func cp_rx_skb {
+    path path_cp_rx_skb_0;
+}
+
+func cp_set_wol {
+    path path_cp_set_wol_0;
+}
+
+func cp_close {
+    path path_cp_close_0;
+}
+
+func cp_rx_poll {
+    path path_cp_rx_poll_5;
+    path path_cp_rx_poll_2;
+    path path_cp_rx_poll_0;
+    path path_cp_rx_poll_6;
+    path path_cp_rx_poll_3;
+    path path_cp_rx_poll_1;
+    path path_cp_rx_poll_4;
+}
+
+func eeprom_extend_cmd {
+    path path_eeprom_extend_cmd_0;
+}
+
+func netdev_tx_sent_queue {
+    path path_netdev_tx_sent_queue_0;
+}
+
+func vlan_features_check {
+    path path_vlan_features_check_0;
+}
+
+func cp_enable_irq {
+    path path_cp_enable_irq_0;
+}
+
+func cp_suspend {
+    path path_cp_suspend_0;
+}
+
+func netdev_alloc_skb_ip_align {
+    path path_netdev_alloc_skb_ip_align_0;
+}
+
+func pskb_may_pull {
+    path path_pskb_may_pull_0;
+}
+
+func __bitrev16 {
+    path path___bitrev16_0;
+}
+
+func eeprom_cmd_end {
+    path path_eeprom_cmd_end_0;
+}
+
+func cp_free_rings {
+    path path_cp_free_rings_0;
+}
+
+func mdio_read {
+    path path_mdio_read_0;
+}
+
+func __bitrev32 {
+    path path___bitrev32_0;
+}
+
+func skb_vlan_tagged_multi {
+    path path_skb_vlan_tagged_multi_0;
+    path path_skb_vlan_tagged_multi_1;
+}
+
+func netdev_tx_completed_queue {
+    path path_netdev_tx_completed_queue_0;
+}
+
+func cp_interrupt {
+    path path_cp_interrupt_1;
+    path path_cp_interrupt_4;
+    path path_cp_interrupt_3;
+    path path_cp_interrupt_0;
+    path path_cp_interrupt_2;
+    path path_cp_interrupt_5;
+}
+
+func cp_start_hw {
+    path path_cp_start_hw_0;
+}
+
+func netif_start_queue {
+    path path_netif_start_queue_0;
+}
+
+func readl {
+    path path_readl_0;
+}
+
+func skb_frag_address {
+    path path_skb_frag_address_0;
+}
+

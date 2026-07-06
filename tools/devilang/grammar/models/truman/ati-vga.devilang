@@ -1,0 +1,3034 @@
+op op_1 {
+    call pci_get_drvdata;
+}
+
+op op_2 {
+    mmio _aty_ld_le32_2 {
+        direction=r;
+        region=0;
+        address=0x184;
+        size=4;
+    }
+}
+
+op op_3 {
+    mmio _aty_st_le32_3 {
+        direction=w;
+        region=0;
+        address=0x184;
+        size=4;
+        data=call_1() | 0xff;
+    }
+}
+
+op op_4 {
+    mmio _aty_ld_le32_4 {
+        direction=r;
+        region=0;
+        address=0x184;
+        size=4;
+    }
+}
+
+op op_5 {
+    call aty128_flush_pixel_cache;
+}
+
+op op_6 {
+    mmio _aty_ld_le32_6 {
+        direction=r;
+        region=0;
+        address=0x8;
+        size=4;
+    }
+}
+
+op op_7 {
+    mmio _aty_st_8_7 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=1;
+        data=arg(0x3, 0x3, 0x2, 0x2, 0x7, 0x2, 0xf) & 0x3f;
+    }
+}
+
+op op_8 {
+    mmio _aty_ld_le32_8 {
+        direction=r;
+        region=0;
+        address=0xc;
+        size=4;
+    }
+}
+
+op op_9 {
+    call _aty_ld_pll;
+}
+
+op op_10 {
+    mmio _aty_st_8_10 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=1;
+        data=(arg(0xa, 0x3, 0x3, 0x2, 0x2, 0x3, 0x7, 0x9, 0x2, 0xf, 0xf) & 0x3f) | 0x80;
+    }
+}
+
+op op_11 {
+    mmio _aty_st_le32_11 {
+        direction=w;
+        region=0;
+        address=0xc;
+        size=4;
+        data=arg(0x4c4c1e, phi(num_1, var_1), num_3 | 0x8000, num_5 & 0xfffcffff, num_7 | 0x10001, num_9 & 0x3ff, ((num_11 & 0xfff8ffff) | (num_13 & 0xfff8f800)) | (num_16 << 0x10), 0, num_19 & 0xfffffffe, num_21 | 0x30000, var_21);
+    }
+}
+
+op op_12 {
+    call _aty_st_pll;
+}
+
+op op_13 {
+    mmio _aty_ld_le32_13 {
+        direction=r;
+        region=0;
+        address=0xf0;
+        size=4;
+    }
+}
+
+op op_14 {
+    mmio _aty_st_le32_14 {
+        direction=w;
+        region=0;
+        address=0xf0;
+        size=4;
+        data=call_1() | 0x1;
+    }
+}
+
+op op_15 {
+    mmio _aty_ld_le32_15 {
+        direction=r;
+        region=0;
+        address=0xf0;
+        size=4;
+    }
+}
+
+op op_16 {
+    mmio _aty_st_le32_16 {
+        direction=w;
+        region=0;
+        address=0xf0;
+        size=4;
+        data=call_1() & 0xfffffffe;
+    }
+}
+
+op op_17 {
+    mmio _aty_ld_le32_17 {
+        direction=r;
+        region=0;
+        address=0xf0;
+        size=4;
+    }
+}
+
+op op_12 {
+    call _aty_st_pll;
+}
+
+op op_19 {
+    mmio _aty_st_le32_19 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=4;
+        data=call_1();
+    }
+}
+
+op op_20 {
+    mmio _aty_st_le32_20 {
+        direction=w;
+        region=0;
+        address=0xf0;
+        size=4;
+        data=call_1();
+    }
+}
+
+op op_21 {
+    mmio _aty_st_le32_21 {
+        direction=w;
+        region=0;
+        address=0x704;
+        size=4;
+        data=0;
+    }
+}
+
+op op_22 {
+    call aty128_reset_engine;
+}
+
+op op_23 {
+    mmio _aty_ld_le32_23 {
+        direction=r;
+        region=0;
+        address=0x1740;
+        size=4;
+    }
+}
+
+op op_22 {
+    call aty128_reset_engine;
+}
+
+op op_25 {
+    call do_wait_for_fifo;
+}
+
+op op_26 {
+    mmio _aty_ld_le32_26 {
+        direction=r;
+        region=0;
+        address=0x1740;
+        size=4;
+    }
+}
+
+op op_5 {
+    call aty128_flush_pixel_cache;
+}
+
+op op_22 {
+    call aty128_reset_engine;
+}
+
+op op_29 {
+    call wait_for_idle;
+}
+
+op op_30 {
+    call depth_to_dst;
+}
+
+op op_31 {
+    call aty128_var_to_crtc;
+}
+
+op op_32 {
+    call aty128_var_to_pll;
+}
+
+op op_33 {
+    call aty128_ddafifo;
+}
+
+op op_34 {
+    call aty128_decode_var;
+}
+
+op op_29 {
+    call wait_for_idle;
+}
+
+op op_36 {
+    mmio _aty_st_le32_36 {
+        direction=w;
+        region=0;
+        address=0x230;
+        size=4;
+        data=0;
+    }
+}
+
+op op_37 {
+    mmio _aty_st_le32_37 {
+        direction=w;
+        region=0;
+        address=0x234;
+        size=4;
+        data=0;
+    }
+}
+
+op op_38 {
+    mmio _aty_st_le32_38 {
+        direction=w;
+        region=0;
+        address=0x238;
+        size=4;
+        data=0;
+    }
+}
+
+op op_39 {
+    mmio _aty_st_le32_39 {
+        direction=w;
+        region=0;
+        address=0x420;
+        size=4;
+        data=0;
+    }
+}
+
+op op_40 {
+    mmio _aty_st_le32_40 {
+        direction=w;
+        region=0;
+        address=0x1c0;
+        size=4;
+        data=0;
+    }
+}
+
+op op_41 {
+    mmio _aty_st_le32_41 {
+        direction=w;
+        region=0;
+        address=0x1c8;
+        size=4;
+        data=0;
+    }
+}
+
+op op_42 {
+    mmio _aty_st_le32_42 {
+        direction=w;
+        region=0;
+        address=0x540;
+        size=4;
+        data=0;
+    }
+}
+
+op op_43 {
+    mmio _aty_st_le32_43 {
+        direction=w;
+        region=0;
+        address=0x1d0;
+        size=4;
+        data=0;
+    }
+}
+
+op op_44 {
+    mmio _aty_st_le32_44 {
+        direction=w;
+        region=0;
+        address=0x94;
+        size=4;
+        data=0;
+    }
+}
+
+op op_45 {
+    mmio _aty_st_le32_45 {
+        direction=w;
+        region=0;
+        address=0x40;
+        size=4;
+        data=0;
+    }
+}
+
+op op_46 {
+    mmio _aty_st_le32_46 {
+        direction=w;
+        region=0;
+        address=0x950;
+        size=4;
+        data=0;
+    }
+}
+
+op op_47 {
+    mmio _aty_st_le32_47 {
+        direction=w;
+        region=0;
+        address=0x9c0;
+        size=4;
+        data=0;
+    }
+}
+
+op op_48 {
+    mmio _aty_st_8_48 {
+        direction=w;
+        region=0;
+        address=0x55;
+        size=1;
+        data=0x4;
+    }
+}
+
+op op_49 {
+    mmio _aty_st_le32_49 {
+        direction=w;
+        region=0;
+        address=0x50;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_50 {
+    mmio _aty_st_le32_50 {
+        direction=w;
+        region=0;
+        address=0x200;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_51 {
+    mmio _aty_st_le32_51 {
+        direction=w;
+        region=0;
+        address=0x204;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_52 {
+    mmio _aty_st_le32_52 {
+        direction=w;
+        region=0;
+        address=0x208;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_53 {
+    mmio _aty_st_le32_53 {
+        direction=w;
+        region=0;
+        address=0x20c;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_54 {
+    mmio _aty_st_le32_54 {
+        direction=w;
+        region=0;
+        address=0x22c;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_55 {
+    mmio _aty_st_le32_55 {
+        direction=w;
+        region=0;
+        address=0x224;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_56 {
+    mmio _aty_st_le32_56 {
+        direction=w;
+        region=0;
+        address=0x228;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_9 {
+    call _aty_ld_pll;
+}
+
+op op_12 {
+    call _aty_st_pll;
+}
+
+op op_59 {
+    call aty128_set_crtc;
+}
+
+op op_60 {
+    mmio _aty_ld_le32_60 {
+        direction=r;
+        region=0;
+        address=0x8;
+        size=4;
+    }
+}
+
+op op_61 {
+    mmio _aty_st_le32_61 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=4;
+        data=call_1() | 0x300;
+    }
+}
+
+op op_9 {
+    call _aty_ld_pll;
+}
+
+op op_12 {
+    call _aty_st_pll;
+}
+
+op op_9 {
+    call _aty_ld_pll;
+}
+
+op op_65 {
+    call aty_pll_readupdate;
+}
+
+op op_66 {
+    call aty_pll_wait_readupdate;
+}
+
+op op_12 {
+    call _aty_st_pll;
+}
+
+op op_66 {
+    call aty_pll_wait_readupdate;
+}
+
+op op_9 {
+    call _aty_ld_pll;
+}
+
+op op_12 {
+    call _aty_st_pll;
+}
+
+op op_71 {
+    call aty_pll_writeupdate;
+}
+
+op op_9 {
+    call _aty_ld_pll;
+}
+
+op op_66 {
+    call aty_pll_wait_readupdate;
+}
+
+op op_12 {
+    call _aty_st_pll;
+}
+
+op op_71 {
+    call aty_pll_writeupdate;
+}
+
+op op_66 {
+    call aty_pll_wait_readupdate;
+}
+
+op op_12 {
+    call _aty_st_pll;
+}
+
+op op_71 {
+    call aty_pll_writeupdate;
+}
+
+op op_9 {
+    call _aty_ld_pll;
+}
+
+op op_12 {
+    call _aty_st_pll;
+}
+
+op op_81 {
+    call aty128_set_pll;
+}
+
+op op_82 {
+    mmio _aty_st_le32_82 {
+        direction=w;
+        region=0;
+        address=0x2e0;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_83 {
+    mmio _aty_st_le32_83 {
+        direction=w;
+        region=0;
+        address=0x2e4;
+        size=4;
+        data=num_1;
+    }
+}
+
+op op_84 {
+    call aty128_set_fifo;
+}
+
+op op_85 {
+    mmio _aty_ld_le32_85 {
+        direction=r;
+        region=0;
+        address=0xe0;
+        size=4;
+    }
+}
+
+op op_86 {
+    mmio _aty_st_le32_86 {
+        direction=w;
+        region=0;
+        address=0xe0;
+        size=4;
+        data=call_1() & 0xfffffffc;
+    }
+}
+
+op op_87 {
+    mmio _aty_st_8_87 {
+        direction=w;
+        region=0;
+        address=0x55;
+        size=1;
+        data=0;
+    }
+}
+
+op op_88 {
+    mmio _aty_ld_le32_88 {
+        direction=r;
+        region=0;
+        address=0x54;
+        size=4;
+    }
+}
+
+op op_89 {
+    mmio _aty_st_le32_89 {
+        direction=w;
+        region=0;
+        address=0x54;
+        size=4;
+        data=call_1() | 0x8000;
+    }
+}
+
+op op_90 {
+    mmio _aty_ld_le32_90 {
+        direction=r;
+        region=0;
+        address=0x58;
+        size=4;
+    }
+}
+
+op op_91 {
+    mmio _aty_st_le32_91 {
+        direction=w;
+        region=0;
+        address=0x58;
+        size=4;
+        data=call_1() | 0x40;
+    }
+}
+
+op op_92 {
+    mmio _aty_st_le32_92 {
+        direction=w;
+        region=0;
+        address=0x54;
+        size=4;
+        data=call_1() & 0xffff7fff;
+    }
+}
+
+op op_93 {
+    call aty128_set_crt_enable;
+}
+
+op op_1 {
+    call pci_get_drvdata;
+}
+
+op op_95 {
+    mmio _aty_ld_le32_95 {
+        direction=r;
+        region=0;
+        address=0x2d0;
+        size=4;
+    }
+}
+
+op op_96 {
+    mmio _aty_st_le32_96 {
+        direction=w;
+        region=0;
+        address=0x2d0;
+        size=4;
+        data=(call_1() & 0xfff3ff7c) | 0xc0081;
+    }
+}
+
+op op_97 {
+    call backlight_update_status;
+}
+
+op op_98 {
+    call aty128_bl_set_power;
+}
+
+op op_98 {
+    call aty128_bl_set_power;
+}
+
+op op_100 {
+    mmio _aty_ld_le32_100 {
+        direction=r;
+        region=0;
+        address=0x2d0;
+        size=4;
+    }
+}
+
+op op_101 {
+    mmio _aty_st_le32_101 {
+        direction=w;
+        region=0;
+        address=0x2d0;
+        size=4;
+        data=call_1() | 0x2;
+    }
+}
+
+op op_102 {
+    mmio _aty_st_le32_102 {
+        direction=w;
+        region=0;
+        address=0x2d0;
+        size=4;
+        data=(call_1() | 0x2) & 0xfffffffe;
+    }
+}
+
+op op_103 {
+    call aty128_set_lcd_enable;
+}
+
+op op_29 {
+    call wait_for_idle;
+}
+
+op op_25 {
+    call do_wait_for_fifo;
+}
+
+op op_106 {
+    call wait_for_fifo;
+}
+
+op op_107 {
+    mmio _aty_st_le32_107 {
+        direction=w;
+        region=0;
+        address=0x1a00;
+        size=4;
+        data=0;
+    }
+}
+
+op op_22 {
+    call aty128_reset_engine;
+}
+
+op op_106 {
+    call wait_for_fifo;
+}
+
+op op_110 {
+    mmio _aty_st_le32_110 {
+        direction=w;
+        region=0;
+        address=0x16e0;
+        size=4;
+        data=0;
+    }
+}
+
+op op_111 {
+    mmio _aty_st_le32_111 {
+        direction=w;
+        region=0;
+        address=0x16e4;
+        size=4;
+        data=select(num_1, num_2);
+    }
+}
+
+op op_112 {
+    mmio _aty_st_le32_112 {
+        direction=w;
+        region=0;
+        address=0x16e8;
+        size=4;
+        data=0x1fff1fff;
+    }
+}
+
+op op_30 {
+    call depth_to_dst;
+}
+
+op op_114 {
+    mmio _aty_st_le32_114 {
+        direction=w;
+        region=0;
+        address=0x146c;
+        size=4;
+        data=(num_1 << 0x8) | 0x72f030d0;
+    }
+}
+
+op op_106 {
+    call wait_for_fifo;
+}
+
+op op_116 {
+    mmio _aty_st_le32_116 {
+        direction=w;
+        region=0;
+        address=0x1628;
+        size=4;
+        data=0;
+    }
+}
+
+op op_117 {
+    mmio _aty_st_le32_117 {
+        direction=w;
+        region=0;
+        address=0x162c;
+        size=4;
+        data=0;
+    }
+}
+
+op op_118 {
+    mmio _aty_st_le32_118 {
+        direction=w;
+        region=0;
+        address=0x1630;
+        size=4;
+        data=0;
+    }
+}
+
+op op_119 {
+    mmio _aty_st_le32_119 {
+        direction=w;
+        region=0;
+        address=0x147c;
+        size=4;
+        data=0xffffffff;
+    }
+}
+
+op op_120 {
+    mmio _aty_st_le32_120 {
+        direction=w;
+        region=0;
+        address=0x1478;
+        size=4;
+        data=0;
+    }
+}
+
+op op_121 {
+    mmio _aty_st_le32_121 {
+        direction=w;
+        region=0;
+        address=0x15d8;
+        size=4;
+        data=0xffffffff;
+    }
+}
+
+op op_122 {
+    mmio _aty_st_le32_122 {
+        direction=w;
+        region=0;
+        address=0x15dc;
+        size=4;
+        data=0;
+    }
+}
+
+op op_123 {
+    mmio _aty_st_le32_123 {
+        direction=w;
+        region=0;
+        address=0x16cc;
+        size=4;
+        data=0xffffffff;
+    }
+}
+
+op op_29 {
+    call wait_for_idle;
+}
+
+op op_125 {
+    call aty128_init_engine;
+}
+
+op op_126 {
+    call aty128fb_set_par;
+}
+
+op op_127 {
+    mmio _aty_st_8_127 {
+        direction=w;
+        region=0;
+        address=0x55;
+        size=1;
+        data=select(0x7050604 >> (num_1 << 0x3), 0);
+    }
+}
+
+op op_93 {
+    call aty128_set_crt_enable;
+}
+
+op op_103 {
+    call aty128_set_lcd_enable;
+}
+
+op op_130 {
+    call aty128fb_blank;
+}
+
+op op_131 {
+    call aty128_do_resume;
+}
+
+op op_34 {
+    call aty128_decode_var;
+}
+
+op op_133 {
+    call aty128_pix_width_to_var;
+}
+
+op op_134 {
+    call aty128_crtc_to_var;
+}
+
+op op_135 {
+    call aty128_pll_to_var;
+}
+
+op op_136 {
+    call aty128_encode_var;
+}
+
+op op_137 {
+    mmio _aty_ld_le32_137 {
+        direction=r;
+        region=0;
+        address=0x58;
+        size=4;
+    }
+}
+
+op op_138 {
+    mmio _aty_st_le32_138 {
+        direction=w;
+        region=0;
+        address=0x58;
+        size=4;
+        data=call_1() & 0xffffffdf;
+    }
+}
+
+op op_139 {
+    mmio _aty_st_8_139 {
+        direction=w;
+        region=0;
+        address=0xb0;
+        size=1;
+        data=arg(num_1 << 0x3, phi(var_1 << 0x2, select(var_1 << 0x3, var_1)));
+    }
+}
+
+op op_140 {
+    mmio _aty_st_le32_140 {
+        direction=w;
+        region=0;
+        address=0xb4;
+        size=4;
+        data=((arg(num_1, (num_2 >> 0x8)) << 0x8) | (arg((num_6 >> 0x8), phi(num_8, var_7)) << 0x10)) | arg((num_13 >> 0x8), phi(num_15, var_14));
+    }
+}
+
+op op_141 {
+    call aty128_st_pal;
+}
+
+op op_141 {
+    call aty128_st_pal;
+}
+
+op op_143 {
+    mmio _aty_st_le32_143 {
+        direction=w;
+        region=0;
+        address=0x224;
+        size=4;
+        data=phi(num_1, num_2 & 0xfffffff8);
+    }
+}
+
+op op_29 {
+    call wait_for_idle;
+}
+
+op op_93 {
+    call aty128_set_crt_enable;
+}
+
+op op_103 {
+    call aty128_set_lcd_enable;
+}
+
+op op_1 {
+    call pci_get_drvdata;
+}
+
+op op_148 {
+    call aty128_bl_exit;
+}
+
+op op_149 {
+    call resource_size;
+}
+
+op op_149 {
+    call resource_size;
+}
+
+op op_151 {
+    mmio readb_151 {
+        direction=r;
+        region=0;
+        address=0x48;
+        size=1;
+    }
+}
+
+op op_152 {
+    mmio readb_152 {
+        direction=r;
+        region=0;
+        address=0x49;
+        size=1;
+    }
+}
+
+op op_153 {
+    mmio readb_153 {
+        direction=r;
+        region=0;
+        address=0xdeadbeef;
+        size=1;
+    }
+}
+
+op op_154 {
+    mmio readb_154 {
+        direction=r;
+        region=0;
+        address=0x1;
+        size=1;
+    }
+}
+
+op op_155 {
+    mmio readb_155 {
+        direction=r;
+        region=0;
+        address=0x16;
+        size=1;
+    }
+}
+
+op op_156 {
+    mmio readb_156 {
+        direction=r;
+        region=0;
+        address=0x1;
+        size=1;
+    }
+}
+
+op op_157 {
+    mmio readb_157 {
+        direction=r;
+        region=0;
+        address=0x2;
+        size=1;
+    }
+}
+
+op op_158 {
+    mmio readb_158 {
+        direction=r;
+        region=0;
+        address=0x3;
+        size=1;
+    }
+}
+
+op op_159 {
+    mmio readb_159 {
+        direction=r;
+        region=0;
+        address=0x12;
+        size=1;
+    }
+}
+
+op op_160 {
+    mmio readb_160 {
+        direction=r;
+        region=0;
+        address=0x1;
+        size=1;
+    }
+}
+
+op op_161 {
+    mmio readb_161 {
+        direction=r;
+        region=0;
+        address=0x2;
+        size=1;
+    }
+}
+
+op op_162 {
+    mmio readb_162 {
+        direction=r;
+        region=0;
+        address=0x3;
+        size=1;
+    }
+}
+
+op op_163 {
+    mmio readb_163 {
+        direction=r;
+        region=0;
+        address=0x8;
+        size=1;
+    }
+}
+
+op op_164 {
+    mmio readb_164 {
+        direction=r;
+        region=0;
+        address=0x1;
+        size=1;
+    }
+}
+
+op op_165 {
+    mmio readb_165 {
+        direction=r;
+        region=0;
+        address=0x10;
+        size=1;
+    }
+}
+
+op op_166 {
+    mmio readb_166 {
+        direction=r;
+        region=0;
+        address=0x1;
+        size=1;
+    }
+}
+
+op op_167 {
+    mmio readb_167 {
+        direction=r;
+        region=0;
+        address=0xe;
+        size=1;
+    }
+}
+
+op op_168 {
+    mmio readb_168 {
+        direction=r;
+        region=0;
+        address=0x1;
+        size=1;
+    }
+}
+
+op op_12 {
+    call _aty_st_pll;
+}
+
+op op_71 {
+    call aty_pll_writeupdate;
+}
+
+op op_12 {
+    call _aty_st_pll;
+}
+
+op op_71 {
+    call aty_pll_writeupdate;
+}
+
+op op_173 {
+    mmio _aty_ld_le32_173 {
+        direction=r;
+        region=0;
+        address=0x140;
+        size=4;
+    }
+}
+
+op op_1 {
+    call pci_get_drvdata;
+}
+
+op op_175 {
+    mmio _aty_ld_le32_175 {
+        direction=r;
+        region=0;
+        address=0xe0;
+        size=4;
+    }
+}
+
+op op_176 {
+    call aty128fb_check_var;
+}
+
+op op_177 {
+    mmio _aty_ld_le32_177 {
+        direction=r;
+        region=0;
+        address=0x58;
+        size=4;
+    }
+}
+
+op op_178 {
+    mmio _aty_st_le32_178 {
+        direction=w;
+        region=0;
+        address=0x58;
+        size=4;
+        data=select(0xff000143, 0xff000103) | call_2();
+    }
+}
+
+op op_179 {
+    mmio _aty_ld_le32_179 {
+        direction=r;
+        region=0;
+        address=0x30;
+        size=4;
+    }
+}
+
+op op_180 {
+    mmio _aty_st_le32_180 {
+        direction=w;
+        region=0;
+        address=0x30;
+        size=4;
+        data=call_1() | 0x40;
+    }
+}
+
+op op_125 {
+    call aty128_init_engine;
+}
+
+op op_182 {
+    mmio readl_182 {
+        direction=r;
+        region=0;
+        address=0xdeadbeef;
+        size=4;
+    }
+}
+
+op op_183 {
+    mmio writel_183 {
+        direction=w;
+        region=0;
+        address=unknown;
+        size=4;
+        data=arg(arg(0x55555555, 0xaaaaaaaa, num_1, (num_2 & 0xffffff) | 0x4000000, select(0xff000143, 0xff000103) | call_6(), call_8() | 0x40, arg(0x4c4c1e, phi(num_10, var_10), num_12 | 0x8000, num_14 & 0xfffcffff, num_16 | 0x10001, num_18 & 0x3ff, ((num_20 & 0xfff8ffff) | (num_22 & 0xfff8f800)) | (num_25 << 0x10), 0, num_28 & 0xfffffffe, num_30 | 0x30000, var_30), 0, 0, select(num_33, num_34), 0x1fff1fff, (num_36 << 0x8) | 0x72f030d0, 0, 0, 0, 0xffffffff, 0, 0xffffffff, 0, 0xffffffff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, call_39() & 0xfffffffc, phi(num_41, num_42 & 0xfffffff8), num_45, num_46, num_47, num_48, num_49, num_50, num_51, num_52, call_53() | 0x300, num_55, num_56, call_57() | 0x8000, call_59() | 0x40, var_57 & 0xffff7fff, (call_62() & 0xfff3ff7c) | 0xc0081, call_65() | 0x2, var_66 & 0xfffffffe, call_68() | 0xff, call_70() | 0x1, var_70 & 0xfffffffe, call_73(), var_70, 0, call_74() & 0xffffffdf, ((arg(num_76, (num_77 >> 0x8)) << 0x8) | (arg((num_81 >> 0x8), phi(num_83, var_82)) << 0x10)) | arg((num_88 >> 0x8), phi(num_90, var_89))));
+    }
+}
+
+op op_184 {
+    mmio readb_184 {
+        direction=r;
+        region=0;
+        address=0x0;
+        size=1;
+    }
+}
+
+op op_185 {
+    mmio writeb_185 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=1;
+        data=arg((arg(0xa, 0x3, 0x3, 0x2, 0x2, 0x3, 0x7, 0x9, 0x2, 0xf, 0xf) & 0x3f) | 0x80, arg(0x3, 0x3, 0x2, 0x2, 0x7, 0x2, 0xf) & 0x3f, 0x4, 0, select(0x7050604 >> (num_6 << 0x3), 0), arg(num_10 << 0x3, phi(var_10 << 0x2, select(var_10 << 0x3, var_10))));
+    }
+}
+
+op op_186 {
+    mmio writeb_186 {
+        direction=w;
+        region=0;
+        address=0x8;
+        size=1;
+        data=arg(arg((arg(0xa, 0x3, 0x3, 0x2, 0x2, 0x3, 0x7, 0x9, 0x2, 0xf, 0xf) & 0x3f) | 0x80, arg(0x3, 0x3, 0x2, 0x2, 0x7, 0x2, 0xf) & 0x3f, 0x4, 0, select(0x7050604 >> (num_6 << 0x3), 0), arg(num_10 << 0x3, phi(var_10 << 0x2, select(var_10 << 0x3, var_10)))));
+    }
+}
+
+op op_149 {
+    call resource_size;
+}
+
+op op_149 {
+    call resource_size;
+}
+
+op op_189 {
+    mmio _aty_ld_le32_189 {
+        direction=r;
+        region=0;
+        address=0xf8;
+        size=4;
+    }
+}
+
+op op_190 {
+    mmio _aty_ld_le32_190 {
+        direction=r;
+        region=0;
+        address=0x10;
+        size=4;
+    }
+}
+
+op op_191 {
+    mmio _aty_st_le32_191 {
+        direction=w;
+        region=0;
+        address=0x10;
+        size=4;
+        data=0x55555555;
+    }
+}
+
+op op_192 {
+    mmio _aty_ld_le32_192 {
+        direction=r;
+        region=0;
+        address=0x10;
+        size=4;
+    }
+}
+
+op op_193 {
+    mmio _aty_st_le32_193 {
+        direction=w;
+        region=0;
+        address=0x10;
+        size=4;
+        data=0xaaaaaaaa;
+    }
+}
+
+op op_194 {
+    mmio _aty_ld_le32_194 {
+        direction=r;
+        region=0;
+        address=0x10;
+        size=4;
+    }
+}
+
+op op_195 {
+    mmio _aty_st_le32_195 {
+        direction=w;
+        region=0;
+        address=0x10;
+        size=4;
+        data=call_1();
+    }
+}
+
+op op_196 {
+    call register_test;
+}
+
+op op_197 {
+    mmio _aty_ld_le32_197 {
+        direction=r;
+        region=0;
+        address=0x1c0;
+        size=4;
+    }
+}
+
+op op_198 {
+    mmio _aty_st_le32_198 {
+        direction=w;
+        region=0;
+        address=0x1c0;
+        size=4;
+        data=(call_1() & 0xffffff) | 0x4000000;
+    }
+}
+
+op op_199 {
+    mmio _aty_ld_le32_199 {
+        direction=r;
+        region=0;
+        address=0x1c0;
+        size=4;
+    }
+}
+
+op op_200 {
+    mmio readb_200 {
+        direction=r;
+        region=0;
+        address=0x0;
+        size=1;
+    }
+}
+
+op op_201 {
+    mmio readb_201 {
+        direction=r;
+        region=0;
+        address=0x1;
+        size=1;
+    }
+}
+
+op op_202 {
+    mmio readb_202 {
+        direction=r;
+        region=0;
+        address=0x0;
+        size=1;
+    }
+}
+
+op op_203 {
+    mmio readb_203 {
+        direction=r;
+        region=0;
+        address=0x1;
+        size=1;
+    }
+}
+
+op op_204 {
+    mmio readb_204 {
+        direction=r;
+        region=0;
+        address=0x18;
+        size=1;
+    }
+}
+
+op op_205 {
+    mmio readb_205 {
+        direction=r;
+        region=0;
+        address=0x19;
+        size=1;
+    }
+}
+
+op op_206 {
+    mmio readb_206 {
+        direction=r;
+        region=0;
+        address=0xdeadbeef;
+        size=1;
+    }
+}
+
+op op_207 {
+    mmio readb_207 {
+        direction=r;
+        region=0;
+        address=0x1;
+        size=1;
+    }
+}
+
+op op_208 {
+    mmio readb_208 {
+        direction=r;
+        region=0;
+        address=0x2;
+        size=1;
+    }
+}
+
+op op_209 {
+    mmio readb_209 {
+        direction=r;
+        region=0;
+        address=0x3;
+        size=1;
+    }
+}
+
+op op_210 {
+    mmio readb_210 {
+        direction=r;
+        region=0;
+        address=0xdeadbeef;
+        size=1;
+    }
+}
+
+op op_211 {
+    mmio readb_211 {
+        direction=r;
+        region=0;
+        address=0x1;
+        size=1;
+    }
+}
+
+op op_212 {
+    mmio readb_212 {
+        direction=r;
+        region=0;
+        address=0x2;
+        size=1;
+    }
+}
+
+op op_213 {
+    mmio readb_213 {
+        direction=r;
+        region=0;
+        address=0x3;
+        size=1;
+    }
+}
+
+op op_214 {
+    mmio readb_214 {
+        direction=r;
+        region=0;
+        address=0x14;
+        size=1;
+    }
+}
+
+op op_215 {
+    call aty128_map_ROM;
+}
+
+op op_216 {
+    mmio readb_216 {
+        direction=r;
+        region=2;
+        address=0x0;
+        size=1;
+    }
+}
+
+op op_217 {
+    mmio readb_217 {
+        direction=r;
+        region=2;
+        address=0x1;
+        size=1;
+    }
+}
+
+op op_218 {
+    call aty128_find_mem_vbios;
+}
+
+op op_219 {
+    call aty128_get_pllinfo;
+}
+
+op op_220 {
+    call aty128_timings;
+}
+
+op op_221 {
+    call aty128_init;
+}
+
+op op_149 {
+    call resource_size;
+}
+
+op op_149 {
+    call resource_size;
+}
+
+
+bb aty128_set_crtc_65 {
+    op op_49;
+    op op_50;
+    op op_51;
+    op op_52;
+    op op_53;
+    op op_54;
+    op op_55;
+    op op_56;
+    op op_9;
+    op op_12;
+}
+
+bb wait_for_idle_23 {
+    op op_22;
+}
+
+bb aty128_set_lcd_enable_91 {
+    op op_102;
+}
+
+bb aty128_probe_222 {
+    op op_189;
+}
+
+bb aty128_remove_169 {
+    op op_149;
+}
+
+bb aty128_init_198 {
+    op op_177;
+    op op_178;
+    op op_179;
+    op op_180;
+    op op_125;
+}
+
+bb aty_pll_wait_readupdate_69 {
+    op op_65;
+}
+
+bb aty128fb_set_par_63 {
+    op op_29;
+}
+
+bb aty128_probe_228 {
+    op op_215;
+}
+
+bb aty128fb_blank_103 {
+    op op_93;
+    op op_103;
+}
+
+bb aty128_map_ROM_232 {
+    op op_202;
+    op op_203;
+}
+
+bb do_wait_for_fifo_16 {
+    op op_23;
+}
+
+bb aty128fb_blank_102 {
+    op op_127;
+}
+
+bb wait_for_idle_22 {
+    op op_5;
+}
+
+bb aty128fb_set_par_94 {
+    op op_125;
+}
+
+bb aty128_map_ROM_231 {
+    op op_200;
+    op op_201;
+}
+
+bb aty128fb_set_par_75 {
+    op op_93;
+    op op_103;
+}
+
+bb _aty_st_8_204 {
+    op op_185;
+}
+
+bb aty128_timings_183 {
+    op op_173;
+}
+
+bb aty128_timings_177 {
+    op op_12;
+    op op_71;
+}
+
+bb aty128_bl_set_power_83 {
+    op op_97;
+}
+
+bb aty128_probe_250 {
+    op op_219;
+}
+
+bb aty128_decode_var_25 {
+    op op_31;
+}
+
+bb writel_202 {
+    op op_183;
+}
+
+bb aty128_set_lcd_enable_80 {
+    op op_1;
+}
+
+bb _aty_ld_pll_10 {
+    op op_7;
+    op op_8;
+}
+
+bb wait_for_fifo_97 {
+    op op_25;
+}
+
+bb readb_203 {
+    op op_184;
+}
+
+bb _aty_st_pll_11 {
+    op op_10;
+    op op_11;
+}
+
+bb aty128_decode_var_53 {
+    op op_33;
+}
+
+bb do_wait_for_fifo_18 {
+    op op_22;
+}
+
+bb aty128_init_187 {
+    op op_1;
+    op op_175;
+}
+
+bb aty128fb_check_var_108 {
+    op op_34;
+}
+
+bb aty128_map_ROM_233 {
+    op op_204;
+    op op_205;
+    op op_206;
+    op op_207;
+    op op_208;
+    op op_209;
+}
+
+bb aty128_find_mem_vbios_246 {
+    op op_217;
+}
+
+bb aty_pll_writeupdate_73 {
+    op op_66;
+    op op_9;
+    op op_12;
+}
+
+bb wait_for_idle_12 {
+    op op_25;
+}
+
+bb aty128_probe_242 {
+    op op_218;
+}
+
+bb aty128_set_crt_enable_77 {
+    op op_89;
+    op op_90;
+    op op_91;
+}
+
+bb aty128fb_setcolreg_134 {
+    op op_141;
+}
+
+bb aty128_pci_resume_2 {
+    op op_131;
+}
+
+bb aty128fb_setcolreg_140 {
+    op op_141;
+}
+
+bb aty128_set_pll_66 {
+    op op_60;
+    op op_61;
+    op op_9;
+    op op_12;
+    op op_66;
+    op op_12;
+    op op_71;
+    op op_9;
+    op op_66;
+    op op_12;
+    op op_71;
+    op op_66;
+    op op_12;
+    op op_71;
+    op op_9;
+    op op_12;
+}
+
+bb writeb_205 {
+    op op_186;
+}
+
+bb aty128fb_ioctl_156 {
+    op op_93;
+    op op_103;
+}
+
+bb wait_for_idle_21 {
+    op op_26;
+}
+
+bb aty128_do_resume_5 {
+    op op_22;
+    op op_29;
+    op op_126;
+    op op_130;
+}
+
+bb aty128_crtc_to_var_111 {
+    op op_133;
+}
+
+bb aty128_encode_var_110 {
+    op op_134;
+    op op_135;
+}
+
+bb aty128_set_crt_enable_78 {
+    op op_92;
+}
+
+bb aty128_remove_167 {
+    op op_149;
+}
+
+bb aty128_set_lcd_enable_81 {
+    op op_95;
+    op op_96;
+    op op_98;
+}
+
+bb aty128_map_ROM_229 {
+    op op_197;
+    op op_198;
+    op op_199;
+}
+
+bb aty128_set_crt_enable_76 {
+    op op_88;
+}
+
+bb aty128fb_set_par_24 {
+    op op_34;
+}
+
+bb aty128_remove_164 {
+    op op_1;
+}
+
+bb aty128_probe_261 {
+    op op_149;
+}
+
+bb aty128_find_mem_vbios_245 {
+    op op_216;
+}
+
+bb aty128fb_sync_149 {
+    op op_29;
+}
+
+bb aty128fb_pan_display_146 {
+    op op_143;
+}
+
+bb aty128_timings_176 {
+    op op_12;
+    op op_71;
+}
+
+bb register_test_224 {
+    op op_190;
+    op op_191;
+    op op_192;
+}
+
+bb aty128_map_ROM_234 {
+    op op_210;
+    op op_211;
+    op op_212;
+    op op_213;
+}
+
+bb aty128_st_pal_137 {
+    op op_139;
+    op op_140;
+}
+
+bb aty128_set_fifo_74 {
+    op op_82;
+    op op_83;
+}
+
+bb aty128fb_set_par_64 {
+    op op_36;
+    op op_37;
+    op op_38;
+    op op_39;
+    op op_40;
+    op op_41;
+    op op_42;
+    op op_43;
+    op op_44;
+    op op_45;
+    op op_46;
+    op op_47;
+    op op_48;
+    op op_59;
+    op op_81;
+    op op_84;
+    op op_85;
+    op op_86;
+    op op_87;
+}
+
+bb aty128fb_check_var_109 {
+    op op_136;
+}
+
+bb aty128_remove_165 {
+    op op_148;
+}
+
+bb aty128_st_pal_136 {
+    op op_137;
+    op op_138;
+}
+
+bb aty128_flush_pixel_cache_7 {
+    op op_2;
+    op op_3;
+}
+
+bb register_test_225 {
+    op op_193;
+    op op_194;
+}
+
+bb aty128_var_to_crtc_29 {
+    op op_30;
+}
+
+bb aty128_flush_pixel_cache_8 {
+    op op_4;
+}
+
+bb aty128_init_engine_95 {
+    op op_29;
+    op op_106;
+    op op_107;
+    op op_22;
+    op op_106;
+    op op_110;
+    op op_111;
+    op op_112;
+    op op_30;
+    op op_114;
+    op op_106;
+    op op_116;
+    op op_117;
+    op op_118;
+    op op_119;
+    op op_120;
+    op op_121;
+    op op_122;
+    op op_123;
+    op op_29;
+}
+
+bb aty128_decode_var_43 {
+    op op_32;
+}
+
+bb aty128_map_ROM_235 {
+    op op_214;
+}
+
+bb aty128_init_196 {
+    op op_176;
+}
+
+bb aty128_reset_engine_6 {
+    op op_5;
+    op op_6;
+    op op_9;
+    op op_12;
+    op op_13;
+    op op_14;
+    op op_15;
+    op op_16;
+    op op_17;
+    op op_12;
+    op op_19;
+    op op_20;
+    op op_21;
+}
+
+bb aty128_do_resume_3 {
+    op op_1;
+}
+
+bb aty_pll_readupdate_70 {
+    op op_9;
+}
+
+bb register_test_226 {
+    op op_195;
+}
+
+bb aty128_probe_212 {
+    op op_149;
+}
+
+bb aty128_probe_223 {
+    op op_196;
+}
+
+bb aty128_set_lcd_enable_89 {
+    op op_98;
+    op op_100;
+    op op_101;
+}
+
+bb readl_201 {
+    op op_182;
+}
+
+bb aty128_get_pllinfo_172 {
+    op op_151;
+    op op_152;
+    op op_153;
+    op op_154;
+    op op_155;
+    op op_156;
+    op op_157;
+    op op_158;
+    op op_159;
+    op op_160;
+    op op_161;
+    op op_162;
+    op op_163;
+    op op_164;
+    op op_165;
+    op op_166;
+    op op_167;
+    op op_168;
+}
+
+bb aty128_probe_258 {
+    op op_149;
+}
+
+bb aty128_probe_217 {
+    op op_149;
+}
+
+bb aty128_probe_251 {
+    op op_220;
+    op op_221;
+}
+
+path writeb_0 {
+    bb bb_205
+}
+
+path aty128_encode_var_0 {
+    bb bb_110
+}
+
+path aty128_do_resume_0 {
+    bb bb_3
+    bb bb_5
+}
+
+path readb_0 {
+    bb bb_203
+}
+
+path aty128fb_set_par_3 {
+    bb bb_24
+    bb bb_64
+    bb bb_94
+}
+
+path aty128fb_set_par_0 {
+    bb bb_24
+    bb bb_63
+    bb bb_64
+    bb bb_75
+    bb bb_94
+}
+
+path aty128fb_set_par_1 {
+    bb bb_24
+    bb bb_63
+    bb bb_64
+    bb bb_94
+}
+
+path aty128fb_set_par_2 {
+    bb bb_24
+    bb bb_64
+    bb bb_75
+    bb bb_94
+}
+
+path aty_pll_readupdate_0 {
+    bb bb_70
+}
+
+path aty128_map_ROM_2 {
+    bb bb_229
+    bb bb_231
+    bb bb_233
+    bb bb_235
+}
+
+path aty128_map_ROM_1 {
+    bb bb_229
+    bb bb_231
+    bb bb_233
+    bb bb_234
+}
+
+path aty128_map_ROM_0 {
+    bb bb_229
+    bb bb_231
+    bb bb_232
+}
+
+path _aty_ld_pll_0 {
+    bb bb_10
+}
+
+path aty128fb_ioctl_0 {
+    bb bb_156
+}
+
+path writel_0 {
+    bb bb_202
+}
+
+path aty128_reset_engine_0 {
+    bb bb_6
+}
+
+path _aty_st_8_0 {
+    bb bb_204
+}
+
+path wait_for_idle_0 {
+    bb bb_12
+    bb bb_21
+    bb bb_22
+}
+
+path wait_for_idle_1 {
+    bb bb_12
+    bb bb_21
+    bb bb_23
+}
+
+path aty128_var_to_crtc_0 {
+    bb bb_29
+}
+
+path aty128_flush_pixel_cache_0 {
+    bb bb_7
+    bb bb_8
+}
+
+path _aty_st_pll_0 {
+    bb bb_11
+}
+
+path aty128_set_fifo_0 {
+    bb bb_74
+}
+
+path aty_pll_writeupdate_0 {
+    bb bb_73
+}
+
+path aty128_set_crtc_0 {
+    bb bb_65
+}
+
+path aty128_init_0 {
+    bb bb_187
+    bb bb_196
+    bb bb_198
+}
+
+path aty128fb_pan_display_0 {
+    bb bb_146
+}
+
+path aty128_set_crt_enable_0 {
+    bb bb_76
+    bb bb_77
+}
+
+path aty128_set_crt_enable_1 {
+    bb bb_76
+    bb bb_78
+}
+
+path register_test_1 {
+    bb bb_224
+    bb bb_226
+}
+
+path register_test_0 {
+    bb bb_224
+    bb bb_225
+    bb bb_226
+}
+
+path aty128_find_mem_vbios_0 {
+    bb bb_245
+    bb bb_246
+}
+
+path wait_for_fifo_0 {
+    bb bb_97
+}
+
+path aty128fb_setcolreg_0 {
+    bb bb_134
+    bb bb_140
+}
+
+path aty128fb_setcolreg_1 {
+    bb bb_140
+}
+
+path aty128_st_pal_0 {
+    bb bb_136
+    bb bb_137
+}
+
+path aty128_st_pal_1 {
+    bb bb_137
+}
+
+path aty128fb_blank_0 {
+    bb bb_102
+    bb bb_103
+}
+
+path aty128_get_pllinfo_0 {
+    bb bb_172
+}
+
+path aty128fb_sync_0 {
+    bb bb_149
+}
+
+path aty128_set_lcd_enable_1 {
+    bb bb_80
+    bb bb_89
+    bb bb_91
+}
+
+path aty128_set_lcd_enable_0 {
+    bb bb_80
+    bb bb_81
+}
+
+path aty128_set_pll_0 {
+    bb bb_66
+}
+
+path aty128_timings_1 {
+    bb bb_177
+    bb bb_183
+}
+
+path aty128_timings_0 {
+    bb bb_176
+    bb bb_177
+    bb bb_183
+}
+
+path aty128_remove_0 {
+    bb bb_164
+    bb bb_165
+    bb bb_167
+    bb bb_169
+}
+
+path aty128_remove_1 {
+    bb bb_164
+    bb bb_165
+    bb bb_169
+}
+
+path aty128_probe_21 {
+    bb bb_212
+    bb bb_222
+    bb bb_261
+}
+
+path aty128_probe_1 {
+    bb bb_212
+    bb bb_217
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_242
+    bb bb_250
+    bb bb_251
+    bb bb_261
+}
+
+path aty128_probe_44 {
+    bb bb_222
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_24 {
+    bb bb_217
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_242
+    bb bb_250
+    bb bb_251
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_39 {
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_242
+    bb bb_251
+    bb bb_261
+}
+
+path aty128_probe_19 {
+    bb bb_212
+    bb bb_222
+    bb bb_223
+    bb bb_261
+}
+
+path aty128_probe_15 {
+    bb bb_212
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_242
+    bb bb_251
+    bb bb_261
+}
+
+path aty128_probe_42 {
+    bb bb_222
+    bb bb_223
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_6 {
+    bb bb_212
+    bb bb_217
+    bb bb_222
+    bb bb_223
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_37 {
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_242
+    bb bb_250
+    bb bb_251
+    bb bb_261
+}
+
+path aty128_probe_17 {
+    bb bb_212
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_250
+    bb bb_251
+    bb bb_261
+}
+
+path aty128_probe_13 {
+    bb bb_212
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_242
+    bb bb_250
+    bb bb_251
+    bb bb_261
+}
+
+path aty128_probe_40 {
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_250
+    bb bb_251
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_4 {
+    bb bb_212
+    bb bb_217
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_250
+    bb bb_251
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_35 {
+    bb bb_217
+    bb bb_261
+}
+
+path aty128_probe_31 {
+    bb bb_217
+    bb bb_222
+    bb bb_223
+    bb bb_261
+}
+
+path aty128_probe_11 {
+    bb bb_212
+    bb bb_217
+    bb bb_261
+}
+
+path aty128_probe_22 {
+    bb bb_212
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_2 {
+    bb bb_212
+    bb bb_217
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_242
+    bb bb_251
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_33 {
+    bb bb_217
+    bb bb_222
+    bb bb_261
+}
+
+path aty128_probe_29 {
+    bb bb_217
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_250
+    bb bb_251
+    bb bb_261
+}
+
+path aty128_probe_9 {
+    bb bb_212
+    bb bb_217
+    bb bb_222
+    bb bb_261
+}
+
+path aty128_probe_20 {
+    bb bb_212
+    bb bb_222
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_0 {
+    bb bb_212
+    bb bb_217
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_242
+    bb bb_250
+    bb bb_251
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_47 {
+    bb bb_261
+}
+
+path aty128_probe_27 {
+    bb bb_217
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_242
+    bb bb_251
+    bb bb_261
+}
+
+path aty128_probe_38 {
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_242
+    bb bb_251
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_18 {
+    bb bb_212
+    bb bb_222
+    bb bb_223
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_14 {
+    bb bb_212
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_242
+    bb bb_251
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_45 {
+    bb bb_222
+    bb bb_261
+}
+
+path aty128_probe_25 {
+    bb bb_217
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_242
+    bb bb_250
+    bb bb_251
+    bb bb_261
+}
+
+path aty128_probe_36 {
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_242
+    bb bb_250
+    bb bb_251
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_16 {
+    bb bb_212
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_250
+    bb bb_251
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_12 {
+    bb bb_212
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_242
+    bb bb_250
+    bb bb_251
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_43 {
+    bb bb_222
+    bb bb_223
+    bb bb_261
+}
+
+path aty128_probe_7 {
+    bb bb_212
+    bb bb_217
+    bb bb_222
+    bb bb_223
+    bb bb_261
+}
+
+path aty128_probe_34 {
+    bb bb_217
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_30 {
+    bb bb_217
+    bb bb_222
+    bb bb_223
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_10 {
+    bb bb_212
+    bb bb_217
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_41 {
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_250
+    bb bb_251
+    bb bb_261
+}
+
+path aty128_probe_5 {
+    bb bb_212
+    bb bb_217
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_250
+    bb bb_251
+    bb bb_261
+}
+
+path aty128_probe_32 {
+    bb bb_217
+    bb bb_222
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_28 {
+    bb bb_217
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_250
+    bb bb_251
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_8 {
+    bb bb_212
+    bb bb_217
+    bb bb_222
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_23 {
+    bb bb_212
+    bb bb_261
+}
+
+path aty128_probe_3 {
+    bb bb_212
+    bb bb_217
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_242
+    bb bb_251
+    bb bb_261
+}
+
+path aty128_probe_46 {
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_probe_26 {
+    bb bb_217
+    bb bb_222
+    bb bb_223
+    bb bb_228
+    bb bb_242
+    bb bb_251
+    bb bb_258
+    bb bb_261
+}
+
+path aty128_crtc_to_var_0 {
+    bb bb_111
+}
+
+path do_wait_for_fifo_0 {
+    bb bb_16
+    bb bb_18
+}
+
+path aty128_bl_set_power_0 {
+    bb bb_83
+}
+
+path aty128_init_engine_0 {
+    bb bb_95
+}
+
+path readl_0 {
+    bb bb_201
+}
+
+path aty_pll_wait_readupdate_0 {
+    bb bb_69
+}
+
+path aty128fb_check_var_0 {
+    bb bb_108
+    bb bb_109
+}
+
+path aty128_decode_var_0 {
+    bb bb_25
+    bb bb_43
+    bb bb_53
+}
+
+path aty128_pci_resume_0 {
+    bb bb_2
+}
+
+func writeb {
+    path path_writeb_0;
+}
+
+func aty128_encode_var {
+    path path_aty128_encode_var_0;
+}
+
+func aty128_do_resume {
+    path path_aty128_do_resume_0;
+}
+
+func readb {
+    path path_readb_0;
+}
+
+func aty128fb_set_par {
+    path path_aty128fb_set_par_3;
+    path path_aty128fb_set_par_0;
+    path path_aty128fb_set_par_1;
+    path path_aty128fb_set_par_2;
+}
+
+func aty_pll_readupdate {
+    path path_aty_pll_readupdate_0;
+}
+
+func aty128_map_ROM {
+    path path_aty128_map_ROM_2;
+    path path_aty128_map_ROM_1;
+    path path_aty128_map_ROM_0;
+}
+
+func _aty_ld_pll {
+    path path__aty_ld_pll_0;
+}
+
+func aty128fb_ioctl {
+    path path_aty128fb_ioctl_0;
+}
+
+func writel {
+    path path_writel_0;
+}
+
+func aty128_reset_engine {
+    path path_aty128_reset_engine_0;
+}
+
+func _aty_st_8 {
+    path path__aty_st_8_0;
+}
+
+func wait_for_idle {
+    path path_wait_for_idle_0;
+    path path_wait_for_idle_1;
+}
+
+func aty128_var_to_crtc {
+    path path_aty128_var_to_crtc_0;
+}
+
+func aty128_flush_pixel_cache {
+    path path_aty128_flush_pixel_cache_0;
+}
+
+func _aty_st_pll {
+    path path__aty_st_pll_0;
+}
+
+func aty128_set_fifo {
+    path path_aty128_set_fifo_0;
+}
+
+func aty_pll_writeupdate {
+    path path_aty_pll_writeupdate_0;
+}
+
+func aty128_set_crtc {
+    path path_aty128_set_crtc_0;
+}
+
+func aty128_init {
+    path path_aty128_init_0;
+}
+
+func aty128fb_pan_display {
+    path path_aty128fb_pan_display_0;
+}
+
+func aty128_set_crt_enable {
+    path path_aty128_set_crt_enable_0;
+    path path_aty128_set_crt_enable_1;
+}
+
+func register_test {
+    path path_register_test_1;
+    path path_register_test_0;
+}
+
+func aty128_find_mem_vbios {
+    path path_aty128_find_mem_vbios_0;
+}
+
+func wait_for_fifo {
+    path path_wait_for_fifo_0;
+}
+
+func aty128fb_setcolreg {
+    path path_aty128fb_setcolreg_0;
+    path path_aty128fb_setcolreg_1;
+}
+
+func aty128_st_pal {
+    path path_aty128_st_pal_0;
+    path path_aty128_st_pal_1;
+}
+
+func aty128fb_blank {
+    path path_aty128fb_blank_0;
+}
+
+func aty128_get_pllinfo {
+    path path_aty128_get_pllinfo_0;
+}
+
+func aty128fb_sync {
+    path path_aty128fb_sync_0;
+}
+
+func aty128_set_lcd_enable {
+    path path_aty128_set_lcd_enable_1;
+    path path_aty128_set_lcd_enable_0;
+}
+
+func aty128_set_pll {
+    path path_aty128_set_pll_0;
+}
+
+func aty128_timings {
+    path path_aty128_timings_1;
+    path path_aty128_timings_0;
+}
+
+func aty128_remove {
+    path path_aty128_remove_0;
+    path path_aty128_remove_1;
+}
+
+func aty128_probe {
+    path path_aty128_probe_21;
+    path path_aty128_probe_1;
+    path path_aty128_probe_44;
+    path path_aty128_probe_24;
+    path path_aty128_probe_39;
+    path path_aty128_probe_19;
+    path path_aty128_probe_15;
+    path path_aty128_probe_42;
+    path path_aty128_probe_6;
+    path path_aty128_probe_37;
+    path path_aty128_probe_17;
+    path path_aty128_probe_13;
+    path path_aty128_probe_40;
+    path path_aty128_probe_4;
+    path path_aty128_probe_35;
+    path path_aty128_probe_31;
+    path path_aty128_probe_11;
+    path path_aty128_probe_22;
+    path path_aty128_probe_2;
+    path path_aty128_probe_33;
+    path path_aty128_probe_29;
+    path path_aty128_probe_9;
+    path path_aty128_probe_20;
+    path path_aty128_probe_0;
+    path path_aty128_probe_47;
+    path path_aty128_probe_27;
+    path path_aty128_probe_38;
+    path path_aty128_probe_18;
+    path path_aty128_probe_14;
+    path path_aty128_probe_45;
+    path path_aty128_probe_25;
+    path path_aty128_probe_36;
+    path path_aty128_probe_16;
+    path path_aty128_probe_12;
+    path path_aty128_probe_43;
+    path path_aty128_probe_7;
+    path path_aty128_probe_34;
+    path path_aty128_probe_30;
+    path path_aty128_probe_10;
+    path path_aty128_probe_41;
+    path path_aty128_probe_5;
+    path path_aty128_probe_32;
+    path path_aty128_probe_28;
+    path path_aty128_probe_8;
+    path path_aty128_probe_23;
+    path path_aty128_probe_3;
+    path path_aty128_probe_46;
+    path path_aty128_probe_26;
+}
+
+func aty128_crtc_to_var {
+    path path_aty128_crtc_to_var_0;
+}
+
+func do_wait_for_fifo {
+    path path_do_wait_for_fifo_0;
+}
+
+func aty128_bl_set_power {
+    path path_aty128_bl_set_power_0;
+}
+
+func aty128_init_engine {
+    path path_aty128_init_engine_0;
+}
+
+func readl {
+    path path_readl_0;
+}
+
+func aty_pll_wait_readupdate {
+    path path_aty_pll_wait_readupdate_0;
+}
+
+func aty128fb_check_var {
+    path path_aty128fb_check_var_0;
+}
+
+func aty128_decode_var {
+    path path_aty128_decode_var_0;
+}
+
+func aty128_pci_resume {
+    path path_aty128_pci_resume_0;
+}
+

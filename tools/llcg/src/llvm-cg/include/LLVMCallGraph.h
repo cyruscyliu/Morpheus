@@ -16,8 +16,8 @@
 #include <vector>
 
 /// ImmutablePass that holds the call graph adjacency list.
-/// Populated by DevilangCG, consumed by downstream passes.
-class DevilangCGResult : public llvm::ImmutablePass {
+/// Populated by LLVMCallGraphPass, consumed by downstream passes.
+class LLVMCallGraphResult : public llvm::ImmutablePass {
 public:
 	static char ID;
 
@@ -37,7 +37,7 @@ public:
 	};
 	using CallbackTraceRecords = std::vector<CallbackTraceRecord>;
 
-	DevilangCGResult() : llvm::ImmutablePass(ID) {}
+	LLVMCallGraphResult() : llvm::ImmutablePass(ID) {}
 
 	void setGraph(AdjList graph) { adjList_ = std::move(graph); }
 	const AdjList &getGraph() const { return adjList_; }
@@ -54,27 +54,27 @@ enum class PrunePolicy {
 
 /// ModulePass that loads a KallGraph output file and builds a full call graph.
 /// The resulting graph can be pruned and exported as DOT.
-class DevilangCG : public llvm::ModulePass {
+class LLVMCallGraphPass : public llvm::ModulePass {
 public:
 	static char ID;
 
-	DevilangCG() : llvm::ModulePass(ID) {}
+	LLVMCallGraphPass() : llvm::ModulePass(ID) {}
 
 	bool runOnModule(llvm::Module &M) override;
 	void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
-	bool processModule(llvm::Module &M, DevilangCGResult::AdjList *outGraph = nullptr);
+	bool processModule(llvm::Module &M, LLVMCallGraphResult::AdjList *outGraph = nullptr);
 
 private:
 	/// Build adjacency list from KallGraph output (caller/count/callee block format).
-	DevilangCGResult::AdjList buildAdjListFromKallgraph(
+	LLVMCallGraphResult::AdjList buildAdjListFromKallgraph(
 		const std::string &path,
 		const std::unordered_map<std::string, std::set<std::string>> &debugLocMap);
 
 	/// Build direct call graph from LLVM IR (non-indirect, non-intrinsic calls only).
-	DevilangCGResult::AdjList buildDirectCallGraph(
+	LLVMCallGraphResult::AdjList buildDirectCallGraph(
 		llvm::Module &M,
-		DevilangCGResult::EdgeAdjList *callbackAdj = nullptr,
-		DevilangCGResult::CallbackTraceRecords *callbackTrace = nullptr);
+		LLVMCallGraphResult::EdgeAdjList *callbackAdj = nullptr,
+		LLVMCallGraphResult::CallbackTraceRecords *callbackTrace = nullptr);
 
 	/// Build a map: "file:line" -> {function names} from module debug locations.
 	std::unordered_map<std::string, std::set<std::string>>
@@ -103,25 +103,25 @@ private:
 	std::vector<Group> loadGroups(const std::string &path);
 
 	/// Export graph as DOT, optionally annotating clusters from groups.
-	void exportDOT(const DevilangCGResult::AdjList &adj,
+	void exportDOT(const LLVMCallGraphResult::AdjList &adj,
 				   const std::string &path,
 				   const std::vector<Group> &groups = {},
-				   const DevilangCGResult::EdgeAdjList *callbackAdj = nullptr);
+				   const LLVMCallGraphResult::EdgeAdjList *callbackAdj = nullptr);
 
 	/// Export callback-argument flow analysis as a sidecar text report.
-	void exportCallbackTrace(const DevilangCGResult::CallbackTraceRecords &records,
+	void exportCallbackTrace(const LLVMCallGraphResult::CallbackTraceRecords &records,
 							 const std::string &path);
 
 	/// Dispatch pruning based on selected policies.
-	void pruneGraph(DevilangCGResult::AdjList &adj,
+	void pruneGraph(LLVMCallGraphResult::AdjList &adj,
 					const std::vector<Group> &groups);
 
 	/// Remove nodes that cannot reach any member of any group (reverse BFS).
-	void pruneUnreachable(DevilangCGResult::AdjList &adj,
+	void pruneUnreachable(LLVMCallGraphResult::AdjList &adj,
 						  const std::vector<Group> &groups);
 
 	/// Remove nodes matching regex patterns loaded from blocklist.
-	void pruneBlocklist(DevilangCGResult::AdjList &adj);
+	void pruneBlocklist(LLVMCallGraphResult::AdjList &adj);
 
 	/// Load entries from file: one per line, skipping blank and '#' comment lines.
 	std::vector<std::string> loadFileLines(const std::string &path);
@@ -131,10 +131,10 @@ private:
 	///   "caller callee"   — add edge
 	///   "! caller callee" — suppress (remove) edge
 	/// Blank lines and lines starting with '#' are ignored.
-	void loadExtraEdges(const std::string &path, DevilangCGResult::AdjList &adj);
+	void loadExtraEdges(const std::string &path, LLVMCallGraphResult::AdjList &adj);
 };
 
-class DevilangCGNewPM : public llvm::PassInfoMixin<DevilangCGNewPM> {
+class LLVMCallGraphNewPM : public llvm::PassInfoMixin<LLVMCallGraphNewPM> {
 public:
   llvm::PreservedAnalyses run(llvm::Module &M, llvm::ModuleAnalysisManager &);
 };

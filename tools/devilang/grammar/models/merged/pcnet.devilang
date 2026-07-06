@@ -1,0 +1,582 @@
+struct PCNET_XDA {
+    tbadr: ptr<u32> flag align 0 [
+        bits 24..24;
+        bits 25..25;
+        bits 26..26;
+        bits 27..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+    length: u16 random;
+    status: u16 flag [
+        bits 0..9;
+        bits 10..10;
+        bits 11..11;
+        bits 12..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+    ];
+}
+
+pointer {
+    from = PCNET_XDA.tbadr;
+    to = PCNET_BUF0;
+    align = 0;
+}
+struct PCNET_BUF0 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = PCNET_XDA;
+    position = [
+        filename = pcnet.c;
+        caller = pcnet_tmd_load;
+        callee = phys_mem_read;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevPCNet.cpp;
+        caller = _ZL15pcnetTmdLoadAllP11PDMDEVINSR3P10PCNETSTATEP3TMDj;
+        callee = _ZL13pcnetPhysReadP11PDMDEVINSR3P10PCNETSTATEmPvm;
+        call_depth = 0;
+        argument_index = 2;
+    ]
+}
+struct PCNET_XDA_0 {
+    tbadr: u16 flag [
+        bits 8..8;
+        bits 9..9;
+        bits 10..10;
+        bits 11..11;
+        bits 12..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+    ];
+    length: u16 random;
+}
+
+head {
+    to = PCNET_XDA_0;
+    position = [
+        filename = DevPCNet.cpp;
+        caller = _ZL15pcnetTmdTryLoadP11PDMDEVINSR3P10PCNETSTATEP3TMDj;
+        callee = _ZL13pcnetPhysReadP11PDMDEVINSR3P10PCNETSTATEmPvm;
+        call_depth = 0;
+        argument_index = 2;
+    ]
+}
+struct PCNET_XDA_1 {
+    status: u16 flag [
+        bits 0..9;
+        bits 10..10;
+        bits 11..11;
+        bits 12..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+    ];
+}
+
+head {
+    to = PCNET_XDA_1;
+    position = [
+        filename = DevPCNet.cpp;
+        caller = _ZL15pcnetTmdTryLoadP11PDMDEVINSR3P10PCNETSTATEP3TMDj;
+        callee = _ZL13pcnetPhysReadP11PDMDEVINSR3P10PCNETSTATEmPvm;
+        call_depth = 1;
+        argument_index = 2;
+    ]
+}
+struct PCNET_XDA_2 {
+    length: u16 random;
+    status: u16 flag [
+        bits 0..9;
+        bits 10..10;
+        bits 11..11;
+        bits 12..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+    ];
+}
+
+head {
+    to = PCNET_XDA_2;
+    position = [
+        filename = DevPCNet.cpp;
+        caller = _ZL15pcnetTmdTryLoadP11PDMDEVINSR3P10PCNETSTATEP3TMDj;
+        callee = _ZL13pcnetPhysReadP11PDMDEVINSR3P10PCNETSTATEmPvm;
+        call_depth = 2;
+        argument_index = 2;
+    ]
+}
+struct PCNET_XDA_3 {
+    tbadr: ptr<u32> flag align 0 [
+        bits 8..8;
+        bits 9..9;
+        bits 10..10;
+        bits 11..11;
+        bits 12..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+    ];
+}
+
+pointer {
+    from = PCNET_XDA_3.tbadr;
+    to = PCNET_BUF1;
+    align = 0;
+}
+struct PCNET_BUF1 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = PCNET_XDA_3;
+    position = [
+        filename = DevPCNet.cpp;
+        caller = _ZL15pcnetTmdTryLoadP11PDMDEVINSR3P10PCNETSTATEP3TMDj;
+        callee = _ZL13pcnetPhysReadP11PDMDEVINSR3P10PCNETSTATEmPvm;
+        call_depth = 3;
+        argument_index = 2;
+    ]
+}
+struct PCNET_XDA_4 {
+    length: u16 random;
+    status: u16 flag [
+        bits 0..9;
+        bits 10..10;
+        bits 11..11;
+        bits 12..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+    ];
+    tbadr: ptr<u32> flag align 0 [
+        bits 24..24;
+        bits 25..25;
+        bits 26..26;
+        bits 27..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+}
+
+pointer {
+    from = PCNET_XDA_4.tbadr;
+    to = PCNET_BUF2;
+    align = 0;
+}
+struct PCNET_BUF2 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = PCNET_XDA_4;
+    position = [
+        filename = DevPCNet.cpp;
+        caller = _ZL15pcnetTmdTryLoadP11PDMDEVINSR3P10PCNETSTATEP3TMDj;
+        callee = _ZL13pcnetPhysReadP11PDMDEVINSR3P10PCNETSTATEmPvm;
+        call_depth = 4;
+        argument_index = 2;
+    ]
+}
+struct PCNET_XDA_5 {
+    pad: u32 random;
+    length: u16 random;
+    status: u16 flag [
+        bits 0..9;
+        bits 10..10;
+        bits 11..11;
+        bits 12..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+    ];
+    tbadr: ptr<u32> flag align 0 [
+        bits 24..24;
+        bits 25..25;
+        bits 26..26;
+        bits 27..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+}
+
+pointer {
+    from = PCNET_XDA_5.tbadr;
+    to = PCNET_BUF3;
+    align = 0;
+}
+struct PCNET_BUF3 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = PCNET_XDA_5;
+    position = [
+        filename = DevPCNet.cpp;
+        caller = _ZL15pcnetTmdLoadAllP11PDMDEVINSR3P10PCNETSTATEP3TMDj;
+        callee = _ZL13pcnetPhysReadP11PDMDEVINSR3P10PCNETSTATEmPvm;
+        call_depth = 2;
+        argument_index = 2;
+    ]
+}
+struct PCNET_TMD {
+    tbadr: ptr<u32> align 0;
+    length: u16 random;
+    status: u16 flag [
+        bits 0..6;
+        bits 7..7;
+        bits 8..8;
+        bits 9..9;
+        bits 10..10;
+        bits 11..11;
+        bits 12..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+        bits 16..31;
+    ];
+    misc: u32 flag [
+        bits 0..3;
+        bits 4..15;
+        bits 16..25;
+        bits 26..26;
+        bits 27..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+    res: u32 random;
+}
+
+pointer {
+    from = PCNET_TMD.tbadr;
+    to = PCNET_BUF4;
+    align = 0;
+}
+struct PCNET_BUF4 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = PCNET_TMD;
+    position = [
+        filename = pcnet.c;
+        caller = pcnet_tmd_load;
+        callee = phys_mem_read;
+        call_depth = 1;
+        argument_index = 1;
+    ] | [
+        filename = DevPCNet.cpp;
+        caller = _ZL15pcnetTmdLoadAllP11PDMDEVINSR3P10PCNETSTATEP3TMDj;
+        callee = _ZL13pcnetPhysReadP11PDMDEVINSR3P10PCNETSTATEmPvm;
+        call_depth = 1;
+        argument_index = 2;
+    ]
+}
+struct PCNET_RDA {
+    rbadr: ptr<u32> flag align 0 [
+        bits 24..24;
+        bits 25..25;
+        bits 26..26;
+        bits 27..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+    buf_length: u16 random;
+    msg_length: u16 flag [
+        bits 0..11;
+        bits 12..15;
+    ];
+}
+
+pointer {
+    from = PCNET_RDA.rbadr;
+    to = PCNET_BUF5;
+    align = 0;
+}
+struct PCNET_BUF5 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = PCNET_RDA;
+    position = [
+        filename = pcnet.c;
+        caller = pcnet_rmd_load;
+        callee = phys_mem_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct PCNET_RMD {
+    rbadr: ptr<u32> align 0;
+    buf_length: u16 flag [
+        bits 0..11;
+        bits 12..15;
+        bits 16..23;
+        bits 24..31;
+    ];
+    status: u16 flag [
+        bits 0..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+        bits 8..8;
+        bits 9..9;
+        bits 10..10;
+        bits 11..11;
+        bits 12..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+        bits 16..31;
+    ];
+    msg_length: u32 flag [
+        bits 0..11;
+        bits 12..15;
+        bits 16..23;
+        bits 24..31;
+    ];
+    res: u32 random;
+}
+
+pointer {
+    from = PCNET_RMD.rbadr;
+    to = PCNET_BUF6;
+    align = 0;
+}
+struct PCNET_BUF6 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = PCNET_RMD;
+    position = [
+        filename = pcnet.c;
+        caller = pcnet_rmd_load;
+        callee = phys_mem_read;
+        call_depth = 1;
+        argument_index = 1;
+    ] | [
+        filename = DevPCNet.cpp;
+        caller = _ZL11pcnetR3InitP11PDMDEVINSR3P10PCNETSTATEP12PCNETSTATER3;
+        callee = _ZL12pcnetRmdLoadP11PDMDEVINSR3P10PCNETSTATEP3RMDjb;
+        call_depth = 0;
+        argument_index = 3;
+    ] | [
+        filename = DevPCNet.cpp;
+        caller = _ZL13pcnetRdtePollP11PDMDEVINSR3P10PCNETSTATEb;
+        callee = _ZL12pcnetRmdLoadP11PDMDEVINSR3P10PCNETSTATEP3RMDjb;
+        call_depth = 0;
+        argument_index = 3;
+    ] | [
+        filename = DevPCNet.cpp;
+        caller = _ZL13pcnetRdtePollP11PDMDEVINSR3P10PCNETSTATEb;
+        callee = _ZL12pcnetRmdLoadP11PDMDEVINSR3P10PCNETSTATEP3RMDjb;
+        call_depth = 1;
+        argument_index = 3;
+    ] | [
+        filename = DevPCNet.cpp;
+        caller = _ZL18pcnetReceiveNoSyncP11PDMDEVINSR3P10PCNETSTATEP12PCNETSTATER3PKhmbb;
+        callee = _ZL12pcnetRmdLoadP11PDMDEVINSR3P10PCNETSTATEP3RMDjb;
+        call_depth = 0;
+        argument_index = 3;
+    ] | [
+        filename = DevPCNet.cpp;
+        caller = _ZL18pcnetReceiveNoSyncP11PDMDEVINSR3P10PCNETSTATEP12PCNETSTATER3PKhmbb;
+        callee = _ZL12pcnetRmdLoadP11PDMDEVINSR3P10PCNETSTATEP3RMDjb;
+        call_depth = 1;
+        argument_index = 3;
+    ] | [
+        filename = DevPCNet.cpp;
+        caller = _ZL18pcnetReceiveNoSyncP11PDMDEVINSR3P10PCNETSTATEP12PCNETSTATER3PKhmbb;
+        callee = _ZL12pcnetRmdLoadP11PDMDEVINSR3P10PCNETSTATEP3RMDjb;
+        call_depth = 2;
+        argument_index = 3;
+    ]
+}
+struct PCNET_INITBLK32 {
+    mode: u16 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..5;
+        bits 6..6;
+        bits 7..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+    ];
+    rlen: u8 flag [
+        bits 0..3;
+        bits 4..7;
+    ];
+    tlen: u8 flag [
+        bits 0..3;
+        bits 4..7;
+    ];
+    padrf0: u16 flag [
+        bits 0..7;
+        bits 8..15;
+    ];
+    padrf1: u16 flag [
+        bits 0..7;
+        bits 8..15;
+    ];
+    padrf2: u16 flag [
+        bits 0..7;
+        bits 8..15;
+    ];
+    _res: u16 random;
+    ladrf0: u16 flag [
+        bits 0..7;
+        bits 8..15;
+    ];
+    ladrf1: u16 flag [
+        bits 0..7;
+        bits 8..15;
+    ];
+    ladrf2: u16 flag [
+        bits 0..7;
+        bits 8..15;
+    ];
+    ladrf3: u16 flag [
+        bits 0..7;
+        bits 8..15;
+    ];
+    rdra: u32 random;
+    tdra: u32 random;
+}
+
+head {
+    to = PCNET_INITBLK32;
+    position = [
+        filename = pcnet.c;
+        caller = pcnet_init;
+        callee = phys_mem_read;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevPCNet.cpp;
+        caller = _ZL11pcnetR3InitP11PDMDEVINSR3P10PCNETSTATEP12PCNETSTATER3;
+        callee = _ZL13pcnetPhysReadP11PDMDEVINSR3P10PCNETSTATEmPvm;
+        call_depth = 0;
+        argument_index = 2;
+    ] | [
+        filename = DevPCNet.cpp;
+        caller = _ZL11pcnetR3InitP11PDMDEVINSR3P10PCNETSTATEP12PCNETSTATER3;
+        callee = _ZL13pcnetPhysReadP11PDMDEVINSR3P10PCNETSTATEmPvm;
+        call_depth = 1;
+        argument_index = 2;
+    ]
+}
+struct PCNET_INITBLK16 {
+    mode: u16 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..5;
+        bits 6..6;
+        bits 7..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+    ];
+    padrf0: u16 random;
+    padrf1: u16 random;
+    padrf2: u16 random;
+    ladrf0: u16 random;
+    ladrf1: u16 random;
+    ladrf2: u16 random;
+    ladrf3: u16 random;
+    rdra: u32 flag [
+        bits 0..23;
+        bits 24..28;
+        bits 29..31;
+    ];
+    tdra: u32 flag [
+        bits 0..23;
+        bits 24..28;
+        bits 29..31;
+    ];
+}
+
+head {
+    to = PCNET_INITBLK16;
+    position = [
+        filename = pcnet.c;
+        caller = pcnet_init;
+        callee = phys_mem_read;
+        call_depth = 1;
+        argument_index = 1;
+    ]
+}
+struct PCNET_BUF7 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = PCNET_BUF7;
+    position = [
+        filename = pcnet.c;
+        caller = pcnet_transmit;
+        callee = phys_mem_read;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevPCNet.cpp;
+        caller = _ZL16pcnetXmitRead1stP11PDMDEVINSR3P10PCNETSTATEjjP16PDMSCATTERGATHER;
+        callee = _ZL13pcnetPhysReadP11PDMDEVINSR3P10PCNETSTATEmPvm;
+        call_depth = 0;
+        argument_index = 2;
+    ] | [
+        filename = DevPCNet.cpp;
+        caller = _ZL17pcnetXmitReadMoreP11PDMDEVINSR3jjP16PDMSCATTERGATHER;
+        callee = _ZL13pcnetPhysReadP11PDMDEVINSR3P10PCNETSTATEmPvm;
+        call_depth = 0;
+        argument_index = 2;
+    ] | [
+        filename = DevPCNet.cpp;
+        caller = _ZL16pcnetXmitRead1stP11PDMDEVINSR3P10PCNETSTATEjjP16PDMSCATTERGATHER;
+        callee = _ZL13pcnetPhysReadP11PDMDEVINSR3P10PCNETSTATEmPvm;
+        call_depth = 0;
+        argument_index = 2;
+    ] | [
+        filename = DevPCNet.cpp;
+        caller = _ZL21pcnetXmitReadMoreSlowP11PDMDEVINSR3jjP16PDMSCATTERGATHER;
+        callee = _ZL13pcnetPhysReadP11PDMDEVINSR3P10PCNETSTATEmPvm;
+        call_depth = 0;
+        argument_index = 2;
+    ] | [
+        filename = DevPCNet.cpp;
+        caller = _ZL21pcnetXmitReadMoreSlowP11PDMDEVINSR3jjP16PDMSCATTERGATHER;
+        callee = _ZL13pcnetPhysReadP11PDMDEVINSR3P10PCNETSTATEmPvm;
+        call_depth = 1;
+        argument_index = 2;
+    ] | [
+        filename = DevPCNet.cpp;
+        caller = _ZL20pcnetXmitRead1stSlowP11PDMDEVINSR3jjP16PDMSCATTERGATHER;
+        callee = _ZL13pcnetPhysReadP11PDMDEVINSR3P10PCNETSTATEmPvm;
+        call_depth = 0;
+        argument_index = 2;
+    ]
+}

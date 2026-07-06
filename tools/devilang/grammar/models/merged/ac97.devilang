@@ -1,0 +1,57 @@
+struct AC97_BD {
+    addr: ptr<u32> flag align 2 [
+        bits 0..1 = 0;
+    ];
+    ctl_len: u32 flag [
+        bits 0..15;
+        bits 16..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+}
+
+pointer {
+    from = AC97_BD.addr;
+    to = AC97_BUF0;
+    align = 2;
+}
+struct AC97_BUF0 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = AC97_BD;
+    position = [
+        filename = ac97.c;
+        caller = fetch_bd;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevIchAc97.cpp;
+        caller = _ZL28ichac97R3StreamFetchNextBdleP11PDMDEVINSR3P10AC97STREAMP12AC97STREAMR3;
+        callee = _ZL20PDMDevHlpPCIPhysReadP11PDMDEVINSR3mPvm;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevIchAc97.cpp;
+        caller = _ZL20ichac97R3StreamSetUpP11PDMDEVINSR3P9AC97STATEP11AC97STATER3P10AC97STREAMP12AC97STREAMR3b;
+        callee = _ZL20PDMDevHlpPCIPhysReadP11PDMDEVINSR3mPvm;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct AC97_TMPBUF {
+    tmpbuf: bytes[0x1000] random;
+}
+
+head {
+    to = AC97_TMPBUF;
+    position = [
+        filename = ac97.c;
+        caller = write_audio;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}

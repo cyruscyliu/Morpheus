@@ -1,0 +1,936 @@
+op op_1 {
+    call drm_firmware_drivers_only;
+}
+
+op op_2 {
+    call drm_pci_register_driver;
+}
+
+op op_3 {
+    call pci_get_drvdata;
+}
+
+op op_4 {
+    call to_cirrus_primary_plane_state;
+}
+
+op op_5 {
+    call cirrus_primary_plane_atomic_destroy_state;
+}
+
+op op_6 {
+    call kzalloc;
+}
+
+op op_4 {
+    call to_cirrus_primary_plane_state;
+}
+
+op op_6 {
+    call kzalloc;
+}
+
+op op_9 {
+    call drm_plane_index;
+}
+
+op op_10 {
+    call drm_atomic_get_new_plane_state;
+}
+
+op op_4 {
+    call to_cirrus_primary_plane_state;
+}
+
+op op_12 {
+    call drm_crtc_index;
+}
+
+op op_13 {
+    call drm_atomic_get_new_crtc_state;
+}
+
+op op_14 {
+    call cirrus_convert_to;
+}
+
+op op_15 {
+    call cirrus_pitch;
+}
+
+op op_14 {
+    call cirrus_convert_to;
+}
+
+op op_17 {
+    call cirrus_format;
+}
+
+op op_10 {
+    call drm_atomic_get_new_plane_state;
+}
+
+op op_4 {
+    call to_cirrus_primary_plane_state;
+}
+
+op op_20 {
+    call to_drm_shadow_plane_state;
+}
+
+op op_9 {
+    call drm_plane_index;
+}
+
+op op_22 {
+    call drm_atomic_get_old_plane_state;
+}
+
+op op_4 {
+    call to_cirrus_primary_plane_state;
+}
+
+op op_24 {
+    mmio iowrite8_24 {
+        direction=w;
+        region=1;
+        address=0x4;
+        size=1;
+        data=0x7;
+    }
+}
+
+op op_25 {
+    mmio ioread8_25 {
+        direction=r;
+        region=1;
+        address=0x5;
+        size=1;
+    }
+}
+
+op op_26 {
+    call rreg_seq;
+}
+
+op op_27 {
+    mmio iowrite8_27 {
+        direction=w;
+        region=1;
+        address=0x4;
+        size=1;
+        data=0x7;
+    }
+}
+
+op op_28 {
+    mmio iowrite8_28 {
+        direction=w;
+        region=1;
+        address=0x5;
+        size=1;
+        data=arg((num_1 & 0xe0) | phi(0x19, 0x15, 0x17, 0x11));
+    }
+}
+
+op op_29 {
+    call wreg_seq;
+}
+
+op op_30 {
+    mmio iowrite8_30 {
+        direction=w;
+        region=1;
+        address=0xe;
+        size=1;
+        data=arg(0x5, 0x6);
+    }
+}
+
+op op_31 {
+    mmio iowrite8_31 {
+        direction=w;
+        region=1;
+        address=0xf;
+        size=1;
+        data=arg(0x40, 0x1);
+    }
+}
+
+op op_32 {
+    call wreg_gfx;
+}
+
+op op_32 {
+    call wreg_gfx;
+}
+
+op op_34 {
+    mmio ioread8_34 {
+        direction=r;
+        region=1;
+        address=0x6;
+        size=1;
+    }
+}
+
+op op_35 {
+    mmio ioread8_35 {
+        direction=r;
+        region=1;
+        address=0x6;
+        size=1;
+    }
+}
+
+op op_36 {
+    mmio ioread8_36 {
+        direction=r;
+        region=1;
+        address=0x6;
+        size=1;
+    }
+}
+
+op op_37 {
+    mmio ioread8_37 {
+        direction=r;
+        region=1;
+        address=0x6;
+        size=1;
+    }
+}
+
+op op_38 {
+    mmio iowrite8_38 {
+        direction=w;
+        region=1;
+        address=0x6;
+        size=1;
+        data=arg(phi(0xc5, 0xc5, 0xc1, 0));
+    }
+}
+
+op op_39 {
+    call wreg_hdr;
+}
+
+op op_40 {
+    call cirrus_format_set;
+}
+
+op op_41 {
+    mmio iowrite8_41 {
+        direction=w;
+        region=1;
+        address=0x14;
+        size=1;
+        data=arg(0x13, 0x1b, 0xc, 0xd, 0x1b, 0x1d, 0x11, 0, 0x1, 0x4, 0x5, 0x6, 0x12, 0x9, 0x7, 0x1a, 0x17);
+    }
+}
+
+op op_42 {
+    mmio iowrite8_42 {
+        direction=w;
+        region=1;
+        address=0x15;
+        size=1;
+        data=arg(arg(num_1) >> 0x3, (((var_2 >> 0x7) & 0x10) | ((var_2 >> 0x6) & 0x40)) | 0x22, 0, 0, num_10 & 0xf2, num_12 & 0x7f, 0x20, num_14, num_15, num_16, num_17, num_18, num_19, select(0x40, 0x60), (((((var_18 & 0x200) >> 0x4) | ((num_23 >> 0x5) & 0x8)) | select(0x10, 0x11)) | ((var_19 >> 0x7) & 0x2)) | ((var_19 >> 0x3) & 0x40), (((var_18 & 0x100) >> 0x2) | select(((num_37 >> 0x5) & 0x10), (var_39 | 0x20))) | (var_21 >> 0x2), 0x3);
+    }
+}
+
+op op_43 {
+    call wreg_crt;
+}
+
+op op_43 {
+    call wreg_crt;
+}
+
+op op_43 {
+    call wreg_crt;
+}
+
+op op_43 {
+    call wreg_crt;
+}
+
+op op_47 {
+    mmio iowrite8_47 {
+        direction=w;
+        region=1;
+        address=0x14;
+        size=1;
+        data=arg(0x1b, 0x1d);
+    }
+}
+
+op op_48 {
+    mmio ioread8_48 {
+        direction=r;
+        region=1;
+        address=0x15;
+        size=1;
+    }
+}
+
+op op_49 {
+    call rreg_crt;
+}
+
+op op_43 {
+    call wreg_crt;
+}
+
+op op_49 {
+    call rreg_crt;
+}
+
+op op_43 {
+    call wreg_crt;
+}
+
+op op_53 {
+    call cirrus_set_start_address;
+}
+
+op op_54 {
+    call cirrus_pitch_set;
+}
+
+op op_55 {
+    call iosys_map_incr;
+}
+
+op op_13 {
+    call drm_atomic_get_new_crtc_state;
+}
+
+op op_13 {
+    call drm_atomic_get_new_crtc_state;
+}
+
+op op_43 {
+    call wreg_crt;
+}
+
+op op_43 {
+    call wreg_crt;
+}
+
+op op_43 {
+    call wreg_crt;
+}
+
+op op_43 {
+    call wreg_crt;
+}
+
+op op_43 {
+    call wreg_crt;
+}
+
+op op_43 {
+    call wreg_crt;
+}
+
+op op_43 {
+    call wreg_crt;
+}
+
+op op_43 {
+    call wreg_crt;
+}
+
+op op_43 {
+    call wreg_crt;
+}
+
+op op_43 {
+    call wreg_crt;
+}
+
+op op_43 {
+    call wreg_crt;
+}
+
+op op_69 {
+    call cirrus_mode_set;
+}
+
+op op_70 {
+    mmio outb_70 {
+        direction=w;
+        region=0;
+        address=0x3c0;
+        size=1;
+        data=0x20;
+    }
+}
+
+op op_71 {
+    call IS_ERR;
+}
+
+op op_72 {
+    call PTR_ERR;
+}
+
+op op_73 {
+    call resource_size;
+}
+
+op op_73 {
+    call resource_size;
+}
+
+op op_75 {
+    call cirrus_mode_config_init;
+}
+
+op op_76 {
+    call drm_plane_helper_add;
+}
+
+op op_77 {
+    call drm_crtc_helper_add;
+}
+
+op op_12 {
+    call drm_crtc_index;
+}
+
+op op_79 {
+    call drm_crtc_mask;
+}
+
+op op_80 {
+    call drm_connector_helper_add;
+}
+
+op op_81 {
+    call cirrus_pipe_init;
+}
+
+
+bb init_module_1 {
+    op op_2;
+}
+
+bb cirrus_primary_plane_atomic_duplicate_state_20 {
+    op op_6;
+}
+
+bb cirrus_pci_remove_7 {
+    op op_3;
+}
+
+bb cirrus_pipe_init_110 {
+    op op_80;
+}
+
+bb cirrus_crtc_helper_atomic_check_73 {
+    op op_13;
+}
+
+bb cirrus_format_set_51 {
+    op op_26;
+}
+
+bb cirrus_pipe_init_105 {
+    op op_77;
+}
+
+bb cirrus_primary_plane_helper_atomic_update_50 {
+    op op_40;
+}
+
+bb cirrus_crtc_helper_atomic_enable_76 {
+    op op_13;
+}
+
+bb cirrus_pci_probe_91 {
+    op op_73;
+}
+
+bb cirrus_crtc_helper_atomic_enable_77 {
+    op op_69;
+    op op_70;
+}
+
+bb cirrus_primary_plane_helper_atomic_update_62 {
+    op op_54;
+}
+
+bb drm_crtc_mask_108 {
+    op op_12;
+}
+
+bb cirrus_reset_primary_plane_15 {
+    op op_6;
+}
+
+bb wreg_gfx_58 {
+    op op_30;
+    op op_31;
+}
+
+bb cirrus_primary_plane_helper_atomic_update_68 {
+    op op_55;
+}
+
+bb cirrus_pipe_init_103 {
+    op op_76;
+}
+
+bb wreg_seq_57 {
+    op op_27;
+    op op_28;
+}
+
+bb drm_atomic_get_old_plane_state_47 {
+    op op_9;
+}
+
+bb drm_pci_register_driver_2 {
+    op op_1;
+}
+
+bb wreg_hdr_59 {
+    op op_34;
+    op op_35;
+    op op_36;
+    op op_37;
+    op op_38;
+}
+
+bb cirrus_set_start_address_65 {
+    op op_43;
+    op op_43;
+    op op_49;
+    op op_43;
+    op op_49;
+    op op_43;
+}
+
+bb cirrus_pipe_init_107 {
+    op op_79;
+}
+
+bb cirrus_primary_plane_helper_atomic_update_45 {
+    op op_10;
+    op op_4;
+    op op_20;
+    op op_22;
+    op op_4;
+}
+
+bb cirrus_pci_probe_97 {
+    op op_75;
+}
+
+bb drm_atomic_get_new_plane_state_24 {
+    op op_9;
+}
+
+bb cirrus_primary_plane_helper_atomic_check_40 {
+    op op_17;
+}
+
+bb cirrus_pitch_set_63 {
+    op op_43;
+    op op_43;
+    op op_53;
+}
+
+bb cirrus_reset_primary_plane_12 {
+    op op_5;
+}
+
+bb cirrus_pitch_31 {
+    op op_14;
+}
+
+bb cirrus_pci_probe_88 {
+    op op_72;
+}
+
+bb drm_atomic_get_new_crtc_state_27 {
+    op op_12;
+}
+
+bb rreg_seq_52 {
+    op op_24;
+    op op_25;
+}
+
+bb cirrus_format_set_56 {
+    op op_29;
+    op op_32;
+    op op_32;
+    op op_39;
+}
+
+bb cirrus_primary_plane_helper_atomic_check_23 {
+    op op_10;
+    op op_4;
+}
+
+bb rreg_crt_66 {
+    op op_47;
+    op op_48;
+}
+
+bb cirrus_primary_plane_helper_atomic_check_30 {
+    op op_15;
+}
+
+bb cirrus_pci_probe_95 {
+    op op_73;
+}
+
+bb cirrus_mode_set_78 {
+    op op_43;
+    op op_43;
+    op op_43;
+    op op_43;
+    op op_43;
+    op op_43;
+    op op_43;
+    op op_43;
+    op op_43;
+    op op_43;
+    op op_43;
+}
+
+bb cirrus_pci_probe_101 {
+    op op_81;
+}
+
+bb cirrus_primary_plane_atomic_duplicate_state_19 {
+    op op_4;
+}
+
+bb wreg_crt_64 {
+    op op_41;
+    op op_42;
+}
+
+bb cirrus_format_41 {
+    op op_14;
+}
+
+bb cirrus_primary_plane_helper_atomic_check_26 {
+    op op_13;
+}
+
+bb cirrus_pci_probe_86 {
+    op op_71;
+}
+
+bb cirrus_primary_plane_atomic_destroy_state_13 {
+    op op_4;
+}
+
+path rreg_seq_0 {
+    bb bb_52
+}
+
+path cirrus_primary_plane_atomic_duplicate_state_0 {
+    bb bb_19
+    bb bb_20
+}
+
+path wreg_crt_0 {
+    bb bb_64
+}
+
+path drm_crtc_mask_0 {
+    bb bb_108
+}
+
+path wreg_gfx_0 {
+    bb bb_58
+}
+
+path cirrus_crtc_helper_atomic_enable_0 {
+    bb bb_76
+    bb bb_77
+}
+
+path wreg_hdr_0 {
+    bb bb_59
+}
+
+path cirrus_set_start_address_0 {
+    bb bb_65
+}
+
+path cirrus_primary_plane_helper_atomic_update_0 {
+    bb bb_45
+    bb bb_50
+    bb bb_62
+    bb bb_68
+}
+
+path cirrus_primary_plane_helper_atomic_update_1 {
+    bb bb_45
+    bb bb_50
+    bb bb_68
+}
+
+path cirrus_primary_plane_helper_atomic_update_2 {
+    bb bb_45
+    bb bb_62
+    bb bb_68
+}
+
+path cirrus_primary_plane_helper_atomic_update_3 {
+    bb bb_45
+    bb bb_68
+}
+
+path wreg_seq_0 {
+    bb bb_57
+}
+
+path drm_atomic_get_old_plane_state_0 {
+    bb bb_47
+}
+
+path cirrus_reset_primary_plane_0 {
+    bb bb_12
+    bb bb_15
+}
+
+path cirrus_reset_primary_plane_1 {
+    bb bb_15
+}
+
+path drm_atomic_get_new_plane_state_0 {
+    bb bb_24
+}
+
+path cirrus_pci_remove_0 {
+    bb bb_7
+}
+
+path cirrus_format_set_0 {
+    bb bb_51
+    bb bb_56
+}
+
+path cirrus_mode_set_0 {
+    bb bb_78
+}
+
+path cirrus_pitch_set_0 {
+    bb bb_63
+}
+
+path cirrus_primary_plane_atomic_destroy_state_0 {
+    bb bb_13
+}
+
+path cirrus_pitch_0 {
+    bb bb_31
+}
+
+path rreg_crt_0 {
+    bb bb_66
+}
+
+path cirrus_crtc_helper_atomic_check_0 {
+    bb bb_73
+}
+
+path drm_atomic_get_new_crtc_state_0 {
+    bb bb_27
+}
+
+path cirrus_pipe_init_0 {
+    bb bb_103
+    bb bb_105
+    bb bb_107
+    bb bb_110
+}
+
+path cirrus_primary_plane_helper_atomic_check_0 {
+    bb bb_23
+    bb bb_26
+    bb bb_30
+    bb bb_40
+}
+
+path cirrus_primary_plane_helper_atomic_check_1 {
+    bb bb_23
+    bb bb_30
+    bb bb_40
+}
+
+path cirrus_pci_probe_3 {
+    bb bb_86
+    bb bb_95
+    bb bb_97
+    bb bb_101
+}
+
+path cirrus_pci_probe_2 {
+    bb bb_86
+    bb bb_91
+    bb bb_97
+    bb bb_101
+}
+
+path cirrus_pci_probe_4 {
+    bb bb_86
+    bb bb_97
+    bb bb_101
+}
+
+path cirrus_pci_probe_1 {
+    bb bb_86
+    bb bb_91
+    bb bb_95
+    bb bb_97
+    bb bb_101
+}
+
+path cirrus_pci_probe_0 {
+    bb bb_86
+    bb bb_88
+}
+
+path cirrus_format_0 {
+    bb bb_41
+}
+
+path drm_pci_register_driver_0 {
+    bb bb_2
+}
+
+path init_module_0 {
+    bb bb_1
+}
+
+func rreg_seq {
+    path path_rreg_seq_0;
+}
+
+func cirrus_primary_plane_atomic_duplicate_state {
+    path path_cirrus_primary_plane_atomic_duplicate_state_0;
+}
+
+func wreg_crt {
+    path path_wreg_crt_0;
+}
+
+func drm_crtc_mask {
+    path path_drm_crtc_mask_0;
+}
+
+func wreg_gfx {
+    path path_wreg_gfx_0;
+}
+
+func cirrus_crtc_helper_atomic_enable {
+    path path_cirrus_crtc_helper_atomic_enable_0;
+}
+
+func wreg_hdr {
+    path path_wreg_hdr_0;
+}
+
+func cirrus_set_start_address {
+    path path_cirrus_set_start_address_0;
+}
+
+func cirrus_primary_plane_helper_atomic_update {
+    path path_cirrus_primary_plane_helper_atomic_update_0;
+    path path_cirrus_primary_plane_helper_atomic_update_1;
+    path path_cirrus_primary_plane_helper_atomic_update_2;
+    path path_cirrus_primary_plane_helper_atomic_update_3;
+}
+
+func wreg_seq {
+    path path_wreg_seq_0;
+}
+
+func drm_atomic_get_old_plane_state {
+    path path_drm_atomic_get_old_plane_state_0;
+}
+
+func cirrus_reset_primary_plane {
+    path path_cirrus_reset_primary_plane_0;
+    path path_cirrus_reset_primary_plane_1;
+}
+
+func drm_atomic_get_new_plane_state {
+    path path_drm_atomic_get_new_plane_state_0;
+}
+
+func cirrus_pci_remove {
+    path path_cirrus_pci_remove_0;
+}
+
+func cirrus_format_set {
+    path path_cirrus_format_set_0;
+}
+
+func cirrus_mode_set {
+    path path_cirrus_mode_set_0;
+}
+
+func cirrus_pitch_set {
+    path path_cirrus_pitch_set_0;
+}
+
+func cirrus_primary_plane_atomic_destroy_state {
+    path path_cirrus_primary_plane_atomic_destroy_state_0;
+}
+
+func cirrus_pitch {
+    path path_cirrus_pitch_0;
+}
+
+func rreg_crt {
+    path path_rreg_crt_0;
+}
+
+func cirrus_crtc_helper_atomic_check {
+    path path_cirrus_crtc_helper_atomic_check_0;
+}
+
+func drm_atomic_get_new_crtc_state {
+    path path_drm_atomic_get_new_crtc_state_0;
+}
+
+func cirrus_pipe_init {
+    path path_cirrus_pipe_init_0;
+}
+
+func cirrus_primary_plane_helper_atomic_check {
+    path path_cirrus_primary_plane_helper_atomic_check_0;
+    path path_cirrus_primary_plane_helper_atomic_check_1;
+}
+
+func cirrus_pci_probe {
+    path path_cirrus_pci_probe_3;
+    path path_cirrus_pci_probe_2;
+    path path_cirrus_pci_probe_4;
+    path path_cirrus_pci_probe_1;
+    path path_cirrus_pci_probe_0;
+}
+
+func cirrus_format {
+    path path_cirrus_format_0;
+}
+
+func drm_pci_register_driver {
+    path path_drm_pci_register_driver_0;
+}
+
+func init_module {
+    path path_init_module_0;
+}
+

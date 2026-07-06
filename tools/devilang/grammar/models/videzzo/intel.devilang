@@ -1,0 +1,68 @@
+struct INTEL_HDA_BUF0 {
+    addr: ptr<u64> align 0;
+    len: u32 immediate [
+        imm 0x1000;
+    ];
+    flags: u32 flag [
+        bits 0..0;
+        bits 1..31;
+    ];
+}
+
+pointer {
+    from = INTEL_HDA_BUF0.addr;
+    to = INTEL_HDA_BUF1;
+    align = 0;
+}
+struct INTEL_HDA_BUF1 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = INTEL_HDA_BUF0;
+    position = [
+        filename = intel-hda.c;
+        caller = intel_hda_parse_bdl;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevHdaStream.cpp;
+        caller = _Z16hdaR3StreamSetUpP11PDMDEVINSR3P8HDASTATEP9HDASTREAMP11HDASTREAMR3h;
+        callee = _ZL20PDMDevHlpPCIPhysReadP11PDMDEVINSR3mPvm;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevHdaStream.cpp;
+        caller = _ZL22hdaR3StreamDoDmaOutputP11PDMDEVINSR3P8HDASTATEP9HDASTREAMP11HDASTREAMR3jm;
+        callee = _ZL20PDMDevHlpPCIPhysReadP11PDMDEVINSR3mPvm;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct INTEL_HDA_VERB {
+    verb: u32 flag [
+        bits 0..7;
+        bits 8..19;
+        bits 20..26;
+        bits 27..27;
+        bits 28..31;
+    ];
+}
+
+head {
+    to = INTEL_HDA_VERB;
+    position = [
+        filename = intel-hda.c;
+        caller = intel_hda_corb_run;
+        callee = ldl_le_pci_dma;
+        call_depth = 0;
+        argument_index = 1;
+    ] | [
+        filename = DevHda.cpp;
+        caller = _ZL12hdaR3CmdSyncP11PDMDEVINSR3P8HDASTATEb;
+        callee = _ZL20PDMDevHlpPCIPhysReadP11PDMDEVINSR3mPvm;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}

@@ -1,0 +1,366 @@
+struct EEPRO100_TX {
+    status: u16 flag [
+        bits 0..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+    ];
+    command: u16 flag [
+        bits 0..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+    ];
+    link: u32 random;
+    tbd_array_addr: ptr<u32> align 0;
+    tcb_bytes: u16 random;
+    tx_threshold: u8 random;
+    tbd_count: u8 random;
+    tx_buf_addr0: ptr<u32> align 0;
+    tx_buf_size0: u32 flag [
+        bits 0..15;
+        bits 16..31;
+    ];
+    tx_buf_addr1: ptr<u32> align 0;
+    tx_buf_size1: u32 flag [
+        bits 0..15;
+        bits 16..31;
+    ];
+}
+
+pointer {
+    from = EEPRO100_TX.tbd_array_addr;
+    to = EEPRO100_TX_BUF | MAC_ADDR0 | CONFIGURATION | EEPRO100_TX_BUF | TX_BUFFER | EEPRO100_TX_BUF | EEPRO100_TX_BUF | EEPRO100_TX_BUF;
+    sentinel = EEPRO100_TX.command[0];
+    align = 0;
+}
+
+pointer {
+    from = EEPRO100_TX.tx_buf_addr0;
+    to = TX_BUFFER;
+    align = 0;
+}
+
+pointer {
+    from = EEPRO100_TX.tx_buf_addr1;
+    to = TX_BUFFER;
+    align = 0;
+}
+struct EEPRO100_TX_BUF {
+    buf: bytes[0xa28] random;
+}
+struct MAC_ADDR0 {
+    mac_addr0: u8 random;
+    mac_addr1: u8 random;
+    mac_addr2: u8 random;
+    mac_addr3: u8 random;
+    mac_addr4: u8 random;
+    mac_addr5: u8 random;
+}
+struct CONFIGURATION {
+    configuration0: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration1: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration2: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration3: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration4: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration5: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration6: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration7: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration8: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration9: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration10: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration11: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration12: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration13: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration14: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration15: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration16: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration17: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration18: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration19: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration20: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+    configuration21: u8 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+    ];
+}
+struct TX_BUFFER {
+    tx_buf_addr: ptr<u32> align 0;
+    tx_buf_size: u16 random;
+    tx_buf_el: u16 random;
+}
+
+pointer {
+    from = TX_BUFFER.tx_buf_addr;
+    to = EEPRO100_TX_BUF;
+    align = 0;
+}
+
+head {
+    to = EEPRO100_TX;
+    position = [
+        filename = eepro100.c;
+        caller = read_cb;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct MAC_ADDR1 {
+    mac_addr0: u8 random;
+    mac_addr1: u8 random;
+    mac_addr2: u8 random;
+    mac_addr3: u8 random;
+    mac_addr4: u8 random;
+    mac_addr5: u8 random;
+}
+
+head {
+    to = MAC_ADDR1;
+    position = [
+        filename = eepro100.c;
+        caller = set_multicast_list;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct EEPRO100_RX {
+    status: u16 flag [
+        bits 0..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+    ];
+    command: u16 flag [
+        bits 0..2;
+        bits 3..3;
+        bits 4..4;
+        bits 5..12;
+        bits 13..13;
+        bits 14..14;
+        bits 15..15;
+    ];
+    link: u32 random;
+    rx_buf_addr: ptr<u32> align 0;
+    count: u16 random;
+    size: u16 random;
+}
+
+pointer {
+    from = EEPRO100_RX.rx_buf_addr;
+    to = EEPRO100_RX_BUF;
+    align = 0;
+}
+struct EEPRO100_RX_BUF {
+    buf: bytes[256] random;
+}
+
+head {
+    to = EEPRO100_RX;
+    position = [
+        filename = eepro100.c;
+        caller = nic_receive;
+        callee = pci_read_dma;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}

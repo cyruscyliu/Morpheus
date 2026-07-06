@@ -1,0 +1,126 @@
+struct TULIP_DESCRIPTOR_RX {
+    status: u32 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+        bits 8..8;
+        bits 9..9;
+        bits 10..10;
+        bits 11..11;
+        bits 12..13;
+        bits 14..14;
+        bits 15..15;
+        bits 16..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+    control: u32 flag [
+        bits 0..10;
+        bits 11..21 = 0x7ff;
+        bits 22..22;
+        bits 23..23;
+        bits 24..24;
+        bits 25..25;
+        bits 26..26;
+        bits 27..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+    buf_addr1: ptr<u32> align 0;
+    buf_addr2: ptr<u32> align 0;
+}
+
+pointer {
+    from = TULIP_DESCRIPTOR_RX.buf_addr1;
+    to = TULIP_BUF_RX;
+    align = 0;
+}
+
+pointer {
+    from = TULIP_DESCRIPTOR_RX.buf_addr2;
+    to = TULIP_BUF_RX;
+    align = 0;
+}
+struct TULIP_BUF_RX {
+    tulip_buf: bytes[0x1000] random;
+}
+
+head {
+    to = TULIP_DESCRIPTOR_RX;
+    position = [
+        filename = tulip.c;
+        caller = tulip_receive;
+        callee = tulip_desc_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct TULIP_DESCRIPTOR_TX {
+    status: u32 flag [
+        bits 0..0;
+        bits 1..1;
+        bits 2..3;
+        bits 4..4;
+        bits 5..5;
+        bits 6..6;
+        bits 7..7;
+        bits 8..8;
+        bits 9..9;
+        bits 10..10;
+        bits 11..11;
+        bits 12..13;
+        bits 14..14;
+        bits 15..15;
+        bits 16..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+    control: u32 flag [
+        bits 0..10 = 192;
+        bits 11..21;
+        bits 22..22;
+        bits 23..23;
+        bits 24..24;
+        bits 25..25;
+        bits 26..26;
+        bits 27..27;
+        bits 28..28;
+        bits 29..29;
+        bits 30..30;
+        bits 31..31;
+    ];
+    buf_addr1: ptr<u32> align 0;
+    buf_addr2: ptr<u32> align 0;
+}
+
+pointer {
+    from = TULIP_DESCRIPTOR_TX.buf_addr1;
+    to = TULIP_BUF_TX;
+    align = 0;
+}
+
+pointer {
+    from = TULIP_DESCRIPTOR_TX.buf_addr2;
+    to = TULIP_BUF_TX;
+    align = 0;
+}
+struct TULIP_BUF_TX {
+    tulip_buf: bytes[0x1000] random;
+}
+
+head {
+    to = TULIP_DESCRIPTOR_TX;
+    position = [
+        filename = tulip.c;
+        caller = tulip_xmit_list_update;
+        callee = tulip_desc_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}

@@ -1,0 +1,121 @@
+struct link {
+    link: ptr<u32> flag align 4 [
+        bits 0..0 = 0;
+        bits 1..1;
+    ];
+}
+
+pointer {
+    from = link.link;
+    to = UHCI_BUF0;
+    align = 4;
+}
+struct UHCI_BUF0 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = link;
+    position = [
+        filename = hcd-uhci.c;
+        caller = uhci_process_frame;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}
+struct UHCI_QH {
+    link: ptr<u32> flag align 0 [
+        bits 0..0 = 0;
+        bits 1..1;
+    ];
+    el_link: ptr<u32> flag align 0 [
+        bits 0..0 = 0;
+        bits 1..1;
+    ];
+}
+
+pointer {
+    from = UHCI_QH.link;
+    to = UHCI_BUF1;
+    align = 0;
+}
+
+pointer {
+    from = UHCI_QH.el_link;
+    to = UHCI_BUF2;
+    align = 0;
+}
+struct UHCI_BUF1 {
+    buf: bytes[256] random;
+}
+struct UHCI_BUF2 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = UHCI_QH;
+    position = [
+        filename = hcd-uhci.c;
+        caller = uhci_process_frame;
+        callee = pci_dma_read;
+        call_depth = 1;
+        argument_index = 1;
+    ]
+}
+struct UHCI_TD {
+    link: ptr<u32> flag align 0 [
+        bits 0..0 = 0;
+        bits 1..1;
+    ];
+    ctrl: u32 flag [
+        bits 0..17;
+        bits 18..18;
+        bits 19..19;
+        bits 20..20;
+        bits 21..21;
+        bits 22..22;
+        bits 23..23;
+        bits 24..24;
+        bits 25..25;
+        bits 27..28;
+        bits 29..29;
+        bits 30..31;
+    ];
+    token: u32 flag [
+        bits 0..7;
+        bits 8..14 = 0;
+        bits 15..18;
+        bits 21..31;
+    ];
+    buffer: ptr<u32> align 0;
+}
+
+pointer {
+    from = UHCI_TD.link;
+    to = UHCI_BUF3;
+    align = 0;
+}
+
+pointer {
+    from = UHCI_TD.buffer;
+    to = UHCI_BUF4;
+    align = 0;
+}
+struct UHCI_BUF3 {
+    buf: bytes[256] random;
+}
+struct UHCI_BUF4 {
+    buf: bytes[256] random;
+}
+
+head {
+    to = UHCI_TD;
+    position = [
+        filename = hcd-uhci.c;
+        caller = uhci_read_td;
+        callee = pci_dma_read;
+        call_depth = 0;
+        argument_index = 1;
+    ]
+}

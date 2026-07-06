@@ -1,0 +1,230 @@
+// Intra-function state models for virtio_mmio_config_ops in
+// drivers/virtio/virtio_mmio.c.
+//
+// Symbolic register names correspond to virtio-mmio registers:
+// DEVICE_FEATURES      = 0x010
+// DEVICE_FEATURES_SEL  = 0x014
+// DRIVER_FEATURES      = 0x020
+// DRIVER_FEATURES_SEL  = 0x024
+// QUEUE_SEL            = 0x030
+// QUEUE_NUM_MAX        = 0x034
+// QUEUE_NUM            = 0x038
+// QUEUE_READY          = 0x044
+// STATUS               = 0x070
+// SHM_SEL              = 0x0ac
+// SHM_LEN_LOW          = 0x0b0
+// SHM_LEN_HIGH         = 0x0b4
+// SHM_BASE_LOW         = 0x0b8
+// SHM_BASE_HIGH        = 0x0bc
+// CONFIG_GENERATION    = 0x0fc
+// CONFIG               = 0x100
+//
+// This file focuses on grammar-expressible intra-function behavior.
+// Pure field returns such as vm_bus_name are noted but not modeled.
+
+state vm_get_features {
+  seq {
+    write32 DEVICE_FEATURES_SEL value 1
+    read32 DEVICE_FEATURES
+    call hyperarm_virtio_oracle_check(feature_hi)
+    write32 DEVICE_FEATURES_SEL value 0
+    read32 DEVICE_FEATURES
+    call hyperarm_virtio_oracle_check(feature_lo)
+  }
+}
+
+state vm_finalize_features.success {
+  seq {
+    call vring_transport_features(vdev)
+    call __virtio_test_bit(vdev, VIRTIO_F_VERSION_1)
+    write32 DRIVER_FEATURES_SEL value 1
+    write32 DRIVER_FEATURES value vdev.features >> 32
+    write32 DRIVER_FEATURES_SEL value 0
+    write32 DRIVER_FEATURES value vdev.features
+  }
+}
+
+state vm_finalize_features.reject_v2_without_version1 {
+  seq {
+    call vring_transport_features(vdev)
+    call __virtio_test_bit(vdev, VIRTIO_F_VERSION_1)
+    call dev_err
+  }
+}
+
+state vm_get.version1 {
+  repeat {
+    read8 CONFIG + offset + i
+  }
+}
+
+state vm_get.len1 {
+  seq {
+    read8 CONFIG + offset
+    call memcpy
+  }
+}
+
+state vm_get.len2 {
+  seq {
+    read16 CONFIG + offset
+    call memcpy
+  }
+}
+
+state vm_get.len4 {
+  seq {
+    read32 CONFIG + offset
+    call memcpy
+  }
+}
+
+state vm_get.len8 {
+  seq {
+    read32 CONFIG + offset
+    call memcpy
+    read32 CONFIG + offset + 4
+    call memcpy
+  }
+}
+
+state vm_set.version1 {
+  repeat {
+    write8 CONFIG + offset + i value byte
+  }
+}
+
+state vm_set.len1 {
+  seq {
+    call memcpy
+    write8 CONFIG + offset value val8
+  }
+}
+
+state vm_set.len2 {
+  seq {
+    call memcpy
+    write16 CONFIG + offset value val16
+  }
+}
+
+state vm_set.len4 {
+  seq {
+    call memcpy
+    write32 CONFIG + offset value val32
+  }
+}
+
+state vm_set.len8 {
+  seq {
+    call memcpy
+    write32 CONFIG + offset value val32_lo
+    call memcpy
+    write32 CONFIG + offset + 4 value val32_hi
+  }
+}
+
+// vm_generation.version1 returns constant 0 and has no MMIO side effect.
+state vm_generation.version2 {
+  seq {
+    read32 CONFIG_GENERATION
+  }
+}
+
+state vm_get_status {
+  seq {
+    read32 STATUS
+  }
+}
+
+state vm_set_status {
+  seq {
+    call BUG_ON(status)
+    write32 STATUS value status
+  }
+}
+
+state vm_reset {
+  seq {
+    write32 STATUS value 0
+  }
+}
+
+state vm_notify {
+  seq {
+    write32 QUEUE_NOTIFY value vq.index
+  }
+}
+
+state vm_notify_with_data {
+  seq {
+    call vring_notification_data(vq)
+    write32 QUEUE_NOTIFY value data
+  }
+}
+
+state vm_find_vqs.success {
+  seq {
+    call platform_get_irq(vm_dev.pdev, 0)
+    call request_irq
+    call of_property_read_bool
+    call enable_irq_wake
+    repeat {
+      write32 QUEUE_SEL value queue_idx
+      read32 QUEUE_READY
+      read32 QUEUE_NUM_MAX
+      write32 QUEUE_NUM value virtqueue_get_vring_size(vq)
+      ...
+      write32 QUEUE_READY value 1
+    }
+  }
+}
+
+state vm_find_vqs.error {
+  seq {
+    call platform_get_irq(vm_dev.pdev, 0)
+    call request_irq
+    repeat {
+      call vm_setup_vq(vdev, queue_idx)
+    }
+    call vm_del_vqs(vdev)
+    call PTR_ERR(vqs_i)
+  }
+}
+
+state vm_del_vqs {
+  seq {
+    repeat {
+      call vm_del_vq(vq)
+    }
+    call platform_get_irq(vm_dev.pdev, 0)
+    call free_irq
+  }
+}
+
+state vm_get_shm_region.missing {
+  seq {
+    write32 SHM_SEL value id
+    read32 SHM_LEN_LOW
+    read32 SHM_LEN_HIGH
+  }
+}
+
+state vm_get_shm_region.present {
+  seq {
+    write32 SHM_SEL value id
+    read32 SHM_LEN_LOW
+    read32 SHM_LEN_HIGH
+    read32 SHM_BASE_LOW
+    read32 SHM_BASE_HIGH
+  }
+}
+
+state vm_synchronize_cbs {
+  seq {
+    call platform_get_irq(vm_dev.pdev, 0)
+    call synchronize_irq
+  }
+}
+
+// vm_bus_name returns vm_dev->pdev->name and has no MMIO side effect.

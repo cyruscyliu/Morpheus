@@ -1,0 +1,803 @@
+op op_1 {
+    mmio readb_1 {
+        direction=r;
+        region=0;
+        address=0x1;
+        size=1;
+    }
+}
+
+op op_2 {
+    mmio writeb_2 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=1;
+        data=0x10;
+    }
+}
+
+op op_3 {
+    mmio writeb_3 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=1;
+        data=0x20;
+    }
+}
+
+op op_4 {
+    mmio writeb_4 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=1;
+        data=0x40;
+    }
+}
+
+op op_5 {
+    mmio writeb_5 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=1;
+        data=0x80;
+    }
+}
+
+op op_6 {
+    mmio writeb_6 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x7;
+    }
+}
+
+op op_7 {
+    mmio writeb_7 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0xf;
+    }
+}
+
+op op_8 {
+    mmio writeb_8 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0xe6;
+    }
+}
+
+op op_9 {
+    mmio writeb_9 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0xc5;
+    }
+}
+
+op op_10 {
+    mmio writeb_10 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x8;
+    }
+}
+
+op op_11 {
+    mmio writeb_11 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x3;
+    }
+}
+
+op op_12 {
+    mmio writeb_12 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x4d;
+    }
+}
+
+op op_13 {
+    mmio writeb_13 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x10;
+    }
+}
+
+op op_14 {
+    mmio writeb_14 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x13;
+    }
+}
+
+op op_15 {
+    mmio writeb_15 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x12;
+    }
+}
+
+op op_16 {
+    mmio writeb_16 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x4;
+    }
+}
+
+op op_17 {
+    mmio writeb_17 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0xe;
+    }
+}
+
+op op_18 {
+    mmio writeb_18 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0xea;
+    }
+}
+
+op op_19 {
+    mmio writeb_19 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x14;
+    }
+}
+
+op op_20 {
+    mmio writeb_20 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x94;
+    }
+}
+
+op op_21 {
+    mmio writeb_21 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x8f;
+    }
+}
+
+op op_22 {
+    mmio writeb_22 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0xcf;
+    }
+}
+
+op op_23 {
+    mmio writeb_23 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x18;
+    }
+}
+
+op op_24 {
+    mmio writeb_24 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x2e;
+    }
+}
+
+op op_25 {
+    mmio writeb_25 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x8e;
+    }
+}
+
+op op_26 {
+    mmio writeb_26 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x4e;
+    }
+}
+
+op op_27 {
+    mmio writeb_27 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x27;
+    }
+}
+
+op op_28 {
+    mmio writeb_28 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0xef;
+    }
+}
+
+op op_29 {
+    mmio writeb_29 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x33;
+    }
+}
+
+op op_30 {
+    mmio writeb_30 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=num_1 & 0x3;
+    }
+}
+
+op op_31 {
+    mmio writeb_31 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=num_0;
+    }
+}
+
+op op_32 {
+    mmio writeb_32 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x0;
+    }
+}
+
+op op_33 {
+    mmio writeb_33 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x2;
+    }
+}
+
+op op_34 {
+    mmio writeb_34 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x3;
+    }
+}
+
+op op_35 {
+    mmio writeb_35 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x1a;
+    }
+}
+
+op op_36 {
+    mmio writeb_36 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x3a;
+    }
+}
+
+op op_37 {
+    mmio writeb_37 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0xc0;
+    }
+}
+
+op op_38 {
+    mmio writeb_38 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=num_1 & 0xf;
+    }
+}
+
+op op_39 {
+    mmio writeb_39 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=num_1 & 0x7;
+    }
+}
+
+op op_40 {
+    mmio writeb_40 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x2a;
+    }
+}
+
+op op_41 {
+    mmio writeb_41 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0xf6;
+    }
+}
+
+op op_42 {
+    mmio writeb_42 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x1b;
+    }
+}
+
+op op_43 {
+    mmio writeb_43 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x23;
+    }
+}
+
+op op_44 {
+    mmio writeb_44 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x25;
+    }
+}
+
+op op_45 {
+    mmio writeb_45 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=0x1c;
+    }
+}
+
+op op_46 {
+    mmio writeb_46 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=num_1 & 0x2;
+    }
+}
+
+op op_47 {
+    mmio writeb_47 {
+        direction=w;
+        region=0;
+        address=0x4;
+        size=1;
+        data=0xff;
+    }
+}
+
+op op_48 {
+    mmio writeb_48 {
+        direction=w;
+        region=0;
+        address=0x5;
+        size=1;
+        data=num_1 & 0x3f;
+    }
+}
+
+op op_49 {
+    mmio readb_49 {
+        direction=r;
+        region=0;
+        address=0x0;
+        size=1;
+    }
+}
+
+op op_50 {
+    mmio readb_50 {
+        direction=r;
+        region=0;
+        address=0x8;
+        size=1;
+    }
+}
+
+
+bb fdc_send_seek_1 {
+    op op_7;
+    op op_30;
+    op op_31;
+}
+
+bb fdc_recalibrate_floppy_2 {
+    op op_6;
+    op op_30;
+}
+
+bb fdc_perpendicular_mode_3 {
+    op op_15;
+    op op_32;
+}
+
+bb fdc_perpendicular_mode_4 {
+    op op_15;
+    op op_33;
+}
+
+bb fdc_perpendicular_mode_5 {
+    op op_15;
+    op op_34;
+}
+
+bb fdc_fdc_configure_6 {
+    op op_14;
+    op op_32;
+    op op_35;
+    op op_32;
+}
+
+bb fdc_fdc_configure_7 {
+    op op_14;
+    op op_32;
+    op op_36;
+    op op_32;
+}
+
+bb fdc_fdc_specify_8 {
+    op op_25;
+    op op_30;
+    op op_37;
+    op op_11;
+    op op_31;
+    op op_31;
+}
+
+bb fdc_setup_format_params_9 {
+    op op_12;
+    op op_38;
+    op op_39;
+    op op_31;
+    op op_40;
+    op op_41;
+}
+
+bb fdc_setup_format_params_10 {
+    op op_12;
+    op op_38;
+    op op_39;
+    op op_31;
+    op op_42;
+    op op_41;
+}
+
+bb fdc_setup_format_params_11 {
+    op op_12;
+    op op_38;
+    op op_39;
+    op op_31;
+    op op_43;
+    op op_41;
+}
+
+bb fdc_setup_format_params_12 {
+    op op_12;
+    op op_38;
+    op op_39;
+    op op_31;
+    op op_44;
+    op op_41;
+}
+
+bb fdc_setup_format_params_13 {
+    op op_12;
+    op op_38;
+    op op_39;
+    op op_31;
+    op op_45;
+    op op_41;
+}
+
+bb fdc_make_raw_rw_request_14 {
+    op op_8;
+    op op_38;
+    op op_38;
+    op op_46;
+}
+
+bb fdc_make_raw_rw_request_15 {
+    op op_9;
+    op op_38;
+    op op_38;
+    op op_46;
+}
+
+bb fdc_make_raw_rw_request_16 {
+    op op_48;
+    op op_39;
+    op op_31;
+}
+
+bb fdc_make_raw_rw_request_18 {
+    op op_40;
+}
+
+bb fdc_make_raw_rw_request_19 {
+    op op_42;
+}
+
+bb fdc_make_raw_rw_request_20 {
+    op op_43;
+}
+
+bb fdc_make_raw_rw_request_21 {
+    op op_44;
+}
+
+bb fdc_make_raw_rw_request_22 {
+    op op_45;
+}
+
+bb fdc_make_raw_rw_request_23 {
+    op op_5;
+}
+
+bb fdc_make_raw_rw_request_24 {
+    op op_47;
+}
+
+path fdc_make_raw_rw_request_0 {
+    bb bb_14
+    bb bb_16
+    bb bb_18
+    bb bb_23
+}
+
+path fdc_make_raw_rw_request_1 {
+    bb bb_14
+    bb bb_16
+    bb bb_18
+    bb bb_24
+}
+
+path fdc_make_raw_rw_request_2 {
+    bb bb_14
+    bb bb_16
+    bb bb_19
+    bb bb_23
+}
+
+path fdc_make_raw_rw_request_3 {
+    bb bb_14
+    bb bb_16
+    bb bb_19
+    bb bb_24
+}
+
+path fdc_make_raw_rw_request_4 {
+    bb bb_14
+    bb bb_16
+    bb bb_20
+    bb bb_23
+}
+
+path fdc_make_raw_rw_request_5 {
+    bb bb_14
+    bb bb_16
+    bb bb_20
+    bb bb_24
+}
+
+path fdc_make_raw_rw_request_6 {
+    bb bb_14
+    bb bb_16
+    bb bb_21
+    bb bb_23
+}
+
+path fdc_make_raw_rw_request_7 {
+    bb bb_14
+    bb bb_16
+    bb bb_21
+    bb bb_24
+}
+
+path fdc_make_raw_rw_request_8 {
+    bb bb_14
+    bb bb_16
+    bb bb_22
+    bb bb_23
+}
+
+path fdc_make_raw_rw_request_9 {
+    bb bb_14
+    bb bb_16
+    bb bb_22
+    bb bb_24
+}
+
+path fdc_make_raw_rw_request_10 {
+    bb bb_15
+    bb bb_16
+    bb bb_18
+    bb bb_23
+}
+
+path fdc_make_raw_rw_request_11 {
+    bb bb_15
+    bb bb_16
+    bb bb_18
+    bb bb_24
+}
+
+path fdc_make_raw_rw_request_12 {
+    bb bb_15
+    bb bb_16
+    bb bb_19
+    bb bb_23
+}
+
+path fdc_make_raw_rw_request_13 {
+    bb bb_15
+    bb bb_16
+    bb bb_19
+    bb bb_24
+}
+
+path fdc_make_raw_rw_request_14 {
+    bb bb_15
+    bb bb_16
+    bb bb_20
+    bb bb_23
+}
+
+path fdc_make_raw_rw_request_15 {
+    bb bb_15
+    bb bb_16
+    bb bb_20
+    bb bb_24
+}
+
+path fdc_make_raw_rw_request_16 {
+    bb bb_15
+    bb bb_16
+    bb bb_21
+    bb bb_23
+}
+
+path fdc_make_raw_rw_request_17 {
+    bb bb_15
+    bb bb_16
+    bb bb_21
+    bb bb_24
+}
+
+path fdc_make_raw_rw_request_18 {
+    bb bb_15
+    bb bb_16
+    bb bb_22
+    bb bb_23
+}
+
+path fdc_make_raw_rw_request_19 {
+    bb bb_15
+    bb bb_16
+    bb bb_22
+    bb bb_24
+}
+
+func fdc_make_raw_rw_request {
+    path path_fdc_make_raw_rw_request_0;
+    path path_fdc_make_raw_rw_request_1;
+    path path_fdc_make_raw_rw_request_2;
+    path path_fdc_make_raw_rw_request_3;
+    path path_fdc_make_raw_rw_request_4;
+    path path_fdc_make_raw_rw_request_5;
+    path path_fdc_make_raw_rw_request_6;
+    path path_fdc_make_raw_rw_request_7;
+    path path_fdc_make_raw_rw_request_8;
+    path path_fdc_make_raw_rw_request_9;
+    path path_fdc_make_raw_rw_request_10;
+    path path_fdc_make_raw_rw_request_11;
+    path path_fdc_make_raw_rw_request_12;
+    path path_fdc_make_raw_rw_request_13;
+    path path_fdc_make_raw_rw_request_14;
+    path path_fdc_make_raw_rw_request_15;
+    path path_fdc_make_raw_rw_request_16;
+    path path_fdc_make_raw_rw_request_17;
+    path path_fdc_make_raw_rw_request_18;
+    path path_fdc_make_raw_rw_request_19;
+}
+

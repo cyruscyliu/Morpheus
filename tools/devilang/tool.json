@@ -44,13 +44,25 @@
         "aliases": ["filter"],
         "path": true
       },
+      "kallgraph-text": {
+        "aliases": ["kallgraph-text", "kallgraphText"],
+        "path": true
+      },
       "booting-entry": {
         "aliases": ["booting-entry", "bootingEntry"],
         "repeatable": true
       },
+      "booting-entry-list": {
+        "aliases": ["booting-entry-list", "bootingEntryList"],
+        "path": true
+      },
       "runtime-entry": {
         "aliases": ["runtime-entry", "runtimeEntry"],
         "repeatable": true
+      },
+      "runtime-entry-list": {
+        "aliases": ["runtime-entry-list", "runtimeEntryList"],
+        "path": true
       },
       "booting-machine-name": {
         "aliases": ["booting-machine-name", "bootingMachineName"]
@@ -83,11 +95,11 @@
     "modes": ["local"],
     "local": {
       "sourceTemplate": "tools/devilang/source",
-      "buildDirTemplate": "tools/devilang/build",
+      "buildDirTemplate": "tools/devilang/builds/{buildDirKey}/build",
       "outputDirTemplate": "tools/devilang/builds/{buildDirKey}/output",
       "artifacts": {
         "build-dir": {
-          "pathTemplate": "tools/devilang/build"
+          "pathTemplate": "tools/devilang/builds/{buildDirKey}/build"
         },
         "output-dir": {
           "pathTemplate": "tools/devilang/builds/{buildDirKey}/output"
@@ -133,6 +145,9 @@
             "llbase-contract",
             "llbic-json",
             "filter",
+            "kallgraph-text",
+            "booting-entry-list",
+            "runtime-entry-list",
             "booting-machine-name",
             "runtime-machine-name"
           ],

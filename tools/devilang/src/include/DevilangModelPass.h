@@ -18,6 +18,7 @@ struct PhaseRequest {
 
 struct BuildRequest {
   std::vector<PhaseRequest> phases;
+  std::map<std::string, std::vector<std::string>> indirectCalls;
 };
 
 class DevilangModelPass : public llvm::PassInfoMixin<DevilangModelPass> {

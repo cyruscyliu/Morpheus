@@ -3,6 +3,7 @@ set -euo pipefail
 
 tool_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${tool_root}/../_shared/scripts/parallelism.sh"
+repo_root="$(cd "${tool_root}/../.." && pwd)"
 runtime_helper_default="$(cd "${tool_root}/../llbase/scripts" && pwd)/runtime.sh"
 result_file="${MORPHEUS_DEVILANG_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 output_dir="${MORPHEUS_DEVILANG_OUTPUT:?}"
@@ -18,7 +19,10 @@ booting_entry_file="${MORPHEUS_DEVILANG_BOOTING_ENTRY_FILE:-}"
 booting_entry_inline="${MORPHEUS_DEVILANG_BOOTING_ENTRY:-}"
 runtime_entry_file="${MORPHEUS_DEVILANG_RUNTIME_ENTRY_FILE:-}"
 runtime_entry_inline="${MORPHEUS_DEVILANG_RUNTIME_ENTRY:-}"
+booting_entry_list="${MORPHEUS_DEVILANG_BOOTING_ENTRY_LIST:-}"
+runtime_entry_list="${MORPHEUS_DEVILANG_RUNTIME_ENTRY_LIST:-}"
 filter_path="${MORPHEUS_DEVILANG_FILTER:-}"
+kallgraph_text="${MORPHEUS_DEVILANG_KALLGRAPH_TEXT:-}"
 booting_machine_name="${MORPHEUS_DEVILANG_BOOTING_MACHINE_NAME:-booting}"
 runtime_machine_name="${MORPHEUS_DEVILANG_RUNTIME_MACHINE_NAME:-runtime}"
 log_file="${output_dir}/devilang.log"
@@ -90,10 +94,31 @@ for (const item of items) {
 EOF
 }
 
+if [ -n "${filter_path}" ] && [[ "${filter_path}" != /* ]]; then
+  filter_path="${repo_root}/${filter_path#./}"
+fi
+if [ -n "${booting_entry_list}" ] && [[ "${booting_entry_list}" != /* ]]; then
+  booting_entry_list="${repo_root}/${booting_entry_list#./}"
+fi
+if [ -n "${runtime_entry_list}" ] && [[ "${runtime_entry_list}" != /* ]]; then
+  runtime_entry_list="${repo_root}/${runtime_entry_list#./}"
+fi
+if [ -n "${kallgraph_text}" ] && [[ "${kallgraph_text}" != /* ]]; then
+  kallgraph_text="${repo_root}/${kallgraph_text#./}"
+fi
+
 collect_list "${module_file}" "${module_inline}" module_paths
 collect_list "${module_relative_file}" "${module_relative_inline}" module_relative_paths
-collect_list "${booting_entry_file}" "${booting_entry_inline}" booting_entries
-collect_list "${runtime_entry_file}" "${runtime_entry_inline}" runtime_entries
+if [ -n "${booting_entry_list}" ]; then
+  collect_list "${booting_entry_list}" "" booting_entries
+else
+  collect_list "${booting_entry_file}" "${booting_entry_inline}" booting_entries
+fi
+if [ -n "${runtime_entry_list}" ]; then
+  collect_list "${runtime_entry_list}" "" runtime_entries
+else
+  collect_list "${runtime_entry_file}" "${runtime_entry_inline}" runtime_entries
+fi
 
 resolve_modules_for_entries() {
   local llbic_json_path="$1"
@@ -314,6 +339,15 @@ if [ "${#runtime_entries[@]}" -gt 0 ]; then
   for entry in "${runtime_entries[@]}"; do
     cmd+=("--runtime-entry" "${entry}")
   done
+fi
+if [ -n "${kallgraph_text}" ]; then
+  [ -f "${kallgraph_text}" ] || {
+    echo "missing kallgraph text: ${kallgraph_text}" >&2
+    exit 1
+  }
+  kallgraph_copy="${output_dir}/$(basename "${kallgraph_text}")"
+  cp "${kallgraph_text}" "${kallgraph_copy}"
+  cmd+=("--kallgraph-text" "${kallgraph_copy}")
 fi
 
 set +e

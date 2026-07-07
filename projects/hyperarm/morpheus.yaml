@@ -351,6 +351,40 @@ workflows:
           - drivers/net/virtio_net.c
           - --scope-name
           - virtio-net-mmio-devilang
+      - id: llcg_kallgraph_scope
+        tool: llcg
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --source-dir
+          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - --generator
+          - files
+          - --file
+          - drivers/virtio/virtio.c
+          - --file
+          - drivers/virtio/virtio_anchor.c
+          - --file
+          - drivers/virtio/virtio_mmio.c
+          - --file
+          - drivers/virtio/virtio_ring.c
+          - --file
+          - drivers/net/virtio_net.c
+          - --scope-name
+          - virtio-net-mmio-devilang-kallgraph
+      - id: llcg_run
+        tool: llcg
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --llbic-json
+          - "{{steps.llbic_build.artifacts.llbic-json.location}}"
+          - --all-bc-list
+          - "{{steps.llbic_build.artifacts.bitcode-files.location}}"
+          - --filter
+          - "{{steps.llcg_kallgraph_scope.artifacts.mutator_manifest.location}}"
       - id: devilang_exec
         tool: devilang
         command: exec
@@ -361,88 +395,12 @@ workflows:
           - "{{steps.llbic_build.artifacts.llbic-json.location}}"
           - --filter
           - "{{steps.llcg_mutator.artifacts.source_list.location}}"
-          - --booting-entry
-          - virtio_mmio_probe
-          - --booting-entry
-          - virtnet_probe
-          - --runtime-entry
-          - virtnet_open
-          - --runtime-entry
-          - virtnet_close
-          - --runtime-entry
-          - start_xmit
-          - --runtime-entry
-          - eth_validate_addr
-          - --runtime-entry
-          - virtnet_set_mac_address
-          - --runtime-entry
-          - virtnet_set_rx_mode
-          - --runtime-entry
-          - virtnet_stats
-          - --runtime-entry
-          - virtnet_vlan_rx_add_vid
-          - --runtime-entry
-          - virtnet_vlan_rx_kill_vid
-          - --runtime-entry
-          - virtnet_xdp
-          - --runtime-entry
-          - virtnet_xdp_xmit
-          - --runtime-entry
-          - virtnet_xsk_wakeup
-          - --runtime-entry
-          - passthru_features_check
-          - --runtime-entry
-          - virtnet_get_phys_port_name
-          - --runtime-entry
-          - virtnet_set_features
-          - --runtime-entry
-          - virtnet_tx_timeout
-          - --runtime-entry
-          - virtnet_get_drvinfo
-          - --runtime-entry
-          - ethtool_op_get_link
-          - --runtime-entry
-          - virtnet_get_ringparam
-          - --runtime-entry
-          - virtnet_set_ringparam
-          - --runtime-entry
-          - virtnet_get_strings
-          - --runtime-entry
-          - virtnet_get_sset_count
-          - --runtime-entry
-          - virtnet_get_ethtool_stats
-          - --runtime-entry
-          - virtnet_set_channels
-          - --runtime-entry
-          - virtnet_get_channels
-          - --runtime-entry
-          - ethtool_op_get_ts_info
-          - --runtime-entry
-          - virtnet_get_link_ksettings
-          - --runtime-entry
-          - virtnet_set_link_ksettings
-          - --runtime-entry
-          - virtnet_set_coalesce
-          - --runtime-entry
-          - virtnet_get_coalesce
-          - --runtime-entry
-          - virtnet_set_per_queue_coalesce
-          - --runtime-entry
-          - virtnet_get_per_queue_coalesce
-          - --runtime-entry
-          - virtnet_get_rxfh_key_size
-          - --runtime-entry
-          - virtnet_get_rxfh_indir_size
-          - --runtime-entry
-          - virtnet_get_rxfh
-          - --runtime-entry
-          - virtnet_set_rxfh
-          - --runtime-entry
-          - virtnet_get_hashflow
-          - --runtime-entry
-          - virtnet_set_hashflow
-          - --runtime-entry
-          - virtnet_get_rx_ring_count
+          - --kallgraph-text
+          - "{{steps.llcg_run.artifacts.kallgraph_text.location}}"
+          - --booting-entry-list
+          - projects/hyperarm/workspace/tools/devilang/booting-entries.txt
+          - --runtime-entry-list
+          - projects/hyperarm/workspace/tools/devilang/runtime-entries.txt
           - --booting-machine-name
           - virtio_net_mmio_booting
           - --runtime-machine-name

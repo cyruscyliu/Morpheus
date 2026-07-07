@@ -3,17 +3,23 @@
 #include <algorithm>
 #include <cctype>
 #include <map>
+#include <optional>
 #include <set>
+#include <cstdlib>
 #include <string>
 #include <sstream>
 #include <utility>
 #include <vector>
 
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
@@ -28,8 +34,12 @@ using llvm::BranchInst;
 using llvm::CallBase;
 using llvm::ConstantInt;
 using llvm::Function;
+using llvm::GetElementPtrInst;
 using llvm::Instruction;
+using llvm::LoadInst;
 using llvm::Module;
+using llvm::PHINode;
+using llvm::StoreInst;
 using llvm::StringRef;
 using llvm::Value;
 
@@ -105,6 +115,18 @@ bool isSgFunction(StringRef name) {
          name == "sg_next";
 }
 
+bool isPrunedHelper(StringRef name) {
+  return name.startswith("kzalloc_noprof") ||
+         name.startswith("kmalloc") ||
+         name.startswith("__kmalloc") ||
+         name.startswith("__kzalloc") ||
+         name.startswith("kfree") ||
+         name.startswith("memset") ||
+         name.startswith("memcpy") ||
+         name == "netdev_priv" ||
+         name == "INIT_LIST_HEAD";
+}
+
 unsigned ioWidthFromName(StringRef name) {
   if (name.contains("64") || name.endswith("q")) {
     return 64;
@@ -118,10 +140,45 @@ unsigned ioWidthFromName(StringRef name) {
   return 8;
 }
 
+std::optional<unsigned> passthroughArgumentIndexForPrunedHelper(StringRef name) {
+  if (name == "netdev_priv") {
+    return 0;
+  }
+  if (name.startswith("memset") || name.startswith("memcpy")) {
+    return 0;
+  }
+  return std::nullopt;
+}
+
+std::string trimPath(StringRef path) {
+  return path.trim().str();
+}
+
+bool parseLocationToken(StringRef token, std::string &path, unsigned &line) {
+  const size_t colon = token.rfind(':');
+  if (colon == StringRef::npos) {
+    return false;
+  }
+  StringRef pathPart = token.substr(0, colon).trim();
+  StringRef linePart = token.substr(colon + 1).trim();
+  unsigned parsed = 0;
+  if (pathPart.empty() || linePart.getAsInteger(10, parsed)) {
+    return false;
+  }
+  path = pathPart.str();
+  line = parsed;
+  return true;
+}
+
 class PhaseBuilder {
 public:
-  PhaseBuilder(Module &module, PhaseRequest request)
-      : module_(module), request_(std::move(request)) {
+  PhaseBuilder(
+      Module &module,
+      PhaseRequest request,
+      const std::map<std::string, std::vector<std::string>> &indirectCalls)
+      : module_(module),
+        request_(std::move(request)),
+        indirectCalls_(indirectCalls) {
     model_.name = request_.machineName;
   }
 
@@ -135,14 +192,228 @@ public:
   }
 
 private:
+  enum class Relevance {
+    Unknown,
+    Visiting,
+    Relevant,
+    Irrelevant,
+  };
+
   Module &module_;
   PhaseRequest request_;
   MachineModel model_;
   unsigned scratchCounter_ = 0;
   unsigned labelCounter_ = 0;
+  const std::map<std::string, std::vector<std::string>> &indirectCalls_;
+  std::map<const Function *, Relevance> relevanceCache_;
+  std::map<const Value *, std::string> valueNames_;
+  std::set<const Value *> renderingValues_;
+
+  std::optional<std::vector<std::string>> resolveIndirectCallees(
+      const CallBase &call) {
+    if (llvm::dyn_cast<Function>(call.getCalledOperand()->stripPointerCasts())) {
+      return std::nullopt;
+    }
+
+    const llvm::DebugLoc &debugLoc = call.getDebugLoc();
+    if (!debugLoc) {
+      return std::nullopt;
+    }
+
+    const llvm::DILocation *location = debugLoc.get();
+    const llvm::DIScope *scope = location->getScope();
+    const auto *file = scope ? scope->getFile() : nullptr;
+    if (!file) {
+      return std::nullopt;
+    }
+
+    const std::string filename = trimPath(file->getFilename());
+    const std::string directory = trimPath(file->getDirectory());
+    const unsigned line = location->getLine();
+    if (filename.empty() || line == 0) {
+      return std::nullopt;
+    }
+
+    std::string combined = filename;
+    if (!directory.empty()) {
+      combined = directory;
+      if (!combined.empty() && combined.back() != '/') {
+        combined += "/";
+      }
+      combined += filename;
+    }
+
+    std::vector<std::string> matches;
+    for (const auto &kv : indirectCalls_) {
+      std::string callsitePath;
+      unsigned callsiteLine = 0;
+      if (!parseLocationToken(kv.first, callsitePath, callsiteLine) ||
+          callsiteLine != line) {
+        continue;
+      }
+      if (callsitePath != combined &&
+          callsitePath != filename &&
+          !(callsitePath.size() > filename.size() &&
+            StringRef(callsitePath).endswith(filename)) &&
+          !(combined.size() > callsitePath.size() &&
+            StringRef(combined).endswith(callsitePath))) {
+        continue;
+      }
+      matches.insert(matches.end(), kv.second.begin(), kv.second.end());
+    }
+    if (matches.empty()) {
+      return std::nullopt;
+    }
+    std::sort(matches.begin(), matches.end());
+    matches.erase(std::unique(matches.begin(), matches.end()), matches.end());
+    return matches;
+  }
+
+  const Value *findStoredValueForPointer(const Value *pointer,
+                                         const Instruction *context) {
+    llvm::SmallPtrSet<const Value *, 16> visited;
+    const StoreInst *store = findUniqueStoreForPointer(pointer, context, visited);
+    if (!store) {
+      return nullptr;
+    }
+    return store->getValueOperand();
+  }
+
+  const StoreInst *findUniqueStoreForPointer(
+      const Value *pointer,
+      const Instruction *context,
+      llvm::SmallPtrSetImpl<const Value *> &visited) {
+    if (!pointer || !visited.insert(pointer).second) {
+      return nullptr;
+    }
+
+    const StoreInst *matchingStore = nullptr;
+    for (const llvm::User *user : pointer->users()) {
+      if (const auto *store = llvm::dyn_cast<StoreInst>(user)) {
+        if (store->getPointerOperand() != pointer) {
+          continue;
+        }
+        if (!context || store->getFunction() != context->getFunction()) {
+          continue;
+        }
+        if (matchingStore) {
+          return nullptr;
+        }
+        matchingStore = store;
+        continue;
+      }
+
+      const auto *instruction = llvm::dyn_cast<Instruction>(user);
+      if (!instruction) {
+        continue;
+      }
+      if (instruction->getOpcode() != llvm::Instruction::BitCast &&
+          instruction->getOpcode() != llvm::Instruction::AddrSpaceCast) {
+        continue;
+      }
+      const StoreInst *aliasStore =
+          findUniqueStoreForPointer(instruction, context, visited);
+      if (!aliasStore) {
+        continue;
+      }
+      if (matchingStore && matchingStore != aliasStore) {
+        return nullptr;
+      }
+      matchingStore = aliasStore;
+    }
+
+    return matchingStore;
+  }
+
+  bool isFunctionRelevant(const Function &function) {
+    auto it = relevanceCache_.find(&function);
+    if (it != relevanceCache_.end()) {
+      if (it->second == Relevance::Relevant) {
+        return true;
+      }
+      if (it->second == Relevance::Irrelevant) {
+        return false;
+      }
+      if (it->second == Relevance::Visiting) {
+        return false;
+      }
+    }
+
+    if (function.isIntrinsic() || isPrunedHelper(function.getName())) {
+      relevanceCache_[&function] = Relevance::Irrelevant;
+      return false;
+    }
+
+    relevanceCache_[&function] = Relevance::Visiting;
+
+    if (function.isDeclaration()) {
+      const bool relevant =
+          isReadLeaf(function.getName()) ||
+          isWriteLeaf(function.getName()) ||
+          isSgFunction(function.getName());
+      relevanceCache_[&function] =
+          relevant ? Relevance::Relevant : Relevance::Irrelevant;
+      return relevant;
+    }
+
+    bool relevant = false;
+    for (const BasicBlock &block : function) {
+      for (const Instruction &instruction : block) {
+        const auto *call = llvm::dyn_cast<CallBase>(&instruction);
+        if (!call) {
+          continue;
+        }
+        const Function *callee =
+            llvm::dyn_cast<Function>(call->getCalledOperand()->stripPointerCasts());
+        if (callee && callee->isIntrinsic()) {
+          continue;
+        }
+        if (!callee) {
+          if (const auto resolved = resolveIndirectCallees(*call)) {
+            for (const std::string &calleeName : *resolved) {
+              const Function *resolvedCallee = module_.getFunction(calleeName);
+              if (!resolvedCallee || resolvedCallee->isIntrinsic()) {
+                continue;
+              }
+              if (isReadLeaf(resolvedCallee->getName()) ||
+                  isWriteLeaf(resolvedCallee->getName()) ||
+                  isSgFunction(resolvedCallee->getName()) ||
+                  isFunctionRelevant(*resolvedCallee)) {
+                relevant = true;
+                break;
+              }
+            }
+          }
+          if (relevant) {
+            break;
+          }
+          continue;
+        }
+        if (isReadLeaf(callee->getName()) || isWriteLeaf(callee->getName()) ||
+            isSgFunction(callee->getName())) {
+          relevant = true;
+          break;
+        }
+        if (isPrunedHelper(callee->getName())) {
+          continue;
+        }
+        if (isFunctionRelevant(*callee)) {
+          relevant = true;
+          break;
+        }
+      }
+      if (relevant) {
+        break;
+      }
+    }
+
+    relevanceCache_[&function] =
+        relevant ? Relevance::Relevant : Relevance::Irrelevant;
+    return relevant;
+  }
 
   void buildTrace(Function &function) {
-    if (function.isDeclaration()) {
+    if (function.isDeclaration() || !isFunctionRelevant(function)) {
       return;
     }
     std::string functionName = function.getName().str();
@@ -246,15 +517,37 @@ private:
   void emitCall(const CallBase &call, std::vector<std::string> &lines) {
     const Function *callee =
         llvm::dyn_cast<Function>(call.getCalledOperand()->stripPointerCasts());
-    if (!callee || callee->isIntrinsic()) {
-      lines.push_back("...");
+    if (callee && callee->isIntrinsic()) {
       return;
     }
+    if (!callee) {
+      const auto resolved = resolveIndirectCallees(call);
+      if (!resolved) {
+        return;
+      }
+      for (const std::string &calleeName : *resolved) {
+        const Function *resolvedCallee = module_.getFunction(calleeName);
+        if (!resolvedCallee || resolvedCallee->isIntrinsic()) {
+          continue;
+        }
+        emitResolvedCall(*resolvedCallee, call, lines);
+      }
+      return;
+    }
+    emitResolvedCall(*callee, call, lines);
+  }
 
-    StringRef name = callee->getName();
+  void emitResolvedCall(const Function &callee,
+                        const CallBase &call,
+                        std::vector<std::string> &lines) {
+    StringRef name = callee.getName();
+    if (isPrunedHelper(name)) {
+      return;
+    }
     if (isReadLeaf(name)) {
       const unsigned width = ioWidthFromName(name);
       const std::string scratch = nextScratch();
+      valueNames_[&call] = scratch;
       const std::string address =
           call.arg_size() >= 1 ? renderValue(call.getArgOperand(call.arg_size() - 1))
                                : "unknown";
@@ -274,10 +567,19 @@ private:
       return;
     }
 
+    if (isSgFunction(name)) {
+      lines.push_back("call " + sanitizeToken(name) + renderCallArgs(call));
+      return;
+    }
+
+    if (!isFunctionRelevant(callee)) {
+      return;
+    }
+
     lines.push_back("call " + sanitizeToken(name) + renderCallArgs(call));
 
-    if (!callee->isDeclaration()) {
-      buildTrace(*const_cast<Function *>(callee));
+    if (!callee.isDeclaration()) {
+      buildTrace(*const_cast<Function *>(&callee));
     }
   }
 
@@ -297,6 +599,13 @@ private:
     if (!value) {
       return "unknown";
     }
+    if (!renderingValues_.insert(value).second) {
+      if (value->hasName()) {
+        return sanitizeToken(value->getName());
+      }
+      return "unknown";
+    }
+    auto guard = llvm::make_scope_exit([&] { renderingValues_.erase(value); });
     if (const auto *constant = llvm::dyn_cast<ConstantInt>(value)) {
       llvm::SmallString<32> buffer;
       constant->getValue().toString(buffer, 10, false);
@@ -309,13 +618,115 @@ private:
       return "unknown";
     }
     if (const auto *call = llvm::dyn_cast<CallBase>(value)) {
+      if (auto it = valueNames_.find(call); it != valueNames_.end()) {
+        return it->second;
+      }
       if (const Function *callee =
               llvm::dyn_cast<Function>(call->getCalledOperand()->stripPointerCasts())) {
+        if (isPrunedHelper(callee->getName())) {
+          if (const auto passthrough =
+                  passthroughArgumentIndexForPrunedHelper(callee->getName())) {
+            if (*passthrough < call->arg_size()) {
+              return renderValue(call->getArgOperand(*passthrough));
+            }
+          }
+          return "unknown";
+        }
+        if (!isReadLeaf(callee->getName()) &&
+            !isWriteLeaf(callee->getName()) &&
+            !isSgFunction(callee->getName())) {
+          if (call->getType()->isPointerTy()) {
+            return sanitizeToken(callee->getName()) + renderCallExprArgs(*call);
+          }
+          return "unknown";
+        }
         return sanitizeToken(callee->getName()) + renderCallExprArgs(*call);
       }
       return "unknown";
     }
     if (const auto *instruction = llvm::dyn_cast<Instruction>(value)) {
+      if (const auto *gep = llvm::dyn_cast<GetElementPtrInst>(instruction)) {
+        llvm::APInt offset(module_.getDataLayout().getPointerSizeInBits(
+                               gep->getPointerAddressSpace()),
+                           0, true);
+        if (gep->accumulateConstantOffset(module_.getDataLayout(), offset)) {
+          const std::string base = renderValue(gep->getPointerOperand());
+          llvm::SmallString<32> buffer;
+          offset.toString(buffer, 10, true);
+          const std::string off = std::string(buffer.str());
+          if (off == "0") {
+            return base;
+          }
+          if (!off.empty() && off[0] == '-') {
+            return base + " - " + off.substr(1);
+          }
+          return base + " + " + off;
+        }
+      }
+      if (const auto *load = llvm::dyn_cast<LoadInst>(instruction)) {
+        if (const Value *storedValue =
+                findStoredValueForPointer(load->getPointerOperand(), load)) {
+          return renderValue(storedValue);
+        }
+        return renderValue(load->getPointerOperand());
+      }
+      if (instruction->getOpcode() == llvm::Instruction::BitCast ||
+          instruction->getOpcode() == llvm::Instruction::AddrSpaceCast ||
+          instruction->getOpcode() == llvm::Instruction::PtrToInt ||
+          instruction->getOpcode() == llvm::Instruction::IntToPtr ||
+          instruction->getOpcode() == llvm::Instruction::ZExt ||
+          instruction->getOpcode() == llvm::Instruction::SExt ||
+          instruction->getOpcode() == llvm::Instruction::Trunc ||
+          instruction->getOpcode() == llvm::Instruction::FPTrunc ||
+          instruction->getOpcode() == llvm::Instruction::FPExt ||
+          instruction->getOpcode() == llvm::Instruction::UIToFP ||
+          instruction->getOpcode() == llvm::Instruction::SIToFP ||
+          instruction->getOpcode() == llvm::Instruction::FPToUI ||
+          instruction->getOpcode() == llvm::Instruction::FPToSI) {
+        return renderValue(instruction->getOperand(0));
+      }
+      if (const auto *icmp = llvm::dyn_cast<llvm::ICmpInst>(instruction)) {
+        return renderValue(icmp->getOperand(0)) + " " +
+               std::string(
+                   llvm::CmpInst::getPredicateName(icmp->getPredicate())) +
+               " " +
+               renderValue(icmp->getOperand(1));
+      }
+      if (const auto *fcmp = llvm::dyn_cast<llvm::FCmpInst>(instruction)) {
+        return renderValue(fcmp->getOperand(0)) + " " +
+               std::string(
+                   llvm::CmpInst::getPredicateName(fcmp->getPredicate())) +
+               " " +
+               renderValue(fcmp->getOperand(1));
+      }
+      if (const auto *phi = llvm::dyn_cast<PHINode>(instruction)) {
+        std::set<std::string> incomingValues;
+        for (unsigned index = 0; index < phi->getNumIncomingValues(); ++index) {
+          incomingValues.insert(renderValue(phi->getIncomingValue(index)));
+        }
+        if (incomingValues.empty()) {
+          return "unknown";
+        }
+        if (incomingValues.size() == 1) {
+          return *incomingValues.begin();
+        }
+        std::string out = "phi(";
+        bool first = true;
+        for (const std::string &incoming : incomingValues) {
+          if (!first) {
+            out += ", ";
+          }
+          out += incoming;
+          first = false;
+        }
+        out += ")";
+        return out;
+      }
+      if (const auto *select = llvm::dyn_cast<llvm::SelectInst>(instruction)) {
+        return "select(" + renderValue(select->getCondition()) + ", " +
+               renderValue(select->getTrueValue()) + ", " +
+               renderValue(select->getFalseValue()) + ")";
+      }
       if (instruction->hasName()) {
         return sanitizeToken(instruction->getName());
       }
@@ -426,7 +837,7 @@ llvm::PreservedAnalyses DevilangModelPass::run(llvm::Module &module,
                                                llvm::ModuleAnalysisManager &) {
   outputs_.clear();
   for (const PhaseRequest &phase : request_.phases) {
-    PhaseBuilder builder(module, phase);
+    PhaseBuilder builder(module, phase, request_.indirectCalls);
     outputs_[phase.machineName] = builder.build();
   }
   return llvm::PreservedAnalyses::all();

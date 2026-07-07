@@ -1,4 +1,5 @@
 #include <memory>
+#include <set>
 #include <optional>
 #include <string>
 #include <system_error>
@@ -8,6 +9,7 @@
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Linker/Linker.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Passes/PassBuilder.h"
@@ -50,6 +52,86 @@ llvm::cl::opt<std::string> runtimeMachineName(
     "runtime-machine-name",
     llvm::cl::desc("Machine name for the runtime phase output"),
     llvm::cl::init("runtime"), llvm::cl::cat(cliCategory));
+
+llvm::cl::opt<std::string> kallgraphText(
+    "kallgraph-text",
+    llvm::cl::desc("KallGraph indirect-call text produced by llcg"),
+    llvm::cl::init(""), llvm::cl::cat(cliCategory));
+
+std::map<std::string, std::vector<std::string>> parseKallgraphText(
+    const std::string &path) {
+  std::map<std::string, std::vector<std::string>> out;
+  if (path.empty()) {
+    return out;
+  }
+
+  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> buffer =
+      llvm::MemoryBuffer::getFile(path);
+  if (!buffer) {
+    llvm::errs() << "error: failed to open kallgraph text " << path << ": "
+                 << buffer.getError().message() << "\n";
+    return {};
+  }
+
+  llvm::SmallVector<llvm::StringRef, 0> lines;
+  buffer.get()->getBuffer().split(lines, '\n');
+
+  for (size_t index = 0; index < lines.size();) {
+    llvm::StringRef callerLine = lines[index].trim();
+    ++index;
+    if (callerLine.empty() || callerLine.startswith("#")) {
+      continue;
+    }
+
+    if (callerLine.contains("->")) {
+      llvm::SmallVector<llvm::StringRef, 2> parts;
+      callerLine.split(parts, "->", 2, false);
+      if (parts.size() == 2) {
+        std::string caller = parts[0].trim().str();
+        std::string callee = parts[1].trim().str();
+        if (!caller.empty() && !callee.empty()) {
+          out[caller].push_back(callee);
+        }
+      }
+      continue;
+    }
+
+    while (index < lines.size() && lines[index].trim().empty()) {
+      ++index;
+    }
+    if (index >= lines.size()) {
+      break;
+    }
+
+    llvm::StringRef countLine = lines[index].trim();
+    unsigned count = 0;
+    if (countLine.getAsInteger(10, count)) {
+      llvm::errs() << "warning: malformed kallgraph count for caller "
+                   << callerLine << "\n";
+      continue;
+    }
+    ++index;
+
+    std::set<std::string> unique;
+    std::vector<std::string> callees;
+    while (index < lines.size() && callees.size() < count) {
+      llvm::StringRef calleeLine = lines[index].trim();
+      ++index;
+      if (calleeLine.empty() || calleeLine.startswith("#")) {
+        continue;
+      }
+      std::string callee = calleeLine.str();
+      if (unique.insert(callee).second) {
+        callees.push_back(std::move(callee));
+      }
+    }
+    if (!callees.empty()) {
+      out[callerLine.str()] = std::move(callees);
+    }
+  }
+
+  return out;
+}
 
 bool writeTextFile(const std::string &path, const std::string &content) {
   std::error_code error;
@@ -120,6 +202,7 @@ int main(int argc, char **argv) {
         {runtimeMachineName, std::vector<std::string>(runtimeEntries.begin(),
                                                       runtimeEntries.end())});
   }
+  request.indirectCalls = parseKallgraphText(kallgraphText);
 
   llvm::PassBuilder passBuilder;
   llvm::LoopAnalysisManager loopAnalysisManager;

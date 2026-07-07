@@ -4,6 +4,11 @@ set -euo pipefail
 tool_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 build_bin="${tool_root}/build/bin/devilang"
 
+if [ "${1:-}" = "compile-state" ]; then
+  shift
+  exec python3 "${tool_root}/scripts/compile_state.py" "$@"
+fi
+
 [ -x "${build_bin}" ] || {
   echo "missing devilang CLI: ${build_bin}" >&2
   echo "build it first with: cmake -S ${tool_root} -B ${tool_root}/build && cmake --build ${tool_root}/build --parallel" >&2

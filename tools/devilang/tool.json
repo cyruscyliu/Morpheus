@@ -1,7 +1,7 @@
 {
   "name": "devilang",
   "runtime": null,
-  "cli-contract": "build,exec,inspect,logs",
+  "cli-contract": "build,exec,compile-state,inspect,logs",
   "config": {
     "fields": {
       "mode": { "aliases": ["mode"] },
@@ -69,6 +69,22 @@
       },
       "runtime-machine-name": {
         "aliases": ["runtime-machine-name", "runtimeMachineName"]
+      },
+      "input": {
+        "aliases": ["input"],
+        "repeatable": true,
+        "path": true
+      },
+      "output-c": {
+        "aliases": ["output-c", "outputC"],
+        "path": true
+      },
+      "output-h": {
+        "aliases": ["output-h", "outputH"],
+        "path": true
+      },
+      "symbol-prefix": {
+        "aliases": ["symbol-prefix", "symbolPrefix"]
       },
       "artifacts": {
         "aliases": ["artifacts"],
@@ -175,6 +191,29 @@
             },
             "details": {
               "output": "{output}"
+            }
+          }
+        },
+        "compile-state": {
+          "requiredFlags": ["output-c", "output-h"],
+          "scalarFlags": [
+            "output-c",
+            "output-h",
+            "symbol-prefix"
+          ],
+          "repeatableFlags": [
+            "input"
+          ],
+          "script": {
+            "path": "scripts/compile-state.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "compiled devilang state into C sources",
+            "errorSummary": "devilang state compilation failed",
+            "artifact": {
+              "path": "output-c",
+              "locationTemplate": "{output-c}"
             }
           }
         },

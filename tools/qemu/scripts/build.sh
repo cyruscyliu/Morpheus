@@ -2,6 +2,7 @@
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 source_dir="${MORPHEUS_QEMU_SOURCE:?}"
 build_dir="${MORPHEUS_QEMU_BUILD_DIR:?}"
@@ -22,7 +23,7 @@ use_system_meson="${MORPHEUS_QEMU_USE_SYSTEM_MESON:-1}"
 configure_signature_file="${build_dir}/.morpheus-configure-signature"
 
 if [[ "${source_dir}" != /* ]]; then
-  source_dir="$(pwd)/${source_dir#./}"
+  source_dir="${repo_root}/${source_dir#./}"
 fi
 if [[ "${build_dir}" != /* ]]; then
   build_dir="$(pwd)/${build_dir#./}"

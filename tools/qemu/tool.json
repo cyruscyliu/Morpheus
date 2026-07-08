@@ -119,6 +119,45 @@
           "append"
         ]
       },
+      "ssh-port": {
+        "aliases": [
+          "ssh-port",
+          "sshPort"
+        ]
+      },
+      "boot-timeout-seconds": {
+        "aliases": [
+          "boot-timeout-seconds",
+          "bootTimeoutSeconds"
+        ]
+      },
+      "shutdown-timeout-seconds": {
+        "aliases": [
+          "shutdown-timeout-seconds",
+          "shutdownTimeoutSeconds"
+        ]
+      },
+      "workload-script": {
+        "aliases": [
+          "workload-script",
+          "workloadScript"
+        ],
+        "path": true
+      },
+      "trace-events-file": {
+        "aliases": [
+          "trace-events-file",
+          "traceEventsFile"
+        ],
+        "path": true
+      },
+      "trace-event": {
+        "aliases": [
+          "trace-event",
+          "traceEvent"
+        ],
+        "repeatable": true
+      },
       "detach": {
         "aliases": [
           "detach"
@@ -292,10 +331,16 @@
             "kernel",
             "initrd",
             "run-dir",
-            "append"
+            "append",
+            "ssh-port",
+            "boot-timeout-seconds",
+            "shutdown-timeout-seconds",
+            "workload-script",
+            "trace-events-file"
           ],
           "repeatableFlags": [
-            "qemu-arg"
+            "qemu-arg",
+            "trace-event"
           ],
           "script": {
             "path": "scripts/exec.sh",

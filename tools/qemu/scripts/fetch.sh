@@ -2,6 +2,7 @@
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/state.sh"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 source_dir="${MORPHEUS_QEMU_SOURCE:?}"
 seed_dir="${MORPHEUS_QEMU_SEED_DIR:-}"
@@ -9,6 +10,20 @@ archive_url="${MORPHEUS_QEMU_ARCHIVE_URL:-}"
 downloads_dir="${MORPHEUS_QEMU_DOWNLOADS_DIR:-}"
 result_file="${MORPHEUS_QEMU_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 build_version="${MORPHEUS_QEMU_BUILD_VERSION:-}"
+state_file="${source_dir}/.morpheus-fetch.json"
+
+if [[ "${source_dir}" != /* ]]; then
+  source_dir="${repo_root}/${source_dir#./}"
+fi
+if [ -n "${seed_dir}" ] && [[ "${seed_dir}" != /* ]]; then
+  seed_dir="${repo_root}/${seed_dir#./}"
+fi
+if [ -n "${downloads_dir}" ] && [[ "${downloads_dir}" != /* ]]; then
+  downloads_dir="${repo_root}/${downloads_dir#./}"
+fi
+if [[ "${result_file}" != /* ]]; then
+  result_file="$(pwd)/${result_file#./}"
+fi
 state_file="${source_dir}/.morpheus-fetch.json"
 
 mkdir -p "$(dirname "${source_dir}")"

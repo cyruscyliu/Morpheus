@@ -1,0 +1,2 @@
+virtio_mmio_read
+virtio_mmio_write_offset

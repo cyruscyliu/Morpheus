@@ -22,7 +22,7 @@ diff --git a/drivers/virtio/virtio_ring.c b/drivers/virtio/virtio_ring.c
  
  /*
   * Helpers.
-@@ -293,6 +300,106 @@
+@@ -293,6 +300,101 @@
  	return vring->use_map_api && (extra->addr != DMA_MAPPING_ERROR);
  }
  
@@ -35,14 +35,9 @@ diff --git a/drivers/virtio/virtio_ring.c b/drivers/virtio/virtio_ring.c
 +
 +static bool hp_dma_trace_via_mmio(struct virtio_device *vdev)
 +{
-+	const char *bus_name;
-+
-+	if (!vdev->config || !vdev->config->set || !vdev->config->bus_name)
++	if (!vdev->config || !vdev->config->set)
 +		return false;
-+
-+	bus_name = vdev->config->bus_name(vdev);
-+
-+	return bus_name && !strcmp(bus_name, "virtio-mmio");
++	return true;
 +}
 +
 +static void hp_dma_trace_publish(struct virtio_device *vdev, u32 opcode,

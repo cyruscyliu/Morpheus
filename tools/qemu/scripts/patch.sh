@@ -2,6 +2,7 @@
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/state.sh"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 source_dir="${MORPHEUS_QEMU_SOURCE:?}"
 patch_dir="${MORPHEUS_QEMU_PATCH_DIR:?}"
@@ -9,10 +10,10 @@ result_file="${MORPHEUS_QEMU_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 state_file="${source_dir}/.morpheus-patches.json"
 
 if [[ "${source_dir}" != /* ]]; then
-  source_dir="$(pwd)/${source_dir#./}"
+  source_dir="${repo_root}/${source_dir#./}"
 fi
 if [[ "${patch_dir}" != /* ]]; then
-  patch_dir="$(pwd)/${patch_dir#./}"
+  patch_dir="${repo_root}/${patch_dir#./}"
 fi
 if [[ "${result_file}" != /* ]]; then
   result_file="$(pwd)/${result_file#./}"
@@ -66,6 +67,7 @@ try {
 ' "${source_dir}/.morpheus-fetch.json")"
 rm -rf "${source_dir}"
 env \
+  MORPHEUS_QEMU_SOURCE="${source_dir}" \
   MORPHEUS_QEMU_SEED_DIR="${fetch_seed_dir}" \
   MORPHEUS_QEMU_ARCHIVE_URL="${fetch_archive_url}" \
   MORPHEUS_QEMU_BUILD_VERSION="${fetch_build_version}" \

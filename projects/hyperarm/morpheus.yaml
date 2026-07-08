@@ -996,12 +996,84 @@ workflows:
           - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.location}}"
           - --detach
         timeout-seconds: 10
-      - id: qemu_stop
-        tool: qemu
-        command: stop
+  virtio-mmio-qemu-event-trace:
+    category: run
+    steps:
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
         args:
-          - --run-dir
-          - "{{steps.qemu_exec.details.run_dir}}"
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+      - id: buildroot_build
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+      - id: qemu_fetch_trace
+        tool: qemu
+        command: fetch
+        args:
+          - --build-dir-key
+          - qemu-8.2.7-aarch64-softmmu-trace
+          - --source
+          - projects/hyperarm/workspace/tools/qemu-trace/src/qemu-8.2.7
+          - --build-version
+          - "8.2.7"
+      - id: qemu_patch_trace
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch_trace.details.source}}"
+          - --patch-dir
+          - projects/hyperarm/workspace/tools/qemu/patches/virtio-mmio-trace
+      - id: qemu_build_trace
+        tool: qemu
+        command: build
+        args:
+          - --build-dir-key
+          - qemu-8.2.7-aarch64-softmmu-trace
+          - --source
+          - "{{steps.qemu_patch_trace.details.source}}"
+      - id: virtio_mmio_trace_exec
+        tool: qemu
+        command: exec
+        args:
+          - --path
+          - "{{steps.qemu_build_trace.artifacts.qemu-system-aarch64.location}}"
+          - --kernel
+          - "{{steps.buildroot_build.artifacts.Image.location}}"
+          - --initrd
+          - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.location}}"
+          - --boot-timeout-seconds
+          - "240"
+          - --shutdown-timeout-seconds
+          - "90"
+          - --ssh-port
+          - "22022"
+          - --trace-events-file
+          - projects/hyperarm/scripts/virtio-mmio-trace-events.txt
+          - --append
+          - "console=ttyAMA0"
+          - --workload-script
+          - projects/hyperarm/scripts/virtio-mmio-trace-workload.sh
+          - --qemu-arg
+          - -netdev
+          - --qemu-arg
+          - user,id=net0,hostfwd=tcp::22022-:22
+          - --qemu-arg
+          - -device
+          - --qemu-arg
+          - virtio-net-device,netdev=net0
+          - --qemu-arg
+          - -global
+          - --qemu-arg
+          - virtio-mmio.force-legacy=off
   buildroot-qemu-runtime-nqc2:
     category: run
     steps:

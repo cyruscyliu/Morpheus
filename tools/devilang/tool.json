@@ -1,7 +1,7 @@
 {
   "name": "devilang",
   "runtime": null,
-  "cli-contract": "build,exec,compile-state,inspect,logs",
+  "cli-contract": "build,exec,compile-state,replay-trace,inspect,logs",
   "config": {
     "fields": {
       "mode": { "aliases": ["mode"] },
@@ -83,8 +83,29 @@
         "aliases": ["output-h", "outputH"],
         "path": true
       },
+      "state-c": {
+        "aliases": ["state-c", "stateC"],
+        "path": true
+      },
+      "state-h": {
+        "aliases": ["state-h", "stateH"],
+        "path": true
+      },
+      "trace-log": {
+        "aliases": ["trace-log", "traceLog"],
+        "path": true
+      },
       "symbol-prefix": {
         "aliases": ["symbol-prefix", "symbolPrefix"]
+      },
+      "events-limit": {
+        "aliases": ["events-limit", "eventsLimit"]
+      },
+      "base-filter": {
+        "aliases": ["base-filter", "baseFilter"]
+      },
+      "cc": {
+        "aliases": ["cc"]
       },
       "artifacts": {
         "aliases": ["artifacts"],
@@ -214,6 +235,34 @@
             "artifact": {
               "path": "output-c",
               "locationTemplate": "{output-c}"
+            }
+          }
+        },
+        "replay-trace": {
+          "requiredFlags": ["trace-log", "output"],
+          "scalarFlags": [
+            "state-c",
+            "state-h",
+            "trace-log",
+            "output",
+            "symbol-prefix",
+            "events-limit",
+            "base-filter",
+            "cc"
+          ],
+          "repeatableFlags": [
+            "input"
+          ],
+          "script": {
+            "path": "scripts/replay-trace.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "replayed devilang state machine against trace",
+            "errorSummary": "devilang trace replay failed",
+            "artifact": {
+              "path": "output",
+              "locationTemplate": "{output}"
             }
           }
         },

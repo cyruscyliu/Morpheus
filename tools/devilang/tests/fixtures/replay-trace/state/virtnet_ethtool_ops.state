@@ -1,0 +1,195 @@
+machine virtnet_ethtool_ops {
+    initial start
+
+    trace virtnet_get_drvinfo_trace {
+        sequence {
+        }
+    }
+
+    trace ethtool_op_get_link_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_get_ringparam_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_set_ringparam_trace {
+        sequence {
+            call virtnet_set_queues(vi, queue_pairs);
+        }
+    }
+
+    trace virtnet_get_strings_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_get_sset_count_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_get_ethtool_stats_trace {
+        sequence {
+            call __virtnet_get_hw_stats(vi, ctx, req, req_size, reply, res_size);
+        }
+    }
+
+    trace virtnet_set_queues_trace {
+        sequence {
+            has_cvq = vi.has_cvq;
+            neqj has_cvq, 0, @set_queues_mq;
+        }
+
+        @set_queues_mq: sequence {
+            mq_feature = virtio_has_feature(vi.vdev, VIRTIO_NET_F_MQ);
+            neqj mq_feature, 0, @set_queues_rss;
+        }
+
+        @set_queues_rss: sequence {
+            has_rss = vi.has_rss;
+            neqj has_rss, 0, @set_queues_ctrl_mq;
+            user_rxfh = netif_is_rxfh_configured(dev);
+            neqj user_rxfh, 0, @set_queues_ctrl_mq;
+            rss_commit_ok = virtnet_commit_rss_command(vi);
+            neqj rss_commit_ok, 0, @set_queues_success;
+        }
+
+        @set_queues_ctrl_mq: sequence {
+            call sg_init_one(sg, mq, sizeof_ctrl_mq);
+            mq_cmd_ok = virtnet_send_command(vi, VIRTIO_NET_CTRL_MQ, VIRTIO_NET_CTRL_MQ_VQ_PAIRS_SET, sg);
+            neqj mq_cmd_ok, 0, @set_queues_success;
+        }
+
+        @set_queues_success: sequence {
+        }
+    }
+
+    trace virtnet_set_channels_trace {
+        sequence {
+            call virtnet_set_queues(vi, queue_pairs);
+        }
+    }
+
+    trace virtnet_get_channels_trace {
+        sequence {
+        }
+    }
+
+    trace ethtool_op_get_ts_info_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_get_link_ksettings_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_set_link_ksettings_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_set_coalesce_trace {
+        sequence {
+            call virtnet_send_tx_notf_coal_cmds(vi, ec);
+            call virtnet_send_rx_notf_coal_cmds(vi, ec);
+        }
+    }
+
+    trace virtnet_get_coalesce_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_set_per_queue_coalesce_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_get_per_queue_coalesce_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_get_rxfh_key_size_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_get_rxfh_indir_size_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_get_rxfh_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_set_rxfh_trace {
+        sequence {
+            rss_commit_ok = virtnet_commit_rss_command(vi);
+            neqj rss_commit_ok, 0, @set_rxfh_out;
+        }
+
+        @set_rxfh_out: sequence {
+        }
+    }
+
+    trace virtnet_get_hashflow_trace {
+        sequence {
+        }
+    }
+
+    trace virtnet_set_hashflow_trace {
+        sequence {
+            call virtnet_set_guest_offloads(vi, offloads);
+        }
+    }
+
+    trace virtnet_get_rx_ring_count_trace {
+        sequence {
+        }
+    }
+
+    trace __virtnet_get_hw_stats_trace {
+        sequence {
+            call sg_init_one(sgs_out, req, req_size);
+            call sg_init_one(sgs_in, reply, res_size);
+            stats_ok = virtnet_send_command_reply(vi, VIRTIO_NET_CTRL_STATS, VIRTIO_NET_CTRL_STATS_GET, sgs_out, sgs_in);
+            neqj stats_ok, 0, @get_hw_stats_out;
+        }
+
+        @get_hw_stats_out: sequence {
+        }
+    }
+
+    trace virtnet_send_tx_notf_coal_cmds_trace {
+        sequence {
+            call sg_init_one(sgs_tx, coal_tx, sizeof_coal_tx);
+            tx_coal_ok = virtnet_send_command(vi, VIRTIO_NET_CTRL_NOTF_COAL, VIRTIO_NET_CTRL_NOTF_COAL_TX_SET, sgs_tx);
+            neqj tx_coal_ok, 0, @tx_coal_out;
+        }
+
+        @tx_coal_out: sequence {
+        }
+    }
+
+    trace virtnet_send_rx_notf_coal_cmds_trace {
+        sequence {
+            call sg_init_one(sgs_rx, coal_rx, sizeof_coal_rx);
+            rx_coal_ok = virtnet_send_command(vi, VIRTIO_NET_CTRL_NOTF_COAL, VIRTIO_NET_CTRL_NOTF_COAL_RX_SET, sgs_rx);
+            neqj rx_coal_ok, 0, @rx_coal_out;
+        }
+
+        @rx_coal_out: sequence {
+        }
+    }
+
+    state start
+}

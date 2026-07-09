@@ -212,3 +212,46 @@ The core methodology is:
 - expansion to `io ops`
 - mandatory `sg` recording
 - accurate control flow
+
+## State Replay
+
+Once booting and runtime `.state` files exist, Devilang can compile them into
+C and replay a concrete MMIO trace against the generated machine.
+
+This replay path is phase-aware:
+
+- it starts from booting
+- it keeps booting and runtime in one machine
+- it consumes only MMIO read/write events
+- it reports both:
+  - `matched`: states that the current event actually matched
+  - `active`: states that remain reachable after the event
+
+The replay view projects internal helper traces back to the top-level driver
+surface when possible.
+
+For example, a MMIO config read performed through `virtio_cread16 ->
+vm_get` is reported as the surrounding `virtnet_probe_trace` block rather
+than as a low-level helper block.
+
+For real trace replay, the `.state` inputs should come from the LLVM pass
+output, not directly from `tools/devilang/examples/`.
+
+In the HyperArm workflow this means using the `devilang_exec` artifacts:
+
+- `booting-state`
+- `runtime-state`
+
+Minimal workflow-oriented usage:
+
+```bash
+tools/devilang/devilang replay-trace \
+  --input booting.state \
+  --input runtime.state \
+  --trace-log tools/devilang/tests/fixtures/replay-trace/trace.txt \
+  --output virtio-trace-replay.txt \
+  --symbol-prefix virtio_trace_sm
+```
+
+The authoritative validation path is the workflow replay that consumes
+LLVM-pass-produced `booting.state` and `runtime.state`.

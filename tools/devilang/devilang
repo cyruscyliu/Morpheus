@@ -9,6 +9,11 @@ if [ "${1:-}" = "compile-state" ]; then
   exec python3 "${tool_root}/scripts/compile_state.py" "$@"
 fi
 
+if [ "${1:-}" = "replay-trace" ]; then
+  shift
+  exec "${tool_root}/scripts/replay-trace.sh" "$@"
+fi
+
 [ -x "${build_bin}" ] || {
   echo "missing devilang CLI: ${build_bin}" >&2
   echo "build it first with: cmake -S ${tool_root} -B ${tool_root}/build && cmake --build ${tool_root}/build --parallel" >&2

@@ -1,13 +1,13 @@
 diff --git a/hw/virtio/trace-events b/hw/virtio/trace-events
 --- a/hw/virtio/trace-events
 +++ b/hw/virtio/trace-events
-@@ -95,8 +95,8 @@ virtio_balloon_set_config(uint32_t actual, uint32_t oldactual) "actual: %d oldac
+@@ -95,8 +95,8 @@
  virtio_balloon_to_target(uint64_t target, uint32_t num_pages) "balloon target: 0x%"PRIx64" num_pages: %d"
  
  # virtio-mmio.c
 -virtio_mmio_read(uint64_t offset) "virtio_mmio_read offset 0x%" PRIx64
 -virtio_mmio_write_offset(uint64_t offset, uint64_t value) "virtio_mmio_write offset 0x%" PRIx64 " value 0x%" PRIx64
-+virtio_mmio_read(uint64_t base, uint64_t offset, uint64_t addr) "virtio_mmio_read base 0x%" PRIx64 " offset 0x%" PRIx64 " addr 0x%" PRIx64
++virtio_mmio_read(uint64_t base, uint64_t offset, uint64_t addr, uint64_t value) "virtio_mmio_read base 0x%" PRIx64 " offset 0x%" PRIx64 " addr 0x%" PRIx64 " value 0x%" PRIx64
 +virtio_mmio_write_offset(uint64_t base, uint64_t offset, uint64_t addr, uint64_t value) "virtio_mmio_write base 0x%" PRIx64 " offset 0x%" PRIx64 " addr 0x%" PRIx64 " value 0x%" PRIx64
  virtio_mmio_guest_page(uint64_t size, int shift) "guest page size 0x%" PRIx64 " shift %d"
  virtio_mmio_queue_write(uint64_t value, int max_size) "mmio_queue write 0x%" PRIx64 " max %d"
@@ -15,7 +15,7 @@ diff --git a/hw/virtio/trace-events b/hw/virtio/trace-events
 diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
 --- a/hw/virtio/virtio-mmio.c
 +++ b/hw/virtio/virtio-mmio.c
-@@ -81,12 +81,27 @@ static void virtio_mmio_soft_reset(VirtIOMMIOProxy *proxy)
+@@ -81,12 +81,35 @@
      }
  }
  
@@ -33,18 +33,225 @@ diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
 +    return base;
 +}
 +
++static uint64_t virtio_mmio_trace_read_result(VirtIOMMIOProxy *proxy,
++                                              hwaddr offset,
++                                              uint64_t value)
++{
++    hwaddr base = virtio_mmio_transport_base(proxy);
++
++    trace_virtio_mmio_read(base, offset, base + offset, value);
++    return value;
++}
++
  static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
  {
      VirtIOMMIOProxy *proxy = (VirtIOMMIOProxy *)opaque;
      VirtIODevice *vdev = virtio_bus_get_device(&proxy->bus);
-+    hwaddr base = virtio_mmio_transport_base(proxy);
- 
+-
 -    trace_virtio_mmio_read(offset);
-+    trace_virtio_mmio_read(base, offset, base + offset);
++    hwaddr trace_offset = offset;
  
      if (!vdev) {
          /* If no backend is present, we treat most registers as
-@@ -248,8 +263,9 @@ static void virtio_mmio_write(void *opaque, hwaddr offset, uint64_t value,
+@@ -99,17 +122,21 @@
+          */
+         switch (offset) {
+         case VIRTIO_MMIO_MAGIC_VALUE:
+-            return VIRT_MAGIC;
++            return virtio_mmio_trace_read_result(proxy, trace_offset,
++                                                 VIRT_MAGIC);
+         case VIRTIO_MMIO_VERSION:
+             if (proxy->legacy) {
+-                return VIRT_VERSION_LEGACY;
++                return virtio_mmio_trace_read_result(proxy, trace_offset,
++                                                     VIRT_VERSION_LEGACY);
+             } else {
+-                return VIRT_VERSION;
++                return virtio_mmio_trace_read_result(proxy, trace_offset,
++                                                     VIRT_VERSION);
+             }
+         case VIRTIO_MMIO_VENDOR_ID:
+-            return VIRT_VENDOR;
++            return virtio_mmio_trace_read_result(proxy, trace_offset,
++                                                 VIRT_VENDOR);
+         default:
+-            return 0;
++            return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
+         }
+     }
+ 
+@@ -118,22 +145,31 @@
+         if (proxy->legacy) {
+             switch (size) {
+             case 1:
+-                return virtio_config_readb(vdev, offset);
++                return virtio_mmio_trace_read_result(
++                    proxy, trace_offset, virtio_config_readb(vdev, offset));
+             case 2:
+-                return virtio_config_readw(vdev, offset);
++                return virtio_mmio_trace_read_result(
++                    proxy, trace_offset, virtio_config_readw(vdev, offset));
+             case 4:
+-                return virtio_config_readl(vdev, offset);
++                return virtio_mmio_trace_read_result(
++                    proxy, trace_offset, virtio_config_readl(vdev, offset));
+             default:
+                 abort();
+             }
+         } else {
+             switch (size) {
+             case 1:
+-                return virtio_config_modern_readb(vdev, offset);
++                return virtio_mmio_trace_read_result(
++                    proxy, trace_offset,
++                    virtio_config_modern_readb(vdev, offset));
+             case 2:
+-                return virtio_config_modern_readw(vdev, offset);
++                return virtio_mmio_trace_read_result(
++                    proxy, trace_offset,
++                    virtio_config_modern_readw(vdev, offset));
+             case 4:
+-                return virtio_config_modern_readl(vdev, offset);
++                return virtio_mmio_trace_read_result(
++                    proxy, trace_offset,
++                    virtio_config_modern_readl(vdev, offset));
+             default:
+                 abort();
+             }
+@@ -143,70 +179,84 @@
+         qemu_log_mask(LOG_GUEST_ERROR,
+                       "%s: wrong size access to register!\n",
+                       __func__);
+-        return 0;
++        return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
+     }
+     switch (offset) {
+     case VIRTIO_MMIO_MAGIC_VALUE:
+-        return VIRT_MAGIC;
++        return virtio_mmio_trace_read_result(proxy, trace_offset, VIRT_MAGIC);
+     case VIRTIO_MMIO_VERSION:
+         if (proxy->legacy) {
+-            return VIRT_VERSION_LEGACY;
++            return virtio_mmio_trace_read_result(proxy, trace_offset,
++                                                 VIRT_VERSION_LEGACY);
+         } else {
+-            return VIRT_VERSION;
++            return virtio_mmio_trace_read_result(proxy, trace_offset,
++                                                 VIRT_VERSION);
+         }
+     case VIRTIO_MMIO_DEVICE_ID:
+-        return vdev->device_id;
++        return virtio_mmio_trace_read_result(proxy, trace_offset,
++                                             vdev->device_id);
+     case VIRTIO_MMIO_VENDOR_ID:
+-        return VIRT_VENDOR;
++        return virtio_mmio_trace_read_result(proxy, trace_offset,
++                                             VIRT_VENDOR);
+     case VIRTIO_MMIO_DEVICE_FEATURES:
+         if (proxy->legacy) {
+             if (proxy->host_features_sel) {
+-                return 0;
++                return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
+             } else {
+-                return vdev->host_features;
++                return virtio_mmio_trace_read_result(proxy, trace_offset,
++                                                     vdev->host_features);
+             }
+         } else {
+             VirtioDeviceClass *vdc = VIRTIO_DEVICE_GET_CLASS(vdev);
+-            return (vdev->host_features & ~vdc->legacy_features)
+-                >> (32 * proxy->host_features_sel);
++            return virtio_mmio_trace_read_result(
++                proxy, trace_offset,
++                (vdev->host_features & ~vdc->legacy_features)
++                    >> (32 * proxy->host_features_sel));
+         }
+     case VIRTIO_MMIO_QUEUE_NUM_MAX:
+         if (!virtio_queue_get_num(vdev, vdev->queue_sel)) {
+-            return 0;
++            return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
+         }
+-        return VIRTQUEUE_MAX_SIZE;
++        return virtio_mmio_trace_read_result(proxy, trace_offset,
++                                             VIRTQUEUE_MAX_SIZE);
+     case VIRTIO_MMIO_QUEUE_PFN:
+         if (!proxy->legacy) {
+             qemu_log_mask(LOG_GUEST_ERROR,
+                           "%s: read from legacy register (0x%"
+                           HWADDR_PRIx ") in non-legacy mode\n",
+                           __func__, offset);
+-            return 0;
++            return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
+         }
+-        return virtio_queue_get_addr(vdev, vdev->queue_sel)
+-            >> proxy->guest_page_shift;
++        return virtio_mmio_trace_read_result(
++            proxy, trace_offset,
++            virtio_queue_get_addr(vdev, vdev->queue_sel)
++                >> proxy->guest_page_shift);
+     case VIRTIO_MMIO_QUEUE_READY:
+         if (proxy->legacy) {
+             qemu_log_mask(LOG_GUEST_ERROR,
+                           "%s: read from non-legacy register (0x%"
+                           HWADDR_PRIx ") in legacy mode\n",
+                           __func__, offset);
+-            return 0;
++            return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
+         }
+-        return proxy->vqs[vdev->queue_sel].enabled;
++        return virtio_mmio_trace_read_result(
++            proxy, trace_offset, proxy->vqs[vdev->queue_sel].enabled);
+     case VIRTIO_MMIO_INTERRUPT_STATUS:
+-        return qatomic_read(&vdev->isr);
++        return virtio_mmio_trace_read_result(proxy, trace_offset,
++                                             qatomic_read(&vdev->isr));
+     case VIRTIO_MMIO_STATUS:
+-        return vdev->status;
++        return virtio_mmio_trace_read_result(proxy, trace_offset,
++                                             vdev->status);
+     case VIRTIO_MMIO_CONFIG_GENERATION:
+         if (proxy->legacy) {
+             qemu_log_mask(LOG_GUEST_ERROR,
+                           "%s: read from non-legacy register (0x%"
+                           HWADDR_PRIx ") in legacy mode\n",
+                           __func__, offset);
+-            return 0;
++            return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
+         }
+-        return vdev->generation;
++        return virtio_mmio_trace_read_result(proxy, trace_offset,
++                                             vdev->generation);
+    case VIRTIO_MMIO_SHM_LEN_LOW:
+    case VIRTIO_MMIO_SHM_LEN_HIGH:
+         /*
+@@ -214,7 +264,7 @@
+          * according to the linux driver, if region length is -1
+          * the shared memory doesn't exist
+          */
+-        return -1;
++        return virtio_mmio_trace_read_result(proxy, trace_offset, -1);
+     case VIRTIO_MMIO_DEVICE_FEATURES_SEL:
+     case VIRTIO_MMIO_DRIVER_FEATURES:
+     case VIRTIO_MMIO_DRIVER_FEATURES_SEL:
+@@ -233,14 +283,14 @@
+         qemu_log_mask(LOG_GUEST_ERROR,
+                       "%s: read of write-only register (0x%" HWADDR_PRIx ")\n",
+                       __func__, offset);
+-        return 0;
++        return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
+     default:
+         qemu_log_mask(LOG_GUEST_ERROR,
+                       "%s: bad register offset (0x%" HWADDR_PRIx ")\n",
+                       __func__, offset);
+-        return 0;
++        return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
+     }
+-    return 0;
++    return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
+ }
+ 
+ static void virtio_mmio_write(void *opaque, hwaddr offset, uint64_t value,
+@@ -248,8 +298,9 @@
  {
      VirtIOMMIOProxy *proxy = (VirtIOMMIOProxy *)opaque;
      VirtIODevice *vdev = virtio_bus_get_device(&proxy->bus);

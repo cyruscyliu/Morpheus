@@ -1,0 +1,283 @@
+machine virtio_mmio_config_ops {
+    initial start
+
+    scratch {
+        scratch.byte;
+        scratch.word;
+        scratch.dword;
+        scratch.dword_lo;
+        scratch.dword_hi;
+        scratch.generation;
+        // Source register: VIRTIO_MMIO_STATUS.
+        scratch.status;
+        scratch.features_hi;
+        scratch.features_lo;
+        scratch.ready;
+        scratch.num;
+        scratch.shm_len;
+        scratch.shm_len_lo;
+        scratch.shm_len_hi;
+        scratch.shm_addr_lo;
+        scratch.shm_addr_hi;
+    }
+
+    trace vm_get_trace {
+        sequence {
+            neqj vm_dev.version, 1, @vm_get_modern;
+            neqj len, 1, @vm_get_v1_repeat;
+        }
+
+        @vm_get_v1_repeat: repeat {
+            scratch.byte = read8(vm_dev.base + VIRTIO_MMIO_CONFIG + offset + i);
+        }
+
+        @vm_get_modern: sequence {
+            neqj len, 1, @vm_get_len2;
+            scratch.byte = read8(vm_dev.base + VIRTIO_MMIO_CONFIG + offset);
+        }
+
+        @vm_get_len2: sequence {
+            neqj len, 2, @vm_get_len4;
+            scratch.word = read16(vm_dev.base + VIRTIO_MMIO_CONFIG + offset);
+        }
+
+        @vm_get_len4: sequence {
+            neqj len, 4, @vm_get_len8;
+            scratch.dword = read32(vm_dev.base + VIRTIO_MMIO_CONFIG + offset);
+        }
+
+        @vm_get_len8: sequence {
+            neqj len, 8, @vm_get_bug;
+            scratch.dword_lo = read32(vm_dev.base + VIRTIO_MMIO_CONFIG + offset);
+            scratch.dword_hi = read32(vm_dev.base + VIRTIO_MMIO_CONFIG + offset + 4);
+        }
+
+        @vm_get_bug: sequence {
+            BUG();
+        }
+    }
+
+    trace vm_set_trace {
+        sequence {
+            neqj vm_dev.version, 1, @vm_set_modern;
+            repeat {
+                write8(ptr_i, vm_dev.base + VIRTIO_MMIO_CONFIG + offset + i);
+            }
+        }
+
+        @vm_set_modern: sequence {
+            neqj len, 1, @vm_set_len2;
+            write8(b, vm_dev.base + VIRTIO_MMIO_CONFIG + offset);
+        }
+
+        @vm_set_len2: sequence {
+            neqj len, 2, @vm_set_len4;
+            write16(w, vm_dev.base + VIRTIO_MMIO_CONFIG + offset);
+        }
+
+        @vm_set_len4: sequence {
+            neqj len, 4, @vm_set_len8;
+            write32(l, vm_dev.base + VIRTIO_MMIO_CONFIG + offset);
+        }
+
+        @vm_set_len8: sequence {
+            neqj len, 8, @vm_set_bug;
+            write32(l_lo, vm_dev.base + VIRTIO_MMIO_CONFIG + offset);
+            write32(l_hi, vm_dev.base + VIRTIO_MMIO_CONFIG + offset + 4);
+        }
+
+        @vm_set_bug: sequence {
+            BUG();
+        }
+    }
+
+    trace vm_generation_trace {
+        sequence {
+            neqj vm_dev.version, 1, @vm_generation_modern;
+        }
+
+        @vm_generation_modern: sequence {
+            scratch.generation = read32(vm_dev.base + VIRTIO_MMIO_CONFIG_GENERATION);
+        }
+    }
+
+    trace vm_get_status_trace {
+        sequence {
+            scratch.status = read32(vm_dev.base + VIRTIO_MMIO_STATUS);
+        }
+    }
+
+    trace vm_set_status_trace {
+        sequence {
+            neqj status, 0, @vm_set_status_write;
+            BUG_ON(status);
+        }
+
+        @vm_set_status_write: sequence {
+            write32(status, vm_dev.base + VIRTIO_MMIO_STATUS);
+        }
+    }
+
+    trace vm_reset_trace {
+        sequence {
+            write32(0, vm_dev.base + VIRTIO_MMIO_STATUS);
+        }
+    }
+
+    trace vm_notify_trace {
+        sequence {
+            write32(vq.index, vm_dev.base + VIRTIO_MMIO_QUEUE_NOTIFY);
+        }
+    }
+
+    trace vm_notify_with_data_trace {
+        sequence {
+            data = vring_notification_data(vq);
+            write32(data, vm_dev.base + VIRTIO_MMIO_QUEUE_NOTIFY);
+        }
+    }
+
+    trace vm_get_features_trace {
+        sequence {
+            write32(1, vm_dev.base + VIRTIO_MMIO_DEVICE_FEATURES_SEL);
+            scratch.features_hi = read32(vm_dev.base + VIRTIO_MMIO_DEVICE_FEATURES);
+            write32(0, vm_dev.base + VIRTIO_MMIO_DEVICE_FEATURES_SEL);
+            scratch.features_lo = read32(vm_dev.base + VIRTIO_MMIO_DEVICE_FEATURES);
+        }
+    }
+
+    trace vm_finalize_features_trace {
+        sequence {
+            neqj vm_dev.version, 2, @write_driver_features;
+            version1_feature = __virtio_test_bit(vdev, VIRTIO_F_VERSION_1);
+            neqj version1_feature, 1, @finalize_error;
+        }
+
+        @write_driver_features: sequence {
+            write32(1, vm_dev.base + VIRTIO_MMIO_DRIVER_FEATURES_SEL);
+            write32(vdev.features_hi, vm_dev.base + VIRTIO_MMIO_DRIVER_FEATURES);
+            write32(0, vm_dev.base + VIRTIO_MMIO_DRIVER_FEATURES_SEL);
+            write32(vdev.features_lo, vm_dev.base + VIRTIO_MMIO_DRIVER_FEATURES);
+        }
+
+        @finalize_error: sequence {
+        }
+    }
+
+    trace vm_del_vq_trace {
+        sequence {
+            write32(index, vm_dev.base + VIRTIO_MMIO_QUEUE_SEL);
+            neqj vm_dev.version, 1, @vm_del_vq_modern;
+            write32(0, vm_dev.base + VIRTIO_MMIO_QUEUE_PFN);
+        }
+
+        @vm_del_vq_modern: sequence {
+            write32(0, vm_dev.base + VIRTIO_MMIO_QUEUE_READY);
+            scratch.ready = read32(vm_dev.base + VIRTIO_MMIO_QUEUE_READY);
+            WARN_ON(scratch.ready);
+        }
+    }
+
+    trace vm_del_vqs_trace {
+        repeat {
+            call vm_del_vq(vq);
+        }
+    }
+
+    trace vm_synchronize_cbs_trace {
+        sequence {
+            call synchronize_irq(platform_get_irq(vm_dev.pdev, 0));
+        }
+    }
+
+    trace vm_setup_vq_trace {
+        sequence {
+            notify_data = __virtio_test_bit(vdev, VIRTIO_F_NOTIFICATION_DATA);
+            neqj name, 0, @vm_setup_vq_null;
+            write32(index, vm_dev.base + VIRTIO_MMIO_QUEUE_SEL);
+            neqj vm_dev.version, 1, @vm_setup_vq_ready_modern;
+            scratch.ready = read32(vm_dev.base + VIRTIO_MMIO_QUEUE_PFN);
+            neqj scratch.ready, 0, @vm_setup_vq_error_available;
+        }
+
+        @vm_setup_vq_ready_modern: sequence {
+            scratch.ready = read32(vm_dev.base + VIRTIO_MMIO_QUEUE_READY);
+            neqj scratch.ready, 0, @vm_setup_vq_error_available;
+        }
+
+        @vm_setup_vq_read_num: sequence {
+            scratch.num = read32(vm_dev.base + VIRTIO_MMIO_QUEUE_NUM_MAX);
+            neqj scratch.num, 0, @vm_setup_vq_create;
+        }
+
+        @vm_setup_vq_create: sequence {
+            neqj vm_dev.version, 1, @vm_setup_vq_activate_modern;
+            write32(PAGE_SIZE, vm_dev.base + VIRTIO_MMIO_QUEUE_ALIGN);
+            write32(q_pfn, vm_dev.base + VIRTIO_MMIO_QUEUE_PFN);
+        }
+
+        @vm_setup_vq_activate_modern: sequence {
+            write32(desc_addr_lo, vm_dev.base + VIRTIO_MMIO_QUEUE_DESC_LOW);
+            write32(desc_addr_hi, vm_dev.base + VIRTIO_MMIO_QUEUE_DESC_HIGH);
+            write32(avail_addr_lo, vm_dev.base + VIRTIO_MMIO_QUEUE_AVAIL_LOW);
+            write32(avail_addr_hi, vm_dev.base + VIRTIO_MMIO_QUEUE_AVAIL_HIGH);
+            write32(used_addr_lo, vm_dev.base + VIRTIO_MMIO_QUEUE_USED_LOW);
+            write32(used_addr_hi, vm_dev.base + VIRTIO_MMIO_QUEUE_USED_HIGH);
+            write32(1, vm_dev.base + VIRTIO_MMIO_QUEUE_READY);
+        }
+
+        @vm_setup_vq_error_available: sequence {
+        }
+
+        @vm_setup_vq_null: sequence {
+        }
+    }
+
+    trace vm_find_vqs_trace {
+        sequence {
+            irq = platform_get_irq(vm_dev.pdev, 0);
+            neqj irq, 0, @vm_find_vqs_request_irq;
+        }
+
+        @vm_find_vqs_request_irq: sequence {
+            irq_req = request_irq(irq, vm_interrupt, IRQF_SHARED, dev_name, vm_dev);
+            neqj irq_req, 0, @vm_find_vqs_iterate;
+        }
+
+        @vm_find_vqs_iterate: repeat {
+            neqj vqs_info_i.name, 0, @vm_find_vqs_setup_one;
+        }
+
+        @vm_find_vqs_setup_one: sequence {
+            call vm_setup_vq(vdev, queue_idx, vqi.callback, vqi.name, vqi.ctx);
+            setup_ok = vqs_i;
+            neqj setup_ok, 0, @vm_find_vqs_error;
+        }
+
+        @vm_find_vqs_error: sequence {
+            call vm_del_vqs(vdev);
+        }
+    }
+
+    trace vm_bus_name_trace {
+        sequence {
+        }
+    }
+
+    trace vm_get_shm_region_trace {
+        sequence {
+            write32(id, vm_dev.base + VIRTIO_MMIO_SHM_SEL);
+            scratch.shm_len_lo = read32(vm_dev.base + VIRTIO_MMIO_SHM_LEN_LOW);
+            scratch.shm_len_hi = read32(vm_dev.base + VIRTIO_MMIO_SHM_LEN_HIGH);
+            scratch.shm_len = scratch.shm_len_lo;
+            neqj scratch.shm_len, 0xffffffffffffffff, @vm_get_shm_region_present;
+        }
+
+        @vm_get_shm_region_present: sequence {
+            scratch.shm_addr_lo = read32(vm_dev.base + VIRTIO_MMIO_SHM_BASE_LOW);
+            scratch.shm_addr_hi = read32(vm_dev.base + VIRTIO_MMIO_SHM_BASE_HIGH);
+        }
+    }
+
+    state start
+}

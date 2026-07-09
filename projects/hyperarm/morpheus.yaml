@@ -1074,6 +1074,193 @@ workflows:
           - -global
           - --qemu-arg
           - virtio-mmio.force-legacy=off
+  devilang-virtio-mmio-trace-replay:
+    category: run
+    steps:
+      - id: llbase_build
+        tool: llbase
+        command: build
+      - id: llbic_build
+        tool: llbic
+        command: build
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --build-version
+          - "6.18.16"
+      - id: devilang_build
+        tool: devilang
+        command: build
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+      - id: llcg_build
+        tool: llcg
+        command: build
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+      - id: llcg_mutator
+        tool: llcg
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --source-dir
+          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - --generator
+          - files
+          - --file
+          - drivers/virtio/virtio_mmio.c
+          - --file
+          - drivers/net/virtio_net.c
+          - --scope-name
+          - virtio-net-mmio-devilang
+      - id: llcg_kallgraph_scope
+        tool: llcg
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --source-dir
+          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - --generator
+          - files
+          - --file
+          - drivers/virtio/virtio.c
+          - --file
+          - drivers/virtio/virtio_anchor.c
+          - --file
+          - drivers/virtio/virtio_mmio.c
+          - --file
+          - drivers/virtio/virtio_ring.c
+          - --file
+          - drivers/net/virtio_net.c
+          - --scope-name
+          - virtio-net-mmio-devilang-kallgraph
+      - id: llcg_run
+        tool: llcg
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --llbic-json
+          - "{{steps.llbic_build.artifacts.llbic-json.location}}"
+          - --all-bc-list
+          - "{{steps.llbic_build.artifacts.bitcode-files.location}}"
+          - --filter
+          - "{{steps.llcg_kallgraph_scope.artifacts.mutator_manifest.location}}"
+      - id: devilang_exec
+        tool: devilang
+        command: exec
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --llbic-json
+          - "{{steps.llbic_build.artifacts.llbic-json.location}}"
+          - --filter
+          - "{{steps.llcg_mutator.artifacts.source_list.location}}"
+          - --kallgraph-text
+          - "{{steps.llcg_run.artifacts.kallgraph_text.location}}"
+          - --booting-entry-list
+          - projects/hyperarm/workspace/tools/devilang/booting-entries.txt
+          - --runtime-entry-list
+          - projects/hyperarm/workspace/tools/devilang/runtime-entries.txt
+          - --booting-machine-name
+          - virtio_net_mmio_booting
+          - --runtime-machine-name
+          - virtio_net_mmio_runtime
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+      - id: buildroot_build
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+      - id: qemu_fetch_trace
+        tool: qemu
+        command: fetch
+        args:
+          - --build-dir-key
+          - qemu-8.2.7-aarch64-softmmu-trace
+          - --source
+          - projects/hyperarm/workspace/tools/qemu-trace/src/qemu-8.2.7
+          - --build-version
+          - "8.2.7"
+      - id: qemu_patch_trace
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch_trace.details.source}}"
+          - --patch-dir
+          - projects/hyperarm/workspace/tools/qemu/patches/virtio-mmio-trace
+      - id: qemu_build_trace
+        tool: qemu
+        command: build
+        args:
+          - --build-dir-key
+          - qemu-8.2.7-aarch64-softmmu-trace
+          - --source
+          - "{{steps.qemu_patch_trace.details.source}}"
+      - id: virtio_mmio_trace_exec
+        tool: qemu
+        command: exec
+        args:
+          - --path
+          - "{{steps.qemu_build_trace.artifacts.qemu-system-aarch64.location}}"
+          - --kernel
+          - "{{steps.buildroot_build.artifacts.Image.location}}"
+          - --initrd
+          - "{{steps.buildroot_build.artifacts.rootfs-cpio-gz.location}}"
+          - --boot-timeout-seconds
+          - "240"
+          - --shutdown-timeout-seconds
+          - "90"
+          - --ssh-port
+          - "22022"
+          - --trace-events-file
+          - projects/hyperarm/scripts/virtio-mmio-trace-events.txt
+          - --append
+          - "console=ttyAMA0"
+          - --workload-script
+          - projects/hyperarm/scripts/virtio-mmio-trace-workload.sh
+          - --qemu-arg
+          - -netdev
+          - --qemu-arg
+          - user,id=net0,hostfwd=tcp::22022-:22
+          - --qemu-arg
+          - -device
+          - --qemu-arg
+          - virtio-net-device,netdev=net0
+          - --qemu-arg
+          - -global
+          - --qemu-arg
+          - virtio-mmio.force-legacy=off
+      - id: devilang_replay
+        tool: devilang
+        command: replay-trace
+        args:
+          - --input
+          - "{{steps.devilang_exec.artifacts.booting-state.location}}"
+          - --input
+          - "{{steps.devilang_exec.artifacts.runtime-state.location}}"
+          - --trace-log
+          - "{{steps.virtio_mmio_trace_exec.artifacts.trace-log.location}}"
+          - --output
+          - "{{steps.virtio_mmio_trace_exec.details.run_dir}}/devilang-replay.txt"
+          - --symbol-prefix
+          - virtio_trace_sm
+          - --base-filter
+          - "0xa003e00"
   buildroot-qemu-runtime-nqc2:
     category: run
     steps:

@@ -41,7 +41,7 @@ ident
     | 'unknown' | 'phi' | 'select' | 'num' | 'var'
     | 'flag' | 'random' | 'immediate'
     | 'state' | 'seq' | 'repeat' | 'value'
-    | 'machine' | 'initial' | 'final' | 'scratch' | 'trace'
+    | 'machine' | 'initial' | 'final' | 'scratch' | 'trace' | 'entry'
     | 'import' | 'transition' | 'on' | 'sequence'
     | 'read8' | 'read16' | 'read32' | 'read64'
     | 'write8' | 'write16' | 'write32' | 'write64'
@@ -354,7 +354,7 @@ machineStateDecl
     ;
 
 traceDecl
-    : 'trace' ident '{' traceItem+ '}'
+    : 'entry'? 'trace' ident '{' traceItem+ '}'
     ;
 
 traceItem

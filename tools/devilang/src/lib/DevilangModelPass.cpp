@@ -23,8 +23,11 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Passes/PassBuilder.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallVector.h"
 
 namespace devilang {
 namespace {
@@ -36,6 +39,7 @@ using llvm::ConstantInt;
 using llvm::Function;
 using llvm::GetElementPtrInst;
 using llvm::Instruction;
+using llvm::DbgValueInst;
 using llvm::LoadInst;
 using llvm::Module;
 using llvm::PHINode;
@@ -50,6 +54,7 @@ struct TraceBlock {
 
 struct TraceModel {
   std::string name;
+  bool entry = false;
   std::vector<TraceBlock> blocks;
 };
 
@@ -423,6 +428,11 @@ private:
 
     TraceModel trace;
     trace.name = traceNameFor(function);
+    trace.entry =
+        std::find(request_.entryFunctions.begin(), request_.entryFunctions.end(),
+                  function.getName().str()) != request_.entryFunctions.end();
+
+    collectDebugNames(function);
 
     std::map<const BasicBlock *, std::string> labels;
     bool entrySeen = false;
@@ -505,8 +515,32 @@ private:
     if (branch.isUnconditional()) {
       return;
     }
-    const std::string condition = renderValue(branch.getCondition());
     const BasicBlock *trueBlock = branch.getSuccessor(0);
+    const BasicBlock *falseBlock = branch.getSuccessor(1);
+    if (const auto *icmp =
+            llvm::dyn_cast<llvm::ICmpInst>(branch.getCondition())) {
+      const std::string lhs = renderValue(icmp->getOperand(0));
+      const std::string rhs = renderValue(icmp->getOperand(1));
+      const auto predicate = icmp->getPredicate();
+
+      if (predicate == llvm::ICmpInst::ICMP_NE) {
+        const auto labelIt = labels.find(trueBlock);
+        if (labelIt != labels.end() && !labelIt->second.empty()) {
+          lines.push_back("neqj " + lhs + ", " + rhs + ", @" + labelIt->second);
+          return;
+        }
+      }
+
+      if (predicate == llvm::ICmpInst::ICMP_EQ && falseBlock) {
+        const auto labelIt = labels.find(falseBlock);
+        if (labelIt != labels.end() && !labelIt->second.empty()) {
+          lines.push_back("neqj " + lhs + ", " + rhs + ", @" + labelIt->second);
+          return;
+        }
+      }
+    }
+
+    const std::string condition = renderValue(branch.getCondition());
     const auto labelIt = labels.find(trueBlock);
     if (labelIt == labels.end() || labelIt->second.empty()) {
       return;
@@ -518,6 +552,9 @@ private:
     const Function *callee =
         llvm::dyn_cast<Function>(call.getCalledOperand()->stripPointerCasts());
     if (callee && callee->isIntrinsic()) {
+      if (const auto *dbgValue = llvm::dyn_cast<DbgValueInst>(&call)) {
+        captureDebugValue(*dbgValue);
+      }
       return;
     }
     if (!callee) {
@@ -546,7 +583,7 @@ private:
     }
     if (isReadLeaf(name)) {
       const unsigned width = ioWidthFromName(name);
-      const std::string scratch = nextScratch();
+      const std::string scratch = nameForValue(&call);
       valueNames_[&call] = scratch;
       const std::string address =
           call.arg_size() >= 1 ? renderValue(call.getArgOperand(call.arg_size() - 1))
@@ -790,6 +827,121 @@ private:
     return name;
   }
 
+  std::optional<std::string> inferSemanticName(const Value *value) {
+    llvm::SmallVector<const Value *, 8> worklist;
+    llvm::SmallPtrSet<const Value *, 16> visited;
+    worklist.push_back(value);
+
+    while (!worklist.empty()) {
+      const Value *current = worklist.pop_back_val();
+      if (!current || !visited.insert(current).second) {
+        continue;
+      }
+
+      for (const llvm::User *user : current->users()) {
+        if (const auto *store = llvm::dyn_cast<StoreInst>(user)) {
+          if (store->getValueOperand() != current) {
+            continue;
+          }
+          const Value *pointer = store->getPointerOperand();
+          if (auto pointerName = inferPointerName(pointer)) {
+            return pointerName;
+          }
+          continue;
+        }
+
+        const auto *instruction = llvm::dyn_cast<Instruction>(user);
+        if (!instruction) {
+          continue;
+        }
+        switch (instruction->getOpcode()) {
+          case llvm::Instruction::BitCast:
+          case llvm::Instruction::AddrSpaceCast:
+          case llvm::Instruction::PtrToInt:
+          case llvm::Instruction::IntToPtr:
+          case llvm::Instruction::ZExt:
+          case llvm::Instruction::SExt:
+          case llvm::Instruction::Trunc:
+            worklist.push_back(instruction);
+            break;
+          default:
+            break;
+        }
+      }
+    }
+
+    return std::nullopt;
+  }
+
+  std::optional<std::string> inferPointerName(const Value *pointer) {
+    const Value *current = pointer;
+    llvm::SmallPtrSet<const Value *, 8> visited;
+
+    while (current && visited.insert(current).second) {
+      if (current->hasName()) {
+        return sanitizeToken(current->getName());
+      }
+      if (const auto *instruction = llvm::dyn_cast<Instruction>(current)) {
+        switch (instruction->getOpcode()) {
+          case llvm::Instruction::BitCast:
+          case llvm::Instruction::AddrSpaceCast:
+          case llvm::Instruction::GetElementPtr:
+            current = instruction->getOperand(0);
+            continue;
+          default:
+            break;
+        }
+      }
+      break;
+    }
+
+    return std::nullopt;
+  }
+
+  std::string nameForValue(const Value *value) {
+    if (value) {
+      if (auto it = valueNames_.find(value); it != valueNames_.end()) {
+        model_.scratchVars.insert(it->second);
+        return it->second;
+      }
+      if (auto inferred = inferSemanticName(value)) {
+        model_.scratchVars.insert(*inferred);
+        return *inferred;
+      }
+    }
+    if (value && value->hasName()) {
+      const std::string named = sanitizeToken(value->getName());
+      model_.scratchVars.insert(named);
+      return named;
+    }
+    return nextScratch();
+  }
+
+  void captureDebugValue(const DbgValueInst &dbgValue) {
+    const Value *value = dbgValue.getValue();
+    const auto *variable = dbgValue.getVariable();
+    if (!value || !variable || llvm::isa<llvm::UndefValue>(value) ||
+        llvm::isa<llvm::ConstantPointerNull>(value)) {
+      return;
+    }
+    const std::string name = sanitizeToken(variable->getName());
+    if (name.empty() || name == "unnamed") {
+      return;
+    }
+    valueNames_[value] = name;
+    model_.scratchVars.insert(name);
+  }
+
+  void collectDebugNames(Function &function) {
+    for (const BasicBlock &block : function) {
+      for (const Instruction &instruction : block) {
+        if (const auto *dbgValue = llvm::dyn_cast<DbgValueInst>(&instruction)) {
+          captureDebugValue(*dbgValue);
+        }
+      }
+    }
+  }
+
   std::string renderModel() {
     std::ostringstream out;
     out << "machine " << sanitizeToken(request_.machineName) << " {\n";
@@ -803,7 +955,11 @@ private:
       out << "    }\n\n";
     }
     for (const TraceModel &trace : model_.traces) {
-      out << "    trace " << sanitizeToken(trace.name) << " {\n";
+      out << "    ";
+      if (trace.entry) {
+        out << "entry ";
+      }
+      out << "trace " << sanitizeToken(trace.name) << " {\n";
       bool first = true;
       for (const TraceBlock &block : trace.blocks) {
         if (!first) {

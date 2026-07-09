@@ -1,0 +1,6 @@
+virtio_mmio_read virtio_mmio_read base 0xa003e00 offset 0x0 addr 0xa003e00 value 0x74726976
+virtio_mmio_read virtio_mmio_read base 0xa003e00 offset 0x4 addr 0xa003e04 value 0x2
+virtio_mmio_read virtio_mmio_read base 0xa003e00 offset 0x8 addr 0xa003e08 value 0x1
+virtio_mmio_read virtio_mmio_read base 0xa003e00 offset 0xc addr 0xa003e0c value 0x554d4551
+virtio_mmio_write_offset virtio_mmio_write base 0xa003e00 offset 0x70 addr 0xa003e70 value 0x0
+virtio_mmio_read virtio_mmio_read base 0xa003e00 offset 0x70 addr 0xa003e70 value 0x0

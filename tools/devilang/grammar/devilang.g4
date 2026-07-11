@@ -45,7 +45,7 @@ ident
     | 'import' | 'transition' | 'on' | 'sequence'
     | 'read8' | 'read16' | 'read32' | 'read64'
     | 'write8' | 'write16' | 'write32' | 'write64'
-    | 'BUG' | 'BUG_ON' | 'WARN_ON' | 'neqj'
+    | 'BUG' | 'BUG_ON' | 'WARN_ON' | 'neqj' | 'goto'
     ;
 
 type_
@@ -377,6 +377,7 @@ traceInstr
     | traceWrite
     | traceCall
     | traceNeqj
+    | traceGoto
     | traceBug
     | traceWarn
     | ellipsisInstr
@@ -404,6 +405,10 @@ traceArgs
 
 traceNeqj
     : 'neqj' traceExpr ',' traceExpr ',' labelRef ';'
+    ;
+
+traceGoto
+    : 'goto' labelRef ';'
     ;
 
 traceBug

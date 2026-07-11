@@ -4,7 +4,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { spawn, spawnSync } = require("child_process");
 const { applyConfigDefaults, loadConfig, configDir, resolveLocalPath } = require("../core/config");
-const { parseToolArgs } = require("../core/tool-invoke");
+const { parseToolArgs, descriptorFlagMetadata } = require("../core/tool-invoke");
 const { readToolDescriptor } = require("../core/tool-descriptor");
 const { repoRoot } = require("../core/paths");
 const { writeStdoutLine } = require("../core/io");
@@ -1649,8 +1649,12 @@ function stepTemplatePayload(toolPayload) {
 }
 
 function resolveStepExecution(workspaceRoot, toolArgv, tool, explicitConfigPath = null) {
-  const parsed = parseToolArgs(toolArgv || []);
   const descriptor = readToolDescriptor(tool);
+  const metadata = descriptorFlagMetadata(descriptor);
+  const parsed = parseToolArgs(toolArgv || [], {
+    repeatableFlags: Array.from(metadata.repeatables),
+    booleanFlags: Array.from(metadata.booleans),
+  });
   const supportedModes = descriptor && descriptor.managed && Array.isArray(descriptor.managed.modes)
     ? descriptor.managed.modes
     : null;

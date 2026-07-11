@@ -6,6 +6,7 @@
 #include <optional>
 #include <set>
 #include <cstdlib>
+#include <functional>
 #include <string>
 #include <sstream>
 #include <utility>
@@ -44,6 +45,7 @@ using llvm::LoadInst;
 using llvm::Module;
 using llvm::PHINode;
 using llvm::StoreInst;
+using llvm::SwitchInst;
 using llvm::StringRef;
 using llvm::Value;
 
@@ -211,8 +213,134 @@ private:
   unsigned labelCounter_ = 0;
   const std::map<std::string, std::vector<std::string>> &indirectCalls_;
   std::map<const Function *, Relevance> relevanceCache_;
+  std::map<const BasicBlock *, Relevance> blockRelevanceCache_;
+  std::map<const BasicBlock *, Relevance> blockExitCache_;
   std::map<const Value *, std::string> valueNames_;
   std::set<const Value *> renderingValues_;
+  bool currentTraceEntry_ = false;
+
+  bool isObservableCall(const CallBase &call) {
+    const Function *callee =
+        llvm::dyn_cast<Function>(call.getCalledOperand()->stripPointerCasts());
+    if (!callee) {
+      const auto resolved = resolveIndirectCallees(call);
+      if (!resolved) {
+        return false;
+      }
+      for (const std::string &calleeName : *resolved) {
+        const Function *resolvedCallee = module_.getFunction(calleeName);
+        if (!resolvedCallee || resolvedCallee->isIntrinsic()) {
+          continue;
+        }
+        if (isReadLeaf(resolvedCallee->getName()) ||
+            isWriteLeaf(resolvedCallee->getName()) ||
+            isSgFunction(resolvedCallee->getName()) ||
+            isFunctionRelevant(*resolvedCallee)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    if (callee->isIntrinsic()) {
+      return false;
+    }
+    return isReadLeaf(callee->getName()) || isWriteLeaf(callee->getName()) ||
+           isSgFunction(callee->getName()) || isFunctionRelevant(*callee);
+  }
+
+  bool blockHasObservable(const BasicBlock &block) {
+    for (const Instruction &instruction : block) {
+      if (const auto *call = llvm::dyn_cast<CallBase>(&instruction)) {
+        if (isObservableCall(*call)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  bool isBlockRelevant(const BasicBlock &block) {
+    auto it = blockRelevanceCache_.find(&block);
+    if (it != blockRelevanceCache_.end()) {
+      return it->second == Relevance::Relevant;
+    }
+
+    blockRelevanceCache_[&block] = Relevance::Visiting;
+    if (blockHasObservable(block)) {
+      blockRelevanceCache_[&block] = Relevance::Relevant;
+      return true;
+    }
+    if (currentTraceEntry_ && blockReachesExit(block)) {
+      blockRelevanceCache_[&block] = Relevance::Relevant;
+      return true;
+    }
+
+    const BranchInst *branch =
+        llvm::dyn_cast<BranchInst>(block.getTerminator());
+    if (branch) {
+      for (unsigned index = 0; index < branch->getNumSuccessors(); ++index) {
+        BasicBlock *successor = branch->getSuccessor(index);
+        auto succIt = blockRelevanceCache_.find(successor);
+        if (succIt != blockRelevanceCache_.end() &&
+            succIt->second == Relevance::Visiting) {
+          continue;
+        }
+        if (successor && isBlockRelevant(*successor)) {
+          blockRelevanceCache_[&block] = Relevance::Relevant;
+          return true;
+        }
+      }
+    } else if (const auto *switchInst =
+                   llvm::dyn_cast<SwitchInst>(block.getTerminator())) {
+      for (unsigned index = 0; index < switchInst->getNumSuccessors(); ++index) {
+        BasicBlock *successor = switchInst->getSuccessor(index);
+        auto succIt = blockRelevanceCache_.find(successor);
+        if (succIt != blockRelevanceCache_.end() &&
+            succIt->second == Relevance::Visiting) {
+          continue;
+        }
+        if (successor && isBlockRelevant(*successor)) {
+          blockRelevanceCache_[&block] = Relevance::Relevant;
+          return true;
+        }
+      }
+    }
+
+    blockRelevanceCache_[&block] = Relevance::Irrelevant;
+    return false;
+  }
+
+  bool blockReachesExit(const BasicBlock &block) {
+    auto it = blockExitCache_.find(&block);
+    if (it != blockExitCache_.end()) {
+      return it->second == Relevance::Relevant;
+    }
+
+    blockExitCache_[&block] = Relevance::Visiting;
+    const Instruction *terminator = block.getTerminator();
+    if (!terminator) {
+      blockExitCache_[&block] = Relevance::Relevant;
+      return true;
+    }
+    if (terminator->getNumSuccessors() == 0) {
+      blockExitCache_[&block] = Relevance::Relevant;
+      return true;
+    }
+    for (unsigned index = 0; index < terminator->getNumSuccessors(); ++index) {
+      const BasicBlock *successor = terminator->getSuccessor(index);
+      auto succIt = blockExitCache_.find(successor);
+      if (succIt != blockExitCache_.end() &&
+          succIt->second == Relevance::Visiting) {
+        continue;
+      }
+      if (successor && blockReachesExit(*successor)) {
+        blockExitCache_[&block] = Relevance::Relevant;
+        return true;
+      }
+    }
+    blockExitCache_[&block] = Relevance::Irrelevant;
+    return false;
+  }
 
   std::optional<std::vector<std::string>> resolveIndirectCallees(
       const CallBase &call) {
@@ -267,11 +395,78 @@ private:
       matches.insert(matches.end(), kv.second.begin(), kv.second.end());
     }
     if (matches.empty()) {
-      return std::nullopt;
+      matches = resolveIndirectCalleesByHint(call);
+      if (matches.empty()) {
+        return std::nullopt;
+      }
     }
     std::sort(matches.begin(), matches.end());
     matches.erase(std::unique(matches.begin(), matches.end()), matches.end());
     return matches;
+  }
+
+  std::vector<std::string> collectCalledOperandHints(const Value *value) {
+    std::vector<std::string> hints;
+    llvm::SmallPtrSet<const Value *, 16> visited;
+    std::function<void(const Value *)> visit = [&](const Value *current) {
+      if (!current || !visited.insert(current).second) {
+        return;
+      }
+      if (current->hasName()) {
+        hints.push_back(sanitizeToken(current->getName()));
+      }
+      if (auto it = valueNames_.find(current); it != valueNames_.end()) {
+        hints.push_back(sanitizeToken(it->second));
+      }
+      if (const auto *instruction = llvm::dyn_cast<Instruction>(current)) {
+        for (const Value *operand : instruction->operands()) {
+          visit(operand);
+        }
+      }
+    };
+    visit(value);
+    std::sort(hints.begin(), hints.end());
+    hints.erase(std::unique(hints.begin(), hints.end()), hints.end());
+    return hints;
+  }
+
+  std::vector<std::string> resolveIndirectCalleesByHint(const CallBase &call) {
+    std::vector<std::string> matches;
+    const std::vector<std::string> hints =
+        collectCalledOperandHints(call.getCalledOperand());
+    if (hints.empty()) {
+      return matches;
+    }
+    for (const Function &candidate : module_) {
+      if (candidate.isIntrinsic() || candidate.isDeclaration()) {
+        continue;
+      }
+      if (!indirectCalleeMatchesCall(candidate, call)) {
+        continue;
+      }
+      const std::string candidateName = sanitizeToken(candidate.getName());
+      for (const std::string &hint : hints) {
+        if (hint.empty()) {
+          continue;
+        }
+        if (candidateName.find(hint) != std::string::npos ||
+            hint.find(candidateName) != std::string::npos) {
+          matches.push_back(candidate.getName().str());
+          break;
+        }
+      }
+    }
+    return matches;
+  }
+
+  bool indirectCalleeMatchesCall(const Function &callee, const CallBase &call) {
+    if (callee.arg_size() != call.arg_size()) {
+      return false;
+    }
+    if (callee.getReturnType() != call.getType()) {
+      return false;
+    }
+    return true;
   }
 
   const Value *findStoredValueForPointer(const Value *pointer,
@@ -417,8 +612,8 @@ private:
     return relevant;
   }
 
-  void buildTrace(Function &function) {
-    if (function.isDeclaration() || !isFunctionRelevant(function)) {
+  void buildTrace(Function &function, bool force = false) {
+    if (function.isDeclaration() || (!force && !isFunctionRelevant(function))) {
       return;
     }
     std::string functionName = function.getName().str();
@@ -433,17 +628,20 @@ private:
                   function.getName().str()) != request_.entryFunctions.end();
 
     collectDebugNames(function);
+    blockRelevanceCache_.clear();
+    blockExitCache_.clear();
+    currentTraceEntry_ = trace.entry || !function.getReturnType()->isVoidTy();
 
     std::map<const BasicBlock *, std::string> labels;
+    const std::string labelPrefix = "bb_" + sanitizeFunctionName(function);
     bool entrySeen = false;
     for (const BasicBlock &block : function) {
       if (!entrySeen) {
-        labels[&block] = "";
+        labels[&block] = labelPrefix + "_entry";
         entrySeen = true;
         continue;
       }
-      labels[&block] = "bb_" + sanitizeFunctionName(function) + "_" +
-                       std::to_string(labelCounter_++);
+      labels[&block] = labelPrefix + "_" + std::to_string(labelCounter_++);
     }
 
     std::set<const BasicBlock *> emittedBlocks;
@@ -462,6 +660,9 @@ private:
                  const std::map<const BasicBlock *, std::string> &labels,
                  TraceModel &trace,
                  std::set<const BasicBlock *> &emittedBlocks) {
+    if (!isBlockRelevant(block)) {
+      return;
+    }
     if (!emittedBlocks.insert(&block).second) {
       return;
     }
@@ -480,6 +681,11 @@ private:
 
       if (const auto *branch = llvm::dyn_cast<BranchInst>(&instruction)) {
         emitBranch(*branch, labels, out.lines);
+        continue;
+      }
+
+      if (const auto *switchInst = llvm::dyn_cast<SwitchInst>(&instruction)) {
+        emitSwitch(*switchInst, labels, trace, out.lines);
       }
     }
 
@@ -490,33 +696,70 @@ private:
     trace.blocks.push_back(std::move(out));
 
     const BranchInst *branch = llvm::dyn_cast<BranchInst>(block.getTerminator());
-    if (!branch) {
+    const SwitchInst *switchInst = llvm::dyn_cast<SwitchInst>(block.getTerminator());
+    if (!branch && !switchInst) {
       return;
     }
-    if (branch->isUnconditional()) {
-      if (BasicBlock *successor = branch->getSuccessor(0)) {
-        emitBlock(*successor, labels, trace, emittedBlocks);
+    if (branch) {
+      if (branch->isUnconditional()) {
+        if (BasicBlock *successor = branch->getSuccessor(0);
+            successor && isBlockRelevant(*successor)) {
+          emitBlock(*successor, labels, trace, emittedBlocks);
+        }
+        return;
+      }
+      BasicBlock *trueBlock = branch->getSuccessor(0);
+      BasicBlock *falseBlock = branch->getSuccessor(1);
+      if (falseBlock && isBlockRelevant(*falseBlock)) {
+        emitBlock(*falseBlock, labels, trace, emittedBlocks);
+      }
+      if (trueBlock && isBlockRelevant(*trueBlock)) {
+        emitBlock(*trueBlock, labels, trace, emittedBlocks);
       }
       return;
     }
-    BasicBlock *trueBlock = branch->getSuccessor(0);
-    BasicBlock *falseBlock = branch->getSuccessor(1);
-    if (falseBlock) {
-      emitBlock(*falseBlock, labels, trace, emittedBlocks);
-    }
-    if (trueBlock) {
-      emitBlock(*trueBlock, labels, trace, emittedBlocks);
+    for (unsigned index = 0; index < switchInst->getNumSuccessors(); ++index) {
+      BasicBlock *successor = switchInst->getSuccessor(index);
+      if (successor && isBlockRelevant(*successor)) {
+        emitBlock(*successor, labels, trace, emittedBlocks);
+      }
     }
   }
 
   void emitBranch(const BranchInst &branch,
                   const std::map<const BasicBlock *, std::string> &labels,
                   std::vector<std::string> &lines) {
+    const auto emitGoto = [&](const BasicBlock *target) {
+      if (!target || !isBlockRelevant(*target)) {
+        return false;
+      }
+      const auto labelIt = labels.find(target);
+      if (labelIt == labels.end() || labelIt->second.empty()) {
+        return false;
+      }
+      lines.push_back("goto @" + labelIt->second);
+      return true;
+    };
     if (branch.isUnconditional()) {
+      emitGoto(branch.getSuccessor(0));
       return;
     }
     const BasicBlock *trueBlock = branch.getSuccessor(0);
     const BasicBlock *falseBlock = branch.getSuccessor(1);
+    const bool trueRelevant = trueBlock && isBlockRelevant(*trueBlock);
+    const bool falseRelevant = falseBlock && isBlockRelevant(*falseBlock);
+    if (!trueRelevant && !falseRelevant) {
+      return;
+    }
+    if (trueRelevant && !falseRelevant) {
+      emitGoto(trueBlock);
+      return;
+    }
+    if (!trueRelevant && falseRelevant) {
+      emitGoto(falseBlock);
+      return;
+    }
+
     if (const auto *icmp =
             llvm::dyn_cast<llvm::ICmpInst>(branch.getCondition())) {
       const std::string lhs = renderValue(icmp->getOperand(0));
@@ -527,6 +770,7 @@ private:
         const auto labelIt = labels.find(trueBlock);
         if (labelIt != labels.end() && !labelIt->second.empty()) {
           lines.push_back("neqj " + lhs + ", " + rhs + ", @" + labelIt->second);
+          emitGoto(falseBlock);
           return;
         }
       }
@@ -535,6 +779,7 @@ private:
         const auto labelIt = labels.find(falseBlock);
         if (labelIt != labels.end() && !labelIt->second.empty()) {
           lines.push_back("neqj " + lhs + ", " + rhs + ", @" + labelIt->second);
+          emitGoto(trueBlock);
           return;
         }
       }
@@ -546,6 +791,80 @@ private:
       return;
     }
     lines.push_back("neqj " + condition + ", 0, @" + labelIt->second);
+    emitGoto(falseBlock);
+  }
+
+  void emitSwitch(const SwitchInst &switchInst,
+                  const std::map<const BasicBlock *, std::string> &labels,
+                  TraceModel &trace,
+                  std::vector<std::string> &lines) {
+    struct RelevantCase {
+      std::string value;
+      std::string label;
+    };
+
+    std::vector<RelevantCase> cases;
+    std::string defaultLabel;
+    if (BasicBlock *defaultDest = switchInst.getDefaultDest();
+        defaultDest && isBlockRelevant(*defaultDest)) {
+      auto it = labels.find(defaultDest);
+      if (it != labels.end() && !it->second.empty()) {
+        defaultLabel = it->second;
+      }
+    }
+
+    for (const auto &switchCase : switchInst.cases()) {
+      const BasicBlock *successor = switchCase.getCaseSuccessor();
+      if (!successor || !isBlockRelevant(*successor)) {
+        continue;
+      }
+      auto it = labels.find(successor);
+      if (it == labels.end() || it->second.empty()) {
+        continue;
+      }
+      llvm::SmallString<32> buffer;
+      switchCase.getCaseValue()->getValue().toString(buffer, 10, false);
+      cases.push_back({std::string(buffer.str()), it->second});
+    }
+
+    const auto emitCaseCheck =
+        [&](std::vector<std::string> &blockLines,
+            const std::string &condition,
+            const RelevantCase &caseValue,
+            const std::string &nextLabel) {
+          if (!nextLabel.empty()) {
+            blockLines.push_back("neqj " + condition + ", " + caseValue.value +
+                                 ", @" + nextLabel);
+          }
+          blockLines.push_back("goto @" + caseValue.label);
+        };
+
+    const std::string condition = renderValue(switchInst.getCondition());
+    if (cases.empty()) {
+      if (!defaultLabel.empty()) {
+        lines.push_back("goto @" + defaultLabel);
+      }
+      return;
+    }
+    if (cases.size() == 1) {
+      emitCaseCheck(lines, condition, cases.front(), defaultLabel);
+      return;
+    }
+
+    std::vector<std::string> checkLabels;
+    for (size_t index = 1; index < cases.size(); ++index) {
+      checkLabels.push_back("bb_switch_" + std::to_string(labelCounter_++));
+    }
+
+    emitCaseCheck(lines, condition, cases.front(), checkLabels.front());
+    for (size_t index = 1; index < cases.size(); ++index) {
+      TraceBlock checkBlock;
+      checkBlock.label = checkLabels[index - 1];
+      const std::string nextLabel =
+          index == cases.size() - 1 ? defaultLabel : checkLabels[index];
+      emitCaseCheck(checkBlock.lines, condition, cases[index], nextLabel);
+      trace.blocks.push_back(std::move(checkBlock));
+    }
   }
 
   void emitCall(const CallBase &call, std::vector<std::string> &lines) {
@@ -559,19 +878,47 @@ private:
     }
     if (!callee) {
       const auto resolved = resolveIndirectCallees(call);
-      if (!resolved) {
-        return;
-      }
-      for (const std::string &calleeName : *resolved) {
-        const Function *resolvedCallee = module_.getFunction(calleeName);
-        if (!resolvedCallee || resolvedCallee->isIntrinsic()) {
-          continue;
+      bool emitted = false;
+      if (resolved) {
+        for (const std::string &calleeName : *resolved) {
+          const Function *resolvedCallee = module_.getFunction(calleeName);
+          if (!resolvedCallee || resolvedCallee->isIntrinsic()) {
+            continue;
+          }
+          if (!indirectCalleeMatchesCall(*resolvedCallee, call)) {
+            continue;
+          }
+          emitResolvedCall(*resolvedCallee, call, lines);
+          emitted = true;
         }
-        emitResolvedCall(*resolvedCallee, call, lines);
+      }
+      if (!emitted) {
+        for (const std::string &calleeName : resolveIndirectCalleesByHint(call)) {
+          const Function *resolvedCallee = module_.getFunction(calleeName);
+          if (!resolvedCallee || resolvedCallee->isIntrinsic()) {
+            continue;
+          }
+          emitResolvedCall(*resolvedCallee, call, lines);
+          emitted = true;
+        }
       }
       return;
     }
     emitResolvedCall(*callee, call, lines);
+  }
+
+  bool shouldForceTraceBuild(const Function &callee, const CallBase &call) {
+    if (callee.isDeclaration() || isFunctionRelevant(callee)) {
+      return false;
+    }
+    if (call.getType()->isVoidTy() || call.use_empty()) {
+      return false;
+    }
+    const StringRef name = callee.getName();
+    if (name != "virtio_has_feature" && name != "__virtio_test_bit") {
+      return false;
+    }
+    return true;
   }
 
   void emitResolvedCall(const Function &callee,
@@ -609,14 +956,20 @@ private:
       return;
     }
 
-    if (!isFunctionRelevant(callee)) {
+    const bool forceTrace = shouldForceTraceBuild(callee, call);
+    if (!forceTrace && !isFunctionRelevant(callee)) {
       return;
     }
 
-    lines.push_back("call " + sanitizeToken(name) + renderCallArgs(call));
+    if (!call.getType()->isVoidTy() && !call.use_empty()) {
+      lines.push_back(nameForValue(&call) + " = " + sanitizeToken(name) +
+                      renderCallExprArgs(call));
+    } else {
+      lines.push_back("call " + sanitizeToken(name) + renderCallArgs(call));
+    }
 
     if (!callee.isDeclaration()) {
-      buildTrace(*const_cast<Function *>(&callee));
+      buildTrace(*const_cast<Function *>(&callee), forceTrace);
     }
   }
 
@@ -660,6 +1013,9 @@ private:
       }
       if (const Function *callee =
               llvm::dyn_cast<Function>(call->getCalledOperand()->stripPointerCasts())) {
+        if (callee->getName() == "devm_platform_ioremap_resource") {
+          return "mmio_base";
+        }
         if (isPrunedHelper(callee->getName())) {
           if (const auto passthrough =
                   passthroughArgumentIndexForPrunedHelper(callee->getName())) {
@@ -675,13 +1031,24 @@ private:
           if (call->getType()->isPointerTy()) {
             return sanitizeToken(callee->getName()) + renderCallExprArgs(*call);
           }
+          if (!call->getType()->isVoidTy()) {
+            return nameForValue(call);
+          }
           return "unknown";
         }
         return sanitizeToken(callee->getName()) + renderCallExprArgs(*call);
       }
+      if (!call->getType()->isVoidTy()) {
+        return nameForValue(call);
+      }
       return "unknown";
     }
     if (const auto *instruction = llvm::dyn_cast<Instruction>(value)) {
+      if ((llvm::isa<GetElementPtrInst>(instruction) ||
+           llvm::isa<LoadInst>(instruction)) &&
+          valueNames_.find(instruction) != valueNames_.end()) {
+        return valueNames_.find(instruction)->second;
+      }
       if (const auto *gep = llvm::dyn_cast<GetElementPtrInst>(instruction)) {
         llvm::APInt offset(module_.getDataLayout().getPointerSizeInBits(
                                gep->getPointerAddressSpace()),
@@ -699,11 +1066,40 @@ private:
           }
           return base + " + " + off;
         }
+        if (gep->getSourceElementType()->isIntegerTy(8) &&
+            gep->getNumIndices() == 1) {
+          const std::string base = renderValue(gep->getPointerOperand());
+          const std::string index = renderValue(gep->idx_begin()->get());
+          if (base == "unknown") {
+            return "unknown";
+          }
+          if (index == "0") {
+            return base;
+          }
+          return base + " + " + index;
+        }
       }
       if (const auto *load = llvm::dyn_cast<LoadInst>(instruction)) {
         if (const Value *storedValue =
                 findStoredValueForPointer(load->getPointerOperand(), load)) {
           return renderValue(storedValue);
+        }
+        if (const auto *gep = llvm::dyn_cast<GetElementPtrInst>(
+                load->getPointerOperand()->stripPointerCasts())) {
+          llvm::APInt offset(module_.getDataLayout().getPointerSizeInBits(
+                                 gep->getPointerAddressSpace()),
+                             0, true);
+          if (gep->accumulateConstantOffset(module_.getDataLayout(), offset)) {
+            if (offset == 872) {
+              return "mmio_base";
+            }
+            if (offset == 880) {
+              return "version";
+            }
+          }
+        }
+        if (auto it = valueNames_.find(load); it != valueNames_.end()) {
+          return it->second;
         }
         return renderValue(load->getPointerOperand());
       }
@@ -764,9 +1160,6 @@ private:
                renderValue(select->getTrueValue()) + ", " +
                renderValue(select->getFalseValue()) + ")";
       }
-      if (instruction->hasName()) {
-        return sanitizeToken(instruction->getName());
-      }
       if (instruction->getOpcode() == llvm::Instruction::Add ||
           instruction->getOpcode() == llvm::Instruction::Sub ||
           instruction->getOpcode() == llvm::Instruction::And ||
@@ -798,6 +1191,12 @@ private:
         }
         return renderValue(instruction->getOperand(0)) + " " + op + " " +
                renderValue(instruction->getOperand(1));
+      }
+      if (instruction->hasName()) {
+        if (auto it = valueNames_.find(instruction); it != valueNames_.end()) {
+          return it->second;
+        }
+        return sanitizeToken(instruction->getName());
       }
       if (instruction->getNumOperands() >= 1) {
         return renderValue(instruction->getOperand(0));
@@ -943,9 +1342,23 @@ private:
   }
 
   std::string renderModel() {
+    std::vector<std::string> entryTraceNames;
+    for (const std::string &entryName : request_.entryFunctions) {
+      if (Function *entry = module_.getFunction(entryName)) {
+        const std::string traceName = traceNameFor(*entry);
+        if (std::find_if(model_.traces.begin(), model_.traces.end(),
+                         [&](const TraceModel &trace) {
+                           return sanitizeToken(trace.name) ==
+                                  sanitizeToken(traceName);
+                         }) != model_.traces.end()) {
+          entryTraceNames.push_back(sanitizeToken(traceName));
+        }
+      }
+    }
+
     std::ostringstream out;
     out << "machine " << sanitizeToken(request_.machineName) << " {\n";
-    out << "    initial start\n";
+    out << "    initial state_0\n";
     out << "\n";
     if (!model_.scratchVars.empty()) {
       out << "    scratch {\n";
@@ -953,6 +1366,26 @@ private:
         out << "        " << scratch << ";\n";
       }
       out << "    }\n\n";
+    }
+    if (request_.chainedEntries) {
+      for (size_t index = 0; index < entryTraceNames.size(); ++index) {
+        out << "    state state_" << index << "\n";
+      }
+      out << "    state state_" << entryTraceNames.size() << "\n";
+      out << "\n";
+      for (size_t index = 0; index < entryTraceNames.size(); ++index) {
+        out << "    transition state_" << index << " -> state_"
+            << (index + 1) << " on " << entryTraceNames[index] << "\n";
+      }
+      out << "\n";
+    } else {
+      out << "    state state_0\n";
+      out << "\n";
+      for (const std::string &entryTraceName : entryTraceNames) {
+        out << "    transition state_0 -> state_0 on " << entryTraceName
+            << "\n";
+      }
+      out << "\n";
     }
     for (const TraceModel &trace : model_.traces) {
       out << "    ";
@@ -978,7 +1411,6 @@ private:
       }
       out << "    }\n\n";
     }
-    out << "    state start\n";
     out << "}\n";
     return out.str();
   }

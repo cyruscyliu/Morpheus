@@ -9,6 +9,9 @@
 - Do not add absolute filesystem paths.
 - Do not hardcode environment-specific `/workspace/...` discovery paths or
   similar host-layout assumptions into repo code.
+- Do not create random files, temp files, marker files, or other ad hoc
+  filesystem artifacts unless the user explicitly asks for them or they are a
+  defined part of the repo workflow.
 - Add comments when they improve clarity.
 - If you are uncertain, ask instead of fabricating results under pressure.
 - After modifying the repo-root `morpheus.yaml`, run

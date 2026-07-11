@@ -194,13 +194,17 @@ int main(int argc, char **argv) {
   devilang::BuildRequest request;
   if (!bootingEntries.empty()) {
     request.phases.push_back(
-        {bootingMachineName, std::vector<std::string>(bootingEntries.begin(),
-                                                      bootingEntries.end())});
+        {bootingMachineName,
+         std::vector<std::string>(bootingEntries.begin(),
+                                  bootingEntries.end()),
+         true});
   }
   if (!runtimeEntries.empty()) {
     request.phases.push_back(
-        {runtimeMachineName, std::vector<std::string>(runtimeEntries.begin(),
-                                                      runtimeEntries.end())});
+        {runtimeMachineName,
+         std::vector<std::string>(runtimeEntries.begin(),
+                                  runtimeEntries.end()),
+         false});
   }
   request.indirectCalls = parseKallgraphText(kallgraphText);
 

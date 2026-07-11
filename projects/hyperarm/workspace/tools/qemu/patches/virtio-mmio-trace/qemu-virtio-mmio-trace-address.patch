@@ -8,17 +8,42 @@ diff --git a/hw/virtio/trace-events b/hw/virtio/trace-events
 -virtio_mmio_read(uint64_t offset) "virtio_mmio_read offset 0x%" PRIx64
 -virtio_mmio_write_offset(uint64_t offset, uint64_t value) "virtio_mmio_write offset 0x%" PRIx64 " value 0x%" PRIx64
 +virtio_mmio_read(uint64_t base, uint64_t offset, uint64_t addr, uint64_t value) "virtio_mmio_read base 0x%" PRIx64 " offset 0x%" PRIx64 " addr 0x%" PRIx64 " value 0x%" PRIx64
-+virtio_mmio_write_offset(uint64_t base, uint64_t offset, uint64_t addr, uint64_t value) "virtio_mmio_write base 0x%" PRIx64 " offset 0x%" PRIx64 " addr 0x%" PRIx64 " value 0x%" PRIx64
++virtio_mmio_write_offset(uint64_t base, uint64_t offset, uint64_t addr, uint64_t value, uint64_t dma_addr, uint32_t dma_len, uint32_t dma_dir, uint32_t dma_op, uint32_t dma_status, const char *dma_data) "virtio_mmio_write base 0x%" PRIx64 " offset 0x%" PRIx64 " addr 0x%" PRIx64 " value 0x%" PRIx64 " dma_addr 0x%" PRIx64 " dma_len 0x%x dma_dir 0x%x dma_op 0x%x dma_status 0x%x dma_data %s"
  virtio_mmio_guest_page(uint64_t size, int shift) "guest page size 0x%" PRIx64 " shift %d"
  virtio_mmio_queue_write(uint64_t value, int max_size) "mmio_queue write 0x%" PRIx64 " max %d"
  virtio_mmio_setting_irq(int level) "virtio_mmio setting IRQ %d"
 diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
 --- a/hw/virtio/virtio-mmio.c
 +++ b/hw/virtio/virtio-mmio.c
-@@ -81,12 +81,35 @@
+@@ -28,6 +28,8 @@
+ #include "migration/qemu-file-types.h"
+ #include "qemu/host-utils.h"
+ #include "qemu/module.h"
++#include "exec/address-spaces.h"
++#include "exec/memory.h"
+ #include "sysemu/kvm.h"
+ #include "sysemu/replay.h"
+ #include "hw/virtio/virtio-mmio.h"
+@@ -79,14 +80,123 @@
+             proxy->vqs[i].enabled = 0;
+         }
      }
- }
- 
++
++    proxy->hp_dma_addr_lo = 0;
++    proxy->hp_dma_addr_hi = 0;
++    proxy->hp_dma_len = 0;
++}
++
++#define HYPERARM_HP_DMA_EVENT_OFFSET         0x1c0
++#define HYPERARM_HP_DMA_ADDR_LO_OFFSET       0x1c4
++#define HYPERARM_HP_DMA_ADDR_HI_OFFSET       0x1c8
++#define HYPERARM_HP_DMA_LEN_OFFSET           0x1cc
++#define HYPERARM_HP_DMA_EVENT_OPCODE_SHIFT   0u
++#define HYPERARM_HP_DMA_EVENT_OPCODE_MASK    0x000000ffu
++#define HYPERARM_HP_DMA_EVENT_DIRECTION_SHIFT 8u
++#define HYPERARM_HP_DMA_EVENT_DIRECTION_MASK 0x00000300u
++#define HYPERARM_HP_DMA_CAPTURE_MAX          256u
++
 +static hwaddr virtio_mmio_transport_base(VirtIOMMIOProxy *proxy)
 +{
 +    MemoryRegionSection section = memory_region_find(&proxy->iomem, 0, 0x200);
@@ -33,6 +58,78 @@ diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
 +    return base;
 +}
 +
++static uint8_t virtio_mmio_dma_event_opcode(uint32_t event)
++{
++    return (event & HYPERARM_HP_DMA_EVENT_OPCODE_MASK) >>
++           HYPERARM_HP_DMA_EVENT_OPCODE_SHIFT;
++}
++
++static uint8_t virtio_mmio_dma_event_direction(uint32_t event)
++{
++    return (event & HYPERARM_HP_DMA_EVENT_DIRECTION_MASK) >>
++           HYPERARM_HP_DMA_EVENT_DIRECTION_SHIFT;
++}
++
++static char *virtio_mmio_hex_encode(const uint8_t *buf, size_t len)
++{
++    static const char hex[] = "0123456789abcdef";
++    char *out;
++    size_t i;
++
++    out = g_malloc(len * 2 + 1);
++    for (i = 0; i < len; ++i) {
++        out[i * 2] = hex[(buf[i] >> 4) & 0xf];
++        out[i * 2 + 1] = hex[buf[i] & 0xf];
++    }
++    out[len * 2] = '\0';
++    return out;
++}
++
++static void virtio_mmio_trace_write(VirtIOMMIOProxy *proxy,
++                                    hwaddr offset,
++                                    uint64_t value,
++                                    unsigned size)
++{
++    hwaddr base = virtio_mmio_transport_base(proxy);
++    uint64_t dma_addr =
++        ((uint64_t)proxy->hp_dma_addr_hi << 32) | proxy->hp_dma_addr_lo;
++    uint32_t dma_len = 0;
++    uint32_t dma_capture_len = 0;
++    uint32_t dma_dir = 0;
++    uint32_t dma_op = 0;
++    uint32_t dma_status = 0;
++    g_autofree uint8_t *dma_buf = NULL;
++    g_autofree char *dma_data = NULL;
++
++    dma_data = g_strdup("-");
++
++    if (offset == HYPERARM_HP_DMA_EVENT_OFFSET &&
++        size == 4) {
++        uint32_t event = (uint32_t)value;
++
++        dma_len = proxy->hp_dma_len;
++        dma_dir = virtio_mmio_dma_event_direction(event);
++        dma_op = virtio_mmio_dma_event_opcode(event);
++        dma_data = g_strdup("");
++        dma_status = 0xffffffffu;
++
++        if (dma_addr && dma_len) {
++            dma_capture_len = MIN(dma_len, HYPERARM_HP_DMA_CAPTURE_MAX);
++            dma_buf = g_malloc(dma_capture_len);
++            dma_status = address_space_read(&address_space_memory, dma_addr,
++                                            MEMTXATTRS_UNSPECIFIED, dma_buf,
++                                            dma_capture_len);
++            if (dma_status == MEMTX_OK) {
++                dma_data = virtio_mmio_hex_encode(dma_buf, dma_capture_len);
++            }
++        }
++    }
++
++    trace_virtio_mmio_write_offset(base, offset, base + offset, value,
++                                   dma_addr, dma_len, dma_dir, dma_op,
++                                   dma_status, dma_data);
++}
++
 +static uint64_t virtio_mmio_trace_read_result(VirtIOMMIOProxy *proxy,
 +                                              hwaddr offset,
 +                                              uint64_t value)
@@ -41,8 +138,8 @@ diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
 +
 +    trace_virtio_mmio_read(base, offset, base + offset, value);
 +    return value;
-+}
-+
+ }
+ 
  static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
  {
      VirtIOMMIOProxy *proxy = (VirtIOMMIOProxy *)opaque;
@@ -53,7 +150,7 @@ diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
  
      if (!vdev) {
          /* If no backend is present, we treat most registers as
-@@ -99,17 +122,21 @@
+@@ -99,17 +212,21 @@
           */
          switch (offset) {
          case VIRTIO_MMIO_MAGIC_VALUE:
@@ -80,7 +177,7 @@ diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
          }
      }
  
-@@ -118,22 +145,31 @@
+@@ -118,22 +235,31 @@
          if (proxy->legacy) {
              switch (size) {
              case 1:
@@ -118,7 +215,7 @@ diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
              default:
                  abort();
              }
-@@ -143,70 +179,84 @@
+@@ -143,70 +269,84 @@
          qemu_log_mask(LOG_GUEST_ERROR,
                        "%s: wrong size access to register!\n",
                        __func__);
@@ -169,9 +266,10 @@ diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
      case VIRTIO_MMIO_QUEUE_NUM_MAX:
          if (!virtio_queue_get_num(vdev, vdev->queue_sel)) {
 -            return 0;
-+            return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
-         }
+-        }
 -        return VIRTQUEUE_MAX_SIZE;
++            return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
++        }
 +        return virtio_mmio_trace_read_result(proxy, trace_offset,
 +                                             VIRTQUEUE_MAX_SIZE);
      case VIRTIO_MMIO_QUEUE_PFN:
@@ -181,10 +279,11 @@ diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
                            HWADDR_PRIx ") in non-legacy mode\n",
                            __func__, offset);
 -            return 0;
-+            return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
-         }
+-        }
 -        return virtio_queue_get_addr(vdev, vdev->queue_sel)
 -            >> proxy->guest_page_shift;
++            return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
++        }
 +        return virtio_mmio_trace_read_result(
 +            proxy, trace_offset,
 +            virtio_queue_get_addr(vdev, vdev->queue_sel)
@@ -196,9 +295,10 @@ diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
                            HWADDR_PRIx ") in legacy mode\n",
                            __func__, offset);
 -            return 0;
-+            return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
-         }
+-        }
 -        return proxy->vqs[vdev->queue_sel].enabled;
++            return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
++        }
 +        return virtio_mmio_trace_read_result(
 +            proxy, trace_offset, proxy->vqs[vdev->queue_sel].enabled);
      case VIRTIO_MMIO_INTERRUPT_STATUS:
@@ -216,15 +316,16 @@ diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
                            HWADDR_PRIx ") in legacy mode\n",
                            __func__, offset);
 -            return 0;
-+            return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
-         }
+-        }
 -        return vdev->generation;
++            return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
++        }
 +        return virtio_mmio_trace_read_result(proxy, trace_offset,
 +                                             vdev->generation);
     case VIRTIO_MMIO_SHM_LEN_LOW:
     case VIRTIO_MMIO_SHM_LEN_HIGH:
          /*
-@@ -214,7 +264,7 @@
+@@ -214,7 +354,7 @@
           * according to the linux driver, if region length is -1
           * the shared memory doesn't exist
           */
@@ -233,7 +334,7 @@ diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
      case VIRTIO_MMIO_DEVICE_FEATURES_SEL:
      case VIRTIO_MMIO_DRIVER_FEATURES:
      case VIRTIO_MMIO_DRIVER_FEATURES_SEL:
-@@ -233,14 +283,14 @@
+@@ -233,14 +373,14 @@
          qemu_log_mask(LOG_GUEST_ERROR,
                        "%s: read of write-only register (0x%" HWADDR_PRIx ")\n",
                        __func__, offset);
@@ -244,21 +345,46 @@ diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
                        "%s: bad register offset (0x%" HWADDR_PRIx ")\n",
                        __func__, offset);
 -        return 0;
-+        return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
-     }
+-    }
 -    return 0;
++        return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
++    }
 +    return virtio_mmio_trace_read_result(proxy, trace_offset, 0);
  }
  
  static void virtio_mmio_write(void *opaque, hwaddr offset, uint64_t value,
-@@ -248,8 +298,9 @@
+@@ -248,8 +388,19 @@
  {
      VirtIOMMIOProxy *proxy = (VirtIOMMIOProxy *)opaque;
      VirtIODevice *vdev = virtio_bus_get_device(&proxy->bus);
-+    hwaddr base = virtio_mmio_transport_base(proxy);
- 
+-
 -    trace_virtio_mmio_write_offset(offset, value);
-+    trace_virtio_mmio_write_offset(base, offset, base + offset, value);
++    hwaddr trace_offset = offset;
++
++    if (offset == HYPERARM_HP_DMA_ADDR_LO_OFFSET &&
++        size == 4) {
++        proxy->hp_dma_addr_lo = (uint32_t)value;
++    } else if (offset == HYPERARM_HP_DMA_ADDR_HI_OFFSET &&
++               size == 4) {
++        proxy->hp_dma_addr_hi = (uint32_t)value;
++    } else if (offset == HYPERARM_HP_DMA_LEN_OFFSET &&
++               size == 4) {
++        proxy->hp_dma_len = (uint32_t)value;
++    }
++    virtio_mmio_trace_write(proxy, trace_offset, value, size);
  
      if (!vdev) {
          /* If no backend is present, we just make all registers
+diff --git a/include/hw/virtio/virtio-mmio.h b/include/hw/virtio/virtio-mmio.h
+--- a/include/hw/virtio/virtio-mmio.h
++++ b/include/hw/virtio/virtio-mmio.h
+@@ -70,6 +70,9 @@
+     /* Fields only used for non-legacy (v2) devices */
+     uint32_t guest_features[2];
+     VirtIOMMIOQueue vqs[VIRTIO_QUEUE_MAX];
++    uint32_t hp_dma_addr_lo;
++    uint32_t hp_dma_addr_hi;
++    uint32_t hp_dma_len;
+ };
+ 
+ #endif

@@ -7,7 +7,7 @@ index 2354400..9999999 100644
 +
 +/*
 + * The guest DT advertises a 0x200-byte virtio-mmio window so the telemetry
-+ * aperture at config offsets 0xc0/0xc4/0xc8 traps into EL2 instead of
++ * aperture at config offsets 0xc0/0xc4/0xc8/0xcc traps into EL2 instead of
 + * bypassing the registered MMIO handler.
 + */
 +#define HP_VIRTIO_MMIO_REGION_SIZE 0x200
@@ -53,6 +53,7 @@ index 6503c0c..9999999 100644
 +    uint32_t hp_dma_event;
 +    uint32_t hp_dma_addr_lo;
 +    uint32_t hp_dma_addr_hi;
++    uint32_t hp_dma_len;
  };
 diff --git a/include/libvmm/virtio/net.h b/include/libvmm/virtio/net.h
 index 3cf196e..9999999 100644
@@ -66,6 +67,7 @@ index 3cf196e..9999999 100644
 +    uint32_t hp_dma_event;
 +    uint32_t hp_dma_addr_lo;
 +    uint32_t hp_dma_addr_hi;
++    uint32_t hp_dma_len;
      struct virtio_queue_handler vqs[VIRTIO_NET_NUM_VIRTQ];
 diff --git a/include/libvmm/virtio/block.h b/include/libvmm/virtio/block.h
 index 99b0774..9999999 100644
@@ -78,6 +80,7 @@ index 99b0774..9999999 100644
 +    uint32_t hp_dma_event;
 +    uint32_t hp_dma_addr_lo;
 +    uint32_t hp_dma_addr_hi;
++    uint32_t hp_dma_len;
      struct virtio_queue_handler vqs[VIRTIO_BLK_NUM_VIRTQ];
 diff --git a/src/virtio/mmio.c b/src/virtio/mmio.c
 index 503df27..9999999 100644
@@ -115,6 +118,9 @@ index 6b3cc8f..9999999 100644
 +    case 0xc8:
 +        *config = console->hp_dma_addr_hi;
 +        return true;
++    case 0xcc:
++        *config = console->hp_dma_len;
++        return true;
 +    default:
 +        /*
 +         * Console config is otherwise unused here. Returning zero prevents
@@ -141,6 +147,9 @@ index 6b3cc8f..9999999 100644
 +        return true;
 +    case 0xc8:
 +        console->hp_dma_addr_hi = config;
++        return true;
++    case 0xcc:
++        console->hp_dma_len = config;
 +        return true;
 +    default:
 +        /*
@@ -173,6 +182,9 @@ index 9c5d2af..9999999 100644
 +    case 0xc8:
 +        *ret_val = state->hp_dma_addr_hi;
 +        return true;
++    case 0xcc:
++        *ret_val = state->hp_dma_len;
++        return true;
 +    default:
 +        break;
 +    }
@@ -204,6 +216,9 @@ index 9c5d2af..9999999 100644
 +    case 0xc8:
 +        state->hp_dma_addr_hi = val;
 +        return true;
++    case 0xcc:
++        state->hp_dma_len = val;
++        return true;
 +    default:
 +        return true;
 +    }
@@ -234,6 +249,9 @@ index 274fd3f..9999999 100644
 +        return true;
 +    case 0xc8:
 +        *ret_val = state->hp_dma_addr_hi;
++        return true;
++    case 0xcc:
++        *ret_val = state->hp_dma_len;
 +        return true;
 +    default:
 +        if (offset + sizeof(uint32_t) <= sizeof(state->config)) {
@@ -271,6 +289,9 @@ index 274fd3f..9999999 100644
 +        return true;
 +    case 0xc8:
 +        state->hp_dma_addr_hi = val;
++        return true;
++    case 0xcc:
++        state->hp_dma_len = val;
 +        return true;
 +    default:
 +        /*

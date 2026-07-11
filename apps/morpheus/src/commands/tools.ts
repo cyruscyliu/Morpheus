@@ -2,6 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const { repoRoot } = require("../core/paths");
+const { handleToolPassthroughCommand } = require("../core/tool-invoke");
 const { listToolDescriptors, readToolDescriptor } = require("../core/tool-descriptor");
 const { validateToolDescriptor } = require("../core/tool-validator");
 const { writeStdoutLine } = require("../core/io");
@@ -116,6 +117,14 @@ function toolUsage() {
     "Notes:",
     "  - 'workflow-only' tools are managed through configured workflows.",
     "  - 'ready' tools have a repo-local entrypoint available to Morpheus."
+  ].join("\n");
+}
+
+function toolSubcommandUsage(subcommand) {
+  return [
+    "Usage:",
+    `  ./bin/morpheus tool ${subcommand} --tool <name> [--json] [tool ${subcommand} flags]`,
+    `  ./bin/morpheus tool ${subcommand} --tool <name> [--json] -- [tool ${subcommand} flags]`,
   ].join("\n");
 }
 
@@ -265,7 +274,9 @@ async function handleToolCommand(argv) {
     return result.ok ? 0 : 1;
   }
 
-  throw new Error(`unknown tool subcommand: ${subcommand}`);
+  return handleToolPassthroughCommand(subcommand, rest, toolSubcommandUsage(subcommand), {
+    allowGlobalRemote: true,
+  });
 }
 
 module.exports = {

@@ -22,7 +22,7 @@ diff --git a/drivers/virtio/virtio_ring.c b/drivers/virtio/virtio_ring.c
  
  /*
   * Helpers.
-@@ -293,6 +300,101 @@
+@@ -293,6 +300,138 @@
  	return vring->use_map_api && (extra->addr != DMA_MAPPING_ERROR);
  }
  
@@ -47,7 +47,9 @@ diff --git a/drivers/virtio/virtio_ring.c b/drivers/virtio/virtio_ring.c
 +	__le32 event;
 +	__le32 addr_lo;
 +	__le32 addr_hi;
++	__le32 len;
 +	u32 sequence;
++	u32 size32 = size > U32_MAX ? U32_MAX : (u32)size;
 +
 +	if (!hp_dma_trace_via_mmio(vdev))
 +		return;
@@ -61,15 +63,17 @@ diff --git a/drivers/virtio/virtio_ring.c b/drivers/virtio/virtio_ring.c
 +		    HP_DMA_EVENT_SEQUENCE_SHIFT);
 +	addr_lo = cpu_to_le32(hp_dma_addr_lo((u64)addr));
 +	addr_hi = cpu_to_le32(hp_dma_addr_hi((u64)addr));
++	len = cpu_to_le32(size32);
 +	event = cpu_to_le32(HP_DMA_EVENT_ENCODE(opcode,
 +						hp_dma_event_dir(dir),
-+						size,
 +						sequence));
 +
 +	vdev->config->set(vdev, HP_DMA_ADDR_LO_OFFSET, &addr_lo,
 +			  sizeof(addr_lo));
 +	vdev->config->set(vdev, HP_DMA_ADDR_HI_OFFSET, &addr_hi,
 +			  sizeof(addr_hi));
++	vdev->config->set(vdev, HP_DMA_LEN_OFFSET, &len,
++			  sizeof(len));
 +	vdev->config->set(vdev, HP_DMA_EVENT_OFFSET, &event,
 +			  sizeof(event));
 +}
@@ -81,6 +85,8 @@ diff --git a/drivers/virtio/virtio_ring.c b/drivers/virtio/virtio_ring.c
 +	 (_op) == HP_DMA_EVENT_OP_MAP ? "map" :				\
 +	 (_op) == HP_DMA_EVENT_OP_MAP_FAIL ? "map_fail" :		\
 +	 (_op) == HP_DMA_EVENT_OP_UNMAP ? "unmap" :			\
++	 (_op) == HP_DMA_EVENT_OP_SYNC_FOR_CPU ? "sync_for_cpu" :	\
++	 (_op) == HP_DMA_EVENT_OP_SYNC_FOR_DEVICE ? "sync_for_device" : \
 +	 (_op) == HP_DMA_EVENT_OP_VQ_POLL_HIT ? "vq_poll_hit" :	\
 +	 (_op) == HP_DMA_EVENT_OP_VQ_POLL_MISS ? "vq_poll_miss" :	\
 +	 (_op) == HP_DMA_EVENT_OP_VQ_GET_BUF ? "vq_get_buf" :		\
@@ -115,6 +121,37 @@ diff --git a/drivers/virtio/virtio_ring.c b/drivers/virtio/virtio_ring.c
 +				     (_use_dma) ? "dma_api" : "phys");	\
 +	} while (0)
 +
++static void hp_dma_trace_preview(char *out, size_t out_size,
++				 const void *buf, size_t size)
++{
++	static const char hex[] = "0123456789abcdef";
++	const u8 *bytes = buf;
++	size_t preview = min_t(size_t, size, 16);
++	size_t i;
++
++	if (!out_size)
++		return;
++	if (!buf || !preview) {
++		out[0] = '\0';
++		return;
++	}
++	for (i = 0; i < preview && (i * 2 + 1) < out_size; ++i) {
++		out[i * 2] = hex[(bytes[i] >> 4) & 0xf];
++		out[i * 2 + 1] = hex[bytes[i] & 0xf];
++	}
++	out[min_t(size_t, preview * 2, out_size - 1)] = '\0';
++}
++
++static bool hp_dma_trace_submit_on_map(enum dma_data_direction dir)
++{
++	return dir == DMA_TO_DEVICE || dir == DMA_BIDIRECTIONAL;
++}
++
++static bool hp_dma_trace_complete_on_cpu_sync(enum dma_data_direction dir)
++{
++	return dir == DMA_FROM_DEVICE || dir == DMA_BIDIRECTIONAL;
++}
++
 +static void hp_dma_trace_vq_state(struct virtqueue *_vq, u32 opcode,
 +				  dma_addr_t aux, const char *kind)
 +{
@@ -145,7 +182,7 @@ diff --git a/drivers/virtio/virtio_ring.c b/drivers/virtio/virtio_ring.c
  	} else {
  		void *queue = alloc_pages_exact(PAGE_ALIGN(size), flag);
  
-@@ -337,8 +454,18 @@
+@@ -337,8 +454,27 @@
  			 */
  			if (WARN_ON_ONCE(*map_handle != phys_addr)) {
  				free_pages_exact(queue, PAGE_ALIGN(size));
@@ -157,6 +194,15 @@ diff --git a/drivers/virtio/virtio_ring.c b/drivers/virtio/virtio_ring.c
 +			HP_DMA_TRACE(vdev, HP_DMA_EVENT_OP_ALLOC_SUCCESS,
 +				     DMA_BIDIRECTIONAL, size, *map_handle,
 +				     "queue", false);
++			{
++				char preview[33];
++
++				hp_dma_trace_preview(preview, sizeof(preview),
++						     queue, size);
++				dev_info_ratelimited(&vdev->dev,
++						     "virtio_telemetry_preview op=alloc kind=queue size=%zu aux=%pad preview=%s\n",
++						     size, map_handle, preview);
++			}
 +		} else {
 +			HP_DMA_TRACE(vdev, HP_DMA_EVENT_OP_ALLOC_FAIL,
 +				     DMA_BIDIRECTIONAL, size, 0,
@@ -206,7 +252,7 @@ diff --git a/drivers/virtio/virtio_ring.c b/drivers/virtio/virtio_ring.c
  }
  
  /* Map one sg entry. */
-@@ -412,9 +553,12 @@
+@@ -412,9 +553,13 @@
  					 sg->offset, sg->length,
  					 direction, 0);
  
@@ -214,13 +260,14 @@ diff --git a/drivers/virtio/virtio_ring.c b/drivers/virtio/virtio_ring.c
 +	if (vring_mapping_error(vq, *addr, direction, *len, "payload"))
  		return -ENOMEM;
  
-+	HP_DMA_TRACE(vq->vq.vdev, HP_DMA_EVENT_OP_MAP, direction, *len, *addr,
-+		     "payload", true);
++	if (hp_dma_trace_submit_on_map(direction))
++		HP_DMA_TRACE(vq->vq.vdev, HP_DMA_EVENT_OP_MAP, direction,
++			     *len, *addr, "payload", true);
 +
  	return 0;
  }
  
-@@ -425,8 +569,19 @@
+@@ -425,8 +569,22 @@
  	if (!vq->use_map_api)
  		return (dma_addr_t)virt_to_phys(cpu_addr);
  
@@ -234,27 +281,17 @@ diff --git a/drivers/virtio/virtio_ring.c b/drivers/virtio/virtio_ring.c
 +		    !(vq->vq.vdev->map ?
 +		      vq->vq.vdev->map->mapping_error(vq->map, addr) :
 +		      dma_mapping_error(vring_dma_dev(vq), addr))) {
-+			HP_DMA_TRACE(vq->vq.vdev, HP_DMA_EVENT_OP_MAP, direction,
-+				     size, addr, "single", true);
++			if (hp_dma_trace_submit_on_map(direction))
++				HP_DMA_TRACE(vq->vq.vdev,
++					     HP_DMA_EVENT_OP_MAP,
++					     direction, size, addr,
++					     "single", true);
 +		}
 +		return addr;
 +	}
  }
  
  static void virtqueue_init(struct vring_virtqueue *vq, u32 num)
-@@ -471,6 +626,12 @@
- 				   (flags & VRING_DESC_F_WRITE) ?
- 				   DMA_FROM_DEVICE : DMA_TO_DEVICE,
- 				   0);
-+	HP_DMA_TRACE(vq->vq.vdev, HP_DMA_EVENT_OP_UNMAP,
-+		     (flags & VRING_DESC_F_WRITE) ? DMA_FROM_DEVICE :
-+		     DMA_TO_DEVICE,
-+		     extra->len, extra->addr,
-+		     (flags & VRING_DESC_F_INDIRECT) ? "indirect" : "payload",
-+		     true);
- 
- out:
- 	return extra->next;
 @@ -646,7 +807,9 @@
  		dma_addr_t addr = vring_map_single(
  			vq, desc, total_sg * sizeof(struct vring_desc),
@@ -301,19 +338,6 @@ diff --git a/drivers/virtio/virtio_ring.c b/drivers/virtio/virtio_ring.c
  }
  
  static bool virtqueue_enable_cb_delayed_split(struct virtqueue *_vq)
-@@ -1289,6 +1462,12 @@
- 				   (flags & VRING_DESC_F_WRITE) ?
- 				   DMA_FROM_DEVICE : DMA_TO_DEVICE,
- 				   0);
-+	HP_DMA_TRACE(vq->vq.vdev, HP_DMA_EVENT_OP_UNMAP,
-+		     (flags & VRING_DESC_F_WRITE) ? DMA_FROM_DEVICE :
-+		     DMA_TO_DEVICE,
-+		     extra->len, extra->addr,
-+		     (flags & VRING_DESC_F_INDIRECT) ? "indirect" : "payload",
-+		     true);
- }
- 
- static struct vring_packed_desc *alloc_indirect_packed(unsigned int total_sg,
 @@ -1379,7 +1558,9 @@
  	addr = vring_map_single(vq, desc,
  			total_sg * sizeof(struct vring_packed_desc),
@@ -363,6 +387,17 @@ diff --git a/drivers/virtio/virtio_ring.c b/drivers/virtio/virtio_ring.c
  }
  
  static bool virtqueue_enable_cb_delayed_packed(struct virtqueue *_vq)
+@@ -3236,6 +3460,10 @@
+	else
+		dma_unmap_page_attrs(vring_dma_dev(vq), map_handle,
+				     size, dir, attrs);
++	if (!(attrs & DMA_ATTR_SKIP_CPU_SYNC) &&
++	    hp_dma_trace_complete_on_cpu_sync(dir))
++		HP_DMA_TRACE(vdev, HP_DMA_EVENT_OP_UNMAP, dir, size,
++			     map_handle, "payload", true);
+ }
+ EXPORT_SYMBOL_GPL(virtqueue_unmap_page_attrs);
+
 @@ -3310,7 +3501,7 @@
  {
  	const struct vring_virtqueue *vq = to_vvq(_vq);
@@ -371,12 +406,32 @@ diff --git a/drivers/virtio/virtio_ring.c b/drivers/virtio/virtio_ring.c
 +	return vring_mapping_error(vq, addr, DMA_NONE, 0, "premap");
  }
  EXPORT_SYMBOL_GPL(virtqueue_map_mapping_error);
+
+@@ -3368,6 +3596,9 @@
+ 	else
+ 		dma_sync_single_range_for_cpu(vring_dma_dev(vq),
+ 					      addr, offset, size, dir);
++	if (size && hp_dma_trace_complete_on_cpu_sync(dir))
++		HP_DMA_TRACE(vdev, HP_DMA_EVENT_OP_SYNC_FOR_CPU, dir, size,
++			     addr + offset, "sync", true);
+ }
+ EXPORT_SYMBOL_GPL(virtqueue_map_sync_single_range_for_cpu);
+
+@@ -3400,6 +3631,9 @@
+ 	else
+ 		dma_sync_single_range_for_device(vring_dma_dev(vq), addr,
+ 						 offset, size, dir);
++	if (size && hp_dma_trace_submit_on_map(dir))
++		HP_DMA_TRACE(vdev, HP_DMA_EVENT_OP_SYNC_FOR_DEVICE, dir, size,
++			     addr + offset, "sync", true);
+ }
+ EXPORT_SYMBOL_GPL(virtqueue_map_sync_single_range_for_device);
  
 diff --git a/include/linux/dma_telemetry_aperture.h b/include/linux/dma_telemetry_aperture.h
 index e69de29..69beeff 100644
 --- a/include/linux/dma_telemetry_aperture.h
 +++ b/include/linux/dma_telemetry_aperture.h
-@@ -0,0 +1,105 @@
+@@ -0,0 +1,108 @@
 +#ifndef _LINUX_DMA_TELEMETRY_APERTURE_H
 +#define _LINUX_DMA_TELEMETRY_APERTURE_H
 +
@@ -396,17 +451,19 @@ index e69de29..69beeff 100644
 + *
 + *   1. HP_DMA_ADDR_LO
 + *   2. HP_DMA_ADDR_HI
-+ *   3. HP_DMA_EVENT
++ *   3. HP_DMA_LEN
++ *   4. HP_DMA_EVENT
 + *
 + * HP_DMA_EVENT is written last and acts as the commit point for observers.
 + */
 +
 +#define HP_DMA_APERTURE_OFFSET              0x0c0u
-+#define HP_DMA_APERTURE_SIZE                0x00cu
++#define HP_DMA_APERTURE_SIZE                0x010u
 +
 +#define HP_DMA_EVENT_OFFSET                 0x0c0u
 +#define HP_DMA_ADDR_LO_OFFSET               0x0c4u
 +#define HP_DMA_ADDR_HI_OFFSET               0x0c8u
++#define HP_DMA_LEN_OFFSET                   0x0ccu
 +
 +#define HP_DMA_EVENT(base)                  ((unsigned long)(base) + \
 +					    HP_DMA_EVENT_OFFSET)
@@ -414,28 +471,27 @@ index e69de29..69beeff 100644
 +					    HP_DMA_ADDR_LO_OFFSET)
 +#define HP_DMA_ADDR_HI(base)                ((unsigned long)(base) + \
 +					    HP_DMA_ADDR_HI_OFFSET)
++#define HP_DMA_LEN(base)                    ((unsigned long)(base) + \
++					    HP_DMA_LEN_OFFSET)
 +
 +/*
 + * HP_DMA_EVENT register layout
 + *
-+ *  31                        18 17         10 9        8 7         0
++ *  31                        16 15         10 9        8 7         0
 + * +----------------------------+-------------+----------+-----------+
-+ * |          sequence          |    size     |   dir    |  opcode   |
++ * |          sequence          |  reserved   |   dir    |  opcode   |
 + * +----------------------------+-------------+----------+-----------+
 + */
 +#define HP_DMA_EVENT_OPCODE_SHIFT           0u
 +#define HP_DMA_EVENT_OPCODE_MASK            0x000000ffu
 +#define HP_DMA_EVENT_DIRECTION_SHIFT        8u
 +#define HP_DMA_EVENT_DIRECTION_MASK         0x00000300u
-+#define HP_DMA_EVENT_SIZE_SHIFT             10u
-+#define HP_DMA_EVENT_SIZE_MASK              0x0003fc00u
-+#define HP_DMA_EVENT_SEQUENCE_SHIFT         18u
-+#define HP_DMA_EVENT_SEQUENCE_MASK          0xfffc0000u
++#define HP_DMA_EVENT_SEQUENCE_SHIFT         16u
++#define HP_DMA_EVENT_SEQUENCE_MASK          0xffff0000u
 +
-+#define HP_DMA_EVENT_ENCODE(opcode, direction, size, sequence) \
++#define HP_DMA_EVENT_ENCODE(opcode, direction, sequence) \
 +	((((u32)(opcode)) << HP_DMA_EVENT_OPCODE_SHIFT) | \
 +	 (((u32)(direction)) << HP_DMA_EVENT_DIRECTION_SHIFT) | \
-+	 ((((u32)(size)) & 0xffu) << HP_DMA_EVENT_SIZE_SHIFT) | \
 +	 (((u32)(sequence)) << HP_DMA_EVENT_SEQUENCE_SHIFT))
 +
 +/* HP_DMA_EVENT opcode values */
@@ -445,10 +501,12 @@ index e69de29..69beeff 100644
 +#define HP_DMA_EVENT_OP_MAP                 0x04u
 +#define HP_DMA_EVENT_OP_MAP_FAIL            0x05u
 +#define HP_DMA_EVENT_OP_UNMAP               0x06u
-+#define HP_DMA_EVENT_OP_VQ_POLL_HIT         0x07u
-+#define HP_DMA_EVENT_OP_VQ_POLL_MISS        0x08u
-+#define HP_DMA_EVENT_OP_VQ_GET_BUF          0x09u
-+#define HP_DMA_EVENT_OP_VQ_GET_BUF_EMPTY    0x0au
++#define HP_DMA_EVENT_OP_SYNC_FOR_CPU        0x07u
++#define HP_DMA_EVENT_OP_SYNC_FOR_DEVICE     0x08u
++#define HP_DMA_EVENT_OP_VQ_POLL_HIT         0x09u
++#define HP_DMA_EVENT_OP_VQ_POLL_MISS        0x0au
++#define HP_DMA_EVENT_OP_VQ_GET_BUF          0x0bu
++#define HP_DMA_EVENT_OP_VQ_GET_BUF_EMPTY    0x0cu
 +
 +/* HP_DMA_EVENT direction values */
 +#define HP_DMA_EVENT_DIR_NONE               0x0u

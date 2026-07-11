@@ -14,6 +14,7 @@ namespace devilang {
 struct PhaseRequest {
   std::string machineName;
   std::vector<std::string> entryFunctions;
+  bool chainedEntries = false;
 };
 
 struct BuildRequest {

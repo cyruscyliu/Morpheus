@@ -226,10 +226,19 @@ binary="${tmpdir}/replay"
   "${harness}" \
   -o "${binary}"
 
+replay_rc=0
+set +e
 "${binary}" "${filtered_trace}" > "${output}"
+replay_rc=$?
+set -e
+
+if [ "${replay_rc}" -ne 0 ] && [ "${replay_rc}" -ne 2 ]; then
+  echo "replay failed with exit code ${replay_rc}" >&2
+  exit "${replay_rc}"
+fi
 
 if [ -n "${result_file}" ]; then
-  node - "${result_file}" "${output}" "${state_c}" "${state_h}" "${trace_log}" "${symbol_prefix}" "${base_filter}" "${events_limit}" <<'EOF'
+  node - "${result_file}" "${output}" "${state_c}" "${state_h}" "${trace_log}" "${symbol_prefix}" "${base_filter}" "${events_limit}" "${replay_rc}" <<'EOF'
 const fs = require("fs");
 const path = require("path");
 
@@ -242,10 +251,16 @@ const [
   symbolPrefixArg,
   baseFilterArg,
   eventsLimitArg,
+  replayRcArg,
 ] = process.argv.slice(2);
 
+const replayRc = Number(replayRcArg || "0");
+const haltedUnmatchedEvent = replayRc === 2;
+
 const payload = {
-  summary: "replayed devilang state machine against trace",
+  summary: haltedUnmatchedEvent
+    ? "replayed devilang state machine against trace and halted on unmatched event"
+    : "replayed devilang state machine against trace",
   details: {
     output: path.resolve(outputArg),
     state_c: path.resolve(stateCArg),
@@ -254,6 +269,8 @@ const payload = {
     symbol_prefix: String(symbolPrefixArg || "devilang"),
     base_filter: baseFilterArg ? String(baseFilterArg) : null,
     events_limit: eventsLimitArg ? Number(eventsLimitArg) : null,
+    replay_exit_code: replayRc,
+    halted_unmatched_event: haltedUnmatchedEvent,
   },
   artifacts: [
     { path: "output", location: path.resolve(outputArg) },

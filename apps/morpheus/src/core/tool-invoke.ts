@@ -16,7 +16,7 @@ const {
   syncRemoteInputPath,
 } = require("../transport/remote");
 
-function parseToolArgs(argv) {
+function parseToolArgs(argv, options = {}) {
   const positionals = [];
   const flags = {};
   const passthrough = [];
@@ -36,6 +36,17 @@ function parseToolArgs(argv) {
     "replay-input",
     "rust-target",
   ]);
+  const booleanFlags = new Set(["json", "help", "detach"]);
+  for (const key of Array.isArray(options.repeatableFlags) ? options.repeatableFlags : []) {
+    if (key) {
+      repeatableFlags.add(String(key));
+    }
+  }
+  for (const key of Array.isArray(options.booleanFlags) ? options.booleanFlags : []) {
+    if (key) {
+      booleanFlags.add(String(key));
+    }
+  }
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -63,7 +74,7 @@ function parseToolArgs(argv) {
       }
       continue;
     }
-    if (next && !next.startsWith("--")) {
+    if (!booleanFlags.has(key) && next && !next.startsWith("--")) {
       flags[key] = next;
       index += 1;
     } else {
@@ -1626,14 +1637,19 @@ async function handleToolLifecycleCommand(command, argv, usage, options = {}) {
 }
 
 async function handleToolPassthroughCommand(command, argv, usage, options = {}) {
-  const { positionals, flags, passthrough } = parseToolArgs(argv);
+  const initial = parseToolArgs(argv);
+  const initialFlags = initial.flags || {};
+  const tool = requireFlag(initialFlags, "tool", `${command} requires --tool <name>`);
+  const descriptor = readToolDescriptor(tool);
+  const metadata = descriptorFlagMetadata(descriptor);
+  const { positionals, flags, passthrough } = parseToolArgs(argv, {
+    repeatableFlags: Array.from(metadata.repeatables),
+    booleanFlags: Array.from(metadata.booleans),
+  });
   if (positionals.length > 0 || flags.help) {
     writeStdoutLine(usage);
     return 0;
   }
-
-  const tool = requireFlag(flags, "tool", `${command} requires --tool <name>`);
-  const descriptor = readToolDescriptor(tool);
   const { flags: resolved } = applyConfigDefaults(
     {
       ...flags,
@@ -1727,6 +1743,7 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
 }
 
 module.exports = {
+  descriptorFlagMetadata,
   handleToolLifecycleCommand,
   handleToolPassthroughCommand,
   executeRemoteTopLevelToolCommand,

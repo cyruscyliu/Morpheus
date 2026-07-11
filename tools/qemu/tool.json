@@ -144,6 +144,20 @@
         ],
         "path": true
       },
+      "copy-to-guest": {
+        "aliases": [
+          "copy-to-guest",
+          "copyToGuest"
+        ],
+        "repeatable": true
+      },
+      "copy-from-guest": {
+        "aliases": [
+          "copy-from-guest",
+          "copyFromGuest"
+        ],
+        "repeatable": true
+      },
       "trace-events-file": {
         "aliases": [
           "trace-events-file",
@@ -339,6 +353,8 @@
             "trace-events-file"
           ],
           "repeatableFlags": [
+            "copy-to-guest",
+            "copy-from-guest",
             "qemu-arg",
             "trace-event"
           ],

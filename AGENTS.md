@@ -2,6 +2,9 @@
 
 ## General Principles
 
+- Do not bypass Morpheus for repo work. Use Morpheus workflows, steps, and
+  tool entrypoints instead of ad hoc local builds, runs, or manual tool
+  invocation.
 - Prefer clear, concise writing.
 - Prefer one-line sentences when possible.
 - Wrap generated Markdown at 80 chars.

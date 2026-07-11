@@ -14,6 +14,9 @@
   defined part of the repo workflow.
 - Add comments when they improve clarity.
 - If you are uncertain, ask instead of fabricating results under pressure.
+- Before pushing, run `pnpm run ci:pre-push`.
+- For repo file layout changes, or when cleaning stray files or directories,
+  run `pnpm --filter @morpheus/app test:repo-structure`.
 - After modifying the repo-root `morpheus.yaml`, run
   `pnpm test:root-config`.
 - Keep workflow phase boundaries strict.

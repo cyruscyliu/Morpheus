@@ -332,7 +332,7 @@ test("tool list discovers repo-local tools", () => {
   assert.equal(Object.prototype.hasOwnProperty.call(payload, "tools"), false);
   assert.deepEqual(
     payload.details.tools.map((tool) => tool.name),
-    ["buildroot", "driver-callgraph", "libafl", "libvmm", "llbase", "llbic", "llcg", "microkit-sdk", "nqc2", "nvirsh", "outline-to-paper", "pkvm-aarch64", "qemu", "sel4"]
+    ["buildroot", "devilang", "driver-callgraph", "libafl", "libvmm", "llbase", "llbic", "llcg", "microkit-sdk", "nqc2", "nvirsh", "pkvm-aarch64", "qemu", "sel4"]
   );
 });
 
@@ -1789,63 +1789,6 @@ test("workflow run captures tool phase events in canonical event log", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
-test("workflow run records outline-to-paper artifacts for downstream reuse", () => {
-  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-outline-to-paper-"));
-  const workspaceRoot = path.join(projectRoot, "workflow-workspace");
-  const outlinePath = path.join(projectRoot, "fixtures", "outline.json");
-  const supportPath = path.join(projectRoot, "fixtures", "support.json");
-  fs.mkdirSync(path.dirname(outlinePath), { recursive: true });
-  fs.writeFileSync(outlinePath, JSON.stringify({
-    title: "Workflow Paper",
-    sections: [{ heading: "Introduction", claim_ids: ["c1"] }],
-    claims: [{ claim_id: "c1", text: "Main claim" }],
-  }));
-  fs.writeFileSync(supportPath, JSON.stringify({
-    supports: [{ support_id: "s1", claim_id: "c1", type: "fact", status: "available" }],
-  }));
-
-  writeConfig(
-    projectRoot,
-    [
-      "workspace:",
-      "  root: ./workflow-workspace",
-      "workflows:",
-      "  outline-paper:",
-      "    category: run",
-      "    steps:",
-      "      - id: outline_to_paper",
-      "        tool: outline-to-paper",
-      "        command: exec",
-      "        args:",
-      "          - --outline",
-      `          - ${outlinePath}`,
-      "          - --support",
-      `          - ${supportPath}`,
-      "          - --template",
-      "          - acsac26",
-      ""
-    ].join("\n")
-  );
-
-  const result = run(["--json", "workflow", "run", "--name", "outline-paper"], {
-    cwd: projectRoot,
-    env: isolatedEnv(),
-  });
-  assert.equal(result.status, 0, result.stderr || result.stdout);
-  const payload = JSON.parse(result.stdout.trim());
-  assert.equal(payload.status, "success");
-  const runDir = path.join(projectRoot, payload.details.run_dir);
-  const stepDir = path.join(runDir, "steps", "outline_to_paper");
-  const toolResult = JSON.parse(fs.readFileSync(path.join(stepDir, "tool-result.json"), "utf8"));
-  const artifacts = toolResult && toolResult.details && Array.isArray(toolResult.details.artifacts)
-    ? toolResult.details.artifacts
-    : [];
-  assert.equal(artifacts.some((item) => item.path === "plan/section-plan.json"), true);
-  assert.equal(artifacts.some((item) => item.path === "draft/paper.tex"), true);
-
-  fs.rmSync(projectRoot, { recursive: true, force: true });
-});
-
 test("workflow run --tool forwards passthrough args after -- to the tool step", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-tool-passthrough-"));
   const workspaceRoot = path.join(projectRoot, "workspace");
@@ -1907,8 +1850,32 @@ test("workflow run --tool forwards passthrough args after -- to the tool step", 
 });
 
 test("workflow resume reuses workflow config path for nondefault workflow files", () => {
-  const configPath = path.join(repoRoot, "projects", "o2p", "morpheus.yaml");
-  const first = run(["--config", configPath, "--json", "workflow", "run", "--name", "outline-paper-sample"], {
+  const projectsRoot = path.join(repoRoot, "projects");
+  const projectRoot = fs.mkdtempSync(path.join(projectsRoot, "morpheus-resume-nondefault-"));
+  const workspaceRoot = path.join(projectRoot, "workspace");
+  const configPath = path.join(projectRoot, "morpheus.yaml");
+  const llbicFixture = path.join(repoRoot, "tools", "llbic", "tests", "fixtures", "linux-6.18.16-arm64-clang15", "llbic.json");
+
+  fs.writeFileSync(
+    configPath,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      "workflows:",
+      "  llbic-sample:",
+      "    category: build",
+      "    steps:",
+      "      - id: llbic_inspect",
+      "        tool: llbic",
+      "        command: inspect",
+      "        args:",
+      "          - --target",
+      `          - ${llbicFixture}`,
+      "",
+    ].join("\n"),
+  );
+
+  const first = run(["--config", configPath, "--json", "workflow", "run", "--name", "llbic-sample"], {
     cwd: repoRoot,
     env: isolatedEnv(),
   });
@@ -1916,13 +1883,15 @@ test("workflow resume reuses workflow config path for nondefault workflow files"
   const firstPayload = JSON.parse(first.stdout.trim());
   const runId = firstPayload.details.id;
 
-  const resumed = run(["--json", "workflow", "resume", "--id", runId, "--workspace", path.join(repoRoot, "projects", "o2p", "workspace")], {
+  const resumed = run(["--json", "workflow", "resume", "--id", runId, "--workspace", workspaceRoot], {
     cwd: repoRoot,
     env: isolatedEnv(),
   });
   assert.equal(resumed.status, 0, resumed.stderr || resumed.stdout);
   const resumedPayload = JSON.parse(resumed.stdout.trim());
   assert.equal(resumedPayload.status, "success");
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
 test("managed remote run resolves ssh and workspace from morpheus.yaml", () => {

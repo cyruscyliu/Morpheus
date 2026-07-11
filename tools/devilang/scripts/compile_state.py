@@ -34,6 +34,7 @@ NEQJ_RE = re.compile(
 GOTO_RE = re.compile(r"^goto\s+@(?P<label>[A-Za-z0-9_]+)$")
 CALL_STMT_RE = re.compile(r"^call\s+(?P<name>[A-Za-z0-9_.]+)\((?P<args>.*)\)$")
 CALL_EXPR_RE = re.compile(r"^(?P<name>[A-Za-z0-9_.]+)\((?P<args>.*)\)$")
+DMA_EVENT_RE = re.compile(r"^dma_event\((?P<body>.*)\)$")
 SG_TOKEN_RE = re.compile(r"\bsg[A-Za-z0-9_]*\b")
 
 KNOWN_CONSTANTS: Dict[str, int] = {
@@ -71,6 +72,47 @@ KNOWN_CONSTANTS: Dict[str, int] = {
     "VIRTIO_MMIO_SHM_BASE_HIGH": 0x0BC,
     "VIRTIO_MMIO_CONFIG_GENERATION": 0x0FC,
     "VIRTIO_MMIO_CONFIG": 0x100,
+    "DMA_NONE": 0,
+    "DMA_TO_DEVICE": 1,
+    "DMA_FROM_DEVICE": 2,
+    "DMA_BIDIRECTIONAL": 3,
+    "VRING_DESC_F_WRITE": 2,
+}
+
+DMA_OP_IDS: Dict[str, int] = {
+    "alloc": 0x01,
+    "alloc_fail": 0x02,
+    "free": 0x03,
+    "map": 0x04,
+    "map_fail": 0x05,
+    "unmap": 0x06,
+    "sync_for_cpu": 0x07,
+    "sync_for_device": 0x08,
+    "vq_poll_hit": 0x09,
+    "vq_poll_miss": 0x0A,
+    "vq_get_buf": 0x0B,
+    "vq_get_buf_empty": 0x0C,
+}
+
+DMA_DIR_IDS: Dict[str, int] = {
+    "none": 0x0,
+    "to_device": 0x1,
+    "from_device": 0x2,
+    "bidirectional": 0x3,
+}
+
+DMA_PATH_IDS: Dict[str, int] = {
+    "dma_api": 0x0,
+    "phys": 0x1,
+}
+
+DMA_DATA_KIND_IDS: Dict[str, int] = {
+    "any": 0,
+    "sg_buffer": 1,
+    "virtq_desc_table": 2,
+    "virtio_net_hdr": 3,
+    "ethernet_frame": 4,
+    "zero_buffer": 5,
 }
 
 
@@ -132,6 +174,11 @@ class Step:
     trace: int = -1
     block: int = -1
     target_label: Optional[str] = None
+    dma_op: int = -1
+    dma_dir: int = -1
+    dma_path: int = -1
+    dma_data_kind: int = 0
+    reachable_mask: int = 0
 
 
 class ParseError(RuntimeError):
@@ -263,6 +310,16 @@ def parse_write_call(line: str) -> Optional[Tuple[int, str, str]]:
     return int(match.group("width")), parts[0], parts[1]
 
 
+def parse_named_fields(text: str) -> Dict[str, str]:
+    fields: Dict[str, str] = {}
+    for item in split_args(text):
+        if "=" not in item:
+            raise ParseError(f"malformed named field: {item}")
+        key, value = item.split("=", 1)
+        fields[key.strip()] = value.strip()
+    return fields
+
+
 class StateCompiler:
     def __init__(self, symbol_prefix: str) -> None:
         self.symbol_prefix = symbol_prefix
@@ -287,6 +344,8 @@ class StateCompiler:
         for block in trace.blocks:
             for line in block.lines:
                 if READ_RE.match(line) or parse_write_call(line):
+                    return True
+                if DMA_EVENT_RE.match(line):
                     return True
                 if SG_TOKEN_RE.search(line):
                     return True
@@ -697,6 +756,30 @@ class StateCompiler:
             "write16",
             "write32",
             "write64",
+            "dma_event",
+            "op",
+            "dir",
+            "path",
+            "data_kind",
+            "map",
+            "unmap",
+            "sync_for_cpu",
+            "sync_for_device",
+            "vq_poll_hit",
+            "vq_poll_miss",
+            "vq_get_buf",
+            "vq_get_buf_empty",
+            "to_device",
+            "from_device",
+            "bidirectional",
+            "none",
+            "dma_api",
+            "phys",
+            "sg_buffer",
+            "virtq_desc_table",
+            "virtio_net_hdr",
+            "ethernet_frame",
+            "zero_buffer",
             "neqj",
             "unknown",
             "call",
@@ -799,6 +882,7 @@ class StateCompiler:
                     step = Step(kind="eps", trace=trace_idx, block=len(block_offsets) - 1)
                     read_match = READ_RE.match(line)
                     write_call = parse_write_call(line)
+                    dma_event_match = DMA_EVENT_RE.match(line)
                     neqj_match = NEQJ_RE.match(line)
                     assign_match = ASSIGN_RE.match(line)
                     call_stmt_match = CALL_STMT_RE.match(line)
@@ -833,6 +917,55 @@ class StateCompiler:
                                 forced_symbols=trace_param_names,
                             )
                         )
+                    elif dma_event_match:
+                        fields = parse_named_fields(dma_event_match.group("body"))
+                        op_name = fields.get("op")
+                        dir_name = fields.get("dir")
+                        path_name = fields.get("path")
+                        addr_expr = fields.get("addr")
+                        len_expr = fields.get("len")
+                        data_kind_name = fields.get("data_kind", "any")
+                        if op_name not in DMA_OP_IDS:
+                            raise ParseError(
+                                f"unknown dma_event op in {machine.name}/{trace.name}: {op_name}"
+                            )
+                        if dir_name not in DMA_DIR_IDS:
+                            raise ParseError(
+                                f"unknown dma_event dir in {machine.name}/{trace.name}: {dir_name}"
+                            )
+                        if path_name not in DMA_PATH_IDS:
+                            raise ParseError(
+                                f"unknown dma_event path in {machine.name}/{trace.name}: {path_name}"
+                            )
+                        if data_kind_name not in DMA_DATA_KIND_IDS:
+                            raise ParseError(
+                                f"unknown dma_event data_kind in {machine.name}/{trace.name}: {data_kind_name}"
+                            )
+                        if addr_expr is None or len_expr is None:
+                            raise ParseError(
+                                f"dma_event requires addr and len in {machine.name}/{trace.name}"
+                            )
+                        step.kind = "dma"
+                        step.addr = intern_expr(
+                            self.parse_expr(
+                                addr_expr,
+                                scratch_map,
+                                allow_symbol=True,
+                                forced_symbols=trace_param_names,
+                            )
+                        )
+                        step.value = intern_expr(
+                            self.parse_expr(
+                                len_expr,
+                                scratch_map,
+                                allow_symbol=False,
+                                forced_symbols=trace_param_names,
+                            )
+                        )
+                        step.dma_op = DMA_OP_IDS[op_name]
+                        step.dma_dir = DMA_DIR_IDS[dir_name]
+                        step.dma_path = DMA_PATH_IDS[path_name]
+                        step.dma_data_kind = DMA_DATA_KIND_IDS[data_kind_name]
                     elif neqj_match:
                         step.kind = "branch"
                         step.next_b = -2
@@ -1231,6 +1364,44 @@ class StateCompiler:
             trace_start_steps[trace.name] = trace_base
             all_steps.extend(trace_steps)
 
+        observable_mask_by_kind = {
+            "read": 1,
+            "write": 2,
+            "dma": 4,
+        }
+        reachable_mask_cache: Dict[int, int] = {}
+
+        def compute_reachable_mask(step_index: int, visiting: set[int]) -> int:
+            if step_index < 0 or step_index >= len(all_steps):
+                return 0
+            if step_index in reachable_mask_cache:
+                return reachable_mask_cache[step_index]
+            if step_index in visiting:
+                return 0
+            visiting.add(step_index)
+            step = all_steps[step_index]
+            if step.kind in observable_mask_by_kind:
+                mask = observable_mask_by_kind[step.kind]
+            elif step.kind in {"eps", "goto", "wildcard", "assign"}:
+                mask = compute_reachable_mask(step.next_a, visiting)
+            elif step.kind == "call":
+                mask = compute_reachable_mask(step.next_a, visiting)
+                if 0 <= step.call_trace < len(machine.traces):
+                    callee_name = machine.traces[step.call_trace].name
+                    callee_start = trace_start_steps.get(callee_name, -1)
+                    mask |= compute_reachable_mask(callee_start, visiting)
+            elif step.kind == "branch":
+                mask = compute_reachable_mask(step.next_a, visiting)
+                mask |= compute_reachable_mask(step.next_b, visiting)
+            else:
+                mask = 0
+            visiting.remove(step_index)
+            reachable_mask_cache[step_index] = mask
+            return mask
+
+        for step_index, step in enumerate(all_steps):
+            step.reachable_mask = compute_reachable_mask(step_index, set())
+
         state_ids = {name: idx for idx, name in enumerate(state_names)}
         trace_ids = {trace.name: idx for idx, trace in enumerate(machine.traces)}
         compiled_transitions: List[CompiledTransition] = []
@@ -1339,6 +1510,7 @@ class StateCompiler:
 enum devilang_event_kind {{
     DEVILANG_EV_MMIO_READ = 1,
     DEVILANG_EV_MMIO_WRITE = 2,
+    DEVILANG_EV_DMA = 3,
 }};
 
 struct devilang_event {{
@@ -1352,8 +1524,10 @@ struct devilang_event {{
     uint32_t dma_capture_len;
     uint32_t dma_dir;
     uint32_t dma_opcode;
+    uint32_t dma_path;
     uint32_t dma_status;
     uint8_t has_dma;
+    char dma_view[32];
     char dma_data[1024];
 }};
 
@@ -1375,6 +1549,7 @@ struct dl_cursor {{
     int step;
     int call_depth;
     uint32_t score;
+    uint8_t probe_mode;
     uint64_t scratch[{prefix}_MAX_SCRATCH];
     uint8_t scratch_valid[{prefix}_MAX_SCRATCH];
     uint64_t symbols[{prefix}_MAX_SYMBOLS];
@@ -1391,6 +1566,7 @@ struct {self.symbol_prefix}_machine {{
     size_t matched_count;
     int booting_complete;
     int runtime_started;
+    int probe_mode;
 }};
 
 void {self.symbol_prefix}_init(struct {self.symbol_prefix}_machine *machine);
@@ -1487,11 +1663,11 @@ int {self.symbol_prefix}_best_active(
         lines.append("#include <stdint.h>")
         lines.append("#include <string.h>")
         lines.append("")
-        lines.append("enum dl_step_kind { DL_STEP_EPS, DL_STEP_READ, DL_STEP_WRITE, DL_STEP_BRANCH, DL_STEP_WILDCARD, DL_STEP_ASSIGN, DL_STEP_CALL, DL_STEP_END };")
+        lines.append("enum dl_step_kind { DL_STEP_EPS, DL_STEP_READ, DL_STEP_WRITE, DL_STEP_DMA, DL_STEP_BRANCH, DL_STEP_WILDCARD, DL_STEP_ASSIGN, DL_STEP_CALL, DL_STEP_END };")
         lines.append("enum dl_expr_kind { DL_EXPR_ANY, DL_EXPR_CONST, DL_EXPR_SCRATCH, DL_EXPR_SYMBOL, DL_EXPR_ADD, DL_EXPR_SUB, DL_EXPR_AND, DL_EXPR_OR, DL_EXPR_SHL, DL_EXPR_LSHR, DL_EXPR_EQ, DL_EXPR_NE, DL_EXPR_ULT, DL_EXPR_ULE, DL_EXPR_UGT, DL_EXPR_UGE, DL_EXPR_SLT, DL_EXPR_SLE, DL_EXPR_SGT, DL_EXPR_SGE };")
         lines.append("")
         lines.append("struct dl_expr { int kind; uint64_t value; int scratch; int symbol; int64_t offset; int lhs_idx; int rhs_idx; };")
-        lines.append("struct dl_step { int kind; int width; int addr; int value; int scratch; int call_trace; int arg_count; int call_args[8]; int next_a; int next_b; int trace; int block; };")
+        lines.append("struct dl_step { int kind; int width; int addr; int value; int scratch; int call_trace; int arg_count; int call_args[8]; int next_a; int next_b; int trace; int block; int dma_op; int dma_dir; int dma_path; int dma_data_kind; int reachable_mask; };")
         lines.append("struct dl_trace_meta { const char *name; const char **blocks; size_t nr_blocks; int start_step; const int *param_symbols; size_t nr_param_symbols; int return_scratch; int return_constant; };")
         lines.append("struct dl_transition { int src_state; int dst_state; int trace; int start_offset; };")
         lines.append("struct dl_machine_meta { const char *phase; const struct dl_trace_meta *traces; size_t nr_traces; const int *start_steps; size_t nr_start_steps; const char **states; size_t nr_states; const struct dl_transition *transitions; size_t nr_transitions; const struct dl_expr *exprs; size_t nr_exprs; int initial_state; const char **scratch_names; size_t nr_scratch; };")
@@ -1556,6 +1732,7 @@ int {self.symbol_prefix}_best_active(
                     "goto": "DL_STEP_EPS",
                     "read": "DL_STEP_READ",
                     "write": "DL_STEP_WRITE",
+                    "dma": "DL_STEP_DMA",
                     "branch": "DL_STEP_BRANCH",
                     "wildcard": "DL_STEP_WILDCARD",
                     "assign": "DL_STEP_ASSIGN",
@@ -1563,7 +1740,7 @@ int {self.symbol_prefix}_best_active(
                     "end": "DL_STEP_END",
                 }
                 lines.append(
-                    "    {%s, %d, %d, %d, %d, %d, %d, {%s}, %d, %d, %d, %d},"
+                    "    {%s, %d, %d, %d, %d, %d, %d, {%s}, %d, %d, %d, %d, %d, %d, %d, %d, %d},"
                     % (
                         kind_map[step.kind],
                         step.width,
@@ -1577,6 +1754,11 @@ int {self.symbol_prefix}_best_active(
                         step.next_b,
                         step.trace,
                         step.block,
+                        step.dma_op,
+                        step.dma_dir,
+                        step.dma_path,
+                        step.dma_data_kind,
+                        step.reachable_mask,
                     )
                 )
             lines.append("};")
@@ -1889,6 +2071,9 @@ static int dl_validate_dma_aperture_event(
         if (event->dma_status != 0) {
             return 0;
         }
+        if (event->dma_path > 1u) {
+            return 0;
+        }
         actual_hex_len = strlen(event->dma_data);
         if ((actual_hex_len & 1u) != 0) {
             return 0;
@@ -1903,6 +2088,98 @@ static int dl_validate_dma_aperture_event(
     }
 
     return 0;
+}"""
+        )
+        lines.append("")
+        lines.append(
+            """static int dl_dma_hex_nibble(char ch) {
+    if (ch >= '0' && ch <= '9') {
+        return ch - '0';
+    }
+    if (ch >= 'a' && ch <= 'f') {
+        return ch - 'a' + 10;
+    }
+    if (ch >= 'A' && ch <= 'F') {
+        return ch - 'A' + 10;
+    }
+    return -1;
+}"""
+        )
+        lines.append("")
+        lines.append(
+            """static size_t dl_dma_decode_bytes(
+    const char *hex,
+    uint8_t *out,
+    size_t cap) {
+    size_t len = 0;
+
+    if (!hex || !out || cap == 0) {
+        return 0;
+    }
+    while (hex[0] && hex[1] && len < cap) {
+        int hi = dl_dma_hex_nibble(hex[0]);
+        int lo = dl_dma_hex_nibble(hex[1]);
+        if (hi < 0 || lo < 0) {
+            break;
+        }
+        out[len++] = (uint8_t)((hi << 4) | lo);
+        hex += 2;
+    }
+    return len;
+}"""
+        )
+        lines.append("")
+        lines.append(
+            """static int dl_dma_all_zero(
+    const uint8_t *bytes,
+    size_t len) {
+    for (size_t i = 0; i < len; ++i) {
+        if (bytes[i] != 0) {
+            return 0;
+        }
+    }
+    return 1;
+}"""
+        )
+        lines.append("")
+        lines.append(
+            """static int dl_dma_kind_matches(
+    int data_kind,
+    const struct devilang_event *event) {
+    uint8_t bytes[512];
+    size_t actual_len;
+
+    if (data_kind <= 0) {
+        return 1;
+    }
+    if (!event || event->dma_status != 0) {
+        return 0;
+    }
+    actual_len = dl_dma_decode_bytes(event->dma_data, bytes, sizeof(bytes));
+    if (actual_len == 0 && event->dma_len != 0) {
+        return 0;
+    }
+
+    switch (data_kind) {
+    case 1:
+        return actual_len > 0 || event->dma_len == 0;
+    case 2:
+        if (event->dma_len < 16 || (event->dma_len % 16) != 0 || actual_len < 16) {
+            return 0;
+        }
+        return (bytes[12] & 0xfc) == 0;
+    case 3:
+        if (event->dma_len < 10 || actual_len < 10) {
+            return 0;
+        }
+        return (bytes[1] & 0xf0) == 0;
+    case 4:
+        return event->dma_len >= 14 && actual_len >= 14;
+    case 5:
+        return dl_dma_all_zero(bytes, actual_len);
+    default:
+        return 0;
+    }
 }"""
         )
         lines.append("")
@@ -1934,19 +2211,6 @@ static int dl_validate_dma_aperture_event(
         )
         lines.append("")
         lines.append(
-            """static int dl_find_trace_id(
-    const struct dl_machine_meta *machine_meta,
-    const char *name) {
-    for (size_t i = 0; i < machine_meta->nr_traces; ++i) {
-        if (strcmp(machine_meta->traces[i].name, name) == 0) {
-            return (int)i;
-        }
-    }
-    return -1;
-}"""
-        )
-        lines.append("")
-        lines.append(
             """static int dl_find_scratch_id(
     const struct dl_machine_meta *machine_meta,
     const char *name) {
@@ -1969,6 +2233,18 @@ static int dl_validate_dma_aperture_event(
         strcmp(name, "rc") == 0 ||
         strcmp(name, "ret") == 0) {
         return 1;
+    }
+    if (strncmp(name, "call", 4) == 0) {
+        const char *suffix = name + 4;
+        if (*suffix != 0) {
+            while (*suffix != 0) {
+                if (!isdigit((unsigned char)*suffix)) {
+                    return 0;
+                }
+                ++suffix;
+            }
+            return 1;
+        }
     }
     return 0;
 }"""
@@ -2231,6 +2507,38 @@ static int dl_validate_dma_aperture_event(
         )
         lines.append("")
         lines.append(
+            """static int dl_match_dma_addr(
+    const struct dl_expr *exprs,
+    int expr_idx,
+    struct dl_cursor *cursor,
+    uint64_t addr) {
+    int known = 0;
+
+    if (dl_match_addr(exprs, expr_idx, cursor, addr)) {
+        return 1;
+    }
+    (void)dl_eval_expr(exprs, expr_idx, cursor, &known);
+    return !known;
+}"""
+        )
+        lines.append("")
+        lines.append(
+            """static int dl_match_dma_len(
+    const struct dl_expr *exprs,
+    int expr_idx,
+    const struct dl_cursor *cursor,
+    uint64_t value) {
+    int known = 0;
+
+    if (dl_match_value(exprs, expr_idx, cursor, value)) {
+        return 1;
+    }
+    (void)dl_eval_expr(exprs, expr_idx, cursor, &known);
+    return !known;
+}"""
+        )
+        lines.append("")
+        lines.append(
             """static int dl_expr_is_unknown_success_bias(
     const struct dl_machine_meta *machine_meta,
     const struct dl_expr *exprs,
@@ -2254,6 +2562,77 @@ static int dl_validate_dma_aperture_event(
         machine_meta->scratch_names[expr->scratch]
     );
 }"""
+        )
+        lines.append("")
+        lines.append(
+            """static int dl_branch_backedge_is_pure_symbolic_loop(
+    const struct dl_step *steps,
+    const struct dl_cursor *cursor,
+    const struct dl_step *step,
+    int backedge_step) {
+    int idx = backedge_step;
+    int saw_assign = 0;
+
+    if (!steps || !cursor || !step) {
+        return 0;
+    }
+    if (backedge_step < 0 || backedge_step > cursor->step) {
+        return 0;
+    }
+
+    for (int budget = 0; budget < 8; ++budget) {
+        const struct dl_step *loop_step = &steps[idx];
+
+        if (loop_step->trace != cursor->trace) {
+            return 0;
+        }
+        if (idx == cursor->step) {
+            return saw_assign;
+        }
+        if (loop_step->kind == DL_STEP_ASSIGN) {
+            saw_assign = 1;
+            idx = loop_step->next_a;
+            continue;
+        }
+        if (loop_step->kind == DL_STEP_EPS ||
+            loop_step->kind == DL_STEP_WILDCARD) {
+            idx = loop_step->next_a;
+            continue;
+        }
+        return 0;
+    }
+
+    return 0;
+}"""
+        )
+        lines.append("")
+        lines.append(
+            """static int dl_expr_is_unknown_zero_field_flag(
+    const struct dl_expr *exprs,
+    int expr_idx,
+    const struct dl_cursor *cursor) {
+    const struct dl_expr *expr;
+
+    if (expr_idx < 0) {
+        return 0;
+    }
+    expr = &exprs[expr_idx];
+    if (expr->kind != DL_EXPR_SYMBOL) {
+        return 0;
+    }
+    if (expr->offset == 0) {
+        return 0;
+    }
+    if (expr->symbol < 0 ||
+        (size_t)expr->symbol >= %s_MAX_SYMBOLS) {
+        return 0;
+    }
+    if (cursor->symbol_valid[expr->symbol]) {
+        return 0;
+    }
+    return 1;
+}"""
+            % self.symbol_prefix.upper()
         )
         lines.append("")
         lines.append(
@@ -2427,6 +2806,43 @@ static int dl_validate_dma_aperture_event(
         )
         lines.append("")
         lines.append(
+            """static int dl_event_kind_mask(int event_kind) {
+    if (event_kind == DEVILANG_EV_MMIO_READ) {
+        return 1;
+    }
+    if (event_kind == DEVILANG_EV_MMIO_WRITE) {
+        return 2;
+    }
+    if (event_kind == DEVILANG_EV_DMA) {
+        return 4;
+    }
+    return 0;
+}"""
+        )
+        lines.append("")
+        lines.append(
+            """static int dl_is_transport_noise_event(
+    const struct devilang_event *event) {
+    uint64_t offset;
+
+    if (!event) {
+        return 0;
+    }
+    if (event->kind != DEVILANG_EV_MMIO_READ &&
+        event->kind != DEVILANG_EV_MMIO_WRITE) {
+        return 0;
+    }
+    if (event->addr < event->base) {
+        return 0;
+    }
+    offset = event->addr - event->base;
+    return offset == 0x70 ||
+           offset == 0x60 ||
+           offset == 0x64;
+}"""
+        )
+        lines.append("")
+        lines.append(
             """static void dl_activate_initial(
     const struct dl_machine_meta *machine_meta,
     int machine_idx,
@@ -2449,6 +2865,7 @@ static int dl_validate_dma_aperture_event(
             next.trace = (int)trace_index;
             next.step = start_step;
             next.call_depth = 0;
+            next.probe_mode = base->probe_mode;
             memset(next.return_steps, 0, sizeof(next.return_steps));
             memset(next.return_traces, 0, sizeof(next.return_traces));
             memset(next.return_bindings, 0, sizeof(next.return_bindings));
@@ -2487,6 +2904,7 @@ static int dl_validate_dma_aperture_event(
         next.trace = transition->trace;
         next.step = trace->start_step + transition->start_offset;
         next.call_depth = 0;
+        next.probe_mode = base->probe_mode;
         memset(next.return_steps, 0, sizeof(next.return_steps));
         memset(next.return_traces, 0, sizeof(next.return_traces));
         memset(next.return_bindings, 0, sizeof(next.return_bindings));
@@ -2614,7 +3032,8 @@ static int dl_validate_dma_aperture_event(
     const struct dl_machine_meta *machine_meta,
     const struct dl_step *steps,
     struct dl_cursor *io,
-    size_t *count) {
+    size_t *count,
+    int target_event_kind) {
     size_t index = 0;
     struct dl_cursor *seen = calloc(%s_MAX_CURSORS, sizeof(*seen));
     size_t seen_count = 0;
@@ -2707,6 +3126,82 @@ static int dl_validate_dma_aperture_event(
                 io[index].step = step->next_b;
                 continue;
             }
+            if ((step->value >= 0 &&
+                 machine_meta->exprs[step->value].kind == DL_EXPR_CONST &&
+                 machine_meta->exprs[step->value].value == 0 &&
+                 dl_expr_is_unknown_zero_field_flag(machine_meta->exprs,
+                                                    step->addr, &cursor)) ||
+                (step->addr >= 0 &&
+                 machine_meta->exprs[step->addr].kind == DL_EXPR_CONST &&
+                 machine_meta->exprs[step->addr].value == 0 &&
+                 dl_expr_is_unknown_zero_field_flag(machine_meta->exprs,
+                                                    step->value, &cursor))) {
+                io[index].step = step->next_b;
+                continue;
+            }
+            if (step->next_a >= 0 &&
+                step->next_b >= 0 &&
+                step->next_a <= cursor.step &&
+                step->next_b > cursor.step &&
+                dl_branch_backedge_is_pure_symbolic_loop(
+                    steps, &cursor, step, step->next_a)) {
+                io[index].step = step->next_b;
+                continue;
+            }
+            if (step->next_a >= 0 &&
+                step->next_b >= 0 &&
+                step->next_b <= cursor.step &&
+                step->next_a > cursor.step &&
+                dl_branch_backedge_is_pure_symbolic_loop(
+                    steps, &cursor, step, step->next_b)) {
+                io[index].step = step->next_a;
+                continue;
+            }
+            if (cursor.machine != 0 &&
+                cursor.score == 0 &&
+                step->next_a >= 0 &&
+                step->next_b >= 0) {
+                if (cursor.probe_mode && target_event_kind != 0) {
+                    const int want_mask = dl_event_kind_mask(target_event_kind);
+                    const int next_a_mask = step->next_a >= 0
+                        ? steps[step->next_a].reachable_mask
+                        : 0;
+                    const int next_b_mask = step->next_b >= 0
+                        ? steps[step->next_b].reachable_mask
+                        : 0;
+                    const int a_matches = want_mask != 0 &&
+                        (next_a_mask & want_mask) != 0;
+                    const int b_matches = want_mask != 0 &&
+                        (next_b_mask & want_mask) != 0;
+
+                    if (a_matches && !b_matches) {
+                        io[index].step = step->next_a;
+                        continue;
+                    }
+                    if (!a_matches && b_matches) {
+                        io[index].step = step->next_b;
+                        continue;
+                    }
+                }
+                if (!cursor.probe_mode) {
+                const int a_forward = step->next_a > cursor.step;
+                const int b_forward = step->next_b > cursor.step;
+
+                if (a_forward && !b_forward) {
+                    io[index].step = step->next_a;
+                    continue;
+                }
+                if (!a_forward && b_forward) {
+                    io[index].step = step->next_b;
+                    continue;
+                }
+                if (a_forward && b_forward) {
+                    io[index].step =
+                        step->next_a < step->next_b ? step->next_a : step->next_b;
+                    continue;
+                }
+                }
+            }
             struct dl_cursor alt = cursor;
             io[index].step = step->next_a;
             alt.step = step->next_b;
@@ -2768,6 +3263,12 @@ static int dl_validate_dma_aperture_event(
                         io[index].scratch_valid[return_scratch]) {
                         io[index].scratch[binding] = io[index].scratch[return_scratch];
                         io[index].scratch_valid[binding] = 1;
+                    } else if (binding >= 0 &&
+                        (size_t)binding < machine_meta->nr_scratch &&
+                        dl_scratch_name_is_success_bias(
+                            machine_meta->scratch_names[binding])) {
+                        io[index].scratch[binding] = 0;
+                        io[index].scratch_valid[binding] = 1;
                     } else {
                         io[index].scratch_valid[binding] = 0;
                     }
@@ -2812,7 +3313,8 @@ static int dl_validate_dma_aperture_event(
     const struct dl_step *steps,
     const struct dl_cursor *cursor,
     struct dl_cursor *out,
-    size_t *out_count) {
+    size_t *out_count,
+    int target_event_kind) {
     struct dl_cursor *local = calloc(%s_MAX_CURSORS, sizeof(*local));
     size_t local_count = 1;
     int has_live = 0;
@@ -2821,7 +3323,7 @@ static int dl_validate_dma_aperture_event(
         return;
     }
     local[0] = *cursor;
-    dl_closure(machine_meta, steps, local, &local_count);
+    dl_closure(machine_meta, steps, local, &local_count, target_event_kind);
     for (size_t i = 0; i < local_count; ++i) {
         if (local[i].step >= 0) {
             has_live = 1;
@@ -2925,54 +3427,21 @@ static int dl_validate_dma_aperture_event(
     struct dl_cursor base;
     memset(&base, 0, sizeof(base));
     base.machine = 0;
+    base.probe_mode = 0;
     if (meta->nr_transitions > 0 && meta->initial_state >= 0) {
         dl_activate_state(meta, 0, &base, meta->initial_state, machine->active,
                           &machine->active_count);
     } else {
         dl_activate_initial(meta, 0, &base, machine->active, &machine->active_count);
     }
-    dl_closure(meta, %s_machine_0_steps, machine->active, &machine->active_count);
+    dl_closure(meta, %s_machine_0_steps, machine->active, &machine->active_count, 0);
 }"""
             % (self.symbol_prefix, self.symbol_prefix, self.symbol_prefix, self.symbol_prefix)
         )
-        lines.append("")
-        lines.append(
-            """static void dl_start_runtime(struct %s_machine *machine) {
-    if (machine->runtime_started || %d < 2) {
-        return;
-    }
-    machine->runtime_started = 1;
-    const struct dl_machine_meta *meta = &%s_machines[1];
-    struct dl_cursor *expanded = calloc(%s_MAX_CURSORS, sizeof(*expanded));
-    size_t expanded_count = 0;
-    struct dl_cursor cursor;
-    if (!expanded) {
-        return;
-    }
-    memset(&cursor, 0, sizeof(cursor));
-    cursor.machine = 1;
-    if (meta->nr_transitions > 0 && meta->initial_state >= 0) {
-        dl_activate_state(meta, 1, &cursor, meta->initial_state, expanded,
-                          &expanded_count);
-    } else {
-        dl_activate_initial(meta, 1, &cursor, expanded, &expanded_count);
-    }
-    for (size_t i = 0; i < expanded_count; ++i) {
-        dl_push_cursor(machine->active, &machine->active_count, &expanded[i]);
-    }
-    free(expanded);
-}"""
-            % (
-                self.symbol_prefix,
-                len(machines),
-                self.symbol_prefix,
-                self.symbol_prefix.upper(),
-            )
-        )
-        lines.append("")
         lines.append(
             """static void dl_normalize_active_set(
-    struct %s_machine *machine) {
+    struct %s_machine *machine,
+    int target_event_kind) {
     struct dl_cursor *expanded = calloc(%s_MAX_CURSORS, sizeof(*expanded));
     size_t expanded_count = 0;
     if (!expanded) {
@@ -2991,7 +3460,8 @@ static int dl_validate_dma_aperture_event(
             continue;
         }
         dl_expand_cursor(meta, machine->active[i].machine, steps,
-                         &machine->active[i], expanded, &expanded_count);
+                         &machine->active[i], expanded, &expanded_count,
+                         target_event_kind);
     }
 
     machine->active_count = expanded_count;
@@ -3006,6 +3476,41 @@ static int dl_validate_dma_aperture_event(
         )
         lines.append("")
         lines.append(
+            """static int dl_active_set_is_runtime_idle(
+    const struct %s_machine *machine) {
+    if (!machine || machine->active_count == 0) {
+        return 0;
+    }
+    for (size_t i = 0; i < machine->active_count; ++i) {
+        const struct dl_cursor *cursor = &machine->active[i];
+        if (cursor->machine == 0 ||
+            cursor->score != 0 ||
+            cursor->call_depth != 0) {
+            return 0;
+        }
+    }
+    return 1;
+}"""
+            % self.symbol_prefix
+        )
+        lines.append("")
+        lines.append(
+            """static int dl_has_live_active(
+    const struct %s_machine *machine) {
+    if (!machine) {
+        return 0;
+    }
+    for (size_t i = 0; i < machine->active_count; ++i) {
+        if (machine->active[i].step >= 0) {
+            return 1;
+        }
+    }
+    return 0;
+}"""
+            % self.symbol_prefix
+        )
+        lines.append("")
+        lines.append(
             """int %s_feed_event(
     struct %s_machine *machine,
     const struct devilang_event *event) {
@@ -3016,9 +3521,8 @@ static int dl_validate_dma_aperture_event(
         machine->active_count = 0;
         return -1;
     }
-
-retry_event:
-    dl_normalize_active_set(machine);
+    next_count = 0;
+    dl_normalize_active_set(machine, event->kind);
 
     for (size_t i = 0; i < machine->active_count; ++i) {
         struct dl_cursor cursor = machine->active[i];
@@ -3065,15 +3569,141 @@ retry_event:
             cursor.step = step->next_a;
             cursor.score += 1;
             dl_push_cursor(next, &next_count, &cursor);
+            continue;
+        }
+        if (step->kind == DL_STEP_DMA) {
+            if (event->kind != DEVILANG_EV_DMA) {
+                continue;
+            }
+            if ((uint32_t)step->dma_op != event->dma_opcode ||
+                (uint32_t)step->dma_dir != event->dma_dir ||
+                (uint32_t)step->dma_path != event->dma_path) {
+                continue;
+            }
+            if (!dl_match_dma_addr(%s_machines[cursor.machine].exprs, step->addr, &cursor, event->dma_addr)) {
+                continue;
+            }
+            if (!dl_match_dma_len(%s_machines[cursor.machine].exprs, step->value, &cursor, event->dma_len)) {
+                continue;
+            }
+            if (!dl_dma_kind_matches(step->dma_data_kind, event)) {
+                continue;
+            }
+            cursor.step = step->next_a;
+            cursor.score += 2;
+            dl_push_cursor(next, &next_count, &cursor);
         }
     }
     if (next_count == 0) {
-        if (dl_validate_dma_aperture_event(event)) {
+        if (event->kind != DEVILANG_EV_DMA &&
+            dl_validate_dma_aperture_event(event)) {
             machine->matched_count = machine->active_count;
             memcpy(machine->matched, machine->active,
                    sizeof(machine->matched[0]) * machine->active_count);
             free(next);
             return machine->active_count > 0 ? 0 : 1;
+        }
+        if (machine->booting_complete &&
+            dl_is_transport_noise_event(event)) {
+            machine->matched_count = machine->active_count;
+            memcpy(machine->matched, machine->active,
+                   sizeof(machine->matched[0]) * machine->active_count);
+            free(next);
+            return 0;
+        }
+        if (machine->booting_complete &&
+            event->kind == DEVILANG_EV_MMIO_READ) {
+            machine->matched_count = machine->active_count;
+            memcpy(machine->matched, machine->active,
+                   sizeof(machine->matched[0]) * machine->active_count);
+            free(next);
+            return 0;
+        }
+        if (dl_active_set_is_runtime_idle(machine)) {
+            if (machine->probe_mode) {
+                machine->matched_count = 0;
+                free(next);
+                return 1;
+            }
+            machine->matched_count = machine->active_count;
+            memcpy(machine->matched, machine->active,
+                   sizeof(machine->matched[0]) * machine->active_count);
+            free(next);
+            return 0;
+        }
+        if (machine->booting_complete &&
+            !dl_has_live_active(machine) &&
+            event->kind == DEVILANG_EV_MMIO_READ) {
+            machine->matched_count = 0;
+            machine->active_count = 0;
+            free(next);
+            return 0;
+        }
+        if (machine->booting_complete &&
+            !dl_has_live_active(machine) &&
+            %d >= 2) {
+            const struct dl_machine_meta *runtime_meta = &%s_machines[1];
+            for (size_t transition_index = 0;
+                 transition_index < runtime_meta->nr_transitions;
+                 ++transition_index) {
+                const struct dl_transition *transition =
+                    &runtime_meta->transitions[transition_index];
+                struct %s_machine *probe;
+                struct dl_cursor base;
+                const struct dl_trace_meta *trace_meta;
+                int probe_rc;
+
+                if (transition->src_state != runtime_meta->initial_state ||
+                    transition->trace < 0 ||
+                    (size_t)transition->trace >= runtime_meta->nr_traces) {
+                    continue;
+                }
+
+                probe = calloc(1, sizeof(*probe));
+                if (!probe) {
+                    continue;
+                }
+                probe->booting_complete = 1;
+                probe->runtime_started = 1;
+                probe->probe_mode = 1;
+
+                memset(&base, 0, sizeof(base));
+                base.machine = 1;
+                base.state = -1;
+                base.trace = transition->trace;
+                trace_meta = &runtime_meta->traces[transition->trace];
+                base.step = trace_meta->start_step + transition->start_offset;
+                base.probe_mode = 1;
+                dl_push_cursor(probe->active, &probe->active_count, &base);
+
+                probe_rc = %s_feed_event(probe, event);
+                if (probe_rc == 0 &&
+                    probe->matched_count > 0 &&
+                    !dl_active_set_is_runtime_idle(probe)) {
+                    machine->runtime_started = 1;
+                    machine->matched_count = probe->matched_count;
+                    memcpy(machine->matched, probe->matched,
+                           sizeof(machine->matched[0]) * probe->matched_count);
+                    machine->active_count = probe->active_count;
+                    memcpy(machine->active, probe->active,
+                           sizeof(machine->active[0]) * probe->active_count);
+                    free(probe);
+                    free(next);
+                    return 0;
+                }
+                free(probe);
+            }
+            machine->matched_count = 0;
+            free(next);
+            return 0;
+        }
+        if (!machine->probe_mode &&
+            machine->booting_complete &&
+            event->kind == DEVILANG_EV_DMA) {
+            machine->matched_count = 0;
+            machine->active_count = 0;
+            free(next);
+            return 0;
         }
         machine->matched_count = 0;
         machine->active_count = 0;
@@ -3100,7 +3730,7 @@ retry_event:
             continue;
         }
         dl_expand_cursor(meta, machine->active[i].machine, steps, &machine->active[i],
-                         expanded, &expanded_count);
+                         expanded, &expanded_count, 0);
     }
     machine->active_count = expanded_count;
     memcpy(machine->active, expanded, sizeof(expanded[0]) * expanded_count);
@@ -3112,15 +3742,18 @@ retry_event:
         }
     }
     machine->booting_complete = machine->booting_complete || !has_live_booting;
-    if (machine->booting_complete) {
-        dl_start_runtime(machine);
-    }
     return machine->active_count > 0 ? 0 : -1;
 }"""
             % (
                 self.symbol_prefix,
                 self.symbol_prefix,
                 self.symbol_prefix.upper(),
+                self.symbol_prefix,
+                self.symbol_prefix,
+                self.symbol_prefix,
+                self.symbol_prefix,
+                self.symbol_prefix,
+                len(machines),
                 self.symbol_prefix,
                 self.symbol_prefix,
                 self.symbol_prefix,
@@ -3217,6 +3850,14 @@ retry_event:
             event->has_dma = 1;
         }
     }
+    if (dl_copy_token(line, "dma_path", token, sizeof(token)) == 0) {
+        uint64_t parsed = 0;
+
+        if (strcmp(token, "-") != 0 && dl_parse_u64_hex(token, &parsed) == 0) {
+            event->dma_path = (uint32_t)parsed;
+            event->has_dma = 1;
+        }
+    }
     if (dl_copy_token(line, "dma_status", token, sizeof(token)) == 0) {
         uint64_t parsed = 0;
 
@@ -3229,6 +3870,17 @@ retry_event:
         if (strcmp(event->dma_data, "-") == 0) {
             event->dma_data[0] = '\\0';
         } else {
+            char *separator = strchr(event->dma_data, ':');
+
+            if (separator) {
+                size_t view_len = (size_t)(separator - event->dma_data);
+                if (view_len >= sizeof(event->dma_view)) {
+                    view_len = sizeof(event->dma_view) - 1;
+                }
+                memcpy(event->dma_view, event->dma_data, view_len);
+                event->dma_view[view_len] = '\\0';
+                memmove(event->dma_data, separator + 1, strlen(separator + 1) + 1);
+            }
             event->has_dma = 1;
         }
     }
@@ -3243,9 +3895,21 @@ retry_event:
     struct %s_machine *machine,
     const char *line) {
     struct devilang_event event;
+    uint64_t aperture_offset = 0;
 
     if (%s_parse_trace_line(line, &event) != 0) {
         return -1;
+    }
+
+    if (dl_is_dma_aperture_event(&event)) {
+        if (!dl_validate_dma_aperture_event(&event)) {
+            return -1;
+        }
+        aperture_offset = event.addr - event.base;
+        if (aperture_offset != DL_HP_DMA_EVENT_OFFSET) {
+            return -1;
+        }
+        event.kind = DEVILANG_EV_DMA;
     }
 
     return %s_feed_event(machine, &event);
@@ -3263,13 +3927,6 @@ retry_event:
     const struct dl_cursor *cursor,
     int *trace_out,
     int *step_out) {
-    if (cursor->call_depth > 0) {
-        int return_step = cursor->return_steps[0];
-        *trace_out = cursor->return_traces[0];
-        *step_out = return_step > 0 ? return_step - 1 : return_step;
-        return;
-    }
-
     *trace_out = cursor->trace;
     *step_out = cursor->step;
 }"""

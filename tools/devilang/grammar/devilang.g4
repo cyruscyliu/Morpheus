@@ -376,6 +376,7 @@ traceInstr
     | traceAssign
     | traceWrite
     | traceCall
+    | traceDmaEvent
     | traceNeqj
     | traceGoto
     | traceBug
@@ -397,6 +398,19 @@ traceWrite
 traceCall
     : 'call' qualifiedName '(' traceArgs? ')' ';'
     | 'call' qualifiedName ';'
+    ;
+
+traceDmaEvent
+    : 'dma_event' '(' dmaEventArg (',' dmaEventArg)* ')' ';'
+    ;
+
+dmaEventArg
+    : 'op' '=' ident
+    | 'dir' '=' ident
+    | 'path' '=' ident
+    | 'addr' '=' traceExpr
+    | 'len' '=' traceExpr
+    | 'data_kind' '=' ident
     ;
 
 traceArgs

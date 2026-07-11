@@ -134,6 +134,11 @@ bool isPrunedHelper(StringRef name) {
          name == "INIT_LIST_HEAD";
 }
 
+bool isSyntheticDmaTraceTarget(StringRef name) {
+  return name == "vring_map_one_sg" || name == "vring_map_single" ||
+         name == "vring_unmap_one_split" || name == "vring_unmap_extra_packed";
+}
+
 unsigned ioWidthFromName(StringRef name) {
   if (name.contains("64") || name.endswith("q")) {
     return 64;
@@ -235,6 +240,7 @@ private:
         if (isReadLeaf(resolvedCallee->getName()) ||
             isWriteLeaf(resolvedCallee->getName()) ||
             isSgFunction(resolvedCallee->getName()) ||
+            isSyntheticDmaTraceTarget(resolvedCallee->getName()) ||
             isFunctionRelevant(*resolvedCallee)) {
           return true;
         }
@@ -245,7 +251,9 @@ private:
       return false;
     }
     return isReadLeaf(callee->getName()) || isWriteLeaf(callee->getName()) ||
-           isSgFunction(callee->getName()) || isFunctionRelevant(*callee);
+           isSgFunction(callee->getName()) ||
+           isSyntheticDmaTraceTarget(callee->getName()) ||
+           isFunctionRelevant(*callee);
   }
 
   bool blockHasObservable(const BasicBlock &block) {
@@ -340,6 +348,28 @@ private:
     }
     blockExitCache_[&block] = Relevance::Irrelevant;
     return false;
+  }
+
+  const BasicBlock *resolveRelevantSuccessor(const BasicBlock *block) {
+    const BasicBlock *current = block;
+    llvm::SmallPtrSet<const BasicBlock *, 8> seen;
+
+    while (current && seen.insert(current).second) {
+      if (isBlockRelevant(*current)) {
+        return current;
+      }
+
+      const Instruction *terminator = current->getTerminator();
+      if (!terminator || terminator->getNumSuccessors() == 0) {
+        return nullptr;
+      }
+      if (terminator->getNumSuccessors() != 1) {
+        return nullptr;
+      }
+      current = terminator->getSuccessor(0);
+    }
+
+    return nullptr;
   }
 
   std::optional<std::vector<std::string>> resolveIndirectCallees(
@@ -544,6 +574,11 @@ private:
       return false;
     }
 
+    if (isSyntheticDmaTraceTarget(function.getName())) {
+      relevanceCache_[&function] = Relevance::Relevant;
+      return true;
+    }
+
     relevanceCache_[&function] = Relevance::Visiting;
 
     if (function.isDeclaration()) {
@@ -578,6 +613,7 @@ private:
               if (isReadLeaf(resolvedCallee->getName()) ||
                   isWriteLeaf(resolvedCallee->getName()) ||
                   isSgFunction(resolvedCallee->getName()) ||
+                  isSyntheticDmaTraceTarget(resolvedCallee->getName()) ||
                   isFunctionRelevant(*resolvedCallee)) {
                 relevant = true;
                 break;
@@ -590,7 +626,8 @@ private:
           continue;
         }
         if (isReadLeaf(callee->getName()) || isWriteLeaf(callee->getName()) ||
-            isSgFunction(callee->getName())) {
+            isSgFunction(callee->getName()) ||
+            isSyntheticDmaTraceTarget(callee->getName())) {
           relevant = true;
           break;
         }
@@ -627,6 +664,11 @@ private:
         std::find(request_.entryFunctions.begin(), request_.entryFunctions.end(),
                   function.getName().str()) != request_.entryFunctions.end();
 
+    if (buildSyntheticDmaTrace(function, trace)) {
+      model_.traces.push_back(std::move(trace));
+      return;
+    }
+
     collectDebugNames(function);
     blockRelevanceCache_.clear();
     blockExitCache_.clear();
@@ -654,6 +696,87 @@ private:
     }
 
     model_.traces.push_back(std::move(trace));
+  }
+
+  bool buildSyntheticDmaTrace(Function &function, TraceModel &trace) {
+    const StringRef name = function.getName();
+    if (!isSyntheticDmaTraceTarget(name)) {
+      return false;
+    }
+
+    auto pushBlock = [&](std::string label, std::vector<std::string> lines) {
+      TraceBlock block;
+      block.label = std::move(label);
+      block.lines = std::move(lines);
+      trace.blocks.push_back(std::move(block));
+    };
+
+    if (name == "vring_map_one_sg") {
+      pushBlock("", {
+                        "neqj direction, DMA_TO_DEVICE, @bb_vring_map_one_sg_done",
+                        "neqj premapped, 0, @bb_vring_map_one_sg_done",
+                        "len = sg.length",
+                        "neqj vq.use_map_api, 0, @bb_vring_map_one_sg_dma_api",
+                        "addr = sg_phys(sg)",
+                        "dma_event(op=map, dir=to_device, path=phys, addr=addr, len=len, data_kind=sg_buffer)",
+                        "goto @bb_vring_map_one_sg_done",
+                    });
+      pushBlock("bb_vring_map_one_sg_dma_api", {
+                                                  "map_addr = virtqueue_map_page_attrs(vq.vq, sg_page(sg), sg.offset, sg.length, direction, 0)",
+                                                  "neqj map_addr, DMA_MAPPING_ERROR, @bb_vring_map_one_sg_dma_ok",
+                                              });
+      pushBlock("bb_vring_map_one_sg_dma_ok", {
+                                                 "addr = map_addr",
+                                                 "dma_event(op=map, dir=to_device, path=dma_api, addr=addr, len=len, data_kind=sg_buffer)",
+                                             });
+      pushBlock("bb_vring_map_one_sg_done", {});
+      return true;
+    }
+
+    if (name == "vring_map_single") {
+      pushBlock("", {
+                        "neqj direction, DMA_TO_DEVICE, @bb_vring_map_single_done",
+                        "neqj vq.use_map_api, 0, @bb_vring_map_single_dma_api",
+                        "addr = virt_to_phys(cpu_addr)",
+                        "dma_event(op=map, dir=to_device, path=phys, addr=addr, len=size, data_kind=virtq_desc_table)",
+                        "goto @bb_vring_map_single_done",
+                    });
+      pushBlock("bb_vring_map_single_dma_api", {
+                                                  "map_addr = virtqueue_map_single_attrs(vq.vq, cpu_addr, size, direction, 0)",
+                                                  "neqj map_addr, DMA_MAPPING_ERROR, @bb_vring_map_single_dma_ok",
+                                              });
+      pushBlock("bb_vring_map_single_dma_ok", {
+                                                 "addr = map_addr",
+                                                 "dma_event(op=map, dir=to_device, path=dma_api, addr=addr, len=size, data_kind=virtq_desc_table)",
+                                             });
+      pushBlock("bb_vring_map_single_done", {});
+      return true;
+    }
+
+    if (name == "vring_unmap_one_split" || name == "vring_unmap_extra_packed") {
+      const std::string doneLabel =
+          name == "vring_unmap_one_split" ? "bb_vring_unmap_one_split_done"
+                                           : "bb_vring_unmap_extra_packed_done";
+      const std::string dmaLabel =
+          name == "vring_unmap_one_split" ? "bb_vring_unmap_one_split_dma_api"
+                                           : "bb_vring_unmap_extra_packed_dma_api";
+      pushBlock("", {
+                        "neqj extra.flags & VRING_DESC_F_WRITE, 0, @" + dmaLabel,
+                        "goto @" + doneLabel,
+                    });
+      pushBlock(dmaLabel, {
+                                "neqj vq.use_map_api, 0, @" + dmaLabel + "_map",
+                                "dma_event(op=unmap, dir=from_device, path=phys, addr=extra.addr, len=extra.len, data_kind=ethernet_frame)",
+                                "goto @" + doneLabel,
+                            });
+      pushBlock(dmaLabel + "_map", {
+                                        "dma_event(op=unmap, dir=from_device, path=dma_api, addr=extra.addr, len=extra.len, data_kind=ethernet_frame)",
+                                    });
+      pushBlock(doneLabel, {});
+      return true;
+    }
+
+    return false;
   }
 
   void emitBlock(const BasicBlock &block,
@@ -702,26 +825,46 @@ private:
     }
     if (branch) {
       if (branch->isUnconditional()) {
-        if (BasicBlock *successor = branch->getSuccessor(0);
-            successor && isBlockRelevant(*successor)) {
-          emitBlock(*successor, labels, trace, emittedBlocks);
+        if (BasicBlock *successor = branch->getSuccessor(0)) {
+          if (successor && isBlockRelevant(*successor)) {
+            emitBlock(*successor, labels, trace, emittedBlocks);
+          } else if (const BasicBlock *resolved =
+                         resolveRelevantSuccessor(successor)) {
+            emitBlock(*resolved, labels, trace, emittedBlocks);
+          }
         }
         return;
       }
       BasicBlock *trueBlock = branch->getSuccessor(0);
       BasicBlock *falseBlock = branch->getSuccessor(1);
-      if (falseBlock && isBlockRelevant(*falseBlock)) {
-        emitBlock(*falseBlock, labels, trace, emittedBlocks);
+      if (falseBlock) {
+        if (isBlockRelevant(*falseBlock)) {
+          emitBlock(*falseBlock, labels, trace, emittedBlocks);
+        } else if (const BasicBlock *resolved =
+                       resolveRelevantSuccessor(falseBlock)) {
+          emitBlock(*resolved, labels, trace, emittedBlocks);
+        }
       }
-      if (trueBlock && isBlockRelevant(*trueBlock)) {
-        emitBlock(*trueBlock, labels, trace, emittedBlocks);
+      if (trueBlock) {
+        if (isBlockRelevant(*trueBlock)) {
+          emitBlock(*trueBlock, labels, trace, emittedBlocks);
+        } else if (const BasicBlock *resolved =
+                       resolveRelevantSuccessor(trueBlock)) {
+          emitBlock(*resolved, labels, trace, emittedBlocks);
+        }
       }
       return;
     }
     for (unsigned index = 0; index < switchInst->getNumSuccessors(); ++index) {
       BasicBlock *successor = switchInst->getSuccessor(index);
-      if (successor && isBlockRelevant(*successor)) {
+      if (!successor) {
+        continue;
+      }
+      if (isBlockRelevant(*successor)) {
         emitBlock(*successor, labels, trace, emittedBlocks);
+      } else if (const BasicBlock *resolved =
+                     resolveRelevantSuccessor(successor)) {
+        emitBlock(*resolved, labels, trace, emittedBlocks);
       }
     }
   }
@@ -730,15 +873,23 @@ private:
                   const std::map<const BasicBlock *, std::string> &labels,
                   std::vector<std::string> &lines) {
     const auto emitGoto = [&](const BasicBlock *target) {
-      if (!target || !isBlockRelevant(*target)) {
+      const BasicBlock *resolved = target;
+      if (resolved && !isBlockRelevant(*resolved)) {
+        resolved = resolveRelevantSuccessor(resolved);
+      }
+      if (!resolved || !isBlockRelevant(*resolved)) {
         return false;
       }
-      const auto labelIt = labels.find(target);
+      const auto labelIt = labels.find(resolved);
       if (labelIt == labels.end() || labelIt->second.empty()) {
         return false;
       }
       lines.push_back("goto @" + labelIt->second);
       return true;
+    };
+    const auto reachesSilentExit = [&](const BasicBlock *target) {
+      return target && !resolveRelevantSuccessor(target) &&
+             blockReachesExit(*target);
     };
     if (branch.isUnconditional()) {
       emitGoto(branch.getSuccessor(0));
@@ -746,17 +897,25 @@ private:
     }
     const BasicBlock *trueBlock = branch.getSuccessor(0);
     const BasicBlock *falseBlock = branch.getSuccessor(1);
-    const bool trueRelevant = trueBlock && isBlockRelevant(*trueBlock);
-    const bool falseRelevant = falseBlock && isBlockRelevant(*falseBlock);
+    const BasicBlock *resolvedTrue =
+        trueBlock && !isBlockRelevant(*trueBlock)
+            ? resolveRelevantSuccessor(trueBlock)
+            : trueBlock;
+    const BasicBlock *resolvedFalse =
+        falseBlock && !isBlockRelevant(*falseBlock)
+            ? resolveRelevantSuccessor(falseBlock)
+            : falseBlock;
+    const bool trueRelevant = resolvedTrue && isBlockRelevant(*resolvedTrue);
+    const bool falseRelevant = resolvedFalse && isBlockRelevant(*resolvedFalse);
     if (!trueRelevant && !falseRelevant) {
       return;
     }
-    if (trueRelevant && !falseRelevant) {
-      emitGoto(trueBlock);
+    if (trueRelevant && !falseRelevant && !reachesSilentExit(falseBlock)) {
+      emitGoto(resolvedTrue);
       return;
     }
-    if (!trueRelevant && falseRelevant) {
-      emitGoto(falseBlock);
+    if (!trueRelevant && falseRelevant && !reachesSilentExit(trueBlock)) {
+      emitGoto(resolvedFalse);
       return;
     }
 
@@ -767,31 +926,48 @@ private:
       const auto predicate = icmp->getPredicate();
 
       if (predicate == llvm::ICmpInst::ICMP_NE) {
-        const auto labelIt = labels.find(trueBlock);
+        const auto labelIt = labels.find(resolvedTrue);
         if (labelIt != labels.end() && !labelIt->second.empty()) {
           lines.push_back("neqj " + lhs + ", " + rhs + ", @" + labelIt->second);
-          emitGoto(falseBlock);
+          if (reachesSilentExit(falseBlock)) {
+            return;
+          }
+          emitGoto(resolvedFalse);
           return;
         }
       }
 
-      if (predicate == llvm::ICmpInst::ICMP_EQ && falseBlock) {
-        const auto labelIt = labels.find(falseBlock);
+      if (predicate == llvm::ICmpInst::ICMP_EQ && trueRelevant &&
+          reachesSilentExit(falseBlock)) {
+        const auto labelIt = labels.find(resolvedTrue);
         if (labelIt != labels.end() && !labelIt->second.empty()) {
           lines.push_back("neqj " + lhs + ", " + rhs + ", @" + labelIt->second);
-          emitGoto(trueBlock);
+          return;
+        }
+      }
+
+      if (predicate == llvm::ICmpInst::ICMP_EQ && resolvedFalse) {
+        const auto labelIt = labels.find(resolvedFalse);
+        if (labelIt != labels.end() && !labelIt->second.empty()) {
+          lines.push_back("neqj " + lhs + ", " + rhs + ", @" + labelIt->second);
+          if (reachesSilentExit(trueBlock)) {
+            return;
+          }
+          emitGoto(resolvedTrue);
           return;
         }
       }
     }
 
     const std::string condition = renderValue(branch.getCondition());
-    const auto labelIt = labels.find(trueBlock);
+    const auto labelIt = labels.find(resolvedTrue);
     if (labelIt == labels.end() || labelIt->second.empty()) {
       return;
     }
     lines.push_back("neqj " + condition + ", 0, @" + labelIt->second);
-    emitGoto(falseBlock);
+    if (!reachesSilentExit(falseBlock)) {
+      emitGoto(resolvedFalse);
+    }
   }
 
   void emitSwitch(const SwitchInst &switchInst,
@@ -915,7 +1091,8 @@ private:
       return false;
     }
     const StringRef name = callee.getName();
-    if (name != "virtio_has_feature" && name != "__virtio_test_bit") {
+    if (name != "virtio_has_feature" && name != "__virtio_test_bit" &&
+        name != "virtnet_cpu_notif_add") {
       return false;
     }
     return true;
@@ -969,7 +1146,13 @@ private:
     }
 
     if (!callee.isDeclaration()) {
+      const bool savedTraceEntry = currentTraceEntry_;
+      auto savedBlockRelevance = blockRelevanceCache_;
+      auto savedBlockExit = blockExitCache_;
       buildTrace(*const_cast<Function *>(&callee), forceTrace);
+      currentTraceEntry_ = savedTraceEntry;
+      blockRelevanceCache_ = std::move(savedBlockRelevance);
+      blockExitCache_ = std::move(savedBlockExit);
     }
   }
 

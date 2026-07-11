@@ -222,17 +222,25 @@ This replay path is phase-aware:
 
 - it starts from booting
 - it keeps booting and runtime in one machine
-- it consumes only MMIO read/write events
+- it consumes MMIO read/write events plus decoded DMA aperture events
 - it reports both:
   - `matched`: states that the current event actually matched
   - `active`: states that remain reachable after the event
 
-The replay view projects internal helper traces back to the top-level driver
-surface when possible.
+The replay view reports the currently executing trace and block directly.
 
-For example, a MMIO config read performed through `virtio_cread16 ->
-vm_get` is reported as the surrounding `virtnet_probe_trace` block rather
-than as a low-level helper block.
+For example, a DMA submit observed while replaying `start_xmit` may appear as
+`vring_map_one_sg_trace` or `vring_map_single_trace`, because those helper
+traces are the concrete states currently consuming the event.
+
+Replay scope is still bounded by the explicit entry surfaces used to produce
+the `.state` files.
+
+For `virtio-net`, if runtime replay was built only from `net_device_ops` and
+`ethtool_ops`, then unrelated interrupt-driven completion paths are outside
+that runtime scope. Such out-of-scope events should not be treated as replay
+failure; they may leave the machine with no active in-scope candidates until a
+later in-scope runtime event appears again.
 
 For real trace replay, the `.state` inputs should come from the LLVM pass
 output, not directly from `tools/devilang/examples/`.

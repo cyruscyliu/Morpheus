@@ -65,11 +65,30 @@ try {
   process.stdout.write(String(data.build_version || ""));
 } catch {}
 ' "${source_dir}/.morpheus-fetch.json")"
+fetch_downloads_dir="$(node -e '
+const fs = require("fs");
+const file = process.argv[1];
+try {
+  const data = JSON.parse(fs.readFileSync(file, "utf8"));
+  process.stdout.write(String(data.downloads_dir || ""));
+} catch {}
+' "${source_dir}/.morpheus-fetch.json")"
+if [ -z "${fetch_build_version}" ]; then
+  case "$(basename "${source_dir}")" in
+    qemu-*)
+      fetch_build_version="${source_dir##*/qemu-}"
+      ;;
+  esac
+fi
+if [ -z "${fetch_downloads_dir}" ]; then
+  fetch_downloads_dir="$(cd "$(dirname "${source_dir}")/.." && pwd)/downloads"
+fi
 rm -rf "${source_dir}"
 env \
   MORPHEUS_QEMU_SOURCE="${source_dir}" \
   MORPHEUS_QEMU_SEED_DIR="${fetch_seed_dir}" \
   MORPHEUS_QEMU_ARCHIVE_URL="${fetch_archive_url}" \
+  MORPHEUS_QEMU_DOWNLOADS_DIR="${fetch_downloads_dir}" \
   MORPHEUS_QEMU_BUILD_VERSION="${fetch_build_version}" \
   "$(dirname "$0")/fetch.sh"
 

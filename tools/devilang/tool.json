@@ -146,6 +146,15 @@
         },
         "log-file": {
           "pathTemplate": "tools/devilang/builds/{buildDirKey}/output/devilang.log"
+        },
+        "output": {
+          "pathTemplate": "tools/devilang/builds/{buildDirKey}/output"
+        },
+        "output-c": {
+          "pathTemplate": "tools/devilang/builds/{buildDirKey}/output/devilang-state.c"
+        },
+        "output-h": {
+          "pathTemplate": "tools/devilang/builds/{buildDirKey}/output/devilang-state.h"
         }
       },
       "commands": {

@@ -122,8 +122,6 @@ importers:
         specifier: ^4.20.3
         version: 4.21.0
 
-  tools/outline-to-paper: {}
-
 packages:
 
   '@alloc/quick-lru@5.2.0':

@@ -1,2 +1,4 @@
 virtio_mmio_read
 virtio_mmio_write_offset
+virtio_vring_map
+virtio_vring_unmap

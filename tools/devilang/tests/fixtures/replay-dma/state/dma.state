@@ -1,0 +1,34 @@
+machine dma_trace_sm {
+    initial start
+
+    state start
+
+    trace tx_desc_trace {
+        sequence {
+            dma_event(op=map, dir=to_device, path=phys, addr=desc_addr, len=0x30, data_kind=virtq_desc_table);
+        }
+    }
+
+    trace tx_wrong_type_trace {
+        sequence {
+            dma_event(op=map, dir=to_device, path=phys, addr=desc_addr, len=0x30, data_kind=virtio_net_hdr);
+        }
+    }
+
+    trace rx_frame_trace {
+        sequence {
+            dma_event(op=unmap, dir=from_device, path=phys, addr=frame_addr, len=0x600, data_kind=ethernet_frame);
+        }
+    }
+
+    trace rx_wrong_type_trace {
+        sequence {
+            dma_event(op=unmap, dir=from_device, path=phys, addr=frame_addr, len=0x600, data_kind=zero_buffer);
+        }
+    }
+
+    transition start -> start on tx_desc_trace
+    transition start -> start on tx_wrong_type_trace
+    transition start -> start on rx_frame_trace
+    transition start -> start on rx_wrong_type_trace
+}

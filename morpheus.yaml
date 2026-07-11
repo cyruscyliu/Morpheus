@@ -96,6 +96,9 @@ workflows:
   devilang-build-ci:
     category: build
     steps:
+      - id: llbase_build
+        tool: llbase
+        command: build
       - id: llbic_inspect
         tool: llbic
         command: inspect
@@ -105,6 +108,9 @@ workflows:
       - id: devilang_build
         tool: devilang
         command: build
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
   libafl-build-ci:
     category: build
     steps:

@@ -20,6 +20,11 @@ struct PhaseRequest {
 struct BuildRequest {
   std::vector<PhaseRequest> phases;
   std::map<std::string, std::vector<std::string>> indirectCalls;
+  std::map<std::string, std::vector<std::string>> functionEdges;
+  std::map<std::string, std::vector<std::string>> pointsToHints;
+  std::map<std::string, std::vector<std::string>> pointsToFieldHints;
+  std::map<std::string, std::vector<std::string>> pointsToCallHints;
+  std::map<std::string, std::vector<std::string>> pointsToUseSiteHints;
 };
 
 class DevilangModelPass : public llvm::PassInfoMixin<DevilangModelPass> {

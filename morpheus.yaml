@@ -99,6 +99,12 @@ workflows:
       - id: llbase_build
         tool: llbase
         command: build
+      - id: llcg_build
+        tool: llcg
+        command: build
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
       - id: llbic_inspect
         tool: llbic
         command: inspect
@@ -111,6 +117,17 @@ workflows:
         args:
           - --llbase-contract
           - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --llcg-build-dir
+          - "{{steps.llcg_build.artifacts.build-dir.location}}"
+      - id: devilang_audit
+        tool: devilang
+        command: audit-state
+        args:
+          - --input
+          - ./tools/devilang/tests/fixtures/audit-state/pass.state
+      - id: devilang_audit_test
+        tool: devilang
+        command: test-audit-state
   libafl-build-ci:
     category: build
     steps:

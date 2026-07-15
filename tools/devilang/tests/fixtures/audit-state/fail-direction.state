@@ -1,0 +1,8 @@
+trace bad_direction_trace {
+    sequence {
+        dma_event(op=map, dir=from_device, path=phys, addr=addr, len=len, data_kind=sg_buffer, data_type=virtio_net_ctrl_hdr_mac);
+        dma_event(op=map, dir=from_device, path=phys, addr=addr, len=len, data_kind=xdp_frame, data_type=xdp_frame);
+        dma_event(op=map, dir=from_device, path=phys, addr=addr, len=len, data_kind=virtio_net_hdr_v1_hash_tunnel, data_type=virtio_net_hdr_v1_hash_tunnel);
+        dma_event(op=map, dir=to_device, path=phys, addr=addr, len=len, data_kind=sg_buffer, data_type=virtio_net_stats_capabilities);
+    }
+}

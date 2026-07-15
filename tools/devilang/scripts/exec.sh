@@ -11,6 +11,7 @@ build_dir="${MORPHEUS_DEVILANG_BUILD_DIR:-${tool_root}/build}"
 clang="${MORPHEUS_DEVILANG_CLANG:-15}"
 llbase_contract="${MORPHEUS_DEVILANG_LLBASE_CONTRACT:-}"
 llbic_json="${MORPHEUS_DEVILANG_LLBIC_JSON:-}"
+llcg_build_dir="${MORPHEUS_DEVILANG_LLCG_BUILD_DIR:-}"
 module_file="${MORPHEUS_DEVILANG_MODULE_FILE:-}"
 module_inline="${MORPHEUS_DEVILANG_MODULE:-}"
 module_relative_file="${MORPHEUS_DEVILANG_MODULE_RELATIVE_FILE:-}"
@@ -23,12 +24,15 @@ booting_entry_list="${MORPHEUS_DEVILANG_BOOTING_ENTRY_LIST:-}"
 runtime_entry_list="${MORPHEUS_DEVILANG_RUNTIME_ENTRY_LIST:-}"
 filter_path="${MORPHEUS_DEVILANG_FILTER:-}"
 kallgraph_text="${MORPHEUS_DEVILANG_KALLGRAPH_TEXT:-}"
+llcg_dot="${MORPHEUS_DEVILANG_LLCG_DOT:-}"
+points_to_json="${MORPHEUS_DEVILANG_POINTS_TO_JSON:-${MORPHEUS_DEVILANG_KALLGRAPH_POINTS_TO_JSON:-}}"
 booting_machine_name="${MORPHEUS_DEVILANG_BOOTING_MACHINE_NAME:-booting}"
 runtime_machine_name="${MORPHEUS_DEVILANG_RUNTIME_MACHINE_NAME:-runtime}"
 log_file="${output_dir}/devilang.log"
 manifest_file="${output_dir}/devilang-manifest.json"
 
 mkdir -p "${output_dir}"
+: > "${log_file}"
 [ -n "${llbase_contract}" ] || {
   echo "devilang exec requires --llbase-contract so the managed run uses the shared llbase container runtime" >&2
   exit 1
@@ -105,6 +109,12 @@ if [ -n "${runtime_entry_list}" ] && [[ "${runtime_entry_list}" != /* ]]; then
 fi
 if [ -n "${kallgraph_text}" ] && [[ "${kallgraph_text}" != /* ]]; then
   kallgraph_text="${repo_root}/${kallgraph_text#./}"
+fi
+if [ -n "${llcg_dot}" ] && [[ "${llcg_dot}" != /* ]]; then
+  llcg_dot="${repo_root}/${llcg_dot#./}"
+fi
+if [ -n "${points_to_json}" ] && [[ "${points_to_json}" != /* ]]; then
+  points_to_json="${repo_root}/${points_to_json#./}"
 fi
 
 collect_list "${module_file}" "${module_inline}" module_paths
@@ -317,6 +327,8 @@ for module_path in "${module_paths[@]}"; do
 done
 
 cli_bin="${build_dir}/bin/devilang"
+svf_extapi_bc=""
+[ -n "${llcg_build_dir}" ] && svf_extapi_bc="${llcg_build_dir}/svf/lib/extapi.bc"
 [ -x "${cli_bin}" ] || {
   echo "missing devilang CLI: ${cli_bin}. Run devilang build first." >&2
   exit 1
@@ -348,6 +360,33 @@ if [ -n "${kallgraph_text}" ]; then
   kallgraph_copy="${output_dir}/$(basename "${kallgraph_text}")"
   cp "${kallgraph_text}" "${kallgraph_copy}"
   cmd+=("--kallgraph-text" "${kallgraph_copy}")
+fi
+if [ -n "${llcg_dot}" ]; then
+  [ -f "${llcg_dot}" ] || {
+    echo "missing llcg dot: ${llcg_dot}" >&2
+    exit 1
+  }
+  llcg_dot_copy="${output_dir}/$(basename "${llcg_dot}")"
+  if [ "${llcg_dot}" != "${llcg_dot_copy}" ]; then
+    cp "${llcg_dot}" "${llcg_dot_copy}"
+  fi
+  cmd+=("--llcg-dot" "${llcg_dot_copy}")
+fi
+if [ -n "${points_to_json}" ]; then
+  [ -f "${points_to_json}" ] || {
+    echo "missing points-to json: ${points_to_json}" >&2
+    exit 1
+  }
+  points_to_copy="${output_dir}/$(basename "${points_to_json}")"
+  if [ "${points_to_json}" != "${points_to_copy}" ]; then
+    cp "${points_to_json}" "${points_to_copy}"
+  fi
+  cmd+=("--points-to-json" "${points_to_copy}")
+fi
+cmd+=("--generated-points-to-json" "${output_dir}/devilang-svf-points.json")
+if [ -n "${svf_extapi_bc}" ] && [ -f "${svf_extapi_bc}" ]; then
+  cp -f "${svf_extapi_bc}" "${build_dir}/bin/extapi.bc"
+  cmd+=("--svf-extapi" "${svf_extapi_bc}")
 fi
 
 set +e
@@ -390,11 +429,15 @@ const artifacts = [
 ];
 const bootingState = path.join(outputDir, "booting.state");
 const runtimeState = path.join(outputDir, "runtime.state");
+const pointsToJson = path.join(outputDir, "devilang-svf-points.json");
 if (fs.existsSync(bootingState)) {
   artifacts.push({ path: "booting-state", location: bootingState });
 }
 if (fs.existsSync(runtimeState)) {
   artifacts.push({ path: "runtime-state", location: runtimeState });
+}
+if (fs.existsSync(pointsToJson)) {
+  artifacts.push({ path: "points-to-json", location: pointsToJson });
 }
 const payload = {
   summary: rawExitCode === 0 ? "generated devilang state artifacts" : "devilang state generation failed",
@@ -403,6 +446,7 @@ const payload = {
     booting_machine_name: String(bootingMachineName || ""),
     runtime_machine_name: String(runtimeMachineName || ""),
     llbase_contract: process.env.MORPHEUS_DEVILANG_LLBASE_CONTRACT || "",
+    llcg_build_dir: process.env.MORPHEUS_DEVILANG_LLCG_BUILD_DIR || "",
   },
   artifacts,
 };

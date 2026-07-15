@@ -1,0 +1,20 @@
+struct VIRTIO_NET_CTRL_BUF0 {
+    buf: bytes[256] random;
+}
+
+struct VIRTIO_NET_CTRL_VRING {
+    addr0: ptr<u64> align 0;
+    flags0: u16;
+}
+
+head VIRTIO_NET_CTRL_VRING_head {
+    position = [file = virtio_net.c; caller = virtnet_send_command; callee = this_is_a_stub_for_virtio_net_ctrl; call_depth = 3; argument_index = 2];
+    to = VIRTIO_NET_CTRL_VRING;
+}
+
+pointer {
+    from = VIRTIO_NET_CTRL_VRING.addr0;
+    to = VIRTIO_NET_CTRL_BUF0;
+    sentinel = VIRTIO_NET_CTRL_VRING.flags0[1] | VIRTIO_NET_CTRL_VRING.flags0[4];
+    align = 0;
+}

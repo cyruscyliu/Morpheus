@@ -1,7 +1,7 @@
 {
   "name": "devilang",
   "runtime": null,
-  "cli-contract": "build,exec,compile-state,replay-trace,inspect,logs",
+  "cli-contract": "build,exec,compile-state,replay-trace,audit-state,test-audit-state,inspect,logs",
   "config": {
     "fields": {
       "mode": { "aliases": ["mode"] },
@@ -31,6 +31,10 @@
         "aliases": ["llbic-json", "llbicJson"],
         "path": true
       },
+      "llcg-build-dir": {
+        "aliases": ["llcg-build-dir", "llcgBuildDir"],
+        "path": true
+      },
       "module": {
         "aliases": ["module"],
         "repeatable": true,
@@ -46,6 +50,14 @@
       },
       "kallgraph-text": {
         "aliases": ["kallgraph-text", "kallgraphText"],
+        "path": true
+      },
+      "llcg-dot": {
+        "aliases": ["llcg-dot", "llcgDot"],
+        "path": true
+      },
+      "points-to-json": {
+        "aliases": ["points-to-json", "pointsToJson", "kallgraph-points-to-json", "kallgraphPointsToJson"],
         "path": true
       },
       "booting-entry": {
@@ -116,7 +128,8 @@
   "inputs": {
     "build": {
       "dependencies": {
-        "llbase": { "flag": "llbase-contract" }
+        "llbase": { "flag": "llbase-contract" },
+        "llcg": { "flag": "llcg-build-dir" }
       }
     },
     "exec": {
@@ -160,7 +173,7 @@
       "commands": {
         "build": {
           "requiredFlags": ["llbase-contract"],
-          "scalarFlags": ["build-dir", "clang", "llbase-contract"],
+          "scalarFlags": ["build-dir", "clang", "llbase-contract", "llcg-build-dir"],
           "repeatableFlags": [],
           "pathFlags": {
             "build-dir": "tools/devilang/build"
@@ -178,9 +191,9 @@
               "locationTemplate": "{build-dir}"
             },
             "details": {
-              "build_dir": "{build-dir}"
-            }
+            "build_dir": "{build-dir}"
           }
+        }
         },
         "exec": {
           "requiredFlags": ["output", "llbase-contract"],
@@ -190,8 +203,11 @@
             "clang",
             "llbase-contract",
             "llbic-json",
+            "llcg-build-dir",
             "filter",
             "kallgraph-text",
+            "llcg-dot",
+            "points-to-json",
             "booting-entry-list",
             "runtime-entry-list",
             "booting-machine-name",
@@ -256,6 +272,7 @@
             "output",
             "symbol-prefix",
             "events-limit",
+            "events-skip",
             "base-filter",
             "cc"
           ],
@@ -273,6 +290,34 @@
               "path": "output",
               "locationTemplate": "{output}"
             }
+          }
+        },
+        "audit-state": {
+          "requiredFlags": [],
+          "scalarFlags": [],
+          "repeatableFlags": [
+            "input"
+          ],
+          "script": {
+            "path": "scripts/audit-state.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "audited devilang state artifacts",
+            "errorSummary": "devilang state audit failed"
+          }
+        },
+        "test-audit-state": {
+          "requiredFlags": [],
+          "scalarFlags": [],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/test-audit-state.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "validated devilang audit-state fixtures",
+            "errorSummary": "devilang audit-state fixture test failed"
           }
         },
         "inspect": {

@@ -1,0 +1,5 @@
+trace unknown_payload_trace {
+    sequence {
+        dma_event(op=map, dir=from_device, path=phys, addr=addr, len=len, data_kind=sg_buffer, data_type=unknown);
+    }
+}

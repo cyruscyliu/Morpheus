@@ -5,17 +5,21 @@
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/JSON.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/SystemUtils.h"
 
 #include <cstdint>
+#include <cstring>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <set>
 #include <string>
 #include <sys/resource.h>
 #include <thread>
@@ -45,6 +49,10 @@ static llvm::cl::opt<std::string>
 static llvm::cl::opt<std::string> CallGraphPath("CallGraphPath",
                                                 llvm::cl::desc("CallGraphPath"),
                                                 llvm::cl::init(""));
+
+static llvm::cl::opt<std::string>
+    PointsToPath("PointsToPath", llvm::cl::desc("PointsToPath"),
+                 llvm::cl::init(""));
 
 static llvm::cl::opt<size_t> ThreadNum("ThreadNum", llvm::cl::desc("ThreadNum"),
                                        llvm::cl::init(1));
@@ -141,6 +149,165 @@ static bool isDstOutputDebugCallsite(const CallInst *icall) {
            dbginfo->getFilename().str().find("include/net/dst.h") != string::npos;
   }
   return false;
+}
+
+Algo *performAnalysis(Value *gv, SVFIR *pag);
+
+static std::string normalizeTypeToken(std::string raw) {
+  for (const char *prefix : {"struct.", "union.", "class."}) {
+    if (raw.rfind(prefix, 0) == 0) {
+      raw.erase(0, strlen(prefix));
+      break;
+    }
+  }
+  return raw;
+}
+
+static std::string callsiteKey(const Instruction *inst) {
+  if (!inst) {
+    return "";
+  }
+  if (const auto dbginfo = inst->getDebugLoc()) {
+    std::string filename = dbginfo->getFilename().str();
+    std::string directory = dbginfo->getDirectory().str();
+    if (!directory.empty()) {
+      return directory + "/" + filename + ":" + to_string(dbginfo->getLine());
+    }
+    return filename + ":" + to_string(dbginfo->getLine());
+  }
+  return "";
+}
+
+static void collectTypeHintsFromNode(PAGNode *node,
+                                     unordered_set<PAGNode *> &visited,
+                                     std::set<std::string> &typeNames,
+                                     std::set<std::string> &valueNames) {
+  if (!node || !visited.insert(node).second) {
+    return;
+  }
+
+  if (const auto *value = getLLVMValue(node)) {
+    valueNames.insert(printVal(value));
+    if (auto *st = ifPointToStruct(value->getType())) {
+      std::string name = normalizeTypeToken(getStructName(st));
+      if (!name.empty()) {
+        typeNames.insert(name);
+      }
+    }
+  }
+  if (node->getType()) {
+    if (auto *st = ifPointToStruct(node->getType())) {
+      std::string name = normalizeTypeToken(getStructName(st));
+      if (!name.empty()) {
+        typeNames.insert(name);
+      }
+    }
+  }
+
+  for (auto edge : node->getIncomingEdges(PAGEdge::Copy)) {
+    collectTypeHintsFromNode(edge->getSrcNode(), visited, typeNames, valueNames);
+  }
+  for (auto edge : node->getOutgoingEdges(PAGEdge::Copy)) {
+    collectTypeHintsFromNode(edge->getDstNode(), visited, typeNames, valueNames);
+  }
+  for (auto edge : node->getIncomingEdges(PAGEdge::Addr)) {
+    collectTypeHintsFromNode(edge->getSrcNode(), visited, typeNames, valueNames);
+  }
+  for (auto edge : node->getOutgoingEdges(PAGEdge::Addr)) {
+    collectTypeHintsFromNode(edge->getDstNode(), visited, typeNames, valueNames);
+  }
+  for (auto edge : node->getIncomingEdges(PAGEdge::Gep)) {
+    collectTypeHintsFromNode(edge->getSrcNode(), visited, typeNames, valueNames);
+  }
+  for (auto edge : node->getOutgoingEdges(PAGEdge::Gep)) {
+    collectTypeHintsFromNode(edge->getDstNode(), visited, typeNames, valueNames);
+  }
+}
+
+static void appendStringArray(llvm::json::Object &obj, const char *key,
+                              const std::set<std::string> &values) {
+  llvm::json::Array arr;
+  for (const auto &value : values) {
+    arr.push_back(value);
+  }
+  obj[key] = std::move(arr);
+}
+
+static std::vector<llvm::json::Object> collectDmaPointsToQueries(SVFModule *svfModule,
+                                                                 SVFIR *pag) {
+  static const std::map<std::string, unsigned> queryTargets = {
+      {"sg_set_buf", 1u},
+      {"sg_init_one", 1u},
+      {"vring_map_single", 1u},
+  };
+
+  std::vector<llvm::json::Object> queries;
+  for (auto func : svfModule->getFunctionSet()) {
+    for (auto &bb : *func) {
+      for (auto &inst : bb) {
+        auto *call = dyn_cast<CallInst>(&inst);
+        if (!call) {
+          continue;
+        }
+        const Function *callee = call->getCalledFunction();
+        if (!callee) {
+          continue;
+        }
+        auto it = queryTargets.find(callee->getName().str());
+        if (it == queryTargets.end()) {
+          continue;
+        }
+        const unsigned argIndex = it->second;
+        if (call->arg_size() <= argIndex) {
+          continue;
+        }
+        Value *argValue = call->getArgOperand(argIndex)->stripPointerCasts();
+        if (!argValue || !argValue->getType()->isPointerTy()) {
+          continue;
+        }
+        std::unique_ptr<Algo> res(performAnalysis(argValue, pag));
+        std::set<std::string> typeNames;
+        std::set<std::string> valueNames;
+        for (const auto &aliasBucket : res->Aliases) {
+          for (auto alias : aliasBucket.second) {
+            unordered_set<PAGNode *> visitedAliasNodes;
+            collectTypeHintsFromNode(alias, visitedAliasNodes, typeNames, valueNames);
+          }
+        }
+        llvm::json::Object record;
+        record["callsite"] = callsiteKey(call);
+        record["caller"] = func->getName().str();
+        record["callee"] = callee->getName().str();
+        record["arg_index"] = static_cast<int64_t>(argIndex);
+        record["arg_value"] = printVal(argValue);
+        appendStringArray(record, "points_to_types", typeNames);
+        appendStringArray(record, "points_to_values", valueNames);
+        queries.push_back(std::move(record));
+      }
+    }
+  }
+  return queries;
+}
+
+static void writePointsToQueriesJson(const std::string &path, SVFModule *svfModule,
+                                     SVFIR *pag) {
+  llvm::json::Array queries;
+  for (auto &record : collectDmaPointsToQueries(svfModule, pag)) {
+    queries.push_back(std::move(record));
+  }
+  llvm::json::Object root;
+  root["version"] = 1;
+  root["queries"] = std::move(queries);
+
+  std::error_code ec;
+  llvm::raw_fd_ostream out(path, ec);
+  if (ec) {
+    errs() << "failed to write points-to json " << path << ": "
+           << ec.message() << "\n";
+    return;
+  }
+  out << llvm::formatv("{0:2}", llvm::json::Value(std::move(root)));
+  out << "\n";
 }
 
 static void debugAliasBucketsForCallsite(const CallInst *icall, Algo *res) {
@@ -627,6 +794,10 @@ int main(int argc, char **argv) {
     printCallGraph(OutputDir + "/callgraph" + to_string(i));
   }
   log_time("analysis done", fout);
+  std::string pointsToOutput = PointsToPath.empty()
+      ? (OutputDir + "/points-to.json")
+      : PointsToPath.getValue();
+  writePointsToQueriesJson(pointsToOutput, svfModule, pag);
   fout.close();
   return 0;
 }

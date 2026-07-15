@@ -1,0 +1,25 @@
+struct VIRTIO_NET_RX_BUF0 {
+    buf: bytes[256] random;
+}
+
+struct virtio_net_hdr {
+    flags: u8;
+}
+
+struct virtnet_rq_dma {
+    addr: u64;
+    ref: u32;
+    len: u16;
+    need_sync: u16;
+}
+
+head virtnet_rq_dma_head {
+    position = [file = virtio_net.c; caller = remove_vq_common; callee = this_is_a_stub_for_virtio_net_rx; call_depth = 3; argument_index = 2];
+    to = virtnet_rq_dma;
+}
+
+pointer {
+    from = virtnet_rq_dma.addr;
+    to = virtio_net_hdr;
+    align = 0;
+}

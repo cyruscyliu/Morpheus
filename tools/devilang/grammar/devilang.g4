@@ -411,6 +411,8 @@ dmaEventArg
     | 'addr' '=' traceExpr
     | 'len' '=' traceExpr
     | 'data_kind' '=' ident
+    | 'data_type' '=' ident
+    | 'data_field' '=' ident
     ;
 
 traceArgs

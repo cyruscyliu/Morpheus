@@ -1,5 +1,6 @@
 // @ts-nocheck
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
 const { applyConfigDefaults } = require("./config");
@@ -340,6 +341,22 @@ function defaultScriptedCommandCwd(workspace, tool, command) {
   return path.join(workspace, "tmp", String(tool || "tool"), String(command || "command"));
 }
 
+function shouldUseEphemeralScriptRuntime(options, spec, childCwd) {
+  if (options && options.cwd && path.resolve(options.cwd) !== process.cwd()) {
+    return false;
+  }
+  if (path.resolve(childCwd) !== process.cwd()) {
+    return false;
+  }
+  return !(spec && spec.script && spec.script.cwdTemplate);
+}
+
+function createEphemeralScriptRuntimeDir(tool, command) {
+  const safeTool = String(tool || "tool").replace(/[^a-zA-Z0-9._-]+/g, "-");
+  const safeCommand = String(command || "command").replace(/[^a-zA-Z0-9._-]+/g, "-");
+  return fs.mkdtempSync(path.join(os.tmpdir(), `morpheus-${safeTool}-${safeCommand}-`));
+}
+
 function descriptorFlagMetadata(descriptor) {
   const fields = descriptor && descriptor.config && descriptor.config.fields
     ? descriptor.config.fields
@@ -572,8 +589,11 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
         ? renderScriptTemplate(spec.script.cwdTemplate, rawValues)
         : defaultScriptedCommandCwd(options.workspace || null, tool, command)
     );
-  const resultFile = scriptResultPath(childCwd);
-  const defaultLogFile = scriptLogPath(childCwd);
+  const runtimeDir = shouldUseEphemeralScriptRuntime(options, spec, childCwd)
+    ? createEphemeralScriptRuntimeDir(tool, command)
+    : childCwd;
+  const resultFile = scriptResultPath(runtimeDir);
+  const defaultLogFile = scriptLogPath(runtimeDir);
   const prefix = scriptEnvPrefix(tool);
 
   for (const required of Array.isArray(spec.requiredFlags) ? spec.requiredFlags : []) {
@@ -601,7 +621,7 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
     }
     const envKey = `${prefix}_${String(key).replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").toUpperCase()}`;
     if (Array.isArray(value)) {
-      const listFile = path.join(childCwd, `.morpheus-${String(key)}.txt`);
+      const listFile = path.join(runtimeDir, `.morpheus-${String(key)}.txt`);
       fs.writeFileSync(listFile, value.join("\n"), "utf8");
       env[envKey] = value.join("\n");
       env[`${envKey}_FILE`] = listFile;
@@ -637,6 +657,14 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
   });
 
   return await new Promise((resolve, reject) => {
+    let cleanedRuntimeDir = false;
+    const cleanupRuntimeDir = () => {
+      if (cleanedRuntimeDir || runtimeDir === childCwd || detachedExec) {
+        return;
+      }
+      cleanedRuntimeDir = true;
+      fs.rmSync(runtimeDir, { recursive: true, force: true });
+    };
     const maxBufferedOutput = 1024 * 1024;
     const appendBounded = (current, chunk) => {
       const next = current + chunk;
@@ -768,6 +796,7 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
       if (logStream) {
         logStream.end();
       }
+      cleanupRuntimeDir();
       reject(error);
     });
     child.on("close", (code) => {
@@ -785,6 +814,7 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
         try {
           dynamicResult = JSON.parse(fs.readFileSync(resultFile, "utf8"));
         } catch (error) {
+          cleanupRuntimeDir();
           return reject(error);
         }
       }
@@ -817,12 +847,15 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
         fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
         fs.writeFileSync(manifestPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
       }
-      const finish = () => resolve({
-        status: exitCode,
-        stdout: stdoutText,
-        stderr: stderrText,
-        toolPayload: payload,
-      });
+      const finish = () => {
+        cleanupRuntimeDir();
+        resolve({
+          status: exitCode,
+          stdout: stdoutText,
+          stderr: stderrText,
+          toolPayload: payload,
+        });
+      };
       if (logStream) {
         logStream.end(finish);
       } else {

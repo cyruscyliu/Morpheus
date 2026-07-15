@@ -22,6 +22,21 @@ if [ -f "${cache_file}" ] && ! grep -q "^CMAKE_HOME_DIRECTORY:INTERNAL=${tool_ro
   mkdir -p "${build_dir}"
 fi
 
+kallgraph_bin="${build_dir}/kallgraph/bin/KallGraph"
+llvm_cg_pass="${build_dir}/llvm-cg/llvm-cg.so"
+if [ -f "${cache_file}" ] && [ -f "${kallgraph_bin}" ] && [ -f "${llvm_cg_pass}" ]; then
+  if find \
+      "${tool_root}/CMakeLists.txt" \
+      "${tool_root}/src/KallGraph" \
+      "${tool_root}/src/llvm-cg" \
+      -type f \
+      -newer "${kallgraph_bin}" \
+      | grep -q .; then
+    rm -rf "${build_dir}"
+    mkdir -p "${build_dir}"
+  fi
+fi
+
 runtime_helper="$(
   node - "${llbase_contract}" "${runtime_helper_default}" <<'EOF'
 const fs = require("fs");

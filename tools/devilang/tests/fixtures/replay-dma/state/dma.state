@@ -5,25 +5,25 @@ machine dma_trace_sm {
 
     trace tx_desc_trace {
         sequence {
-            dma_event(op=map, dir=to_device, path=phys, addr=desc_addr, len=0x30, data_kind=virtq_desc_table);
+            dma_event(op=map, dir=to_device, path=phys, addr=desc_addr, len=0x30, data_kind=virtq_desc_table, data_type=vring_desc, data_field=vring_desc__field_0_3);
         }
     }
 
     trace tx_wrong_type_trace {
         sequence {
-            dma_event(op=map, dir=to_device, path=phys, addr=desc_addr, len=0x30, data_kind=virtio_net_hdr);
+            dma_event(op=map, dir=to_device, path=phys, addr=desc_addr, len=0x30, data_kind=virtio_net_hdr, data_type=virtio_net_hdr, data_field=virtio_net_hdr__field_1);
         }
     }
 
     trace rx_frame_trace {
         sequence {
-            dma_event(op=unmap, dir=from_device, path=phys, addr=frame_addr, len=0x600, data_kind=ethernet_frame);
+            dma_event(op=unmap, dir=from_device, path=phys, addr=frame_addr, len=0x600, data_kind=ethernet_frame, data_type=sk_buff, data_field=sk_buff__field_0_1);
         }
     }
 
     trace rx_wrong_type_trace {
         sequence {
-            dma_event(op=unmap, dir=from_device, path=phys, addr=frame_addr, len=0x600, data_kind=zero_buffer);
+            dma_event(op=unmap, dir=from_device, path=phys, addr=frame_addr, len=0x600, data_kind=zero_buffer, data_type=zeroed_page, data_field=zeroed_page__field_0);
         }
     }
 

@@ -9,6 +9,7 @@ trace_log="${MORPHEUS_DEVILANG_TRACE_LOG:-}"
 output="${MORPHEUS_DEVILANG_OUTPUT:-}"
 symbol_prefix="${MORPHEUS_DEVILANG_SYMBOL_PREFIX:-devilang}"
 events_limit="${MORPHEUS_DEVILANG_EVENTS_LIMIT:-}"
+events_skip="${MORPHEUS_DEVILANG_EVENTS_SKIP:-}"
 base_filter="${MORPHEUS_DEVILANG_BASE_FILTER:-}"
 cc_bin="${MORPHEUS_DEVILANG_CC:-cc}"
 input_inline="${MORPHEUS_DEVILANG_INPUT:-}"
@@ -49,6 +50,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --events-limit)
       events_limit="$2"
+      shift 2
+      ;;
+    --events-skip)
+      events_skip="$2"
       shift 2
       ;;
     --base-filter)
@@ -105,7 +110,7 @@ fi
 }
 
 filtered_trace="${tmpdir}/trace.log"
-python3 - "${trace_log}" "${filtered_trace}" "${base_filter}" "${events_limit}" <<'EOF'
+python3 - "${trace_log}" "${filtered_trace}" "${base_filter}" "${events_limit}" "${events_skip}" <<'EOF'
 import pathlib
 import sys
 
@@ -113,15 +118,30 @@ src = pathlib.Path(sys.argv[1])
 dst = pathlib.Path(sys.argv[2])
 base_filter = sys.argv[3]
 limit_text = sys.argv[4]
+skip_text = sys.argv[5]
 limit = int(limit_text) if limit_text else None
+skip = int(skip_text) if skip_text else 0
 
 count = 0
+seen = 0
 with src.open("r", encoding="utf-8") as infile, dst.open("w", encoding="utf-8") as out:
     for line in infile:
-        if base_filter and f"base {base_filter}" not in line:
+        is_mmio = (
+            "virtio_mmio_read " in line
+            or "virtio_mmio_write " in line
+            or "virtio_mmio_write_offset " in line
+        )
+        is_vring_dma = (
+            "virtio_vring_map " in line
+            or "virtio_vring_unmap " in line
+        )
+
+        if not is_mmio and not is_vring_dma:
             continue
-        if "virtio_mmio_read " not in line and "virtio_mmio_write " not in line \
-           and "virtio_mmio_write_offset " not in line:
+        if is_mmio and base_filter and f"base {base_filter}" not in line:
+            continue
+        if seen < skip:
+            seen += 1
             continue
         out.write(line)
         count += 1
@@ -141,6 +161,7 @@ prefix = sys.argv[3]
 out.write_text(
     f"""#include "{header}"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static struct {prefix}_machine machine;
@@ -150,6 +171,7 @@ int main(int argc, char **argv) {{
     char line[4096];
     size_t line_no = 0;
     size_t event_count = 0;
+    int debug_callstack = 0;
 
     if (argc != 2) {{
         fprintf(stderr, "usage: %s TRACE_LOG\\n", argv[0]);
@@ -162,6 +184,8 @@ int main(int argc, char **argv) {{
         return 1;
     }}
 
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    debug_callstack = getenv("MORPHEUS_DEVILANG_DEBUG_CALLSTACK") != NULL;
     {prefix}_init(&machine);
     while (fgets(line, sizeof(line), trace_file) != NULL) {{
         int rc;
@@ -201,6 +225,26 @@ int main(int argc, char **argv) {{
                    candidates[i].block,
                    candidates[i].score);
         }}
+        if (debug_callstack) {{
+            for (size_t i = 0; i < machine.active_count; ++i) {{
+                printf("  raw %zu machine=%d state=%d trace=%d step=%d depth=%d probe=%u score=%u\\n",
+                       i,
+                       machine.active[i].machine,
+                       machine.active[i].state,
+                       machine.active[i].trace,
+                       machine.active[i].step,
+                       machine.active[i].call_depth,
+                       machine.active[i].probe_mode,
+                       machine.active[i].score);
+                for (int depth = 0; depth < machine.active[i].call_depth; ++depth) {{
+                    printf("    ret %d trace=%d step=%d bind=%d\\n",
+                           depth,
+                           machine.active[i].return_traces[depth],
+                           machine.active[i].return_steps[depth],
+                           machine.active[i].return_bindings[depth]);
+                }}
+            }}
+        }}
         if (candidate_count == 0) {{
             printf("  <none>\\n");
         }}
@@ -238,7 +282,7 @@ if [ "${replay_rc}" -ne 0 ] && [ "${replay_rc}" -ne 2 ]; then
 fi
 
 if [ -n "${result_file}" ]; then
-  node - "${result_file}" "${output}" "${state_c}" "${state_h}" "${trace_log}" "${symbol_prefix}" "${base_filter}" "${events_limit}" "${replay_rc}" <<'EOF'
+  node - "${result_file}" "${output}" "${state_c}" "${state_h}" "${trace_log}" "${symbol_prefix}" "${base_filter}" "${events_limit}" "${events_skip}" "${replay_rc}" <<'EOF'
 const fs = require("fs");
 const path = require("path");
 
@@ -251,6 +295,7 @@ const [
   symbolPrefixArg,
   baseFilterArg,
   eventsLimitArg,
+  eventsSkipArg,
   replayRcArg,
 ] = process.argv.slice(2);
 
@@ -269,6 +314,7 @@ const payload = {
     symbol_prefix: String(symbolPrefixArg || "devilang"),
     base_filter: baseFilterArg ? String(baseFilterArg) : null,
     events_limit: eventsLimitArg ? Number(eventsLimitArg) : null,
+    events_skip: eventsSkipArg ? Number(eventsSkipArg) : null,
     replay_exit_code: replayRc,
     halted_unmatched_event: haltedUnmatchedEvent,
   },

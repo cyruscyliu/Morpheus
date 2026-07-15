@@ -13,6 +13,7 @@
     "llbic_json": "tools/llbic/tests/fixtures/linux-6.18.16-arm64-clang15/llbic.json",
     "all_bc_list": "tools/llbic/tests/fixtures/linux-6.18.16-arm64-clang15/bitcode_files.txt",
     "kallgraph_text": "kallgraph.txt",
+    "kallgraph_points_to_json": "kallgraph_points_to.json",
     "cg_dot": "callgraph.dot",
     "log_file": "llcg.log",
     "planned_stages": [
@@ -45,6 +46,11 @@
       "runtime_path": "kallgraph.txt",
       "resolved_path": "tools/llcg/tests/fixtures/minimal-llcg-output/kallgraph.txt"
     },
+    "kallgraph_points_to_json": {
+      "portable": "kallgraph_points_to.json",
+      "runtime_path": "kallgraph_points_to.json",
+      "resolved_path": "tools/llcg/tests/fixtures/minimal-llcg-output/kallgraph_points_to.json"
+    },
     "cg_dot": {
       "portable": "callgraph.dot",
       "runtime_path": "callgraph.dot",
@@ -62,6 +68,7 @@
     "llbic_json": true,
     "all_bc_list": true,
     "kallgraph_text": true,
+    "kallgraph_points_to_json": true,
     "cg_dot": true,
     "log_file": true
   }

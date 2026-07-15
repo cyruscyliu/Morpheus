@@ -1,0 +1,14 @@
+struct virtio_net_ctrl_status {
+    value: u8;
+}
+
+head virtio_net_ctrl_status_head {
+    position = [file = virtio_ring.c; caller = virtqueue_add; callee = this_is_a_stub_for_virtio_net_ctrl; call_depth = 0; argument_index = 2];
+    to = virtio_net_ctrl_status;
+}
+
+trace bad_control_trace {
+    sequence {
+        dma_event(op=map, dir=to_device, path=phys, addr=addr, len=len, data_kind=ethernet_frame, data_type=virtio_net_ctrl_status, data_field=virtio_net_ctrl_status__value);
+    }
+}

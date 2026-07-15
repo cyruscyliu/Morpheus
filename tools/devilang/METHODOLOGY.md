@@ -189,6 +189,154 @@ This methodology formally defines `virtio-mmio` first.
 `virtio-pci` is a future extension point, but is not specified here beyond
 that statement.
 
+## DMA Recovery
+
+Devilang does not treat DMA as an opaque side effect.
+
+For `virtio-net`, the pass tries to recover the DMA-side data structure that
+is being submitted, received, or reclaimed.
+
+The recovery algorithm has five layers.
+
+### 1. Normalize the DMA event
+
+The pass first recognizes transport-relevant DMA activity and normalizes it
+into a common event form:
+
+- `dma_event(op, dir, path, addr, len, ...)`
+
+This event may come from:
+
+- DMA API paths
+- physical-address paths
+- scatter-gather setup helpers
+- virtqueue submission helpers
+- virtqueue detach and unmap helpers
+
+The goal of this layer is only to say:
+
+- what operation happened
+- in which direction
+- through which path
+- at which address and length
+
+### 2. Recover SG payload sources
+
+For each SG slot, the pass walks backward from the SG operand to recover the
+buffer value that was actually attached to that slot.
+
+This backward recovery follows:
+
+- `sg_set_buf`
+- `sg_init_one`
+- `sg_fill_dma`
+- `skb_to_sgvec`
+- `skb_to_sgvec_nomark`
+
+It also propagates through:
+
+- casts
+- GEPs
+- loads
+- `phi`
+- `select`
+- stack stores
+- cross-function argument passing
+
+This step is phase-local.
+
+`booting` recovery is restricted to the booting phase scope.
+
+`runtime` recovery is restricted to the runtime phase scope.
+
+This prevents runtime SG provenance from contaminating booting output, and
+vice versa.
+
+### 3. Infer payload type
+
+Once the source value of a DMA slot is recovered, the pass infers what kind of
+payload that value represents.
+
+This is done by combining:
+
+- local def-use and data-flow reasoning
+- debug type and debug offset recovery
+- callsite-sensitive points-to hints
+- use-site hints
+- trace-context function names
+
+The result is a payload record with:
+
+- `kind`
+- `type`
+- `fields`
+
+Typical recovered payload types include:
+
+- `virtio_net_hdr`
+- `virtio_net_hdr_v1_hash_tunnel`
+- `virtio_net_rss_config_hdr`
+- `virtio_net_rss_config_trailer`
+- `virtio_net_ctrl_status`
+- `xdp_frame`
+- concrete packet families
+
+### 4. Split descriptor, chain, and payload layers
+
+The pass does not stop at "this DMA slot points to some buffer".
+
+It models three separate layers.
+
+Descriptor layer:
+
+- records `addr`, `len`, `flags`, and `next`
+- splits transport roles such as header, frame, RX, TX, control, and
+  packed/split forms
+
+Chain layer:
+
+- groups related SG slots into relative chain schemas
+- preserves role order such as "header first, frame second"
+- does not falsely claim a global ring-slot meaning when only local SG order
+  is known
+
+Payload layer:
+
+- maps descriptor addresses to concrete semantic payload structures
+- keeps header payloads distinct from frame payloads
+- keeps control payloads distinct from data payloads
+
+### 5. Emit field-level grammar
+
+The final output is not just "DMA of type X".
+
+The pass emits the recovered payload fields into the grammar-visible DMA event.
+
+For example, a recovered `virtio_net_hdr_v1_hash_tunnel` event should expose
+fields such as:
+
+- `flags`
+- `gso_type`
+- `hdr_len`
+- `gso_size`
+- `csum_start`
+- `csum_offset`
+- `num_buffers`
+- hash and tunnel-related fields
+
+Likewise, RSS and control payloads should expose their own recovered field
+sets.
+
+The output goal is therefore:
+
+- DMA event
+- associated SG slot or local chain role
+- recovered payload type
+- recovered payload fields
+
+This lets the `.state` file represent not only that DMA happened, but also
+which virtio-side data structure was in motion.
+
 ## Examples
 
 Current examples under `tools/devilang/examples/` are still useful as
@@ -263,3 +411,162 @@ tools/devilang/devilang replay-trace \
 
 The authoritative validation path is the workflow replay that consumes
 LLVM-pass-produced `booting.state` and `runtime.state`.
+
+## DMA Hint Recovery
+
+For DMA payload recovery, Devilang now consumes a structured
+`points-to-json` hint stream.
+
+This stream may come from:
+
+- `llcg` / `KallGraph`
+- Devilang's own embedded SVF helper
+
+The current schema is intentionally simple:
+
+- `points_to_types`
+- `points_to_values`
+- `taint_types`
+- `taint_calls`
+- `taint_use_sites`
+- `taint_fields`
+
+`points_to_*` captures alias and points-to results for the seed payload
+pointer.
+
+`taint_*` captures a stronger use-flow summary from the seed across SVFG
+use sites.
+
+Devilang currently merges `points_to_types` and `taint_types` when
+recovering `dma_event(..., data_type=...)`.
+
+When available, `taint_fields` is emitted back into `.state` as repeated
+`data_field=...` arguments on `dma_event(...)`.
+
+This is the first step toward full DMA internal-structure recovery.
+
+## MMIO Value Recovery
+
+MMIO value recovery is separate from the booting/runtime split.
+
+It only depends on:
+
+- transport register layout
+- data flow
+- control flow
+
+For `virtio-mmio`, the pass treats each register access as a small typed value
+recovery problem.
+
+### 1. Bind the access to a concrete register schema
+
+For each `readl` / `writel` style transport access, the pass first resolves:
+
+- direction
+- transport offset
+- width
+- register schema name
+
+This binds the operation to a grammar-visible `struct`, such as:
+
+- `virtio_mmio_status`
+- `virtio_mmio_device_features`
+- `virtio_mmio_queue_notify`
+- `virtio_mmio_queue_sel`
+
+Dynamic config-space accesses under `0x100 + offset` are handled similarly, but
+their schema names are derived from `struct virtio_net_config` debug layout or
+fallback field tables.
+
+### 2. Recover write-side composition
+
+For MMIO writes, the pass walks backward from the value operand.
+
+It propagates through:
+
+- `phi`
+- `select`
+- casts
+- `zext` / `sext` / `trunc`
+- `and`
+- `or`
+- `shl` / `lshr`
+- cross-function argument passing
+- direct and resolved indirect callee returns
+
+This recovers how a register value is built.
+
+Examples:
+
+- selector/immediate writes such as `queue_sel`, `status`, and feature-bank
+  selectors
+- packed writes such as `queue_notify`
+- flag writes composed from OR-ed status or feature bits
+
+For `virtio_mmio_queue_notify`, the pass should preserve the transport-facing
+32-bit value and also expose the known overlapping layouts:
+
+- low 16 bits: `queue_index`
+- high 16 bits in split rings: `split_next_avail_idx`
+- high 16 bits in packed rings: `packed_off_wrap`
+- packed-ring subfields:
+  - `packed_event_idx`
+  - `packed_wrap_counter`
+
+The pass records:
+
+- whole-register immediate values
+- observed bit masks
+- selector-banked bit masks when a register is accessed through a selector
+
+### 3. Recover read-side interpretation
+
+For MMIO reads, the pass walks forward from the read result.
+
+It tracks how the read value is consumed by:
+
+- comparisons against constants
+- `switch` dispatch
+- `phi`
+- `select`
+- mask/extract logic such as `and`, `trunc`, `shl`, and `lshr`
+
+This recovers how software interprets the register.
+
+Examples:
+
+- `virtio_mmio_status` bits consumed as `ACKNOWLEDGE`, `DRIVER`,
+  `FEATURES_OK`, `DRIVER_OK`, or `FAILED`
+- feature-bank reads where specific bits are tested via
+  `virtio_has_feature`
+- interrupt status and acknowledge masks
+
+### 4. Lift the result into grammar-visible fields
+
+Recovered MMIO semantics are emitted through normal Devilang `struct` fields.
+
+Typical field forms are:
+
+- named immediates
+- named flags
+- selector-banked flag groups
+- raw scalar fields when no stronger structure is recoverable
+
+This keeps MMIO modeling consistent with DMA modeling:
+
+- both are emitted through the grammar
+- both can later drive replay and matching
+- neither depends on phase boundaries for their internal data semantics
+
+### 5. Keep transport-specific knowledge narrow
+
+The current implementation formally models `virtio-mmio`.
+
+That means:
+
+- register offsets and field names are transport-specific
+- the value-recovery algorithm itself is transport-agnostic
+
+Future work can extend the same algorithm to `virtio-pci` by swapping the
+transport register catalog, without changing the core backward/forward value
+recovery scheme.

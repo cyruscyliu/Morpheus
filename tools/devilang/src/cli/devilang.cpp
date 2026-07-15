@@ -1,11 +1,11 @@
 #include <memory>
-#include <set>
 #include <optional>
 #include <string>
 #include <system_error>
 #include <vector>
 
 #include "DevilangModelPass.h"
+#include "DevilangSvfAnalysis.h"
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Linker/Linker.h"
@@ -16,6 +16,8 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/InitLLVM.h"
+#include "llvm/Support/JSON.h"
+#include "llvm/Support/Regex.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -56,6 +58,26 @@ llvm::cl::opt<std::string> runtimeMachineName(
 llvm::cl::opt<std::string> kallgraphText(
     "kallgraph-text",
     llvm::cl::desc("KallGraph indirect-call text produced by llcg"),
+    llvm::cl::init(""), llvm::cl::cat(cliCategory));
+
+llvm::cl::opt<std::string> llcgDot(
+    "llcg-dot",
+    llvm::cl::desc("llcg function-level callgraph dot produced by llcg"),
+    llvm::cl::init(""), llvm::cl::cat(cliCategory));
+
+llvm::cl::opt<std::string> pointsToJson(
+    "points-to-json",
+    llvm::cl::desc("Structured points-to/type hints JSON"),
+    llvm::cl::init(""), llvm::cl::cat(cliCategory));
+
+llvm::cl::opt<std::string> generatedPointsToJson(
+    "generated-points-to-json",
+    llvm::cl::desc("Write internally generated SVF hints JSON to this path"),
+    llvm::cl::init(""), llvm::cl::cat(cliCategory));
+
+llvm::cl::opt<std::string> svfExtapi(
+    "svf-extapi",
+    llvm::cl::desc("Path to SVF extapi.bc for in-process analysis"),
     llvm::cl::init(""), llvm::cl::cat(cliCategory));
 
 std::map<std::string, std::vector<std::string>> parseKallgraphText(
@@ -133,6 +155,43 @@ std::map<std::string, std::vector<std::string>> parseKallgraphText(
   return out;
 }
 
+std::map<std::string, std::vector<std::string>> parseLlcgDotFunctionEdges(
+    const std::string &path) {
+  std::map<std::string, std::vector<std::string>> out;
+  if (path.empty()) {
+    return out;
+  }
+
+  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> buffer =
+      llvm::MemoryBuffer::getFile(path);
+  if (!buffer) {
+    llvm::errs() << "error: failed to open llcg dot " << path << ": "
+                 << buffer.getError().message() << "\n";
+    return {};
+  }
+
+  llvm::Regex edgeRegex(
+      R"raw(^[[:space:]]*"([^"]+)"[[:space:]]*->[[:space:]]*"([^"]+)"[[:space:]]*;?[[:space:]]*$)raw");
+  llvm::SmallVector<llvm::StringRef, 0> lines;
+  buffer.get()->getBuffer().split(lines, '\n');
+  for (llvm::StringRef line : lines) {
+    llvm::SmallVector<llvm::StringRef, 3> matches;
+    if (!edgeRegex.match(line, &matches) || matches.size() < 3) {
+      continue;
+    }
+    std::string caller = matches[1].str();
+    std::string callee = matches[2].str();
+    if (caller.empty() || callee.empty()) {
+      continue;
+    }
+    std::vector<std::string> &dest = out[caller];
+    if (!llvm::is_contained(dest, callee)) {
+      dest.push_back(std::move(callee));
+    }
+  }
+  return out;
+}
+
 bool writeTextFile(const std::string &path, const std::string &content) {
   std::error_code error;
   llvm::raw_fd_ostream stream(path, error, llvm::sys::fs::OF_Text);
@@ -143,6 +202,27 @@ bool writeTextFile(const std::string &path, const std::string &content) {
   }
   stream << content;
   return true;
+}
+
+void mergeHintMap(std::map<std::string, std::vector<std::string>> &into,
+                  std::map<std::string, std::vector<std::string>> from) {
+  for (auto &[key, values] : from) {
+    std::vector<std::string> &dest = into[key];
+    std::set<std::string> seen(dest.begin(), dest.end());
+    for (std::string &value : values) {
+      if (!seen.insert(value).second) {
+        continue;
+      }
+      dest.push_back(std::move(value));
+    }
+  }
+}
+
+void mergeSvfHints(devilang::SvfHints &into, devilang::SvfHints from) {
+  mergeHintMap(into.typeHints, std::move(from.typeHints));
+  mergeHintMap(into.fieldHints, std::move(from.fieldHints));
+  mergeHintMap(into.callHints, std::move(from.callHints));
+  mergeHintMap(into.useSiteHints, std::move(from.useSiteHints));
 }
 
 }  // namespace
@@ -207,6 +287,36 @@ int main(int argc, char **argv) {
          false});
   }
   request.indirectCalls = parseKallgraphText(kallgraphText);
+  request.functionEdges = parseLlcgDotFunctionEdges(llcgDot);
+  devilang::SvfHints hints;
+  if (!pointsToJson.empty()) {
+    hints = devilang::parsePointsToHintJson(pointsToJson);
+  }
+#if DEVILANG_HAVE_SVF
+  {
+    devilang::SvfHints internalHints;
+    std::string errorMessage;
+    if (!devilang::collectSvfHints(
+            std::vector<std::string>(modulePaths.begin(), modulePaths.end()),
+            svfExtapi, internalHints, errorMessage)) {
+      llvm::errs() << "error: failed to collect in-process SVF hints";
+      if (!errorMessage.empty()) {
+        llvm::errs() << ": " << errorMessage;
+      }
+      llvm::errs() << "\n";
+      return 1;
+    }
+    mergeSvfHints(hints, internalHints);
+    if (!generatedPointsToJson.empty() &&
+        !devilang::writeSvfHintsJson(generatedPointsToJson, internalHints.root)) {
+      return 1;
+    }
+  }
+#endif
+  request.pointsToHints = std::move(hints.typeHints);
+  request.pointsToFieldHints = std::move(hints.fieldHints);
+  request.pointsToCallHints = std::move(hints.callHints);
+  request.pointsToUseSiteHints = std::move(hints.useSiteHints);
 
   llvm::PassBuilder passBuilder;
   llvm::LoopAnalysisManager loopAnalysisManager;

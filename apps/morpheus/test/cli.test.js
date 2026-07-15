@@ -10,6 +10,16 @@ const appRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(appRoot, "..", "..");
 const bin = path.join(appRoot, "dist", "cli.js");
 const buildrootFixture = path.join(repoRoot, "tools", "buildroot", "tests", "fixtures", "minimal-buildroot");
+const devilangAuditFixture = path.join(
+  repoRoot,
+  "tools",
+  "devilang",
+  "tests",
+  "fixtures",
+  "replay-dma",
+  "state",
+  "dma.state"
+);
 const { applyConfigDefaults } = require("../dist/core/config.js");
 const { effectiveBuildDirKey, syncRemotePathToLocal } = require("../dist/transport/remote.js");
 
@@ -572,6 +582,43 @@ test("tool help includes purpose and examples", () => {
   assert.match(result.stdout, /^Commands:$/m);
   assert.match(result.stdout, /^  Inspect declared tools and whether Morpheus can use them directly or through workflows\.$/m);
   assert.match(result.stdout, /^Examples:$/m);
+});
+
+test("scripted passthrough tool commands do not leave helper files in repo root", () => {
+  const junkPaths = [
+    path.join(repoRoot, ".morpheus-script-result.json"),
+    path.join(repoRoot, ".morpheus-input.txt"),
+    path.join(repoRoot, ".morpheus-artifacts.txt"),
+    path.join(repoRoot, "stdout.log"),
+  ];
+  for (const junkPath of junkPaths) {
+    fs.rmSync(junkPath, { force: true });
+  }
+
+  const result = run([
+    "tool",
+    "audit-state",
+    "--tool",
+    "devilang",
+    "--json",
+    "--",
+    "--input",
+    devilangAuditFixture,
+  ], {
+    env: isolatedEnv(),
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.command, "audit-state");
+  assert.equal(payload.status, "success");
+  for (const junkPath of junkPaths) {
+    assert.equal(
+      fs.existsSync(junkPath),
+      false,
+      `unexpected repo-root helper file: ${path.basename(junkPath)}`
+    );
+  }
 });
 
 test("workflow list discovers configured workflows in json", () => {

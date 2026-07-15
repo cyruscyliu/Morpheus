@@ -16,4 +16,13 @@ include(AddLLVM)
 add_definitions(${LLVM_DEFINITIONS})
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
 
+set(SVF_DIR
+    ""
+    CACHE PATH "Path to an upstream SVF build tree containing lib/cmake/SVF/SVFConfig.cmake")
+
+if(SVF_DIR)
+  list(PREPEND CMAKE_PREFIX_PATH "${SVF_DIR}")
+  find_package(SVF QUIET CONFIG)
+endif()
+
 add_subdirectory(src)

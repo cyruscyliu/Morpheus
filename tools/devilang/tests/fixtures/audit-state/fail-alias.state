@@ -1,0 +1,11 @@
+machine alias_fail {
+    initial state_0
+
+    trace alias_trace {
+        sequence {
+            dma_event(op=map, dir=to_device, path=phys, addr=addr, len=len, data_kind=virtio_net_hdr_v1_hash_tunnel, data_type=virtio_net_hdr_v1_hash_tunnel, data_field=virtio_net_hdr_v1_hash_tunnel__hash_hdr__hdr__flags, data_field=virtio_net_hdr_v1_hash_tunnel__flags);
+        }
+    }
+
+    state state_0
+}

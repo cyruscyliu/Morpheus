@@ -1,0 +1,114 @@
+struct VIRTIO_NET_CTRL_BUF0 {
+    buf: bytes[256] random;
+}
+
+struct VIRTIO_NET_RX_BUF0 {
+    buf: bytes[256] random;
+}
+
+struct VIRTIO_NET_CTRL_CTRL_HDR_11 {
+    class: u8;
+    cmd: u8;
+}
+
+struct virtio_net_ctrl_status {
+    value: u8;
+}
+
+struct virtio_net_stats_reply_hdr {
+    type: u8;
+}
+
+struct virtio_net_rss_config_trailer {
+    max_tx_vq: u16;
+}
+
+struct VIRTIO_NET_CTRL_VRING {
+    addr0: ptr<u64> align 0;
+    addr1: ptr<u64> align 0;
+    addr2: ptr<u64> align 0;
+    addr3: ptr<u64> align 0;
+    flags0: u16;
+    flags1: u16;
+    flags2: u16;
+    flags3: u16;
+}
+
+head VIRTIO_NET_CTRL_VRING_head {
+    position = [file = virtio_net.c; caller = virtnet_send_command; callee = this_is_a_stub_for_virtio_net_ctrl; call_depth = 3; argument_index = 2];
+    to = VIRTIO_NET_CTRL_VRING;
+}
+
+pointer {
+    from = VIRTIO_NET_CTRL_VRING.addr0;
+    to = VIRTIO_NET_CTRL_BUF0;
+    sentinel = VIRTIO_NET_CTRL_VRING.flags0[1] | VIRTIO_NET_CTRL_VRING.flags0[4];
+    align = 0;
+}
+
+pointer {
+    from = VIRTIO_NET_CTRL_VRING.addr0;
+    to = VIRTIO_NET_CTRL_CTRL_HDR_11;
+    sentinel = VIRTIO_NET_CTRL_VRING.flags0[1] | VIRTIO_NET_CTRL_VRING.flags0[4];
+    align = 0;
+}
+
+pointer {
+    from = VIRTIO_NET_CTRL_VRING.addr1;
+    to = VIRTIO_NET_CTRL_BUF0;
+    sentinel = VIRTIO_NET_CTRL_VRING.flags1[1] | VIRTIO_NET_CTRL_VRING.flags1[4];
+    align = 0;
+}
+
+pointer {
+    from = VIRTIO_NET_CTRL_VRING.addr1;
+    to = virtio_net_ctrl_status | virtio_net_rss_config_trailer;
+    sentinel = VIRTIO_NET_CTRL_VRING.flags1[1] | VIRTIO_NET_CTRL_VRING.flags1[4];
+    align = 0;
+}
+
+pointer {
+    from = VIRTIO_NET_CTRL_VRING.addr2;
+    to = VIRTIO_NET_CTRL_BUF0;
+    sentinel = VIRTIO_NET_CTRL_VRING.flags2[1] | VIRTIO_NET_CTRL_VRING.flags2[4];
+    align = 0;
+}
+
+pointer {
+    from = VIRTIO_NET_CTRL_VRING.addr2;
+    to = virtio_net_ctrl_status | virtio_net_stats_reply_hdr;
+    sentinel = VIRTIO_NET_CTRL_VRING.flags2[1] | VIRTIO_NET_CTRL_VRING.flags2[4];
+    align = 0;
+}
+
+pointer {
+    from = VIRTIO_NET_CTRL_VRING.addr3;
+    to = VIRTIO_NET_CTRL_BUF0;
+    sentinel = VIRTIO_NET_CTRL_VRING.flags3[1] | VIRTIO_NET_CTRL_VRING.flags3[4];
+    align = 0;
+}
+
+pointer {
+    from = VIRTIO_NET_CTRL_VRING.addr3;
+    to = virtio_net_stats_reply_hdr;
+    sentinel = VIRTIO_NET_CTRL_VRING.flags3[1] | VIRTIO_NET_CTRL_VRING.flags3[4];
+    align = 0;
+}
+
+struct virtnet_rq_dma {
+    addr: u64;
+    ref: u32;
+    len: u16;
+    need_sync: u16;
+}
+
+head virtnet_rq_dma_head {
+    position = [file = virtio_net.c; caller = remove_vq_common; callee = this_is_a_stub_for_virtio_net_rx; call_depth = 3; argument_index = 2];
+    to = virtnet_rq_dma;
+}
+
+pointer {
+    from = virtnet_rq_dma.addr;
+    to = VIRTIO_NET_RX_BUF0;
+    align = 0;
+}

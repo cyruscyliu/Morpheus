@@ -1507,6 +1507,7 @@ def run_pipeline(
             str(kallgraph_bin),
             f"@{bc_list_path}",
             f"-OutputDir={kallgraph_root}",
+            f"-PointsToPath={(kallgraph_root / 'points-to.json')}",
             f"-ThreadNum={max(1, int(os.environ.get('LLCG_JOBS', '1') or '1'))}",
         ]
         + ([f"-ExtAPIPath={(DEFAULT_BUILD_DIR / 'svf' / 'lib' / 'extapi.bc').resolve()}"])
@@ -1578,6 +1579,10 @@ def run_pipeline(
 
     kallgraph_copy = out_dir / f"{stem}_kallgraph.txt"
     shutil.copy2(latest_callgraph, kallgraph_copy)
+    points_to_json = kallgraph_root / "points-to.json"
+    points_to_copy = out_dir / f"{stem}_kallgraph_points_to.json"
+    if points_to_json.is_file():
+        shutil.copy2(points_to_json, points_to_copy)
     LOGGER.debug("KallGraph output dir: %s", kallgraph_output)
     LOGGER.debug("KallGraph callgraph: %s", kallgraph_copy)
     LOGGER.debug("Raw callgraph DOT (internal): %s", raw_dot_path)
@@ -1588,6 +1593,7 @@ def run_pipeline(
         "bc_list": bc_list_path,
         "groups": groups_path,
         "kallgraph": kallgraph_copy,
+        "kallgraph_points_to_json": points_to_copy if points_to_json.is_file() else None,
         "dot": dot_path,
         "callback_trace": callback_trace_path,
         "log": log_path,
@@ -1634,6 +1640,8 @@ def build_run_manifest(
     if result:
         result_paths = {
             "kallgraph_text": stable_path(Path(result["kallgraph"]), out_dir),
+            "kallgraph_points_to_json": stable_path(Path(result["kallgraph_points_to_json"]), out_dir)
+            if result.get("kallgraph_points_to_json") else "",
             "cg_dot": stable_path(Path(result["dot"]), out_dir),
             "callback_trace": stable_path(Path(result["callback_trace"]), out_dir)
             if result.get("callback_trace") else "",

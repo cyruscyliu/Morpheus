@@ -324,18 +324,20 @@ workflows:
           - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
           - --build-version
           - "6.18.16"
-      - id: devilang_build
-        tool: devilang
-        command: build
-        args:
-          - --llbase-contract
-          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
       - id: llcg_build
         tool: llcg
         command: build
         args:
           - --llbase-contract
           - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+      - id: devilang_build
+        tool: devilang
+        command: build
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --llcg-build-dir
+          - "{{steps.llcg_build.artifacts.build-dir.location}}"
       - id: llcg_mutator
         tool: llcg
         command: exec
@@ -400,10 +402,16 @@ workflows:
           - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
           - --llbic-json
           - "{{steps.llbic_build.artifacts.llbic-json.location}}"
+          - --llcg-build-dir
+          - "{{steps.llcg_build.artifacts.build-dir.location}}"
           - --filter
           - "{{steps.llcg_mutator.artifacts.source_list.location}}"
           - --kallgraph-text
           - "{{steps.llcg_run.artifacts.kallgraph_text.location}}"
+          - --llcg-dot
+          - "{{steps.llcg_run.artifacts.cg_dot.location}}"
+          - --points-to-json
+          - "{{steps.llcg_run.artifacts.kallgraph_points_to_json.location}}"
           - --booting-entry-list
           - projects/hyperarm/workspace/tools/devilang/booting-entries.txt
           - --runtime-entry-list
@@ -412,6 +420,14 @@ workflows:
           - virtio_net_mmio_booting
           - --runtime-machine-name
           - virtio_net_mmio_runtime
+      - id: devilang_audit
+        tool: devilang
+        command: audit-state
+        args:
+          - --input
+          - "{{steps.devilang_exec.artifacts.booting-state.location}}"
+          - --input
+          - "{{steps.devilang_exec.artifacts.runtime-state.location}}"
   buildroot-build:
     category: build
     steps:
@@ -1083,6 +1099,10 @@ workflows:
           - -global
           - --qemu-arg
           - virtio-mmio.force-legacy=off
+          - --qemu-arg
+          - -global
+          - --qemu-arg
+          - virtio-mmio.ioeventfd=off
   devilang-virtio-mmio-trace-replay:
     category: run
     steps:
@@ -1097,18 +1117,20 @@ workflows:
           - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
           - --build-version
           - "6.18.16"
-      - id: devilang_build
-        tool: devilang
-        command: build
-        args:
-          - --llbase-contract
-          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
       - id: llcg_build
         tool: llcg
         command: build
         args:
           - --llbase-contract
           - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+      - id: devilang_build
+        tool: devilang
+        command: build
+        args:
+          - --llbase-contract
+          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
+          - --llcg-build-dir
+          - "{{steps.llcg_build.artifacts.build-dir.location}}"
       - id: llcg_mutator
         tool: llcg
         command: exec
@@ -1173,10 +1195,14 @@ workflows:
           - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
           - --llbic-json
           - "{{steps.llbic_build.artifacts.llbic-json.location}}"
+          - --llcg-build-dir
+          - "{{steps.llcg_build.artifacts.build-dir.location}}"
           - --filter
           - "{{steps.llcg_mutator.artifacts.source_list.location}}"
           - --kallgraph-text
           - "{{steps.llcg_run.artifacts.kallgraph_text.location}}"
+          - --points-to-json
+          - "{{steps.llcg_run.artifacts.kallgraph_points_to_json.location}}"
           - --booting-entry-list
           - projects/hyperarm/workspace/tools/devilang/booting-entries.txt
           - --runtime-entry-list
@@ -1262,6 +1288,10 @@ workflows:
           - -global
           - --qemu-arg
           - virtio-mmio.force-legacy=off
+          - --qemu-arg
+          - -global
+          - --qemu-arg
+          - virtio-mmio.ioeventfd=off
       - id: devilang_replay
         tool: devilang
         command: replay-trace

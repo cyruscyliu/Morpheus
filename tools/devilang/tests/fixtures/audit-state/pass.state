@@ -1,0 +1,25 @@
+struct virtio_net_ctrl_status {
+    value: u8;
+}
+
+head virtio_net_ctrl_status_head {
+    position = [file = virtio_net.c; caller = virtnet_send_command; callee = this_is_a_stub_for_virtio_net_ctrl; call_depth = 3; argument_index = 2];
+    to = virtio_net_ctrl_status;
+}
+
+struct virtio_net_ctrl_hdr_mac {
+    class: u8;
+    cmd: u8;
+}
+
+head virtio_net_ctrl_hdr_mac_head {
+    position = [file = virtio_net.c; caller = virtnet_send_command; callee = this_is_a_stub_for_virtio_net_ctrl; call_depth = 3; argument_index = 2];
+    to = virtio_net_ctrl_hdr_mac;
+}
+
+trace control_request_trace {
+    sequence {
+        dma_event(op=map, dir=to_device, path=phys, addr=addr, len=len, data_kind=sg_buffer, data_type=virtio_net_ctrl_hdr_mac, data_field=virtio_net_ctrl_hdr_mac__class, data_field=virtio_net_ctrl_hdr_mac__cmd);
+        dma_event(op=map, dir=from_device, path=phys, addr=addr, len=len, data_kind=sg_buffer, data_type=virtio_net_ctrl_status, data_field=virtio_net_ctrl_status__value);
+    }
+}

@@ -1,0 +1,31 @@
+diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
+--- a/hw/virtio/virtio-mmio.c
++++ b/hw/virtio/virtio-mmio.c
+@@ -405,11 +405,17 @@ static void virtio_mmio_write(void *opaque, hwaddr offset, uint64_t value,
+         } else {
+             proxy->vqs[vdev->queue_sel].enabled = 0;
+         }
+         break;
+-    case VIRTIO_MMIO_QUEUE_NOTIFY:
+-        if (value < VIRTIO_QUEUE_MAX) {
+-            virtio_queue_notify(vdev, value);
++    case VIRTIO_MMIO_QUEUE_NOTIFY: {
++        uint16_t queue = value;
++
++        if (virtio_vdev_has_feature(vdev, VIRTIO_F_NOTIFICATION_DATA)) {
++            queue = value & 0xffff;
+         }
++        if (queue < VIRTIO_QUEUE_MAX) {
++            virtio_queue_notify(vdev, queue);
++        }
++    }
+         break;
+     case VIRTIO_MMIO_INTERRUPT_ACK:
+         qatomic_and(&vdev->isr, ~value);
+@@ -740,4 +746,5 @@ static void virtio_mmio_pre_plugged(DeviceState *d, Error **errp)
+ 
+     if (!proxy->legacy) {
+         virtio_add_feature(&vdev->host_features, VIRTIO_F_VERSION_1);
++        virtio_add_feature(&vdev->host_features, VIRTIO_F_NOTIFICATION_DATA);
+     }
+ }

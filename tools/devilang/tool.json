@@ -320,6 +320,19 @@
             "errorSummary": "devilang audit-state fixture test failed"
           }
         },
+        "test-static-checks": {
+          "requiredFlags": [],
+          "scalarFlags": [],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/test-static-checks.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "validated devilang static semantic checks",
+            "errorSummary": "devilang static semantic checks failed"
+          }
+        },
         "inspect": {
           "requiredFlags": ["target"],
           "scalarFlags": ["target"],

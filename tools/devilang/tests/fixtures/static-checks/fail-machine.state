@@ -1,0 +1,13 @@
+machine fail_machine {
+    initial missing
+
+    state start
+
+    entry trace start_trace {
+        sequence {
+            goto @done;
+        }
+    }
+
+    transition start -> missing on missing_trace
+}

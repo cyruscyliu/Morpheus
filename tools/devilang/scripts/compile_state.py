@@ -24,9 +24,12 @@ TRACE_RE = re.compile(
 MACHINE_RE = re.compile(r"^machine\s+([A-Za-z0-9_]+)\s*\{$")
 IMPORT_RE = re.compile(r'^import\s+"(?P<path>[^"]+)"\s*;$')
 STRUCT_RE = re.compile(r"^struct\s+([A-Za-z0-9_]+)\s*\{$")
-HEAD_RE = re.compile(r"^head(?:\s+[A-Za-z0-9_]+)?\s*\{$")
+HEAD_RE = re.compile(r"^head(?:\s+(?P<name>[A-Za-z0-9_]+))?\s*\{$")
 POINTER_RE = re.compile(r"^pointer\s*\{$")
-LIST_RE = re.compile(r"^(?:dlist|list|ring|ringbuf)\b.*\{$")
+LIST_RE = re.compile(
+    r"^(?P<kind>dlist|list|ring|ringbuf)\s*<(?P<types>[^>]+)>\s*"
+    r"(?P<name>[A-Za-z0-9_]+)?\s*\{$"
+)
 OP_RE = re.compile(r"^op\s+(?P<name>[A-Za-z0-9_]+)\s*\{$")
 MMIO_SCHEMA_RE = re.compile(r"^mmio\s+(?P<name>[A-Za-z0-9_]+)\s*\{$")
 INITIAL_RE = re.compile(r"^initial\s+([A-Za-z0-9_]+)$")
@@ -41,10 +44,16 @@ NEQJ_RE = re.compile(
     r"^neqj\s+(?P<lhs>.+),\s*(?P<rhs>.+),\s*@(?P<label>[A-Za-z0-9_]+)$"
 )
 GOTO_RE = re.compile(r"^goto\s+@(?P<label>[A-Za-z0-9_]+)$")
-CALL_STMT_RE = re.compile(r"^call\s+(?P<name>[A-Za-z0-9_.]+)\((?P<args>.*)\)$")
+CALL_STMT_RE = re.compile(
+    r"^call\s+(?P<name>[A-Za-z0-9_.]+)(?:\((?P<args>.*)\))?$"
+)
 CALL_EXPR_RE = re.compile(r"^(?P<name>[A-Za-z0-9_.]+)\((?P<args>.*)\)$")
 DMA_EVENT_RE = re.compile(r"^dma_event\((?P<body>.*)\)$")
 SG_TOKEN_RE = re.compile(r"\bsg[A-Za-z0-9_]*\b")
+BUG_RE = re.compile(r"^BUG\(\)$")
+BUG_ON_RE = re.compile(r"^BUG_ON\((?P<expr>.*)\)$")
+WARN_ON_RE = re.compile(r"^WARN_ON\((?P<expr>.*)\)$")
+IDENT_STMT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*$")
 
 KNOWN_CONSTANTS: Dict[str, int] = {
     "PAGE_SIZE": 0x1000,
@@ -184,6 +193,10 @@ class SchemaField:
     type_name: str
     size: int
     offset: int
+    align: Optional[int] = None
+    has_flag_modifier: bool = False
+    has_random_modifier: bool = False
+    has_immediate_modifier: bool = False
     immediate_values: Tuple[int, ...] = ()
     immediate_ranges: Tuple[Tuple[int, int], ...] = ()
     bit_constraints: Tuple[SchemaBitConstraint, ...] = ()
@@ -212,6 +225,21 @@ class MmioOp:
     address: int
     size: int
     data: Optional[int] = None
+
+
+@dataclasses.dataclass
+class HeadDecl:
+    name: Optional[str]
+    to_type: str
+    has_position: bool
+
+
+@dataclasses.dataclass
+class TopologyDecl:
+    kind: str
+    type_names: Tuple[str, ...]
+    name: Optional[str]
+    fields: Dict[str, str]
 
 
 @dataclasses.dataclass
@@ -487,6 +515,54 @@ def type_size_bytes(type_name: str) -> int:
     raise ParseError(f"unsupported field type: {type_name}")
 
 
+def is_integer_type(type_name: str) -> bool:
+    return type_name in {"u8", "u16", "u32", "u64"}
+
+
+def is_pointer_type(type_name: str) -> bool:
+    return type_name.startswith("ptr<") and type_name.endswith(">")
+
+
+def is_bytes_type(type_name: str) -> bool:
+    return type_name.startswith("bytes[") and type_name.endswith("]")
+
+
+def integer_type_bits(type_name: str) -> int:
+    return type_size_bytes(type_name) * 8
+
+
+def parse_field_modifiers(
+    modifiers: Sequence[str],
+) -> Tuple[Optional[int], bool, bool, bool]:
+    align: Optional[int] = None
+    has_flag_modifier = False
+    has_random_modifier = False
+    has_immediate_modifier = False
+    idx = 0
+    while idx < len(modifiers):
+        token = modifiers[idx]
+        if token == "align":
+            if idx + 1 >= len(modifiers):
+                raise ParseError("align modifier requires an integer value")
+            align = parse_int_literal(modifiers[idx + 1])
+            idx += 2
+            continue
+        if token == "flag":
+            has_flag_modifier = True
+            idx += 1
+            continue
+        if token == "random":
+            has_random_modifier = True
+            idx += 1
+            continue
+        if token == "immediate":
+            has_immediate_modifier = True
+            idx += 1
+            continue
+        raise ParseError(f"unsupported field modifier: {token}")
+    return align, has_flag_modifier, has_random_modifier, has_immediate_modifier
+
+
 def parse_struct_field(text: str, offset: int) -> SchemaField:
     field_match = FIELD_DECL_RE.match(text.strip())
     if not field_match:
@@ -499,6 +575,9 @@ def parse_struct_field(text: str, offset: int) -> SchemaField:
     type_name = type_match.group("type").strip()
     prefix, blocks = split_bracket_blocks(type_match.group("rest").strip())
     modifiers = prefix.split()
+    align, has_flag_modifier, has_random_modifier, has_immediate_modifier = (
+        parse_field_modifiers(modifiers)
+    )
     size = type_size_bytes(type_name)
     immediate_values: List[int] = []
     immediate_ranges: List[Tuple[int, int]] = []
@@ -543,6 +622,10 @@ def parse_struct_field(text: str, offset: int) -> SchemaField:
         type_name=type_name,
         size=size,
         offset=offset,
+        align=align,
+        has_flag_modifier=has_flag_modifier,
+        has_random_modifier=has_random_modifier,
+        has_immediate_modifier=has_immediate_modifier,
         immediate_values=tuple(immediate_values),
         immediate_ranges=tuple(immediate_ranges),
         bit_constraints=tuple(bit_constraints),
@@ -597,12 +680,49 @@ def parse_mmio_op_block(name: str, lines: Sequence[str]) -> MmioOp:
     )
 
 
+def parse_head_block(name: Optional[str], lines: Sequence[str]) -> HeadDecl:
+    fields: Dict[str, str] = {}
+    for raw in lines:
+        text = raw.strip().removesuffix(";").strip()
+        if "=" not in text:
+            continue
+        key, value = [item.strip() for item in text.split("=", 1)]
+        fields[key] = value
+    to_type = fields.get("to", "")
+    if not to_type:
+        raise ParseError("head block missing to = TYPE")
+    return HeadDecl(name=name, to_type=to_type, has_position="position" in fields)
+
+
+def parse_topology_block(
+    kind: str,
+    type_names: Tuple[str, ...],
+    name: Optional[str],
+    lines: Sequence[str],
+) -> TopologyDecl:
+    fields: Dict[str, str] = {}
+    for raw in lines:
+        text = raw.strip().removesuffix(";").strip()
+        if "=" not in text:
+            continue
+        key, value = [item.strip() for item in text.split("=", 1)]
+        fields[key] = value
+    return TopologyDecl(
+        kind=kind,
+        type_names=type_names,
+        name=name,
+        fields=fields,
+    )
+
+
 class StateCompiler:
     def __init__(self, symbol_prefix: str) -> None:
         self.symbol_prefix = symbol_prefix
         self.symbol_ids: Dict[str, int] = {}
         self.symbol_names: List[str] = []
         self.struct_schemas: Dict[str, StructSchema] = {}
+        self.heads: List[HeadDecl] = []
+        self.topologies: List[TopologyDecl] = []
         self.pointer_schemas: List[PointerSchema] = []
         self.mmio_ops: List[MmioOp] = []
         self.trace_return_constant_overrides: Dict[str, int] = {
@@ -788,11 +908,14 @@ class StateCompiler:
         current_struct_fields: List[SchemaField] = []
         current_field_parts: List[str] = []
         current_field_brackets = 0
+        current_head_name: Optional[str] = None
+        current_head_lines: List[str] = []
         current_pointer_lines: List[str] = []
+        current_topology_decl: Optional[Tuple[str, Tuple[str, ...], Optional[str]]] = None
+        current_topology_lines: List[str] = []
         current_op_name: Optional[str] = None
         current_mmio_name: Optional[str] = None
         current_mmio_lines: List[str] = []
-        current_topology_depth = 0
         stack: List[str] = []
 
         for lineno, raw in enumerate(text.splitlines(), start=1):
@@ -816,15 +939,28 @@ class StateCompiler:
                     current_field_brackets = 0
                     stack.append("struct")
                     continue
-                if HEAD_RE.match(line):
+                head_match = HEAD_RE.match(line)
+                if head_match:
+                    current_head_name = head_match.group("name")
+                    current_head_lines = []
                     stack.append("head")
                     continue
                 if POINTER_RE.match(line):
                     current_pointer_lines = []
                     stack.append("pointer")
                     continue
-                if LIST_RE.match(line):
-                    current_topology_depth += 1
+                topology_match = LIST_RE.match(line)
+                if topology_match:
+                    current_topology_decl = (
+                        topology_match.group("kind"),
+                        tuple(
+                            item.strip()
+                            for item in topology_match.group("types").split("|")
+                            if item.strip()
+                        ),
+                        topology_match.group("name"),
+                    )
+                    current_topology_lines = []
                     stack.append("topology")
                     continue
                 op_match = OP_RE.match(line)
@@ -847,6 +983,20 @@ class StateCompiler:
                         stack.pop()
                         continue
                     current_pointer_lines.append(line)
+                    continue
+                if stack[-1] == "head":
+                    if line == "}":
+                        self.heads.append(
+                            parse_head_block(
+                                current_head_name,
+                                list(current_head_lines),
+                            )
+                        )
+                        current_head_name = None
+                        current_head_lines = []
+                        stack.pop()
+                        continue
+                    current_head_lines.append(line)
                     continue
                 if stack[-1] == "struct":
                     if line == "}":
@@ -874,6 +1024,23 @@ class StateCompiler:
                         current_field_parts = []
                         current_field_brackets = 0
                     continue
+                if stack[-1] == "topology":
+                    if line == "}":
+                        if current_topology_decl is not None:
+                            self.topologies.append(
+                                parse_topology_block(
+                                    current_topology_decl[0],
+                                    current_topology_decl[1],
+                                    current_topology_decl[2],
+                                    list(current_topology_lines),
+                                )
+                            )
+                        current_topology_decl = None
+                        current_topology_lines = []
+                        stack.pop()
+                        continue
+                    current_topology_lines.append(line)
+                    continue
                 if stack[-1] == "mmio_schema":
                     if line == "}":
                         if current_op_name and current_mmio_name:
@@ -892,8 +1059,6 @@ class StateCompiler:
                 if line == "}":
                     if stack[-1] == "op":
                         current_op_name = None
-                    if stack[-1] == "topology" and current_topology_depth > 0:
-                        current_topology_depth -= 1
                     stack.pop()
                     continue
                 continue
@@ -927,7 +1092,10 @@ class StateCompiler:
                 stack.append("struct")
                 continue
 
-            if HEAD_RE.match(line):
+            head_match = HEAD_RE.match(line)
+            if head_match:
+                current_head_name = head_match.group("name")
+                current_head_lines = []
                 stack.append("head")
                 continue
 
@@ -936,8 +1104,18 @@ class StateCompiler:
                 stack.append("pointer")
                 continue
 
-            if LIST_RE.match(line):
-                current_topology_depth = 1
+            topology_match = LIST_RE.match(line)
+            if topology_match:
+                current_topology_decl = (
+                    topology_match.group("kind"),
+                    tuple(
+                        item.strip()
+                        for item in topology_match.group("types").split("|")
+                        if item.strip()
+                    ),
+                    topology_match.group("name"),
+                )
+                current_topology_lines = []
                 stack.append("topology")
                 continue
 
@@ -1030,6 +1208,383 @@ class StateCompiler:
                 continue
 
         return machines
+
+    def find_struct_field(
+        self,
+        struct_name: str,
+        field_name: str,
+    ) -> Optional[SchemaField]:
+        schema = self.struct_schemas.get(struct_name)
+        if schema is None:
+            return None
+        for field in schema.fields:
+            if field.name == field_name:
+                return field
+        return None
+
+    def resolve_ref_field(
+        self,
+        ref_text: str,
+        expected_types: Optional[Sequence[str]] = None,
+    ) -> Optional[SchemaField]:
+        ref = ref_text.strip()
+        if ref.startswith("."):
+            ref = ref[1:]
+        if "." in ref:
+            type_name, field_name = [item.strip() for item in ref.split(".", 1)]
+            if expected_types and type_name not in expected_types:
+                return None
+            return self.find_struct_field(type_name, field_name)
+        if expected_types:
+            matches: List[SchemaField] = []
+            for type_name in expected_types:
+                field = self.find_struct_field(type_name, ref)
+                if field is None:
+                    return None
+                matches.append(field)
+            return matches[0] if matches else None
+        return None
+
+    def validate_semantics(self, machines: Sequence[Machine]) -> None:
+        issues: List[str] = []
+        issues.extend(self.validate_layout_semantics())
+        issues.extend(self.validate_topology_semantics())
+        issues.extend(self.validate_mmio_op_semantics())
+        for machine in machines:
+            issues.extend(self.validate_machine_semantics(machine))
+        if issues:
+            raise ParseError("static semantic validation failed:\n- " + "\n- ".join(issues))
+
+    def validate_layout_semantics(self) -> List[str]:
+        issues: List[str] = []
+        for schema in self.struct_schemas.values():
+            for field in schema.fields:
+                if field.align is not None and field.align < 0:
+                    issues.append(
+                        f"struct {schema.name}.{field.name}: align must be non-negative"
+                    )
+                if field.align is not None and not (
+                    is_pointer_type(field.type_name) or is_bytes_type(field.type_name)
+                ):
+                    issues.append(
+                        f"struct {schema.name}.{field.name}: align modifier is only legal on ptr<> or bytes[] fields"
+                    )
+                if field.has_flag_modifier and not is_integer_type(field.type_name):
+                    issues.append(
+                        f"struct {schema.name}.{field.name}: flag modifier requires an integer field"
+                    )
+                if field.has_immediate_modifier and is_pointer_type(field.type_name):
+                    issues.append(
+                        f"struct {schema.name}.{field.name}: immediate modifier is not legal on pointer fields"
+                    )
+                if field.immediate_values or field.immediate_ranges:
+                    if not field.has_immediate_modifier:
+                        issues.append(
+                            f"struct {schema.name}.{field.name}: immediate constraints require the immediate modifier"
+                        )
+                    if not is_integer_type(field.type_name):
+                        issues.append(
+                            f"struct {schema.name}.{field.name}: immediate constraints require an integer field"
+                        )
+                if field.bit_constraints:
+                    if not is_integer_type(field.type_name):
+                        issues.append(
+                            f"struct {schema.name}.{field.name}: bit constraints require an integer field"
+                        )
+                        continue
+                    if not field.has_flag_modifier:
+                        issues.append(
+                            f"struct {schema.name}.{field.name}: bit constraints require the flag modifier"
+                        )
+                    bit_width = integer_type_bits(field.type_name)
+                    for constraint in field.bit_constraints:
+                        if (
+                            constraint.start < 0
+                            or constraint.end < constraint.start
+                            or constraint.end >= bit_width
+                        ):
+                            issues.append(
+                                f"struct {schema.name}.{field.name}: invalid bit range {constraint.start}..{constraint.end} for {field.type_name}"
+                            )
+                            continue
+                        if constraint.value is None:
+                            continue
+                        value_width = constraint.end - constraint.start + 1
+                        if value_width < 64 and constraint.value >= (1 << value_width):
+                            issues.append(
+                                f"struct {schema.name}.{field.name}: bit value {constraint.value} does not fit in {value_width} bits"
+                            )
+        return issues
+
+    def validate_topology_semantics(self) -> List[str]:
+        issues: List[str] = []
+        for head in self.heads:
+            if head.to_type not in self.struct_schemas:
+                issues.append(
+                    f"head {head.name or '<anonymous>'}: target type {head.to_type} is not declared"
+                )
+            if not head.has_position:
+                issues.append(
+                    f"head {head.name or '<anonymous>'}: missing position metadata"
+                )
+
+        for pointer in self.pointer_schemas:
+            schema = self.struct_schemas.get(pointer.source_type)
+            if schema is None:
+                issues.append(
+                    f"pointer {pointer.source_type}.{pointer.source_field}: source type is not declared"
+                )
+                continue
+            field = self.find_struct_field(pointer.source_type, pointer.source_field)
+            if field is None:
+                issues.append(
+                    f"pointer {pointer.source_type}.{pointer.source_field}: source field is not declared"
+                )
+                continue
+            if not (is_pointer_type(field.type_name) or is_integer_type(field.type_name)):
+                issues.append(
+                    f"pointer {pointer.source_type}.{pointer.source_field}: source field must be ptr<> or integer address-like"
+                )
+            if pointer.align < 0:
+                issues.append(
+                    f"pointer {pointer.source_type}.{pointer.source_field}: align must be non-negative"
+                )
+            for target in pointer.target_types:
+                if target not in self.struct_schemas:
+                    issues.append(
+                        f"pointer {pointer.source_type}.{pointer.source_field}: target type {target} is not declared"
+                    )
+
+        for topology in self.topologies:
+            for type_name in topology.type_names:
+                if type_name not in self.struct_schemas:
+                    issues.append(
+                        f"{topology.kind} {topology.name or '<anonymous>'}: type {type_name} is not declared"
+                    )
+            if topology.kind in {"list", "dlist"}:
+                for required in ("head", "tail", "next"):
+                    if required not in topology.fields:
+                        issues.append(
+                            f"{topology.kind} {topology.name or '<anonymous>'}: missing {required} field"
+                        )
+                if topology.kind == "dlist" and "prev" not in topology.fields:
+                    issues.append(
+                        f"dlist {topology.name or '<anonymous>'}: missing prev field"
+                    )
+            if topology.kind == "ring":
+                for required in ("head", "next"):
+                    if required not in topology.fields:
+                        issues.append(
+                            f"ring {topology.name or '<anonymous>'}: missing {required} field"
+                        )
+            if topology.kind == "ringbuf":
+                for required in ("base", "head", "tail"):
+                    if required not in topology.fields:
+                        issues.append(
+                            f"ringbuf {topology.name or '<anonymous>'}: missing {required} field"
+                        )
+                if "size" not in topology.fields and "count" not in topology.fields:
+                    issues.append(
+                        f"ringbuf {topology.name or '<anonymous>'}: requires size or count"
+                    )
+
+            for key in ("next", "prev"):
+                if key not in topology.fields:
+                    continue
+                refs = [
+                    item.strip()
+                    for item in topology.fields[key].split("|")
+                    if item.strip()
+                ]
+                for ref in refs:
+                    if self.resolve_ref_field(ref, topology.type_names) is None:
+                        issues.append(
+                            f"{topology.kind} {topology.name or '<anonymous>'}: link field {ref} is not present on all member types"
+                        )
+
+            for key in ("head", "tail", "base", "count"):
+                ref = topology.fields.get(key)
+                if not ref or "." not in ref:
+                    continue
+                if self.resolve_ref_field(ref) is None:
+                    issues.append(
+                        f"{topology.kind} {topology.name or '<anonymous>'}: reference {ref} is not declared"
+                    )
+
+        return issues
+
+    def validate_mmio_op_semantics(self) -> List[str]:
+        issues: List[str] = []
+        for op in self.mmio_ops:
+            if op.size not in {1, 2, 4, 8}:
+                issues.append(
+                    f"mmio op {op.name}: size must be one of 1, 2, 4, or 8 bytes"
+                )
+            if op.data is not None and op.size in {1, 2, 4, 8}:
+                bits = op.size * 8
+                if bits < 64 and (op.data < 0 or op.data >= (1 << bits)):
+                    issues.append(
+                        f"mmio op {op.name}: data value {op.data} does not fit in {op.size} bytes"
+                    )
+        return issues
+
+    def validate_machine_semantics(self, machine: Machine) -> List[str]:
+        issues: List[str] = []
+        state_names = machine.states
+        state_set = set(state_names)
+        trace_names = [trace.name for trace in machine.traces]
+        trace_set = set(trace_names)
+        if len(state_set) != len(state_names):
+            seen: set[str] = set()
+            for name in state_names:
+                if name in seen:
+                    issues.append(f"machine {machine.name}: duplicate state {name}")
+                seen.add(name)
+        if len(trace_set) != len(trace_names):
+            seen = set()
+            for name in trace_names:
+                if name in seen:
+                    issues.append(f"machine {machine.name}: duplicate trace {name}")
+                seen.add(name)
+        if not machine.initial:
+            issues.append(f"machine {machine.name}: missing initial state")
+        elif machine.initial not in state_set:
+            issues.append(
+                f"machine {machine.name}: initial state {machine.initial} is not declared"
+            )
+
+        trace_by_name = {trace.name: trace for trace in machine.traces}
+        for src, dst, event in machine.transitions:
+            if src not in state_set:
+                issues.append(
+                    f"machine {machine.name}: transition source state {src} is not declared"
+                )
+            if dst not in state_set:
+                issues.append(
+                    f"machine {machine.name}: transition target state {dst} is not declared"
+                )
+            if event not in trace_set:
+                issues.append(
+                    f"machine {machine.name}: transition trace {event} is not declared"
+                )
+            elif not trace_by_name[event].entry:
+                issues.append(
+                    f"machine {machine.name}: transition trace {event} must be declared as an entry trace"
+                )
+
+        for trace in machine.traces:
+            issues.extend(self.validate_trace_semantics(machine, trace))
+        return issues
+
+    def validate_trace_semantics(self, machine: Machine, trace: Trace) -> List[str]:
+        issues: List[str] = []
+        labels = [block.label for block in trace.blocks if block.label]
+        seen_labels: set[str] = set()
+        for label in labels:
+            if label in seen_labels:
+                issues.append(
+                    f"machine {machine.name} trace {trace.name}: duplicate label @{label}"
+                )
+            seen_labels.add(label)
+        label_set = set(labels)
+        for block in trace.blocks:
+            for line in block.lines:
+                neqj_match = NEQJ_RE.match(line)
+                goto_match = GOTO_RE.match(line)
+                dma_match = DMA_EVENT_RE.match(line)
+                write_match = parse_write_call(line)
+                if neqj_match:
+                    target = neqj_match.group("label")
+                    if target not in label_set:
+                        issues.append(
+                            f"machine {machine.name} trace {trace.name}: neqj target @{target} is not declared"
+                        )
+                    continue
+                if goto_match:
+                    target = goto_match.group("label")
+                    if target not in label_set:
+                        issues.append(
+                            f"machine {machine.name} trace {trace.name}: goto target @{target} is not declared"
+                        )
+                    continue
+                if READ_RE.match(line) or write_match or ASSIGN_RE.match(line):
+                    continue
+                if CALL_STMT_RE.match(line):
+                    continue
+                if dma_match:
+                    issues.extend(
+                        self.validate_dma_event_semantics(
+                            machine.name,
+                            trace.name,
+                            dma_match.group("body"),
+                        )
+                    )
+                    continue
+                if BUG_RE.match(line) or BUG_ON_RE.match(line) or WARN_ON_RE.match(line):
+                    continue
+                if line == "...":
+                    continue
+                if IDENT_STMT_RE.match(line):
+                    continue
+                issues.append(
+                    f"machine {machine.name} trace {trace.name}: unsupported trace instruction `{line}`"
+                )
+        return issues
+
+    def validate_dma_event_semantics(
+        self,
+        machine_name: str,
+        trace_name: str,
+        body: str,
+    ) -> List[str]:
+        issues: List[str] = []
+        field_lists = parse_named_field_lists(body)
+        fields = {
+            key: values[-1]
+            for key, values in field_lists.items()
+            if values
+        }
+        op_name = fields.get("op")
+        dir_name = fields.get("dir")
+        path_name = fields.get("path")
+        addr_expr = fields.get("addr")
+        len_expr = fields.get("len")
+        data_kind_name = fields.get("data_kind", "any")
+        data_type_name = fields.get("data_type", "")
+        data_field_names = tuple(field_lists.get("data_field", []))
+        prefix = f"machine {machine_name} trace {trace_name}: dma_event"
+        if op_name not in DMA_OP_IDS:
+            issues.append(f"{prefix}: unknown op {op_name}")
+        if dir_name not in DMA_DIR_IDS:
+            issues.append(f"{prefix}: unknown dir {dir_name}")
+        if path_name not in DMA_PATH_IDS:
+            issues.append(f"{prefix}: unknown path {path_name}")
+        if data_kind_name not in DMA_DATA_KIND_IDS:
+            issues.append(f"{prefix}: unknown data_kind {data_kind_name}")
+        if addr_expr is None or len_expr is None:
+            issues.append(f"{prefix}: missing addr or len")
+        if data_type_name:
+            if data_type_name != "unknown" and data_type_name not in self.struct_schemas:
+                issues.append(f"{prefix}: unknown data_type {data_type_name}")
+        elif data_field_names:
+            issues.append(f"{prefix}: data_field requires data_type")
+        for field_name in data_field_names:
+            if not data_type_name:
+                break
+            expected_prefix = data_type_name + "__"
+            if not field_name.startswith(expected_prefix):
+                issues.append(
+                    f"{prefix}: data_field {field_name} must use the {data_type_name}__ prefix"
+                )
+                continue
+            if data_type_name in self.struct_schemas:
+                remainder = field_name[len(expected_prefix) :]
+                top_field = remainder.split("__", 1)[0]
+                if self.find_struct_field(data_type_name, top_field) is None:
+                    issues.append(
+                        f"{prefix}: data_field {field_name} does not match a field on {data_type_name}"
+                    )
+        return issues
 
     def symbol_id(self, raw: str) -> int:
         if raw not in self.symbol_ids:
@@ -1493,7 +2048,8 @@ class StateCompiler:
                         step.scratch = -1
                     elif call_stmt_match:
                         call_name = sanitize_call_name(call_stmt_match.group("name"))
-                        call_args = split_args(call_stmt_match.group("args"))
+                        raw_call_args = call_stmt_match.group("args") or ""
+                        call_args = split_args(raw_call_args)
                         if call_name == "virtio_has_feature" and len(call_args) == 2:
                             step.kind = "eps"
                             trace_steps.append(step)
@@ -1524,7 +2080,7 @@ class StateCompiler:
                                         forced_symbols=trace_param_names,
                                     )
                                 )
-                                for arg in split_args(call_stmt_match.group("args"))
+                                for arg in call_args
                             )
                         else:
                             step.kind = "eps"
@@ -9393,6 +9949,7 @@ def main() -> None:
     machines = compiler.parse_files([pathlib.Path(item) for item in args.input])
     if not machines:
         raise SystemExit("no machines found in input state files")
+    compiler.validate_semantics(machines)
     compiler.generate(machines, pathlib.Path(args.output_c), pathlib.Path(args.output_h))
 
 

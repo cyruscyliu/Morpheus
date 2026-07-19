@@ -1,0 +1,25 @@
+struct Payload {
+    word: u32;
+}
+
+op bad_mmio {
+    mmio bad_mmio {
+        direction = w;
+        address = 0x10;
+        size = 3;
+    }
+}
+
+machine fail_mmio_dma {
+    initial start
+
+    state start
+
+    entry trace bad_trace {
+        sequence {
+            dma_event(op=map, dir=to_device, path=phys, addr=addr, len=4, data_kind=sg_buffer, data_type=Payload, data_field=Payload__missing);
+        }
+    }
+
+    transition start -> start on bad_trace
+}

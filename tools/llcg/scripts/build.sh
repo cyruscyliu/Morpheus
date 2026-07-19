@@ -57,7 +57,7 @@ llbase_exec_in_container \
   "${build_dir}" \
   "${llbase_contract}" \
   -- \
-  bash -lc "cmake -S '${tool_root}' -B '${build_dir}' -DCLANG_VERSION='${clang}' -DLLVM_DIR='/usr/lib/llvm-${clang}/lib/cmake/llvm' >/dev/null && cmake --build '${build_dir}' --parallel '${jobs}' --target build >/dev/null" \
+  bash -lc "cmake -S '${tool_root}' -B '${build_dir}' -DCLANG_VERSION='${clang}' -DLLVM_DIR='/usr/lib/llvm-${clang}/lib/cmake/llvm' -DMORPHEUS_BUILD_JOBS='${jobs}' >/dev/null && cmake --build '${build_dir}' --parallel '${jobs}' --target build >/dev/null" \
   2> "${tmp_err}"
 llcg_rc=$?
 set -e

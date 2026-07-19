@@ -7,6 +7,7 @@ include(ExternalProject)
 set(LLVM_DIR "/usr/lib/llvm-15/lib/cmake/llvm" CACHE PATH "Path to LLVM CMake config")
 set(Z3_DIR "/usr" CACHE PATH "Path to Z3 installation prefix")
 set(CLANG_VERSION "15" CACHE STRING "Clang toolchain version used to build native components")
+set(MORPHEUS_BUILD_JOBS "1" CACHE STRING "Parallel job count for nested ExternalProject builds")
 
 set(CLANG_BIN "clang-${CLANG_VERSION}")
 set(CLANGXX_BIN "clang++-${CLANG_VERSION}")
@@ -31,7 +32,7 @@ ExternalProject_Add(
     -DSVF_WARN_AS_ERROR=OFF
     -DCMAKE_BUILD_TYPE=Release
   BUILD_COMMAND
-    ${CMAKE_COMMAND} --build <BINARY_DIR> --parallel
+    ${CMAKE_COMMAND} --build <BINARY_DIR> --parallel ${MORPHEUS_BUILD_JOBS}
     --target SvfCore SvfLLVM gen_extapi_ir
   INSTALL_COMMAND ${CMAKE_COMMAND} -E make_directory <BINARY_DIR>/include/SVF
 )
@@ -47,7 +48,7 @@ ExternalProject_Add(
     -DSVF_DIR=${SVF_BINARY_DIR}/lib/cmake/SVF
     -DZ3_DIR=${Z3_DIR}
     -DCMAKE_BUILD_TYPE=Release
-  BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --parallel
+  BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --parallel ${MORPHEUS_BUILD_JOBS}
   INSTALL_COMMAND ""
   DEPENDS svf
 )
@@ -62,7 +63,7 @@ ExternalProject_Add(
     -DLLVM_DIR=${LLVM_DIR}
     -DLLVM_CG_BUILD_PASS=ON
     -DCMAKE_BUILD_TYPE=Release
-  BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --parallel
+  BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --parallel ${MORPHEUS_BUILD_JOBS}
   INSTALL_COMMAND ""
 )
 

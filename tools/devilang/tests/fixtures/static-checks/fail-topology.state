@@ -1,0 +1,24 @@
+struct Node {
+    next: u64;
+}
+
+struct Buffer {
+    payload: bytes[16] random;
+}
+
+pointer {
+    from = Node.missing;
+    to = Buffer;
+    align = 0;
+}
+
+list<Node | Buffer> bad_queue {
+    head = Node.next;
+    tail = Node.next;
+    next = next;
+}
+
+machine fail_topology {
+    initial start
+    state start
+}

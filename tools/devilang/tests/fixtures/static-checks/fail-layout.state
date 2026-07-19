@@ -1,0 +1,8 @@
+struct BadLayout {
+    len: u32 align 2;
+}
+
+machine fail_layout {
+    initial start
+    state start
+}

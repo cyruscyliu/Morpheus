@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.3
+
+- Added front-end static semantic checks for DeviLang compilation, covering:
+  - layout constraints for field modifiers, bit ranges, and immediate values
+  - topology constraints for heads, pointers, and list/ring-style links
+  - machine/trace consistency for states, transitions, labels, and entry traces
+  - MMIO/DMA event validation for widths, tags, types, and typed fields
+- Added static-check fixtures and a managed `devilang.test-static-checks`
+  workflow step so the new DeviLang semantic checks are exercised through
+  Morpheus.
+- Fixed `llcg` nested `ExternalProject` builds to honor Morpheus job limits
+  instead of allowing child builds to run at full host parallelism.
+- Bumped workspace package versions from `0.4.2` to `0.4.3`.
+
 ## 0.4.2
 
 - Added managed `libafl` support for nested QEMU VM fuzzing, including:

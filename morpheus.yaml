@@ -128,6 +128,9 @@ workflows:
       - id: devilang_audit_test
         tool: devilang
         command: test-audit-state
+      - id: devilang_static_checks
+        tool: devilang
+        command: test-static-checks
   libafl-build-ci:
     category: build
     steps:

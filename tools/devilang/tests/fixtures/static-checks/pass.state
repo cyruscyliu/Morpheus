@@ -1,0 +1,61 @@
+struct Node {
+    next: u64;
+    flags: u16 flag [
+        bits 0..0;
+        bits 1..15 = 0;
+    ];
+    len: u32 immediate [
+        imm 16;
+    ];
+}
+
+struct Buffer {
+    payload: bytes[16] random;
+}
+
+head node_head {
+    position = [file = test.c; caller = init_node; callee = this_is_a_stub; call_depth = 0; argument_index = 0];
+    to = Node;
+}
+
+pointer {
+    from = Node.next;
+    to = Buffer;
+    align = 0;
+}
+
+list<Node> node_queue {
+    head = Node.next;
+    tail = Node.next;
+    next = next;
+    align = 0;
+}
+
+op queue_notify {
+    mmio queue_notify {
+        direction = w;
+        region = 0;
+        address = 0x50;
+        size = 4;
+        data = 1;
+    }
+}
+
+machine static_pass {
+    initial start
+
+    state start
+
+    entry trace queue_notify_trace {
+        sequence {
+            status = read32(vm_dev.base + VIRTIO_MMIO_STATUS);
+            dma_event(op=map, dir=to_device, path=phys, addr=Node.next, len=16, data_kind=sg_buffer, data_type=Buffer, data_field=Buffer__payload);
+            neqj status, 0, @done;
+        }
+
+        @done: sequence {
+        }
+    }
+
+    transition start -> start on queue_notify_trace
+}

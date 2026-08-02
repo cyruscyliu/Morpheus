@@ -4,6 +4,9 @@ const path = require("path");
 
 const {
   workflowRunsRoot,
+  legacyWorkflowRunsRoot,
+  findLatestLegacyWorkflowRunDir,
+  migrateLegacyWorkflowRunToInstance,
 } = require("./workflow-runs");
 
 function readJson(filePath) {
@@ -112,6 +115,9 @@ function listRunDirs(runRoot) {
 }
 
 function detectRunKind(runDir) {
+  if (!runDir) {
+    return null;
+  }
   if (fs.existsSync(path.join(runDir, "workflow.json"))) {
     return "workflow-first";
   }
@@ -127,6 +133,63 @@ function normalizeWorkflowCategory(value) {
     return category;
   }
   return "unknown";
+}
+
+function canonicalWorkflowDir(workspaceRoot, workflowId) {
+  return path.join(workflowRunsRoot(workspaceRoot), workflowId);
+}
+
+function workflowNameForRunDir(runDir) {
+  const record = tryReadJson(path.join(runDir, "workflow.json"));
+  if (record && typeof record.workflow === "string" && record.workflow.trim()) {
+    return record.workflow.trim();
+  }
+  const legacy = tryReadJson(path.join(runDir, "run.json"));
+  if (
+    legacy
+    && legacy.summary
+    && typeof legacy.summary.workflow === "string"
+    && legacy.summary.workflow.trim()
+  ) {
+    return legacy.summary.workflow.trim();
+  }
+  return null;
+}
+
+function migrateLegacyWorkflowStateIfNeeded(workspaceRoot, workflowId) {
+  const canonicalDir = canonicalWorkflowDir(workspaceRoot, workflowId);
+  if (detectRunKind(canonicalDir)) {
+    return canonicalDir;
+  }
+  const legacyDir = findLatestLegacyWorkflowRunDir(workspaceRoot, workflowId);
+  if (!legacyDir) {
+    return null;
+  }
+  const migratedDir = migrateLegacyWorkflowRunToInstance(workspaceRoot, workflowId);
+  return migratedDir && detectRunKind(migratedDir) ? migratedDir : null;
+}
+
+function resolveWorkflowDir(workspaceRoot, workflowId) {
+  const canonicalDir = canonicalWorkflowDir(workspaceRoot, workflowId);
+  if (detectRunKind(canonicalDir)) {
+    return canonicalDir;
+  }
+
+  const migrated = migrateLegacyWorkflowStateIfNeeded(workspaceRoot, workflowId);
+  if (migrated) {
+    return migrated;
+  }
+
+  const directLegacyDir = path.join(legacyWorkflowRunsRoot(workspaceRoot), workflowId);
+  if (detectRunKind(directLegacyDir)) {
+    return directLegacyDir;
+  }
+
+  const latestLegacyDir = findLatestLegacyWorkflowRunDir(workspaceRoot, workflowId);
+  if (latestLegacyDir && detectRunKind(latestLegacyDir)) {
+    return latestLegacyDir;
+  }
+  return null;
 }
 
 function readWorkflowRecord(runDir) {
@@ -185,6 +248,20 @@ function readLegacyRecord(runDir) {
 }
 
 function listWorkflowSteps(runDir) {
+  const record = tryReadJson(path.join(runDir, "workflow.json"));
+  if (record && Array.isArray(record.steps) && record.steps.length > 0) {
+    return record.steps.map((entry) => {
+      const stepId = String(entry && entry.id || "");
+      const resolvedStepDir =
+        entry && typeof entry.stepDir === "string"
+          ? entry.stepDir
+          : path.join(runDir, "steps", stepId);
+      const manifestPath = path.join(resolvedStepDir, "step.json");
+      return fs.existsSync(manifestPath)
+        ? readJson(manifestPath)
+        : { ...entry, id: stepId, stepDir: resolvedStepDir };
+    });
+  }
   const stepsDir = path.join(runDir, "steps");
   if (!fs.existsSync(stepsDir)) {
     return [];
@@ -503,6 +580,14 @@ function summarizeLegacy(runDir) {
 }
 
 function listWorkflowRuns(workspaceRoot, options = {}) {
+  for (const legacyDir of listRunDirs(legacyWorkflowRunsRoot(workspaceRoot))) {
+    const workflowName = workflowNameForRunDir(legacyDir);
+    if (!workflowName) {
+      continue;
+    }
+    migrateLegacyWorkflowStateIfNeeded(workspaceRoot, workflowName);
+  }
+
   const root = workflowRunsRoot(workspaceRoot);
   const offset = safeParseInt(options.offset, 0);
   const limit = Math.min(500, safeParseInt(options.limit, 200));
@@ -528,7 +613,7 @@ function listWorkflowRuns(workspaceRoot, options = {}) {
 }
 
 function loadWorkflowDetail(workspaceRoot, runId) {
-  const runDir = path.join(workflowRunsRoot(workspaceRoot), runId);
+  const runDir = resolveWorkflowDir(workspaceRoot, runId);
   const kind = detectRunKind(runDir);
   if (!kind) {
     return null;
@@ -537,7 +622,7 @@ function loadWorkflowDetail(workspaceRoot, runId) {
 }
 
 function loadWorkflowEvents(workspaceRoot, runId) {
-  const runDir = path.join(workflowRunsRoot(workspaceRoot), runId);
+  const runDir = resolveWorkflowDir(workspaceRoot, runId);
   const kind = detectRunKind(runDir);
   if (!kind) {
     return null;
@@ -546,7 +631,7 @@ function loadWorkflowEvents(workspaceRoot, runId) {
 }
 
 function loadWorkflowStepLogText(workspaceRoot, runId, stepId) {
-  const runDir = path.join(workflowRunsRoot(workspaceRoot), runId);
+  const runDir = resolveWorkflowDir(workspaceRoot, runId);
   const kind = detectRunKind(runDir);
   if (!kind) {
     return null;
@@ -584,7 +669,7 @@ function loadWorkflowLogText(workspaceRoot, runId) {
   if (!detail) {
     return null;
   }
-  const runDir = path.join(workflowRunsRoot(workspaceRoot), runId);
+  const runDir = detail.runDir;
   const sections = [];
   const progressLog = readTextIfExists(path.join(runDir, "progress.jsonl")).trim();
   if (progressLog) {

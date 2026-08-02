@@ -103,24 +103,26 @@ Operational rule:
 ## Core Rules
 
 - Treat `--workspace` as the shared managed workspace root.
-- Treat run ids as the stable lookup key for managed run lifecycle commands.
+- Treat workflow ids as the stable lookup key for managed workflow lifecycle
+  commands.
 - Use `morpheus workflow run`, `morpheus workflow inspect`, and
   `morpheus workflow resume`, and `morpheus workflow logs` as the canonical
   execution surface.
 - Do not expect top-level `morpheus inspect` or `morpheus logs` aliases.
 - Use `morpheus workflow stop` and `morpheus workflow remove` for lifecycle
   actions.
-- Prefer Morpheus-managed workflow runs when later steps need reusable
+- Prefer Morpheus-managed workflow instances when later steps need reusable
   published artifacts.
 - Treat `stop` as an execution-only lifecycle action.
 - Treat `remove` as a persisted-state deletion action.
-- Require a prior successful stop before managed run removal.
+- Require a prior successful stop before managed workflow removal.
 - Treat Morpheus as the owner of workflow ids, logs, and published artifact
   records.
 - Treat internal tool CLIs as Morpheus-internal only.
 - Treat run-viewer and similar clients as Morpheus-CLI consumers first; they
-  should read workflow runs, events, inspect data, and logs through Morpheus
-  JSON commands rather than reconstructing `workspace/runs/...` directly.
+  should read workflow instances, events, inspect data, and logs through
+  Morpheus JSON commands rather than reconstructing `workspace/workflows/...`
+  directly.
 - Do not invoke internal tool CLIs directly from the agent shell.
 - Treat `tool.json` as the tool contract schema: tools must implement
   `inspect` and `logs`, and may optionally implement `fetch`, `patch`,
@@ -304,7 +306,7 @@ Input:
 
 Behavior:
 
-- Starts a configured managed workflow.
+- Starts or updates a configured managed workflow instance.
 - May emit stream events before the final JSON summary.
 
 Returned JSON:
@@ -314,12 +316,12 @@ Returned JSON:
   "command": "workflow run",
   "status": "success",
   "exit_code": 0,
-  "summary": "started workflow run",
+  "summary": "completed workflow instance",
   "details": {
-    "id": "wf-...",
+    "id": "<workflow-id>",
     "workspace": "<workspace>",
-    "run_dir": "<workspace>/runs/wf-...",
-    "manifest": "<workspace>/runs/wf-.../manifest.json"
+    "workflow_dir": "<workspace>/workflows/<workflow-id>",
+    "manifest": "<workspace>/workflows/<workflow-id>/workflow.json"
   }
 }
 ```
@@ -328,7 +330,7 @@ Returned JSON:
 
 Input:
 
-- Required workflow run id
+- Required workflow id via `--name`
 - Optional `--json`
 
 Returned JSON:
@@ -338,10 +340,10 @@ Returned JSON:
   "command": "workflow inspect",
   "status": "success",
   "exit_code": 0,
-  "summary": "workflow manifest",
+  "summary": "inspected workflow instance",
   "details": {
-    "id": "wf-...",
-    "manifest": {}
+    "id": "<workflow-id>",
+    "workflowDir": "<workspace>/workflows/<workflow-id>"
   }
 }
 ```
@@ -350,19 +352,19 @@ Returned JSON:
 
 Input:
 
-- Required workflow run id via `--id`
+- Required workflow id via `--name`
 - Optional `--from-step <step-id>`
-- Optional `--one-step`
+- Optional `--only-step <step-id>`
 - Optional `--json`
 
 Behavior:
 
-- Resumes a non-running workflow run.
+- Resumes a non-running workflow instance.
 - `--from-step` resumes from the named step and reuses prior successful steps
   when their outputs are still valid.
-- `--one-step` limits the resume to exactly the selected next step.
-- `--from-step` and `--one-step` should be used together when rerunning one
-  specific step from an existing run.
+- `--only-step` limits the resume to exactly the selected step.
+- `--from-step` and `--only-step` should be used together when rerunning one
+  specific step from an existing workflow instance.
 
 Returned JSON:
 
@@ -371,12 +373,12 @@ Returned JSON:
   "command": "workflow resume",
   "status": "success",
   "exit_code": 0,
-  "summary": "completed workflow run",
+  "summary": "completed workflow instance",
   "details": {
-    "id": "wf-...",
+    "id": "<workflow-id>",
     "workspace": "<workspace>",
-    "run_dir": "<workspace>/runs/wf-...",
-    "manifest": "<workspace>/runs/wf-.../workflow.json"
+    "workflow_dir": "<workspace>/workflows/<workflow-id>",
+    "manifest": "<workspace>/workflows/<workflow-id>/workflow.json"
   }
 }
 ```
@@ -385,7 +387,7 @@ Returned JSON:
 
 Input:
 
-- Required workflow run id
+- Required workflow id via `--name`
 - Optional `--follow`
 - Optional `--json`
 
@@ -403,8 +405,8 @@ Final JSON shape:
   "exit_code": 0,
   "summary": "workflow logs",
   "details": {
-    "id": "wf-...",
-    "log_file": "<workspace>/runs/wf-.../stdout.log"
+    "id": "<workflow-id>",
+    "log_file": "<workspace>/workflows/<workflow-id>/steps/<step-id>/stdout.log"
   }
 }
 ```
@@ -663,9 +665,12 @@ Managed workspace layout:
 
 ```text
 <workspace>/
-  runs/<run-id>/
-    manifest.json
-    stdout.log
+  workflows/<workflow-id>/
+    workflow.json
+    events.jsonl
+    steps/<step-id>/
+      step.json
+      stdout.log
   tools/<tool>/
     downloads/
     patches/
@@ -675,7 +680,7 @@ Managed workspace layout:
 ```
 
 Treat this layout as stable.
-Treat `<workspace>/runs/` as the canonical managed run root.
+Treat `<workspace>/workflows/` as the canonical managed workflow root.
 Do not invent parallel management roots outside it.
 
 Repo-side tool layout:

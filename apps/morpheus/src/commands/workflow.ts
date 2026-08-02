@@ -73,39 +73,43 @@ function workflowUsage() {
     "  ./bin/morpheus [--config PATH] workflow runs [--limit N] [--offset N] [--json]",
     "  ./bin/morpheus [--config PATH] workflow list [--json]",
     "  ./bin/morpheus --config projects/<project>/morpheus.yaml workflow run --name WORKFLOW_NAME [--from-step STEP_ID] [--only-step STEP_ID] [--json]",
-    "  ./bin/morpheus [--config PATH] workflow resume --id WORKFLOW_RUN_ID [--from-step STEP_ID] [--only-step STEP_ID] [--json]",
-    "  ./bin/morpheus [--config PATH] workflow inspect --id WORKFLOW_RUN_ID [--json]",
-    "  ./bin/morpheus [--config PATH] workflow events --id WORKFLOW_RUN_ID [--json]",
-    "  ./bin/morpheus [--config PATH] workflow logs --id WORKFLOW_RUN_ID [--step STEP_ID] [--follow]",
-    "  ./bin/morpheus [--config PATH] workflow stop --id WORKFLOW_RUN_ID [--json]",
-    "  ./bin/morpheus [--config PATH] workflow remove --id WORKFLOW_RUN_ID [--json]",
+    "  ./bin/morpheus [--config PATH] workflow resume --name WORKFLOW_NAME [--from-step STEP_ID] [--only-step STEP_ID] [--json]",
+    "  ./bin/morpheus [--config PATH] workflow inspect --name WORKFLOW_NAME [--json]",
+    "  ./bin/morpheus [--config PATH] workflow events --name WORKFLOW_NAME [--json]",
+    "  ./bin/morpheus [--config PATH] workflow logs --name WORKFLOW_NAME [--step STEP_ID] [--follow]",
+    "  ./bin/morpheus [--config PATH] workflow stop --name WORKFLOW_NAME [--json]",
+    "  ./bin/morpheus [--config PATH] workflow remove --name WORKFLOW_NAME [--json]",
     "",
     "Purpose:",
-    "  Discover, run, inspect, and manage Morpheus workflow runs.",
+    "  Discover, run, inspect, and manage Morpheus workflow instances.",
     "",
     "Commands:",
-    "  workflow runs      List managed workflow runs.",
+    "  workflow runs      List managed workflow instances.",
     "  workflow list      List configured workflows.",
     "  workflow run       Start a configured workflow.",
-    "  workflow resume    Resume a previous workflow run.",
+    "  workflow resume    Resume a workflow instance.",
     "  workflow inspect   Inspect workflow state and steps.",
-    "  workflow events    Print workflow events for a run.",
+    "  workflow events    Print workflow events for an instance.",
     "  workflow logs      Print logs for a workflow step.",
-    "  workflow stop      Stop a running workflow.",
-    "  workflow remove    Remove a stopped workflow run.",
+    "  workflow stop      Stop a running workflow instance.",
+    "  workflow remove    Remove a stopped workflow instance.",
     "",
     "Examples:",
     "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow runs --json",
     "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow list --json",
     "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow run --name qemu-build --json",
-    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow inspect --id <run-id> --json",
-    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow events --id <run-id> --json",
-    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow logs --id <run-id> --step <step-id>",
+    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow inspect --name qemu-build --json",
+    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow events --name qemu-build --json",
+    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow logs --name qemu-build --step <step-id>",
     "",
     "Notes:",
     "  - Pass --config explicitly for project workflows.",
     "  - 'workflow logs --follow' streams text logs and does not support --json."
   ].join("\n");
+}
+
+function workflowKey(flags) {
+  return flags.name ? String(flags.name) : (flags.id ? String(flags.id) : null);
 }
 
 function readJson(filePath) {
@@ -186,6 +190,7 @@ function normalizeWorkflowInspectDetails(workflow, steps) {
     category: workflowRecord.category || null,
     status: workflowRecord.status || null,
     workspace: workflowRecord.workspace || null,
+    workflow_dir: workflowRecord.runDir || null,
     run_dir: workflowRecord.runDir || null,
     current_step_id: workflowRecord.currentStepId || null,
     current_child_pid: workflowRecord.currentChildPid == null ? null : workflowRecord.currentChildPid,
@@ -555,7 +560,7 @@ function listConfiguredWorkflows(explicitConfigPath = null) {
               label: configDisplayLabel(configPath, item.root, item.branch),
               configPath,
               workspaceRoot,
-              runRoot: workspaceRoot ? path.join(workspaceRoot, "runs") : null,
+              runRoot: workspaceRoot ? path.join(workspaceRoot, "workflows") : null,
             };
           });
       })
@@ -588,28 +593,33 @@ function listManagedWorkflowRuns(workspaceRoot, flags) {
     limit: flags.limit,
     offset: flags.offset,
   });
+  const instances = payload.runs.map((run) => ({
+    id: run.workflowName || run.id,
+    kind: run.kind,
+    format: run.format,
+    category: run.category,
+    workflowId: run.workflowName || run.id,
+    workflowName: run.workflowName,
+    status: run.status,
+    createdAt: run.createdAt,
+    completedAt: run.completedAt,
+    changeName: run.changeName,
+    metadata: run.metadata == null ? null : run.metadata,
+    stepCount: run.stepCount,
+    workflowDir: run.runDir ? relativeToCwd(run.runDir) : run.runDir,
+    runDir: run.runDir ? relativeToCwd(run.runDir) : run.runDir,
+  }));
   return {
     command: "workflow runs",
     status: "success",
     exit_code: 0,
-    summary: payload.runs.length === 0 ? "no workflow runs" : "listed workflow runs",
+    summary: instances.length === 0 ? "no workflow instances" : "listed workflow instances",
     details: {
+      workflow_root: relativeToCwd(workflowRunsRoot(workspaceRoot)),
       run_root: relativeToCwd(workflowRunsRoot(workspaceRoot)),
       workspace: path.resolve(process.cwd(), workspaceRoot),
-      runs: payload.runs.map((run) => ({
-        id: run.id,
-        kind: run.kind,
-        format: run.format,
-        category: run.category,
-        workflowName: run.workflowName,
-        status: run.status,
-        createdAt: run.createdAt,
-        completedAt: run.completedAt,
-        changeName: run.changeName,
-        metadata: run.metadata == null ? null : run.metadata,
-        stepCount: run.stepCount,
-        runDir: run.runDir ? relativeToCwd(run.runDir) : run.runDir,
-      })),
+      instances,
+      runs: instances,
       total: payload.total,
       offset: payload.offset,
       limit: payload.limit,
@@ -617,10 +627,14 @@ function listManagedWorkflowRuns(workspaceRoot, flags) {
   };
 }
 
+function missingWorkflowInstanceError(id) {
+  return `workflow instance not found: ${id}; use 'morpheus workflow list' to inspect configured workflows or 'morpheus workflow inspect --name <workflow>' with a valid workflow id`;
+}
+
 function eventPayloadForRun(workspaceRoot, id) {
   const events = loadWorkflowEvents(workspaceRoot, id);
   if (!events) {
-    throw new Error(`workflow run not found: ${id}; use 'morpheus workflow list' to start a run or 'morpheus workflow inspect --id <run-id>' with a valid id`);
+    throw new Error(missingWorkflowInstanceError(id));
   }
   return {
     command: "workflow events",
@@ -637,15 +651,16 @@ function eventPayloadForRun(workspaceRoot, id) {
 function inspectPayloadForRun(workspaceRoot, id) {
   const detail = loadWorkflowDetail(workspaceRoot, id);
   if (!detail) {
-    throw new Error(`workflow run not found: ${id}; use 'morpheus workflow list' to start a run or 'morpheus workflow inspect --id <run-id>' with a valid id`);
+    throw new Error(missingWorkflowInstanceError(id));
   }
   return {
     command: "workflow inspect",
     status: "success",
     exit_code: 0,
-    summary: "inspected workflow run",
+    summary: "inspected workflow instance",
     details: {
       id: detail.id,
+      workflowId: detail.id,
       kind: detail.kind,
       format: detail.format,
       category: detail.category,
@@ -656,6 +671,7 @@ function inspectPayloadForRun(workspaceRoot, id) {
       changeName: detail.changeName,
       metadata: detail.metadata == null ? null : detail.metadata,
       stepCount: detail.stepCount,
+      workflowDir: detail.runDir ? relativeToCwd(detail.runDir) : detail.runDir,
       runDir: detail.runDir ? relativeToCwd(detail.runDir) : detail.runDir,
       graph: detail.graph,
       steps: detail.steps.map((step) => ({
@@ -808,6 +824,20 @@ function resolveConfiguredStepArgs(step, context) {
 }
 
 function listWorkflowSteps(runDir) {
+  const workflow = tryReadJson(path.join(runDir, "workflow.json"));
+  if (workflow && Array.isArray(workflow.steps) && workflow.steps.length > 0) {
+    return workflow.steps.map((entry) => {
+      const stepId = String(entry && entry.id || "");
+      const resolvedStepDir =
+        entry && typeof entry.stepDir === "string"
+          ? entry.stepDir
+          : path.join(runDir, "steps", stepId);
+      const manifestPath = path.join(resolvedStepDir, "step.json");
+      return fs.existsSync(manifestPath)
+        ? readJson(manifestPath)
+        : { ...entry, id: stepId, stepDir: resolvedStepDir };
+    });
+  }
   const stepsDir = path.join(runDir, "steps");
   if (!fs.existsSync(stepsDir)) {
     return [];
@@ -892,25 +922,28 @@ function ensureWorkflowManifest(runDir) {
 }
 
 function findWorkflowRun(workspaceRoot, id) {
-  const runDir = path.join(workflowRunsRoot(workspaceRoot), id);
-  const manifestPath = workflowManifestPath(runDir);
-  if (!fs.existsSync(manifestPath)) {
-    throw new Error(`workflow run not found: ${id}; use 'morpheus workflow list' to start a run or 'morpheus workflow inspect --id <run-id>' with a valid id`);
+  const detail = loadWorkflowDetail(workspaceRoot, id);
+  if (!detail || !detail.runDir) {
+    throw new Error(missingWorkflowInstanceError(id));
   }
-  return ensureWorkflowManifest(runDir);
+  return ensureWorkflowManifest(detail.runDir);
+}
+
+function tryFindWorkflowRun(workspaceRoot, id) {
+  try {
+    return findWorkflowRun(workspaceRoot, id);
+  } catch {
+    return null;
+  }
 }
 
 function listRunDirsForWorkflow(workspaceRoot, workflowName) {
-  const root = workflowRunsRoot(workspaceRoot);
-  if (!fs.existsSync(root)) {
+  try {
+    const found = findWorkflowRun(workspaceRoot, workflowName);
+    return [readJson(found.manifestPath)];
+  } catch {
     return [];
   }
-  return fs.readdirSync(root)
-    .map((name) => path.join(root, name))
-    .filter((entry) => fs.existsSync(path.join(entry, "workflow.json")))
-    .map((entry) => readJson(path.join(entry, "workflow.json")))
-    .filter((record) => String(record.workflow || "") === String(workflowName || ""))
-    .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")));
 }
 
 function stopPid(pid) {
@@ -1157,11 +1190,12 @@ function stopWorkflowRun(workspaceRoot, id) {
     command: "workflow stop",
     status: "success",
     exit_code: 0,
-    summary: "stopped workflow run",
+    summary: "stopped workflow instance",
     details: {
       id: updatedWorkflow.id,
       workflow: updatedWorkflow.workflow,
       status: updatedWorkflow.status,
+      workflow_dir: relativeToCwd(updatedWorkflow.runDir),
       run_dir: relativeToCwd(updatedWorkflow.runDir),
       stopped_child_pid: currentChildPid > 0 ? currentChildPid : null,
       stopped_runner_pid: runnerPid > 0 ? runnerPid : null,
@@ -1200,11 +1234,12 @@ function removeWorkflowRun(workspaceRoot, id) {
     command: "workflow remove",
     status: "success",
     exit_code: 0,
-    summary: "removed workflow run",
+    summary: "removed workflow instance",
     details: {
       id,
       workflow: workflow.workflow,
       status: "removed",
+      workflow_dir: relativeToCwd(found.runDir),
       run_dir: relativeToCwd(found.runDir),
     },
   };
@@ -2106,7 +2141,7 @@ async function runToolWorkflow({
       exit_code: exitCode,
       log_file: path.relative(process.cwd(), step.logFile),
       ...(status === "success" ? {} : {
-        hint: `./bin/morpheus --json workflow logs --id ${workflow.id} --step ${step.id}`,
+        hint: `./bin/morpheus --json workflow logs --name ${workflow.id} --step ${step.id}`,
       }),
     }, {
       scope: "step",
@@ -2203,14 +2238,15 @@ async function runToolWorkflow({
     status: workflowStatus,
     exit_code: workflowStatus === "success" ? 0 : exitCode || 1,
     summary: workflowStatus === "success"
-      ? "completed workflow run"
+      ? "completed workflow instance"
       : workflowStatus === "stopped"
-        ? "workflow run stopped"
-        : "workflow run failed",
+        ? "workflow instance stopped"
+        : "workflow instance failed",
     details: {
       id: updatedWorkflow.id,
       workflow: updatedWorkflow.workflow,
       workspace: updatedWorkflow.workspace,
+      workflow_dir: relativeToCwd(updatedWorkflow.runDir),
       run_dir: relativeToCwd(updatedWorkflow.runDir),
       manifest: relativeToCwd(workflowManifestPath(updatedWorkflow.runDir)),
       steps: updatedWorkflow.steps,
@@ -2380,7 +2416,7 @@ function followLogFile(logFile) {
 function formatWorkflowInspectText(workflow, steps) {
   const lines = [
     `Workflow: ${workflow.workflow || "-"}`,
-    `Run ID: ${workflow.id || "-"}`,
+    `Workflow ID: ${workflow.id || "-"}`,
     `Status: ${workflow.status || "-"}`,
     `Category: ${workflow.category || "-"}`,
     `Current Step: ${workflow.currentStepId || "-"}`,
@@ -2397,7 +2433,7 @@ function formatWorkflowLifecycleText(payload) {
   const details = payload && payload.details ? payload.details : {};
   const lines = [
     `${payload.summary}`,
-    `Run ID: ${details.id || "-"}`,
+    `Workflow ID: ${details.id || "-"}`,
     `Workflow: ${details.workflow || "-"}`,
     `Status: ${details.status || "-"}`,
   ];
@@ -2433,7 +2469,7 @@ async function handleWorkflowCommand(argv) {
     if (flags.json) {
       writeStdoutLine(JSON.stringify(payload, null, 2));
     } else if (payload.details.runs.length === 0) {
-      writeStdoutLine("No workflow runs.");
+      writeStdoutLine("No workflow instances.");
     } else {
       writeStdoutLine([
         "id\tworkflow\tcategory\tstatus\tcreated\tsteps",
@@ -2463,14 +2499,20 @@ async function handleWorkflowCommand(argv) {
   }
 
   if (subcommand === "run") {
-    if (flags.name) {
-      const configured = resolveConfiguredWorkflow(String(flags.name));
+    const selectedWorkflowName = workflowKey(flags);
+    if (selectedWorkflowName) {
+      const configured = resolveConfiguredWorkflow(String(selectedWorkflowName));
       const workspaceRoot = resolveWorkspaceRoot(flags);
       const stepControl = workflowStepControl(flags);
+      const existingFound = tryFindWorkflowRun(workspaceRoot, selectedWorkflowName);
+      const existingWorkflow = existingFound ? readJson(existingFound.manifestPath) : null;
+      if (existingWorkflow && existingWorkflow.status === "running") {
+        throw new Error(`workflow run requires a non-running workflow instance: ${selectedWorkflowName}`);
+      }
       if (stepControl.fromStep) {
-        const workflowRuns = listRunDirsForWorkflow(workspaceRoot, String(flags.name));
+        const workflowRuns = listRunDirsForWorkflow(workspaceRoot, selectedWorkflowName);
         if (workflowRuns.length === 0) {
-          throw new Error(`workflow run --from-step requires an existing workflow run for ${String(flags.name)}`);
+          throw new Error(`workflow run --from-step requires an existing workflow instance for ${selectedWorkflowName}`);
         }
         const latest = workflowRuns[0];
         const plan = collectResumePlan(
@@ -2489,7 +2531,7 @@ async function handleWorkflowCommand(argv) {
             attach: Boolean(step.attach),
             timeoutSeconds: Number(step["timeout-seconds"] || step.timeoutSeconds || 0),
           })),
-          workflowName: String(flags.name),
+          workflowName: selectedWorkflowName,
           workspaceRoot,
           jsonMode: Boolean(flags.json),
           category: configured.category || "run",
@@ -2517,13 +2559,14 @@ async function handleWorkflowCommand(argv) {
           attach: Boolean(step.attach),
           timeoutSeconds: Number(step["timeout-seconds"] || step.timeoutSeconds || 0),
         })),
-        workflowName: String(flags.name),
+        workflowName: selectedWorkflowName,
         workspaceRoot,
         jsonMode: Boolean(flags.json),
         category: configured.category || "run",
         commandLabel: "workflow run",
         configPath: configured.configPath,
         metadata: configured.metadata,
+        existingWorkflow,
       });
     }
 
@@ -2533,6 +2576,11 @@ async function handleWorkflowCommand(argv) {
     }
     const workflowName = flags.workflow || `tool-${tool}`;
     const workspaceRoot = resolveWorkspaceRoot(flags);
+    const existingFound = tryFindWorkflowRun(workspaceRoot, workflowName);
+    const existingWorkflow = existingFound ? readJson(existingFound.manifestPath) : null;
+    if (existingWorkflow && existingWorkflow.status === "running") {
+      throw new Error(`workflow run requires a non-running workflow instance: ${workflowName}`);
+    }
     const toolArgv = passthrough.length > 0
       ? [...passthrough]
       : argv.filter((token) => token !== "run").filter((token) => token !== "--tool").filter((token) => token !== tool)
@@ -2546,19 +2594,20 @@ async function handleWorkflowCommand(argv) {
       jsonMode: Boolean(flags.json),
       category: "run",
       commandLabel: "workflow run",
+      existingWorkflow,
     });
   }
 
   if (subcommand === "resume") {
-    const id = flags.id;
+    const id = workflowKey(flags);
     if (!id) {
-      throw new Error("workflow resume requires --id WORKFLOW_RUN_ID");
+      throw new Error("workflow resume requires --name WORKFLOW_NAME");
     }
     const workspaceRoot = resolveWorkspaceRoot(flags);
     const found = findWorkflowRun(workspaceRoot, id);
     const workflow = readJson(found.manifestPath);
     if (workflow.status === "running") {
-      throw new Error("workflow resume requires a non-running workflow run");
+      throw new Error("workflow resume requires a non-running workflow instance");
     }
     const configured = resolveConfiguredWorkflow(String(workflow.workflow), workflow.configPath || null);
     const stepControl = workflowStepControl(flags);
@@ -2593,9 +2642,9 @@ async function handleWorkflowCommand(argv) {
   }
 
   if (subcommand === "inspect") {
-    const id = flags.id;
+    const id = workflowKey(flags);
     if (!id) {
-      throw new Error("workflow inspect requires --id WORKFLOW_RUN_ID");
+      throw new Error("workflow inspect requires --name WORKFLOW_NAME");
     }
     const workspaceRoot = resolveWorkspaceRoot(flags);
     const found = findWorkflowRun(workspaceRoot, id);
@@ -2619,9 +2668,9 @@ async function handleWorkflowCommand(argv) {
   }
 
   if (subcommand === "events") {
-    const id = flags.id;
+    const id = workflowKey(flags);
     if (!id) {
-      throw new Error("workflow events requires --id WORKFLOW_RUN_ID");
+      throw new Error("workflow events requires --name WORKFLOW_NAME");
     }
     const workspaceRoot = resolveWorkspaceRoot(flags);
     const found = findWorkflowRun(workspaceRoot, id);
@@ -2638,9 +2687,9 @@ async function handleWorkflowCommand(argv) {
   }
 
   if (subcommand === "logs") {
-    const id = flags.id;
+    const id = workflowKey(flags);
     if (!id) {
-      throw new Error("workflow logs requires --id WORKFLOW_RUN_ID");
+      throw new Error("workflow logs requires --name WORKFLOW_NAME");
     }
     const workspaceRoot = resolveWorkspaceRoot(flags);
     const found = findWorkflowRun(workspaceRoot, id);
@@ -2687,9 +2736,9 @@ async function handleWorkflowCommand(argv) {
   }
 
   if (subcommand === "stop") {
-    const id = flags.id;
+    const id = workflowKey(flags);
     if (!id) {
-      throw new Error("workflow stop requires --id WORKFLOW_RUN_ID");
+      throw new Error("workflow stop requires --name WORKFLOW_NAME");
     }
     const workspaceRoot = resolveWorkspaceRoot(flags);
     const payload = stopWorkflowRun(workspaceRoot, id);
@@ -2702,9 +2751,9 @@ async function handleWorkflowCommand(argv) {
   }
 
   if (subcommand === "remove") {
-    const id = flags.id;
+    const id = workflowKey(flags);
     if (!id) {
-      throw new Error("workflow remove requires --id WORKFLOW_RUN_ID");
+      throw new Error("workflow remove requires --name WORKFLOW_NAME");
     }
     const workspaceRoot = resolveWorkspaceRoot(flags);
     const payload = removeWorkflowRun(workspaceRoot, id);

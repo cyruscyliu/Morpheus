@@ -207,7 +207,8 @@ function runConfigShow() {
       config: path.relative(process.cwd(), config.path) || "morpheus.yaml",
       config_path: config.path,
       workspace_root: workspaceRoot,
-      run_root: path.join(workspaceRoot, "runs"),
+      workflow_root: path.join(workspaceRoot, "workflows"),
+      run_root: path.join(workspaceRoot, "workflows"),
       workflow_count: Object.keys(workflows).length,
     },
   };
@@ -276,7 +277,7 @@ function handleConfigCommand(argv) {
           "Config show",
           `  config: ${result.details.config}`,
           `  workspace_root: ${result.details.workspace_root}`,
-          `  run_root: ${result.details.run_root}`,
+          `  workflow_root: ${result.details.workflow_root}`,
           `  workflow_count: ${result.details.workflow_count}`,
         ].join("\n")
       : formatText(result));

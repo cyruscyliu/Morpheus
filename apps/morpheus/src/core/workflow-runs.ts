@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 
 const WORKFLOW_SCHEMA_VERSION = 1;
-const STEP_SCHEMA_VERSION = 1;
+const STAGE_SCHEMA_VERSION = 1;
 
 function normalizeWorkflowCategory(value, fallback = "build") {
   const category = String(value || "").trim().toLowerCase();
@@ -59,12 +59,28 @@ function workflowEventLogPath(workflowRunDir) {
   return path.join(workflowRunDir, "events.jsonl");
 }
 
-function stepDir(workflowRunDir, stepId) {
+function stageDir(workflowRunDir, stageId) {
+  return path.join(workflowRunDir, "stages", stageId);
+}
+
+function legacyStepDir(workflowRunDir, stepId) {
   return path.join(workflowRunDir, "steps", stepId);
 }
 
+function stepDir(workflowRunDir, stepId) {
+  return stageDir(workflowRunDir, stepId);
+}
+
+function stageManifestPath(stageDirPath) {
+  return path.join(stageDirPath, "stage.json");
+}
+
+function legacyStepManifestPath(stepDirPath) {
+  return path.join(stepDirPath, "step.json");
+}
+
 function stepManifestPath(stepDir) {
-  return path.join(stepDir, "step.json");
+  return stageManifestPath(stepDir);
 }
 
 function stepLogPath(stepDir) {
@@ -101,6 +117,78 @@ function tryReadJson(filePath) {
 function writeJson(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function cloneArrayEntries(values) {
+  return Array.isArray(values)
+    ? values.map((entry) => (entry && typeof entry === "object" ? { ...entry } : entry))
+    : [];
+}
+
+function workflowStageEntries(record) {
+  if (!record || typeof record !== "object") {
+    return [];
+  }
+  if (Array.isArray(record.stages) && record.stages.length > 0) {
+    return cloneArrayEntries(record.stages);
+  }
+  if (Array.isArray(record.steps) && record.steps.length > 0) {
+    return cloneArrayEntries(record.steps);
+  }
+  if (Array.isArray(record.stages)) {
+    return cloneArrayEntries(record.stages);
+  }
+  if (Array.isArray(record.steps)) {
+    return cloneArrayEntries(record.steps);
+  }
+  return [];
+}
+
+function normalizeStageEntryAliases(entry) {
+  if (!entry || typeof entry !== "object") {
+    return entry;
+  }
+  const stagePath = typeof entry.stageDir === "string"
+    ? entry.stageDir
+    : (typeof entry.stepDir === "string" ? entry.stepDir : null);
+  return {
+    ...entry,
+    stageDir: stagePath,
+    stepDir: stagePath,
+  };
+}
+
+function normalizeWorkflowRecordAliases(record) {
+  if (!record || typeof record !== "object") {
+    return record;
+  }
+  const stageEntries = workflowStageEntries(record);
+  const normalizedStages = stageEntries.map((entry) => normalizeStageEntryAliases(entry));
+  const currentStageId =
+    record.currentStageId != null
+      ? record.currentStageId
+      : (record.currentStepId != null ? record.currentStepId : null);
+  return {
+    ...record,
+    currentStageId,
+    currentStepId: currentStageId,
+    stages: normalizedStages,
+    steps: normalizedStages.map((entry) => ({ ...entry })),
+  };
+}
+
+function normalizeStageRecordAliases(record) {
+  if (!record || typeof record !== "object") {
+    return record;
+  }
+  const stagePath = typeof record.stageDir === "string"
+    ? record.stageDir
+    : (typeof record.stepDir === "string" ? record.stepDir : null);
+  return {
+    ...record,
+    stageDir: stagePath,
+    stepDir: stagePath,
+  };
 }
 
 function listRunDirs(runRoot) {
@@ -286,7 +374,7 @@ function finalizeMigratedWorkflowRecord(targetDir, workflowId) {
   const workflowRecord = tryReadJson(manifestPath);
   if (workflowRecord && typeof workflowRecord === "object") {
     const previousId = typeof workflowRecord.id === "string" ? workflowRecord.id : null;
-    writeJson(manifestPath, {
+    writeJson(manifestPath, normalizeWorkflowRecordAliases({
       ...workflowRecord,
       id: workflowId,
       workflow: typeof workflowRecord.workflow === "string" && workflowRecord.workflow.trim()
@@ -295,7 +383,7 @@ function finalizeMigratedWorkflowRecord(targetDir, workflowId) {
       workflowDir: targetDir,
       runDir: targetDir,
       legacyRunId: previousId && previousId !== workflowId ? previousId : workflowRecord.legacyRunId || null,
-    });
+    }));
   }
 
   const legacyPath = legacyRunRecordPath(targetDir);
@@ -331,7 +419,7 @@ function migrateLegacyWorkflowRunToInstance(workspaceRoot, workflowId) {
     copyTree(sourceDir, targetDir);
   }
   rewriteCopiedTreePaths(targetDir, sourceDir, targetDir);
-  fs.mkdirSync(path.join(targetDir, "steps"), { recursive: true });
+  fs.mkdirSync(path.join(targetDir, "stages"), { recursive: true });
   if (!fs.existsSync(workflowEventLogPath(targetDir))) {
     fs.writeFileSync(workflowEventLogPath(targetDir), "", "utf8");
   }
@@ -344,12 +432,12 @@ function createWorkflowRun(workspaceRoot, workflowName, options = {}) {
   const runDir = workflowRunDir(workspaceRoot, id);
   const createdAt = nowIso();
   const category = normalizeWorkflowCategory(options.category, "build");
-  fs.mkdirSync(path.join(runDir, "steps"), { recursive: true });
+  fs.mkdirSync(path.join(runDir, "stages"), { recursive: true });
   if (!fs.existsSync(workflowEventLogPath(runDir))) {
     fs.writeFileSync(workflowEventLogPath(runDir), "", "utf8");
   }
 
-  const record = {
+  const record = normalizeWorkflowRecordAliases({
     schemaVersion: WORKFLOW_SCHEMA_VERSION,
     id,
     workflow: workflowName || "workflow",
@@ -363,8 +451,8 @@ function createWorkflowRun(workspaceRoot, workflowName, options = {}) {
     workspace: path.resolve(process.cwd(), workspaceRoot),
     workflowDir: runDir,
     runDir,
-    steps: []
-  };
+    stages: [],
+  });
 
   writeJson(workflowManifestPath(runDir), record);
   writeJson(legacyRunRecordPath(runDir), {
@@ -385,8 +473,8 @@ function createWorkflowRun(workspaceRoot, workflowName, options = {}) {
 
 function updateWorkflowRun(runDir, mutator) {
   const manifestPath = workflowManifestPath(runDir);
-  const current = readJson(manifestPath);
-  const next = mutator({ ...current });
+  const current = normalizeWorkflowRecordAliases(readJson(manifestPath));
+  const next = normalizeWorkflowRecordAliases(mutator({ ...current }));
   next.category = normalizeWorkflowCategory(next.category, normalizeWorkflowCategory(current.category, "build"));
   next.updatedAt = nowIso();
   writeJson(manifestPath, next);
@@ -418,14 +506,15 @@ function createWorkflowStep(runDir, index, name, options = {}) {
   }
 
   const createdAt = nowIso();
-  const record = {
-    schemaVersion: STEP_SCHEMA_VERSION,
+  const record = normalizeStageRecordAliases({
+    schemaVersion: STAGE_SCHEMA_VERSION,
     id: stepId,
     name: name || stepId,
     status: "created",
     createdAt,
     updatedAt: createdAt,
     eventLogFile: workflowEventLogPath(runDir),
+    stageDir: dir,
     stepDir: dir,
     toolRunDir: stepToolRunDir(dir),
     logFile: stepLogPath(dir),
@@ -435,7 +524,7 @@ function createWorkflowStep(runDir, index, name, options = {}) {
     inputs: options.inputs || [],
     expectedArtifacts: options.expectedArtifacts || [],
     artifacts: options.artifacts || []
-  };
+  });
 
   writeJson(stepManifestPath(dir), record);
   return record;
@@ -443,8 +532,13 @@ function createWorkflowStep(runDir, index, name, options = {}) {
 
 function updateWorkflowStep(stepDirPath, mutator) {
   const manifestPath = stepManifestPath(stepDirPath);
-  const current = readJson(manifestPath);
-  const next = mutator({ ...current });
+  const legacyManifestPath = legacyStepManifestPath(stepDirPath);
+  const current = normalizeStageRecordAliases(
+    fs.existsSync(manifestPath)
+      ? readJson(manifestPath)
+      : readJson(legacyManifestPath)
+  );
+  const next = normalizeStageRecordAliases(mutator({ ...current }));
   next.updatedAt = nowIso();
   writeJson(manifestPath, next);
   return next;
@@ -455,10 +549,14 @@ module.exports = {
   createWorkflowStep,
   generateWorkflowRunId,
   legacyWorkflowRunsRoot,
+  legacyStepDir,
+  legacyStepManifestPath,
   findLatestLegacyWorkflowRunDir,
   migrateLegacyWorkflowRunToInstance,
   sanitizeStepName,
   legacyRunRecordPath,
+  stageDir,
+  stageManifestPath,
   stepArtifactsDir,
   stepToolRunDir,
   stepDir,

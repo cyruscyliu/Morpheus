@@ -635,6 +635,7 @@
     }
     auto renderDescriptorStruct = [&](StringRef structName) -> std::string {
       std::ostringstream out;
+      const bool packed = structName.startswith("vring_packed_desc");
       out << "struct " << structName.str() << " {\n";
       out << "    addr: u64;\n";
       auto lenIt = schemaLengthImmediates.find(sanitizeToken(structName));
@@ -648,7 +649,11 @@
         out << "    len: u32;\n";
       }
       out << "    flags: u16;\n";
-      out << "    next: u16;\n";
+      if (packed) {
+        out << "    id: u16;\n";
+      } else {
+        out << "    next: u16;\n";
+      }
       out << "}\n";
       return out.str();
     };
@@ -1346,8 +1351,6 @@
           "        bits 54..54;\n"
           "        bits 55..55;\n"
           "        bits 59..59;\n"
-          "        bits 65..65;\n"
-          "        bits 66..66;\n"
           "    ];\n"
           "}\n");
     }
@@ -1366,33 +1369,17 @@
           "        bits 54..54;\n"
           "        bits 55..55;\n"
           "        bits 59..59;\n"
-          "        bits 65..65;\n"
-          "        bits 66..66;\n"
           "    ];");
     }
     if (name == "virtio_net_ctrl_mac_addr") {
       return std::string(
           "struct virtio_net_ctrl_mac_addr {\n"
-          "    mac: bytes[6] flag [\n"
-          "        bits 0..5;\n"
-          "        bits 6..11;\n"
-          "        bits 12..17;\n"
-          "        bits 18..23;\n"
-          "        bits 24..29;\n"
-          "        bits 30..35;\n"
-          "    ];\n"
+          "    mac: bytes[6];\n"
           "}\n");
     }
     if (name == "virtio_net_ctrl_mac_addr_mac_only") {
       return renderFieldOnlyStruct("virtio_net_ctrl_mac_addr_mac_only",
-                                   "mac: bytes[6] flag [\n"
-                                   "        bits 0..5;\n"
-                                   "        bits 6..11;\n"
-                                   "        bits 12..17;\n"
-                                   "        bits 18..23;\n"
-                                   "        bits 24..29;\n"
-                                   "        bits 30..35;\n"
-                                   "    ];");
+                                   "mac: bytes[6];");
     }
     if (name == "virtio_net_ctrl_hdr") {
       return std::string(
@@ -3106,14 +3093,7 @@
           "    cmd: u8 immediate [\n"
           "        imm 1;\n"
           "    ];\n"
-          "    mac: bytes[6] flag [\n"
-          "        bits 0..5;\n"
-          "        bits 6..11;\n"
-          "        bits 12..17;\n"
-          "        bits 18..23;\n"
-          "        bits 24..29;\n"
-          "        bits 30..35;\n"
-          "    ];\n"
+          "    mac: bytes[6];\n"
           "}\n");
     }
     if (name == "VIRTIO_NET_CTRL_CTRL_HDR_2") {
@@ -3198,8 +3178,6 @@
           "        bits 54..54;\n"
           "        bits 55..55;\n"
           "        bits 59..59;\n"
-          "        bits 65..65;\n"
-          "        bits 66..66;\n"
           "    ];\n"
           "}\n");
     }

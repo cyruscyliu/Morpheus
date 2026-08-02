@@ -1120,9 +1120,18 @@
 
   std::vector<std::string> normalizeFieldHints(
       const std::vector<std::string> &fields) {
+    constexpr size_t kMaxRawFieldHintsScanned = 2048;
+    constexpr size_t kMaxNormalizedFieldHints = 256;
     std::vector<std::string> normalized;
     std::set<std::string> seen;
+    size_t scanned = 0;
     for (const std::string &field : fields) {
+      // Field hints are best-effort enrichment.
+      // Large points-to alias sets can otherwise dominate model generation.
+      if (scanned++ >= kMaxRawFieldHintsScanned ||
+          normalized.size() >= kMaxNormalizedFieldHints) {
+        break;
+      }
       std::string token = canonicalizeFieldHintToken(field);
       if (token.empty()) {
         continue;
@@ -1624,6 +1633,9 @@
     if (type == "virtio_net_ctrl_vlan") {
       return has("virtio_net_ctrl_vlan__") || has("__virtio16__") ||
              has("control_buf__vdev__index");
+    }
+    if (type == "virtio_net_ctrl_mq") {
+      return has("virtio_net_ctrl_mq__");
     }
     if (type == "virtio_net_ctrl_coal_rx") {
       return has("virtio_net_ctrl_coal_rx__");
@@ -2744,6 +2756,18 @@
       }
       if (!matchedFields.empty()) {
         payload.fields = std::move(matchedFields);
+      } else if (!semanticType.empty() && semanticType != payload.type) {
+        std::vector<std::string> semanticFields;
+        semanticFields.reserve(payload.fields.size());
+        for (const std::string &field : payload.fields) {
+          if (fieldMatchesSemanticType(semanticType, field)) {
+            semanticFields.push_back(field);
+          }
+        }
+        if (!semanticFields.empty()) {
+          payload.type = semanticType;
+          payload.fields = std::move(semanticFields);
+        }
       }
     }
     std::string merged = sanitizeToken(payload.type);
@@ -3148,4 +3172,3 @@
 
     normalizeMergedPayloadInfo(payload);
   }
-

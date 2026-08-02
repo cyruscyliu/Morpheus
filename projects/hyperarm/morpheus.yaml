@@ -1055,6 +1055,20 @@ workflows:
           - "{{steps.qemu_fetch_trace.details.source}}"
           - --patch-dir
           - projects/hyperarm/workspace/tools/qemu/patches/virtio-mmio-trace
+      - id: devilang_compile_state_trace
+        tool: devilang
+        command: compile-state
+        args:
+          - --input
+          - "{{steps.devilang_exec.artifacts.booting-state.location}}"
+          - --input
+          - "{{steps.devilang_exec.artifacts.runtime-state.location}}"
+          - --output-c
+          - ../../../../tools/qemu-trace/src/qemu-8.2.7/hw/virtio/devilang-state.c
+          - --output-h
+          - ../../../../tools/qemu-trace/src/qemu-8.2.7/hw/virtio/devilang-state.h
+          - --symbol-prefix
+          - virtio_net_mmio
       - id: qemu_build_trace
         tool: qemu
         command: build
@@ -1244,6 +1258,20 @@ workflows:
           - "{{steps.qemu_fetch_trace.details.source}}"
           - --patch-dir
           - projects/hyperarm/workspace/tools/qemu/patches/virtio-mmio-trace
+      - id: devilang_compile_state_trace
+        tool: devilang
+        command: compile-state
+        args:
+          - --input
+          - "{{steps.devilang_exec.artifacts.booting-state.location}}"
+          - --input
+          - "{{steps.devilang_exec.artifacts.runtime-state.location}}"
+          - --output-c
+          - ../../../../tools/qemu-trace/src/qemu-8.2.7/hw/virtio/devilang-state.c
+          - --output-h
+          - ../../../../tools/qemu-trace/src/qemu-8.2.7/hw/virtio/devilang-state.h
+          - --symbol-prefix
+          - virtio_net_mmio
       - id: qemu_build_trace
         tool: qemu
         command: build
@@ -1296,16 +1324,16 @@ workflows:
         tool: devilang
         command: replay-trace
         args:
-          - --input
-          - "{{steps.devilang_exec.artifacts.booting-state.location}}"
-          - --input
-          - "{{steps.devilang_exec.artifacts.runtime-state.location}}"
+          - --state-c
+          - "{{steps.devilang_compile_state_trace.artifacts.output-c.location}}"
+          - --state-h
+          - "{{steps.devilang_compile_state_trace.artifacts.output-h.location}}"
           - --trace-log
           - "{{steps.virtio_mmio_trace_exec.artifacts.trace-log.location}}"
           - --output
           - "{{steps.virtio_mmio_trace_exec.details.run_dir}}/devilang-replay.txt"
           - --symbol-prefix
-          - virtio_trace_sm
+          - virtio_net_mmio
           - --base-filter
           - "0xa003e00"
   buildroot-qemu-runtime-nqc2:

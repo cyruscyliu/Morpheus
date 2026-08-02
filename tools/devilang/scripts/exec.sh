@@ -12,6 +12,7 @@ clang="${MORPHEUS_DEVILANG_CLANG:-15}"
 llbase_contract="${MORPHEUS_DEVILANG_LLBASE_CONTRACT:-}"
 llbic_json="${MORPHEUS_DEVILANG_LLBIC_JSON:-}"
 llcg_build_dir="${MORPHEUS_DEVILANG_LLCG_BUILD_DIR:-}"
+devilang_cpus="${MORPHEUS_DEVILANG_CPUS:-${MORPHEUS_DEVILANG_JOBS:-$(morpheus_default_jobs)}}"
 module_file="${MORPHEUS_DEVILANG_MODULE_FILE:-}"
 module_inline="${MORPHEUS_DEVILANG_MODULE:-}"
 module_relative_file="${MORPHEUS_DEVILANG_MODULE_RELATIVE_FILE:-}"
@@ -35,6 +36,10 @@ mkdir -p "${output_dir}"
 : > "${log_file}"
 [ -n "${llbase_contract}" ] || {
   echo "devilang exec requires --llbase-contract so the managed run uses the shared llbase container runtime" >&2
+  exit 1
+}
+[[ "${devilang_cpus}" =~ ^([0-9]+([.][0-9]+)?|[.][0-9]+)$ ]] || {
+  echo "devilang exec requires numeric MORPHEUS_DEVILANG_CPUS/MORPHEUS_DEVILANG_JOBS when set" >&2
   exit 1
 }
 
@@ -390,6 +395,7 @@ if [ -n "${svf_extapi_bc}" ] && [ -f "${svf_extapi_bc}" ]; then
 fi
 
 set +e
+LLBASE_CONTAINER_CPUS="${devilang_cpus}" \
 llbase_exec_in_container \
   "${tool_root}" \
   "${build_dir}" \
@@ -404,7 +410,7 @@ llbase_exec_in_container \
 devilang_rc=$?
 set -e
 
-node - "${result_file}" "${manifest_file}" "${log_file}" "${output_dir}" "${devilang_rc}" "${booting_machine_name}" "${runtime_machine_name}" <<'EOF'
+node - "${result_file}" "${manifest_file}" "${log_file}" "${output_dir}" "${devilang_rc}" "${booting_machine_name}" "${runtime_machine_name}" "${devilang_cpus}" <<'EOF'
 const fs = require("fs");
 const path = require("path");
 
@@ -416,6 +422,7 @@ const [
   rawExitCodeArg,
   bootingMachineName,
   runtimeMachineName,
+  cpuLimitArg,
 ] = process.argv.slice(2);
 const resultFile = path.resolve(resultFileArg);
 const manifestFile = path.resolve(manifestFileArg);
@@ -445,6 +452,7 @@ const payload = {
     output: outputDir,
     booting_machine_name: String(bootingMachineName || ""),
     runtime_machine_name: String(runtimeMachineName || ""),
+    cpu_limit: String(cpuLimitArg || ""),
     llbase_contract: process.env.MORPHEUS_DEVILANG_LLBASE_CONTRACT || "",
     llcg_build_dir: process.env.MORPHEUS_DEVILANG_LLCG_BUILD_DIR || "",
   },

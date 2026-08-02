@@ -2920,6 +2920,7 @@ int {self.symbol_prefix}_best_active(
         lines.append("static int dl_step_kind_mask(const struct dl_step *step);")
         lines.append("static int dl_trace_pause_unknown_post_event_branch(const char *trace_name);")
         lines.append("static int dl_trace_prefers_status_distance_guidance(const char *trace_name);")
+        lines.append("static int dl_trace_name_matches_dma_opcode(const char *trace_name, uint32_t dma_opcode);")
         lines.append("static void dl_activate_booting_resume(struct %s_machine *machine);" % self.symbol_prefix)
         lines.append("static void dl_pointer_hint_add(struct %s_machine *machine, uint64_t addr, int target_type, uint32_t score);" % self.symbol_prefix)
         lines.append("static int dl_observable_step_matches_event(const struct dl_machine_meta *machine_meta, const struct dl_step *step, const struct dl_cursor *cursor, const struct devilang_event *event);")
@@ -2927,11 +2928,15 @@ int {self.symbol_prefix}_best_active(
         lines.append("static int dl_dma_path_matches(uint32_t step_path, uint32_t event_path);")
         lines.append("static int dl_debug_dma_enabled(void);")
         lines.append("static int dl_symbol_name_has_suffix(const char *name, const char *suffix);")
+        lines.append("static int dl_find_symbol_id(const char *name);")
         lines.append("static void dl_seed_cursor_from_dma_event(const struct dl_machine_meta *machine_meta, struct dl_cursor *cursor, const struct devilang_event *event);")
+        lines.append("static void dl_bind_queue_notify_event_values(const struct dl_machine_meta *machine_meta, struct dl_cursor *cursor, const struct devilang_event *event);")
+        lines.append("static void dl_bind_call_params(const struct dl_machine_meta *machine_meta, const struct dl_trace_meta *trace_meta, const struct dl_step *step, struct dl_cursor *cursor);")
         lines.append("static int dl_trace_runtime_queue_hint(const char *trace_name);")
         lines.append("static int dl_find_matching_mmio_step_in_trace(int machine_index, int trace_idx, const struct dl_cursor *seed, const struct devilang_event *event);")
         lines.append("static void dl_record_pending_async_notify(struct %s_machine *machine, const struct dl_cursor *cursors, size_t count, int queue_hint);" % self.symbol_prefix)
         lines.append("static void dl_append_pending_async_returns(struct %s_machine *machine, const struct dl_cursor *cursors, size_t count, int queue_hint);" % self.symbol_prefix)
+        lines.append("static void dl_append_pending_async_return_callee_seeds(struct %s_machine *machine, const struct dl_cursor *frame);" % self.symbol_prefix)
         lines.append("static void dl_build_pending_async_dma_frontiers(struct %s_machine *machine);" % self.symbol_prefix)
         lines.append("static void dl_compact_pending_async_by_trace_name(struct %s_machine *machine);" % self.symbol_prefix)
         lines.append("static void dl_push_pending_async_seed(struct %s_machine *machine, const struct dl_cursor *cursor);" % self.symbol_prefix)
@@ -2942,6 +2947,7 @@ int {self.symbol_prefix}_best_active(
         lines.append("static void dl_record_pending_dma_duplicate(struct %s_machine *machine, const struct devilang_event *event);" % self.symbol_prefix)
         lines.append("static int dl_consume_pending_dma_duplicate(struct %s_machine *machine, const struct devilang_event *event);" % self.symbol_prefix)
         lines.append("static void dl_record_pending_dma_context(struct %s_machine *machine, const struct devilang_event *event);" % self.symbol_prefix)
+        lines.append("static int dl_probe_pending_dma_context_traces(struct %s_machine *machine, const struct dl_pending_dma_context *slot, const struct devilang_event *event);" % self.symbol_prefix)
         lines.append("static int dl_resume_pending_dma_context(struct %s_machine *machine, const struct devilang_event *event);" % self.symbol_prefix)
         lines.append("")
 
@@ -3588,6 +3594,21 @@ static int dl_queue_notify_queue_hint(
         return -1;
     }
     return (int)(event->value & 0xffffULL);
+}
+
+static int dl_is_status_zero_write_event(
+    const struct devilang_event *event) {
+    uint64_t offset;
+
+    if (!event || event->kind != DEVILANG_EV_MMIO_WRITE ||
+        event->addr < event->base) {
+        return 0;
+    }
+    offset = event->addr - event->base;
+    if (offset != 0x70ULL) {
+        return 0;
+    }
+    return ((uint32_t)event->value & 0xffU) == 0;
 }
 
 static int dl_trace_matches_runtime_queue_hint(
@@ -4418,6 +4439,81 @@ static int dl_trace_has_pointer_hint_target(
                 self.symbol_prefix,
                 self.symbol_prefix,
             )
+        )
+        lines.append("")
+        lines.append(
+            """static void dl_bind_queue_notify_event_values(
+    const struct dl_machine_meta *machine_meta,
+    struct dl_cursor *cursor,
+    const struct devilang_event *event) {
+    uint64_t offset;
+    uint64_t queue_index;
+    uint64_t notify_data;
+    int symbol_id;
+
+    if (!machine_meta || !cursor || !event ||
+        event->kind != DEVILANG_EV_MMIO_WRITE ||
+        event->addr < event->base) {
+        return;
+    }
+    offset = event->addr - event->base;
+    if (offset != DL_VM_QUEUE_NOTIFY_OFFSET) {
+        return;
+    }
+
+    queue_index = event->value & 0xffffULL;
+    notify_data = (event->value >> 16) & 0xffffULL;
+
+    symbol_id = dl_find_symbol_id("vq.index");
+    if (symbol_id >= 0) {
+        cursor->symbols[symbol_id] = queue_index;
+        cursor->symbol_valid[symbol_id] = 1;
+    }
+    symbol_id = dl_find_symbol_id("vq.next_avail_or_off_wrap");
+    if (symbol_id >= 0) {
+        cursor->symbols[symbol_id] = notify_data;
+        cursor->symbol_valid[symbol_id] = 1;
+    }
+    symbol_id = dl_find_symbol_id("queue_index");
+    if (symbol_id >= 0) {
+        cursor->symbols[symbol_id] = queue_index;
+        cursor->symbol_valid[symbol_id] = 1;
+    }
+    symbol_id = dl_find_symbol_id("qidx");
+    if (symbol_id >= 0) {
+        cursor->symbols[symbol_id] = queue_index;
+        cursor->symbol_valid[symbol_id] = 1;
+    }
+    symbol_id = dl_find_symbol_id("qid");
+    if (symbol_id >= 0) {
+        cursor->symbols[symbol_id] = queue_index;
+        cursor->symbol_valid[symbol_id] = 1;
+    }
+    symbol_id = dl_find_symbol_id("queue_idx");
+    if (symbol_id >= 0) {
+        cursor->symbols[symbol_id] = queue_index;
+        cursor->symbol_valid[symbol_id] = 1;
+    }
+
+    for (size_t scratch_index = 0;
+         scratch_index < machine_meta->nr_scratch;
+         ++scratch_index) {
+        const char *name = machine_meta->scratch_names[scratch_index];
+        if (!name) {
+            continue;
+        }
+        if (strcmp(name, "queue_index") == 0 ||
+            strcmp(name, "queue_idx") == 0 ||
+            strcmp(name, "qid") == 0 ||
+            strcmp(name, "qidx") == 0) {
+            cursor->scratch[scratch_index] = queue_index;
+            cursor->scratch_valid[scratch_index] = 1;
+        } else if (strcmp(name, "off_wrap") == 0) {
+            cursor->scratch[scratch_index] = notify_data;
+            cursor->scratch_valid[scratch_index] = 1;
+        }
+    }
+}"""
         )
         lines.append("")
         lines.append(
@@ -5294,6 +5390,17 @@ static void dl_record_pending_dma_context(
         machine->matched_count);
     slot->active_count = active_count;
     slot->matched_count = matched_count;
+    if (dl_debug_dma_enabled()) {
+        fprintf(stderr,
+                "pending-dma-context record addr=0x%%llx len=%%u dir=%%u path=%%u next_op=%%u active=%%zu matched=%%zu\\n",
+                (unsigned long long)slot->addr,
+                slot->len,
+                slot->dir,
+                slot->path,
+                slot->next_op,
+                slot->active_count,
+                slot->matched_count);
+    }
 }"""
             % (
                 self.symbol_prefix,
@@ -5307,9 +5414,206 @@ static void dl_record_pending_dma_context(
         )
         lines.append("")
         lines.append(
+            """/* A recorded DMA map context authorizes a later direct probe of
+ * matching vring_unmap* traces. This recovers small follow-up unmaps whose
+ * structural parent frame has already returned by the time the observable
+ * unmap event arrives. */
+static int dl_probe_pending_dma_context_traces(
+    struct %s_machine *machine,
+    const struct dl_pending_dma_context *slot,
+    const struct devilang_event *event) {
+    struct %s_machine *best_probe = NULL;
+    int best_depth = 0x7fffffff;
+    uint32_t best_score = 0;
+    unsigned char seen_machine[%d] = {0};
+    int have_machine = 0;
+
+    if (!machine || !event || event->kind != DEVILANG_EV_DMA) {
+        return 0;
+    }
+    if (slot) {
+        for (size_t i = 0; i < slot->active_count; ++i) {
+            if (slot->active[i].machine < 0 ||
+                (size_t)slot->active[i].machine >= %d) {
+                continue;
+            }
+            seen_machine[slot->active[i].machine] = 1;
+            have_machine = 1;
+        }
+        for (size_t i = 0; i < slot->matched_count; ++i) {
+            if (slot->matched[i].machine < 0 ||
+                (size_t)slot->matched[i].machine >= %d) {
+                continue;
+            }
+            seen_machine[slot->matched[i].machine] = 1;
+            have_machine = 1;
+        }
+    }
+    if (!have_machine) {
+        seen_machine[0] = 1;
+    }
+    for (size_t machine_index = 0; machine_index < %d; ++machine_index) {
+        const struct dl_machine_meta *meta;
+        if (!seen_machine[machine_index]) {
+            continue;
+        }
+        meta = &%s_machines[machine_index];
+        if (dl_debug_dma_enabled()) {
+            fprintf(stderr,
+                    "pending-dma-context probe machine=%%zu addr=0x%%llx len=%%u dir=%%u op=%%u\\n",
+                    machine_index,
+                    (unsigned long long)event->dma_addr,
+                    event->dma_len,
+                    event->dma_dir,
+                    event->dma_opcode);
+        }
+        for (size_t trace_index = 0; trace_index < meta->nr_traces; ++trace_index) {
+            const struct dl_trace_meta *trace_meta = &meta->traces[trace_index];
+            struct %s_machine *probe;
+            struct dl_cursor base;
+            int probe_rc;
+            int matching_dma_step;
+            int candidate_depth = 0x7fffffff;
+            uint32_t candidate_score = 0;
+
+            if (trace_meta->start_step < 0 ||
+                !dl_trace_name_matches_dma_opcode(
+                    trace_meta->name,
+                    event->dma_opcode) ||
+                !dl_trace_probe_supports_event(
+                    meta,
+                    machine_index,
+                    (int)trace_index,
+                    event)) {
+                continue;
+            }
+            probe = calloc(1, sizeof(*probe));
+            if (!probe) {
+                continue;
+            }
+            *probe = *machine;
+            probe->probe_mode = 1;
+            probe->active_count = 0;
+            probe->matched_count = 0;
+            probe->pending_async_count = 0;
+            probe->pending_async_reentry = 1;
+            probe->pending_dma_count = 0;
+            probe->pending_dma_context_count = 0;
+
+            memset(&base, 0, sizeof(base));
+            base.machine = (int)machine_index;
+            base.state = -1;
+            base.trace = (int)trace_index;
+            base.step = trace_meta->start_step;
+            base.probe_mode = 1;
+            base.probe_budget = 24;
+            dl_seed_cursor_from_dma_event(meta, &base, event);
+            matching_dma_step = dl_find_matching_dma_step_in_trace(
+                meta,
+                (int)machine_index,
+                (int)trace_index,
+                &base,
+                event);
+            if (matching_dma_step >= 0) {
+                base.step = matching_dma_step;
+            }
+            dl_push_cursor(probe->active, &probe->active_count, &base);
+            probe_rc = %s_feed_event(probe, event);
+            if (probe_rc == 0 && probe->matched_count > 0) {
+                if (dl_debug_dma_enabled()) {
+                    fprintf(stderr,
+                            "pending-dma-context hit trace=%%s matched=%%zu active=%%zu\\n",
+                            trace_meta->name,
+                            probe->matched_count,
+                            probe->active_count);
+                }
+                for (size_t active_index = 0;
+                     active_index < probe->active_count;
+                     ++active_index) {
+                    if (probe->active[active_index].call_depth < candidate_depth) {
+                        candidate_depth = probe->active[active_index].call_depth;
+                    }
+                    if (probe->active[active_index].score > candidate_score) {
+                        candidate_score = probe->active[active_index].score;
+                    }
+                }
+                if (candidate_depth == 0x7fffffff) {
+                    for (size_t match_index = 0;
+                         match_index < probe->matched_count;
+                         ++match_index) {
+                        if (probe->matched[match_index].call_depth < candidate_depth) {
+                            candidate_depth = probe->matched[match_index].call_depth;
+                        }
+                        if (probe->matched[match_index].score > candidate_score) {
+                            candidate_score = probe->matched[match_index].score;
+                        }
+                    }
+                }
+                if (!best_probe ||
+                    candidate_depth < best_depth ||
+                    (candidate_depth == best_depth &&
+                     candidate_score > best_score)) {
+                    if (best_probe) {
+                        free(best_probe);
+                    }
+                    best_probe = probe;
+                    best_depth = candidate_depth;
+                    best_score = candidate_score;
+                    continue;
+                }
+            }
+            free(probe);
+        }
+    }
+    if (!best_probe) {
+        return 0;
+    }
+    machine->matched_count = best_probe->matched_count;
+    memcpy(machine->matched, best_probe->matched,
+           sizeof(machine->matched[0]) * best_probe->matched_count);
+    if (event->dma_opcode == %d) {
+        if (slot && slot->active_count > 0) {
+            machine->active_count = dl_copy_cursor_array(
+                machine->active,
+                %s_MAX_CURSORS,
+                slot->active,
+                slot->active_count);
+        } else if (machine->active_count == 0 &&
+                   best_probe->active_count > 0) {
+            machine->active_count = best_probe->active_count;
+            memcpy(machine->active, best_probe->active,
+                   sizeof(machine->active[0]) * best_probe->active_count);
+        }
+    } else {
+        machine->active_count = best_probe->active_count;
+        memcpy(machine->active, best_probe->active,
+               sizeof(machine->active[0]) * best_probe->active_count);
+    }
+    free(best_probe);
+    return 1;
+}"""
+            % (
+                self.symbol_prefix,
+                self.symbol_prefix,
+                len(machines),
+                len(machines),
+                len(machines),
+                len(machines),
+                self.symbol_prefix,
+                self.symbol_prefix,
+                self.symbol_prefix,
+                DMA_OP_IDS["unmap"],
+                self.symbol_prefix.upper(),
+            )
+        )
+        lines.append("")
+        lines.append(
             """/* Rehydrate a previously recorded semantic DMA snapshot when
- * the matching follow-up DMA event arrives. The snapshot is consumed once so
- * stale contexts do not accumulate across repeated DMA cycles. */
+ * the matching follow-up DMA event arrives. Return 0 when no snapshot
+ * matches, 1 when the snapshot has been restored and the caller should retry
+ * the event, and 2 when a direct context-guided trace probe has already
+ * consumed the event. The snapshot is consumed once so stale contexts do not
+ * accumulate across repeated DMA cycles. */
 static int dl_resume_pending_dma_context(
     struct %s_machine *machine,
     const struct devilang_event *event) {
@@ -5324,6 +5628,13 @@ static int dl_resume_pending_dma_context(
                 event,
                 event->dma_opcode)) {
             continue;
+        }
+        if (dl_probe_pending_dma_context_traces(machine, slot, event)) {
+            memmove(slot,
+                    slot + 1,
+                    sizeof(*slot) * (machine->pending_dma_context_count - i - 1));
+            machine->pending_dma_context_count--;
+            return 2;
         }
         machine->active_count = dl_copy_cursor_array(
             machine->active,
@@ -5341,12 +5652,19 @@ static int dl_resume_pending_dma_context(
         machine->pending_dma_context_count--;
         return 1;
     }
+    if (event->dma_opcode == %d &&
+        event->dma_len <= 256 &&
+        event->dma_capture_len == event->dma_len &&
+        dl_probe_pending_dma_context_traces(machine, NULL, event)) {
+        return 2;
+    }
     return 0;
 }"""
             % (
                 self.symbol_prefix,
                 self.symbol_prefix.upper(),
                 self.symbol_prefix.upper(),
+                DMA_OP_IDS["unmap"],
             )
         )
         lines.append("")
@@ -5875,6 +6193,16 @@ static int dl_trace_name_matches_dma_opcode(
         )
         lines.append("")
         lines.append(
+            """static int dl_dma_event_is_map(
+    const struct devilang_event *event) {
+    return event &&
+           event->kind == DEVILANG_EV_DMA &&
+           event->dma_opcode == %d;
+}"""
+            % DMA_OP_IDS["map"]
+        )
+        lines.append("")
+        lines.append(
             """/* Async DMA replay only needs traces that can plausibly
  * approach a later vring map/unmap operation. */
 static int dl_trace_async_dma_seed_candidate(
@@ -6073,6 +6401,107 @@ static void dl_compact_pending_async_by_trace_name(
         )
         lines.append("")
         lines.append(
+            """/* When queue notify arrives after a nested DMA-producing helper
+ * has already returned, the live call stack may only retain the outer parent
+ * frame. Recover nearby descendant DMA trace entries from that parent frame so
+ * async DMA replay can still resume under the correct virtqueue_add /
+ * vring_map family. */
+static void dl_append_pending_async_return_callee_seeds(
+    struct %s_machine *machine,
+    const struct dl_cursor *frame) {
+    const struct dl_machine_meta *meta;
+    const struct dl_step *steps;
+    const struct dl_trace_meta *trace_meta;
+    const char *parent_name;
+    size_t parent_name_len;
+    size_t parent_len;
+    size_t nr_steps;
+
+    if (!machine || !frame || frame->machine < 0 || frame->trace < 0 ||
+        frame->step < 0 || frame->call_depth >= 31) {
+        return;
+    }
+    meta = &%s_machines[frame->machine];
+    if ((size_t)frame->trace >= meta->nr_traces) {
+        return;
+    }
+    steps = dl_steps_for_machine((size_t)frame->machine);
+    nr_steps = dl_nr_steps_for_machine((size_t)frame->machine);
+    if (!steps || nr_steps == 0) {
+        return;
+    }
+    trace_meta = &meta->traces[frame->trace];
+    if (trace_meta->start_step < 0 ||
+        (size_t)trace_meta->start_step >= nr_steps) {
+        return;
+    }
+    parent_name = trace_meta->name;
+    if (!parent_name || parent_name[0] == '\\0') {
+        return;
+    }
+    parent_name_len = strlen(parent_name);
+    parent_len = parent_name_len;
+    if (parent_len > 6 &&
+        strcmp(parent_name + parent_len - 6, "_trace") == 0) {
+        parent_len -= 6;
+    }
+    for (size_t step_idx = (size_t)trace_meta->start_step;
+         step_idx < nr_steps;
+         ++step_idx) {
+        const struct dl_step *step = &steps[step_idx];
+        const struct dl_trace_meta *callee_trace;
+        const char *callee_name;
+        struct dl_cursor child;
+
+        if (step->trace != frame->trace) {
+            if ((int)step_idx > trace_meta->start_step) {
+                break;
+            }
+            continue;
+        }
+        if ((int)step_idx > frame->step ||
+            step->kind != DL_STEP_CALL ||
+            step->call_trace < 0 ||
+            (size_t)step->call_trace >= meta->nr_traces) {
+            continue;
+        }
+        callee_trace = &meta->traces[step->call_trace];
+        callee_name = callee_trace->name;
+        if (!callee_name ||
+            !dl_trace_async_dma_seed_candidate(callee_name) ||
+            strncmp(callee_name, parent_name, parent_len) != 0 ||
+            strlen(callee_name) <= parent_len + 1 ||
+            callee_name[parent_len] != '_' ||
+            callee_name[parent_len + 1] != '_') {
+            continue;
+        }
+
+        child = *frame;
+        child.return_steps[child.call_depth] = step->next_a;
+        child.return_traces[child.call_depth] = child.trace;
+        child.return_bindings[child.call_depth] = step->scratch;
+        child.call_depth++;
+        child.trace = step->call_trace;
+        for (size_t param_index = 0;
+             param_index < callee_trace->nr_param_symbols;
+             ++param_index) {
+            int param_symbol = callee_trace->param_symbols[param_index];
+            if (param_symbol >= 0) {
+                child.symbol_valid[param_symbol] = 0;
+            }
+        }
+        dl_bind_call_params(meta, callee_trace, step, &child);
+        child.step = callee_trace->start_step;
+        dl_push_pending_async_seed(machine, &child);
+    }
+}"""
+            % (
+                self.symbol_prefix,
+                self.symbol_prefix,
+            )
+        )
+        lines.append("")
+        lines.append(
             """/* Seed the async frontier with both the current frame and
  * caller-return frames so DMA replay can resume from the nearest useful
  * observable step. */
@@ -6105,6 +6534,7 @@ static void dl_append_pending_async_returns(
             }
             if (frame.step >= 0) {
                 dl_push_pending_async_seed(machine, &frame);
+                dl_append_pending_async_return_callee_seeds(machine, &frame);
             }
         }
         while (frame.call_depth > 0 &&
@@ -6125,6 +6555,7 @@ static void dl_append_pending_async_returns(
             frame.step = frame.return_steps[frame.call_depth];
             if (frame.step >= 0) {
                 dl_push_pending_async_seed(machine, &frame);
+                dl_append_pending_async_return_callee_seeds(machine, &frame);
             }
         }
     }
@@ -6274,6 +6705,8 @@ static int dl_try_pending_async_dma(
     struct %s_machine *machine,
     const struct devilang_event *event) {
     struct %s_machine *best_probe = NULL;
+    struct dl_cursor probe_seeds[%s_MAX_PENDING_ASYNC];
+    size_t probe_seed_count = 0;
     int have_dma_named_seed = 0;
     /* Prefer shallower continuations first, then stronger local evidence.
      * followup_support breaks ties in favor of probes that can also absorb the
@@ -6299,12 +6732,33 @@ static int dl_try_pending_async_dma(
     if (event->dma_opcode == %d) {
         dl_compact_pending_async_by_trace_name(machine);
     }
-    if (machine->pending_async_count > %s_PENDING_ASYNC_BEAM_WIDTH) {
-        for (size_t i = 0; i < machine->pending_async_count; ++i) {
-            for (size_t j = i + 1; j < machine->pending_async_count; ++j) {
+    for (size_t i = 0; i < machine->pending_async_count; ++i) {
+        if (event->dma_queue <= 2 &&
+            !dl_trace_matches_runtime_queue_hint(
+                &machine->pending_async[i],
+                (int)event->dma_queue)) {
+            continue;
+        }
+        if (have_dma_named_seed &&
+            !dl_trace_name_matches_dma_opcode(
+                dl_debug_trace_name(&machine->pending_async[i]),
+                event->dma_opcode)) {
+            continue;
+        }
+        if (probe_seed_count >= %s_MAX_PENDING_ASYNC) {
+            break;
+        }
+        probe_seeds[probe_seed_count++] = machine->pending_async[i];
+    }
+    if (probe_seed_count == 0) {
+        return 0;
+    }
+    if (probe_seed_count > %s_PENDING_ASYNC_BEAM_WIDTH) {
+        for (size_t i = 0; i < probe_seed_count; ++i) {
+            for (size_t j = i + 1; j < probe_seed_count; ++j) {
                 struct dl_cursor tmp;
-                const struct dl_cursor *lhs = &machine->pending_async[i];
-                const struct dl_cursor *rhs = &machine->pending_async[j];
+                const struct dl_cursor *lhs = &probe_seeds[i];
+                const struct dl_cursor *rhs = &probe_seeds[j];
                 int swap = 0;
 
                 if (rhs->call_depth < lhs->call_depth) {
@@ -6320,39 +6774,42 @@ static int dl_try_pending_async_dma(
                 if (!swap) {
                     continue;
                 }
-                tmp = machine->pending_async[i];
-                machine->pending_async[i] = machine->pending_async[j];
-                machine->pending_async[j] = tmp;
+                tmp = probe_seeds[i];
+                probe_seeds[i] = probe_seeds[j];
+                probe_seeds[j] = tmp;
             }
         }
-        machine->pending_async_count = %s_PENDING_ASYNC_BEAM_WIDTH;
+        probe_seed_count = %s_PENDING_ASYNC_BEAM_WIDTH;
     }
-    for (size_t i = 0; i < machine->pending_async_count; ++i) {
+    for (size_t i = 0; i < probe_seed_count; ++i) {
         struct %s_machine *probe = calloc(1, sizeof(*probe));
         struct dl_cursor base;
         int probe_rc;
         if (!probe) {
             continue;
         }
-        if (event->dma_queue <= 2 &&
-            !dl_trace_matches_runtime_queue_hint(
-                &machine->pending_async[i],
-                (int)event->dma_queue)) {
-            free(probe);
-            continue;
-        }
-        if (have_dma_named_seed &&
-            !dl_trace_name_matches_dma_opcode(
-                dl_debug_trace_name(&machine->pending_async[i]),
-                event->dma_opcode)) {
-            free(probe);
-            continue;
-        }
         *probe = *machine;
         probe->active_count = 0;
         probe->matched_count = 0;
         probe->pending_async_count = 0;
-        base = machine->pending_async[i];
+        base = probe_seeds[i];
+        {
+            const struct dl_machine_meta *base_meta =
+                &%s_machines[base.machine];
+            dl_seed_cursor_from_dma_event(base_meta, &base, event);
+            if (base.trace >= 0) {
+                int matching_dma_step =
+                    dl_find_matching_dma_step_in_trace(
+                        base_meta,
+                        base.machine,
+                        base.trace,
+                        &base,
+                        event);
+                if (matching_dma_step >= 0) {
+                    base.step = matching_dma_step;
+                }
+            }
+        }
         base.probe_mode = 1;
         if (base.probe_budget < 48) {
             base.probe_budget = 48;
@@ -6469,9 +6926,12 @@ static int dl_try_pending_async_dma(
             % (
                 self.symbol_prefix,
                 self.symbol_prefix,
+                self.symbol_prefix.upper(),
                 DMA_OP_IDS["map"],
                 self.symbol_prefix.upper(),
                 self.symbol_prefix.upper(),
+                self.symbol_prefix.upper(),
+                self.symbol_prefix,
                 self.symbol_prefix,
                 self.symbol_prefix,
                 self.symbol_prefix,
@@ -7075,6 +7535,29 @@ static int dl_try_pending_async_dma(
         )
         lines.append("")
         lines.append(
+            """static int dl_trace_allows_deep_booting_queue_setup_walk(
+    const char *name) {
+    if (!name) {
+        return 0;
+    }
+    return strcmp(name, "virtnet_probe_trace") == 0 ||
+           strcmp(name, "virtnet_alloc_queues_trace") == 0 ||
+           strcmp(name, "init_vqs_trace") == 0 ||
+           strcmp(name, "virtnet_find_vqs_trace") == 0 ||
+           strcmp(name, "virtio_find_vqs_trace") == 0 ||
+           strcmp(name, "vm_find_vqs_trace") == 0 ||
+           strcmp(name, "vm_setup_vq_trace") == 0 ||
+           strcmp(name, "virtio_cread8_trace") == 0 ||
+           strcmp(name, "virtio_cread16_trace") == 0 ||
+           strcmp(name, "virtio_cread32_trace") == 0 ||
+           strcmp(name, "virtio_cread_bytes_trace") == 0 ||
+           strcmp(name, "__virtio_cread_many_trace") == 0 ||
+           strcmp(name, "vm_get_trace") == 0 ||
+           strcmp(name, "vm_generation_trace") == 0;
+}"""
+        )
+        lines.append("")
+        lines.append(
             """static int dl_closure(
     const struct dl_machine_meta *machine_meta,
     int machine_idx,
@@ -7082,7 +7565,8 @@ static int dl_try_pending_async_dma(
     struct dl_cursor *io,
     size_t *count,
     int target_event_kind,
-    uint64_t target_event_signature) {
+    uint64_t target_event_signature,
+    int target_is_queue_notify) {
     size_t index = 0;
     struct dl_cursor *seen = calloc(%s_MAX_CURSORS, sizeof(*seen));
     size_t seen_count = 0;
@@ -7112,9 +7596,9 @@ static int dl_try_pending_async_dma(
             relax_seen = 1;
         }
         for (size_t seen_index = 0; seen_index < seen_count; ++seen_index) {
-            if (dl_cursor_equal(&seen[seen_index], &cursor) ||
+            if (dl_cursor_same_frame(&seen[seen_index], &cursor) ||
                 (relax_seen &&
-                 dl_cursor_same_frame(&seen[seen_index], &cursor))) {
+                 dl_cursor_equal(&seen[seen_index], &cursor))) {
                 already_seen = 1;
                 break;
             }
@@ -7125,6 +7609,15 @@ static int dl_try_pending_async_dma(
             continue;
         }
         dl_push_cursor(seen, &seen_count, &cursor);
+        if (seen_count >=
+            (dl_trace_allows_deep_booting_queue_setup_walk(
+                 cursor.trace >= 0
+                     ? machine_meta->traces[cursor.trace].name
+                     : NULL)
+                 ? 1024
+                 : 128)) {
+            break;
+        }
         if (cursor.probe_mode &&
             cursor.score == 0 &&
             cursor.probe_budget == 0) {
@@ -7431,8 +7924,7 @@ static int dl_try_pending_async_dma(
                 }
                 if (a_matches && b_matches &&
                     !cursor.probe_mode &&
-                    target_event_signature ==
-                        %s_queue_notify_write_signature) {
+                    target_is_queue_notify) {
                     const int a_distance = dl_step_distance_to_event_signature(
                         machine_meta,
                         (size_t)machine_idx,
@@ -7740,7 +8232,6 @@ static int dl_try_pending_async_dma(
 }"""
             % (
                 self.symbol_prefix.upper(),
-                self.symbol_prefix,
                 self.symbol_prefix,
                 self.symbol_prefix,
                 self.symbol_prefix,
@@ -8115,9 +8606,9 @@ static size_t dl_count_active_followup_dma_support(
         )
         lines.append("")
         lines.append(
-            """/* After a successful DMA map recovery, keep only runtime traces
- * that can also accept the matching follow-up DMA event. This narrows the
- * restored active set before later unmap/complete traffic arrives. */
+            """/* After a successful DMA map recovery, keep only traces that
+ * can also accept the matching follow-up DMA event. This narrows the restored
+ * active set before later unmap/complete traffic arrives. */
 static void dl_filter_active_to_followup_dma_support(
     const struct dl_machine_meta *machine_meta,
     size_t machine_index,
@@ -8130,7 +8621,6 @@ static void dl_filter_active_to_followup_dma_support(
     int keep_any = 0;
 
     if (!machine_meta || !machine || !event ||
-        machine_index != 1 ||
         event->kind != DEVILANG_EV_DMA ||
         event->dma_opcode != %d) {
         return;
@@ -8263,7 +8753,8 @@ static void dl_filter_active_to_followup_dma_support(
     }
     local[0] = *cursor;
     closure_ok = dl_closure(machine_meta, machine_idx, steps, local, &local_count,
-                            target_event_kind, target_event_signature);
+                            target_event_kind, target_event_signature,
+                            event && dl_is_queue_notify_event(event));
     if (!closure_ok) {
         dl_push_cursor(out, out_count, cursor);
         free(local);
@@ -8412,7 +8903,7 @@ static void dl_filter_active_to_followup_dma_support(
         dl_activate_initial(meta, 0, &base, machine->active, &machine->active_count);
     }
     (void)dl_closure(meta, 0, %s_machine_0_steps, machine->active,
-                     &machine->active_count, 0, 0);
+                     &machine->active_count, 0, 0, 0);
 }"""
             % (self.symbol_prefix, self.symbol_prefix, self.symbol_prefix, self.symbol_prefix)
         )
@@ -8487,6 +8978,121 @@ static void dl_filter_active_to_followup_dma_support(
             % (
                 self.symbol_prefix,
                 len(machines),
+                self.symbol_prefix,
+            )
+        )
+        lines.append("")
+        lines.append(
+            """static void dl_activate_booting_event_seed(
+    struct %s_machine *machine,
+    const struct devilang_event *event) {
+    const struct dl_machine_meta *booting_meta;
+
+    if (!machine) {
+        return;
+    }
+
+    memset(machine, 0, sizeof(*machine));
+    machine->booting_resume.trace = -1;
+    machine->booting_resume.step = -1;
+
+    if (!event) {
+        %s_init(machine);
+        return;
+    }
+
+    booting_meta = &%s_machines[0];
+    for (size_t trace_index = 0;
+         trace_index < booting_meta->nr_traces;
+         ++trace_index) {
+        const struct dl_trace_meta *trace_meta =
+            &booting_meta->traces[trace_index];
+        struct dl_cursor base;
+
+        if (trace_meta->start_step < 0 ||
+            !dl_trace_probe_supports_event(
+                booting_meta,
+                0,
+                (int)trace_index,
+                event)) {
+            continue;
+        }
+
+        memset(&base, 0, sizeof(base));
+        base.machine = 0;
+        base.state = -1;
+        base.trace = (int)trace_index;
+        base.step = trace_meta->start_step;
+
+        if (event->kind == DEVILANG_EV_MMIO_READ ||
+            event->kind == DEVILANG_EV_MMIO_WRITE) {
+            int matching_mmio_step =
+                dl_find_matching_mmio_step_in_trace(
+                    0,
+                    (int)trace_index,
+                    &base,
+                    event);
+
+            if (matching_mmio_step >= 0) {
+                base.step = matching_mmio_step;
+            }
+        }
+
+        dl_push_cursor(machine->active,
+                       &machine->active_count,
+                       &base);
+    }
+
+    if (machine->active_count == 0) {
+        %s_init(machine);
+        return;
+    }
+
+    dl_compact_cursor_set_relaxed(machine->active,
+                                  &machine->active_count);
+}"""
+            % (
+                self.symbol_prefix,
+                self.symbol_prefix,
+                self.symbol_prefix,
+                self.symbol_prefix,
+            )
+        )
+        lines.append("")
+        lines.append(
+            """static int dl_feed_observed_status_zero_write(
+    struct %s_machine *machine,
+    const struct devilang_event *event) {
+    struct %s_machine *probe;
+    int rc;
+
+    if (!machine || !event) {
+        return -1;
+    }
+
+    probe = calloc(1, sizeof(*probe));
+    if (!probe) {
+        return -1;
+    }
+
+    dl_activate_booting_event_seed(probe, event);
+    probe->probe_mode = 1;
+
+    rc = %s_feed_event(probe, event);
+    if (rc != 0 ||
+        (probe->active_count == 0 && probe->matched_count == 0)) {
+        free(probe);
+        return -1;
+    }
+
+    probe->probe_mode = 0;
+    *machine = *probe;
+    free(probe);
+    return 0;
+}"""
+            % (
+                self.symbol_prefix,
+                self.symbol_prefix,
                 self.symbol_prefix,
             )
         )
@@ -8616,6 +9222,7 @@ static void dl_filter_active_to_followup_dma_support(
     int queue_notify_queue_hint = -1;
     int has_known_signature = 0;
     int queue_notify_signature_seen = 0;
+    int queue_notify_preserve_async = 0;
     size_t next_count = 0;
     if (!next || !saved_active) {
         free(next);
@@ -8663,6 +9270,13 @@ static void dl_filter_active_to_followup_dma_support(
     }
     if (queue_notify_signature_seen) {
         queue_notify_queue_hint = dl_queue_notify_queue_hint(event);
+        if (event->kind == DEVILANG_EV_MMIO_WRITE &&
+            saved_active_count == 1 &&
+            machine->pending_async_count > saved_active_count &&
+            dl_trace_name_is_notify_impl(
+                dl_debug_trace_name(&saved_active[0]))) {
+            queue_notify_preserve_async = 1;
+        }
     }
     dl_record_queue_desc_mmio_hint(machine, event);
     dl_normalize_active_set(machine, event);
@@ -8671,6 +9285,10 @@ static void dl_filter_active_to_followup_dma_support(
         struct dl_cursor cursor = machine->active[i];
         dl_sync_cursor_trace_from_step(dl_machine_meta_for_index(cursor.machine), &cursor);
         dl_bind_event_base(&cursor, event);
+        dl_bind_queue_notify_event_values(
+            dl_machine_meta_for_index(cursor.machine),
+            &cursor,
+            event);
         if (cursor.step < 0) {
             continue;
         }
@@ -8798,12 +9416,178 @@ static void dl_filter_active_to_followup_dma_support(
                     event,
                     cursor.score);
             }
-        }
+    }
     }
     if (next_count == 0) {
-        if (event->kind == DEVILANG_EV_DMA &&
-            dl_resume_pending_dma_context(machine, event)) {
-            DL_FEED_EVENT_RETURN(%s_feed_event(machine, event));
+        if (!machine->probe_mode &&
+            dl_is_status_zero_write_event(event) &&
+            dl_feed_observed_status_zero_write(machine, event) == 0) {
+            DL_FEED_EVENT_RETURN(0);
+        }
+        if (!machine->probe_mode &&
+            !machine->booting_complete &&
+            queue_notify_signature_seen &&
+            event->kind == DEVILANG_EV_MMIO_WRITE) {
+            const struct dl_machine_meta *boot_meta = &%s_machines[0];
+
+            for (size_t trace_index = 0;
+                 trace_index < boot_meta->nr_traces;
+                 ++trace_index) {
+                const struct dl_trace_meta *trace_meta =
+                    &boot_meta->traces[trace_index];
+                struct %s_machine *probe;
+                struct dl_cursor base;
+                int probe_rc;
+
+                if (trace_meta->start_step < 0 ||
+                    !dl_trace_name_is_notify_impl(trace_meta->name) ||
+                    !dl_trace_probe_supports_event(
+                        boot_meta,
+                        0,
+                        (int)trace_index,
+                        event)) {
+                    continue;
+                }
+
+                probe = calloc(1, sizeof(*probe));
+                if (!probe) {
+                    continue;
+                }
+                probe->probe_mode = 1;
+
+                memset(&base, 0, sizeof(base));
+                base.machine = 0;
+                base.state = -1;
+                base.trace = (int)trace_index;
+                base.step = trace_meta->start_step;
+                base.probe_mode = 1;
+                base.probe_budget = 24;
+                {
+                    int matching_mmio_step =
+                        dl_find_matching_mmio_step_in_trace(
+                            0,
+                            (int)trace_index,
+                            &base,
+                            event);
+                    if (matching_mmio_step >= 0) {
+                        base.step = matching_mmio_step;
+                    }
+                }
+                dl_push_cursor(probe->active,
+                               &probe->active_count,
+                               &base);
+
+                probe_rc = %s_feed_event(probe, event);
+                if (probe_rc == 0 &&
+                    probe->matched_count > 0) {
+                    for (size_t match_index = 0;
+                         match_index < probe->matched_count;
+                         ++match_index) {
+                        dl_push_cursor(next,
+                                       &next_count,
+                                       &probe->matched[match_index]);
+                    }
+                }
+                free(probe);
+            }
+            if (next_count > 0) {
+                dl_compact_cursor_set_relaxed(next, &next_count);
+                goto dl_feed_event_have_match;
+            }
+        }
+        if (!machine->probe_mode &&
+            machine->booting_complete &&
+            queue_notify_signature_seen &&
+            event->kind == DEVILANG_EV_MMIO_WRITE) {
+            const struct dl_machine_meta *runtime_meta = &%s_machines[1];
+
+            for (size_t trace_index = 0;
+                 trace_index < runtime_meta->nr_traces;
+                 ++trace_index) {
+                const struct dl_trace_meta *trace_meta =
+                    &runtime_meta->traces[trace_index];
+                struct %s_machine *probe;
+                struct dl_cursor base;
+                int probe_rc;
+
+                if (trace_meta->start_step < 0 ||
+                    !dl_trace_name_is_notify_impl(trace_meta->name) ||
+                    !dl_trace_probe_supports_event(
+                        runtime_meta,
+                        1,
+                        (int)trace_index,
+                        event)) {
+                    continue;
+                }
+
+                probe = calloc(1, sizeof(*probe));
+                if (!probe) {
+                    continue;
+                }
+                probe->booting_complete = 1;
+                probe->runtime_started = 1;
+                probe->probe_mode = 1;
+
+                memset(&base, 0, sizeof(base));
+                base.machine = 1;
+                base.state = -1;
+                base.trace = (int)trace_index;
+                base.step = trace_meta->start_step;
+                base.probe_mode = 1;
+                base.probe_budget = 24;
+                {
+                    int matching_mmio_step =
+                        dl_find_matching_mmio_step_in_trace(
+                            1,
+                            (int)trace_index,
+                            &base,
+                            event);
+                    if (matching_mmio_step >= 0) {
+                        base.step = matching_mmio_step;
+                    }
+                }
+                dl_push_cursor(probe->active,
+                               &probe->active_count,
+                               &base);
+
+                probe_rc = %s_feed_event(probe, event);
+                if (probe_rc == 0 &&
+                    probe->matched_count > 0 &&
+                    dl_probe_has_runtime_match(probe)) {
+                    for (size_t match_index = 0;
+                         match_index < probe->matched_count;
+                         ++match_index) {
+                        dl_push_cursor(next,
+                                       &next_count,
+                                       &probe->matched[match_index]);
+                    }
+                }
+                free(probe);
+            }
+            if (next_count > 0) {
+                dl_compact_cursor_set_relaxed(next, &next_count);
+                goto dl_feed_event_have_match;
+            }
+        }
+        if (event->kind == DEVILANG_EV_DMA) {
+            int pending_dma_context_rc =
+                dl_resume_pending_dma_context(machine, event);
+            if (pending_dma_context_rc == 2) {
+                if (event->dma_opcode == %d &&
+                    saved_active_count > 0) {
+                    machine->active_count = dl_copy_cursor_array(
+                        machine->active,
+                        %s_MAX_CURSORS,
+                        saved_active,
+                        saved_active_count);
+                    dl_compact_cursor_set_relaxed(machine->active,
+                                                  &machine->active_count);
+                }
+                DL_FEED_EVENT_RETURN(0);
+            }
+            if (pending_dma_context_rc == 1) {
+                DL_FEED_EVENT_RETURN(%s_feed_event(machine, event));
+            }
         }
         if (!machine->probe_mode &&
             event->kind == DEVILANG_EV_DMA &&
@@ -8867,6 +9651,10 @@ static void dl_filter_active_to_followup_dma_support(
                 if (probe_rc == 0 && probe->matched_count > 0) {
                     *machine = *probe;
                     machine->probe_mode = 0;
+                    if (dl_dma_event_is_map(event) &&
+                        machine->matched_count > 0) {
+                        dl_record_pending_dma_context(machine, event);
+                    }
                     free(probe);
                     DL_FEED_EVENT_RETURN(0);
                 }
@@ -8964,6 +9752,10 @@ static void dl_filter_active_to_followup_dma_support(
                     machine->active_count = probe->active_count;
                     memcpy(machine->active, probe->active,
                            sizeof(machine->active[0]) * probe->active_count);
+                    if (dl_dma_event_is_map(event) &&
+                        machine->matched_count > 0) {
+                        dl_record_pending_dma_context(machine, event);
+                    }
                     free(probe);
                     DL_FEED_EVENT_RETURN(0);
                 }
@@ -8975,6 +9767,24 @@ static void dl_filter_active_to_followup_dma_support(
                 machine->matched_count = 0;
                 DL_FEED_EVENT_RETURN(1);
             }
+            {
+                struct dl_cursor *runtime_probe_active =
+                    calloc(%s_MAX_CURSORS, sizeof(*runtime_probe_active));
+                struct dl_cursor *runtime_probe_matched =
+                    calloc(%s_MAX_CURSORS, sizeof(*runtime_probe_matched));
+                size_t runtime_probe_active_count = 0;
+                size_t runtime_probe_matched_count = 0;
+                int runtime_probe_hit = 0;
+
+                if (!runtime_probe_active || !runtime_probe_matched) {
+                    free(runtime_probe_active);
+                    free(runtime_probe_matched);
+                    machine->matched_count = 0;
+                    if (dl_is_driver_ok_status_event(event)) {
+                        dl_activate_runtime_idle(machine);
+                    }
+                    DL_FEED_EVENT_RETURN(0);
+                }
             for (size_t active_index = 0;
                  active_index < machine->active_count;
                  ++active_index) {
@@ -9044,17 +9854,132 @@ static void dl_filter_active_to_followup_dma_support(
                 if (probe_rc == 0 &&
                     probe->matched_count > 0 &&
                     dl_probe_has_runtime_match(probe)) {
+                    runtime_probe_hit = 1;
                     machine->runtime_started = 1;
-                    machine->matched_count = probe->matched_count;
-                    memcpy(machine->matched, probe->matched,
-                           sizeof(machine->matched[0]) * probe->matched_count);
-                    machine->active_count = probe->active_count;
-                    memcpy(machine->active, probe->active,
-                           sizeof(machine->active[0]) * probe->active_count);
+                    for (size_t match_index = 0;
+                         match_index < probe->matched_count;
+                         ++match_index) {
+                        dl_push_cursor(runtime_probe_matched,
+                                       &runtime_probe_matched_count,
+                                       &probe->matched[match_index]);
+                    }
+                    for (size_t probe_active_index = 0;
+                         probe_active_index < probe->active_count;
+                         ++probe_active_index) {
+                        dl_push_cursor(runtime_probe_active,
+                                       &runtime_probe_active_count,
+                                       &probe->active[probe_active_index]);
+                    }
                     free(probe);
-                    DL_FEED_EVENT_RETURN(0);
+                    continue;
                 }
                 free(probe);
+            }
+                if (!runtime_probe_hit &&
+                    queue_notify_signature_seen &&
+                    event->kind == DEVILANG_EV_MMIO_WRITE) {
+                    const struct dl_machine_meta *runtime_meta =
+                        &%s_machines[1];
+
+                    for (size_t trace_index = 0;
+                         trace_index < runtime_meta->nr_traces;
+                         ++trace_index) {
+                        const struct dl_trace_meta *trace_meta =
+                            &runtime_meta->traces[trace_index];
+                        struct %s_machine *probe;
+                        struct dl_cursor base;
+                        int probe_rc;
+
+                        if (trace_meta->start_step < 0 ||
+                            !dl_trace_name_is_notify_impl(
+                                trace_meta->name) ||
+                            !dl_trace_probe_supports_event(
+                                runtime_meta,
+                                1,
+                                (int)trace_index,
+                                event)) {
+                            continue;
+                        }
+
+                        probe = calloc(1, sizeof(*probe));
+                        if (!probe) {
+                            continue;
+                        }
+                        probe->booting_complete = 1;
+                        probe->runtime_started = 1;
+                        probe->probe_mode = 1;
+
+                        memset(&base, 0, sizeof(base));
+                        base.machine = 1;
+                        base.state = -1;
+                        base.trace = (int)trace_index;
+                        base.step = trace_meta->start_step;
+                        base.probe_mode = 1;
+                        base.probe_budget = 24;
+                        {
+                            int matching_mmio_step =
+                                dl_find_matching_mmio_step_in_trace(
+                                    1,
+                                    (int)trace_index,
+                                    &base,
+                                    event);
+                            if (matching_mmio_step >= 0) {
+                                base.step = matching_mmio_step;
+                            }
+                        }
+                        dl_push_cursor(probe->active,
+                                       &probe->active_count,
+                                       &base);
+
+                        probe_rc = %s_feed_event(probe, event);
+                        if (probe_rc == 0 &&
+                            probe->matched_count > 0 &&
+                            dl_probe_has_runtime_match(probe)) {
+                            runtime_probe_hit = 1;
+                            machine->runtime_started = 1;
+                            for (size_t match_index = 0;
+                                 match_index < probe->matched_count;
+                                 ++match_index) {
+                                dl_push_cursor(runtime_probe_matched,
+                                               &runtime_probe_matched_count,
+                                               &probe->matched[match_index]);
+                            }
+                            for (size_t probe_active_index = 0;
+                                 probe_active_index < probe->active_count;
+                                 ++probe_active_index) {
+                                dl_push_cursor(runtime_probe_active,
+                                               &runtime_probe_active_count,
+                                               &probe->active[probe_active_index]);
+                            }
+                        }
+                        free(probe);
+                    }
+                }
+                if (runtime_probe_hit) {
+                    dl_compact_cursor_set_relaxed(runtime_probe_matched,
+                                                  &runtime_probe_matched_count);
+                    dl_compact_cursor_set_relaxed(runtime_probe_active,
+                                                  &runtime_probe_active_count);
+                    machine->matched_count = runtime_probe_matched_count;
+                    memcpy(machine->matched,
+                           runtime_probe_matched,
+                           sizeof(machine->matched[0]) *
+                               runtime_probe_matched_count);
+                    machine->active_count = runtime_probe_active_count;
+                    memcpy(machine->active,
+                           runtime_probe_active,
+                           sizeof(machine->active[0]) *
+                               runtime_probe_active_count);
+                    free(runtime_probe_active);
+                    free(runtime_probe_matched);
+                    if (dl_dma_event_is_map(event) &&
+                        machine->matched_count > 0) {
+                        dl_record_pending_dma_context(machine, event);
+                    }
+                    DL_FEED_EVENT_RETURN(0);
+                }
+                free(runtime_probe_active);
+                free(runtime_probe_matched);
             }
             machine->matched_count = 0;
             if (dl_is_driver_ok_status_event(event)) {
@@ -9247,6 +10172,10 @@ static void dl_filter_active_to_followup_dma_support(
                     machine->active_count = probe->active_count;
                     memcpy(machine->active, probe->active,
                            sizeof(machine->active[0]) * probe->active_count);
+                    if (dl_dma_event_is_map(event) &&
+                        machine->matched_count > 0) {
+                        dl_record_pending_dma_context(machine, event);
+                    }
                     free(probe);
                     DL_FEED_EVENT_RETURN(0);
                 }
@@ -9283,6 +10212,7 @@ static void dl_filter_active_to_followup_dma_support(
         machine->active_count = 0;
         DL_FEED_EVENT_RETURN(1);
     }
+dl_feed_event_have_match:
     if (event->kind == DEVILANG_EV_DMA && saved_active_count > 0) {
         for (size_t saved_index = 0; saved_index < saved_active_count; ++saved_index) {
             const struct dl_cursor *saved = &saved_active[saved_index];
@@ -9326,11 +10256,21 @@ static void dl_filter_active_to_followup_dma_support(
         dl_compact_cursor_set_by_trace_step(machine->matched,
                                             &machine->matched_count);
     }
+    if (event->kind == DEVILANG_EV_DMA &&
+        event->dma_opcode == %d &&
+        machine->matched_count > 0) {
+        dl_record_pending_dma_context(machine, event);
+    }
     if (event->kind == DEVILANG_EV_DMA) {
         machine->pending_async_count = 0;
     } else if (queue_notify_signature_seen &&
                event->kind == DEVILANG_EV_MMIO_WRITE &&
                saved_active_count > 0) {
+        if (queue_notify_preserve_async) {
+            dl_compact_cursor_set_relaxed(next, &next_count);
+            dl_compact_cursor_set_relaxed(machine->matched,
+                                          &machine->matched_count);
+        } else {
         /* Queue notify is the boundary where synchronous control flow turns
          * into later DMA activity. Capture and normalize that frontier here
          * so subsequent DMA replay starts from a bounded async seed set. */
@@ -9392,6 +10332,7 @@ static void dl_filter_active_to_followup_dma_support(
                             next[debug_index].score);
                 }
             }
+        }
         }
     }
     int matched_booting_state = -1;
@@ -9558,11 +10499,24 @@ static void dl_filter_active_to_followup_dma_support(
                 self.symbol_prefix,
                 self.symbol_prefix,
                 self.symbol_prefix,
+                self.symbol_prefix,
+                self.symbol_prefix,
+                self.symbol_prefix,
+                DMA_OP_IDS["unmap"],
+                self.symbol_prefix.upper(),
+                self.symbol_prefix,
+                self.symbol_prefix,
+                self.symbol_prefix,
                 len(machines),
                 DMA_DIR_IDS["from_device"],
                 self.symbol_prefix,
                 self.symbol_prefix,
                 self.symbol_prefix,
+                self.symbol_prefix.upper(),
+                self.symbol_prefix.upper(),
+                self.symbol_prefix,
+                self.symbol_prefix,
+                self.symbol_prefix,
                 self.symbol_prefix,
                 self.symbol_prefix,
                 self.symbol_prefix,
@@ -9576,6 +10530,7 @@ static void dl_filter_active_to_followup_dma_support(
                 self.symbol_prefix,
                 self.symbol_prefix,
                 self.symbol_prefix,
+                DMA_OP_IDS["map"],
                 self.symbol_prefix,
                 self.symbol_prefix.upper(),
                 self.symbol_prefix,

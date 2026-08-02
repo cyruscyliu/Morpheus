@@ -489,4 +489,3 @@ bool parseLocationToken(StringRef token, std::string &path, unsigned &line) {
   line = parsed;
   return true;
 }
-

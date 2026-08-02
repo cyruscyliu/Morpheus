@@ -666,6 +666,31 @@
       block.lines = std::move(lines);
       trace.blocks.push_back(std::move(block));
     };
+    auto pushGenericHeaderHeuristicBlocks =
+        [&](const std::string &entryLabel) {
+          DmaPayloadInfo controlPayload;
+          controlPayload.kind = "sg_buffer";
+          controlPayload.type = "control_buf";
+          DmaPayloadInfo framePayload;
+          forceEthernetFramePayload(framePayload);
+
+          std::vector<std::string> entryLines;
+          appendGenericHeaderHeuristicEvents(entryLines, op, dir, path, addr,
+                                             len, nextLabel);
+          pushBlock(entryLabel, std::move(entryLines));
+
+          std::vector<std::string> controlLines;
+          appendSyntheticDmaEvent(controlLines, op, dir, path, addr, len,
+                                  controlPayload);
+          controlLines.push_back("goto @bb_vring_map_one_sg_done");
+          pushBlock(nextLabel + "_control", std::move(controlLines));
+
+          std::vector<std::string> frameLines;
+          appendSyntheticDmaEvent(frameLines, op, dir, path, addr, len,
+                                  framePayload);
+          frameLines.push_back("goto @bb_vring_map_one_sg_done");
+          pushBlock(nextLabel + "_frame", std::move(frameLines));
+        };
     if (groups.empty()) {
       if (!patternBranches.empty()) {
         for (size_t i = 0; i < patternBranches.size(); ++i) {
@@ -694,28 +719,39 @@
           return;
         }
       }
-      std::vector<std::string> lines;
       if (preferCharFallback && payloadIsGeneric(fallbackPayload)) {
         DmaPayloadInfo ethernetPayload;
         forceEthernetFramePayload(ethernetPayload);
+        std::vector<std::string> lines;
         appendSyntheticDmaEvent(lines, op, dir, path, addr, len,
                                 ethernetPayload);
         lines.push_back("goto @bb_vring_map_one_sg_done");
+        pushBlock(patternBranches.empty() ? dispatchLabel
+                                          : (nextLabel + "_fallback"),
+                  std::move(lines));
       } else if (payloadIsGeneric(fallbackPayload)) {
         if (allowGenericHeaderHeuristic) {
-          appendGenericHeaderHeuristicEvents(lines, op, dir, path, addr, len,
-                                            nextLabel);
+          pushGenericHeaderHeuristicBlocks(
+              patternBranches.empty() ? dispatchLabel
+                                      : (nextLabel + "_fallback"));
         } else {
+          std::vector<std::string> lines;
           appendSyntheticDmaEvent(lines, op, dir, path, addr, len,
                                   fallbackPayload);
           lines.push_back("goto @bb_vring_map_one_sg_done");
+          pushBlock(patternBranches.empty() ? dispatchLabel
+                                            : (nextLabel + "_fallback"),
+                    std::move(lines));
         }
       } else {
+        std::vector<std::string> lines;
         appendSyntheticDmaEvent(lines, op, dir, path, addr, len,
                                 fallbackPayload);
         lines.push_back("goto @bb_vring_map_one_sg_done");
+        pushBlock(patternBranches.empty() ? dispatchLabel
+                                          : (nextLabel + "_fallback"),
+                  std::move(lines));
       }
-      pushBlock(dispatchLabel, std::move(lines));
       return;
     }
     std::vector<std::pair<uint64_t, std::vector<DmaPayloadInfo>>> groupedByLen;
@@ -783,8 +819,8 @@
       fallbackLines.push_back("goto @bb_vring_map_one_sg_done");
     } else if (payloadIsGeneric(fallbackPayload)) {
       if (allowGenericHeaderHeuristic) {
-        appendGenericHeaderHeuristicEvents(fallbackLines, op, dir, path, addr,
-                                           len, nextLabel);
+        pushGenericHeaderHeuristicBlocks(nextLabel + "_fallback");
+        return;
       } else {
         appendSyntheticDmaEvent(fallbackLines, op, dir, path, addr, len,
                                 fallbackPayload);
@@ -1323,8 +1359,8 @@
       std::vector<PayloadPatternBranch> fromPatternBranches = patternBranches;
       DmaPayloadInfo zeroFromPayload;
       zeroFromPayload.kind = "zero_buffer";
-      zeroFromPayload.type = "zero_buffer";
-      enrichPayloadInfo(zeroFromPayload);
+      zeroFromPayload.type.clear();
+      zeroFromPayload.fields.clear();
       fromPatternBranches.insert(fromPatternBranches.begin(), {{
           {
               "neqj len ult 256, 0, @MISS",
@@ -1768,4 +1804,3 @@
     }
     buildSyntheticDmaTraceForCall(callee, call, syntheticBaseName);
   }
-

@@ -1,7 +1,7 @@
 {
   "name": "devilang",
   "runtime": null,
-  "cli-contract": "build,exec,compile-state,replay-trace,audit-state,test-audit-state,inspect,logs",
+  "cli-contract": "build,exec,compile-state,replay-trace,audit-state,test-audit-state,test-static-checks,test-phase-models,inspect,logs",
   "config": {
     "fields": {
       "mode": { "aliases": ["mode"] },
@@ -331,6 +331,23 @@
           "result": {
             "successSummary": "validated devilang static semantic checks",
             "errorSummary": "devilang static semantic checks failed"
+          }
+        },
+        "test-phase-models": {
+          "requiredFlags": [],
+          "scalarFlags": ["build-dir", "llcg-build-dir"],
+          "repeatableFlags": [],
+          "pathFlags": {
+            "build-dir": "tools/devilang/build",
+            "llcg-build-dir": "tools/llcg/build"
+          },
+          "script": {
+            "path": "scripts/test-phase-models.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "validated devilang booting/runtime phase-model generation",
+            "errorSummary": "devilang phase-model generation test failed"
           }
         },
         "inspect": {

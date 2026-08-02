@@ -415,17 +415,35 @@
   }
 
   std::string renderModel() {
+    auto traceExists = [&](StringRef traceName) {
+      const std::string token = sanitizeToken(traceName);
+      return std::find_if(model_.traces.begin(), model_.traces.end(),
+                          [&](const TraceModel &trace) {
+                            return sanitizeToken(trace.name) == token;
+                          }) != model_.traces.end();
+    };
+
     std::vector<std::string> entryTraceNames;
     for (const std::string &entryName : request_.entryFunctions) {
       if (Function *entry = module_.getFunction(entryName)) {
         const std::string traceName = traceNameFor(*entry);
-        if (std::find_if(model_.traces.begin(), model_.traces.end(),
-                         [&](const TraceModel &trace) {
-                           return sanitizeToken(trace.name) ==
-                                  sanitizeToken(traceName);
-                         }) != model_.traces.end()) {
+        if (traceExists(traceName)) {
           entryTraceNames.push_back(sanitizeToken(traceName));
         }
+      }
+    }
+    std::vector<std::string> chainedTraceNames = entryTraceNames;
+    if (request_.chainedEntries && !bootingTransitionTraceNames_.empty()) {
+      chainedTraceNames.clear();
+      for (const std::string &traceName : bootingTransitionTraceNames_) {
+        const std::string token = sanitizeToken(traceName);
+        if (traceExists(token) &&
+            !llvm::is_contained(chainedTraceNames, token)) {
+          chainedTraceNames.push_back(token);
+        }
+      }
+      if (chainedTraceNames.empty()) {
+        chainedTraceNames = entryTraceNames;
       }
     }
 
@@ -517,14 +535,14 @@
       out << "    }\n\n";
     }
     if (request_.chainedEntries) {
-      for (size_t index = 0; index < entryTraceNames.size(); ++index) {
+      for (size_t index = 0; index < chainedTraceNames.size(); ++index) {
         out << "    state state_" << index << "\n";
       }
-      out << "    state state_" << entryTraceNames.size() << "\n";
+      out << "    state state_" << chainedTraceNames.size() << "\n";
       out << "\n";
-      for (size_t index = 0; index < entryTraceNames.size(); ++index) {
+      for (size_t index = 0; index < chainedTraceNames.size(); ++index) {
         out << "    transition state_" << index << " -> state_"
-            << (index + 1) << " on " << entryTraceNames[index] << "\n";
+            << (index + 1) << " on " << chainedTraceNames[index] << "\n";
       }
       out << "\n";
     } else {

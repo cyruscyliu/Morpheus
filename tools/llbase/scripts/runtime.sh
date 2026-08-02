@@ -129,6 +129,7 @@ llbase_exec_in_container() {
   shift
 
   local image="${LLBASE_RUNTIME_IMAGE:?}"
+  local container_cpus="${LLBASE_CONTAINER_CPUS:-}"
   local runner_text
   runner_text="$(llbase_docker_runner)"
   local -a runner=()
@@ -155,6 +156,14 @@ llbase_exec_in_container() {
     -e "HOME=${HOME:-/tmp}"
     -e "USER=${USER:-$(id -un)}"
   )
+
+  if [ -n "${container_cpus}" ]; then
+    [[ "${container_cpus}" =~ ^([0-9]+([.][0-9]+)?|[.][0-9]+)$ ]] || {
+      echo "invalid LLBASE_CONTAINER_CPUS: ${container_cpus}" >&2
+      return 1
+    }
+    docker_cmd+=(--cpus "${container_cpus}")
+  fi
 
   for candidate in "${mount_inputs[@]}"; do
     mount_root="$(llbase_mount_path "${candidate}")"

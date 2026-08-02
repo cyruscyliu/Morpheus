@@ -131,6 +131,14 @@ workflows:
       - id: devilang_static_checks
         tool: devilang
         command: test-static-checks
+      - id: devilang_phase_models
+        tool: devilang
+        command: test-phase-models
+        args:
+          - --build-dir
+          - "{{steps.devilang_build.artifacts.build-dir.location}}"
+          - --llcg-build-dir
+          - "{{steps.llcg_build.artifacts.build-dir.location}}"
   libafl-build-ci:
     category: build
     steps:

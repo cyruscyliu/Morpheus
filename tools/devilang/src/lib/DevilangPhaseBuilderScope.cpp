@@ -63,7 +63,6 @@
         if (!llvm::is_contained(bootingGraphBridgeFunctions_, caller)) {
           bootingGraphBridgeFunctions_.push_back(caller);
         }
-        collectPhaseScopeFunction(caller);
       }
     }
     if (const Function *virtioDevProbe = module_.getFunction("virtio_dev_probe")) {
@@ -82,9 +81,126 @@
         if (!llvm::is_contained(bootingGraphBridgeFunctions_, virtioDevProbe)) {
           bootingGraphBridgeFunctions_.push_back(virtioDevProbe);
         }
-        collectPhaseScopeFunction(virtioDevProbe);
       }
     }
+  }
+
+  std::vector<const Function *> phaseFunctionSuccessors(const Function &function) {
+    std::vector<const Function *> successors;
+    auto addSuccessor = [&](const Function *callee) {
+      if (!callee || callee->isDeclaration() || callee->isIntrinsic() ||
+          isPrunedHelper(callee->getName()) ||
+          !functionInPhaseScope(callee) ||
+          llvm::is_contained(successors, callee)) {
+        return;
+      }
+      successors.push_back(callee);
+    };
+
+    for (const BasicBlock &block : function) {
+      for (const Instruction &instruction : block) {
+        const auto *call = llvm::dyn_cast<CallBase>(&instruction);
+        if (!call) {
+          continue;
+        }
+        if (const Function *callee = llvm::dyn_cast<Function>(
+                call->getCalledOperand()->stripPointerCasts())) {
+          addSuccessor(callee);
+          continue;
+        }
+        if (const auto resolved = resolveIndirectCallees(*call)) {
+          for (const std::string &calleeName : *resolved) {
+            addSuccessor(module_.getFunction(calleeName));
+          }
+          continue;
+        }
+        for (const std::string &calleeName : resolveIndirectCalleesByHint(*call)) {
+          addSuccessor(module_.getFunction(calleeName));
+        }
+      }
+    }
+
+    for (const std::string &calleeName : functionEdgeCallees(function.getName())) {
+      addSuccessor(module_.getFunction(calleeName));
+    }
+    return successors;
+  }
+
+  std::vector<std::string> collectBootingTransitionTraceNames() {
+    if (!request_.chainedEntries || request_.entryFunctions.empty()) {
+      return {};
+    }
+
+    auto appendTraceName = [](std::vector<std::string> &traceNames,
+                              const Function *function) {
+      if (!function) {
+        return;
+      }
+      const std::string traceName = traceNameFor(*function);
+      if (!llvm::is_contained(traceNames, traceName)) {
+        traceNames.push_back(traceName);
+      }
+    };
+
+    auto findPath = [&](const Function *from,
+                        const Function *to) -> std::vector<const Function *> {
+      if (!from || !to) {
+        return {};
+      }
+      if (from == to) {
+        return {from};
+      }
+
+      std::vector<const Function *> queue = {from};
+      std::map<const Function *, const Function *> parents;
+      parents[from] = nullptr;
+      for (size_t head = 0; head < queue.size(); ++head) {
+        const Function *current = queue[head];
+        for (const Function *successor : phaseFunctionSuccessors(*current)) {
+          if (!successor || parents.find(successor) != parents.end()) {
+            continue;
+          }
+          parents[successor] = current;
+          if (successor == to) {
+            std::vector<const Function *> path;
+            for (const Function *cursor = to; cursor != nullptr;
+                 cursor = parents[cursor]) {
+              path.push_back(cursor);
+            }
+            std::reverse(path.begin(), path.end());
+            return path;
+          }
+          queue.push_back(successor);
+        }
+      }
+      return {};
+    };
+
+    std::vector<std::string> traceNames;
+    const Function *previous = nullptr;
+    for (const std::string &entryName : request_.entryFunctions) {
+      const Function *entry = module_.getFunction(entryName);
+      if (!entry || entry->isDeclaration() || entry->isIntrinsic() ||
+          isPrunedHelper(entry->getName()) ||
+          !functionInPhaseScope(entry)) {
+        continue;
+      }
+      if (!previous) {
+        appendTraceName(traceNames, entry);
+        previous = entry;
+        continue;
+      }
+      const std::vector<const Function *> path = findPath(previous, entry);
+      if (path.empty()) {
+        appendTraceName(traceNames, entry);
+      } else {
+        for (size_t index = 1; index < path.size(); ++index) {
+          appendTraceName(traceNames, path[index]);
+        }
+      }
+      previous = entry;
+    }
+    return traceNames;
   }
 
   bool functionInPhaseScope(const Function *function) const {
@@ -230,6 +346,19 @@
       }
     }
     return nullptr;
+  }
+
+  std::optional<std::string> activeTraceBaseNameForFunction(
+      const Function *function) const {
+    if (!function) {
+      return std::nullopt;
+    }
+    for (auto it = traceBuildStack_.rbegin(); it != traceBuildStack_.rend(); ++it) {
+      if (it->function == function) {
+        return it->baseName;
+      }
+    }
+    return std::nullopt;
   }
 
   std::string specializedBaseNameForCall(const Function &callee,
@@ -782,9 +911,14 @@
 
     TraceModel trace;
     trace.name = traceNameForBase(baseName);
-    trace.entry =
-        std::find(request_.entryFunctions.begin(), request_.entryFunctions.end(),
-                  function.getName().str()) != request_.entryFunctions.end();
+    trace.entry = std::find(request_.entryFunctions.begin(),
+                            request_.entryFunctions.end(),
+                            function.getName().str()) !=
+                  request_.entryFunctions.end();
+    if (!trace.entry && request_.chainedEntries &&
+        llvm::is_contained(bootingTransitionTraceNames_, trace.name)) {
+      trace.entry = true;
+    }
 
     if (buildSyntheticDmaTrace(function, trace)) {
       model_.traces.push_back(std::move(trace));
@@ -1293,10 +1427,16 @@
       return;
     }
 
-    const bool specialize = functionNeedsDmaContext(callee);
-    const std::string callBaseName =
-        specialize ? specializedBaseNameForCall(callee, call)
-                   : baseNameForFunction(callee);
+    const std::optional<std::string> activeTraceBaseName =
+        activeTraceBaseNameForFunction(&callee);
+    const bool recursiveTraceReuse = activeTraceBaseName.has_value();
+    const bool specialize =
+        !recursiveTraceReuse && functionNeedsDmaContext(callee);
+    const std::string callBaseName = recursiveTraceReuse
+                                         ? *activeTraceBaseName
+                                         : (specialize
+                                                ? specializedBaseNameForCall(callee, call)
+                                                : baseNameForFunction(callee));
 
     if (!call.getType()->isVoidTy() && !call.use_empty()) {
       const std::string resultName =
@@ -1308,7 +1448,7 @@
       lines.push_back("call " + callBaseName + renderCallArgs(call));
     }
 
-    if (!callee.isDeclaration()) {
+    if (!callee.isDeclaration() && !recursiveTraceReuse) {
       const bool savedTraceEntry = currentTraceEntry_;
       auto savedBlockRelevance = blockRelevanceCache_;
       auto savedBlockExit = blockExitCache_;
@@ -1653,4 +1793,3 @@
     }
     return resolved;
   }
-

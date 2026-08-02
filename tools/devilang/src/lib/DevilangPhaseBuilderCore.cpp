@@ -24,6 +24,7 @@ public:
 
   std::string build() {
     phaseScopeFunctions_.clear();
+    bootingTransitionTraceNames_.clear();
     for (const std::string &entryName : request_.entryFunctions) {
       if (Function *entry = module_.getFunction(entryName)) {
         collectPhaseScopeFunction(entry);
@@ -32,13 +33,13 @@ public:
     collectBootingGraphProbeBridges();
     if (request_.chainedEntries) {
       if (Function *virtioDevProbe = module_.getFunction("virtio_dev_probe")) {
-        collectPhaseScopeFunction(virtioDevProbe);
         if (!llvm::is_contained(bootingGraphBridgeFunctions_,
                                 static_cast<const Function *>(virtioDevProbe))) {
           bootingGraphBridgeFunctions_.push_back(virtioDevProbe);
         }
       }
     }
+    bootingTransitionTraceNames_ = collectBootingTransitionTraceNames();
     for (const Function *function : phaseScopeFunctions_) {
       if (function && !function->isDeclaration()) {
         collectDebugNames(*const_cast<Function *>(function));
@@ -103,6 +104,7 @@ private:
       fieldRangeHints_;
   std::set<const Value *> renderingValues_;
   bool currentTraceEntry_ = false;
+  std::vector<std::string> bootingTransitionTraceNames_;
   std::set<std::string> emittedSyntheticTraces_;
   std::vector<TraceBuildFrame> traceBuildStack_;
   std::set<const Function *> phaseScopeFunctions_;
@@ -771,4 +773,3 @@ private:
     }
     return std::nullopt;
   }
-

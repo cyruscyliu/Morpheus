@@ -105,14 +105,6 @@ pnpm run
 
 Developer UI helpers:
 
-Start the documentation site locally:
-
-```bash
-pnpm dev:docs
-```
-
-Then open `http://127.0.0.1:4173`.
-
 Start the local runs viewer:
 
 ```bash

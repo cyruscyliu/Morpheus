@@ -6,6 +6,7 @@ const path = require("node:path");
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
 const allowedRootEntries = new Set([
   ".cache",
+  ".env",
   ".env.example",
   ".git",
   ".github",

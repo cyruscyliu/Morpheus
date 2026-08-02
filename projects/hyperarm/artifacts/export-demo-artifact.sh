@@ -79,6 +79,9 @@ case "${link_mode}" in
   *) die "--link-mode must be one of: copy, hardlink, symlink" ;;
 esac
 
+[ -f "${config}" ] || die "missing config: ${config}"
+workspace_root="$("${repo_root}/projects/hyperarm/scripts/workspace-root.sh" --config "${config}")"
+
 if [ -z "${output_dir}" ]; then
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
   output_dir="projects/hyperarm/artifacts/out/hyperarm-demo-${stamp}"
@@ -90,7 +93,7 @@ fi
 
 if [ -z "${workflow_run_id}" ]; then
   workflow_run_id="$(
-    find projects/hyperarm/workspace/runs -maxdepth 2 -name workflow.json -print0 \
+    find "${workspace_root}/runs" -maxdepth 2 -name workflow.json -print0 \
       | xargs -0 jq -r \
         'select(.workflow=="'"${workflow_name}"'" and .status=="success") | [.createdAt,.id] | @tsv' 2>/dev/null \
       | sort \
@@ -100,7 +103,7 @@ if [ -z "${workflow_run_id}" ]; then
 fi
 [ -n "${workflow_run_id}" ] || die "no successful ${workflow_name} run found"
 
-run_root="projects/hyperarm/workspace/runs/${workflow_run_id}"
+run_root="${workspace_root}/runs/${workflow_run_id}"
 workflow_file="${run_root}/workflow.json"
 libafl_exec_step="${run_root}/steps/libafl_exec/step.json"
 libafl_build_step="${run_root}/steps/libafl_build/step.json"
@@ -167,7 +170,7 @@ if [ ! -f "${seed_input}" ]; then
   for candidate in \
     "${run_root}/${seed_input}" \
     "${repo_root}/${seed_input}" \
-    "${repo_root}/projects/hyperarm/workspace/${seed_input}"; do
+    "${workspace_root}/${seed_input}"; do
     if [ -f "${candidate}" ]; then
       seed_input="${candidate}"
       break

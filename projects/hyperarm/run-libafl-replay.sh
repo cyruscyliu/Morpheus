@@ -83,6 +83,8 @@ done
 
 [ "${#inputs[@]}" -gt 0 ] || die "provide at least one --input PATH"
 [ -f "${config}" ] || die "missing config: ${config}"
+
+workspace_root="$("${repo_root}/projects/hyperarm/scripts/workspace-root.sh" --config "${config}")"
 [[ "${l2_run_window_ms}" =~ ^[0-9]+$ ]] || die "l2-run-window-ms must be an integer"
 [ "${l2_run_window_ms}" -ge 1000 ] || die "l2-run-window-ms must be at least 1000"
 [ "${l2_run_window_ms}" -le 900000 ] || die "l2-run-window-ms must be at most 900000"
@@ -142,7 +144,7 @@ cmd=(
   workflow run
   --tool libafl
   --source "${source_dir}"
-  --harness-script "projects/hyperarm/workspace/tools/libafl/scripts/qemu_nesting/exec.sh"
+  --harness-script "${workspace_root}/tools/libafl/scripts/qemu_nesting/exec.sh"
   --harness-arg "--nvirsh-state"
   --harness-arg "${nvirsh_state}"
   --harness-arg "--l2-run-window-ms"

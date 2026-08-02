@@ -5,6 +5,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 cd "${repo_root}"
 
+config="projects/hyperarm/morpheus.yaml"
 seconds=""
 cache_root=""
 run_dir=""
@@ -17,6 +18,7 @@ Usage:
   projects/hyperarm/run-libafl-fuzzing-raw.sh --minutes N
   projects/hyperarm/run-libafl-fuzzing-raw.sh --hours N
     [--l2-run-window-ms N]
+    [--config PATH]
 
 Runs the extracted LibAFL qemu_nesting command directly, without Morpheus.
 It reuses the existing HyperArm cache artifacts for LibAFL, QEMU firmware, and
@@ -51,6 +53,10 @@ while [ "$#" -gt 0 ]; do
       shift
       cache_root="${1:-}"
       ;;
+    --config)
+      shift
+      config="${1:-}"
+      ;;
     --run-dir)
       shift
       run_dir="${1:-}"
@@ -73,6 +79,7 @@ done
 [ -n "${seconds}" ] || die "choose one of --seconds, --minutes, or --hours"
 [[ "${seconds}" =~ ^[0-9]+$ ]] || die "timeout must be an integer"
 [ "${seconds}" -gt 0 ] || die "timeout must be greater than zero"
+[ -f "${config}" ] || die "missing config: ${config}"
 if [ -n "${l2_run_window_ms}" ]; then
   [[ "${l2_run_window_ms}" =~ ^[0-9]+$ ]] || die "l2-run-window-ms must be an integer"
   [ "${l2_run_window_ms}" -ge 1000 ] || die "l2-run-window-ms must be at least 1000"
@@ -83,8 +90,9 @@ if [ -z "${cache_root}" ]; then
   cache_root="${repo_root}/.cache/hyperarm"
 fi
 
+workspace_root="$("${repo_root}/projects/hyperarm/scripts/workspace-root.sh" --config "${config}")"
 if [ -z "${run_dir}" ]; then
-  run_dir="projects/hyperarm/workspace/raw-libafl-runs/$(date -u +%Y%m%dT%H%M%SZ)"
+  run_dir="${workspace_root}/raw-libafl-runs/$(date -u +%Y%m%dT%H%M%SZ)"
 fi
 mkdir -p "${run_dir}"
 

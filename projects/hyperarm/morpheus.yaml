@@ -1,5 +1,5 @@
 workspace:
-  root: ./workspace
+  root: ${MORPHEUS_WORKSPACES_ROOT}/hyperarm
 cache:
   root: ../../.cache
   namespace: hyperarm
@@ -63,10 +63,10 @@ tools:
     build-version: b32557c8ae7e2300657de06382f2761f831c1963
     git-url: https://github.com/AFLplusplus/LibAFL.git
     patch-dir: tools/libafl/patches/overlay
-    patch-script: ./workspace/tools/libafl/scripts/qemu_nesting/patch.sh
-    build-script: ./workspace/tools/libafl/scripts/qemu_nesting/build.sh
-    inspect-script: ./workspace/tools/libafl/scripts/qemu_nesting/inspect.sh
-    harness-script: ./workspace/tools/libafl/scripts/qemu_nesting/exec.sh
+    patch-script: ${MORPHEUS_WORKSPACES_ROOT}/hyperarm/tools/libafl/scripts/qemu_nesting/patch.sh
+    build-script: ${MORPHEUS_WORKSPACES_ROOT}/hyperarm/tools/libafl/scripts/qemu_nesting/build.sh
+    inspect-script: ${MORPHEUS_WORKSPACES_ROOT}/hyperarm/tools/libafl/scripts/qemu_nesting/inspect.sh
+    harness-script: ${MORPHEUS_WORKSPACES_ROOT}/hyperarm/tools/libafl/scripts/qemu_nesting/exec.sh
     artifacts:
       - source-dir
       - crate-dir
@@ -413,9 +413,9 @@ workflows:
           - --points-to-json
           - "{{steps.llcg_run.artifacts.kallgraph_points_to_json.location}}"
           - --booting-entry-list
-          - projects/hyperarm/workspace/tools/devilang/booting-entries.txt
+          - "{{ workspace.root }}/tools/devilang/booting-entries.txt"
           - --runtime-entry-list
-          - projects/hyperarm/workspace/tools/devilang/runtime-entries.txt
+          - "{{ workspace.root }}/tools/devilang/runtime-entries.txt"
           - --booting-machine-name
           - virtio_net_mmio_booting
           - --runtime-machine-name
@@ -1044,7 +1044,7 @@ workflows:
           - --build-dir-key
           - qemu-8.2.7-aarch64-softmmu-trace
           - --source
-          - projects/hyperarm/workspace/tools/qemu-trace/src/qemu-8.2.7
+          - "{{ workspace.root }}/tools/qemu-trace/src/qemu-8.2.7"
           - --build-version
           - "8.2.7"
       - id: qemu_patch_trace
@@ -1054,7 +1054,7 @@ workflows:
           - --source
           - "{{steps.qemu_fetch_trace.details.source}}"
           - --patch-dir
-          - projects/hyperarm/workspace/tools/qemu/patches/virtio-mmio-trace
+          - "{{ workspace.root }}/tools/qemu/patches/virtio-mmio-trace"
       - id: devilang_compile_state_trace
         tool: devilang
         command: compile-state
@@ -1218,9 +1218,9 @@ workflows:
           - --points-to-json
           - "{{steps.llcg_run.artifacts.kallgraph_points_to_json.location}}"
           - --booting-entry-list
-          - projects/hyperarm/workspace/tools/devilang/booting-entries.txt
+          - "{{ workspace.root }}/tools/devilang/booting-entries.txt"
           - --runtime-entry-list
-          - projects/hyperarm/workspace/tools/devilang/runtime-entries.txt
+          - "{{ workspace.root }}/tools/devilang/runtime-entries.txt"
           - --booting-machine-name
           - virtio_net_mmio_booting
           - --runtime-machine-name
@@ -1247,7 +1247,7 @@ workflows:
           - --build-dir-key
           - qemu-8.2.7-aarch64-softmmu-trace
           - --source
-          - projects/hyperarm/workspace/tools/qemu-trace/src/qemu-8.2.7
+          - "{{ workspace.root }}/tools/qemu-trace/src/qemu-8.2.7"
           - --build-version
           - "8.2.7"
       - id: qemu_patch_trace
@@ -1257,7 +1257,7 @@ workflows:
           - --source
           - "{{steps.qemu_fetch_trace.details.source}}"
           - --patch-dir
-          - projects/hyperarm/workspace/tools/qemu/patches/virtio-mmio-trace
+          - "{{ workspace.root }}/tools/qemu/patches/virtio-mmio-trace"
       - id: devilang_compile_state_trace
         tool: devilang
         command: compile-state
@@ -1718,7 +1718,7 @@ workflows:
           - --scope-list
           - "{{steps.driver_callgraph_scope.artifacts.source_list.location}}"
           - --groups-extension
-          - "projects/hyperarm/workspace/tools/driver-callgraph/scripts/groups.txt"
+          - "{{ workspace.root }}/tools/driver-callgraph/scripts/groups.txt"
       - id: driver_callgraph_llcg
         tool: llcg
         command: exec
@@ -1746,9 +1746,9 @@ workflows:
           - --groups-file
           - "{{steps.driver_callgraph_llcg.artifacts.groups_file.location}}"
           - --groups-overlay-file
-          - "projects/hyperarm/workspace/tools/driver-callgraph/scripts/groups.txt"
+          - "{{ workspace.root }}/tools/driver-callgraph/scripts/groups.txt"
           - --prefix-file
-          - "projects/hyperarm/workspace/tools/driver-callgraph/scripts/prefix.json"
+          - "{{ workspace.root }}/tools/driver-callgraph/scripts/prefix.json"
           - --title
           - "HyperArm Driver Init / Deinit Base Graph"
   driver-callgraph-runtime-build:
@@ -1798,7 +1798,7 @@ workflows:
           - --scope-list
           - "{{steps.driver_callgraph_runtime_interface.artifacts.source_list.location}}"
           - --groups-extension
-          - "projects/hyperarm/workspace/tools/driver-callgraph/scripts/runtime-groups.txt"
+          - "{{ workspace.root }}/tools/driver-callgraph/scripts/runtime-groups.txt"
       - id: driver_callgraph_runtime_llcg
         tool: llcg
         command: exec
@@ -1814,7 +1814,7 @@ workflows:
           - --filter
           - "{{steps.driver_callgraph_runtime_groups.artifacts.mutator_manifest.location}}"
           - --extra-edges-file
-          - "projects/hyperarm/workspace/tools/llcg/runtime-extra-edges-6.18.16.txt"
+          - "{{ workspace.root }}/tools/llcg/runtime-extra-edges-6.18.16.txt"
           - --scope-name
           - driver-callgraph-runtime-virtio-6.18.16
       - id: driver_callgraph_runtime_build
@@ -1828,7 +1828,7 @@ workflows:
           - --groups-file
           - "{{steps.driver_callgraph_runtime_llcg.artifacts.groups_file.location}}"
           - --groups-overlay-file
-          - "projects/hyperarm/workspace/tools/driver-callgraph/scripts/runtime-groups.txt"
+          - "{{ workspace.root }}/tools/driver-callgraph/scripts/runtime-groups.txt"
           - --title
           - "HyperArm Driver Runtime Graph"
   driver-callgraph-runtime-build-virtnet-subgraph:
@@ -1878,7 +1878,7 @@ workflows:
           - --scope-list
           - "{{steps.driver_callgraph_runtime_interface.artifacts.source_list.location}}"
           - --groups-extension
-          - "projects/hyperarm/workspace/tools/driver-callgraph/scripts/runtime-groups-virtnet-subgraph.txt"
+          - "{{ workspace.root }}/tools/driver-callgraph/scripts/runtime-groups-virtnet-subgraph.txt"
       - id: driver_callgraph_runtime_llcg
         tool: llcg
         command: exec
@@ -1894,7 +1894,7 @@ workflows:
           - --filter
           - "{{steps.driver_callgraph_runtime_groups.artifacts.mutator_manifest.location}}"
           - --extra-edges-file
-          - "projects/hyperarm/workspace/tools/llcg/runtime-extra-edges-6.18.16.txt"
+          - "{{ workspace.root }}/tools/llcg/runtime-extra-edges-6.18.16.txt"
           - --scope-name
           - driver-callgraph-runtime-virtnet-subgraph-6.18.16
       - id: driver_callgraph_runtime_build
@@ -1908,6 +1908,6 @@ workflows:
           - --groups-file
           - "{{steps.driver_callgraph_runtime_llcg.artifacts.groups_file.location}}"
           - --groups-overlay-file
-          - "projects/hyperarm/workspace/tools/driver-callgraph/scripts/runtime-groups-virtnet-subgraph.txt"
+          - "{{ workspace.root }}/tools/driver-callgraph/scripts/runtime-groups-virtnet-subgraph.txt"
           - --title
           - "HyperArm Driver Runtime Virtnet Subgraph"

@@ -36,11 +36,14 @@ function writeConfig(dir, content) {
 }
 
 function isolatedEnv(extra = {}) {
-  return {
+  const env = {
     ...process.env,
     MORPHEUS_WORK_ROOT: fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-test-work-")),
     ...extra
   };
+  delete env.MORPHEUS_CONFIG;
+  delete env.MORPHEUS_WORKSPACES_ROOT;
+  return env;
 }
 
 function pidState(pid) {
@@ -388,6 +391,43 @@ test("config check can use explicit --config outside the config directory", () =
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.status, "success");
   fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("config show loads .env from cwd and expands MORPHEUS_WORKSPACES_ROOT", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-env-"));
+  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-data-root-"));
+  fs.writeFileSync(
+    path.join(projectRoot, ".env"),
+    [
+      `MORPHEUS_WORKSPACES_ROOT=${dataRoot}`,
+      ""
+    ].join("\n")
+  );
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ${MORPHEUS_WORKSPACES_ROOT}/hyperarm",
+      ""
+    ].join("\n")
+  );
+
+  const env = { ...process.env };
+  delete env.MORPHEUS_WORK_ROOT;
+  delete env.RESEARCH_RUNTIME_WORK_ROOT;
+  delete env.MORPHEUS_WORKSPACES_ROOT;
+
+  const result = run(["config", "show", "--json"], {
+    cwd: projectRoot,
+    env
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.workspace_root, path.join(dataRoot, "hyperarm"));
+  assert.equal(payload.details.run_root, path.join(dataRoot, "hyperarm", "runs"));
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+  fs.rmSync(dataRoot, { recursive: true, force: true });
 });
 
 test("workflow imports resolve root morpheus.yaml relative to the selected config file", () => {

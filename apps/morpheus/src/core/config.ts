@@ -32,6 +32,71 @@ function explicitConfigPath(inputPath) {
   return resolved;
 }
 
+function parseEnvLine(line) {
+  const trimmed = String(line || "").trim();
+  if (!trimmed || trimmed.startsWith("#")) {
+    return null;
+  }
+  const normalized = trimmed.startsWith("export ") ? trimmed.slice(7).trim() : trimmed;
+  const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(normalized);
+  if (!match) {
+    throw new Error(`invalid .env entry: ${line}`);
+  }
+
+  let value = match[2];
+  if (value.startsWith("\"") && value.endsWith("\"")) {
+    value = value.slice(1, -1)
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "\r")
+      .replace(/\\t/g, "\t")
+      .replace(/\\\\/g, "\\")
+      .replace(/\\"/g, "\"");
+  } else if (value.startsWith("'") && value.endsWith("'")) {
+    value = value.slice(1, -1);
+  }
+
+  return {
+    key: match[1],
+    value
+  };
+}
+
+function loadEnvFile(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return false;
+  }
+  const content = fs.readFileSync(filePath, "utf8");
+  for (const line of content.split(/\r?\n/)) {
+    const entry = parseEnvLine(line);
+    if (!entry) {
+      continue;
+    }
+    if (!Object.prototype.hasOwnProperty.call(process.env, entry.key)) {
+      process.env[entry.key] = entry.value;
+    }
+  }
+  return true;
+}
+
+function loadEnvForPath(filePath) {
+  if (!filePath) {
+    return null;
+  }
+  let current = path.dirname(path.resolve(filePath));
+  while (true) {
+    const candidate = path.join(current, ".env");
+    if (loadEnvFile(candidate)) {
+      return candidate;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+  return null;
+}
+
 function configuredConfigPath() {
   return explicitConfigPath(process.env.MORPHEUS_CONFIG || null);
 }
@@ -132,6 +197,7 @@ function loadConfig(startDir, options = {}) {
       value: {}
     };
   }
+  loadEnvForPath(filePath);
   const parsed = yaml.parse(fs.readFileSync(filePath, "utf8")) || {};
   return {
     path: filePath,
@@ -164,11 +230,23 @@ function expandUserPath(inputPath) {
   return value;
 }
 
+function expandEnvironmentVariables(inputPath) {
+  if (!inputPath) {
+    return inputPath;
+  }
+  return String(inputPath).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name) => {
+    if (!Object.prototype.hasOwnProperty.call(process.env, name)) {
+      throw new Error(`environment variable not set: ${name}`);
+    }
+    return String(process.env[name]);
+  });
+}
+
 function resolveLocalPath(baseDir, inputPath) {
   if (!inputPath) {
     return inputPath;
   }
-  const value = expandUserPath(inputPath);
+  const value = expandUserPath(expandEnvironmentVariables(inputPath));
   if (path.isAbsolute(value)) {
     return value;
   }
@@ -528,7 +606,10 @@ module.exports = {
   explicitConfigPath,
   findConfigPath,
   loadConfig,
+  loadEnvFile,
+  loadEnvForPath,
   RESERVED_MANAGED_TOOL_CONFIG_KEYS,
+  expandEnvironmentVariables,
   resolveLocalPath,
   resolveCachePolicy
 };

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // @ts-nocheck
 
+const fs = require("fs");
 const path = require("path");
 const { handleConfigCommand } = require("./commands/config-check");
 const { handleBuildCommand } = require("./commands/build");
@@ -17,6 +18,81 @@ const { handleWorkflowCommand } = require("./commands/workflow");
 const { handleWorkspaceCommand } = require("./commands/workspace");
 const { findConfigPath } = require("./core/config");
 const { writeStdout, writeStdoutLine, writeStderrLine } = require("./core/io");
+
+function parseEnvLine(line) {
+  const trimmed = String(line || "").trim();
+  if (!trimmed || trimmed.startsWith("#")) {
+    return null;
+  }
+
+  const normalized = trimmed.startsWith("export ") ? trimmed.slice(7).trim() : trimmed;
+  const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(normalized);
+  if (!match) {
+    throw new Error(`invalid .env entry: ${line}`);
+  }
+
+  let value = match[2];
+  if (value.startsWith("\"") && value.endsWith("\"")) {
+    value = value.slice(1, -1)
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "\r")
+      .replace(/\\t/g, "\t")
+      .replace(/\\\\/g, "\\")
+      .replace(/\\"/g, "\"");
+  } else if (value.startsWith("'") && value.endsWith("'")) {
+    value = value.slice(1, -1);
+  }
+
+  return {
+    key: match[1],
+    value
+  };
+}
+
+function loadEnvFile(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return false;
+  }
+
+  const content = fs.readFileSync(filePath, "utf8");
+  for (const line of content.split(/\r?\n/)) {
+    const entry = parseEnvLine(line);
+    if (!entry) {
+      continue;
+    }
+    if (!Object.prototype.hasOwnProperty.call(process.env, entry.key)) {
+      process.env[entry.key] = entry.value;
+    }
+  }
+  return true;
+}
+
+function loadProjectEnv(explicitConfigPath) {
+  const candidates = [process.cwd()];
+  if (explicitConfigPath) {
+    candidates.push(path.dirname(path.resolve(explicitConfigPath)));
+  }
+
+  const seen = new Set();
+  for (const startDir of candidates) {
+    let current = path.resolve(startDir);
+    while (true) {
+      if (!seen.has(current)) {
+        const envPath = path.join(current, ".env");
+        if (loadEnvFile(envPath)) {
+          return envPath;
+        }
+        seen.add(current);
+      }
+      const parent = path.dirname(current);
+      if (parent === current) {
+        break;
+      }
+      current = parent;
+    }
+  }
+  return null;
+}
 
 function parseArgs(argv) {
   const positionals = [];
@@ -120,6 +196,7 @@ async function main() {
   const rawArgv = process.argv.slice(2);
   const { positionals, flags } = parseArgs(rawArgv);
   const explicitConfig = typeof flags.config === "string" ? String(flags.config) : null;
+  loadProjectEnv(explicitConfig);
   const wantsHelp = Boolean(flags.help) || positionals[0] === "help" || rawArgv.includes("--help");
   const command = positionals[0];
   const subcommand = positionals[1];

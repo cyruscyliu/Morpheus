@@ -197,8 +197,6 @@ This is the documented Morpheus CLI surface that users interact with directly.
 Top-level Morpheus commands:
 
 ```text
-morpheus workspace create
-morpheus workspace show
 morpheus config check
 morpheus workflow run
 morpheus workflow resume
@@ -259,58 +257,6 @@ Top-level error JSON shape:
   "error": {
     "code": "string",
     "message": "string"
-  }
-}
-```
-
-### `workspace create`
-
-Input:
-
-- Optional `--json`
-- Optional workspace root from `morpheus.yaml`
-
-Returned JSON:
-
-```json
-{
-  "command": "workspace create",
-  "status": "success",
-  "exit_code": 0,
-  "summary": "created managed workspace layout",
-  "details": {
-    "root": "<workspace>",
-    "directories": {
-      "tools": "<workspace>/tools",
-      "runs": "<workspace>/runs",
-      "tmp": "<workspace>/tmp"
-    }
-  }
-}
-```
-
-### `workspace show`
-
-Input:
-
-- Optional `--json`
-- Optional workspace root from `morpheus.yaml`
-
-Returned JSON:
-
-```json
-{
-  "command": "workspace show",
-  "status": "success",
-  "exit_code": 0,
-  "summary": "workspace metadata",
-  "details": {
-    "root": "<workspace>",
-    "directories": {
-      "tools": { "path": "<workspace>/tools", "exists": true },
-      "runs": { "path": "<workspace>/runs", "exists": true },
-      "tmp": { "path": "<workspace>/tmp", "exists": true }
-    }
   }
 }
 ```

@@ -716,7 +716,7 @@ test("workflow list prints a text table for configured workflows", () => {
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.equal(result.stderr, "");
-  assert.match(result.stdout, /^name\tcategory\tsteps\tconfig/m);
+  assert.match(result.stdout, /^name\tcategory\tstages\tconfig/m);
   assert.match(result.stdout, /^alpha\trun\t1\tmorpheus\.yaml$/m);
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
@@ -735,14 +735,15 @@ test("workflow stop marks a running workflow as stopped", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stop-"));
   const runId = "wf-stop-test";
   const runDir = path.join(workspaceRoot, "workflows", runId);
-  const stepDir = path.join(runDir, "steps", "01-build");
+  const stepDir = path.join(runDir, "stages", "01-build");
   fs.mkdirSync(stepDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
-  fs.writeFileSync(path.join(stepDir, "step.json"), `${JSON.stringify({
+  fs.writeFileSync(path.join(stepDir, "stage.json"), `${JSON.stringify({
     id: "01-build",
     name: "build",
     status: "running",
     stepDir,
+    stageDir: stepDir,
     logFile: path.join(stepDir, "stdout.log"),
   }, null, 2)}\n`);
   fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
@@ -757,7 +758,7 @@ test("workflow stop marks a running workflow as stopped", () => {
     currentStepId: "01-build",
     currentChildPid: null,
     runnerPid: null,
-    steps: [{ id: "01-build", name: "build", stepDir, status: "running" }],
+    stages: [{ id: "01-build", name: "build", stepDir, stageDir: stepDir, status: "running" }],
   }, null, 2)}\n`);
   fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
     id: runId,
@@ -777,7 +778,7 @@ test("workflow stop marks a running workflow as stopped", () => {
   assert.equal(payload.status, "success");
   assert.equal(payload.details.run_dir, path.join("workflows", runId));
   const workflow = JSON.parse(fs.readFileSync(path.join(runDir, "workflow.json"), "utf8"));
-  const step = JSON.parse(fs.readFileSync(path.join(stepDir, "step.json"), "utf8"));
+  const step = JSON.parse(fs.readFileSync(path.join(stepDir, "stage.json"), "utf8"));
   assert.equal(workflow.status, "stopped");
   assert.equal(step.status, "stopped");
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
@@ -787,14 +788,15 @@ test("workflow stop prints a human-readable summary in text mode", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stop-text-"));
   const runId = "wf-stop-text";
   const runDir = path.join(workspaceRoot, "workflows", runId);
-  const stepDir = path.join(runDir, "steps", "01-build");
+  const stepDir = path.join(runDir, "stages", "01-build");
   fs.mkdirSync(stepDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
-  fs.writeFileSync(path.join(stepDir, "step.json"), `${JSON.stringify({
+  fs.writeFileSync(path.join(stepDir, "stage.json"), `${JSON.stringify({
     id: "01-build",
     name: "build",
     status: "running",
     stepDir,
+    stageDir: stepDir,
     logFile: path.join(stepDir, "stdout.log"),
   }, null, 2)}\n`);
   fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
@@ -809,7 +811,7 @@ test("workflow stop prints a human-readable summary in text mode", () => {
     currentStepId: "01-build",
     currentChildPid: null,
     runnerPid: null,
-    steps: [{ id: "01-build", name: "build", stepDir, status: "running" }],
+    stages: [{ id: "01-build", name: "build", stepDir, stageDir: stepDir, status: "running" }],
   }, null, 2)}\n`);
   fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
     id: runId,
@@ -836,14 +838,15 @@ test("workflow inspect reconciles stale running workflows with dead pids", () =>
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stale-"));
   const runId = "wf-stale-test";
   const runDir = path.join(workspaceRoot, "workflows", runId);
-  const stepDir = path.join(runDir, "steps", "01-build");
+  const stepDir = path.join(runDir, "stages", "01-build");
   fs.mkdirSync(stepDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
-  fs.writeFileSync(path.join(stepDir, "step.json"), `${JSON.stringify({
+  fs.writeFileSync(path.join(stepDir, "stage.json"), `${JSON.stringify({
     id: "01-build",
     name: "build",
     status: "running",
     stepDir,
+    stageDir: stepDir,
     logFile: path.join(stepDir, "stdout.log"),
     exitCode: null,
   }, null, 2)}\n`);
@@ -859,7 +862,7 @@ test("workflow inspect reconciles stale running workflows with dead pids", () =>
     currentStepId: "01-build",
     currentChildPid: 999999,
     runnerPid: 999998,
-    steps: [{ id: "01-build", name: "build", stepDir, status: "running" }],
+    stages: [{ id: "01-build", name: "build", stepDir, stageDir: stepDir, status: "running" }],
   }, null, 2)}\n`);
   fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
     id: runId,
@@ -888,7 +891,7 @@ test("workflow inspect reconciles stale running workflows with dead pids", () =>
   assert.equal(payload.details.steps[0].name, "build");
 
   const workflow = JSON.parse(fs.readFileSync(path.join(runDir, "workflow.json"), "utf8"));
-  const step = JSON.parse(fs.readFileSync(path.join(stepDir, "step.json"), "utf8"));
+  const step = JSON.parse(fs.readFileSync(path.join(stepDir, "stage.json"), "utf8"));
   const legacy = JSON.parse(fs.readFileSync(path.join(runDir, "run.json"), "utf8"));
   assert.equal(workflow.status, "error");
   assert.equal(step.status, "error");
@@ -1069,14 +1072,15 @@ test("workflow logs json reports log paths relative to cwd", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-json-"));
   const runId = "wf-logs-json";
   const runDir = path.join(workspaceRoot, "workflows", runId);
-  const stepDir = path.join(runDir, "steps", "01-fetch");
+  const stepDir = path.join(runDir, "stages", "01-fetch");
   fs.mkdirSync(stepDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "fetch log\n", "utf8");
-  fs.writeFileSync(path.join(stepDir, "step.json"), `${JSON.stringify({
+  fs.writeFileSync(path.join(stepDir, "stage.json"), `${JSON.stringify({
     id: "01-fetch",
     name: "fetch",
     status: "success",
     stepDir,
+    stageDir: stepDir,
     logFile: path.join(stepDir, "stdout.log"),
   }, null, 2)}\n`);
   fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
@@ -1091,7 +1095,7 @@ test("workflow logs json reports log paths relative to cwd", () => {
     currentStepId: null,
     currentChildPid: null,
     runnerPid: null,
-    steps: [{ id: "01-fetch", name: "fetch", stepDir, status: "success" }],
+    stages: [{ id: "01-fetch", name: "fetch", stepDir, stageDir: stepDir, status: "success" }],
   }, null, 2)}\n`);
   fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
     id: runId,
@@ -1109,7 +1113,7 @@ test("workflow logs json reports log paths relative to cwd", () => {
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.command, "workflow logs");
-  assert.equal(payload.details.log_file, path.join("workflows", runId, "steps", "01-fetch", "stdout.log"));
+  assert.equal(payload.details.log_file, path.join("workflows", runId, "stages", "01-fetch", "stdout.log"));
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 
@@ -1117,14 +1121,15 @@ test("workflow inspect prints a human-readable summary in text mode", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-inspect-text-"));
   const runId = "wf-inspect-text";
   const runDir = path.join(workspaceRoot, "workflows", runId);
-  const stepDir = path.join(runDir, "steps", "01-build");
+  const stepDir = path.join(runDir, "stages", "01-build");
   fs.mkdirSync(stepDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
-  fs.writeFileSync(path.join(stepDir, "step.json"), `${JSON.stringify({
+  fs.writeFileSync(path.join(stepDir, "stage.json"), `${JSON.stringify({
     id: "01-build",
     name: "build",
     status: "success",
     stepDir,
+    stageDir: stepDir,
     logFile: path.join(stepDir, "stdout.log"),
   }, null, 2)}\n`);
   fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
@@ -1139,7 +1144,7 @@ test("workflow inspect prints a human-readable summary in text mode", () => {
     currentStepId: null,
     currentChildPid: null,
     runnerPid: null,
-    steps: [{ id: "01-build", name: "build", stepDir, status: "success" }],
+    stages: [{ id: "01-build", name: "build", stepDir, stageDir: stepDir, status: "success" }],
   }, null, 2)}\n`);
   fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
     id: runId,
@@ -1158,7 +1163,7 @@ test("workflow inspect prints a human-readable summary in text mode", () => {
   assert.match(result.stdout, /^Workflow: qemu-build$/m);
   assert.match(result.stdout, /^Workflow ID: wf-inspect-text$/m);
   assert.match(result.stdout, /^Status: success$/m);
-  assert.match(result.stdout, /^Current Step: -$/m);
+  assert.match(result.stdout, /^Current Stage: -$/m);
   assert.match(result.stdout, /^id\tstatus\tname$/m);
   assert.match(result.stdout, /^01-build\tsuccess\tbuild$/m);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
@@ -1177,14 +1182,15 @@ test("workflow inspect does not warn when config is discovered implicitly", () =
   const workspaceRoot = path.join(projectRoot, "workflow-workspace");
   const runId = "wf-inspect-implicit";
   const runDir = path.join(workspaceRoot, "workflows", runId);
-  const stepDir = path.join(runDir, "steps", "01-build");
+  const stepDir = path.join(runDir, "stages", "01-build");
   fs.mkdirSync(stepDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
-  fs.writeFileSync(path.join(stepDir, "step.json"), `${JSON.stringify({
+  fs.writeFileSync(path.join(stepDir, "stage.json"), `${JSON.stringify({
     id: "01-build",
     name: "build",
     status: "success",
     stepDir,
+    stageDir: stepDir,
     logFile: path.join(stepDir, "stdout.log"),
   }, null, 2)}\n`);
   fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
@@ -1199,7 +1205,7 @@ test("workflow inspect does not warn when config is discovered implicitly", () =
     currentStepId: null,
     currentChildPid: null,
     runnerPid: null,
-    steps: [{ id: "01-build", name: "build", stepDir, status: "success" }],
+    stages: [{ id: "01-build", name: "build", stepDir, stageDir: stepDir, status: "success" }],
   }, null, 2)}\n`);
   fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
     id: runId,
@@ -1224,24 +1230,26 @@ test("workflow logs announces the selected default step in text mode", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-text-"));
   const runId = "wf-logs-text";
   const runDir = path.join(workspaceRoot, "workflows", runId);
-  const stepDirA = path.join(runDir, "steps", "01-fetch");
-  const stepDirB = path.join(runDir, "steps", "02-build");
+  const stepDirA = path.join(runDir, "stages", "01-fetch");
+  const stepDirB = path.join(runDir, "stages", "02-build");
   fs.mkdirSync(stepDirA, { recursive: true });
   fs.mkdirSync(stepDirB, { recursive: true });
   fs.writeFileSync(path.join(stepDirA, "stdout.log"), "fetch log\n", "utf8");
   fs.writeFileSync(path.join(stepDirB, "stdout.log"), "build log\n", "utf8");
-  fs.writeFileSync(path.join(stepDirA, "step.json"), `${JSON.stringify({
+  fs.writeFileSync(path.join(stepDirA, "stage.json"), `${JSON.stringify({
     id: "01-fetch",
     name: "fetch",
     status: "success",
     stepDir: stepDirA,
+    stageDir: stepDirA,
     logFile: path.join(stepDirA, "stdout.log"),
   }, null, 2)}\n`);
-  fs.writeFileSync(path.join(stepDirB, "step.json"), `${JSON.stringify({
+  fs.writeFileSync(path.join(stepDirB, "stage.json"), `${JSON.stringify({
     id: "02-build",
     name: "build",
     status: "success",
     stepDir: stepDirB,
+    stageDir: stepDirB,
     logFile: path.join(stepDirB, "stdout.log"),
   }, null, 2)}\n`);
   fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
@@ -1256,9 +1264,9 @@ test("workflow logs announces the selected default step in text mode", () => {
     currentStepId: null,
     currentChildPid: null,
     runnerPid: null,
-    steps: [
-      { id: "01-fetch", name: "fetch", stepDir: stepDirA, status: "success" },
-      { id: "02-build", name: "build", stepDir: stepDirB, status: "success" }
+    stages: [
+      { id: "01-fetch", name: "fetch", stepDir: stepDirA, stageDir: stepDirA, status: "success" },
+      { id: "02-build", name: "build", stepDir: stepDirB, stageDir: stepDirB, status: "success" }
     ],
   }, null, 2)}\n`);
   fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
@@ -1275,7 +1283,7 @@ test("workflow logs announces the selected default step in text mode", () => {
     cwd: workspaceRoot,
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.match(result.stdout, /^Selected step: 01-fetch$/m);
+  assert.match(result.stdout, /^Selected stage: 01-fetch$/m);
   assert.match(result.stdout, /^fetch log$/m);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
@@ -2051,8 +2059,8 @@ test("workflow resume reuses successful prefix in place", () => {
   const firstPayload = JSON.parse(first.stdout.trim());
   const runId = firstPayload.details.id;
   const runDir = path.join(workspaceRoot, "workflows", runId);
-  const stepAPath = path.join(runDir, "steps", "inspect_a", "step.json");
-  const stepBPath = path.join(runDir, "steps", "inspect_b", "step.json");
+  const stepAPath = path.join(runDir, "stages", "inspect_a", "stage.json");
+  const stepBPath = path.join(runDir, "stages", "inspect_b", "stage.json");
   const workflowPath = path.join(runDir, "workflow.json");
   const stepA = JSON.parse(fs.readFileSync(stepAPath, "utf8"));
   const stepB = JSON.parse(fs.readFileSync(stepBPath, "utf8"));
@@ -2116,7 +2124,7 @@ test("workflow run --from-step reuses earlier validated steps from latest run", 
   const firstPayload = JSON.parse(first.stdout.trim());
   const runId = firstPayload.details.id;
   const runDir = path.join(workspaceRoot, "workflows", runId);
-  const stepAPath = path.join(runDir, "steps", "inspect_a", "step.json");
+  const stepAPath = path.join(runDir, "stages", "inspect_a", "stage.json");
 
   const rerun = run(["--json", "workflow", "run", "--name", "inspect-pair", "--from-step", "inspect_b"], {
     cwd: projectRoot,
@@ -2177,9 +2185,9 @@ test("workflow run --only-step executes just the requested step", () => {
   assert.equal(first.status, 0, first.stderr || first.stdout);
   const firstPayload = JSON.parse(first.stdout.trim());
   const runDir = path.join(workspaceRoot, "workflows", firstPayload.details.id);
-  const stepAPath = path.join(runDir, "steps", "inspect_a", "step.json");
-  const stepBPath = path.join(runDir, "steps", "inspect_b", "step.json");
-  const stepCLog = path.join(runDir, "steps", "inspect_c", "stdout.log");
+  const stepAPath = path.join(runDir, "stages", "inspect_a", "stage.json");
+  const stepBPath = path.join(runDir, "stages", "inspect_b", "stage.json");
+  const stepCLog = path.join(runDir, "stages", "inspect_c", "stdout.log");
   const stepCLogBefore = fs.statSync(stepCLog).mtimeMs;
 
   fs.writeFileSync(qemuB, '#!/usr/bin/env sh\necho "QEMU emulator version 2.0"\n', { mode: 0o755 });
@@ -2194,7 +2202,7 @@ test("workflow run --only-step executes just the requested step", () => {
   const stepB = JSON.parse(fs.readFileSync(stepBPath, "utf8"));
   const stepCStatus = workflow.steps.find((step) => step.id === "inspect_c").status;
   assert.equal(rerunPayload.details.id, firstPayload.details.id);
-  assert.equal(workflow.resumeHistory.at(-1).mode, "single-step");
+  assert.equal(workflow.resumeHistory.at(-1).mode, "single-stage");
   assert.equal(workflow.resumeHistory.at(-1).fromStep, "inspect_b");
   assert.equal(stepA.reuseState, "reused");
   assert.equal(stepB.reuseState, "rerun");
@@ -2290,7 +2298,7 @@ test("workflow run --from-step resolves templated prior-step args for reuse vali
   const firstPayload = JSON.parse(first.stdout.trim());
   const runId = firstPayload.details.id;
   const runDir = path.join(workspaceRoot, "workflows", runId);
-  const stepAPath = path.join(runDir, "steps", "fetch_a", "step.json");
+  const stepAPath = path.join(runDir, "stages", "fetch_a", "stage.json");
   const eventsPath = path.join(runDir, "events.jsonl");
   const relations = fs.readFileSync(eventsPath, "utf8")
     .split(/\r?\n/)

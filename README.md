@@ -103,19 +103,6 @@ pnpm run
 ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow remove --id <run-id> --json
 ```
 
-Developer UI helpers:
-
-Start the local runs viewer:
-
-```bash
-pnpm dev:runs-viewer
-```
-
-Then open `http://127.0.0.1:4174`.
-
-When launching the run viewer through Paseo, set `RUN_VIEWER_PORT` to override
-the default `8081`.
-
 Project configs live under `<workspace-root>/morpheus.yaml`.
 The root `morpheus.yaml` is intentionally minimal and exists only as a default
 CI/testing stub.

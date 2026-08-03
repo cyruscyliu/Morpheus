@@ -6,10 +6,5 @@
       "pnpm run build:js-tools"
     ]
   },
-  "scripts": {
-    "run-viewer": {
-      "type": "service",
-      "command": "sh -lc 'HOSTNAME=0.0.0.0 PORT=\"${RUN_VIEWER_PORT:-8081}\" pnpm --filter @morpheus/runs-viewer dev'"
-    }
-  }
+  "scripts": {}
 }

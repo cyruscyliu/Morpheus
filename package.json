@@ -7,9 +7,8 @@
   "scripts": {
     "setup": "pnpm install && pnpm run build && pnpm run install:bin",
     "build": "pnpm run build:apps",
-    "build:apps": "pnpm --filter @morpheus/app build && pnpm --filter @morpheus/runs-viewer build",
+    "build:apps": "pnpm --filter @morpheus/app build",
     "cache:enable": "node scripts/enable-cache.mjs",
-    "dev:runs-viewer": "HOSTNAME=127.0.0.1 PORT=4174 pnpm --filter @morpheus/runs-viewer dev",
     "smoke:tool:buildroot": "node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name buildroot-build-ci",
     "smoke:tool:microkit-sdk": "node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name microkit-sdk-build-ci",
     "smoke:tool:qemu": "node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name qemu-build-ci",
@@ -17,8 +16,8 @@
     "smoke:tool:libvmm": "node apps/morpheus/dist/cli.js --json --config morpheus.yaml workflow run --name libvmm-build-ci",
     "ci:pre-push": "pnpm --filter @morpheus/app test:repo-structure && pnpm test:root-config && pnpm lint && pnpm test",
     "test:root-config": "pnpm --filter @morpheus/app test:root-config",
-    "test": "pnpm --filter @morpheus/app test && pnpm --filter @morpheus/runs-viewer test",
-    "lint": "pnpm --filter @morpheus/app lint && pnpm --filter @morpheus/runs-viewer lint",
+    "test": "pnpm --filter @morpheus/app test",
+    "lint": "pnpm --filter @morpheus/app lint",
     "install:bin": "node scripts/install-bin.mjs"
   },
   "devDependencies": {

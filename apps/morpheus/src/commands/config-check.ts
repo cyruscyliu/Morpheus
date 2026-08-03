@@ -35,9 +35,9 @@ function usage() {
     "",
     "Examples:",
     "  ./bin/morpheus config show",
-    "  ./bin/morpheus --config projects/<project>/morpheus.yaml config show --json",
+    "  ./bin/morpheus --config <workspace-root>/morpheus.yaml config show --json",
     "  ./bin/morpheus config check",
-    "  ./bin/morpheus --config projects/<project>/morpheus.yaml config check --json"
+    "  ./bin/morpheus --config <workspace-root>/morpheus.yaml config check --json"
   ].join("\n");
 }
 

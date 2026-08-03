@@ -5,7 +5,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../../.." && pwd)"
 cd "${repo_root}"
 
-config="projects/hyperarm/morpheus.yaml"
+config="$("${script_dir}/config-path.sh")"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in

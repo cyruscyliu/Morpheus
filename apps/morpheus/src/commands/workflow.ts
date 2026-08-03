@@ -73,7 +73,7 @@ function workflowUsage() {
     "Usage:",
     "  ./bin/morpheus [--config PATH] workflow runs [--limit N] [--offset N] [--json]",
     "  ./bin/morpheus [--config PATH] workflow list [--json]",
-    "  ./bin/morpheus --config projects/<project>/morpheus.yaml workflow run --name WORKFLOW_NAME [--from-stage STAGE_ID] [--only-stage STAGE_ID] [--json]",
+    "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow run --name WORKFLOW_NAME [--from-stage STAGE_ID] [--only-stage STAGE_ID] [--json]",
     "  ./bin/morpheus [--config PATH] workflow resume --name WORKFLOW_NAME [--from-stage STAGE_ID] [--only-stage STAGE_ID] [--json]",
     "  ./bin/morpheus [--config PATH] workflow inspect --name WORKFLOW_NAME [--json]",
     "  ./bin/morpheus [--config PATH] workflow events --name WORKFLOW_NAME [--json]",
@@ -96,12 +96,12 @@ function workflowUsage() {
     "  workflow remove    Remove a stopped workflow instance.",
     "",
     "Examples:",
-    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow runs --json",
-    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow list --json",
-    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow run --name qemu-build --json",
-    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow inspect --name qemu-build --json",
-    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow events --name qemu-build --json",
-    "  ./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow logs --name qemu-build --stage <stage-id>",
+    "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow runs --json",
+    "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow list --json",
+    "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow run --name qemu-build --json",
+    "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow inspect --name qemu-build --json",
+    "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow events --name qemu-build --json",
+    "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow logs --name qemu-build --stage <stage-id>",
     "",
     "Notes:",
     "  - Pass --config explicitly for project workflows.",
@@ -591,43 +591,81 @@ function listConfiguredWorkflows(explicitConfigPath = null) {
     return branch ? `${branch}:${configName}` : configName;
   }
 
+  function workspaceConfigPaths() {
+    const workspacesRoot =
+      process.env.MORPHEUS_WORKSPACES_ROOT
+      || (process.env.MORPHEUS_DATA_ROOT ? path.join(process.env.MORPHEUS_DATA_ROOT, "workspaces") : null);
+    if (!workspacesRoot || !fs.existsSync(workspacesRoot) || !fs.statSync(workspacesRoot).isDirectory()) {
+      return [];
+    }
+    return fs.readdirSync(workspacesRoot)
+      .sort((left, right) => left.localeCompare(right))
+      .map((entry) => path.join(workspacesRoot, entry, "morpheus.yaml"))
+      .filter((configPath) => fs.existsSync(configPath));
+  }
+
   function findViewerConfigs() {
+    const seenWorkspaceRoots = new Set();
+    const items = [];
+    for (const configPath of workspaceConfigPaths()) {
+      const itemConfig = loadConfig(process.cwd(), { explicitPath: configPath });
+      const itemBaseDir = configDir(itemConfig.path);
+      const workspaceRoot =
+        itemConfig.value
+        && itemConfig.value.workspace
+        && itemConfig.value.workspace.root
+          ? resolveLocalPath(itemBaseDir, itemConfig.value.workspace.root)
+          : null;
+      if (!workspaceRoot || seenWorkspaceRoots.has(workspaceRoot)) {
+        continue;
+      }
+      seenWorkspaceRoots.add(workspaceRoot);
+      items.push({
+        id: configPath,
+        label: configDisplayLabel(configPath, path.join(itemBaseDir, ".."), null),
+        configPath,
+        workspaceRoot,
+        runRoot: path.join(workspaceRoot, "workflows"),
+      });
+    }
+
     const result = spawnSync("git", ["-C", repoRoot(), "worktree", "list", "--porcelain"], {
       encoding: "utf8",
     });
     if (result.status !== 0) {
-      return [];
+      return items.sort((left, right) => left.label.localeCompare(right.label));
     }
-    return parseGitWorktreeList(String(result.stdout || ""))
-      .flatMap((item) => {
-        const configPaths = [path.join(item.root, "morpheus.yaml")];
-        const projectsRoot = path.join(item.root, "projects");
-        if (fs.existsSync(projectsRoot) && fs.statSync(projectsRoot).isDirectory()) {
-          for (const entry of fs.readdirSync(projectsRoot).sort((left, right) => left.localeCompare(right))) {
-            configPaths.push(path.join(projectsRoot, entry, "morpheus.yaml"));
-          }
+    for (const item of parseGitWorktreeList(String(result.stdout || ""))) {
+      const configPaths = [path.join(item.root, "morpheus.yaml")];
+      const projectsRoot = path.join(item.root, "projects");
+      if (fs.existsSync(projectsRoot) && fs.statSync(projectsRoot).isDirectory()) {
+        for (const entry of fs.readdirSync(projectsRoot).sort((left, right) => left.localeCompare(right))) {
+          configPaths.push(path.join(projectsRoot, entry, "morpheus.yaml"));
         }
-        return configPaths
-          .filter((configPath) => fs.existsSync(configPath))
-          .map((configPath) => {
-            const itemConfig = loadConfig(process.cwd(), { explicitPath: configPath });
-            const itemBaseDir = configDir(itemConfig.path);
-            const workspaceRoot =
-              itemConfig.value
-              && itemConfig.value.workspace
-              && itemConfig.value.workspace.root
-                ? resolveLocalPath(itemBaseDir, itemConfig.value.workspace.root)
-                : null;
-            return {
-              id: configPath,
-              label: configDisplayLabel(configPath, item.root, item.branch),
-              configPath,
-              workspaceRoot,
-              runRoot: workspaceRoot ? path.join(workspaceRoot, "workflows") : null,
-            };
-          });
-      })
-      .filter((item) => item.workspaceRoot && item.runRoot)
+      }
+      for (const configPath of configPaths.filter((candidate) => fs.existsSync(candidate))) {
+        const itemConfig = loadConfig(process.cwd(), { explicitPath: configPath });
+        const itemBaseDir = configDir(itemConfig.path);
+        const workspaceRoot =
+          itemConfig.value
+          && itemConfig.value.workspace
+          && itemConfig.value.workspace.root
+            ? resolveLocalPath(itemBaseDir, itemConfig.value.workspace.root)
+            : null;
+        if (!workspaceRoot || seenWorkspaceRoots.has(workspaceRoot)) {
+          continue;
+        }
+        seenWorkspaceRoots.add(workspaceRoot);
+        items.push({
+          id: configPath,
+          label: configDisplayLabel(configPath, item.root, item.branch),
+          configPath,
+          workspaceRoot,
+          runRoot: path.join(workspaceRoot, "workflows"),
+        });
+      }
+    }
+    return items
       .sort((left, right) => left.label.localeCompare(right.label));
   }
 

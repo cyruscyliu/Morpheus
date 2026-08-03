@@ -1,7 +1,7 @@
 # HyperArm LibAFL Nesting Workflows
 
 This document explains the HyperArm nesting workflows in
-`projects/hyperarm/morpheus.yaml`:
+`<workspace-root>/morpheus.yaml`:
 
 - `nvirsh-aarch64-libafl-nesting-injected-bug`
 - `nvirsh-aarch64-libafl-nesting-injected-bug-fuzz`
@@ -58,7 +58,7 @@ The workflow has three layers.
 
 ## Workflow Steps
 
-Both workflows in `projects/hyperarm/morpheus.yaml` perform these steps:
+Both workflows in `<workspace-root>/morpheus.yaml` perform these steps:
 
 1. `libafl_fetch`, `libafl_patch`, `libafl_build`
 
@@ -598,7 +598,7 @@ guest-kernel-coverage.info
 Run through the Morpheus workflow:
 
 ```bash
-./bin/morpheus --config projects/hyperarm/morpheus.yaml \
+./bin/morpheus --config <workspace-root>/morpheus.yaml \
   workflow run nvirsh-aarch64-libafl-nesting-injected-bug --json
 ```
 
@@ -634,7 +634,7 @@ qemu-img snapshot -l \
 Project workflow:
 
 ```text
-projects/hyperarm/morpheus.yaml
+<workspace-root>/morpheus.yaml
 ```
 
 nvirsh profile and scripts:

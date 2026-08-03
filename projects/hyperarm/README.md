@@ -1,6 +1,6 @@
 # HyperArm
 
-HyperArm workflows live in `projects/hyperarm/morpheus.yaml`.
+HyperArm workflows live in `<workspace-root>/morpheus.yaml`.
 
 Project notes:
 

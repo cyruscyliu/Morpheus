@@ -5,7 +5,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 cd "${repo_root}"
 
-config="projects/hyperarm/morpheus.yaml"
+config="$("${repo_root}/projects/hyperarm/scripts/config-path.sh")"
 workflow="nvirsh-aarch64-libafl-nesting-injected-bug"
 run_id="wf-20260609011130-6eb23996"
 json="false"
@@ -82,8 +82,6 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ "${#inputs[@]}" -gt 0 ] || die "provide at least one --input PATH"
-[ -f "${config}" ] || die "missing config: ${config}"
-
 workspace_root="$("${repo_root}/projects/hyperarm/scripts/workspace-root.sh" --config "${config}")"
 [[ "${l2_run_window_ms}" =~ ^[0-9]+$ ]] || die "l2-run-window-ms must be an integer"
 [ "${l2_run_window_ms}" -ge 1000 ] || die "l2-run-window-ms must be at least 1000"

@@ -27,6 +27,8 @@ if [ "$#" -gt 0 ]; then
   exit 1
 fi
 
+config="$("${repo_root}/projects/hyperarm/scripts/config-path.sh")"
+
 exec ./bin/morpheus \
-  --config projects/hyperarm/morpheus.yaml \
+  --config "${config}" \
   workflow run nvirsh-aarch64-libafl-nesting-injected-bug-fuzz

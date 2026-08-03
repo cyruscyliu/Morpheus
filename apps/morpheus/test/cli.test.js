@@ -39,12 +39,14 @@ function isolatedEnv(extra = {}) {
   const env = {
     ...process.env,
     MORPHEUS_WORK_ROOT: fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-test-work-")),
-    ...extra
   };
   delete env.MORPHEUS_CONFIG;
   delete env.MORPHEUS_DATA_ROOT;
   delete env.MORPHEUS_WORKSPACES_ROOT;
-  return env;
+  return {
+    ...env,
+    ...extra,
+  };
 }
 
 function pidState(pid) {
@@ -542,7 +544,7 @@ test("top-level help groups commands for discovery", () => {
   assert.match(result.stdout, /^  tool list          List declared tools and their readiness\.$/m);
   assert.match(result.stdout, /^  workflow run       Start a configured workflow\.$/m);
   assert.match(result.stdout, /^Examples:$/m);
-  assert.match(result.stdout, /^  \.\/bin\/morpheus --config projects\/<project>\/morpheus\.yaml workflow inspect --name <workflow> --json$/m);
+  assert.match(result.stdout, /^  \.\/bin\/morpheus --config <workspace-root>\/morpheus\.yaml workflow inspect --name <workflow> --json$/m);
 });
 
 test("config help includes purpose and examples", () => {
@@ -637,6 +639,59 @@ test("workflow list discovers configured workflows in json", () => {
   assert.equal(payload.details.workflows[0].category, "build");
   assert.equal(payload.details.workflows[0].steps, 1);
   fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("workflow list discovers workspace configs under MORPHEUS_WORKSPACES_ROOT", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-list-workspace-"));
+  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-data-root-"));
+  const workspacesRoot = path.join(dataRoot, "workspaces");
+  const workspaceRoot = path.join(workspacesRoot, "hyperarm");
+  fs.mkdirSync(path.join(workspaceRoot, "workspace"), { recursive: true });
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "workflows:",
+      "  sample-build:",
+      "    category: build",
+      "    steps:",
+      "      - tool: qemu",
+      "        command: build",
+      ""
+    ].join("\n")
+  );
+  writeConfig(
+    workspaceRoot,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      "workflows:",
+      "  workspace-build:",
+      "    category: build",
+      "    steps:",
+      "      - tool: qemu",
+      "        command: build",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["workflow", "list", "--json"], {
+    cwd: projectRoot,
+    env: isolatedEnv({
+      MORPHEUS_DATA_ROOT: dataRoot,
+      MORPHEUS_WORKSPACES_ROOT: workspacesRoot,
+    }),
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.command, "workflow list");
+  assert.ok(
+    payload.details.configs.some((config) => config.configPath === path.join(workspaceRoot, "morpheus.yaml")),
+    "expected workspace config to be listed",
+  );
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+  fs.rmSync(dataRoot, { recursive: true, force: true });
 });
 
 test("workflow list prints a text table for configured workflows", () => {

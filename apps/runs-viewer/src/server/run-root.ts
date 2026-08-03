@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 
 interface ConfigFile<TValue> {
@@ -12,6 +13,8 @@ interface MorpheusConfigValue {
   workspace?: { root?: string };
   workflows?: Record<string, { category?: string }>;
 }
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 
 export interface ViewerConfigOption {
   id: string;
@@ -99,6 +102,9 @@ function normalizeMorpheusEnv(): void {
   }
   if (workspacesRoot && !dataRoot) {
     process.env.MORPHEUS_DATA_ROOT = path.dirname(workspacesRoot);
+  }
+  if (!process.env.MORPHEUS_REPO_ROOT) {
+    process.env.MORPHEUS_REPO_ROOT = REPO_ROOT;
   }
 }
 

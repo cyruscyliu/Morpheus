@@ -28,7 +28,7 @@ When operating in this repo:
 1. Run `pnpm --filter @morpheus/app build` if the CLI may be stale.
 2. Run `node apps/morpheus/dist/cli.js --help` or `./bin/morpheus --help`
    to confirm the live surface.
-3. Prefer `--config projects/<project>/morpheus.yaml` over implicit discovery.
+3. Prefer `--config <workspace-root>/morpheus.yaml` over implicit discovery.
 4. Prefer `--json` for anything that may be consumed programmatically.
 5. Re-read existing state with `inspect` or `logs` before rerunning work.
 
@@ -40,7 +40,7 @@ workspace:
 
 ```
 
-Project configs can live under `projects/<project>/morpheus.yaml`.
+Project configs can live under `<workspace-root>/morpheus.yaml`.
 The repo-root `morpheus.yaml` may be only a minimal CI/testing stub.
 Projects may import shared workflows explicitly from the repo root config using
 references such as `root.buildroot-build`.

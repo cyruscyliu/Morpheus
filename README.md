@@ -43,26 +43,26 @@ This builds the workspace and installs the repo-local `morpheus` wrapper under
 Validate a project config:
 
 ```bash
-./bin/morpheus --config projects/hyperarm/morpheus.yaml config check --json
+./bin/morpheus --config <workspace-root>/morpheus.yaml config check --json
 ```
 
 Run a workflow:
 
 ```bash
-./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow run --name buildroot-qemu-runtime --json
+./bin/morpheus --config <workspace-root>/morpheus.yaml workflow run --name buildroot-qemu-runtime --json
 ```
 
 Inspect a prior run:
 
 ```bash
-./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow inspect --id <workflow-run-id> --json
-./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow logs --id <workflow-run-id>
+./bin/morpheus --config <workspace-root>/morpheus.yaml workflow inspect --id <workflow-run-id> --json
+./bin/morpheus --config <workspace-root>/morpheus.yaml workflow logs --id <workflow-run-id>
 ```
 
 Enable and migrate global cache for a config:
 
 ```bash
-pnpm cache:enable -- --config projects/hyperarm/morpheus.yaml
+pnpm cache:enable -- --config <workspace-root>/morpheus.yaml
 ```
 
 ## Maintenance
@@ -85,7 +85,7 @@ pnpm run install:bin
 
 ```bash
 pnpm cache:enable -- --config morpheus.yaml
-pnpm cache:enable -- --config projects/hyperarm/morpheus.yaml
+pnpm cache:enable -- --config <workspace-root>/morpheus.yaml
 ```
 
 The shared cache root defaults to `./.cache`.
@@ -99,8 +99,8 @@ pnpm run
 - stop and remove a workflow run cleanly:
 
 ```bash
-./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow stop --id <run-id> --json
-./bin/morpheus --config projects/hyperarm/morpheus.yaml workflow remove --id <run-id> --json
+./bin/morpheus --config <workspace-root>/morpheus.yaml workflow stop --id <run-id> --json
+./bin/morpheus --config <workspace-root>/morpheus.yaml workflow remove --id <run-id> --json
 ```
 
 Developer UI helpers:
@@ -116,7 +116,7 @@ Then open `http://127.0.0.1:4174`.
 When launching the run viewer through Paseo, set `RUN_VIEWER_PORT` to override
 the default `8081`.
 
-Project configs live under `projects/<project>/morpheus.yaml`.
+Project configs live under `<workspace-root>/morpheus.yaml`.
 The root `morpheus.yaml` is intentionally minimal and exists only as a default
 CI/testing stub.
 

@@ -5,7 +5,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 cd "${repo_root}"
 
-config="projects/hyperarm/morpheus.yaml"
+config="$("${repo_root}/projects/hyperarm/scripts/config-path.sh")"
 seconds=""
 cache_root=""
 run_dir=""
@@ -79,7 +79,6 @@ done
 [ -n "${seconds}" ] || die "choose one of --seconds, --minutes, or --hours"
 [[ "${seconds}" =~ ^[0-9]+$ ]] || die "timeout must be an integer"
 [ "${seconds}" -gt 0 ] || die "timeout must be greater than zero"
-[ -f "${config}" ] || die "missing config: ${config}"
 if [ -n "${l2_run_window_ms}" ]; then
   [[ "${l2_run_window_ms}" =~ ^[0-9]+$ ]] || die "l2-run-window-ms must be an integer"
   [ "${l2_run_window_ms}" -ge 1000 ] || die "l2-run-window-ms must be at least 1000"

@@ -92,6 +92,9 @@ function normalizeMorpheusEnv() {
   if (workspacesRoot && !dataRoot) {
     process.env.MORPHEUS_DATA_ROOT = path.dirname(workspacesRoot);
   }
+  if (!process.env.MORPHEUS_REPO_ROOT) {
+    process.env.MORPHEUS_REPO_ROOT = appRepoRoot();
+  }
 }
 
 function loadEnvForPath(filePath) {

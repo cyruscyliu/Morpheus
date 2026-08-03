@@ -136,13 +136,13 @@ The common project pattern is:
 For reruns, prefer:
 
 ```bash
-node apps/morpheus/dist/cli.js --config projects/<project>/morpheus.yaml workflow resume --id WORKFLOW_RUN_ID --from-step nqc2_postprocess --one-step --json
+node apps/morpheus/dist/cli.js --config <workspace-root>/morpheus.yaml workflow resume --id WORKFLOW_RUN_ID --from-step nqc2_postprocess --one-step --json
 ```
 
 and then:
 
 ```bash
-node apps/morpheus/dist/cli.js --config projects/<project>/morpheus.yaml workflow resume --id WORKFLOW_RUN_ID --from-step nqc2_genhtml --one-step --json
+node apps/morpheus/dist/cli.js --config <workspace-root>/morpheus.yaml workflow resume --id WORKFLOW_RUN_ID --from-step nqc2_genhtml --one-step --json
 ```
 
 ## Feature List

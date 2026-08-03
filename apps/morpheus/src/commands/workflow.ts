@@ -73,11 +73,11 @@ function workflowUsage() {
     "Usage:",
     "  ./bin/morpheus [--config PATH] workflow runs [--limit N] [--offset N] [--json]",
     "  ./bin/morpheus [--config PATH] workflow list [--json]",
-    "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow run --name WORKFLOW_NAME [--from-stage STAGE_ID] [--only-stage STAGE_ID] [--json]",
-    "  ./bin/morpheus [--config PATH] workflow resume --name WORKFLOW_NAME [--from-stage STAGE_ID] [--only-stage STAGE_ID] [--json]",
+    "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow run --name WORKFLOW_NAME [--from-step STEP_ID] [--only-step STEP_ID] [--json]",
+    "  ./bin/morpheus [--config PATH] workflow resume --name WORKFLOW_NAME [--from-step STEP_ID] [--only-step STEP_ID] [--json]",
     "  ./bin/morpheus [--config PATH] workflow inspect --name WORKFLOW_NAME [--json]",
     "  ./bin/morpheus [--config PATH] workflow events --name WORKFLOW_NAME [--json]",
-    "  ./bin/morpheus [--config PATH] workflow logs --name WORKFLOW_NAME [--stage STAGE_ID] [--follow]",
+    "  ./bin/morpheus [--config PATH] workflow logs --name WORKFLOW_NAME [--step STEP_ID] [--follow]",
     "  ./bin/morpheus [--config PATH] workflow stop --name WORKFLOW_NAME [--json]",
     "  ./bin/morpheus [--config PATH] workflow remove --name WORKFLOW_NAME [--json]",
     "",
@@ -89,9 +89,9 @@ function workflowUsage() {
     "  workflow list      List configured workflows.",
     "  workflow run       Start a configured workflow.",
     "  workflow resume    Resume a workflow instance.",
-    "  workflow inspect   Inspect workflow state and stages.",
+    "  workflow inspect   Inspect workflow state and steps.",
     "  workflow events    Print workflow events for an instance.",
-    "  workflow logs      Print logs for a workflow stage.",
+    "  workflow logs      Print logs for a workflow step.",
     "  workflow stop      Stop a running workflow instance.",
     "  workflow remove    Remove a stopped workflow instance.",
     "",
@@ -101,7 +101,7 @@ function workflowUsage() {
     "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow run --name qemu-build --json",
     "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow inspect --name qemu-build --json",
     "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow events --name qemu-build --json",
-    "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow logs --name qemu-build --stage <stage-id>",
+    "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow logs --name qemu-build --step <step-id>",
     "",
     "Notes:",
     "  - Pass --config explicitly for project workflows.",
@@ -111,21 +111,6 @@ function workflowUsage() {
 
 function workflowKey(flags) {
   return flags.name ? String(flags.name) : (flags.id ? String(flags.id) : null);
-}
-
-function workflowStageControl(flags) {
-  if (Object.prototype.hasOwnProperty.call(flags, "one-step")) {
-    throw new Error("workflow --one-step was removed; use --only-stage STAGE_ID");
-  }
-  const fromStage = flags["from-stage"] ? String(flags["from-stage"]) : (flags["from-step"] ? String(flags["from-step"]) : null);
-  const onlyStage = flags["only-stage"] ? String(flags["only-stage"]) : (flags["only-step"] ? String(flags["only-step"]) : null);
-  if (fromStage && onlyStage && fromStage !== onlyStage) {
-    throw new Error("workflow stage control cannot combine different --from-stage and --only-stage values");
-  }
-  return {
-    fromStage: onlyStage || fromStage,
-    oneStage: Boolean(onlyStage),
-  };
 }
 
 function readJson(filePath) {
@@ -200,18 +185,6 @@ function relativizeStepRecord(step) {
 
 function normalizeWorkflowInspectDetails(workflow, steps) {
   const workflowRecord = relativizeWorkflowRecord(workflow) || {};
-  const stages = steps.map((step) => {
-    const stepRecord = relativizeStepRecord(step) || {};
-    return {
-      id: stepRecord.id || null,
-      name: stepRecord.name || null,
-      status: stepRecord.status || null,
-      stage_dir: stepRecord.stepDir || null,
-      step_dir: stepRecord.stepDir || null,
-      log_file: stepRecord.logFile || null,
-      exit_code: stepRecord.exitCode == null ? null : stepRecord.exitCode,
-    };
-  });
   return {
     id: workflowRecord.id || null,
     workflow: workflowRecord.workflow || null,
@@ -220,16 +193,22 @@ function normalizeWorkflowInspectDetails(workflow, steps) {
     workspace: workflowRecord.workspace || null,
     workflow_dir: workflowRecord.runDir || null,
     run_dir: workflowRecord.runDir || null,
-    current_stage_id: workflowRecord.currentStageId || workflowRecord.currentStepId || null,
     current_step_id: workflowRecord.currentStepId || null,
     current_child_pid: workflowRecord.currentChildPid == null ? null : workflowRecord.currentChildPid,
     runner_pid: workflowRecord.runnerPid == null ? null : workflowRecord.runnerPid,
     created_at: workflowRecord.createdAt || null,
     updated_at: workflowRecord.updatedAt || null,
-    stage_count: stages.length,
-    step_count: stages.length,
-    stages,
-    steps: stages.map((entry) => ({ ...entry })),
+    steps: steps.map((step) => {
+      const stepRecord = relativizeStepRecord(step) || {};
+      return {
+        id: stepRecord.id || null,
+        name: stepRecord.name || null,
+        status: stepRecord.status || null,
+        step_dir: stepRecord.stepDir || null,
+        log_file: stepRecord.logFile || null,
+        exit_code: stepRecord.exitCode == null ? null : stepRecord.exitCode,
+      };
+    }),
   };
 }
 
@@ -420,57 +399,15 @@ function resolveArtifactTemplateValue(payload, stepPath, preferLocal) {
   return getByPath(payload, stepPath);
 }
 
-function workflowStageEntries(value) {
-  if (!value || typeof value !== "object") {
-    return [];
-  }
-  if (Array.isArray(value.stages) && value.stages.length > 0) {
-    return value.stages;
-  }
-  if (Array.isArray(value.steps) && value.steps.length > 0) {
-    return value.steps;
-  }
-  if (Array.isArray(value.stages)) {
-    return value.stages;
-  }
-  if (Array.isArray(value.steps)) {
-    return value.steps;
-  }
-  return [];
-}
-
-function workflowStageDir(runDir, stageId) {
-  const canonicalDir = path.join(runDir, "stages", stageId);
-  if (fs.existsSync(canonicalDir)) {
-    return canonicalDir;
-  }
-  return path.join(runDir, "steps", stageId);
-}
-
-function workflowStageManifestPathForDir(stageDirPath) {
-  const canonicalManifest = path.join(stageDirPath, "stage.json");
-  if (fs.existsSync(canonicalManifest)) {
-    return canonicalManifest;
-  }
-  return path.join(stageDirPath, "step.json");
-}
-
-function workflowStageManifestPath(runDir, stageId) {
-  return workflowStageManifestPathForDir(workflowStageDir(runDir, stageId));
-}
-
-function workflowStageAliases(stages) {
-  return stages.map((entry) => (entry && typeof entry === "object" ? { ...entry } : entry));
-}
-
 function resolveTemplateStepValue(context, stepId, stepPath) {
   const preferLocal = !context.currentStepRemoteEnabled;
   const parts = String(stepPath || "").split(".");
   const artifactPath = parts[0] === "artifacts" && parts.length >= 3 ? parts[1] : null;
-  const stepRecordPath = context.runDir ? workflowStageManifestPath(context.runDir, stepId) : null;
 
-  if (artifactPath && stepRecordPath && fs.existsSync(stepRecordPath)) {
-    const stepRecord = readJson(stepRecordPath);
+  if (artifactPath && context.runDir) {
+    const stepManifestPath = path.join(context.runDir, "steps", stepId, "step.json");
+    if (fs.existsSync(stepManifestPath)) {
+      const stepRecord = readJson(stepManifestPath);
       const unresolvedPayload = templateStepPayloadFromRecord(stepRecord, {});
       const unresolvedArtifact = unresolvedPayload
         ? getByPath(unresolvedPayload, `artifacts.${artifactPath}`)
@@ -487,6 +424,7 @@ function resolveTemplateStepValue(context, stepId, stepPath) {
           return localized;
         }
       }
+    }
   }
 
   const direct = resolveArtifactTemplateValue(context.stepResults[stepId], stepPath, preferLocal);
@@ -496,10 +434,11 @@ function resolveTemplateStepValue(context, stepId, stepPath) {
   if (!context.runDir) {
     return undefined;
   }
-  if (!stepRecordPath || !fs.existsSync(stepRecordPath)) {
+  const stepManifestPath = path.join(context.runDir, "steps", stepId, "step.json");
+  if (!fs.existsSync(stepManifestPath)) {
     return undefined;
   }
-  const stepRecord = readJson(stepRecordPath);
+  const stepRecord = readJson(stepManifestPath);
   const payload = templateStepPayloadFromRecord(stepRecord, { artifactPath });
   if (!payload) {
     return undefined;
@@ -514,12 +453,11 @@ function listConfiguredWorkflows(explicitConfigPath = null) {
   const items = Object.entries(workflows)
     .map(([name, workflow]) => {
       const value = workflow && typeof workflow === "object" ? workflow : {};
-      const stages = workflowStageEntries(value);
+      const steps = Array.isArray(value.steps) ? value.steps : [];
       return {
         name,
         category: value.category || "run",
-        stages: stages.length,
-        steps: stages.length,
+        steps: steps.length,
         config: config.path ? path.relative(process.cwd(), config.path) || "morpheus.yaml" : null,
       };
     })
@@ -706,7 +644,6 @@ function listManagedWorkflowRuns(workspaceRoot, flags) {
     completedAt: run.completedAt,
     changeName: run.changeName,
     metadata: run.metadata == null ? null : run.metadata,
-    stageCount: run.stepCount,
     stepCount: run.stepCount,
     workflowDir: run.runDir ? relativeToCwd(run.runDir) : run.runDir,
     runDir: run.runDir ? relativeToCwd(run.runDir) : run.runDir,
@@ -772,18 +709,10 @@ function inspectPayloadForRun(workspaceRoot, id) {
       completedAt: detail.completedAt,
       changeName: detail.changeName,
       metadata: detail.metadata == null ? null : detail.metadata,
-      stageCount: detail.stepCount,
       stepCount: detail.stepCount,
       workflowDir: detail.runDir ? relativeToCwd(detail.runDir) : detail.runDir,
       runDir: detail.runDir ? relativeToCwd(detail.runDir) : detail.runDir,
       graph: detail.graph,
-      stages: detail.steps.map((step) => ({
-        ...step,
-        stageDir: step.stepDir ? relativeToCwd(step.stepDir) : step.stepDir,
-        stepDir: step.stepDir ? relativeToCwd(step.stepDir) : step.stepDir,
-        logUrl: step.logUrl || null,
-        artifacts: Array.isArray(step.artifacts) ? step.artifacts : [],
-      })),
       steps: detail.steps.map((step) => ({
         ...step,
         stepDir: step.stepDir ? relativeToCwd(step.stepDir) : step.stepDir,
@@ -801,9 +730,8 @@ function resolveConfiguredWorkflow(name, explicitConfigPath = null) {
   if (!workflow) {
     throw new Error(`unknown configured workflow: ${name}; run 'morpheus workflow list' to inspect available workflows`);
   }
-  const stages = workflowStageEntries(workflow);
-  if (stages.length === 0) {
-    throw new Error(`configured workflow has no stages: ${name}`);
+  if (!Array.isArray(workflow.steps) || workflow.steps.length === 0) {
+    throw new Error(`configured workflow has no steps: ${name}`);
   }
   return {
     name,
@@ -811,8 +739,7 @@ function resolveConfiguredWorkflow(name, explicitConfigPath = null) {
     metadata: Object.prototype.hasOwnProperty.call(workflow, "metadata")
       ? workflow.metadata
       : null,
-    stages,
-    steps: stages,
+    steps: workflow.steps,
     configPath: config.path || null,
   };
 }
@@ -937,38 +864,31 @@ function resolveConfiguredStepArgs(step, context) {
 
 function listWorkflowSteps(runDir) {
   const workflow = tryReadJson(path.join(runDir, "workflow.json"));
-  const stageEntries = workflowStageEntries(workflow);
-  if (stageEntries.length > 0) {
-    return stageEntries.map((entry) => {
+  if (workflow && Array.isArray(workflow.steps) && workflow.steps.length > 0) {
+    return workflow.steps.map((entry) => {
       const stepId = String(entry && entry.id || "");
       const resolvedStepDir =
-        entry && typeof entry.stageDir === "string"
-          ? entry.stageDir
-          : (entry && typeof entry.stepDir === "string" ? entry.stepDir : workflowStageDir(runDir, stepId));
-      const manifestPath = workflowStageManifestPathForDir(resolvedStepDir);
+        entry && typeof entry.stepDir === "string"
+          ? entry.stepDir
+          : path.join(runDir, "steps", stepId);
+      const manifestPath = path.join(resolvedStepDir, "step.json");
       return fs.existsSync(manifestPath)
         ? readJson(manifestPath)
-        : { ...entry, id: stepId, stageDir: resolvedStepDir, stepDir: resolvedStepDir };
+        : { ...entry, id: stepId, stepDir: resolvedStepDir };
     });
   }
-  const stagesDir = fs.existsSync(path.join(runDir, "stages"))
-    ? path.join(runDir, "stages")
-    : path.join(runDir, "steps");
-  if (!fs.existsSync(stagesDir)) {
+  const stepsDir = path.join(runDir, "steps");
+  if (!fs.existsSync(stepsDir)) {
     return [];
   }
   return fs
-    .readdirSync(stagesDir)
-    .map((name) => path.join(stagesDir, name))
+    .readdirSync(stepsDir)
+    .map((name) => path.join(stepsDir, name))
     .filter((entry) => fs.statSync(entry).isDirectory())
     .sort((left, right) => path.basename(left).localeCompare(path.basename(right)))
     .map((stepDir) => {
-      const stageManifest = path.join(stepDir, "stage.json");
-      const stepManifest = path.join(stepDir, "step.json");
-      const manifestPath = fs.existsSync(stageManifest) ? stageManifest : stepManifest;
-      return fs.existsSync(manifestPath)
-        ? readJson(manifestPath)
-        : { id: path.basename(stepDir), stageDir: stepDir, stepDir };
+      const manifestPath = path.join(stepDir, "step.json");
+      return fs.existsSync(manifestPath) ? readJson(manifestPath) : { id: path.basename(stepDir), stepDir };
     });
 }
 
@@ -1016,14 +936,13 @@ function rebuildWorkflowManifest(runDir) {
     currentStepId: null,
     currentChildPid: null,
     runnerPid: null,
-    stages: steps.map((step) => ({
+    steps: steps.map((step) => ({
       id: step.id || path.basename(step.stepDir || ""),
       name: step.name || step.id || path.basename(step.stepDir || ""),
       status: step.status || "unknown",
       stepDir: step.stepDir || path.join(runDir, "steps", String(step.id || "")),
     })),
   };
-  record.steps = workflowStageAliases(record.stages);
   writeJson(workflowManifestPath(runDir), record);
   return record;
 }
@@ -1157,16 +1076,13 @@ function reconcileStaleWorkflowRun(found) {
     currentStepId: null,
     currentChildPid: null,
     runnerPid: null,
-    stages: workflowStageEntries(current).map((entry) => (
-      entry.status === "running"
-        ? { ...entry, status: "error" }
-        : entry
-    )),
-    steps: workflowStageEntries(current).map((entry) => (
-      entry.status === "running"
-        ? { ...entry, status: "error" }
-        : entry
-    )),
+    steps: Array.isArray(current.steps)
+      ? current.steps.map((entry) => (
+          entry.status === "running"
+            ? { ...entry, status: "error" }
+            : entry
+        ))
+      : [],
   }));
 
   fs.appendFileSync(
@@ -1307,16 +1223,13 @@ function stopWorkflowRun(workspaceRoot, id) {
     currentStepId: null,
     currentChildPid: null,
     runnerPid: null,
-    stages: workflowStageEntries(current).map((entry) => (
-      entry.status === "created" || entry.status === "running"
-        ? { ...entry, status: "stopped" }
-        : entry
-    )),
-    steps: workflowStageEntries(current).map((entry) => (
-      entry.status === "created" || entry.status === "running"
-        ? { ...entry, status: "stopped" }
-        : entry
-    )),
+    steps: Array.isArray(current.steps)
+      ? current.steps.map((entry) => (
+          entry.status === "created" || entry.status === "running"
+            ? { ...entry, status: "stopped" }
+            : entry
+        ))
+      : [],
   }));
 
   return {
@@ -1919,7 +1832,7 @@ function attachedWorkflowStepPayload(step, toolCommand, result) {
       ? `completed attached ${step.tool} run`
       : payloadStatus === "stopped"
         ? `stopped attached ${step.tool} run`
-        : (managedManifest.errorMessage || providerManifest?.errorMessage || String(result.stderr || "").trim() || "workflow stage failed");
+        : (managedManifest.errorMessage || providerManifest?.errorMessage || String(result.stderr || "").trim() || "workflow step failed");
 
   return {
     command: `tool ${toolCommand}`,
@@ -2070,20 +1983,6 @@ async function runToolWorkflow({
     status: "running",
     currentStepId: null,
     currentChildPid: null,
-    stages: createdSteps.map((step, index) => {
-      let status = "created";
-      if (index < startIndex) {
-        status = workflowResumeStateFromStatus(step.status);
-      } else if (endIndex != null && index >= stopIndex && existingSteps) {
-        status = step.status || "created";
-      }
-      return {
-        id: step.id,
-        name: step.name,
-        stepDir: step.stepDir,
-        status,
-      };
-    }),
     steps: createdSteps.map((step, index) => {
       let status = "created";
       if (index < startIndex) {
@@ -2097,7 +1996,7 @@ async function runToolWorkflow({
         stepDir: step.stepDir,
         status,
       };
-    }),
+    })
   }));
   emitEvent("workflow.started", {
     workflow: workflow.workflow,
@@ -2129,8 +2028,7 @@ async function runToolWorkflow({
       status: "running",
       currentStepId: step.id,
       currentChildPid: null,
-      stages: workflowStageEntries(current).map((entry) => entry.id === step.id ? { ...entry, status: "running" } : entry),
-      steps: workflowStageEntries(current).map((entry) => entry.id === step.id ? { ...entry, status: "running" } : entry),
+      steps: current.steps.map((entry) => entry.id === step.id ? { ...entry, status: "running" } : entry)
     }));
     updateWorkflowStep(step.stepDir, (current) => ({ ...current, status: "running" }));
     emitEvent("step.started", {
@@ -2250,7 +2148,7 @@ async function runToolWorkflow({
               tool: step.tool,
             });
             stopPid(stepChildPid);
-            throw new Error(`workflow stage timed out after ${Number(spec.timeoutSeconds || 0)} seconds`);
+            throw new Error(`workflow step timed out after ${Number(spec.timeoutSeconds || 0)} seconds`);
           })(),
         ])
       : await executionPromise;
@@ -2289,7 +2187,7 @@ async function runToolWorkflow({
       exit_code: exitCode,
       log_file: path.relative(process.cwd(), step.logFile),
       ...(status === "success" ? {} : {
-        hint: `./bin/morpheus --json workflow logs --name ${workflow.id} --stage ${step.id}`,
+        hint: `./bin/morpheus --json workflow logs --name ${workflow.id} --step ${step.id}`,
       }),
     }, {
       scope: "step",
@@ -2302,14 +2200,10 @@ async function runToolWorkflow({
       ...current,
       status: "running",
       currentChildPid: null,
-      stages: workflowStageEntries(current).map((entry) => entry.id === updatedStep.id
+      steps: current.steps.map((entry) => entry.id === updatedStep.id
         ? { ...entry, status: updatedStep.status }
         : entry
-      ),
-      steps: workflowStageEntries(current).map((entry) => entry.id === updatedStep.id
-        ? { ...entry, status: updatedStep.status }
-        : entry
-      ),
+      )
     }));
 
     if (status === "stopped") {
@@ -2342,14 +2236,10 @@ async function runToolWorkflow({
         ...current,
         status: "error",
         currentChildPid: null,
-        stages: workflowStageEntries(current).map((entry) => entry.id === activeStep.id
+        steps: current.steps.map((entry) => entry.id === activeStep.id
           ? { ...entry, status: "error" }
           : entry
-        ),
-        steps: workflowStageEntries(current).map((entry) => entry.id === activeStep.id
-          ? { ...entry, status: "error" }
-          : entry
-        ),
+        )
       }));
       emitEvent("step.failed", {
         workflow: workflow.id,
@@ -2372,8 +2262,7 @@ async function runToolWorkflow({
     currentStepId: null,
     currentChildPid: null,
     runnerPid: null,
-    stages: workflowStageEntries(current),
-    steps: workflowStageAliases(workflowStageEntries(current)),
+    steps: current.steps
   }));
   emitEvent(workflowStatus === "success"
     ? "workflow.completed"
@@ -2406,35 +2295,11 @@ async function runToolWorkflow({
       workflow_dir: relativeToCwd(updatedWorkflow.runDir),
       run_dir: relativeToCwd(updatedWorkflow.runDir),
       manifest: relativeToCwd(workflowManifestPath(updatedWorkflow.runDir)),
-      stageCount: workflowStageEntries(updatedWorkflow).length,
-      stepCount: workflowStageEntries(updatedWorkflow).length,
-      stages: workflowStageEntries(updatedWorkflow),
-      steps: workflowStageEntries(updatedWorkflow),
-      failed_stage: workflowStatus === "success"
-        ? null
-        : (() => {
-          const step = workflowStageEntries(updatedWorkflow).find((entry) => entry.status === "error")
-            || workflowStageEntries(updatedWorkflow).at(-1)
-            || null;
-          if (!step) {
-            return null;
-          }
-          const stepDir = step.stepDir;
-          const logFile = path.join(stepDir, "stdout.log");
-          return {
-            id: step.id,
-            name: step.name,
-            tool: (step.name || "").split(".")[0],
-            log_file: relativeToCwd(logFile),
-            log_tail: tailFile(logFile, 12000),
-          };
-        })(),
+      steps: updatedWorkflow.steps,
       failed_step: workflowStatus === "success"
         ? null
         : (() => {
-          const step = workflowStageEntries(updatedWorkflow).find((entry) => entry.status === "error")
-            || workflowStageEntries(updatedWorkflow).at(-1)
-            || null;
+          const step = updatedWorkflow.steps.find((entry) => entry.status === "error") || updatedWorkflow.steps.at(-1) || null;
           if (!step) {
             return null;
           }
@@ -2451,7 +2316,7 @@ async function runToolWorkflow({
     },
     error: workflowStatus === "success" || workflowStatus === "stopped"
       ? undefined
-      : { code: "workflow_failed", message: (lastToolPayload && lastToolPayload.summary) || lastStderr || "workflow stage failed" }
+      : { code: "workflow_failed", message: (lastToolPayload && lastToolPayload.summary) || lastStderr || "workflow step failed" }
   };
 
   if (jsonMode) {
@@ -2469,12 +2334,11 @@ function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) 
   const existingMap = new Map(existingSteps.map((step) => [step.id, step]));
   const createdSteps = [];
   const stepResults = {};
-  const configuredStages = workflowStageEntries(configured);
-  let startIndex = configuredStages.length;
+  let startIndex = configured.steps.length;
   let seenFromStep = !fromStep;
 
-  for (let index = 0; index < configuredStages.length; index += 1) {
-    const spec = configuredStages[index];
+  for (let index = 0; index < configured.steps.length; index += 1) {
+    const spec = configured.steps[index];
     const stepId = spec.id || spec.name || `step-${index + 1}`;
     let stepRecord = existingMap.get(stepId);
     if (!stepRecord) {
@@ -2536,7 +2400,7 @@ function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) 
     const reusable = stepRecord.status === "success"
       && stepRecord.fingerprint === fingerprint
       && artifactsExist(stepRecord);
-    if (reusable && startIndex === configuredStages.length) {
+    if (reusable && startIndex === configured.steps.length) {
       stepResults[stepId] = stepTemplatePayload(stepRecord.toolResult);
       updateWorkflowStep(stepRecord.stepDir, (current) => ({
         ...current,
@@ -2545,16 +2409,16 @@ function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) 
       }));
       continue;
     }
-    if (startIndex === configuredStages.length) {
+    if (startIndex === configured.steps.length) {
       startIndex = index;
     }
   }
 
   if (fromStep && !seenFromStep) {
-    throw new Error(`workflow resume could not resolve stage: ${fromStep}`);
+    throw new Error(`workflow resume could not resolve step: ${fromStep}`);
   }
-  if (startIndex === configuredStages.length) {
-    startIndex = configuredStages.length;
+  if (startIndex === configured.steps.length) {
+    startIndex = configured.steps.length;
   }
   return { createdSteps, stepResults, startIndex };
 }
@@ -2604,10 +2468,10 @@ function formatWorkflowInspectText(workflow, steps) {
     `Workflow ID: ${workflow.id || "-"}`,
     `Status: ${workflow.status || "-"}`,
     `Category: ${workflow.category || "-"}`,
-    `Current Stage: ${workflow.currentStageId || workflow.currentStepId || "-"}`,
+    `Current Step: ${workflow.currentStepId || "-"}`,
     `Created: ${workflow.createdAt || "-"}`,
     `Updated: ${workflow.updatedAt || "-"}`,
-    "Stages:",
+    "Steps:",
     "id\tstatus\tname",
     ...steps.map((step) => `${step.id || "-"}\t${step.status || "-"}\t${step.name || "-"}`),
   ];
@@ -2623,6 +2487,21 @@ function formatWorkflowLifecycleText(payload) {
     `Status: ${details.status || "-"}`,
   ];
   return lines.join("\n");
+}
+
+function workflowStepControl(flags) {
+  if (Object.prototype.hasOwnProperty.call(flags, "one-step")) {
+    throw new Error("workflow --one-step was removed; use --only-step STEP_ID");
+  }
+  const fromStep = flags["from-step"] ? String(flags["from-step"]) : null;
+  const onlyStep = flags["only-step"] ? String(flags["only-step"]) : null;
+  if (fromStep && onlyStep && fromStep !== onlyStep) {
+    throw new Error("workflow step control cannot combine different --from-step and --only-step values");
+  }
+  return {
+    fromStep: onlyStep || fromStep,
+    oneStep: Boolean(onlyStep),
+  };
 }
 
 async function handleWorkflowCommand(argv) {
@@ -2642,9 +2521,9 @@ async function handleWorkflowCommand(argv) {
       writeStdoutLine("No workflow instances.");
     } else {
       writeStdoutLine([
-        "id\tworkflow\tcategory\tstatus\tcreated\tstages",
+        "id\tworkflow\tcategory\tstatus\tcreated\tsteps",
         ...payload.details.runs.map((run) => (
-          `${run.id}\t${run.workflowName || "-"}\t${run.category}\t${run.status}\t${run.createdAt || "-"}\t${run.stageCount}`
+          `${run.id}\t${run.workflowName || "-"}\t${run.category}\t${run.status}\t${run.createdAt || "-"}\t${run.stepCount}`
         )),
       ].join("\n"));
     }
@@ -2659,9 +2538,9 @@ async function handleWorkflowCommand(argv) {
       writeStdoutLine("No configured workflows.");
     } else {
       writeStdoutLine([
-        "name\tcategory\tstages\tconfig",
+        "name\tcategory\tsteps\tconfig",
         ...payload.details.workflows.map((workflow) => (
-          `${workflow.name}\t${workflow.category}\t${workflow.stages}\t${workflow.config || "-"}`
+          `${workflow.name}\t${workflow.category}\t${workflow.steps}\t${workflow.config || "-"}`
         ))
       ].join("\n"));
     }
@@ -2673,26 +2552,26 @@ async function handleWorkflowCommand(argv) {
     if (selectedWorkflowName) {
       const configured = resolveConfiguredWorkflow(String(selectedWorkflowName));
       const workspaceRoot = resolveWorkspaceRoot(flags);
-      const stageControl = workflowStageControl(flags);
+      const stepControl = workflowStepControl(flags);
       const existingFound = tryFindWorkflowRun(workspaceRoot, selectedWorkflowName);
       const existingWorkflow = existingFound ? readJson(existingFound.manifestPath) : null;
       if (existingWorkflow && existingWorkflow.status === "running") {
         throw new Error(`workflow run requires a non-running workflow instance: ${selectedWorkflowName}`);
       }
-      if (stageControl.fromStage) {
+      if (stepControl.fromStep) {
         const workflowRuns = listRunDirsForWorkflow(workspaceRoot, selectedWorkflowName);
         if (workflowRuns.length === 0) {
-          throw new Error(`workflow run --from-stage requires an existing workflow instance for ${selectedWorkflowName}`);
+          throw new Error(`workflow run --from-step requires an existing workflow instance for ${selectedWorkflowName}`);
         }
         const latest = workflowRuns[0];
         const plan = collectResumePlan(
           workspaceRoot,
           latest,
           configured,
-          stageControl.fromStage,
+          stepControl.fromStep,
         );
         return await runToolWorkflow({
-          steps: configured.stages.map((step, index) => ({
+          steps: configured.steps.map((step, index) => ({
             id: step.id || step.name || `step-${index + 1}`,
             tool: step.tool,
             name: step.name || `${step.tool}.${step.command || "exec"}`,
@@ -2712,16 +2591,15 @@ async function handleWorkflowCommand(argv) {
           existingSteps: plan.createdSteps,
           initialStepResults: plan.stepResults,
           startIndex: plan.startIndex,
-          endIndex: stageControl.oneStage ? plan.startIndex + 1 : null,
+          endIndex: stepControl.oneStep ? plan.startIndex + 1 : null,
           resumeMeta: {
-            mode: stageControl.oneStage ? "single-stage" : "from-stage",
-            fromStage: stageControl.fromStage,
-            fromStep: stageControl.fromStage,
+            mode: stepControl.oneStep ? "single-step" : "from-step",
+            fromStep: stepControl.fromStep,
           },
         });
       }
       return await runToolWorkflow({
-        steps: configured.stages.map((step, index) => ({
+        steps: configured.steps.map((step, index) => ({
           id: step.id || step.name || `step-${index + 1}`,
           tool: step.tool,
           name: step.name || `${step.tool}.${step.command || "exec"}`,
@@ -2781,10 +2659,10 @@ async function handleWorkflowCommand(argv) {
       throw new Error("workflow resume requires a non-running workflow instance");
     }
     const configured = resolveConfiguredWorkflow(String(workflow.workflow), workflow.configPath || null);
-    const stageControl = workflowStageControl(flags);
-    const plan = collectResumePlan(workspaceRoot, workflow, configured, stageControl.fromStage);
+    const stepControl = workflowStepControl(flags);
+    const plan = collectResumePlan(workspaceRoot, workflow, configured, stepControl.fromStep);
     return await runToolWorkflow({
-      steps: configured.stages.map((step, index) => ({
+      steps: configured.steps.map((step, index) => ({
         id: step.id || step.name || `step-${index + 1}`,
         tool: step.tool,
         name: step.name || `${step.tool}.${step.command || "exec"}`,
@@ -2804,11 +2682,10 @@ async function handleWorkflowCommand(argv) {
       existingSteps: plan.createdSteps,
       initialStepResults: plan.stepResults,
       startIndex: plan.startIndex,
-      endIndex: stageControl.oneStage ? plan.startIndex + 1 : null,
+      endIndex: stepControl.oneStep ? plan.startIndex + 1 : null,
       resumeMeta: {
-        mode: stageControl.oneStage ? "single-stage" : (stageControl.fromStage ? "from-stage" : "resume"),
-        fromStage: stageControl.fromStage || (configured.stages[plan.startIndex] && (configured.stages[plan.startIndex].id || configured.stages[plan.startIndex].name)) || null,
-        fromStep: stageControl.fromStage || (configured.stages[plan.startIndex] && (configured.stages[plan.startIndex].id || configured.stages[plan.startIndex].name)) || null,
+        mode: stepControl.oneStep ? "single-step" : (stepControl.fromStep ? "from-step" : "resume"),
+        fromStep: stepControl.fromStep || (configured.steps[plan.startIndex] && (configured.steps[plan.startIndex].id || configured.steps[plan.startIndex].name)) || null,
       },
     });
   }
@@ -2831,11 +2708,10 @@ async function handleWorkflowCommand(argv) {
         id: detail.id,
         status: detail.status,
         category: detail.category,
-        currentStageId: detail.currentStageId,
         currentStepId: null,
         createdAt: detail.createdAt,
         updatedAt: detail.completedAt || detail.createdAt,
-      }, detail.stages));
+      }, detail.steps));
     }
     return 0;
   }
@@ -2868,12 +2744,12 @@ async function handleWorkflowCommand(argv) {
     const found = findWorkflowRun(workspaceRoot, id);
     const steps = listWorkflowSteps(found.runDir);
     if (steps.length === 0) {
-      throw new Error("workflow logs found no stage logs");
+      throw new Error("workflow logs found no step logs");
     }
-    const stepId = flags.stage || flags.step || steps[0].id;
+    const stepId = flags.step || steps[0].id;
     const step = steps.find((item) => item.id === stepId);
     if (!step) {
-      throw new Error(`workflow logs could not resolve stage: ${stepId}`);
+      throw new Error(`workflow logs could not resolve step: ${stepId}`);
     }
     const logFile = resolvePreferredStepLogFile(step) || path.join(step.stepDir, "stdout.log");
     if (!fs.existsSync(logFile)) {
@@ -2883,12 +2759,12 @@ async function handleWorkflowCommand(argv) {
       if (flags.json) {
         throw new Error("workflow logs does not support --json with --follow");
       }
-      if (!flags.stage && !flags.step) {
-        writeStdoutLine(`Selected stage: ${stepId}`);
+      if (!flags.step) {
+        writeStdoutLine(`Selected step: ${stepId}`);
       }
       return await followLogFile(logFile);
     }
-    const content = (flags.stage || flags.step)
+    const content = flags.step
       ? (loadWorkflowStepLogText(workspaceRoot, id, stepId) || "")
       : (loadWorkflowStepLogText(workspaceRoot, id, stepId) || "");
     if (flags.json) {
@@ -2897,17 +2773,11 @@ async function handleWorkflowCommand(argv) {
         status: "success",
         exit_code: 0,
         summary: "printed workflow logs",
-        details: {
-          id,
-          stage: stepId,
-          step: stepId,
-          log_file: relativeToCwd(logFile),
-          bytes: Buffer.byteLength(content, "utf8")
-        }
+        details: { id, step: stepId, log_file: relativeToCwd(logFile), bytes: Buffer.byteLength(content, "utf8") }
       }));
     } else {
-      if (!flags.stage && !flags.step) {
-        writeStdoutLine(`Selected stage: ${stepId}`);
+      if (!flags.step) {
+        writeStdoutLine(`Selected step: ${stepId}`);
       }
       writeStdoutLine(content.trimEnd());
     }

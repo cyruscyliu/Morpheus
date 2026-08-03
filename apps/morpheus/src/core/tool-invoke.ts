@@ -1694,7 +1694,10 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   );
   const toolCommand = command;
   const effective = resolveToolDependencies(resolved, toolCommand);
-  const workflowStepCwd = command === "exec" && fs.existsSync(path.join(process.cwd(), "step.json"))
+  const workflowStepCwd = command === "exec" && (
+    fs.existsSync(path.join(process.cwd(), "step.json"))
+    || fs.existsSync(path.join(process.cwd(), "stage.json"))
+  )
     ? process.cwd()
     : null;
   if (command === "exec" && workflowStepCwd && !effective["run-dir"]) {

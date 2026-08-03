@@ -18,6 +18,7 @@ const {
 const {
   createWorkflowRun,
   createWorkflowStep,
+  migrateLegacyWorkflowRunToInstance,
   updateWorkflowRun,
   updateWorkflowStep,
   workflowManifestPath,
@@ -1006,6 +1007,13 @@ function findWorkflowRun(workspaceRoot, id) {
   const detail = loadWorkflowDetail(workspaceRoot, id);
   if (!detail || !detail.runDir) {
     throw new Error(missingWorkflowInstanceError(id));
+  }
+  const canonicalDir = path.join(workflowRunsRoot(workspaceRoot), id);
+  if (path.resolve(detail.runDir) !== path.resolve(canonicalDir)) {
+    const migratedDir = migrateLegacyWorkflowRunToInstance(workspaceRoot, id);
+    if (migratedDir) {
+      return ensureWorkflowManifest(migratedDir);
+    }
   }
   return ensureWorkflowManifest(detail.runDir);
 }
@@ -2447,6 +2455,9 @@ function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) 
       continue;
     }
     if (fromStep && seenFromStep) {
+      continue;
+    }
+    if (!fromStep && startIndex !== configuredStages.length) {
       continue;
     }
     const stepSpec = {

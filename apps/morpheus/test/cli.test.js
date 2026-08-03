@@ -42,6 +42,7 @@ function isolatedEnv(extra = {}) {
     ...extra
   };
   delete env.MORPHEUS_CONFIG;
+  delete env.MORPHEUS_DATA_ROOT;
   delete env.MORPHEUS_WORKSPACES_ROOT;
   return env;
 }
@@ -340,13 +341,13 @@ test("config check can use explicit --config outside the config directory", () =
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
-test("config show loads .env from cwd and expands MORPHEUS_WORKSPACES_ROOT", () => {
+test("config show loads .env from cwd and expands MORPHEUS_DATA_ROOT", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-env-"));
   const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-data-root-"));
   fs.writeFileSync(
     path.join(projectRoot, ".env"),
     [
-      `MORPHEUS_WORKSPACES_ROOT=${dataRoot}`,
+      `MORPHEUS_DATA_ROOT=${dataRoot}`,
       ""
     ].join("\n")
   );
@@ -354,7 +355,7 @@ test("config show loads .env from cwd and expands MORPHEUS_WORKSPACES_ROOT", () 
     projectRoot,
     [
       "workspace:",
-      "  root: ${MORPHEUS_WORKSPACES_ROOT}/hyperarm",
+      "  root: ${MORPHEUS_DATA_ROOT}/workspaces/hyperarm",
       ""
     ].join("\n")
   );
@@ -362,6 +363,7 @@ test("config show loads .env from cwd and expands MORPHEUS_WORKSPACES_ROOT", () 
   const env = { ...process.env };
   delete env.MORPHEUS_WORK_ROOT;
   delete env.RESEARCH_RUNTIME_WORK_ROOT;
+  delete env.MORPHEUS_DATA_ROOT;
   delete env.MORPHEUS_WORKSPACES_ROOT;
 
   const result = run(["config", "show", "--json"], {
@@ -371,8 +373,8 @@ test("config show loads .env from cwd and expands MORPHEUS_WORKSPACES_ROOT", () 
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.status, "success");
-  assert.equal(payload.details.workspace_root, path.join(dataRoot, "hyperarm"));
-  assert.equal(payload.details.workflow_root, path.join(dataRoot, "hyperarm", "workflows"));
+  assert.equal(payload.details.workspace_root, path.join(dataRoot, "workspaces", "hyperarm"));
+  assert.equal(payload.details.workflow_root, path.join(dataRoot, "workspaces", "hyperarm", "workflows"));
   fs.rmSync(projectRoot, { recursive: true, force: true });
   fs.rmSync(dataRoot, { recursive: true, force: true });
 });

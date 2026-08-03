@@ -107,9 +107,14 @@ const bitcodeCount = fs.readFileSync(bitcodeListPath, "utf8")
   .map((line) => line.trim())
   .filter(Boolean)
   .length;
-const kernelSourceDir = typeof payload.source_dir === "string" && payload.source_dir
-  ? payload.source_dir
-  : path.join(sourcesDir, `linux-${process.env.MORPHEUS_LLBIC_BUILD_VERSION || ""}`);
+const candidateSourceDir = path.join(
+  sourcesDir,
+  `linux-${process.env.MORPHEUS_LLBIC_BUILD_VERSION || ""}`,
+);
+const payloadSourceDir = typeof payload.source_dir === "string" ? payload.source_dir : "";
+const kernelSourceDir = payloadSourceDir && fs.existsSync(path.join(payloadSourceDir, "Makefile"))
+  ? payloadSourceDir
+  : candidateSourceDir;
 const updatedPayload = {
   ...payload,
   status: "success",

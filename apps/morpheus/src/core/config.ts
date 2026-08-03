@@ -78,6 +78,22 @@ function loadEnvFile(filePath) {
   return true;
 }
 
+function normalizeMorpheusEnv() {
+  const dataRoot = typeof process.env.MORPHEUS_DATA_ROOT === "string" && process.env.MORPHEUS_DATA_ROOT
+    ? process.env.MORPHEUS_DATA_ROOT
+    : null;
+  const workspacesRoot = typeof process.env.MORPHEUS_WORKSPACES_ROOT === "string" && process.env.MORPHEUS_WORKSPACES_ROOT
+    ? process.env.MORPHEUS_WORKSPACES_ROOT
+    : null;
+
+  if (dataRoot && !workspacesRoot) {
+    process.env.MORPHEUS_WORKSPACES_ROOT = path.join(dataRoot, "workspaces");
+  }
+  if (workspacesRoot && !dataRoot) {
+    process.env.MORPHEUS_DATA_ROOT = path.dirname(workspacesRoot);
+  }
+}
+
 function loadEnvForPath(filePath) {
   if (!filePath) {
     return null;
@@ -86,6 +102,7 @@ function loadEnvForPath(filePath) {
   while (true) {
     const candidate = path.join(current, ".env");
     if (loadEnvFile(candidate)) {
+      normalizeMorpheusEnv();
       return candidate;
     }
     const parent = path.dirname(current);
@@ -198,6 +215,7 @@ function loadConfig(startDir, options = {}) {
     };
   }
   loadEnvForPath(filePath);
+  normalizeMorpheusEnv();
   const parsed = yaml.parse(fs.readFileSync(filePath, "utf8")) || {};
   return {
     path: filePath,
@@ -608,6 +626,7 @@ module.exports = {
   loadConfig,
   loadEnvFile,
   loadEnvForPath,
+  normalizeMorpheusEnv,
   RESERVED_MANAGED_TOOL_CONFIG_KEYS,
   expandEnvironmentVariables,
   resolveLocalPath,

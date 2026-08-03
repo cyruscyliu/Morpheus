@@ -1,5 +1,5 @@
 workspace:
-  root: ${MORPHEUS_WORKSPACES_ROOT}/hyperarm
+  root: ${MORPHEUS_DATA_ROOT}/workspaces/hyperarm
 cache:
   root: ../../.cache
   namespace: hyperarm
@@ -63,10 +63,10 @@ tools:
     build-version: b32557c8ae7e2300657de06382f2761f831c1963
     git-url: https://github.com/AFLplusplus/LibAFL.git
     patch-dir: tools/libafl/patches/overlay
-    patch-script: ${MORPHEUS_WORKSPACES_ROOT}/hyperarm/tools/libafl/scripts/qemu_nesting/patch.sh
-    build-script: ${MORPHEUS_WORKSPACES_ROOT}/hyperarm/tools/libafl/scripts/qemu_nesting/build.sh
-    inspect-script: ${MORPHEUS_WORKSPACES_ROOT}/hyperarm/tools/libafl/scripts/qemu_nesting/inspect.sh
-    harness-script: ${MORPHEUS_WORKSPACES_ROOT}/hyperarm/tools/libafl/scripts/qemu_nesting/exec.sh
+    patch-script: ${MORPHEUS_DATA_ROOT}/workspaces/hyperarm/tools/libafl/scripts/qemu_nesting/patch.sh
+    build-script: ${MORPHEUS_DATA_ROOT}/workspaces/hyperarm/tools/libafl/scripts/qemu_nesting/build.sh
+    inspect-script: ${MORPHEUS_DATA_ROOT}/workspaces/hyperarm/tools/libafl/scripts/qemu_nesting/inspect.sh
+    harness-script: ${MORPHEUS_DATA_ROOT}/workspaces/hyperarm/tools/libafl/scripts/qemu_nesting/exec.sh
     artifacts:
       - source-dir
       - crate-dir
@@ -291,7 +291,7 @@ workflows:
           - --llbase-contract
           - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
           - --source-dir
-          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - "{{steps.llbic_build.details.source}}"
           - --generator
           - files
           - --file
@@ -345,7 +345,7 @@ workflows:
           - --llbase-contract
           - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
           - --source-dir
-          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - "{{steps.llbic_build.details.source}}"
           - --generator
           - files
           - --file
@@ -367,7 +367,7 @@ workflows:
           - --llbase-contract
           - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
           - --source-dir
-          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - "{{steps.llbic_build.details.source}}"
           - --generator
           - files
           - --file
@@ -1152,7 +1152,7 @@ workflows:
           - --llbase-contract
           - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
           - --source-dir
-          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - "{{steps.llbic_build.details.source}}"
           - --generator
           - files
           - --file
@@ -1174,7 +1174,7 @@ workflows:
           - --llbase-contract
           - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
           - --source-dir
-          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - "{{steps.llbic_build.details.source}}"
           - --generator
           - files
           - --file
@@ -1690,7 +1690,7 @@ workflows:
           - --generator
           - files
           - --source-dir
-          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - "{{steps.llbic_build.details.source}}"
           - --scope-name
           - driver-callgraph-virtio
           - --file
@@ -1712,7 +1712,7 @@ workflows:
           - --generator
           - groups
           - --source-dir
-          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - "{{steps.llbic_build.details.source}}"
           - --scope-name
           - driver-callgraph-virtio-groups
           - --scope-list
@@ -1780,7 +1780,7 @@ workflows:
           - --generator
           - interfaces
           - --source-dir
-          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - "{{steps.llbic_build.details.source}}"
           - --interfaces
           - networking
       - id: driver_callgraph_runtime_groups
@@ -1792,7 +1792,7 @@ workflows:
           - --generator
           - groups
           - --source-dir
-          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - "{{steps.llbic_build.details.source}}"
           - --scope-name
           - driver-callgraph-runtime-virtio-groups
           - --scope-list
@@ -1860,7 +1860,7 @@ workflows:
           - --generator
           - interfaces
           - --source-dir
-          - "{{steps.llbic_build.artifacts.source-dir.location}}"
+          - "{{steps.llbic_build.details.source}}"
           - --interfaces
           - networking
       - id: driver_callgraph_runtime_groups

@@ -212,6 +212,10 @@ const bitcodeRoot =
   (payload.paths && payload.paths.bitcode_root && payload.paths.bitcode_root.resolved_path) ||
   "";
 const sourceRoot = String(payload.source_dir || "");
+const portableSourceRoot =
+  (payload.paths && payload.paths.source_dir && payload.paths.source_dir.portable) ||
+  (payload.paths && payload.paths.source_dir && payload.paths.source_dir.runtime_path) ||
+  "";
 if (!bitcodeRoot || !sourceRoot) {
   console.error("llbic json does not expose bitcode_root/source_dir");
   process.exit(2);
@@ -241,7 +245,21 @@ function walk(dir) {
     }
     const objectRel = match[1].trim();
     const sourceAbs = match[2].trim();
-    let sourceRel = path.relative(sourceRoot, sourceAbs);
+    let sourceRel = "";
+    if (sourceAbs === sourceRoot || sourceAbs.startsWith(`${sourceRoot}${path.sep}`)) {
+      sourceRel = path.relative(sourceRoot, sourceAbs);
+    } else if (portableSourceRoot && (sourceAbs === portableSourceRoot || sourceAbs.startsWith(`${portableSourceRoot}${path.sep}`))) {
+      sourceRel = path.relative(portableSourceRoot, sourceAbs);
+    } else {
+      const sourceRootBase = path.basename(sourceRoot);
+      const marker = `${sourceRootBase}${path.sep}`;
+      const index = sourceAbs.indexOf(marker);
+      if (index >= 0) {
+        sourceRel = sourceAbs.slice(index + marker.length);
+      } else {
+        sourceRel = path.relative(sourceRoot, sourceAbs);
+      }
+    }
     sourceRel = sourceRel.split(path.sep).join("/");
     if (!wanted.has(sourceRel)) {
       continue;
@@ -265,12 +283,17 @@ resolve_all_modules() {
   local llbic_json_path="$1"
   node - "${llbic_json_path}" <<'EOF'
 const fs = require("fs");
+const path = require("path");
 
 const [llbicJsonPath] = process.argv.slice(2);
 const payload = JSON.parse(fs.readFileSync(llbicJsonPath, "utf8"));
 const listFile =
   payload.bitcode_list_file ||
   (payload.paths && payload.paths.bitcode_list_file && payload.paths.bitcode_list_file.resolved_path) ||
+  "";
+const bitcodeRoot =
+  payload.bitcode_root ||
+  (payload.paths && payload.paths.bitcode_root && payload.paths.bitcode_root.resolved_path) ||
   "";
 if (!listFile) {
   console.error("llbic json does not expose bitcode_list_file");
@@ -281,7 +304,7 @@ for (const line of fs.readFileSync(listFile, "utf8").split(/\r?\n/)) {
   if (!item) {
     continue;
   }
-  process.stdout.write(item + "\n");
+  process.stdout.write((path.isAbsolute(item) || !bitcodeRoot ? item : path.resolve(bitcodeRoot, item)) + "\n");
 }
 EOF
 }

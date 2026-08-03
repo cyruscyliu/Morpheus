@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 from collections import defaultdict, deque
 from pathlib import Path
@@ -156,8 +157,14 @@ def main():
     parser.add_argument(
         "--runtime-groups",
         type=Path,
-        default=Path(
-            "projects/hyperarm/workspace/tools/driver-callgraph/scripts/runtime-groups.txt"
+        default=(
+            Path(os.environ.get("MORPHEUS_DATA_ROOT", "."))
+            / "workspaces"
+            / "hyperarm"
+            / "tools"
+            / "driver-callgraph"
+            / "scripts"
+            / "runtime-groups.txt"
         ),
     )
     args = parser.parse_args()

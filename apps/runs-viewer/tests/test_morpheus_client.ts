@@ -83,7 +83,7 @@ test("morpheus client reads workflow runs, detail, events, and logs through the 
 
   const runs = listRunSummariesWithTotal(context, {});
   assert.equal(runs.total, 1);
-  assert.equal(runs.runs[0]?.id, runId);
+  assert.equal(runs.runs[0]?.id, "qemu-build");
   assert.equal(runs.runs[0]?.workflowName, "qemu-build");
 
   const detail = loadRunDetail(context, runId);

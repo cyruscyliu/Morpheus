@@ -200,7 +200,7 @@ export function loadConfigContext(
   return {
     configPath: typeof details.config_path === "string" ? details.config_path : null,
     workspaceRoot: String(details.workspace_root || context.workspaceRoot),
-    runRoot: String(details.run_root || path.join(context.workspaceRoot, "runs")),
+    runRoot: String(details.workflow_root || details.run_root || path.join(context.workspaceRoot, "workflows")),
   };
 }
 

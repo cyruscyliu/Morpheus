@@ -15,7 +15,7 @@ const { handlePostprocessCommand } = require("./commands/postprocess");
 const { handleStopCommand } = require("./commands/stop");
 const { handleToolCommand } = require("./commands/tools");
 const { handleWorkflowCommand } = require("./commands/workflow");
-const { findConfigPath } = require("./core/config");
+const { findConfigPath, normalizeMorpheusEnv } = require("./core/config");
 const { writeStdout, writeStdoutLine, writeStderrLine } = require("./core/io");
 
 function parseEnvLine(line) {
@@ -77,12 +77,13 @@ function loadProjectEnv(explicitConfigPath) {
     let current = path.resolve(startDir);
     while (true) {
       if (!seen.has(current)) {
-        const envPath = path.join(current, ".env");
-        if (loadEnvFile(envPath)) {
-          return envPath;
-        }
-        seen.add(current);
+      const envPath = path.join(current, ".env");
+      if (loadEnvFile(envPath)) {
+        normalizeMorpheusEnv();
+        return envPath;
       }
+      seen.add(current);
+    }
       const parent = path.dirname(current);
       if (parent === current) {
         break;
@@ -90,6 +91,7 @@ function loadProjectEnv(explicitConfigPath) {
       current = parent;
     }
   }
+  normalizeMorpheusEnv();
   return null;
 }
 

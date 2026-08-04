@@ -168,10 +168,14 @@ function normalizeWorkflowRecordAliases(record) {
     record.currentStageId != null
       ? record.currentStageId
       : (record.currentStepId != null ? record.currentStepId : null);
+  const currentStepId =
+    record.currentStepId != null
+      ? record.currentStepId
+      : currentStageId;
   return {
     ...record,
     currentStageId,
-    currentStepId: currentStageId,
+    currentStepId,
     stages: normalizedStages,
     steps: normalizedStages.map((entry) => ({ ...entry })),
   };
@@ -451,6 +455,7 @@ function createWorkflowRun(workspaceRoot, workflowName, options = {}) {
     workspace: path.resolve(process.cwd(), workspaceRoot),
     workflowDir: runDir,
     runDir,
+    currentStageId: null,
     stages: [],
   });
 
@@ -520,6 +525,10 @@ function createWorkflowStep(runDir, index, name, options = {}) {
     logFile: stepLogPath(dir),
     artifactsDir: stepArtifactsDir(dir),
     tool: options.tool || null,
+    stageId: options.stageId || null,
+    stageName: options.stageName || null,
+    stageIndex: Number.isInteger(options.stageIndex) ? options.stageIndex : null,
+    stageStepIndex: Number.isInteger(options.stageStepIndex) ? options.stageStepIndex : null,
     mode: options.mode || null,
     inputs: options.inputs || [],
     expectedArtifacts: options.expectedArtifacts || [],

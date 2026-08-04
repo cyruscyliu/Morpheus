@@ -96,6 +96,10 @@ function safeParseInt(value, fallback) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
+function asNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function fileHasLogContent(filePath) {
   if (!fs.existsSync(filePath)) {
     return false;
@@ -188,10 +192,14 @@ function normalizeWorkflowRecordAliases(record) {
     record.currentStageId != null
       ? record.currentStageId
       : (record.currentStepId != null ? record.currentStepId : null);
+  const currentStepId =
+    record.currentStepId != null
+      ? record.currentStepId
+      : currentStageId;
   return {
     ...record,
     currentStageId,
-    currentStepId: currentStageId,
+    currentStepId,
     stages: normalizedStages,
     steps: normalizedStages.map((entry) => ({ ...entry })),
   };
@@ -432,41 +440,106 @@ function workflowStepLogPaths(runDir, stepId) {
   }
   const record = readJson(recordPath);
   const normalized = normalizeWorkflowRecordAliases(record);
-  const steps = Array.isArray(normalized.stages) ? normalized.stages : [];
-  const match = steps.find((entry) => String(entry.id || "") === stepId) || null;
-  const resolvedStepDir =
-    match && typeof match.stageDir === "string"
-      ? match.stageDir
-      : (match && typeof match.stepDir === "string" ? match.stepDir : stageDir(runDir, stepId));
-  const manifest = readStageManifestIfExists(resolvedStepDir, null);
-  const paths = [
-    manifest && typeof manifest.logFile === "string"
-      ? manifest.logFile
-      : path.join(resolvedStepDir, "stdout.log"),
-    ...stepSiblingLogPaths(resolvedStepDir),
-  ];
-
-  const managedRunManifest = readJsonIfExists(path.join(resolvedStepDir, "run", "manifest.json"), null);
-  if (managedRunManifest && typeof managedRunManifest.logFile === "string") {
-    paths.push(managedRunManifest.logFile);
-  }
-  const providerLog =
-    managedRunManifest &&
-    managedRunManifest.runtime &&
-    managedRunManifest.runtime.providerRun &&
-    typeof managedRunManifest.runtime.providerRun.log_file === "string"
-      ? managedRunManifest.runtime.providerRun.log_file
-      : "";
-  if (providerLog) {
-    paths.push(providerLog);
-  }
-
-  const stderrLog = path.join(resolvedStepDir, "stderr.log");
-  if (fs.existsSync(stderrLog)) {
-    paths.push(stderrLog);
+  const steps = Array.isArray(normalized.steps) && normalized.steps.length > 0
+    ? normalized.steps
+    : (Array.isArray(normalized.stages) ? normalized.stages : []);
+  const stageMatches = steps.filter((entry) => String(entry.stageId || "") === stepId);
+  const directMatch = steps.find((entry) => String(entry.id || "") === stepId) || null;
+  const matches = stageMatches.length > 0 ? stageMatches : (directMatch ? [directMatch] : []);
+  const paths = [];
+  for (const match of matches) {
+    const resolvedStepDir =
+      match && typeof match.stageDir === "string"
+        ? match.stageDir
+        : (match && typeof match.stepDir === "string" ? match.stepDir : stageDir(runDir, String(match && match.id ? match.id : stepId)));
+    const manifest = readStageManifestIfExists(resolvedStepDir, null);
+    paths.push(
+      manifest && typeof manifest.logFile === "string"
+        ? manifest.logFile
+        : path.join(resolvedStepDir, "stdout.log"),
+    );
+    paths.push(...stepSiblingLogPaths(resolvedStepDir));
+    const managedRunManifest = readJsonIfExists(path.join(resolvedStepDir, "run", "manifest.json"), null);
+    if (managedRunManifest && typeof managedRunManifest.logFile === "string") {
+      paths.push(managedRunManifest.logFile);
+    }
+    const providerLog =
+      managedRunManifest &&
+      managedRunManifest.runtime &&
+      managedRunManifest.runtime.providerRun &&
+      typeof managedRunManifest.runtime.providerRun.log_file === "string"
+        ? managedRunManifest.runtime.providerRun.log_file
+        : "";
+    if (providerLog) {
+      paths.push(providerLog);
+    }
+    const stderrLog = path.join(resolvedStepDir, "stderr.log");
+    if (fs.existsSync(stderrLog)) {
+      paths.push(stderrLog);
+    }
   }
 
   return uniquePaths(paths);
+}
+
+function loadWorkflowStepLogPaths(workspaceRoot, runId, stepId) {
+  const runDir = resolveWorkflowDir(workspaceRoot, runId);
+  const kind = detectRunKind(runDir);
+  if (!kind) {
+    return [];
+  }
+  if (kind === "workflow-first") {
+    return workflowStepLogPaths(runDir, stepId);
+  }
+  const index = readJsonIfExists(path.join(runDir, "index.json"), { steps: [] });
+  const stepsIndex = Array.isArray(index.steps) ? index.steps : [];
+  const match = stepsIndex.find((entry) => String(entry.id || "") === stepId) || null;
+  const stepDir =
+    match && match.dir ? path.join(runDir, match.dir) : path.join(runDir, "steps", stepId);
+  return [path.join(stepDir, "logs", "stdout.log")].filter((filePath) => fs.existsSync(filePath));
+}
+
+function loadWorkflowStepLogFiles(workspaceRoot, runId, stepId) {
+  const runDir = resolveWorkflowDir(workspaceRoot, runId);
+  const kind = detectRunKind(runDir);
+  if (!kind) {
+    return [];
+  }
+  if (kind === "workflow-first") {
+    const stageFiles = workflowStepLogPaths(runDir, stepId);
+    const workflowRecord = tryReadJson(path.join(runDir, "workflow.json")) || {};
+    const stageEntries = Array.isArray(workflowRecord.steps) ? workflowRecord.steps : [];
+    const matches = stageEntries.filter((entry) => String(entry.stageId || entry.id || "") === stepId || String(entry.id || "") === stepId);
+    const runtimeFiles = [];
+    for (const match of matches) {
+      const stepDir =
+        match && typeof match.stepDir === "string"
+          ? match.stepDir
+          : (match && typeof match.stageDir === "string" ? match.stageDir : stageDir(runDir, String(match && match.id ? match.id : stepId)));
+      const runtimeDir = path.join(stepDir, "runtime");
+      const runtimeManifest = readJsonIfExists(path.join(runtimeDir, "manifest.json"), null);
+      if (runtimeManifest && typeof runtimeManifest.logFile === "string") {
+        runtimeFiles.push(runtimeManifest.logFile);
+      }
+      if (runtimeManifest && runtimeManifest.stderr && typeof runtimeManifest.stderr === "string") {
+        runtimeFiles.push(runtimeManifest.stderr);
+      }
+      if (runtimeManifest && runtimeManifest.l1Console && typeof runtimeManifest.l1Console === "string") {
+        runtimeFiles.push(runtimeManifest.l1Console);
+      }
+      runtimeFiles.push(...stepSiblingLogPaths(runtimeDir));
+    }
+    return uniquePaths([...stageFiles, ...runtimeFiles].filter((filePath) => fs.existsSync(filePath)));
+  }
+  const index = readJsonIfExists(path.join(runDir, "index.json"), { steps: [] });
+  const stepsIndex = Array.isArray(index.steps) ? index.steps : [];
+  const match = stepsIndex.find((entry) => String(entry.id || "") === stepId) || null;
+  const stepDir =
+    match && match.dir ? path.join(runDir, match.dir) : path.join(runDir, "steps", stepId);
+  return uniquePaths([
+    path.join(stepDir, "logs", "stdout.log"),
+    ...stepSiblingLogPaths(stepDir),
+  ].filter((filePath) => fs.existsSync(filePath)));
 }
 
 function buildGraph(steps, relations) {
@@ -580,14 +653,61 @@ function normalizeStepSummary(entry, manifest, runId, stepId, logExists, artifac
     artifactCount: artifacts.length,
     artifacts,
     parameters: stepParameters(manifest),
+    stageDir: typeof manifest?.stageDir === "string"
+      ? manifest.stageDir
+      : (typeof entry?.stageDir === "string" ? entry.stageDir : null),
+    stepDir: typeof manifest?.stepDir === "string"
+      ? manifest.stepDir
+      : (typeof entry?.stepDir === "string" ? entry.stepDir : null),
+    stageId: typeof manifest?.stageId === "string"
+      ? manifest.stageId
+      : (typeof entry?.stageId === "string" ? entry.stageId : null),
+    stageName: typeof manifest?.stageName === "string"
+      ? manifest.stageName
+      : (typeof entry?.stageName === "string" ? entry.stageName : null),
+    stageIndex: asNumber(manifest?.stageIndex) ?? asNumber(entry?.stageIndex),
+    stageStepIndex: asNumber(manifest?.stageStepIndex) ?? asNumber(entry?.stageStepIndex),
   };
+}
+
+function groupStageSummaries(stepSummaries) {
+  const groups = [];
+  const seen = new Map();
+  for (const step of stepSummaries) {
+    const stageId = step.stageId || step.id;
+    let group = seen.get(stageId);
+    if (!group) {
+      group = {
+        id: stageId,
+        name: step.stageName || stageId,
+        stageDir: step.stageDir || null,
+        stepDir: step.stepDir || null,
+        status: "unknown",
+        stepCount: 0,
+        steps: [],
+      };
+      seen.set(stageId, group);
+      groups.push(group);
+    }
+    group.steps.push(step);
+    group.stepCount += 1;
+    group.stageDir = group.stageDir || step.stageDir || step.stepDir || null;
+    group.stepDir = group.stepDir || step.stepDir || step.stageDir || null;
+    group.name = step.stageName || group.name;
+  }
+  for (const group of groups) {
+    group.status = workflowStatusFromSteps("unknown", group.steps);
+  }
+  return groups;
 }
 
 function summarizeWorkflowFirst(runDir) {
   const record = readWorkflowRecord(runDir);
   const events = readRunEvents(runDir);
   const relations = eventArtifactsConsumed(events);
-  const stepEntries = Array.isArray(record.stages) ? record.stages : [];
+  const stepEntries = Array.isArray(record.steps) && record.steps.length > 0
+    ? record.steps
+    : (Array.isArray(record.stages) ? record.stages : []);
   const stepRecords = stepEntries.map((entry) => {
     const stepId = String(entry.id || "");
     const stepDirPath =
@@ -605,6 +725,7 @@ function summarizeWorkflowFirst(runDir) {
     return { summary, manifest };
   });
   const steps = stepRecords.map((entry) => entry.summary);
+  const stages = groupStageSummaries(steps);
   const graph = buildGraph(steps, relations);
   const status = workflowStatusFromSteps(record.status, steps);
   return {
@@ -618,9 +739,11 @@ function summarizeWorkflowFirst(runDir) {
     createdAt: record.createdAt || null,
     completedAt: status === "success" || status === "error" ? record.updatedAt || null : null,
     changeName: null,
+    stageCount: stages.length,
     stepCount: steps.length,
     runDir,
     graph,
+    stages,
     steps,
     record,
   };
@@ -781,6 +904,8 @@ module.exports = {
   loadWorkflowEvents,
   loadWorkflowLogText,
   loadWorkflowStepLogText,
+  loadWorkflowStepLogPaths,
+  loadWorkflowStepLogFiles,
   detectRunKind,
   listWorkflowSteps,
 };

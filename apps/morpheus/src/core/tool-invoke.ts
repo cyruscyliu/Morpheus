@@ -641,13 +641,17 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
     ? renderScriptTemplate(resultSpec.logFileTemplate, rawValues)
     : defaultLogFile;
   const detachedExec = command === "exec" && (rawValues.detach === true || rawValues.detach === "true");
+  const parentOwnsStepLog = process.env.MORPHEUS_STEP_PARENT_LOG === "true";
+  const useLocalLogFile = !parentOwnsStepLog || detachedExec;
   fs.rmSync(resultFile, { force: true });
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
-  fs.writeFileSync(logFile, "", "utf8");
+  if (useLocalLogFile) {
+    fs.writeFileSync(logFile, "", "utf8");
+  }
 
   const scriptPath = path.join(repoRoot(), descriptor.installRoot, spec.script.path);
   const logFd = detachedExec ? fs.openSync(logFile, "a") : null;
-  const logStream = detachedExec ? null : fs.createWriteStream(logFile, { flags: "a" });
+  const logStream = detachedExec || !useLocalLogFile ? null : fs.createWriteStream(logFile, { flags: "a" });
   const child = spawn(spec.script.shell || "bash", [scriptPath], {
     cwd: childCwd,
     env,

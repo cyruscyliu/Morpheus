@@ -626,6 +626,7 @@ test("workflow export bundles a runnable workflow view", () => {
   fs.rmSync(outputParent, { recursive: true, force: true });
   fs.rmSync(fakeRepoRoot, { recursive: true, force: true });
 });
+
 test("top-level help groups commands for discovery", () => {
   const result = run(["--help"]);
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -633,10 +634,13 @@ test("top-level help groups commands for discovery", () => {
   assert.match(result.stdout, /^Commands:$/m);
   assert.match(result.stdout, /^  config check       Validate morpheus\.yaml\.$/m);
   assert.match(result.stdout, /^  tool list          List declared tools and their readiness\.$/m);
+  assert.match(result.stdout, /^  workflow inspect   Inspect workflow state and stages\.$/m);
   assert.match(result.stdout, /^  workflow export    Export a runnable workflow bundle\.$/m);
   assert.match(result.stdout, /^  workflow run       Start a configured workflow\.$/m);
+  assert.match(result.stdout, /^  workflow logs      Print workflow stage logs\.$/m);
   assert.match(result.stdout, /^Examples:$/m);
   assert.match(result.stdout, /^  \.\/bin\/morpheus --config <workspace-root>\/morpheus\.yaml workflow inspect --name <workflow> --json$/m);
+  assert.match(result.stdout, /^  \.\/bin\/morpheus --config <workspace-root>\/morpheus\.yaml workflow logs --name <workflow> --stage <stage-id>$/m);
 });
 
 test("config help includes purpose and examples", () => {
@@ -1206,6 +1210,81 @@ test("workflow logs json reports log paths relative to cwd", () => {
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.command, "workflow logs");
   assert.equal(payload.details.log_file, path.join("workflows", runId, "stages", "01-fetch", "stdout.log"));
+  assert.deepEqual(payload.details.log_files, [
+    path.join("workflows", runId, "stages", "01-fetch", "stdout.log"),
+  ]);
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
+test("workflow logs json keeps stage and step distinct for stage selection", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-stage-json-"));
+  const runId = "wf-logs-stage-json";
+  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const fetchDir = path.join(runDir, "stages", "01-fetch");
+  const buildDir = path.join(runDir, "stages", "02-build");
+  fs.mkdirSync(fetchDir, { recursive: true });
+  fs.mkdirSync(buildDir, { recursive: true });
+  fs.writeFileSync(path.join(fetchDir, "stdout.log"), "fetch log\n", "utf8");
+  fs.writeFileSync(path.join(buildDir, "stdout.log"), "build log\n", "utf8");
+  fs.writeFileSync(path.join(fetchDir, "stage.json"), `${JSON.stringify({
+    id: "01-fetch",
+    name: "fetch",
+    status: "success",
+    stepDir: fetchDir,
+    stageDir: fetchDir,
+    stageId: "build",
+    stageName: "build",
+    logFile: path.join(fetchDir, "stdout.log"),
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(buildDir, "stage.json"), `${JSON.stringify({
+    id: "02-build",
+    name: "build",
+    status: "success",
+    stepDir: buildDir,
+    stageDir: buildDir,
+    stageId: "build",
+    stageName: "build",
+    logFile: path.join(buildDir, "stdout.log"),
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
+    id: runId,
+    workflow: "qemu-build",
+    category: "build",
+    status: "success",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    updatedAt: "2026-04-26T12:05:00.000Z",
+    workspace: workspaceRoot,
+    runDir,
+    currentStageId: null,
+    currentStepId: null,
+    currentChildPid: null,
+    runnerPid: null,
+    stages: [
+      { id: "01-fetch", name: "fetch", stepDir: fetchDir, stageDir: fetchDir, stageId: "build", stageName: "build", status: "success" },
+      { id: "02-build", name: "build", stepDir: buildDir, stageDir: buildDir, stageId: "build", stageName: "build", status: "success" }
+    ],
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
+    id: runId,
+    kind: "workflow",
+    category: "build",
+    status: "success",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    completedAt: "2026-04-26T12:05:00.000Z",
+    summary: { workflow: "qemu-build", category: "build" },
+  }, null, 2)}\n`);
+
+  const result = run(["workflow", "logs", "--id", runId, "--workspace", workspaceRoot, "--stage", "build", "--json"], {
+    cwd: workspaceRoot,
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.details.stage, "build");
+  assert.equal(payload.details.step, "01-fetch");
+  assert.deepEqual(payload.details.log_files, [
+    path.join("workflows", runId, "stages", "01-fetch", "stdout.log"),
+    path.join("workflows", runId, "stages", "02-build", "stdout.log"),
+  ]);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 
@@ -1256,6 +1335,7 @@ test("workflow inspect prints a human-readable summary in text mode", () => {
   assert.match(result.stdout, /^Workflow ID: wf-inspect-text$/m);
   assert.match(result.stdout, /^Status: success$/m);
   assert.match(result.stdout, /^Current Stage: -$/m);
+  assert.match(result.stdout, /^Current Step: -$/m);
   assert.match(result.stdout, /^id\tstatus\tname$/m);
   assert.match(result.stdout, /^01-build\tsuccess\tbuild$/m);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
@@ -1318,7 +1398,7 @@ test("workflow inspect does not warn when config is discovered implicitly", () =
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
-test("workflow logs announces the selected default step in text mode", () => {
+test("workflow logs announces the selected default stage in text mode", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-text-"));
   const runId = "wf-logs-text";
   const runDir = path.join(workspaceRoot, "workflows", runId);
@@ -1377,6 +1457,140 @@ test("workflow logs announces the selected default step in text mode", () => {
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(result.stdout, /^Selected stage: 01-fetch$/m);
   assert.match(result.stdout, /^fetch log$/m);
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
+test("workflow logs defaults to the first grouped stage in text mode", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-grouped-text-"));
+  const runId = "wf-logs-grouped-text";
+  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const stepDirA = path.join(runDir, "stages", "prepare_a");
+  const stepDirB = path.join(runDir, "stages", "verify_a");
+  fs.mkdirSync(stepDirA, { recursive: true });
+  fs.mkdirSync(stepDirB, { recursive: true });
+  fs.writeFileSync(path.join(stepDirA, "stdout.log"), "prepare log\n", "utf8");
+  fs.writeFileSync(path.join(stepDirB, "stdout.log"), "verify log\n", "utf8");
+  fs.writeFileSync(path.join(stepDirA, "stage.json"), `${JSON.stringify({
+    id: "prepare_a",
+    name: "prepare",
+    status: "success",
+    stepDir: stepDirA,
+    stageDir: stepDirA,
+    stageId: "prepare",
+    stageName: "prepare",
+    logFile: path.join(stepDirA, "stdout.log"),
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(stepDirB, "stage.json"), `${JSON.stringify({
+    id: "verify_a",
+    name: "verify",
+    status: "success",
+    stepDir: stepDirB,
+    stageDir: stepDirB,
+    stageId: "verify",
+    stageName: "verify",
+    logFile: path.join(stepDirB, "stdout.log"),
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
+    id: runId,
+    workflow: "qemu-build",
+    category: "build",
+    status: "success",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    updatedAt: "2026-04-26T12:05:00.000Z",
+    workspace: workspaceRoot,
+    runDir,
+    currentStageId: null,
+    currentStepId: null,
+    currentChildPid: null,
+    runnerPid: null,
+    stages: [
+      { id: "prepare_a", name: "prepare", stepDir: stepDirA, stageDir: stepDirA, stageId: "prepare", stageName: "prepare", status: "success" },
+      { id: "verify_a", name: "verify", stepDir: stepDirB, stageDir: stepDirB, stageId: "verify", stageName: "verify", status: "success" }
+    ],
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
+    id: runId,
+    kind: "workflow",
+    category: "build",
+    status: "success",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    completedAt: "2026-04-26T12:05:00.000Z",
+    summary: { workflow: "qemu-build", category: "build" },
+  }, null, 2)}\n`);
+
+  const result = run(["workflow", "logs", "--id", runId, "--workspace", workspaceRoot], {
+    cwd: workspaceRoot,
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /^Selected stage: prepare$/m);
+  assert.match(result.stdout, /^prepare log$/m);
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+});
+
+test("workflow logs defaults to the current stage for a running grouped workflow", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-current-stage-"));
+  const runId = "wf-logs-current-stage";
+  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const stepDirA = path.join(runDir, "stages", "prepare_a");
+  const stepDirB = path.join(runDir, "stages", "verify_a");
+  fs.mkdirSync(stepDirA, { recursive: true });
+  fs.mkdirSync(stepDirB, { recursive: true });
+  fs.writeFileSync(path.join(stepDirA, "stdout.log"), "prepare log\n", "utf8");
+  fs.writeFileSync(path.join(stepDirB, "stdout.log"), "verify log\n", "utf8");
+  fs.writeFileSync(path.join(stepDirA, "stage.json"), `${JSON.stringify({
+    id: "prepare_a",
+    name: "prepare",
+    status: "success",
+    stepDir: stepDirA,
+    stageDir: stepDirA,
+    stageId: "prepare",
+    stageName: "prepare",
+    logFile: path.join(stepDirA, "stdout.log"),
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(stepDirB, "stage.json"), `${JSON.stringify({
+    id: "verify_a",
+    name: "verify",
+    status: "running",
+    stepDir: stepDirB,
+    stageDir: stepDirB,
+    stageId: "verify",
+    stageName: "verify",
+    logFile: path.join(stepDirB, "stdout.log"),
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
+    id: runId,
+    workflow: "qemu-build",
+    category: "build",
+    status: "running",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    updatedAt: "2026-04-26T12:05:00.000Z",
+    workspace: workspaceRoot,
+    runDir,
+    currentStageId: "verify",
+    currentStepId: "verify_a",
+    currentChildPid: 12345,
+    runnerPid: 67890,
+    stages: [
+      { id: "prepare_a", name: "prepare", stepDir: stepDirA, stageDir: stepDirA, stageId: "prepare", stageName: "prepare", status: "success" },
+      { id: "verify_a", name: "verify", stepDir: stepDirB, stageDir: stepDirB, stageId: "verify", stageName: "verify", status: "running" }
+    ],
+  }, null, 2)}\n`);
+  fs.writeFileSync(path.join(runDir, "run.json"), `${JSON.stringify({
+    id: runId,
+    kind: "workflow",
+    category: "build",
+    status: "running",
+    createdAt: "2026-04-26T12:00:00.000Z",
+    completedAt: null,
+    summary: { workflow: "qemu-build", category: "build" },
+  }, null, 2)}\n`);
+
+  const result = run(["workflow", "logs", "--id", runId, "--workspace", workspaceRoot], {
+    cwd: workspaceRoot,
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /^Selected stage: verify$/m);
+  assert.match(result.stdout, /^verify log$/m);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 
@@ -1647,6 +1861,24 @@ test("workflow run builds qemu through scripted fetch patch build steps", () => 
     ["qemu_fetch", "qemu_patch", "qemu_build"],
   );
 
+  const qemuBuildLog = path.resolve(
+    repoRoot,
+    payload.details.workflow_dir,
+    "stages",
+    "qemu_build",
+    "stdout.log",
+  );
+  const qemuBuildLogLines = fs.readFileSync(qemuBuildLog, "utf8")
+    .split(/\r?\n/)
+    .filter((line) => line.length > 0);
+  let qemuBuildLogDupes = 0;
+  for (let index = 1; index < qemuBuildLogLines.length; index += 1) {
+    if (qemuBuildLogLines[index] === qemuBuildLogLines[index - 1]) {
+      qemuBuildLogDupes += 1;
+    }
+  }
+  assert.equal(qemuBuildLogDupes, 0);
+
   const executable = path.join(
     cacheRoot,
     "tools",
@@ -1753,7 +1985,15 @@ test("workflow run fetches and patches sel4 through scripted fetch patch steps",
 });
 
 test("workflow run builds microkit-sdk through scripted fetch patch build steps", () => {
-  const workspaceRoot = path.join(repoRoot, "workspace");
+  const configView = run([
+    "--json",
+    "--config",
+    path.join(repoRoot, "morpheus.yaml"),
+    "config",
+    "show",
+  ]);
+  assert.equal(configView.status, 0, configView.stderr || configView.stdout);
+  const workspaceRoot = JSON.parse(configView.stdout).details.workspace_root;
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 
   const result = run([
@@ -1875,6 +2115,28 @@ test("workflow run writes failure events to canonical event log", () => {
   assert.notEqual(result.status, 0);
   const payload = JSON.parse(result.stdout.trim());
   assert.equal(payload.status, "error");
+  assert.equal(payload.details.failed_stage.id, "stage-1");
+  assert.deepEqual(payload.details.failed_stage.log_files, [
+    path.join(
+      "workflow-workspace",
+      "workflows",
+      payload.details.id,
+      "stages",
+      "patch_missing",
+      "stdout.log",
+    ),
+  ]);
+  assert.equal(payload.details.failed_step.id, "patch_missing");
+  assert.deepEqual(payload.details.failed_step.log_files, [
+    path.join(
+      "workflow-workspace",
+      "workflows",
+      payload.details.id,
+      "stages",
+      "patch_missing",
+      "stdout.log",
+    ),
+  ]);
   const runDir = path.join(projectRoot, payload.details.run_dir);
   const events = fs.readFileSync(path.join(runDir, "events.jsonl"), "utf8")
     .split(/\r?\n/)
@@ -1882,6 +2144,62 @@ test("workflow run writes failure events to canonical event log", () => {
     .map((line) => JSON.parse(line));
   assert.equal(events.some((entry) => entry.event === "step.failed" && entry.step_id === "patch_missing"), true);
   assert.equal(events.some((entry) => entry.event === "workflow.failed"), true);
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("workflow run failure hint uses grouped stage id", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-events-grouped-fail-"));
+  const fakeQemu = path.join(projectRoot, "fake-qemu");
+  fs.writeFileSync(fakeQemu, '#!/usr/bin/env sh\necho "QEMU emulator version 1.0"\n', { mode: 0o755 });
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workflow-workspace",
+      "workflows:",
+      "  failing-grouped-workflow:",
+      "    category: build",
+      "    stages:",
+      "      - id: prepare",
+      "        name: prepare",
+      "        steps:",
+      "          - id: inspect_ok",
+      "            tool: qemu",
+      "            command: inspect",
+      "            args:",
+      "              - --path",
+      `              - ${fakeQemu}`,
+      "          - id: patch_missing",
+      "            tool: qemu",
+      "            command: patch",
+      "            args:",
+      "              - --source",
+      `              - ${path.join(projectRoot, "missing-source")}`,
+      "              - --patch-dir",
+      `              - ${path.join(projectRoot, "missing-patches")}`,
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["--json", "workflow", "run", "--name", "failing-grouped-workflow"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.notEqual(result.status, 0);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.status, "error");
+  const runDir = path.join(projectRoot, payload.details.run_dir);
+  const events = fs.readFileSync(path.join(runDir, "events.jsonl"), "utf8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  const failedStepEvent = events.find((entry) => entry.event === "step.failed" && entry.step_id === "patch_missing");
+  assert.ok(failedStepEvent, "missing step.failed event for patch_missing");
+  assert.equal(
+    failedStepEvent.data && failedStepEvent.data.hint,
+    `./bin/morpheus --json workflow logs --name ${payload.details.id} --stage prepare`,
+  );
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
@@ -2225,6 +2543,255 @@ test("workflow run --from-step reuses earlier validated steps from latest run", 
   assert.equal(rerun.status, 0, rerun.stderr || rerun.stdout);
   const stepA = JSON.parse(fs.readFileSync(stepAPath, "utf8"));
   assert.equal(stepA.reuseState, "reused");
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("workflow run and inspect keep grouped stage directories anchored to the first step", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-grouped-stage-dir-"));
+  const workspaceRoot = path.join(projectRoot, "workspace");
+  const depsDir = path.join(projectRoot, "deps");
+  fs.mkdirSync(depsDir, { recursive: true });
+  const qemuA = path.join(depsDir, "qemu-a");
+  const qemuB = path.join(depsDir, "qemu-b");
+  const qemuC = path.join(depsDir, "qemu-c");
+  for (const qemuPath of [qemuA, qemuB, qemuC]) {
+    fs.writeFileSync(qemuPath, '#!/usr/bin/env sh\necho "QEMU emulator version 1.0"\n', { mode: 0o755 });
+  }
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      "workflows:",
+      "  inspect-grouped:",
+      "    category: build",
+      "    stages:",
+      "      - id: prepare",
+      "        name: prepare",
+      "        steps:",
+      "          - id: inspect_a",
+      "            tool: qemu",
+      "            command: inspect",
+      "            args:",
+      "              - --path",
+      `              - ${qemuA}`,
+      "          - id: inspect_b",
+      "            tool: qemu",
+      "            command: inspect",
+      "            args:",
+      "              - --path",
+      `              - ${qemuB}`,
+      "      - id: verify",
+      "        name: verify",
+      "        steps:",
+      "          - id: inspect_c",
+      "            tool: qemu",
+      "            command: inspect",
+      "            args:",
+      "              - --path",
+      `              - ${qemuC}`,
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["--json", "workflow", "run", "--name", "inspect-grouped"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim());
+  const runDir = path.join(workspaceRoot, "workflows", payload.details.id);
+  const prepareStage = payload.details.stages.find((stage) => stage.id === "prepare");
+  assert.ok(prepareStage, "missing prepare stage in run payload");
+  assert.equal(
+    prepareStage.stageDir,
+    path.join(runDir, "stages", "inspect_a"),
+  );
+  assert.equal(
+    prepareStage.stepDir,
+    path.join(runDir, "stages", "inspect_a"),
+  );
+
+  const inspectResult = run(["--json", "workflow", "inspect", "--name", "inspect-grouped"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(inspectResult.status, 0, inspectResult.stderr || inspectResult.stdout);
+  const inspectPayload = JSON.parse(inspectResult.stdout.trim());
+  const inspectedPrepare = inspectPayload.details.stages.find((stage) => stage.id === "prepare");
+  assert.ok(inspectedPrepare, "missing prepare stage in inspect payload");
+  assert.equal(
+    inspectedPrepare.stageDir,
+    path.join("workspace", "workflows", payload.details.id, "stages", "inspect_a"),
+  );
+  assert.equal(
+    inspectedPrepare.stepDir,
+    path.join("workspace", "workflows", payload.details.id, "stages", "inspect_a"),
+  );
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("workflow run --from-stage rewrites legacy single-stage metadata from current config", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stage-rewrite-"));
+  const workspaceRoot = path.join(projectRoot, "workspace");
+  const depsDir = path.join(projectRoot, "deps");
+  fs.mkdirSync(depsDir, { recursive: true });
+  const qemuA = path.join(depsDir, "qemu-a");
+  const qemuB = path.join(depsDir, "qemu-b");
+  fs.writeFileSync(qemuA, '#!/usr/bin/env sh\necho "QEMU emulator version 1.0"\n', { mode: 0o755 });
+  fs.writeFileSync(qemuB, '#!/usr/bin/env sh\necho "QEMU emulator version 1.0"\n', { mode: 0o755 });
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      "workflows:",
+      "  inspect-pair:",
+      "    category: build",
+      "    steps:",
+      "      - id: inspect_a",
+      "        tool: qemu",
+      "        command: inspect",
+      "        args:",
+      "          - --path",
+      `          - ${qemuA}`,
+      "      - id: inspect_b",
+      "        tool: qemu",
+      "        command: inspect",
+      "        args:",
+      "          - --path",
+      `          - ${qemuB}`,
+      ""
+    ].join("\n")
+  );
+
+  const first = run(["--json", "workflow", "run", "--name", "inspect-pair"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(first.status, 0, first.stderr || first.stdout);
+  const firstPayload = JSON.parse(first.stdout.trim());
+  const runDir = path.join(workspaceRoot, "workflows", firstPayload.details.id);
+  const workflowPath = path.join(runDir, "workflow.json");
+  const stepAPath = path.join(runDir, "stages", "inspect_a", "stage.json");
+  const stepBPath = path.join(runDir, "stages", "inspect_b", "stage.json");
+
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      "workflows:",
+      "  inspect-pair:",
+      "    category: build",
+      "    stages:",
+      "      - id: stage-a",
+      "        name: stage-a",
+      "        steps:",
+      "          - id: inspect_a",
+      "            tool: qemu",
+      "            command: inspect",
+      "            args:",
+      "              - --path",
+      `              - ${qemuA}`,
+      "      - id: stage-b",
+      "        name: stage-b",
+      "        steps:",
+      "          - id: inspect_b",
+      "            tool: qemu",
+      "            command: inspect",
+      "            args:",
+      "              - --path",
+      `              - ${qemuB}`,
+      ""
+    ].join("\n")
+  );
+
+  const rerun = run(["--json", "workflow", "run", "--name", "inspect-pair", "--from-stage", "stage-b"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(rerun.status, 0, rerun.stderr || rerun.stdout);
+  const rerunPayload = JSON.parse(rerun.stdout.trim());
+  const workflow = JSON.parse(fs.readFileSync(workflowPath, "utf8"));
+  const stepA = JSON.parse(fs.readFileSync(stepAPath, "utf8"));
+  const stepB = JSON.parse(fs.readFileSync(stepBPath, "utf8"));
+
+  assert.equal(rerunPayload.details.stageCount, 2);
+  assert.deepEqual(rerunPayload.details.stages.map((stage) => stage.id), ["stage-a", "stage-b"]);
+  assert.equal(workflow.currentStageId, null);
+  assert.equal(workflow.currentStepId, null);
+  assert.equal(workflow.steps.find((step) => step.id === "inspect_a").stageId, "stage-a");
+  assert.equal(workflow.steps.find((step) => step.id === "inspect_b").stageId, "stage-b");
+  assert.equal(stepA.stageId, "stage-a");
+  assert.equal(stepB.stageId, "stage-b");
+
+  const inspect = run(["--json", "workflow", "inspect", "--name", "inspect-pair"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(inspect.status, 0, inspect.stderr || inspect.stdout);
+  const inspectPayload = JSON.parse(inspect.stdout.trim());
+  assert.equal(inspectPayload.details.stageCount, 2);
+  assert.deepEqual(inspectPayload.details.stages.map((stage) => stage.id), ["stage-a", "stage-b"]);
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("workflow run --from-step resets the rerun step log before execution", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-rerun-log-"));
+  const workspaceRoot = path.join(projectRoot, "workspace");
+  const depsDir = path.join(projectRoot, "deps");
+  fs.mkdirSync(depsDir, { recursive: true });
+  const qemuA = path.join(depsDir, "qemu-a");
+  const qemuB = path.join(depsDir, "qemu-b");
+  fs.writeFileSync(qemuA, '#!/usr/bin/env sh\necho "QEMU emulator version 1.0"\n', { mode: 0o755 });
+  fs.writeFileSync(qemuB, '#!/usr/bin/env sh\necho "QEMU emulator version 1.0"\n', { mode: 0o755 });
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      "workflows:",
+      "  inspect-pair:",
+      "    category: build",
+      "    steps:",
+      "      - id: inspect_a",
+      "        tool: qemu",
+      "        command: inspect",
+      "        args:",
+      "          - --path",
+      `          - ${qemuA}`,
+      "      - id: inspect_b",
+      "        tool: qemu",
+      "        command: inspect",
+      "        args:",
+      "          - --path",
+      `          - ${qemuB}`,
+      ""
+    ].join("\n")
+  );
+
+  const first = run(["--json", "workflow", "run", "--name", "inspect-pair"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(first.status, 0, first.stderr || first.stdout);
+  const firstPayload = JSON.parse(first.stdout.trim());
+  const runDir = path.join(workspaceRoot, "workflows", firstPayload.details.id);
+  const stepBLog = path.join(runDir, "stages", "inspect_b", "stdout.log");
+
+  fs.writeFileSync(stepBLog, "stale rerun log\n", "utf8");
+
+  const rerun = run(["--json", "workflow", "run", "--name", "inspect-pair", "--from-step", "inspect_b"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(rerun.status, 0, rerun.stderr || rerun.stdout);
+  assert.equal(fs.readFileSync(stepBLog, "utf8"), "");
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 

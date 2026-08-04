@@ -32,6 +32,27 @@ function withConfig(configPath, fn) {
   }
 }
 
+function workflowStepIds(workflow) {
+  if (!workflow || typeof workflow !== "object") {
+    return [];
+  }
+  if (Array.isArray(workflow.steps) && workflow.steps.length > 0) {
+    return workflow.steps.map((step) => String(step.id || ""));
+  }
+  if (Array.isArray(workflow.stages) && workflow.stages.length > 0) {
+    return workflow.stages.flatMap((stage) => {
+      if (!stage || typeof stage !== "object") {
+        return [];
+      }
+      if (Array.isArray(stage.steps) && stage.steps.length > 0) {
+        return stage.steps.map((step) => String(step.id || ""));
+      }
+      return [String(stage.id || "")];
+    });
+  }
+  return [];
+}
+
 test("resolveToolDependencies projects managed artifacts into the global cache", () => {
   const projectRoot = tempDir("morpheus-resolve-cache-");
   const workspaceRoot = path.join(projectRoot, "workspace");
@@ -209,8 +230,8 @@ test("resolveToolDependencies projects nvirsh runtime inputs through Morpheus", 
     "  src: global",
     "tools:",
     "  qemu:",
-    "    build-version: 8.2.7",
-    "    build-dir-key: qemu-8.2.7-aarch64-softmmu",
+    "    build-version: 11.0.3",
+    "    build-dir-key: qemu-11.0.3-aarch64-softmmu",
     "  buildroot:",
     "    build-version: 2025.02.12",
     "    build-dir-key: arm64-dev",
@@ -239,7 +260,7 @@ test("resolveToolDependencies projects nvirsh runtime inputs through Morpheus", 
 
     assert.equal(
       nvirsh.qemu,
-      path.join(projectRoot, ".cache", "hyperarm", "tools", "qemu", "builds", "qemu-8.2.7-aarch64-softmmu", "install", "bin", "qemu-system-aarch64"),
+      path.join(projectRoot, ".cache", "hyperarm", "tools", "qemu", "builds", "qemu-11.0.3-aarch64-softmmu", "install", "bin", "qemu-system-aarch64"),
     );
     assert.equal(
       nvirsh["buildroot-output-dir"],
@@ -281,53 +302,59 @@ test("applyConfigDefaults resolves nvirsh firmware path from config", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
-test("repo nvirsh workflows build Buildroot before nvirsh", () => {
+test("applyConfigDefaults preserves explicit nvirsh l2 mode selector", () => {
+  const projectRoot = tempDir("morpheus-nvirsh-l2-mode-");
+  const workspaceRoot = path.join(projectRoot, "workspace");
+  fs.mkdirSync(workspaceRoot, { recursive: true });
+  const configPath = writeConfig(projectRoot, [
+    "workspace:",
+    "  root: ./workspace",
+    "tools:",
+    "  nvirsh:",
+    "    l2-mode: cvm",
+    "",
+  ]);
+
+  withConfig(configPath, () => {
+    const resolved = applyConfigDefaults(
+      {
+        tool: "nvirsh",
+        workspace: workspaceRoot,
+      },
+      { allowToolDefaults: true },
+    );
+
+    assert.equal(resolved.flags["l2-mode"], "cvm");
+  });
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("repo nvirsh vm and cvm workflows build Buildroot before nvirsh", () => {
   const configRoot = path.resolve(repoRoot, "..");
   const rootConfig = loadConfig(configRoot, {
     explicitPath: path.join(configRoot, "morpheus.yaml"),
   }).value;
-  const projectConfig = loadConfig(configRoot, {
-    explicitPath: path.join(
-      configRoot,
-      "projects",
-      "hyperarm",
-      "morpheus.yaml",
-    ),
-  }).value;
 
-  const rootWorkflow = rootConfig.workflows["nvirsh-arm64-build"];
-  assert.ok(rootWorkflow, "missing root nvirsh-arm64-build workflow");
-  assert.deepEqual(
-    rootWorkflow.steps.map((step) => step.id),
-    [
-      "buildroot_fetch",
-      "buildroot_patch",
-      "buildroot_build",
-      "qemu_fetch",
-      "qemu_patch",
-      "qemu_build",
-      "nvirsh_fetch",
-      "nvirsh_build",
-    ],
-  );
-
-  const injectedBugWorkflow =
-    projectConfig.workflows["nvirsh-aarch64-libafl-nesting-injected-bug"];
-  assert.ok(
-    injectedBugWorkflow,
-    "missing hyperarm nvirsh-aarch64-libafl-nesting-injected-bug workflow",
-  );
-  const stepIds = injectedBugWorkflow.steps.map((step) => step.id);
-  assert.ok(
-    stepIds.indexOf("buildroot_fetch") < stepIds.indexOf("buildroot_patch"),
-    "expected buildroot_fetch before buildroot_patch",
-  );
-  assert.ok(
-    stepIds.indexOf("buildroot_patch") < stepIds.indexOf("buildroot_build"),
-    "expected buildroot_patch before buildroot_build",
-  );
-  assert.ok(
-    stepIds.indexOf("buildroot_build") < stepIds.indexOf("nvirsh_build"),
-    "expected buildroot_build before nvirsh_build",
-  );
+  for (const workflowName of ["nvirsh-qemu-arm64-vm-exec-ci", "nvirsh-qemu-arm64-cvm-exec-ci"]) {
+    const rootWorkflow = rootConfig.workflows[workflowName];
+    assert.ok(rootWorkflow, `missing root ${workflowName} workflow`);
+    const stepIds = workflowStepIds(rootWorkflow);
+    assert.ok(
+      stepIds.indexOf("buildroot_fetch") < stepIds.indexOf("buildroot_patch"),
+      `expected buildroot_fetch before buildroot_patch in ${workflowName}`,
+    );
+    assert.ok(
+      stepIds.indexOf("buildroot_patch") < stepIds.indexOf("buildroot_build"),
+      `expected buildroot_patch before buildroot_build in ${workflowName}`,
+    );
+    assert.ok(
+      stepIds.indexOf("buildroot_build") < stepIds.indexOf("nvirsh_build"),
+      `expected buildroot_build before nvirsh_build in ${workflowName}`,
+    );
+    assert.ok(
+      stepIds.indexOf("nvirsh_build") < stepIds.indexOf("nvirsh_exec"),
+      `expected nvirsh_build before nvirsh_exec in ${workflowName}`,
+    );
+  }
 });

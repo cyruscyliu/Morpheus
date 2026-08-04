@@ -27,6 +27,13 @@
         "launcherArgs": { "type": "array", "items": { "type": "string" } },
         "provisionScript": { "type": "string" },
         "replaceKernel": { "type": "boolean" },
+        "ccaHostStack": {
+          "type": "object",
+          "properties": {
+            "archiveUrl": { "type": "string" },
+            "archiveSha256": { "type": "string" }
+          }
+        },
         "sshPort": { "type": "integer" }
       }
     },

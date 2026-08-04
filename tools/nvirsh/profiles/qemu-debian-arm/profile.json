@@ -22,7 +22,11 @@
       "user,id=u1,hostfwd=tcp::2222-:22"
     ],
     "provisionScript": "l1-provision.sh",
-    "replaceKernel": false,
+    "replaceKernel": true,
+    "ccaHostStack": {
+      "archiveUrl": "https://github.com/p-b-o/qemu-linux-stack/releases/download/build/rme_release-39bdde9.tar.xz",
+      "archiveSha256": "4b80d63f74be6a3ab1f316ae7130ffcf466ec60f742471cb584470ad5ace1a65"
+    },
     "sshPort": 2222
   },
   "l2": {

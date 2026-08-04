@@ -19,7 +19,7 @@ build_version="${MORPHEUS_QEMU_BUILD_VERSION:-}"
 artifact_path="${install_dir}/bin/qemu-system-aarch64"
 reuse_build_dir="${MORPHEUS_QEMU_REUSE_BUILD_DIR:-false}"
 needs_rebuild="true"
-use_system_meson="${MORPHEUS_QEMU_USE_SYSTEM_MESON:-1}"
+use_system_meson="${MORPHEUS_QEMU_USE_SYSTEM_MESON:-0}"
 configure_signature_file="${build_dir}/.morpheus-configure-signature"
 
 if [[ "${source_dir}" != /* ]]; then

@@ -24,6 +24,7 @@ sudo apt-get install -y --no-install-recommends \
   meson \
   ninja-build \
   pkg-config \
+  python3-venv \
   rsync \
   build-essential \
   libglib2.0-dev \

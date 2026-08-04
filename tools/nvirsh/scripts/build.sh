@@ -16,6 +16,7 @@ buildroot_images_dir="${buildroot_output_dir}/images"
 guest_stub_src="${MORPHEUS_NVIRSH_GUEST_STUB:-}"
 guest_qemu_source="${MORPHEUS_NVIRSH_GUEST_QEMU_SOURCE:-}"
 guest_nqc2_plugin="${MORPHEUS_NVIRSH_GUEST_NQC2_PLUGIN:-}"
+l2_cvm="${MORPHEUS_NVIRSH_L2_CVM:-false}"
 reuse_build_dir="${MORPHEUS_NVIRSH_REUSE_BUILD_DIR:-false}"
 guest_jobs="${MORPHEUS_NVIRSH_GUEST_JOBS:-$(morpheus_default_jobs)}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,6 +42,8 @@ guest_qemu_sync_files=(
   "target/arm/tcg/helper-a64.c"
   "target/arm/trace-events"
 )
+l1_cca_stack_archive_url=""
+l1_cca_stack_archive_sha256=""
 
 if ! [[ "${guest_jobs}" =~ ^[0-9]+$ ]] || [ "${guest_jobs}" -lt 1 ]; then
   guest_jobs=1
@@ -95,13 +98,57 @@ shutdown_l1() {
 
 trap shutdown_l1 EXIT INT TERM
 
+sanitize_l1_cmdline() {
+  sed \
+    -e 's/\<BOOT_IMAGE=[^ ]*//g' \
+    -e 's/  */ /g' \
+    -e 's/^ //' \
+    -e 's/ $//'
+}
+
+prepare_l1_cca_host_boot() {
+  local archive_url="$1"
+  local archive_sha256="$2"
+  local archive_path="${build_l1_dir}/cca-host-stack.tar.xz"
+  local stack_dir="${build_l1_dir}/cca-host-stack"
+
+  if [ -z "${archive_url}" ] || [ -z "${archive_sha256}" ]; then
+    echo "missing l1 cca host stack archive metadata in nvirsh profile" >&2
+    exit 1
+  fi
+
+  if [ ! -f "${archive_path}" ] || \
+     ! printf '%s  %s\n' "${archive_sha256}" "${archive_path}" | \
+       sha256sum -c - >/dev/null 2>&1; then
+    rm -f "${archive_path}"
+    curl -L --fail --silent --show-error "${archive_url}" -o "${archive_path}"
+  fi
+
+  printf '%s  %s\n' "${archive_sha256}" "${archive_path}" | \
+    sha256sum -c - >/dev/null
+
+  rm -rf "${stack_dir}"
+  mkdir -p "${stack_dir}"
+  tar -xJf "${archive_path}" -C "${stack_dir}"
+
+  if [ ! -f "${stack_dir}/out/Image" ] || \
+     [ ! -f "${stack_dir}/out/flash.bin" ]; then
+    echo "unexpected l1 cca host stack contents in ${stack_dir}" >&2
+    exit 1
+  fi
+
+  cp -f "${stack_dir}/out/Image" "${build_l1_host_boot_dir}/vmlinuz"
+  cp -f "${stack_dir}/out/flash.bin" "${build_l1_host_boot_dir}/flash.bin"
+}
+
 state_matches_build() {
   local state_path="$1"
-  node - "${state_path}" "${profile_name}" "${build_dir_key}" "${source_dir}" "${build_dir}" "${install_dir}" "${guest_stub_src}" "${guest_qemu_source}" "${guest_nqc2_plugin}" "${buildroot_output_dir}" "${BASH_SOURCE[0]}" "${guest_qemu_sync_files[@]}" <<'NODE'
+  node - "${state_path}" "${profile_file}" "${profile_name}" "${build_dir_key}" "${source_dir}" "${build_dir}" "${install_dir}" "${guest_stub_src}" "${guest_qemu_source}" "${guest_nqc2_plugin}" "${buildroot_output_dir}" "${l2_cvm}" "${BASH_SOURCE[0]}" "${guest_qemu_sync_files[@]}" <<'NODE'
 const crypto = require("crypto");
 const fs = require("fs");
 const [
   statePath,
+  profileFile,
   profileName,
   buildDirKey,
   sourceDir,
@@ -111,12 +158,14 @@ const [
   guestQemuSource,
   guestNqc2Plugin,
   buildrootOutputDir,
+  l2Cvm,
   scriptPath,
   ...guestQemuSyncFiles
 ] = process.argv.slice(2);
 function sha256File(path) {
   return crypto.createHash("sha256").update(fs.readFileSync(path)).digest("hex");
 }
+const currentProfileSha256 = sha256File(profileFile);
 function sha256GuestQemuSyncFiles(sourceDir, files) {
   if (!sourceDir) {
     return "";
@@ -185,6 +234,10 @@ try {
     && state.layeredState.l2.buildrootImages
       ? state.layeredState.l2.buildrootImages
       : null;
+  const recordedL2Cvm = state.layeredState
+    && state.layeredState.l2
+      ? Boolean(state.layeredState.l2.cvm)
+      : false;
   const buildrootImagesMatch =
     currentBuildrootImages
     && recordedBuildrootImages
@@ -197,6 +250,7 @@ try {
   const nqc2PluginCompatible =
     !currentRequestedNqc2Plugin ||
     recordedNqc2Plugin === currentRequestedNqc2Plugin;
+  const recordedProfileSha256 = state.profileSha256 || "";
   const matches =
     state
     && state.tool === "nvirsh"
@@ -205,6 +259,7 @@ try {
     && state.source === sourceDir
     && state.buildDir === buildDir
     && state.installDir === installDir
+    && recordedProfileSha256 === currentProfileSha256
     && statusOk
     && phaseOk
     && state.phases
@@ -215,6 +270,7 @@ try {
     && recordedQemu === (guestQemuSource || "")
     && recordedGuestQemuSourceSha256 === currentGuestQemuSourceSha256
     && nqc2PluginCompatible
+    && recordedL2Cvm === (l2Cvm === "true")
     && buildrootImagesMatch;
   process.exit(matches ? 0 : 1);
 } catch {
@@ -225,11 +281,12 @@ NODE
 
 state_matches_l1_provision() {
   local state_path="$1"
-  node - "${state_path}" "${profile_name}" "${build_dir_key}" "${source_dir}" "${build_dir}" "${install_dir}" "${guest_qemu_source}" "${BASH_SOURCE[0]}" "${guest_qemu_sync_files[@]}" <<'NODE'
+  node - "${state_path}" "${profile_file}" "${profile_name}" "${build_dir_key}" "${source_dir}" "${build_dir}" "${install_dir}" "${guest_qemu_source}" "${BASH_SOURCE[0]}" "${guest_qemu_sync_files[@]}" <<'NODE'
 const crypto = require("crypto");
 const fs = require("fs");
 const [
   statePath,
+  profileFile,
   profileName,
   buildDirKey,
   sourceDir,
@@ -242,6 +299,7 @@ const [
 function sha256File(path) {
   return crypto.createHash("sha256").update(fs.readFileSync(path)).digest("hex");
 }
+const currentProfileSha256 = sha256File(profileFile);
 function sha256GuestQemuSyncFiles(sourceDir, files) {
   if (!sourceDir) {
     return "";
@@ -261,17 +319,12 @@ try {
   const statusOk = state.status === "prepared" || state.status === "stopped";
   const phaseOk =
     state.currentPhase === "prepared" || state.currentPhase === "stopped";
-  const recordedScriptSha256 = state.layeredState
-    && state.layeredState.l1
-    && state.layeredState.l1.nvirshBuildScriptSha256
-      ? state.layeredState.l1.nvirshBuildScriptSha256
-      : "";
   const recordedQemu = state.layeredState
     && state.layeredState.l1
     && state.layeredState.l1.guestQemuSource
       ? state.layeredState.l1.guestQemuSource
       : "";
-  const currentScriptSha256 = sha256File(scriptPath);
+  const recordedProfileSha256 = state.profileSha256 || "";
   const matches =
     state
     && state.tool === "nvirsh"
@@ -280,11 +333,11 @@ try {
     && state.source === sourceDir
     && state.buildDir === buildDir
     && state.installDir === installDir
+    && recordedProfileSha256 === currentProfileSha256
     && statusOk
     && phaseOk
     && state.phases
     && state.phases.build === "success"
-    && recordedScriptSha256 === currentScriptSha256
     && recordedQemu === (guestQemuSource || "");
   process.exit(matches ? 0 : 1);
 } catch {
@@ -306,9 +359,15 @@ recreate_overlay_from_backing() {
 if [ "${reuse_build_dir}" = "true" ] && [ -f "${state_file}" ]; then
   if state_matches_build "${state_file}" \
     && [ -x "${build_l1_dir}/launch-l2.sh" ] \
+    && { [ "${l2_cvm}" != "true" ] || [ -x "${build_l1_dir}/launch-l2-hoststack.sh" ]; } \
     && [ -f "${build_l1_host_boot_dir}/vmlinuz" ] \
     && [ -f "${build_l1_host_boot_dir}/initrd.img" ] \
     && [ -f "${build_l1_host_boot_dir}/cmdline.txt" ] \
+    && { [ "${l2_cvm}" != "true" ] || [ -f "${build_l1_host_boot_dir}/flash.bin" ]; } \
+    && { [ "${l2_cvm}" != "true" ] || [ -f "${build_l1_dir}/guest-images/Image" ]; } \
+    && { [ "${l2_cvm}" != "true" ] || [ -f "${build_l1_dir}/guest-images/rootfs.cpio.gz" ]; } \
+    && { [ "${l2_cvm}" != "true" ] || [ -f "${build_l1_dir}/cca-host-stack/out/host.ext4" ]; } \
+    && { [ "${l2_cvm}" = "true" ] || [ -z "${guest_qemu_source}" ] || [ -x "${build_l1_dir}/guest-qemu/bin/qemu-system-aarch64" ]; } \
     && [ -f "${build_l0_dir}/base-image.qcow2" ] \
     && [ -f "${build_l0_dir}/overlay.qcow2" ] \
     && [ -f "${build_l0_dir}/seed.img" ]; then
@@ -337,9 +396,16 @@ if [ "${reuse_build_dir}" = "true" ] \
    && [ -f "${build_l0_dir}/base-image.qcow2" ] \
    && [ -f "${build_l0_dir}/seed.img" ] \
    && [ -f "${build_l0_dir}/id_ed25519" ] \
+   && [ -x "${build_l1_dir}/launch-l2.sh" ] \
+   && { [ "${l2_cvm}" != "true" ] || [ -x "${build_l1_dir}/launch-l2-hoststack.sh" ]; } \
    && [ -f "${build_l1_host_boot_dir}/vmlinuz" ] \
    && [ -f "${build_l1_host_boot_dir}/initrd.img" ] \
    && [ -f "${build_l1_host_boot_dir}/cmdline.txt" ] \
+   && { [ "${l2_cvm}" != "true" ] || [ -f "${build_l1_host_boot_dir}/flash.bin" ]; } \
+   && { [ "${l2_cvm}" != "true" ] || [ -f "${build_l1_dir}/guest-images/Image" ]; } \
+   && { [ "${l2_cvm}" != "true" ] || [ -f "${build_l1_dir}/guest-images/rootfs.cpio.gz" ]; } \
+   && { [ "${l2_cvm}" != "true" ] || [ -f "${build_l1_dir}/cca-host-stack/out/host.ext4" ]; } \
+   && { [ "${l2_cvm}" = "true" ] || [ -z "${guest_qemu_source}" ] || [ -x "${build_l1_dir}/guest-qemu/bin/qemu-system-aarch64" ]; } \
    && state_matches_l1_provision "${state_file}"; then
   preserve_l0="true"
   reuse_provisioned_l1="true"
@@ -497,6 +563,39 @@ copy_from_guest() {
   return 1
 }
 
+copy_guest_runtime_libraries() {
+  local keyfile="$1"
+  local port="$2"
+  local guest_binary="$3"
+  local runtime_root="$4"
+  local guest_binary_q=""
+  local dep_path=""
+  local dep_paths=()
+
+  printf -v guest_binary_q '%q' "${guest_binary}"
+  mapfile -t dep_paths < <(
+    ssh_guest \
+      "${keyfile}" \
+      "${port}" \
+      "{ ldd ${guest_binary_q} 2>/dev/null | tr ' ' '\n' | grep '^/'; readelf -l ${guest_binary_q} 2>/dev/null | grep 'Requesting program interpreter' | cut -d: -f2 | tr -d ' []'; } | sort -u"
+  )
+
+  if [ "${#dep_paths[@]}" -eq 0 ]; then
+    echo "failed to resolve runtime libraries for guest binary: ${guest_binary}" >&2
+    return 1
+  fi
+
+  rm -rf "${runtime_root}"
+  for dep_path in "${dep_paths[@]}"; do
+    mkdir -p "${runtime_root}$(dirname "${dep_path}")"
+    copy_from_guest \
+      "${keyfile}" \
+      "${port}" \
+      "${dep_path}" \
+      "${runtime_root}${dep_path}"
+  done
+}
+
 copy_dir_to_guest() {
   local keyfile="$1"
   local port="$2"
@@ -506,14 +605,10 @@ copy_dir_to_guest() {
     echo "missing source directory for guest copy: ${src_dir}" >&2
     return 1
   fi
-  local parent_dir
-  local base_name
-  local dst_parent
-  parent_dir="$(dirname "${src_dir}")"
-  base_name="$(basename "${src_dir}")"
-  dst_parent="$(dirname "${dst_dir}")"
-  find "${src_dir}" -mindepth 1 -printf '%P\0' | tar \
-    -C "${src_dir}" \
+  local resolved_src_dir
+  resolved_src_dir="$(cd "${src_dir}" && pwd -P)"
+  find "${resolved_src_dir}" -mindepth 1 -printf '%P\0' | tar \
+    -C "${resolved_src_dir}" \
     --null \
     -T - \
     -czf - | ssh \
@@ -556,6 +651,11 @@ copy_qemu_source_to_guest() {
   local port="$2"
   local src_dir="$3"
   local dst_dir="$4"
+  if [ ! -d "${src_dir}" ]; then
+    echo "missing qemu source directory for guest copy: ${src_dir}" >&2
+    return 1
+  fi
+  src_dir="$(cd "${src_dir}" && pwd -P)"
   local source_hash_file="${build_l1_dir}/guest-qemu-source.sha256"
   local guest_qemu_sync_list="${build_l1_dir}/guest-qemu-sync-files.txt"
   local sync_started=""
@@ -670,11 +770,18 @@ run_profile_script "l1.provisionScript"
 
 guest_image_dir="/root/nvirsh-images"
 guest_launch="/root/launch-l2.sh"
+guest_launch_hoststack="/host/launch-l2-hoststack.sh"
 guest_stub="/root/libafl_nesting_stub"
 guest_qemu_dir="/root/morpheus-qemu"
 guest_qemu_src_dir="/root/morpheus-qemu-src"
 guest_nqc2_dir="/root/morpheus-nqc2"
 guest_nqc2_plugin_path="/root/morpheus-nqc2/lib/nqc2/nqc2-plugin.so"
+runtime_guest_images_dir="${build_l1_dir}/guest-images"
+runtime_guest_qemu_dir="${build_l1_dir}/guest-qemu"
+runtime_guest_qemu_src_dir="${build_l1_dir}/guest-qemu-src"
+runtime_guest_nqc2_dir="${build_l1_dir}/guest-nqc2"
+runtime_guest_qemu_runtime_lib_dir="${runtime_guest_qemu_dir}/runtime-libs"
+hoststack_launch_script="${build_l1_dir}/launch-l2-hoststack.sh"
 base_image_path="${build_l0_dir}/base-image.qcow2"
 overlay_image_path="${build_l0_dir}/overlay.qcow2"
 seed_image_path="${build_l0_dir}/seed.img"
@@ -683,9 +790,75 @@ l1_cpu="$(profile_arg_value l1 -cpu)"
 l1_memory="$(profile_arg_value l1 -m)"
 l1_cpus="$(profile_arg_value l1 -smp)"
 l1_ssh_port="$(node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(String((p.l1 && p.l1.sshPort) || 2222));' "${profile_file}")"
+l1_replace_kernel="$(node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(String(Boolean(p.l1 && p.l1.replaceKernel)));' "${profile_file}")"
+l1_cca_stack_archive_url="$(node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(String((p.l1 && p.l1.ccaHostStack && p.l1.ccaHostStack.archiveUrl) || ""));' "${profile_file}")"
+l1_cca_stack_archive_sha256="$(node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(String((p.l1 && p.l1.ccaHostStack && p.l1.ccaHostStack.archiveSha256) || ""));' "${profile_file}")"
 l2_cpu="$(profile_arg_value l2 -cpu)"
 l2_memory="$(profile_arg_value l2 -m)"
+l2_cpus="$(profile_arg_value l2 -smp)"
+l1_cpu="${l1_cpu:-cortex-a57}"
 l2_memory="${l2_memory:-1024}"
+l2_cpus="${l2_cpus:-2}"
+l2_cpu="${l2_cpu:-cortex-a57}"
+l2_memory_lkvm="${l2_memory}"
+case "${l2_memory_lkvm}" in
+  *[!0-9]*)
+    ;;
+  *)
+    l2_memory_lkvm="${l2_memory_lkvm}M"
+    ;;
+esac
+l1_machine_effective="virt,virtualization=on,gic-version=3"
+l1_cpu_effective="${l1_cpu}"
+l1_accel_effective=""
+l1_enable_kvm="false"
+l2_launch_mode="tcg"
+l2_machine_effective="virt,virtualization=on,gic-version=3"
+l2_cpu_effective="${l2_cpu}"
+
+if [ "${l2_cvm}" = "true" ]; then
+  l2_cpus="1"
+  l1_machine_effective="virt,virtualization=on,gic-version=3,its=on"
+  l1_accel_effective="tcg"
+  case "${l1_cpu_effective}" in
+    max|max,*)
+      ;;
+    *)
+      l1_cpu_effective="max"
+      ;;
+  esac
+  case "${l1_cpu_effective}" in
+    *x-rme=*)
+      ;;
+    *)
+      l1_cpu_effective="${l1_cpu_effective},x-rme=on"
+      ;;
+  esac
+  case "${l1_cpu_effective}" in
+    *sme=*)
+      ;;
+    *)
+      l1_cpu_effective="${l1_cpu_effective},sme=off"
+      ;;
+  esac
+  case "${l1_cpu_effective}" in
+    *pauth-impdef=*)
+      ;;
+    *)
+      l1_cpu_effective="${l1_cpu_effective},pauth-impdef=on"
+      ;;
+  esac
+  case "${l1_cpu_effective}" in
+    *sve=*)
+      ;;
+    *)
+      l1_cpu_effective="${l1_cpu_effective},sve=off"
+      ;;
+  esac
+  l2_launch_mode="cvm-kvm"
+  l2_machine_effective="virt,gic-version=3,its=on,confidential-guest-support=rme0"
+  l2_cpu_effective="host"
+fi
 
 printf '[nvirsh] guest build jobs=%s (l1-smp=%s)\n' \
   "${guest_jobs}" \
@@ -738,21 +911,26 @@ else
   printf 'plugin-file=missing\n' >> "\${launch_marker}"
 fi
 printf 'plugin-args=%s\n' "\${guest_qemu_plugin_args[*]:-none}" >> "\${launch_marker}"
-l2_append="console=ttyAMA0 oops=panic panic_on_warn=1 panic=-1 kasan.fault=panic"
+if [ "${l2_launch_mode}" = "cvm-kvm" ]; then
+  l2_append="console=hvc0 oops=panic panic_on_warn=1 panic=-1 kasan.fault=panic"
+else
+  l2_append="console=ttyAMA0 oops=panic panic_on_warn=1 panic=-1 kasan.fault=panic"
+fi
 if [ "\${MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG:-0}" = "1" ]; then
   l2_append="\${l2_append} virtio_mmio.hyperarm_oracle_bug=1"
 fi
+printf 'l2-cvm=%s\n' "${l2_cvm}" >> "\${launch_marker}"
+printf 'launch-mode=%s\n' "${l2_launch_mode}" >> "\${launch_marker}"
+printf 'machine=%s\n' "${l2_machine_effective}" >> "\${launch_marker}"
+printf 'effective-cpu=%s\n' "${l2_cpu_effective}" >> "\${launch_marker}"
 printf 'append=%s\n' "\${l2_append}" >> "\${launch_marker}"
 guest_qemu_cmd=(
   "\${guest_qemu}"
   "\${guest_qemu_data_args[@]}"
   -trace "events=\${guest_qemu_trace_events},file=\${runtime_dir}/morpheus-qemu-trace.log"
   "\${guest_qemu_plugin_args[@]}"
-  -machine virt,virtualization=on,gic-version=3 \
-  -accel tcg \
   -device pvpanic-pci \
   -action panic=exit-failure \
-  -cpu "${l2_cpu}" \
   -m "${l2_memory}" \
   -nographic \
   -kernel "${guest_image_dir}/Image" \
@@ -761,6 +939,24 @@ guest_qemu_cmd=(
   -device virtio-net-device,netdev=net0 \
   -append "\${l2_append}"
 )
+if [ "${l2_launch_mode}" = "cvm-kvm" ]; then
+  if [ ! -e /dev/kvm ]; then
+    echo "l2-cvm requires /dev/kvm inside l1" >&2
+    exit 1
+  fi
+  guest_qemu_cmd+=(
+    -machine "${l2_machine_effective}"
+    -object rme-guest,id=rme0
+    -enable-kvm
+    -cpu "${l2_cpu_effective}"
+  )
+else
+  guest_qemu_cmd+=(
+    -machine "${l2_machine_effective}"
+    -accel tcg
+    -cpu "${l2_cpu_effective}"
+  )
+fi
 printf 'qemu-cmd=' >> "\${launch_marker}"
 printf '%q ' "\${guest_qemu_cmd[@]}" >> "\${launch_marker}"
 printf '\n' >> "\${launch_marker}"
@@ -786,6 +982,66 @@ printf 'qemu-exit-status=%s\n' "\${qemu_status}" >> "\${launch_marker}"
 exit "\${qemu_status}"
 EOF
 chmod +x "${build_l1_dir}/launch-l2.sh"
+
+cat > "${hoststack_launch_script}" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+runtime_dir="\${MORPHEUS_L2_RUNTIME_DIR:-/run/morpheus-libafl}"
+mkdir -p "\${runtime_dir}"
+launch_marker="\${runtime_dir}/launch-l2.marker"
+printf 'script-start\n' > "\${launch_marker}"
+echo "launch-l2 marker: script-start" >&2
+lkvm="/host/cca-host-stack/out/lkvm"
+if [ ! -x "\${lkvm}" ]; then
+  echo "missing lkvm in l1 host stack runtime: \${lkvm}" >&2
+  exit 1
+fi
+if [ ! -e /dev/kvm ]; then
+  echo "l2-cvm requires /dev/kvm inside l1" >&2
+  exit 1
+fi
+l2_append="console=hvc0 oops=panic panic_on_warn=1 panic=-1 kasan.fault=panic"
+if [ "\${MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG:-0}" = "1" ]; then
+  l2_append="\${l2_append} virtio_mmio.hyperarm_oracle_bug=1"
+fi
+printf 'l2-cvm=%s\n' "${l2_cvm}" >> "\${launch_marker}"
+printf 'launch-mode=%s\n' "${l2_launch_mode}" >> "\${launch_marker}"
+printf 'launcher=%s\n' "lkvm" >> "\${launch_marker}"
+printf 'lkvm=%s\n' "\${lkvm}" >> "\${launch_marker}"
+printf 'cpus=%s\n' "${l2_cpus}" >> "\${launch_marker}"
+printf 'memory=%s\n' "${l2_memory_lkvm}" >> "\${launch_marker}"
+printf 'append=%s\n' "\${l2_append}" >> "\${launch_marker}"
+lkvm_cmd=(
+  "\${lkvm}"
+  run
+  --console virtio
+  --tty 0
+  --realm
+  --disable-sve
+  --irqchip=gicv3-its
+  --no-pvtime
+  --virtio-transport mmio
+  --measurement-algo=sha256
+  --network mode=user
+  --debug
+  -k "/host/guest-images/Image"
+  -i "/host/guest-images/rootfs.cpio.gz"
+  -c "${l2_cpus}"
+  -m "${l2_memory_lkvm}"
+  -p "\${l2_append}"
+  --restricted_mem
+)
+printf 'lkvm-cmd=' >> "\${launch_marker}"
+printf '%q ' "\${lkvm_cmd[@]}" >> "\${launch_marker}"
+printf '\n' >> "\${launch_marker}"
+set +e
+"\${lkvm_cmd[@]}"
+lkvm_status="\$?"
+set -e
+printf 'lkvm-exit-status=%s\n' "\${lkvm_status}" >> "\${launch_marker}"
+exit "\${lkvm_status}"
+EOF
+chmod +x "${hoststack_launch_script}"
 
 cat > "${build_l1_dir}/provision-l1.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -828,6 +1084,10 @@ if [ "${reuse_provision_marker}" != "true" ] && \
   install_finished="$(date +%s)"
   log_timed "l1-deps" "end" "$((install_finished - install_started))"
 fi
+if [ ! -e /dev/kvm ]; then
+  sudo modprobe kvm 2>/dev/null || true
+  sudo modprobe kvm-arm64 2>/dev/null || true
+fi
 if ! [[ "${guest_jobs}" =~ ^[0-9]+$ ]] || [ "${guest_jobs}" -lt 1 ]; then
   guest_jobs=1
 fi
@@ -866,16 +1126,20 @@ reuse_guest_qemu() {
   fi
   return 1
 }
-if reuse_guest_qemu; then
-  build_guest_qemu="false"
+if [ "${build_guest_qemu}" = "true" ]; then
+  if reuse_guest_qemu; then
+    build_guest_qemu="false"
+  fi
 fi
-if [ "${build_guest_qemu}" = "true" ] && [ -d /root/morpheus-qemu-src ]; then
-  cd /root/morpheus-qemu-src
-elif [ "${build_guest_qemu}" = "true" ] && [ -f /root/morpheus-qemu-src.tar.xz ]; then
-  rm -rf /root/morpheus-qemu-src
-  mkdir -p /root/morpheus-qemu-src
-  tar -xJf /root/morpheus-qemu-src.tar.xz -C /root/morpheus-qemu-src --strip-components=1
-  cd /root/morpheus-qemu-src
+if [ "${build_guest_qemu}" = "true" ]; then
+  if [ -d /root/morpheus-qemu-src ]; then
+    cd /root/morpheus-qemu-src
+  elif [ -f /root/morpheus-qemu-src.tar.xz ]; then
+    rm -rf /root/morpheus-qemu-src
+    mkdir -p /root/morpheus-qemu-src
+    tar -xJf /root/morpheus-qemu-src.tar.xz -C /root/morpheus-qemu-src --strip-components=1
+    cd /root/morpheus-qemu-src
+  fi
 fi
 if [ "${build_guest_qemu}" = "true" ] && [ -d /root/morpheus-qemu-src ]; then
   guest_qemu_build_started="$(date +%s)"
@@ -899,7 +1163,6 @@ if [ "${build_guest_qemu}" = "true" ] && [ -d /root/morpheus-qemu-src ]; then
       touch "/root/morpheus-qemu-src/${path}"
     done
   fi
-  export MORPHEUS_QEMU_USE_SYSTEM_MESON=1
   export CFLAGS="-O0 -g1"
   export CXXFLAGS="-O0 -g1"
   if [ ! -f /root/morpheus-qemu-src/build/build.ninja ]; then
@@ -939,7 +1202,6 @@ PY
       --disable-guest-agent \
       --disable-guest-agent-msi \
       --disable-virtfs \
-      --disable-virtfs-proxy-helper \
       --disable-vhost-user \
       --disable-vhost-user-blk-server \
       --disable-vhost-crypto \
@@ -960,7 +1222,8 @@ PY
     "guest-qemu-build" \
     "end jobs=${guest_jobs}" \
     "$((guest_qemu_build_finished - guest_qemu_build_started))"
-elif [ ! -x "${guest_qemu_bin}" ] && \
+elif [ "${build_guest_qemu}" = "true" ] && \
+     [ ! -x "${guest_qemu_bin}" ] && \
      [ ! -x "${guest_qemu_fallback_bin}" ]; then
   install_guest_qemu_package() {
     local pkg
@@ -1057,7 +1320,7 @@ PY
 fi
 touch "${provision_marker}"
 EOF
-if [ -n "${guest_qemu_source}" ]; then
+if [ -n "${guest_qemu_source}" ] && [ "${l2_cvm}" != "true" ]; then
   sed -i 's/__MORPHEUS_BUILD_GUEST_QEMU__/true/g' "${build_l1_dir}/provision-l1.sh"
 else
   sed -i 's/__MORPHEUS_BUILD_GUEST_QEMU__/false/g' "${build_l1_dir}/provision-l1.sh"
@@ -1065,18 +1328,38 @@ fi
 sed -i "s/__MORPHEUS_GUEST_JOBS__/${guest_jobs}/g" "${build_l1_dir}/provision-l1.sh"
 chmod +x "${build_l1_dir}/provision-l1.sh"
 
-"${qemu}" \
-  -machine virt,virtualization=on,gic-version=3 \
-  -cpu "${l1_cpu}" \
-  -m "${l1_memory}" \
-  -smp "${l1_cpus}" \
-  -nographic \
-  -bios "${firmware}" \
-  -drive file="${overlay_image_path}",if=virtio,format=qcow2 \
-  -drive file="${seed_image_path}",if=virtio,format=raw \
-  -netdev user,id=net0,hostfwd=tcp::${l1_ssh_port}-:22 \
-  -device virtio-net-pci,netdev=net0 \
-  >> "${l1_console_log}" 2>&1 < /dev/null &
+l1_qemu_cmd=(
+  "${qemu}"
+  -machine "${l1_machine_effective}"
+  -cpu "${l1_cpu_effective}"
+  -m "${l1_memory}"
+  -smp "${l1_cpus}"
+  -nographic
+  -drive file="${overlay_image_path}",if=virtio,format=qcow2
+  -drive file="${seed_image_path}",if=virtio,format=raw
+  -netdev user,id=net0,hostfwd=tcp::${l1_ssh_port}-:22
+  -device virtio-net-pci,netdev=net0
+)
+if [ "${l1_replace_kernel}" = "true" ] \
+   && [ -f "${build_l1_host_boot_dir}/vmlinuz" ] \
+   && [ -f "${build_l1_host_boot_dir}/initrd.img" ] \
+   && [ -f "${build_l1_host_boot_dir}/cmdline.txt" ]; then
+  printf '[nvirsh] launching l1 with replacement kernel artifacts\n'
+  l1_qemu_cmd+=(
+    -kernel "${build_l1_host_boot_dir}/vmlinuz"
+    -initrd "${build_l1_host_boot_dir}/initrd.img"
+    -append "$(cat "${build_l1_host_boot_dir}/cmdline.txt")"
+  )
+else
+  l1_qemu_cmd+=(-bios "${firmware}")
+fi
+if [ -n "${l1_accel_effective}" ]; then
+  l1_qemu_cmd+=(-accel "${l1_accel_effective}")
+fi
+if [ "${l1_enable_kvm}" = "true" ]; then
+  l1_qemu_cmd+=(-enable-kvm)
+fi
+"${l1_qemu_cmd[@]}" >> "${l1_console_log}" 2>&1 < /dev/null &
 qemu_pid="$!"
 echo "${qemu_pid}" > "${qemu_pid_file}"
 
@@ -1095,19 +1378,28 @@ copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${build_l1_dir}/lau
 ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "mkdir -p ${guest_image_dir}"
 copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${buildroot_images_dir}/Image" "${guest_image_dir}/Image"
 copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${buildroot_images_dir}/rootfs.cpio.gz" "${guest_image_dir}/rootfs.cpio.gz"
+mkdir -p "${runtime_guest_images_dir}"
+cp -f "${buildroot_images_dir}/Image" "${runtime_guest_images_dir}/Image"
+cp -f "${buildroot_images_dir}/rootfs.cpio.gz" "${runtime_guest_images_dir}/rootfs.cpio.gz"
 if [ -n "${guest_stub_src}" ] && [ -f "${guest_stub_src}" ]; then
   printf '[nvirsh] copying guest stub into l1\n'
   copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${guest_stub_src}" "${guest_stub}"
   ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "chmod 0755 ${guest_stub}"
 fi
+rm -rf "${runtime_guest_nqc2_dir}"
 if [ -n "${guest_nqc2_plugin}" ] && [ -f "${guest_nqc2_plugin}" ]; then
   printf '[nvirsh] copying nqc2 guest plugin into l1\n'
   ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "mkdir -p ${guest_nqc2_dir}/lib/nqc2"
   copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${guest_nqc2_plugin}" "${guest_nqc2_plugin_path}"
+  mkdir -p "${runtime_guest_nqc2_dir}/lib/nqc2"
+  cp -f "${guest_nqc2_plugin}" "${runtime_guest_nqc2_dir}/lib/nqc2/nqc2-plugin.so"
 fi
-if [ -n "${guest_qemu_source}" ] && [ -d "${guest_qemu_source}" ]; then
+if [ "${l2_cvm}" != "true" ] && [ -n "${guest_qemu_source}" ] && [ -d "${guest_qemu_source}" ]; then
   printf '[nvirsh] copying patched qemu source tree into l1\n'
   copy_qemu_source_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${guest_qemu_source}" "${guest_qemu_src_dir}"
+  mkdir -p "${runtime_guest_qemu_src_dir}"
+  rm -rf "${runtime_guest_qemu_src_dir}/pc-bios"
+  cp -a "${guest_qemu_source}/pc-bios" "${runtime_guest_qemu_src_dir}/"
 fi
 
 copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${build_l1_dir}/provision-l1.sh" "/root/provision-l1.sh"
@@ -1115,6 +1407,19 @@ ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "chmod 0755 /root/provis
 printf '[nvirsh] running l1 provision script\n'
 ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "bash /root/provision-l1.sh"
 printf '[nvirsh] l1 provision script completed\n'
+if [ "${l2_cvm}" != "true" ] && [ -n "${guest_qemu_source}" ] && [ -d "${guest_qemu_source}" ]; then
+  mkdir -p "${runtime_guest_qemu_dir}/bin"
+  copy_from_guest \
+    "${build_l0_dir}/id_ed25519" \
+    "${l1_ssh_port}" \
+    "/root/morpheus-qemu/bin/qemu-system-aarch64" \
+    "${runtime_guest_qemu_dir}/bin/qemu-system-aarch64"
+  copy_guest_runtime_libraries \
+    "${build_l0_dir}/id_ed25519" \
+    "${l1_ssh_port}" \
+    "/root/morpheus-qemu/bin/qemu-system-aarch64" \
+    "${runtime_guest_qemu_runtime_lib_dir}"
+fi
 
 mkdir -p "${build_l1_host_boot_dir}"
 guest_boot_kernel="$(
@@ -1131,7 +1436,18 @@ if [ -z "${guest_boot_kernel}" ] || [ -z "${guest_boot_initrd}" ]; then
 fi
 copy_from_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${guest_boot_kernel}" "${build_l1_host_boot_dir}/vmlinuz"
 copy_from_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "${guest_boot_initrd}" "${build_l1_host_boot_dir}/initrd.img"
-ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "cat /proc/cmdline" > "${build_l1_host_boot_dir}/cmdline.txt"
+ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" "cat /proc/cmdline" | \
+  sanitize_l1_cmdline > "${build_l1_host_boot_dir}/cmdline.txt"
+if [ "${l2_cvm}" = "true" ]; then
+  prepare_l1_cca_host_boot \
+    "${l1_cca_stack_archive_url}" \
+    "${l1_cca_stack_archive_sha256}"
+fi
+if [ "${l2_cvm}" = "true" ] && \
+   ! grep -Eq '(^| )nokaslr($| )' "${build_l1_host_boot_dir}/cmdline.txt"; then
+  printf '%s nokaslr\n' "$(cat "${build_l1_host_boot_dir}/cmdline.txt")" \
+    > "${build_l1_host_boot_dir}/cmdline.txt"
+fi
 
 shutdown_l1
 trap - EXIT INT TERM
@@ -1142,6 +1458,10 @@ if [ "${reuse_provisioned_l1}" != "true" ]; then
   qemu-img convert -O qcow2 "${overlay_image_path}" "${provisioned_tmp}"
   mv -f "${provisioned_tmp}" "${provisioned_overlay_image}"
 fi
+
+export MORPHEUS_NVIRSH_L2_CPU="${l2_cpu}"
+export MORPHEUS_NVIRSH_L2_CPU_EFFECTIVE="${l2_cpu_effective}"
+export MORPHEUS_NVIRSH_L2_CVM="${l2_cvm}"
 
 node - "${profile_file}" "${state_file}" "${source_dir}" "${build_dir}" "${install_dir}" "${profile_name}" "${build_dir_key}" "${buildroot_output_dir}" "${BASH_SOURCE[0]}" "${guest_qemu_sync_files[@]}" <<'NODE'
 const crypto = require("crypto");
@@ -1219,6 +1539,7 @@ const state = {
   schemaVersion: 1,
   tool: "nvirsh",
   profile: profileName,
+  profileSha256: sha256File(profileFile),
   profileData: profile,
   buildVersion: profileName,
   buildDirKey,
@@ -1236,7 +1557,10 @@ const state = {
     },
   },
   hostLaunch: {
-    firmware: process.env.MORPHEUS_NVIRSH_FIRMWARE || null,
+    qemu: process.env.MORPHEUS_NVIRSH_QEMU || null,
+    firmware: fs.existsSync(path.join(buildDir, "l1", "host-boot", "flash.bin"))
+      ? path.join(buildDir, "l1", "host-boot", "flash.bin")
+      : (process.env.MORPHEUS_NVIRSH_FIRMWARE || null),
     overlayImage: path.join(buildDir, "l0", "overlay.qcow2"),
     provisionedOverlayImage: path.join(buildDir, "l0", "l1-provisioned.qcow2"),
     seedImage: path.join(buildDir, "l0", "seed.img"),
@@ -1260,6 +1584,15 @@ const state = {
       workspace: l0.workspace || null,
       provisionLog: null,
       launchScript: path.join(buildDir, "l1", "launch-l2.sh"),
+      launchScriptHoststack: path.join(buildDir, "l1", "launch-l2-hoststack.sh"),
+      runtimeShareDir: path.join(buildDir, "l1"),
+      hostStack: fs.existsSync(path.join(buildDir, "l1", "cca-host-stack", "out", "host.ext4"))
+        ? {
+            rootfs: path.join(buildDir, "l1", "cca-host-stack", "out", "host.ext4"),
+            guestDisk: path.join(buildDir, "l1", "cca-host-stack", "out", "guest.ext4"),
+            lkvm: path.join(buildDir, "l1", "cca-host-stack", "out", "lkvm"),
+          }
+        : null,
       guestStub: process.env.MORPHEUS_NVIRSH_GUEST_STUB
         ? "/root/libafl_nesting_stub"
         : null,
@@ -1277,6 +1610,9 @@ const state = {
       status: "prepared",
       launcher: profile.l2 && profile.l2.launcher ? profile.l2.launcher : null,
       launcherArgs: profile.l2 && Array.isArray(profile.l2.launcherArgs) ? profile.l2.launcherArgs : [],
+      cvm: process.env.MORPHEUS_NVIRSH_L2_CVM === "true",
+      configuredCpu: process.env.MORPHEUS_NVIRSH_L2_CPU || null,
+      effectiveCpu: process.env.MORPHEUS_NVIRSH_L2_CPU_EFFECTIVE || null,
       kernel: profile.l2 && profile.l2.kernel ? profile.l2.kernel : null,
       initrd: profile.l2 && profile.l2.initrd ? profile.l2.initrd : null,
       buildrootImages,

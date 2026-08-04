@@ -94,6 +94,13 @@
           "guestNqc2Plugin"
         ],
         "path": true
+      },
+      "l2-cvm": {
+        "aliases": [
+          "l2-cvm",
+          "l2Cvm"
+        ],
+        "boolean": true
       }
     }
   },
@@ -205,6 +212,7 @@
             "guest-qemu-source",
             "guest-nqc2-source",
             "guest-nqc2-plugin",
+            "l2-cvm",
             "reuse-build-dir",
             "build-version",
             "build-dir-key",
@@ -235,6 +243,9 @@
               "build_dir": "{build-dir}",
               "install_dir": "{install-dir}",
               "state_file": "{install-dir}/state.json",
+              "l2_cvm": {
+                "fromFlag": "l2-cvm"
+              },
               "profile": {
                 "fromFlag": "build-version"
               }

@@ -16,7 +16,7 @@ buildroot_images_dir="${buildroot_output_dir}/images"
 guest_stub_src="${MORPHEUS_NVIRSH_GUEST_STUB:-}"
 guest_qemu_source="${MORPHEUS_NVIRSH_GUEST_QEMU_SOURCE:-}"
 guest_nqc2_plugin="${MORPHEUS_NVIRSH_GUEST_NQC2_PLUGIN:-}"
-l2_cvm="${MORPHEUS_NVIRSH_L2_CVM:-false}"
+l2_mode="${MORPHEUS_NVIRSH_L2_MODE:-vm}"
 reuse_build_dir="${MORPHEUS_NVIRSH_REUSE_BUILD_DIR:-false}"
 guest_jobs="${MORPHEUS_NVIRSH_GUEST_JOBS:-$(morpheus_default_jobs)}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,6 +44,19 @@ guest_qemu_sync_files=(
 )
 l1_cca_stack_archive_url=""
 l1_cca_stack_archive_sha256=""
+
+case "${l2_mode}" in
+  vm)
+    l2_cvm="false"
+    ;;
+  cvm)
+    l2_cvm="true"
+    ;;
+  *)
+    echo "unsupported nvirsh l2 mode: ${l2_mode}; use --l2-mode vm|cvm" >&2
+    exit 1
+    ;;
+esac
 
 if ! [[ "${guest_jobs}" =~ ^[0-9]+$ ]] || [ "${guest_jobs}" -lt 1 ]; then
   guest_jobs=1
@@ -143,7 +156,7 @@ prepare_l1_cca_host_boot() {
 
 state_matches_build() {
   local state_path="$1"
-  node - "${state_path}" "${profile_file}" "${profile_name}" "${build_dir_key}" "${source_dir}" "${build_dir}" "${install_dir}" "${guest_stub_src}" "${guest_qemu_source}" "${guest_nqc2_plugin}" "${buildroot_output_dir}" "${l2_cvm}" "${BASH_SOURCE[0]}" "${guest_qemu_sync_files[@]}" <<'NODE'
+  node - "${state_path}" "${profile_file}" "${profile_name}" "${build_dir_key}" "${source_dir}" "${build_dir}" "${install_dir}" "${guest_stub_src}" "${guest_qemu_source}" "${guest_nqc2_plugin}" "${buildroot_output_dir}" "${l2_mode}" "${BASH_SOURCE[0]}" "${guest_qemu_sync_files[@]}" <<'NODE'
 const crypto = require("crypto");
 const fs = require("fs");
 const [
@@ -158,7 +171,7 @@ const [
   guestQemuSource,
   guestNqc2Plugin,
   buildrootOutputDir,
-  l2Cvm,
+  l2Mode,
   scriptPath,
   ...guestQemuSyncFiles
 ] = process.argv.slice(2);
@@ -234,10 +247,17 @@ try {
     && state.layeredState.l2.buildrootImages
       ? state.layeredState.l2.buildrootImages
       : null;
-  const recordedL2Cvm = state.layeredState
+  const recordedL2Mode = state.layeredState
     && state.layeredState.l2
-      ? Boolean(state.layeredState.l2.cvm)
-      : false;
+    && typeof state.layeredState.l2.mode === "string"
+      ? String(state.layeredState.l2.mode)
+      : (
+          state.layeredState
+          && state.layeredState.l2
+          && Boolean(state.layeredState.l2.cvm)
+            ? "cvm"
+            : "vm"
+        );
   const buildrootImagesMatch =
     currentBuildrootImages
     && recordedBuildrootImages
@@ -270,7 +290,7 @@ try {
     && recordedQemu === (guestQemuSource || "")
     && recordedGuestQemuSourceSha256 === currentGuestQemuSourceSha256
     && nqc2PluginCompatible
-    && recordedL2Cvm === (l2Cvm === "true")
+    && recordedL2Mode === l2Mode
     && buildrootImagesMatch;
   process.exit(matches ? 0 : 1);
 } catch {
@@ -281,7 +301,7 @@ NODE
 
 state_matches_l1_provision() {
   local state_path="$1"
-  node - "${state_path}" "${profile_file}" "${profile_name}" "${build_dir_key}" "${source_dir}" "${build_dir}" "${install_dir}" "${guest_qemu_source}" "${BASH_SOURCE[0]}" "${guest_qemu_sync_files[@]}" <<'NODE'
+  node - "${state_path}" "${profile_file}" "${profile_name}" "${build_dir_key}" "${source_dir}" "${build_dir}" "${install_dir}" "${guest_qemu_source}" "${l2_mode}" "${BASH_SOURCE[0]}" "${guest_qemu_sync_files[@]}" <<'NODE'
 const crypto = require("crypto");
 const fs = require("fs");
 const [
@@ -293,6 +313,7 @@ const [
   buildDir,
   installDir,
   guestQemuSource,
+  l2Mode,
   scriptPath,
   ...guestQemuSyncFiles
 ] = process.argv.slice(2);
@@ -300,6 +321,7 @@ function sha256File(path) {
   return crypto.createHash("sha256").update(fs.readFileSync(path)).digest("hex");
 }
 const currentProfileSha256 = sha256File(profileFile);
+const currentScriptSha256 = sha256File(scriptPath);
 function sha256GuestQemuSyncFiles(sourceDir, files) {
   if (!sourceDir) {
     return "";
@@ -324,6 +346,22 @@ try {
     && state.layeredState.l1.guestQemuSource
       ? state.layeredState.l1.guestQemuSource
       : "";
+  const recordedScriptSha256 = state.layeredState
+    && state.layeredState.l1
+    && state.layeredState.l1.nvirshBuildScriptSha256
+      ? state.layeredState.l1.nvirshBuildScriptSha256
+      : "";
+  const recordedL2Mode = state.layeredState
+    && state.layeredState.l2
+    && typeof state.layeredState.l2.mode === "string"
+      ? String(state.layeredState.l2.mode)
+      : (
+          state.layeredState
+          && state.layeredState.l2
+          && Boolean(state.layeredState.l2.cvm)
+            ? "cvm"
+            : "vm"
+        );
   const recordedProfileSha256 = state.profileSha256 || "";
   const matches =
     state
@@ -338,7 +376,9 @@ try {
     && phaseOk
     && state.phases
     && state.phases.build === "success"
-    && recordedQemu === (guestQemuSource || "");
+    && recordedQemu === (guestQemuSource || "")
+    && recordedScriptSha256 === currentScriptSha256
+    && recordedL2Mode === l2Mode;
   process.exit(matches ? 0 : 1);
 } catch {
   process.exit(1);
@@ -1461,6 +1501,7 @@ fi
 
 export MORPHEUS_NVIRSH_L2_CPU="${l2_cpu}"
 export MORPHEUS_NVIRSH_L2_CPU_EFFECTIVE="${l2_cpu_effective}"
+export MORPHEUS_NVIRSH_L2_MODE="${l2_mode}"
 export MORPHEUS_NVIRSH_L2_CVM="${l2_cvm}"
 
 node - "${profile_file}" "${state_file}" "${source_dir}" "${build_dir}" "${install_dir}" "${profile_name}" "${build_dir_key}" "${buildroot_output_dir}" "${BASH_SOURCE[0]}" "${guest_qemu_sync_files[@]}" <<'NODE'
@@ -1610,7 +1651,8 @@ const state = {
       status: "prepared",
       launcher: profile.l2 && profile.l2.launcher ? profile.l2.launcher : null,
       launcherArgs: profile.l2 && Array.isArray(profile.l2.launcherArgs) ? profile.l2.launcherArgs : [],
-      cvm: process.env.MORPHEUS_NVIRSH_L2_CVM === "true",
+      mode: process.env.MORPHEUS_NVIRSH_L2_MODE || "vm",
+      cvm: (process.env.MORPHEUS_NVIRSH_L2_MODE || "vm") === "cvm",
       configuredCpu: process.env.MORPHEUS_NVIRSH_L2_CPU || null,
       effectiveCpu: process.env.MORPHEUS_NVIRSH_L2_CPU_EFFECTIVE || null,
       kernel: profile.l2 && profile.l2.kernel ? profile.l2.kernel : null,

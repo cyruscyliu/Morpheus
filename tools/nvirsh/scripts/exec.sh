@@ -56,7 +56,12 @@ function ensureCpuFlag(cpu, flag, value) {
   return `${cpu},${flag}=${value}`;
 }
 
-const l2Cvm = Boolean(state.layeredState && state.layeredState.l2 && state.layeredState.l2.cvm);
+const l2Mode = state.layeredState
+  && state.layeredState.l2
+  && typeof state.layeredState.l2.mode === "string"
+    ? String(state.layeredState.l2.mode)
+    : "vm";
+const l2Cvm = l2Mode === "cvm";
 let l1Cpu = argValue("l1", "-cpu") || "cortex-a57";
 let l1Memory = argValue("l1", "-m") || "8192";
 let l1Cpus = argValue("l1", "-smp") || "4";

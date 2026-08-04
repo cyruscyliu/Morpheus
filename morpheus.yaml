@@ -402,6 +402,210 @@ workflows:
           - "{{steps.nqc2_fetch.artifacts.source-dir.location}}"
           - --qemu
           - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+  nvirsh-qemu-arm64-vm-exec-ci:
+    category: run
+    stages:
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+        stageId: buildroot
+        stageName: buildroot
+        stageIndex: 0
+        stageStepIndex: 0
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+        stageId: buildroot
+        stageName: buildroot
+        stageIndex: 0
+        stageStepIndex: 1
+      - id: buildroot_build
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+        stageId: buildroot
+        stageName: buildroot
+        stageIndex: 0
+        stageStepIndex: 2
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+        stageId: qemu
+        stageName: qemu
+        stageIndex: 1
+        stageStepIndex: 0
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+        stageId: qemu
+        stageName: qemu
+        stageIndex: 1
+        stageStepIndex: 1
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+        stageId: qemu
+        stageName: qemu
+        stageIndex: 1
+        stageStepIndex: 2
+      - id: nvirsh_fetch
+        tool: nvirsh
+        command: fetch
+        stageId: nvirsh
+        stageName: nvirsh
+        stageIndex: 2
+        stageStepIndex: 0
+      - id: nvirsh_build
+        tool: nvirsh
+        command: build
+        args:
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+          - --buildroot-output-dir
+          - "{{steps.buildroot_build.artifacts.output-dir.location}}"
+          - --guest-qemu-source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+          - --l2-mode
+          - vm
+        stageId: nvirsh
+        stageName: nvirsh
+        stageIndex: 2
+        stageStepIndex: 1
+      - id: nvirsh_exec
+        tool: nvirsh
+        command: exec
+        args:
+          - --phase
+          - launch
+          - --detach
+        timeout-seconds: 60
+        stageId: nvirsh-exec
+        stageName: nvirsh-exec
+        stageIndex: 3
+        stageStepIndex: 0
+      - id: nvirsh_stop
+        tool: nvirsh
+        command: stop
+        args:
+          - --run-dir
+          - "{{steps.nvirsh_exec.details.run_dir}}"
+        stageId: nvirsh-exec
+        stageName: nvirsh-exec
+        stageIndex: 3
+        stageStepIndex: 1
+  nvirsh-qemu-arm64-cvm-exec-ci:
+    category: run
+    stages:
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+        stageId: buildroot
+        stageName: buildroot
+        stageIndex: 0
+        stageStepIndex: 0
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+        stageId: buildroot
+        stageName: buildroot
+        stageIndex: 0
+        stageStepIndex: 1
+      - id: buildroot_build
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+        stageId: buildroot
+        stageName: buildroot
+        stageIndex: 0
+        stageStepIndex: 2
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+        stageId: qemu
+        stageName: qemu
+        stageIndex: 1
+        stageStepIndex: 0
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+        stageId: qemu
+        stageName: qemu
+        stageIndex: 1
+        stageStepIndex: 1
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+        stageId: qemu
+        stageName: qemu
+        stageIndex: 1
+        stageStepIndex: 2
+      - id: nvirsh_fetch
+        tool: nvirsh
+        command: fetch
+        stageId: nvirsh
+        stageName: nvirsh
+        stageIndex: 2
+        stageStepIndex: 0
+      - id: nvirsh_build
+        tool: nvirsh
+        command: build
+        args:
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+          - --buildroot-output-dir
+          - "{{steps.buildroot_build.artifacts.output-dir.location}}"
+          - --guest-qemu-source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+          - --l2-mode
+          - cvm
+        stageId: nvirsh
+        stageName: nvirsh
+        stageIndex: 2
+        stageStepIndex: 1
+      - id: nvirsh_exec
+        tool: nvirsh
+        command: exec
+        args:
+          - --phase
+          - launch
+          - --detach
+        timeout-seconds: 10
+        stageId: nvirsh-exec
+        stageName: nvirsh-exec
+        stageIndex: 3
+        stageStepIndex: 0
+      - id: nvirsh_stop
+        tool: nvirsh
+        command: stop
+        args:
+          - --run-dir
+          - "{{steps.nvirsh_exec.details.run_dir}}"
+        stageId: nvirsh-exec
+        stageName: nvirsh-exec
+        stageIndex: 3
+        stageStepIndex: 1
   # pkvm-aarch64-build-ci:
   #   Disabled for now.
   #   Current pKVM image targets still depend on unstable rootless mount/chroot

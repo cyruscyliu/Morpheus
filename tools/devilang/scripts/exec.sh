@@ -4,6 +4,7 @@ set -euo pipefail
 tool_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${tool_root}/../_shared/scripts/parallelism.sh"
 repo_root="$(cd "${tool_root}/../.." && pwd)"
+workspace_root="${MORPHEUS_DEVILANG_WORKSPACE:-${MORPHEUS_SCRIPT_WORKSPACE:-}}"
 runtime_helper_default="$(cd "${tool_root}/../llbase/scripts" && pwd)/runtime.sh"
 result_file="${MORPHEUS_DEVILANG_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 output_dir="${MORPHEUS_DEVILANG_OUTPUT:?}"
@@ -103,24 +104,38 @@ for (const item of items) {
 EOF
 }
 
-if [ -n "${filter_path}" ] && [[ "${filter_path}" != /* ]]; then
-  filter_path="${repo_root}/${filter_path#./}"
-fi
-if [ -n "${booting_entry_list}" ] && [[ "${booting_entry_list}" != /* ]]; then
-  booting_entry_list="${repo_root}/${booting_entry_list#./}"
-fi
-if [ -n "${runtime_entry_list}" ] && [[ "${runtime_entry_list}" != /* ]]; then
-  runtime_entry_list="${repo_root}/${runtime_entry_list#./}"
-fi
-if [ -n "${kallgraph_text}" ] && [[ "${kallgraph_text}" != /* ]]; then
-  kallgraph_text="${repo_root}/${kallgraph_text#./}"
-fi
-if [ -n "${llcg_dot}" ] && [[ "${llcg_dot}" != /* ]]; then
-  llcg_dot="${repo_root}/${llcg_dot#./}"
-fi
-if [ -n "${points_to_json}" ] && [[ "${points_to_json}" != /* ]]; then
-  points_to_json="${repo_root}/${points_to_json#./}"
-fi
+resolve_input_path() {
+  local input_path="${1:-}"
+  local normalized=""
+
+  [ -n "${input_path}" ] || return 0
+  if [[ "${input_path}" == /* ]]; then
+    printf '%s\n' "${input_path}"
+    return 0
+  fi
+
+  normalized="${input_path#./}"
+  if [ -n "${workspace_root}" ] && [ -e "${workspace_root}/${normalized}" ]; then
+    printf '%s\n' "${workspace_root}/${normalized}"
+    return 0
+  fi
+  if [ -e "${repo_root}/${normalized}" ]; then
+    printf '%s\n' "${repo_root}/${normalized}"
+    return 0
+  fi
+  if [ -n "${workspace_root}" ]; then
+    printf '%s\n' "${workspace_root}/${normalized}"
+    return 0
+  fi
+  printf '%s\n' "${repo_root}/${normalized}"
+}
+
+filter_path="$(resolve_input_path "${filter_path}")"
+booting_entry_list="$(resolve_input_path "${booting_entry_list}")"
+runtime_entry_list="$(resolve_input_path "${runtime_entry_list}")"
+kallgraph_text="$(resolve_input_path "${kallgraph_text}")"
+llcg_dot="$(resolve_input_path "${llcg_dot}")"
+points_to_json="$(resolve_input_path "${points_to_json}")"
 
 collect_list "${module_file}" "${module_inline}" module_paths
 collect_list "${module_relative_file}" "${module_relative_inline}" module_relative_paths

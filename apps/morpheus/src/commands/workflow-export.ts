@@ -188,11 +188,14 @@ function exportWorkflowBundle(options) {
   const workspaceName = path.basename(loaded.workspaceRoot);
   const dataRoot = detectDataRoot(loaded.workspaceRoot);
   const stamp = new Date().toISOString().replace(/[:.]/g, "").replace(/-/g, "").slice(0, 15) + "Z";
+  if (!options.outputDir && !dataRoot) {
+    throw new Error(
+      "workflow export requires --output-dir when workspace.root is outside a data-root workspaces directory"
+    );
+  }
   const outputDir = options.outputDir
     ? path.resolve(options.outputDir)
-    : (dataRoot
-      ? path.join(dataRoot, "artifacts", "workflow-bundles", workflowName, stamp)
-      : path.join(repoRoot(), "projects", "hyperarm", "artifacts", "out", "workflow-bundles", `${workflowName}-${stamp}`));
+    : path.join(dataRoot, "artifacts", "workflow-bundles", workflowName, stamp);
   const sourceConfigRoot = isWithinDir(loaded.workspaceRoot, loaded.configPath)
     ? loaded.workspaceRoot
     : (isWithinDir(repoRoot(), loaded.configPath) ? repoRoot() : null);

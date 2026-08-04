@@ -92,9 +92,10 @@ else
 fi
 
 if [ -s "${output_dir}/bitcode_files.txt" ] && [ -f "${output_dir}/llbic.json" ]; then
-  node - "${output_dir}" "${sources_dir}" "${result_file}" <<'EOF'
+  if node - "${output_dir}" "${sources_dir}" "${result_file}" <<'EOF'
 const fs = require("fs");
 const path = require("path");
+const cp = require("child_process");
 
 const outputDir = path.resolve(process.argv[2]);
 const sourcesDir = path.resolve(process.argv[3]);
@@ -102,11 +103,6 @@ const resultFile = path.resolve(process.argv[4]);
 const manifestPath = path.join(outputDir, "llbic.json");
 const bitcodeListPath = path.join(outputDir, "bitcode_files.txt");
 const payload = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-const bitcodeCount = fs.readFileSync(bitcodeListPath, "utf8")
-  .split(/\r?\n/)
-  .map((line) => line.trim())
-  .filter(Boolean)
-  .length;
 const candidateSourceDir = path.join(
   sourcesDir,
   `linux-${process.env.MORPHEUS_LLBIC_BUILD_VERSION || ""}`,
@@ -115,6 +111,67 @@ const payloadSourceDir = typeof payload.source_dir === "string" ? payload.source
 const kernelSourceDir = payloadSourceDir && fs.existsSync(path.join(payloadSourceDir, "Makefile"))
   ? payloadSourceDir
   : candidateSourceDir;
+const bitcodeRoot = typeof payload.bitcode_root === "string" ? payload.bitcode_root : "";
+const kbuildDir = typeof payload.kbuild_dir === "string" ? payload.kbuild_dir : "";
+
+function isLlvmBitcode(candidate) {
+  try {
+    const out = cp.execFileSync("file", [candidate], { encoding: "utf8" });
+    return out.includes("LLVM IR bitcode");
+  } catch {
+    return false;
+  }
+}
+
+function isPlaceholderEntry(candidate) {
+  const base = path.basename(String(candidate || ""));
+  return base === "-.bc" || base === "-";
+}
+
+function resolveBitcodeList(entries) {
+  const resolved = [];
+  const seen = new Set();
+  const roots = [
+    bitcodeRoot,
+    kbuildDir,
+    kernelSourceDir,
+    outputDir,
+    path.dirname(bitcodeListPath),
+  ].filter(Boolean);
+  for (const rawEntry of entries) {
+    const entry = String(rawEntry || "").trim();
+    if (!entry || isPlaceholderEntry(entry)) {
+      continue;
+    }
+    const candidates = path.isAbsolute(entry)
+      ? [entry]
+      : roots.map((root) => path.join(root, entry));
+    for (const candidate of candidates) {
+      const normalized = path.resolve(candidate);
+      if (seen.has(normalized) || !fs.existsSync(normalized) || isPlaceholderEntry(normalized)) {
+        continue;
+      }
+      if (!isLlvmBitcode(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      resolved.push(normalized);
+      break;
+    }
+  }
+  return resolved;
+}
+
+const bitcodeFiles = resolveBitcodeList(
+  fs.readFileSync(bitcodeListPath, "utf8")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+);
+const bitcodeCount = bitcodeFiles.length;
+if (bitcodeCount === 0) {
+  process.exit(1);
+}
 const updatedPayload = {
   ...payload,
   status: "success",
@@ -154,8 +211,11 @@ fs.writeFileSync(
   }, null, 2) + "\n",
   "utf8",
 );
+process.exit(0);
 EOF
-  exit 0
+  then
+    exit 0
+  fi
 fi
 
 set +e
@@ -209,6 +269,12 @@ const kernelSourceDir = typeof payload.source_dir === "string" && payload.source
   : fs.existsSync(fallbackKernelSourceDir)
     ? fallbackKernelSourceDir
   : "";
+const bitcodeRoot = typeof payload.bitcode_root === "string" && payload.bitcode_root
+  ? payload.bitcode_root
+  : "";
+const kbuildDir = typeof payload.kbuild_dir === "string" && payload.kbuild_dir
+  ? payload.kbuild_dir
+  : "";
 
 function isLlvmBitcode(candidate) {
   try {
@@ -219,8 +285,14 @@ function isLlvmBitcode(candidate) {
   }
 }
 
+function isPlaceholderEntry(candidate) {
+  const base = path.basename(String(candidate || ""));
+  return base === "-.bc" || base === "-";
+}
+
 function collectBitcode(rootDir) {
   const results = [];
+  const seen = new Set();
   const stack = [rootDir];
   while (stack.length > 0) {
     const current = stack.pop();
@@ -236,7 +308,11 @@ function collectBitcode(rootDir) {
       if (!entry.isFile() || !entry.name.endsWith(".bc")) {
         continue;
       }
-      if (isLlvmBitcode(nextPath)) {
+      if (isPlaceholderEntry(nextPath)) {
+        continue;
+      }
+      if (isLlvmBitcode(nextPath) && !seen.has(nextPath)) {
+        seen.add(nextPath);
         results.push(nextPath);
       }
     }
@@ -245,17 +321,55 @@ function collectBitcode(rootDir) {
   return results;
 }
 
+function resolveBitcodeList(entries) {
+  const results = [];
+  const seen = new Set();
+  const roots = [
+    bitcodeRoot,
+    kbuildDir,
+    kernelSourceDir,
+    outputDir,
+    path.dirname(bitcodeListPath),
+  ].filter(Boolean);
+  for (const rawEntry of entries) {
+    const entry = String(rawEntry || "").trim();
+    if (!entry || isPlaceholderEntry(entry)) {
+      continue;
+    }
+    const candidates = path.isAbsolute(entry)
+      ? [entry]
+      : roots.map((root) => path.join(root, entry));
+    for (const candidate of candidates) {
+      const normalized = path.resolve(candidate);
+      if (seen.has(normalized) || !fs.existsSync(normalized) || isPlaceholderEntry(normalized)) {
+        continue;
+      }
+      if (!isLlvmBitcode(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      results.push(normalized);
+      break;
+    }
+  }
+  return results.sort((left, right) => left.localeCompare(right));
+}
+
 let bitcodeFiles = [];
 if (fs.existsSync(bitcodeListPath)) {
-  bitcodeFiles = fs.readFileSync(bitcodeListPath, "utf8")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((entry) => path.isAbsolute(entry)
-      ? entry
-      : path.join(kernelSourceDir || outputDir, entry));
+  bitcodeFiles = resolveBitcodeList(
+    fs.readFileSync(bitcodeListPath, "utf8")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+  );
 }
-bitcodeFiles = bitcodeFiles.filter((candidate) => fs.existsSync(candidate));
+if (bitcodeFiles.length === 0 && bitcodeRoot) {
+  bitcodeFiles = collectBitcode(bitcodeRoot);
+}
+if (bitcodeFiles.length === 0 && kbuildDir) {
+  bitcodeFiles = collectBitcode(kbuildDir);
+}
 if (bitcodeFiles.length === 0 && kernelSourceDir) {
   bitcodeFiles = collectBitcode(kernelSourceDir);
 }
@@ -263,9 +377,10 @@ if (bitcodeFiles.length === 0) {
   bitcodeFiles = collectBitcode(outputDir);
 }
 if (bitcodeFiles.length > 0) {
+  const relativeRoot = bitcodeRoot || kbuildDir || kernelSourceDir || outputDir;
   const relative = bitcodeFiles.map((candidate) => {
-    if (kernelSourceDir && candidate.startsWith(`${kernelSourceDir}${path.sep}`)) {
-      return path.relative(kernelSourceDir, candidate);
+    if (relativeRoot && candidate.startsWith(`${relativeRoot}${path.sep}`)) {
+      return path.relative(relativeRoot, candidate);
     }
     if (candidate.startsWith(`${outputDir}${path.sep}`)) {
       return path.relative(outputDir, candidate);

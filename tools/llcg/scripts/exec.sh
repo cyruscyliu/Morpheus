@@ -20,7 +20,10 @@ inline_files="${MORPHEUS_LLCG_FILE:-}"
 filter_list="${MORPHEUS_LLCG_FILTER_FILE:-}"
 inline_filters="${MORPHEUS_LLCG_FILTER:-}"
 llbase_contract="${MORPHEUS_LLCG_LLBASE_CONTRACT:-}"
-jobs="${MORPHEUS_LLCG_JOBS:-$(morpheus_default_jobs)}"
+# KallGraph has shown non-deterministic crashes on some scoped kernels when
+# run with higher parallelism. Keep the default conservative and allow
+# explicit overrides through MORPHEUS_LLCG_JOBS when needed.
+jobs="${MORPHEUS_LLCG_JOBS:-1}"
 kernel_version=""
 llbic_source_dir=""
 python_deps_dir="${output_dir}/python-deps"

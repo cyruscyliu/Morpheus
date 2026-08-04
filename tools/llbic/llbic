@@ -9,7 +9,28 @@ set -euo pipefail
 VERSION="0.3.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="${LLBIC_ROOT:-$(_host_script_dir)}"
-source "${ROOT_DIR}/../_shared/scripts/parallelism.sh"
+parallelism_helper="${ROOT_DIR}/../_shared/scripts/parallelism.sh"
+if [ -f "${parallelism_helper}" ]; then
+  source "${parallelism_helper}"
+else
+  morpheus_host_cpu_count() {
+    local count=""
+    count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)"
+    if [ -z "${count}" ]; then
+      count="$(nproc 2>/dev/null || true)"
+    fi
+    if ! [[ "${count}" =~ ^[0-9]+$ ]] || [ "${count}" -lt 1 ]; then
+      count=1
+    fi
+    printf '%s\n' "${count}"
+  }
+
+  morpheus_default_jobs() {
+    local cpus
+    cpus="$(morpheus_host_cpu_count)"
+    printf '%s\n' "$(( cpus / 2 > 0 ? cpus / 2 : 1 ))"
+  }
+fi
 SOURCES_DIR="${LLBIC_SOURCES:-${ROOT_DIR}/sources}"
 BUILD_DIR="${LLBIC_OUTPUT:-${ROOT_DIR}/out}"
 CONF_FILE="${LLBIC_CONF:-${ROOT_DIR}/sources.conf}"
@@ -246,6 +267,7 @@ _append_bitcode_file_if_valid() {
   local rel=""
 
   [[ -f "${candidate}" ]] || return 0
+  _bitcode_candidate_is_placeholder "${candidate}" && return 0
   if ! file "${candidate}" 2>/dev/null | grep -q "LLVM IR bitcode"; then
     return 0
   fi
@@ -1275,33 +1297,113 @@ _json_array() {
   printf ']'
 }
 
+_json_file_query() {
+  local json_file="$1"
+  local key="$2"
+
+  node - "${json_file}" "${key}" <<'EOF'
+const fs = require("fs");
+
+const [jsonPath, key] = process.argv.slice(2);
+const payload = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+const value = Object.prototype.hasOwnProperty.call(payload, key)
+  ? payload[key]
+  : undefined;
+
+if (value === undefined) {
+  process.exit(2);
+}
+if (value === null) {
+  process.stdout.write("null");
+  process.exit(0);
+}
+if (typeof value === "string") {
+  process.stdout.write(value);
+  process.exit(0);
+}
+process.stdout.write(JSON.stringify(value));
+EOF
+}
+
 _json_file_string_field() {
   local json_file="$1"
   local key="$2"
-  sed -n "s/.*\"${key}\":\"\\([^\"]*\\)\".*/\\1/p" "${json_file}" | head -1
+  local value=""
+  value="$(_json_file_query "${json_file}" "${key}" 2>/dev/null || true)"
+  [[ "${value}" == "null" ]] && return 0
+  printf '%s\n' "${value}"
 }
 
 _json_file_nullable_string_field() {
   local json_file="$1"
   local key="$2"
-  if grep -q "\"${key}\":null" "${json_file}" 2>/dev/null; then
+  local value=""
+  value="$(_json_file_query "${json_file}" "${key}" 2>/dev/null || true)"
+  if [[ "${value}" == "null" ]]; then
     echo ""
     return 0
   fi
-  _json_file_string_field "${json_file}" "${key}"
+  printf '%s\n' "${value}"
 }
 
 _json_file_number_field() {
   local json_file="$1"
   local key="$2"
-  sed -n "s/.*\"${key}\":\\([0-9][0-9]*\\).*/\\1/p" "${json_file}" | head -1
+  local value=""
+  value="$(_json_file_query "${json_file}" "${key}" 2>/dev/null || true)"
+  [[ "${value}" == "null" ]] && return 0
+  printf '%s\n' "${value}"
 }
 
 _json_file_array_field() {
   local json_file="$1"
   local key="$2"
-  local next_key="$3"
-  sed -n "s/.*\"${key}\":\\(\\[[^]]*\\]\\),\"${next_key}\":.*/\\1/p" "${json_file}" | head -1
+  local _next_key="${3:-}"
+  _json_file_query "${json_file}" "${key}" 2>/dev/null || true
+}
+
+_bitcode_candidate_is_placeholder() {
+  local candidate="${1:-}"
+  local base=""
+
+  [[ -n "${candidate}" ]] || return 1
+  base="$(basename "${candidate}")"
+  [[ "${base}" == "-.bc" || "${base}" == "-" ]]
+}
+
+_bitcode_list_has_valid_entries() {
+  local list_file="$1"
+  shift
+  local -a roots=("$@")
+  local entry=""
+  local root=""
+  local candidate=""
+
+  [[ -s "${list_file}" ]] || return 1
+
+  while IFS= read -r entry || [[ -n "${entry}" ]]; do
+    entry="$(printf '%s' "${entry}" | xargs)"
+    [[ -n "${entry}" ]] || continue
+    _bitcode_candidate_is_placeholder "${entry}" && continue
+
+    if [[ "${entry}" == /* ]]; then
+      if [[ -f "${entry}" ]] && file "${entry}" 2>/dev/null | grep -q "LLVM IR bitcode"; then
+        return 0
+      fi
+      continue
+    fi
+
+    for root in "${roots[@]}"; do
+      [[ -n "${root}" ]] || continue
+      candidate="${root%/}/${entry}"
+      _bitcode_candidate_is_placeholder "${candidate}" && continue
+      if [[ -f "${candidate}" ]] && file "${candidate}" 2>/dev/null | grep -q "LLVM IR bitcode"; then
+        return 0
+      fi
+    done
+  done < "${list_file}"
+
+  return 1
 }
 
 _existing_build_is_reusable() {
@@ -1332,6 +1434,10 @@ _existing_build_is_reusable() {
   [[ "$(_json_file_number_field "${json_file}" "rust_enabled")" == "${rust_enabled}" ]] || return 1
   [[ "$(_json_file_string_field "${json_file}" "scope")" == "${scope}" ]] || return 1
   [[ "$(_json_file_string_field "${json_file}" "requested_clang")" == "${requested_clang}" ]] || return 1
+  [[ "$(_json_file_array_field "${json_file}" "requested_files" "requested_rust_targets")" == "${requested_files_json}" ]] || return 1
+  [[ "$(_json_file_array_field "${json_file}" "requested_rust_targets" "make_targets")" == "${requested_rust_targets_json}" ]] || return 1
+  [[ "$(_json_file_array_field "${json_file}" "make_targets" "kconfig_fragments")" == "${make_targets_json}" ]] || return 1
+  [[ "$(_json_file_array_field "${json_file}" "kconfig_fragments" "kconfig_fragments_count")" == "${kconfig_fragments_json}" ]] || return 1
 
   local bitcode_count="$(_json_file_number_field "${json_file}" "bitcode_count")"
   [[ -n "${bitcode_count}" && "${bitcode_count}" -gt 0 ]] || return 1
@@ -1340,6 +1446,15 @@ _existing_build_is_reusable() {
   [[ -n "${bitcode_list_file}" ]] || return 1
   local resolved_bitcode_list_file="$(_resolve_portable_path_locally "${bitcode_list_file}")"
   [[ -s "${resolved_bitcode_list_file}" ]] || return 1
+  local bitcode_root="$(_resolve_portable_path_locally "$(_json_file_nullable_string_field "${json_file}" "bitcode_root")")"
+  local kbuild_dir="$(_resolve_portable_path_locally "$(_json_file_nullable_string_field "${json_file}" "kbuild_dir")")"
+  local source_dir="$(_resolve_portable_path_locally "$(_json_file_nullable_string_field "${json_file}" "source_dir")")"
+  _bitcode_list_has_valid_entries \
+    "${resolved_bitcode_list_file}" \
+    "${bitcode_root}" \
+    "${kbuild_dir}" \
+    "${source_dir}" \
+    "$(dirname "${resolved_bitcode_list_file}")" || return 1
 
   return 0
 }
@@ -1359,6 +1474,7 @@ _collect_bitcode_files() {
   esac
 
   while IFS= read -r file; do
+    _bitcode_candidate_is_placeholder "${file}" && continue
     # Only count real LLVM bitcode. Kernel sources also contain files ending in
     # .bc that are inputs for the 'bc' calculator (e.g. kernel/time/timeconst.bc).
     if file "${file}" 2>/dev/null | grep -q "LLVM IR bitcode"; then
@@ -2563,7 +2679,7 @@ EOF
   _remove_injected_makefile_block "${kernel_makefile}" "${compat_marker}"
   _remove_injected_makefile_block "${kernel_makefile}" "${opaque_marker}"
 
-  local search_root="${kernel_src}"
+  local search_root="${kbuild_dir:-${kernel_src}}"
 
   info "Collecting bitcode module list..."
   if [[ ${#scoped_targets[@]} -gt 0 ]]; then
@@ -2758,7 +2874,7 @@ EOF
   _remove_injected_makefile_block "${kernel_makefile}" "${marker}"
   _remove_injected_makefile_block "${kernel_makefile}" "${compat_marker}"
 
-  local search_root="${kernel_src}"
+  local search_root="${kbuild_dir:-${kernel_src}}"
 
   info "Collecting bitcode module list..."
   if [[ ${#scoped_targets[@]} -gt 0 ]]; then
@@ -2770,6 +2886,7 @@ EOF
     if [[ ${#LAST_BITCODE_FILES[@]} -eq 0 ]]; then
       while IFS= read -r candidate; do
         [[ -n "${candidate}" ]] || continue
+        _bitcode_candidate_is_placeholder "${candidate}" && continue
         if file "${candidate}" 2>/dev/null | grep -q "LLVM IR bitcode"; then
           LAST_BITCODE_FILES+=("${candidate}")
           LAST_BITCODE_FILES_REL+=("${candidate#${search_root%/}/}")

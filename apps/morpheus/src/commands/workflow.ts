@@ -10,6 +10,7 @@ const { repoRoot } = require("../core/paths");
 const { writeStdoutLine } = require("../core/io");
 const { emitEvent, withEventContext, withLogFile } = require("../core/logger");
 const { runConfigCheck } = require("./config-check");
+const { exportWorkflowBundle } = require("./workflow-export");
 const { validateToolDescriptor } = require("../core/tool-validator");
 const {
   parseSshTarget,
@@ -73,6 +74,7 @@ function workflowUsage() {
     "Usage:",
     "  ./bin/morpheus [--config PATH] workflow runs [--limit N] [--offset N] [--json]",
     "  ./bin/morpheus [--config PATH] workflow list [--json]",
+    "  ./bin/morpheus [--config PATH] workflow export --name WORKFLOW_NAME [--output-dir PATH] [--link-mode copy|hardlink] [--prepare] [--force] [--json]",
     "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow run --name WORKFLOW_NAME [--from-stage STAGE_ID] [--only-stage STAGE_ID] [--json]",
     "  ./bin/morpheus [--config PATH] workflow resume --name WORKFLOW_NAME [--from-stage STAGE_ID] [--only-stage STAGE_ID] [--json]",
     "  ./bin/morpheus [--config PATH] workflow inspect --name WORKFLOW_NAME [--json]",
@@ -87,6 +89,7 @@ function workflowUsage() {
     "Commands:",
     "  workflow runs      List managed workflow instances.",
     "  workflow list      List configured workflows.",
+    "  workflow export    Export a runnable bundle for a configured workflow.",
     "  workflow run       Start a configured workflow.",
     "  workflow resume    Resume a workflow instance.",
     "  workflow inspect   Inspect workflow state and stages.",
@@ -98,6 +101,7 @@ function workflowUsage() {
     "Examples:",
     "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow runs --json",
     "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow list --json",
+    "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow export --name qemu-build --json",
     "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow run --name qemu-build --json",
     "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow inspect --name qemu-build --json",
     "  ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow events --name qemu-build --json",
@@ -2663,6 +2667,32 @@ async function handleWorkflowCommand(argv) {
         ...payload.details.workflows.map((workflow) => (
           `${workflow.name}\t${workflow.category}\t${workflow.stages}\t${workflow.config || "-"}`
         ))
+      ].join("\n"));
+    }
+    return 0;
+  }
+
+  if (subcommand === "export") {
+    const id = workflowKey(flags);
+    if (!id) {
+      throw new Error("workflow export requires --name WORKFLOW_NAME");
+    }
+    const payload = exportWorkflowBundle({
+      workflowName: String(id),
+      outputDir: typeof flags["output-dir"] === "string" ? String(flags["output-dir"]) : null,
+      linkMode: typeof flags["link-mode"] === "string" ? String(flags["link-mode"]) : "copy",
+      prepare: Boolean(flags.prepare),
+      force: Boolean(flags.force),
+      configPath: typeof process.env.MORPHEUS_CONFIG === "string" ? process.env.MORPHEUS_CONFIG : null,
+    });
+    if (flags.json) {
+      writeStdoutLine(JSON.stringify(payload, null, 2));
+    } else {
+      writeStdoutLine([
+        `workflow=${payload.details.workflow}`,
+        `category=${payload.details.category}`,
+        `bundle_dir=${payload.details.output_dir}`,
+        `bundle_config=${payload.details.bundle_config}`,
       ].join("\n"));
     }
     return 0;

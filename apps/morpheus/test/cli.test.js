@@ -61,6 +61,21 @@ function assertPidInactive(pid) {
   assert.ok(!state || state.startsWith("Z"), `expected pid ${pid} to be inactive, got ${state}`);
 }
 
+function withRepoRoot(repoRootValue, callback) {
+  const pathsModulePath = require.resolve("../dist/core/paths.js");
+  const moduleEntry = require.cache[pathsModulePath];
+  const original = moduleEntry.exports;
+  moduleEntry.exports = {
+    ...original,
+    repoRoot: () => repoRootValue,
+  };
+  try {
+    return callback();
+  } finally {
+    moduleEntry.exports = original;
+  }
+}
+
 function makeFakeSshEnv(remoteRoot) {
   const fakeBin = path.join(remoteRoot, "fake-ssh-bin");
   fs.mkdirSync(fakeBin, { recursive: true });
@@ -528,6 +543,7 @@ test("workflow commands are available through Morpheus", () => {
   assert.match(result.stdout, /^Commands:$/m);
   assert.match(result.stdout, /workflow list/);
   assert.match(result.stdout, /workflow runs/);
+  assert.match(result.stdout, /workflow export/);
   assert.match(result.stdout, /workflow run/);
   assert.match(result.stdout, /workflow inspect/);
   assert.match(result.stdout, /workflow events/);
@@ -535,6 +551,81 @@ test("workflow commands are available through Morpheus", () => {
   assert.match(result.stdout, /workflow remove/);
 });
 
+test("workflow export bundles a runnable workflow view", () => {
+  const fakeRepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-export-repo-"));
+  const fakeWorkspaceRoot = path.join(fakeRepoRoot, "workspace");
+  const fakeBinDir = path.join(fakeRepoRoot, "bin");
+  const fakeConfigPath = path.join(fakeRepoRoot, "morpheus.yaml");
+  const outputParent = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-export-out-"));
+  const outputDir = path.join(outputParent, "bundle");
+
+  fs.mkdirSync(fakeWorkspaceRoot, { recursive: true });
+  fs.mkdirSync(fakeBinDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(fakeBinDir, "morpheus"),
+    [
+      "#!/usr/bin/env node",
+      "const args = process.argv.slice(2);",
+      "const trimmed = args[0] === '--config' ? args.slice(2) : args;",
+      "if (trimmed[0] === 'config' && trimmed[1] === 'show') {",
+      "  process.stdout.write(JSON.stringify({ command: 'config show', status: 'success', details: { ok: true } }) + '\\n');",
+      "  process.exit(0);",
+      "}",
+      "if (trimmed[0] === 'workflow' && trimmed[1] === 'list') {",
+      "  process.stdout.write(JSON.stringify({ command: 'workflow list', status: 'success', details: { workflows: [{ name: 'bundle-target', category: 'build', stages: 1, steps: 1 }] } }) + '\\n');",
+      "  process.exit(0);",
+      "}",
+      "process.stderr.write(`unexpected args: ${trimmed.join(' ')}\\n`);",
+      "process.exit(1);",
+      ""
+    ].join("\n"),
+    { mode: 0o755 }
+  );
+  fs.writeFileSync(
+    fakeConfigPath,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      "workflows:",
+      "  bundle-target:",
+      "    category: build",
+      "    steps:",
+      "      - id: build",
+      "        tool: qemu",
+      "        command: build",
+      "        args:",
+      "          - --source",
+      "          - ./workspace/src",
+      "",
+    ].join("\n")
+  );
+  fs.mkdirSync(path.join(fakeWorkspaceRoot, "src"), { recursive: true });
+  fs.writeFileSync(path.join(fakeWorkspaceRoot, "src", "README.txt"), "bundle source\n", "utf8");
+
+  const { exportWorkflowBundle } = withRepoRoot(fakeRepoRoot, () => require("../dist/commands/workflow-export.js"));
+  const payload = withRepoRoot(fakeRepoRoot, () => exportWorkflowBundle({
+    workflowName: "bundle-target",
+    outputDir,
+    linkMode: "hardlink",
+    prepare: false,
+    force: false,
+    configPath: fakeConfigPath,
+  }));
+
+  assert.equal(payload.status, "success");
+  assert.equal(payload.details.workflow, "bundle-target");
+  assert.equal(fs.existsSync(path.join(outputDir, "morpheus.sh")), true);
+  assert.equal(fs.existsSync(path.join(outputDir, "run-workflow.sh")), true);
+  assert.equal(fs.existsSync(path.join(outputDir, "inspect-workflow.sh")), true);
+  const bundleList = spawnSync(path.join(outputDir, "morpheus.sh"), ["workflow", "list", "--json"], {
+    encoding: "utf8",
+  });
+  assert.equal(bundleList.status, 0, bundleList.stderr || bundleList.stdout);
+  assert.match(bundleList.stdout, /bundle-target/);
+
+  fs.rmSync(outputParent, { recursive: true, force: true });
+  fs.rmSync(fakeRepoRoot, { recursive: true, force: true });
+});
 test("top-level help groups commands for discovery", () => {
   const result = run(["--help"]);
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -542,6 +633,7 @@ test("top-level help groups commands for discovery", () => {
   assert.match(result.stdout, /^Commands:$/m);
   assert.match(result.stdout, /^  config check       Validate morpheus\.yaml\.$/m);
   assert.match(result.stdout, /^  tool list          List declared tools and their readiness\.$/m);
+  assert.match(result.stdout, /^  workflow export    Export a runnable workflow bundle\.$/m);
   assert.match(result.stdout, /^  workflow run       Start a configured workflow\.$/m);
   assert.match(result.stdout, /^Examples:$/m);
   assert.match(result.stdout, /^  \.\/bin\/morpheus --config <workspace-root>\/morpheus\.yaml workflow inspect --name <workflow> --json$/m);

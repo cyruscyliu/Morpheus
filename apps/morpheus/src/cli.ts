@@ -139,6 +139,7 @@ function usage() {
       "  tool list          List declared tools and their readiness.",
       "  workflow runs      List managed workflow instances.",
       "  workflow list      List configured workflows.",
+      "  workflow export    Export a runnable workflow bundle.",
       "  workflow run       Start a configured workflow.",
       "  workflow resume    Resume a workflow instance.",
       "  workflow inspect   Inspect workflow state and steps.",

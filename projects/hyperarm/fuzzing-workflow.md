@@ -159,7 +159,7 @@ The host command assembled by `tools/libafl/scripts/exec.sh` is equivalent to:
 
 ```bash
 CACHE="$REPO_ROOT/.cache/hyperarm"
-FW="$CACHE/tools/qemu/builds/qemu-8.2.7-aarch64-softmmu/install/share/qemu"
+FW="$CACHE/tools/qemu/builds/qemu-11.0.3-aarch64-softmmu/install/share/qemu"
 DISK="$CACHE/tools/nvirsh/builds/qemu-debian-arm64/build/l0/overlay.qcow2"
 QEMU_DATA="$CACHE/tools/libafl/builds/libafl-main/build/qemu-libafl-bridge"
 
@@ -360,7 +360,7 @@ Second, the L1 stub converts that input into nested QEMU inputs:
 The virtio-mmio patch reads the input file in:
 
 ```text
-$CACHE/tools/qemu/src/qemu-8.2.7/hw/virtio/virtio-mmio.c
+$CACHE/tools/qemu/src/qemu-11.0.3/hw/virtio/virtio-mmio.c
 ```
 
 It uses `MORPHEUS_QEMU_INPUT_PATH`, reads the file, and XOR-mixes bytes into
@@ -369,7 +369,7 @@ selected virtio-net MMIO reads.
 The GICv3 patch reads interrupt injection settings in:
 
 ```text
-$CACHE/tools/qemu/src/qemu-8.2.7/hw/intc/arm_gicv3_cpuif.c
+$CACHE/tools/qemu/src/qemu-11.0.3/hw/intc/arm_gicv3_cpuif.c
 ```
 
 It uses `MORPHEUS_QEMU_INJECT_VIRQ` and

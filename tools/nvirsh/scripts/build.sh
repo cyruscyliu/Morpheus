@@ -145,13 +145,15 @@ prepare_l1_cca_host_boot() {
   tar -xJf "${archive_path}" -C "${stack_dir}"
 
   if [ ! -f "${stack_dir}/out/Image" ] || \
-     [ ! -f "${stack_dir}/out/flash.bin" ]; then
+     [ ! -f "${stack_dir}/out/flash.bin" ] || \
+     [ ! -f "${stack_dir}/out/host.ext4" ]; then
     echo "unexpected l1 cca host stack contents in ${stack_dir}" >&2
     exit 1
   fi
 
   cp -f "${stack_dir}/out/Image" "${build_l1_host_boot_dir}/vmlinuz"
   cp -f "${stack_dir}/out/flash.bin" "${build_l1_host_boot_dir}/flash.bin"
+
 }
 
 state_matches_build() {
@@ -1053,11 +1055,23 @@ if tty_path="\$(tty 2>/dev/null)"; then
   fi
 fi
 printf 'console-input=%s\n' "\${console_input}" >> "\${launch_marker}"
-lkvm="/host/cca-host-stack/out/lkvm"
-if [ ! -x "\${lkvm}" ]; then
-  echo "missing lkvm in l1 host stack runtime: \${lkvm}" >&2
+# Prefer L1-built lkvm (linked against Debian glibc). Fall back to staged path.
+lkvm=""
+for candidate in \
+  /host/cca-host-stack/out/lkvm \
+  /usr/local/bin/lkvm \
+  /usr/bin/lkvm
+do
+  if [ -x "\${candidate}" ]; then
+    lkvm="\${candidate}"
+    break
+  fi
+done
+if [ -z "\${lkvm}" ]; then
+  echo "missing lkvm in l1 (build it during nvirsh provision)" >&2
   exit 1
 fi
+lkvm_run=("\${lkvm}")
 if [ ! -e /dev/kvm ]; then
   echo "l2-cvm requires /dev/kvm inside l1" >&2
   exit 1
@@ -1078,7 +1092,7 @@ printf 'lkvm-stderr=%s\n' "\${lkvm_stderr_log}" >> "\${launch_marker}"
 printf 'l2-console=%s\n' "\${l2_console_log}" >> "\${launch_marker}"
 printf 'l2-console-pty-file=%s\n' "\${l2_console_pty_file}" >> "\${launch_marker}"
 lkvm_cmd=(
-  "\${lkvm}"
+  "\${lkvm_run[@]}"
   run
   --console virtio
   --tty 0
@@ -1146,6 +1160,79 @@ printf 'lkvm-exit-status=%s\n' "\${lkvm_status}" >> "\${launch_marker}"
 exit "\${lkvm_status}"
 EOF
 chmod +x "${hoststack_launch_script}"
+
+cat > "${build_l1_dir}/build-lkvm-in-l1.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+jobs="${1:-$(nproc 2>/dev/null || echo 2)}"
+src_dir="/root/morpheus-lkvm-src"
+out_bin="/host/cca-host-stack/out/lkvm"
+# Align with p-b-o/qemu-linux-stack rme_release build_kvmtool.sh:
+#   clone kvmtool from gitlab.arm.com/linux-arm/kvmtool-cca @ cca/v9
+# That tree uses KVM_CAP_ARM_RMI=245 (matches CCA host-stack kernel RMI ABI),
+# not opencca's KVM_CAP_ARM_RME=300.
+git_url="${MORPHEUS_LKVM_GIT_URL:-https://gitlab.arm.com/linux-arm/kvmtool-cca.git}"
+git_ref="${MORPHEUS_LKVM_GIT_REF:-cca/v9}"
+
+timestamp_utc() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
+log() { printf '[nvirsh-l1][%s] lkvm-build %s\n' "$(timestamp_utc)" "$*"; }
+
+if [ -x "${out_bin}" ] && ldd "${out_bin}" >/dev/null 2>&1; then
+  if grep -a -q 'Realm shared GPA mask' "${out_bin}" \
+     && grep -a -q 'KVM_CAP_ARM_RMI' "${out_bin}"; then
+    log "reuse existing RMI-aligned ${out_bin}"
+    exit 0
+  fi
+  log "existing ${out_bin} not RMI-aligned; rebuilding"
+fi
+
+log "install build dependencies"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y -qq --no-install-recommends \
+  build-essential git make pkg-config ca-certificates \
+  libfdt-dev libelf-dev zlib1g-dev libcap-ng-dev
+
+log "fetch kvmtool ${git_url} ref=${git_ref}"
+rm -rf "${src_dir}"
+mkdir -p "${src_dir}"
+if ! git clone --depth 1 --branch "${git_ref}" "${git_url}" "${src_dir}" 2>/dev/null; then
+  git clone --depth 1 "${git_url}" "${src_dir}"
+  git -C "${src_dir}" fetch --depth 1 origin "${git_ref}" 2>/dev/null || true
+  git -C "${src_dir}" checkout "${git_ref}" 2>/dev/null || true
+fi
+
+log "compile lkvm jobs=${jobs}"
+make -C "${src_dir}" -j"${jobs}" lkvm
+
+if [ ! -x "${src_dir}/lkvm" ]; then
+  echo "kvmtool build did not produce ${src_dir}/lkvm" >&2
+  exit 1
+fi
+
+# Require RMI-era Realm support matching the CCA host-stack kernel
+# (KVM_CAP_ARM_RMI / "Realm shared GPA mask"), not only a --realm flag.
+if ! grep -a -q 'Realm shared GPA mask' "${src_dir}/lkvm"; then
+  echo "built lkvm lacks RMI Realm shared GPA probe string" >&2
+  echo "need kvmtool aligned with host-stack (e.g. kvmtool-cca cca/v9)" >&2
+  echo "override with MORPHEUS_LKVM_GIT_URL / MORPHEUS_LKVM_GIT_REF" >&2
+  exit 1
+fi
+if ! grep -a -q 'KVM_CAP_ARM_RMI' "${src_dir}/lkvm"; then
+  echo "built lkvm lacks KVM_CAP_ARM_RMI (got a RME-only tree?)" >&2
+  echo "host-stack kernel advertises RMI ABI; use kvmtool-cca cca/v9" >&2
+  exit 1
+fi
+
+mkdir -p "$(dirname "${out_bin}")"
+install -m 0755 "${src_dir}/lkvm" "${out_bin}"
+install -d /usr/local/bin
+install -m 0755 "${src_dir}/lkvm" /usr/local/bin/lkvm
+log "installed ${out_bin} (Debian-linked)"
+ldd "${out_bin}" || true
+EOF
+chmod +x "${build_l1_dir}/build-lkvm-in-l1.sh"
+
 
 cat > "${build_l1_dir}/provision-l1.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -1555,11 +1642,23 @@ fi
 if [ "${l2_cvm}" = "true" ]; then
   printf '[nvirsh] copying host stack launch files into l1\n'
   ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" \
-    "mkdir -p /host/cca-host-stack/out /host/guest-images"
+    "mkdir -p /host/cca-host-stack/out /host/guest-images /root/morpheus-lkvm-src"
   copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" \
     "${build_l1_dir}/launch-l2-hoststack.sh" "${guest_launch_hoststack}"
   copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" \
-    "${build_l1_dir}/cca-host-stack/out/lkvm" "/host/cca-host-stack/out/lkvm"
+    "${build_l1_dir}/build-lkvm-in-l1.sh" "/root/build-lkvm-in-l1.sh"
+  # Build lkvm *inside* Debian L1 so it links against guest glibc (no host libs).
+  ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" \
+    "chmod 0755 /root/build-lkvm-in-l1.sh && bash /root/build-lkvm-in-l1.sh ${guest_jobs}"
+  # Pull the L1-built binary back to the build tree for state/reuse, and keep on guest.
+  copy_from_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" \
+    "/host/cca-host-stack/out/lkvm" \
+    "${build_l1_dir}/cca-host-stack/out/lkvm"
+  chmod 0755 "${build_l1_dir}/cca-host-stack/out/lkvm"
+  # Drop any previously injected foreign glibc tree; L1-built lkvm must not need it.
+  ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" \
+    "rm -rf /host/cca-host-stack/out/lib"
+  rm -rf "${build_l1_dir}/cca-host-stack/out/lib"
   copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" \
     "${buildroot_images_dir}/Image" "/host/guest-images/Image"
   copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" \

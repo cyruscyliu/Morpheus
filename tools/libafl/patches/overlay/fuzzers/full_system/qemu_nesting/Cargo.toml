@@ -1,0 +1,32 @@
+[package]
+name = "qemu_nesting"
+version = "0.16.0"
+authors = [
+  "Qiang Liu <cyruscyliu@gmail.com>",
+]
+edition = "2021"
+
+[features]
+default = ["std", "aarch64"]
+std = []
+
+aarch64 = ["libafl_qemu/aarch64"]
+
+[profile.release]
+incremental = true
+debug = true
+lto = "fat"
+codegen-units = 1
+
+[dependencies]
+libafl = { path = "../../../crates/libafl" }
+libafl_bolts = { path = "../../../crates/libafl_bolts" }
+libafl_targets = { path = "../../../crates/libafl_targets" }
+libafl_qemu = { path = "../../../crates/libafl_qemu", default-features = false, features = [
+  "systemmode",
+] }
+libafl_nesting = { path = "../../../crates/libafl_nesting" }
+env_logger = "0.11.5"
+
+[build-dependencies]
+libafl_qemu_build = { path = "../../../crates/libafl_qemu/libafl_qemu_build" }

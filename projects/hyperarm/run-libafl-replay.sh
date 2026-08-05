@@ -142,7 +142,6 @@ cmd=(
   workflow run
   --tool libafl
   --source "${source_dir}"
-  --harness-script "${workspace_root}/tools/libafl/scripts/qemu_nesting/exec.sh"
   --harness-arg "--nvirsh-state"
   --harness-arg "${nvirsh_state}"
   --harness-arg "--l2-run-window-ms"

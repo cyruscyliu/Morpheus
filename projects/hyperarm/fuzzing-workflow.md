@@ -244,7 +244,7 @@ The practical start and end boundaries are not a symbol named `BREAKPOINT`.
 This implementation uses the LibAFL QEMU command ABI in the L1 stub:
 
 ```text
-projects/hyperarm/workspace/tools/libafl/patches/overlay/crates/
+tools/libafl/patches/overlay/crates/
   libafl_nesting/c_src/libafl_nesting_stub.c
 ```
 
@@ -447,7 +447,7 @@ instrumentation, not by the final nqc2 LCOV report.
 The host fuzzer configures an edge map observer in:
 
 ```text
-projects/hyperarm/workspace/tools/libafl/patches/overlay/
+tools/libafl/patches/overlay/
   fuzzers/full_system/qemu_nesting/src/fuzzer_breakpoint.rs
 ```
 
@@ -650,7 +650,7 @@ tools/nvirsh/scripts/inspect.sh
 LibAFL fuzzer and guest stub:
 
 ```text
-projects/hyperarm/workspace/tools/libafl/patches/overlay/
+tools/libafl/patches/overlay/
   fuzzers/full_system/qemu_nesting/src/fuzzer_breakpoint.rs
   crates/libafl_nesting/c_src/libafl_nesting_stub.c
 ```

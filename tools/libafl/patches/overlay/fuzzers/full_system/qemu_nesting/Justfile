@@ -1,0 +1,15 @@
+import "../../../just/libafl-qemu.just"
+
+ARCH := env("ARCH", "aarch64")
+FUZZER_NAME := "qemu_nesting"
+STUB := env("STUB")
+
+build:
+    cargo build \
+        --profile {{ PROFILE }} \
+        --no-default-features \
+        --features std,breakpoint,{{ ARCH }} \
+        --target-dir {{ TARGET_DIR }}
+
+run: (build)
+    STUB={{ STUB }} {{ BUILD_DIR / "qemu_nesting" }}

@@ -1,37 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/state.sh"
-source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/project-hook.sh"
+repo_root="${MORPHEUS_REPO_ROOT:?missing MORPHEUS_REPO_ROOT}"
+source "${repo_root}/tools/_shared/scripts/state.sh"
 
 source_dir="${MORPHEUS_LIBAFL_SOURCE:?}"
 patch_dir="${MORPHEUS_LIBAFL_PATCH_DIR:?}"
-patch_script="${MORPHEUS_LIBAFL_PATCH_SCRIPT:-}"
 result_file="${MORPHEUS_LIBAFL_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
-state_file="${source_dir}/.morpheus-libafl-nesting.json"
+state_file="${source_dir}/.morpheus-qemu-nesting.json"
 crate_dir="${source_dir}/crates/libafl_nesting"
+example_dir="${source_dir}/fuzzers/full_system/qemu_nesting"
 workspace_toml="${source_dir}/Cargo.toml"
 
 mkdir -p "$(dirname "${result_file}")"
 [ -d "${source_dir}" ] || { echo "missing source directory: ${source_dir}" >&2; exit 1; }
 [ -d "${patch_dir}" ] || { echo "missing patch directory: ${patch_dir}" >&2; exit 1; }
 [ -d "${patch_dir}/crates/libafl_nesting" ] || { echo "missing libafl_nesting patch tree under ${patch_dir}" >&2; exit 1; }
+[ -d "${patch_dir}/fuzzers/full_system/qemu_nesting" ] || { echo "missing qemu_nesting patch tree under ${patch_dir}" >&2; exit 1; }
 
-morpheus_delegate_project_hook "${BASH_SOURCE[0]}" "${patch_script}" "libafl patch" || true
-
-fingerprint_files="$(find "${patch_dir}/crates/libafl_nesting" -type f | sort)"
+fingerprint_files="$(find "${patch_dir}/crates/libafl_nesting" "${patch_dir}/fuzzers/full_system/qemu_nesting" -type f | sort)"
 fingerprint="$(printf '%s\n' "${fingerprint_files}" | morpheus_hash_files_from_stdin)"
 
 if morpheus_patch_state_matches "${state_file}" "${fingerprint}"; then
   cat > "${result_file}" <<EOF
-{"details":{"reused":true,"applied":true,"fingerprint":"${fingerprint}","crate_dir":"${crate_dir}"}}
+{"details":{"reused":true,"applied":true,"fingerprint":"${fingerprint}","crate_dir":"${crate_dir}","example_dir":"${example_dir}"}}
 EOF
   exit 0
 fi
 
-rm -rf "${crate_dir}"
-mkdir -p "${source_dir}/crates"
+rm -rf "${crate_dir}" "${example_dir}"
+mkdir -p "${source_dir}/crates" "${source_dir}/fuzzers/full_system"
 cp -a "${patch_dir}/crates/libafl_nesting" "${crate_dir}"
+cp -a "${patch_dir}/fuzzers/full_system/qemu_nesting" "${example_dir}"
 
 node - "${workspace_toml}" <<'NODE'
 const fs = require("fs");
@@ -55,5 +55,5 @@ NODE
 morpheus_write_patch_state "${state_file}" "${patch_dir}" "${fingerprint}"
 
 cat > "${result_file}" <<EOF
-{"details":{"applied":true,"fingerprint":"${fingerprint}","crate_dir":"${crate_dir}"}}
+{"details":{"applied":true,"fingerprint":"${fingerprint}","crate_dir":"${crate_dir}","example_dir":"${example_dir}"}}
 EOF

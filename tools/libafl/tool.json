@@ -289,8 +289,7 @@
           "requiredFlags": [
             "source",
             "run-dir",
-            "install-dir",
-            "harness-script"
+            "install-dir"
           ],
           "scalarFlags": [
             "source",

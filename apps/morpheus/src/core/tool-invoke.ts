@@ -1704,8 +1704,8 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   )
     ? process.cwd()
     : null;
-  if (command === "exec" && workflowStepCwd && !effective["run-dir"]) {
-    effective["run-dir"] = path.join(workflowStepCwd, "runtime");
+  if (command === "exec" && workflowStepCwd) {
+    effective["run-dir"] = workflowStepCwd;
   }
   if (command === "exec") {
     ensureNoWorkspaceRunConflict(tool, descriptor, effective);

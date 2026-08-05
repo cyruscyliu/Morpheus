@@ -7,19 +7,22 @@ cd "${repo_root}"
 
 workspace_id="hyperarm"
 config="${MORPHEUS_CONFIG:-}"
+data_root="${MORPHEUS_DATA_ROOT:-}"
+
+if [ -z "${data_root}" ] && [ -n "${MORPHEUS_WORKSPACES_ROOT:-}" ]; then
+  data_root="$(dirname "${MORPHEUS_WORKSPACES_ROOT%/}")"
+fi
 
 if [ -z "${config}" ]; then
-  if [ -n "${MORPHEUS_WORKSPACES_ROOT:-}" ]; then
-    config="${MORPHEUS_WORKSPACES_ROOT%/}/${workspace_id}/morpheus.yaml"
-  elif [ -n "${MORPHEUS_DATA_ROOT:-}" ]; then
-    config="${MORPHEUS_DATA_ROOT%/}/workspaces/${workspace_id}/morpheus.yaml"
+  if [ -n "${data_root}" ]; then
+    config="${data_root%/}/workspaces/${workspace_id}/morpheus.yaml"
   elif [ -f "projects/${workspace_id}/morpheus.yaml" ]; then
     config="projects/${workspace_id}/morpheus.yaml"
   fi
 fi
 
 if [ -z "${config}" ]; then
-  echo "error: unable to resolve HyperArm morpheus.yaml; set MORPHEUS_DATA_ROOT or MORPHEUS_WORKSPACES_ROOT" >&2
+  echo "error: unable to resolve HyperArm morpheus.yaml; set MORPHEUS_DATA_ROOT" >&2
   exit 1
 fi
 

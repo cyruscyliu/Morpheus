@@ -742,9 +742,9 @@ function listConfiguredWorkflows(explicitConfigPath = null) {
   }
 
   function workspaceConfigPaths() {
-    const workspacesRoot =
-      process.env.MORPHEUS_WORKSPACES_ROOT
-      || (process.env.MORPHEUS_DATA_ROOT ? path.join(process.env.MORPHEUS_DATA_ROOT, "workspaces") : null);
+    const workspacesRoot = process.env.MORPHEUS_DATA_ROOT
+      ? path.join(process.env.MORPHEUS_DATA_ROOT, "workspaces")
+      : null;
     if (!workspacesRoot || !fs.existsSync(workspacesRoot) || !fs.statSync(workspacesRoot).isDirectory()) {
       return [];
     }

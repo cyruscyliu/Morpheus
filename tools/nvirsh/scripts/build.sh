@@ -1552,6 +1552,21 @@ if [ "${l2_cvm}" = "true" ] && \
   printf '%s nokaslr\n' "$(cat "${build_l1_host_boot_dir}/cmdline.txt")" \
     > "${build_l1_host_boot_dir}/cmdline.txt"
 fi
+if [ "${l2_cvm}" = "true" ]; then
+  printf '[nvirsh] copying host stack launch files into l1\n'
+  ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" \
+    "mkdir -p /host/cca-host-stack/out /host/guest-images"
+  copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" \
+    "${build_l1_dir}/launch-l2-hoststack.sh" "${guest_launch_hoststack}"
+  copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" \
+    "${build_l1_dir}/cca-host-stack/out/lkvm" "/host/cca-host-stack/out/lkvm"
+  copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" \
+    "${buildroot_images_dir}/Image" "/host/guest-images/Image"
+  copy_to_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" \
+    "${buildroot_images_dir}/rootfs.cpio.gz" "/host/guest-images/rootfs.cpio.gz"
+  ssh_guest "${build_l0_dir}/id_ed25519" "${l1_ssh_port}" \
+    "chmod 0755 ${guest_launch_hoststack} /host/cca-host-stack/out/lkvm"
+fi
 
 shutdown_l1
 trap - EXIT INT TERM

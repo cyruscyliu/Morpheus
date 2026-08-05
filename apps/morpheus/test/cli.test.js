@@ -737,12 +737,14 @@ test("workflow list discovers configured workflows in json", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
-test("workflow list discovers workspace configs under MORPHEUS_WORKSPACES_ROOT", () => {
+test("workflow list discovers workspace configs under MORPHEUS_DATA_ROOT/workspaces", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-list-workspace-"));
   const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-data-root-"));
   const workspacesRoot = path.join(dataRoot, "workspaces");
   const workspaceRoot = path.join(workspacesRoot, "hyperarm");
+  const staleWorkspacesRoot = path.join(dataRoot, "stale-workspaces");
   fs.mkdirSync(path.join(workspaceRoot, "workspace"), { recursive: true });
+  fs.mkdirSync(staleWorkspacesRoot, { recursive: true });
   writeConfig(
     projectRoot,
     [
@@ -776,7 +778,7 @@ test("workflow list discovers workspace configs under MORPHEUS_WORKSPACES_ROOT",
     cwd: projectRoot,
     env: isolatedEnv({
       MORPHEUS_DATA_ROOT: dataRoot,
-      MORPHEUS_WORKSPACES_ROOT: workspacesRoot,
+      MORPHEUS_WORKSPACES_ROOT: staleWorkspacesRoot,
     }),
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -2344,6 +2346,71 @@ test("workflow run --tool forwards passthrough args after -- to the tool step", 
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.equal(fs.readFileSync(argsPath, "utf8"), "--nvirsh-state\nstate.json\n");
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("exec inside a workflow stage keeps libafl run-dir in the stage data", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stage-run-dir-"));
+  const workspaceRoot = path.join(projectRoot, "workspace");
+  const stageDir = path.join(workspaceRoot, "workflows", "wf-stage-run-dir", "stages", "libafl_exec");
+  const sourceDir = path.join(workspaceRoot, "tools", "libafl", "builds", "default", "source");
+  const installDir = path.join(workspaceRoot, "tools", "libafl", "builds", "default", "install");
+  const harnessDir = path.join(projectRoot, "scripts");
+  const harnessScript = path.join(harnessDir, "capture-libafl-harness.sh");
+
+  fs.mkdirSync(stageDir, { recursive: true });
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.mkdirSync(installDir, { recursive: true });
+  fs.mkdirSync(harnessDir, { recursive: true });
+  fs.writeFileSync(path.join(stageDir, "stage.json"), `${JSON.stringify({
+    id: "libafl_exec",
+    name: "libafl_exec",
+    status: "running",
+    stepDir: stageDir,
+    stageDir,
+  }, null, 2)}\n`);
+  fs.writeFileSync(
+    harnessScript,
+    [
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      "exit 0",
+      ""
+    ].join("\n"),
+    { mode: 0o755 }
+  );
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      ""
+    ].join("\n")
+  );
+
+  const result = run([
+    "--json",
+    "exec",
+    "--tool",
+    "libafl",
+    "--source",
+    sourceDir,
+    "--install-dir",
+    installDir,
+    "--harness-script",
+    harnessScript,
+  ], {
+    cwd: stageDir,
+    env: isolatedEnv({ MORPHEUS_WORK_ROOT: workspaceRoot }),
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout.trim());
+  const managedRunDir = path.join(workspaceRoot, "tools", "libafl", "runs", "default");
+  assert.equal(payload.details.run_dir, stageDir);
+  assert.equal(payload.details.manifest, path.join(stageDir, "manifest.json"));
+  assert.equal(fs.existsSync(path.join(stageDir, "stdout.log")), true);
+  assert.equal(fs.existsSync(managedRunDir), false);
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });

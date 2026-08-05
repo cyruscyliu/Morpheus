@@ -79,18 +79,19 @@ function loadEnvFile(filePath) {
 }
 
 function normalizeMorpheusEnv() {
-  const dataRoot = typeof process.env.MORPHEUS_DATA_ROOT === "string" && process.env.MORPHEUS_DATA_ROOT
+  let dataRoot = typeof process.env.MORPHEUS_DATA_ROOT === "string" && process.env.MORPHEUS_DATA_ROOT
     ? process.env.MORPHEUS_DATA_ROOT
     : null;
   const workspacesRoot = typeof process.env.MORPHEUS_WORKSPACES_ROOT === "string" && process.env.MORPHEUS_WORKSPACES_ROOT
     ? process.env.MORPHEUS_WORKSPACES_ROOT
     : null;
 
-  if (dataRoot && !workspacesRoot) {
-    process.env.MORPHEUS_WORKSPACES_ROOT = path.join(dataRoot, "workspaces");
+  if (!dataRoot && workspacesRoot) {
+    dataRoot = path.dirname(workspacesRoot);
+    process.env.MORPHEUS_DATA_ROOT = dataRoot;
   }
-  if (workspacesRoot && !dataRoot) {
-    process.env.MORPHEUS_DATA_ROOT = path.dirname(workspacesRoot);
+  if (dataRoot) {
+    process.env.MORPHEUS_WORKSPACES_ROOT = path.join(dataRoot, "workspaces");
   }
   if (!process.env.MORPHEUS_REPO_ROOT) {
     process.env.MORPHEUS_REPO_ROOT = appRepoRoot();

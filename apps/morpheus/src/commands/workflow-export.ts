@@ -268,7 +268,6 @@ set -eu
 bundle_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 export MORPHEUS_REPO_ROOT="\${bundle_dir}/repo"
 export MORPHEUS_DATA_ROOT="\${bundle_dir}/data"
-export MORPHEUS_WORKSPACES_ROOT="\${bundle_dir}/data/workspaces"
 
 cd "\${bundle_dir}/repo"
 exec ./bin/morpheus --config "\${bundle_dir}/${bundleConfigRel}" "$@"

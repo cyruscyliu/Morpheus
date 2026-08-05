@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -310,6 +311,29 @@ function stateStats(targetPath) {
   };
 }
 
+function fileStats(targetPath) {
+  if (!targetPath || !fs.existsSync(targetPath)) {
+    return null;
+  }
+  return {
+    bytes: fs.statSync(targetPath).size,
+  };
+}
+
+function sha256File(targetPath) {
+  if (!targetPath || !fs.existsSync(targetPath)) {
+    return null;
+  }
+  const hash = crypto.createHash("sha256");
+  hash.update(fs.readFileSync(targetPath));
+  return hash.digest("hex");
+}
+
+function kernelVersionFromPath(targetPath) {
+  const match = String(targetPath || "").match(/linux-([^/]+)\//);
+  return match ? String(match[1]) : "";
+}
+
 function stageJsonPath(workflowDir, stageId) {
   const candidates = [
     path.join(workflowDir, "stages", stageId, "stage.json"),
@@ -421,6 +445,9 @@ function analysisKindForWorkflow(workflowName) {
   if (workflowName.includes("devilang")) {
     return "devilang";
   }
+  if (workflowName.includes("nvirsh-qemu-arm64")) {
+    return "nvirsh";
+  }
   throw new Error(`unsupported workflow kind: ${workflowName}`);
 }
 
@@ -524,6 +551,77 @@ function collectDevilangMetrics(context) {
   };
 }
 
+function collectNvirshMetrics(context) {
+  const workflowJson = readJsonFile(path.join(context.workflowDir, "workflow.json"));
+  const nvirshBuild = readStage(context.workflowDir, "nvirsh_build");
+  const nvirshExec = readStage(context.workflowDir, "nvirsh_exec");
+  const nvirshStop = readStage(context.workflowDir, "nvirsh_stop");
+  const statePath = artifactLocation(nvirshBuild, "prepared-state")
+    || String(nvirshBuild?.toolResult?.details?.state_file || "");
+  const runtimeManifestPath = String(
+    nvirshStop?.toolResult?.details?.manifest
+    || nvirshExec?.toolResult?.details?.manifest
+    || ""
+  );
+  const state = statePath ? readJsonFile(statePath) : {};
+  const runtimeManifest = runtimeManifestPath && fs.existsSync(runtimeManifestPath)
+    ? readJsonFile(runtimeManifestPath)
+    : {};
+  const buildrootImages = state.layeredState?.l2?.buildrootImages || {};
+  const guestKernelVmlinux = String(buildrootImages.vmlinux || "");
+  const guestKernelImage = String(buildrootImages.image || "");
+  const guestInitrd = String(buildrootImages.initrd || "");
+  const guestKernelVersion =
+    kernelVersionFromPath(guestKernelVmlinux)
+    || String(workflowJson.metadata?.["guest-kernel-version"] || "")
+    || String(context.kernel || "");
+
+  return {
+    workflow: context.workflow,
+    run_id: workflowJson.id || context.workflow,
+    snapshot_date: context.snapshotDate || "",
+    analysis_kind: "nvirsh",
+    kernel_version: guestKernelVersion,
+    exported_at: context.exportedAt || "",
+    timing: aggregateTiming(context.workflowDir, [
+      "buildroot_fetch",
+      "buildroot_patch",
+      "buildroot_build",
+      "qemu_fetch",
+      "qemu_patch",
+      "qemu_build",
+      "nvirsh_fetch",
+      "nvirsh_build",
+      "nvirsh_exec",
+      "nvirsh_stop",
+    ]),
+    nvirsh: {
+      profile: String(state.profile || workflowJson.metadata?.profile || ""),
+      build_dir_key: String(state.buildDirKey || nvirshBuild?.resolvedInputs?.["build-dir-key"] || ""),
+      l2_mode: String(state.layeredState?.l2?.mode || ""),
+      l2_cvm: Boolean(state.layeredState?.l2?.cvm),
+      state_status: String(state.status || ""),
+      current_phase: String(runtimeManifest.currentPhase || state.currentPhase || ""),
+      runtime_status: String(runtimeManifest.status || ""),
+      launch_phase_status: String(runtimeManifest.phases?.launch || ""),
+      stop_phase_status: String(runtimeManifest.phases?.stop || ""),
+      detached: runtimeManifest.runtime?.detached ?? nvirshExec?.toolResult?.details?.detached ?? null,
+    },
+    guest: {
+      kernel_version: guestKernelVersion,
+      kernel_vmlinux: guestKernelVmlinux || null,
+      kernel_image: guestKernelImage || null,
+      initrd_image: guestInitrd || null,
+      kernel_image_bytes: fileStats(guestKernelImage)?.bytes ?? null,
+      initrd_bytes: fileStats(guestInitrd)?.bytes ?? null,
+      kernel_image_sha256: String(buildrootImages.imageSha256 || sha256File(guestKernelImage) || ""),
+      initrd_sha256: String(buildrootImages.initrdSha256 || sha256File(guestInitrd) || ""),
+    },
+    callgraph: null,
+    model: null,
+  };
+}
+
 function collectMetrics(context) {
   const analysisKind = analysisKindForWorkflow(context.workflow);
   if (analysisKind === "driver-callgraph") {
@@ -531,6 +629,9 @@ function collectMetrics(context) {
   }
   if (analysisKind === "devilang") {
     return collectDevilangMetrics(context);
+  }
+  if (analysisKind === "nvirsh") {
+    return collectNvirshMetrics(context);
   }
   throw new Error(`unsupported analysis kind: ${analysisKind}`);
 }
@@ -1034,6 +1135,29 @@ function renderEvaluationNarrative(group) {
     lines.push(
       "Every run produced a larger runtime state artifact than booting state artifact."
     );
+    lines.push("");
+  }
+
+  const guestKernelVersions = [...new Set(
+    results
+      .map((result) =>
+        result.selected_metrics?.["guest.kernel_version"]
+        || result.selected_metrics?.kernel_version
+      )
+      .filter(Boolean)
+  )].sort();
+  if (guestKernelVersions.length > 0) {
+    lines.push(`Guest kernels covered: ${guestKernelVersions.join(", ")}.`);
+    lines.push("");
+  }
+
+  const l2Modes = [...new Set(
+    results
+      .map((result) => result.selected_metrics?.["nvirsh.l2_mode"])
+      .filter(Boolean)
+  )].sort();
+  if (l2Modes.length === 1) {
+    lines.push(`All runs used l2 mode ${l2Modes[0]}.`);
     lines.push("");
   }
 

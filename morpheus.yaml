@@ -775,7 +775,7 @@ workflows:
           - --phase
           - launch
           - --detach
-        timeout-seconds: 10
+        timeout-seconds: 300
         stageId: nvirsh-exec
         stageName: nvirsh-exec
         stageIndex: 3

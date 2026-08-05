@@ -1026,11 +1026,33 @@ chmod +x "${build_l1_dir}/launch-l2.sh"
 cat > "${hoststack_launch_script}" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-runtime_dir="\${MORPHEUS_L2_RUNTIME_DIR:-/run/morpheus-libafl}"
+runtime_dir="\${MORPHEUS_L2_RUNTIME_DIR:-/host/morpheus-l2-runtime}"
 mkdir -p "\${runtime_dir}"
 launch_marker="\${runtime_dir}/launch-l2.marker"
+lkvm_stdout_log="\${runtime_dir}/lkvm.stdout.log"
+lkvm_stderr_log="\${runtime_dir}/lkvm.stderr.log"
+l2_console_log="\${runtime_dir}/l2-console.log"
+l2_console_pty_file="\${runtime_dir}/l2-console.pty"
+console_input="/dev/console"
+console_capture_pid=""
+lkvm_pid=""
+cleanup() {
+  set +e
+  if [ -n "\${console_capture_pid}" ] && kill -0 "\${console_capture_pid}" 2>/dev/null; then
+    kill "\${console_capture_pid}" 2>/dev/null || true
+    wait "\${console_capture_pid}" 2>/dev/null || true
+  fi
+  set -e
+}
+trap cleanup EXIT INT TERM
 printf 'script-start\n' > "\${launch_marker}"
 echo "launch-l2 marker: script-start" >&2
+if tty_path="\$(tty 2>/dev/null)"; then
+  if [ -n "\${tty_path}" ] && [ -c "\${tty_path}" ]; then
+    console_input="\${tty_path}"
+  fi
+fi
+printf 'console-input=%s\n' "\${console_input}" >> "\${launch_marker}"
 lkvm="/host/cca-host-stack/out/lkvm"
 if [ ! -x "\${lkvm}" ]; then
   echo "missing lkvm in l1 host stack runtime: \${lkvm}" >&2
@@ -1051,6 +1073,10 @@ printf 'lkvm=%s\n' "\${lkvm}" >> "\${launch_marker}"
 printf 'cpus=%s\n' "${l2_cpus}" >> "\${launch_marker}"
 printf 'memory=%s\n' "${l2_memory_lkvm}" >> "\${launch_marker}"
 printf 'append=%s\n' "\${l2_append}" >> "\${launch_marker}"
+printf 'lkvm-stdout=%s\n' "\${lkvm_stdout_log}" >> "\${launch_marker}"
+printf 'lkvm-stderr=%s\n' "\${lkvm_stderr_log}" >> "\${launch_marker}"
+printf 'l2-console=%s\n' "\${l2_console_log}" >> "\${launch_marker}"
+printf 'l2-console-pty-file=%s\n' "\${l2_console_pty_file}" >> "\${launch_marker}"
 lkvm_cmd=(
   "\${lkvm}"
   run
@@ -1074,10 +1100,48 @@ lkvm_cmd=(
 printf 'lkvm-cmd=' >> "\${launch_marker}"
 printf '%q ' "\${lkvm_cmd[@]}" >> "\${launch_marker}"
 printf '\n' >> "\${launch_marker}"
+: > "\${lkvm_stdout_log}"
+: > "\${lkvm_stderr_log}"
+: > "\${l2_console_log}"
+rm -f "\${l2_console_pty_file}"
 set +e
-"\${lkvm_cmd[@]}"
+"\${lkvm_cmd[@]}" < "\${console_input}" > "\${lkvm_stdout_log}" 2> "\${lkvm_stderr_log}" &
+lkvm_pid="\$!"
+set -e
+printf 'lkvm-pid=%s\n' "\${lkvm_pid}" >> "\${launch_marker}"
+guest_pty=""
+deadline=\$((SECONDS + 60))
+while [ "\${SECONDS}" -lt "\${deadline}" ]; do
+  guest_pty="\$(
+    sed -n 's/.*Assigned terminal 0 to pty \\([^[:space:]]*\\).*/\\1/p' "\${lkvm_stdout_log}" "\${lkvm_stderr_log}" 2>/dev/null | tail -n 1
+  )"
+  if [ -n "\${guest_pty}" ]; then
+    break
+  fi
+  if ! kill -0 "\${lkvm_pid}" 2>/dev/null; then
+    break
+  fi
+  sleep 1
+done
+if [ -n "\${guest_pty}" ]; then
+  printf '%s\n' "\${guest_pty}" > "\${l2_console_pty_file}"
+  printf 'guest-pty=%s\n' "\${guest_pty}" >> "\${launch_marker}"
+  echo "launch-l2 guest console pty: \${guest_pty}" >&2
+  cat "\${guest_pty}" >> "\${l2_console_log}" &
+  console_capture_pid="\$!"
+else
+  printf 'guest-pty=missing\n' >> "\${launch_marker}"
+  echo "launch-l2 warning: guest console pty not discovered" >&2
+fi
+set +e
+wait "\${lkvm_pid}"
 lkvm_status="\$?"
 set -e
+if [ -n "\${console_capture_pid}" ] && kill -0 "\${console_capture_pid}" 2>/dev/null; then
+  kill "\${console_capture_pid}" 2>/dev/null || true
+  wait "\${console_capture_pid}" 2>/dev/null || true
+  console_capture_pid=""
+fi
 printf 'lkvm-exit-status=%s\n' "\${lkvm_status}" >> "\${launch_marker}"
 exit "\${lkvm_status}"
 EOF

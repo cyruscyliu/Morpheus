@@ -209,6 +209,21 @@ l1_initrd_path="${runtime_fields[20]}"
 l1_cmdline_path="${runtime_fields[21]}"
 l1_hoststack_rootfs="${runtime_fields[22]}"
 l1_hoststack_share_dir="${runtime_fields[23]}"
+l2_runtime_share_dir=""
+l2_launch_marker_log=""
+l2_launcher_stdout_log=""
+l2_launcher_stderr_log=""
+l2_console_log=""
+l2_console_pty_file=""
+
+if [ "${l2_cvm}" = "true" ]; then
+  l2_runtime_share_dir="${l1_hoststack_share_dir%/}/morpheus-l2-runtime"
+  l2_launch_marker_log="${run_dir}/launch-l2.marker"
+  l2_launcher_stdout_log="${run_dir}/l2-launcher.stdout.log"
+  l2_launcher_stderr_log="${run_dir}/l2-launcher.stderr.log"
+  l2_console_log="${run_dir}/l2-console.log"
+  l2_console_pty_file="${run_dir}/l2-console.pty"
+fi
 
 if [ "${l2_cvm}" != "true" ] && [ ! -f "${ssh_key}" ]; then
   echo "missing ssh key for l1 access: ${ssh_key}" >&2
@@ -257,6 +272,22 @@ else
   host_qemu="${resolved_host_qemu}"
 fi
 
+if [ "${l2_cvm}" = "true" ]; then
+  rm -rf "${l2_runtime_share_dir}"
+  mkdir -p "${l2_runtime_share_dir}"
+  rm -f \
+    "${l2_launch_marker_log}" \
+    "${l2_launcher_stdout_log}" \
+    "${l2_launcher_stderr_log}" \
+    "${l2_console_log}" \
+    "${l2_console_pty_file}"
+  ln -sfn "${l2_runtime_share_dir}/launch-l2.marker" "${l2_launch_marker_log}"
+  ln -sfn "${l2_runtime_share_dir}/lkvm.stdout.log" "${l2_launcher_stdout_log}"
+  ln -sfn "${l2_runtime_share_dir}/lkvm.stderr.log" "${l2_launcher_stderr_log}"
+  ln -sfn "${l2_runtime_share_dir}/l2-console.log" "${l2_console_log}"
+  ln -sfn "${l2_runtime_share_dir}/l2-console.pty" "${l2_console_pty_file}"
+fi
+
 rm -f "${manifest_file}" "${stdout_log}" "${stderr_log}" "${runtime_script}"
 
 export MORPHEUS_NVIRSH_RUNTIME_QEMU="${host_qemu}"
@@ -295,6 +326,12 @@ export MORPHEUS_NVIRSH_RUNTIME_PROFILE_FILE="${profile_file}"
 export MORPHEUS_NVIRSH_RUNTIME_PROFILE_NAME="${profile_name}"
 export MORPHEUS_NVIRSH_RUNTIME_BUILD_DIR_KEY="${build_dir_key}"
 export MORPHEUS_NVIRSH_RUNTIME_DETACHED="${detach}"
+export MORPHEUS_NVIRSH_RUNTIME_L2_RUNTIME_SHARE_DIR="${l2_runtime_share_dir}"
+export MORPHEUS_NVIRSH_RUNTIME_L2_LAUNCH_MARKER="${l2_launch_marker_log}"
+export MORPHEUS_NVIRSH_RUNTIME_L2_LAUNCHER_STDOUT_LOG="${l2_launcher_stdout_log}"
+export MORPHEUS_NVIRSH_RUNTIME_L2_LAUNCHER_STDERR_LOG="${l2_launcher_stderr_log}"
+export MORPHEUS_NVIRSH_RUNTIME_L2_CONSOLE_LOG="${l2_console_log}"
+export MORPHEUS_NVIRSH_RUNTIME_L2_CONSOLE_PTY_FILE="${l2_console_pty_file}"
 
 cat > "${runtime_script}" <<'EOF'
 #!/usr/bin/env bash
@@ -336,6 +373,12 @@ profile_file="${MORPHEUS_NVIRSH_RUNTIME_PROFILE_FILE:?}"
 profile_name="${MORPHEUS_NVIRSH_RUNTIME_PROFILE_NAME:?}"
 build_dir_key="${MORPHEUS_NVIRSH_RUNTIME_BUILD_DIR_KEY:?}"
 detached="${MORPHEUS_NVIRSH_RUNTIME_DETACHED:-false}"
+l2_runtime_share_dir="${MORPHEUS_NVIRSH_RUNTIME_L2_RUNTIME_SHARE_DIR:-}"
+l2_launch_marker_log="${MORPHEUS_NVIRSH_RUNTIME_L2_LAUNCH_MARKER:-}"
+l2_launcher_stdout_log="${MORPHEUS_NVIRSH_RUNTIME_L2_LAUNCHER_STDOUT_LOG:-}"
+l2_launcher_stderr_log="${MORPHEUS_NVIRSH_RUNTIME_L2_LAUNCHER_STDERR_LOG:-}"
+l2_console_log="${MORPHEUS_NVIRSH_RUNTIME_L2_CONSOLE_LOG:-}"
+l2_console_pty_file="${MORPHEUS_NVIRSH_RUNTIME_L2_CONSOLE_PTY_FILE:-}"
 
 qemu_pid=""
 qemu_stdin_fifo=""
@@ -399,13 +442,22 @@ normalize_console_log() {
 normalize_runtime_logs() {
   normalize_console_log "${stdout_log}"
   normalize_console_log "${l1_console_log}"
+  if [ -n "${l2_launcher_stdout_log}" ]; then
+    normalize_console_log "${l2_launcher_stdout_log}"
+  fi
+  if [ -n "${l2_launcher_stderr_log}" ]; then
+    normalize_console_log "${l2_launcher_stderr_log}"
+  fi
+  if [ -n "${l2_console_log}" ]; then
+    normalize_console_log "${l2_console_log}"
+  fi
 }
 
 write_manifest() {
   local status="$1"
   local exit_code="$2"
   local error_message="$3"
-  node - "${state_file}" "${profile_file}" "${manifest_file}" "${source_dir}" "${run_dir}" "${install_dir}" "${profile_name}" "${build_dir_key}" "${status}" "${exit_code}" "${error_message}" "${qemu_pid:-}" "${ssh_port}" "${stdout_log}" "${stderr_log}" "${l1_console_log}" "${detached}" "${l2_cvm}" "$$" <<'NODE'
+  node - "${state_file}" "${profile_file}" "${manifest_file}" "${source_dir}" "${run_dir}" "${install_dir}" "${profile_name}" "${build_dir_key}" "${status}" "${exit_code}" "${error_message}" "${qemu_pid:-}" "${ssh_port}" "${stdout_log}" "${stderr_log}" "${l1_console_log}" "${l2_console_log}" "${l2_launcher_stdout_log}" "${l2_launcher_stderr_log}" "${l2_console_pty_file}" "${l2_launch_marker_log}" "${l2_runtime_share_dir}" "${detached}" "${l2_cvm}" "$$" <<'NODE'
 const fs = require("fs");
 const [
   stateFile,
@@ -424,6 +476,12 @@ const [
   stdoutLog,
   stderrLog,
   l1ConsoleLog,
+  l2ConsoleLog,
+  l2LauncherStdoutLog,
+  l2LauncherStderrLog,
+  l2ConsolePtyFile,
+  l2LaunchMarkerLog,
+  l2RuntimeShareDir,
   detachedRaw,
   l2CvmRaw,
   supervisorPidRaw,
@@ -458,6 +516,18 @@ const manifest = {
       user: l1Reachable ? "root" : null,
       consoleLog: l1ConsoleLog,
     },
+    l2: l2CvmRaw === "true"
+      ? {
+          runtimeDir: l2RuntimeShareDir || null,
+          consoleLog: l2ConsoleLog || null,
+          consolePtyFile: l2ConsolePtyFile || null,
+          launchMarker: l2LaunchMarkerLog || null,
+          launcherLogs: {
+            stdout: l2LauncherStdoutLog || null,
+            stderr: l2LauncherStderrLog || null,
+          },
+        }
+      : null,
   },
   layeredState: {
     ...state.layeredState,
@@ -466,7 +536,13 @@ const manifest = {
       status: status === "running" ? "running" : (status === "success" ? "stopped" : status),
       launcher: profile.l2 && profile.l2.launcher ? profile.l2.launcher : null,
       launcherArgs: profile.l2 && Array.isArray(profile.l2.launcherArgs) ? profile.l2.launcherArgs : [],
-      bootLog: stdoutLog,
+      bootLog: l2CvmRaw === "true" ? (l2ConsoleLog || null) : stdoutLog,
+      consoleLog: l2CvmRaw === "true" ? (l2ConsoleLog || null) : stdoutLog,
+      launcherStdoutLog: l2CvmRaw === "true" ? (l2LauncherStdoutLog || null) : null,
+      launcherStderrLog: l2CvmRaw === "true" ? (l2LauncherStderrLog || null) : null,
+      consolePtyFile: l2CvmRaw === "true" ? (l2ConsolePtyFile || null) : null,
+      launchMarker: l2CvmRaw === "true" ? (l2LaunchMarkerLog || null) : null,
+      runtimeDir: l2CvmRaw === "true" ? (l2RuntimeShareDir || null) : null,
     },
   },
   phases: {
@@ -480,6 +556,10 @@ const manifest = {
     stdout: stdoutLog,
     stderr: stderrLog,
     l1Console: l1ConsoleLog,
+    l2Console: l2CvmRaw === "true" ? (l2ConsoleLog || null) : null,
+    l2LauncherStdout: l2CvmRaw === "true" ? (l2LauncherStdoutLog || null) : null,
+    l2LauncherStderr: l2CvmRaw === "true" ? (l2LauncherStderrLog || null) : null,
+    l2LaunchMarker: l2CvmRaw === "true" ? (l2LaunchMarkerLog || null) : null,
   },
 };
 if (status !== "running") {
@@ -554,20 +634,19 @@ if [ "${l2_cvm}" = "true" ]; then
   printf '[nvirsh] exec launching l2 through pinned l1 host stack\n' | tee -a "${stdout_log}"
   if [ "${detached}" = "true" ]; then
     qemu_stdin_fifo="${run_dir}/l1-qemu.stdin"
-    rm -f "${qemu_stdin_fifo}" "${l1_console_log}"
+    rm -f "${qemu_stdin_fifo}"
     mkfifo "${qemu_stdin_fifo}"
-    ln -sf "$(basename "${stdout_log}")" "${l1_console_log}"
     nohup tail -f /dev/null > "${qemu_stdin_fifo}" 2>/dev/null &
     qemu_stdin_writer_pid="$!"
-    setsid "${l1_qemu_cmd[@]}" >> "${stdout_log}" 2>&1 < "${qemu_stdin_fifo}" &
+    setsid "${l1_qemu_cmd[@]}" >> "${l1_console_log}" 2>&1 < "${qemu_stdin_fifo}" &
   else
-    "${l1_qemu_cmd[@]}" > >(tee -a "${l1_console_log}" "${stdout_log}") 2>&1 < /dev/null &
+    "${l1_qemu_cmd[@]}" > >(tee -a "${l1_console_log}") 2>&1 < /dev/null &
   fi
   qemu_pid="$!"
   printf '%s\n' "${qemu_pid}" > "${qemu_pid_file}"
   write_manifest "running" "" ""
 
-  if wait_for_log_pattern "${stdout_log}" "buildroot login:" "${qemu_pid}" 900 "l2 buildroot login prompt"; then
+  if wait_for_log_pattern "${l2_console_log}" "buildroot login:" "${qemu_pid}" 900 "l2 buildroot login prompt"; then
     printf '[nvirsh] exec observed l2 buildroot login prompt\n' | tee -a "${stdout_log}"
     if [ "${detached}" = "true" ]; then
       normalize_runtime_logs
@@ -689,7 +768,11 @@ chmod +x "${runtime_script}"
 if [ "${detach}" = "true" ]; then
   nohup "${runtime_script}" > /dev/null 2>&1 &
   supervisor_pid="$!"
-  deadline=$((SECONDS + 120))
+  detached_ready_timeout=120
+  if [ "${l2_cvm}" = "true" ]; then
+    detached_ready_timeout=900
+  fi
+  deadline=$((SECONDS + detached_ready_timeout))
   while [ "${SECONDS}" -lt "${deadline}" ]; do
     if [ -f "${manifest_file}" ]; then
       manifest_status="$(
@@ -697,11 +780,7 @@ if [ "${detach}" = "true" ]; then
       )"
       if [ "${manifest_status}" = "running" ]; then
         if [ "${l2_cvm}" = "true" ]; then
-          if LC_ALL=C grep -a -q -- '\[nvirsh\] exec observed l2 buildroot login prompt' "${stdout_log}" 2>/dev/null; then
-            :
-          elif LC_ALL=C grep -a -q -- 'Assigned terminal 0 to pty ' "${stdout_log}" 2>/dev/null; then
-            :
-          else
+          if ! LC_ALL=C grep -a -q -- 'buildroot login:' "${l2_console_log}" 2>/dev/null; then
             sleep 2
             continue
           fi
@@ -717,7 +796,7 @@ if [ "${detach}" = "true" ]; then
           fi
         fi
         cat > "${result_file}" <<EOF
-{"details":{"run_dir":"${run_dir}","manifest":"${manifest_file}","phase":"${phase}","profile":"${profile_name}","pid":${ready_pid},"detached":true}}
+{"details":{"run_dir":"${run_dir}","manifest":"${manifest_file}","phase":"${phase}","profile":"${profile_name}","pid":${ready_pid},"detached":true,"log_file":"${stdout_log}","l1_console_log":"${l1_console_log}","l2_console_log":"${l2_console_log}","l2_launcher_stdout_log":"${l2_launcher_stdout_log}","l2_launcher_stderr_log":"${l2_launcher_stderr_log}","l2_launch_marker":"${l2_launch_marker_log}"}}
 EOF
         printf '[nvirsh] exec launched l2 from l1 pid=%s\n' "${ready_pid}"
         exit 0
@@ -758,6 +837,6 @@ if [ "${launch_status}" -ne 0 ]; then
 fi
 
 cat > "${result_file}" <<EOF
-{"details":{"run_dir":"${run_dir}","manifest":"${manifest_file}","phase":"${phase}","profile":"${profile_name}","pid":null,"detached":false}}
+{"details":{"run_dir":"${run_dir}","manifest":"${manifest_file}","phase":"${phase}","profile":"${profile_name}","pid":null,"detached":false,"log_file":"${stdout_log}","l1_console_log":"${l1_console_log}","l2_console_log":"${l2_console_log}","l2_launcher_stdout_log":"${l2_launcher_stdout_log}","l2_launcher_stderr_log":"${l2_launcher_stderr_log}","l2_launch_marker":"${l2_launch_marker_log}"}}
 EOF
 printf '[nvirsh] exec completed l2 launch for profile=%s\n' "${profile_name}"

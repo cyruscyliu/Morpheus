@@ -25,11 +25,16 @@ function expandUser(inputPath) {
   return inputPath;
 }
 
+function expandEnv(value) {
+  if (!value || typeof value !== "string") return value;
+  return value.replace(/\$\{?(\w+)\}?/g, (_, name) => process.env[name] || "");
+}
+
 function resolveLocal(baseDir, inputPath) {
   if (!inputPath) {
     return inputPath;
   }
-  const expanded = expandUser(String(inputPath));
+  const expanded = expandEnv(String(inputPath));
   return path.isAbsolute(expanded) ? expanded : path.resolve(baseDir, expanded);
 }
 
@@ -108,13 +113,18 @@ function readScalar(doc, pathItems) {
 
 function ensureCacheConfig(doc, configPath, repoRoot, flags) {
   const namespace = flags.namespace || readScalar(doc, ["cache", "namespace"]) || inferNamespace(configPath, repoRoot);
-  const cacheRootRaw = flags.root || readScalar(doc, ["cache", "root"]) || "./.cache";
+  // Prefer auto-composed ${MORPHEUS_DATA_ROOT}/cache; do not write cache.root
+  // into yaml unless the user passes --root explicitly.
+  const dataRoot = process.env.MORPHEUS_DATA_ROOT || null;
+  const autoCacheRoot = dataRoot ? path.join(dataRoot, "cache") : null;
+  const cacheRootRaw = flags.root || readScalar(doc, ["cache", "root"]) || autoCacheRoot || "./.cache";
   const expected = {
     root: cacheRootRaw,
     namespace,
     downloads: "global",
     builds: "global",
     src: "global",
+    writeRoot: Boolean(flags.root),
   };
 
   const existingRoot = readScalar(doc, ["cache", "root"]);
@@ -123,7 +133,7 @@ function ensureCacheConfig(doc, configPath, repoRoot, flags) {
   const existingBuilds = readScalar(doc, ["cache", "builds"]);
   const existingSrc = readScalar(doc, ["cache", "src"]);
 
-  if (existingRoot && existingRoot !== expected.root) {
+  if (flags.root && existingRoot && existingRoot !== expected.root) {
     fail(`cache.root already set to ${existingRoot}; refusing to overwrite in ${configPath}`);
   }
   if (existingNamespace && existingNamespace !== expected.namespace) {
@@ -139,7 +149,14 @@ function ensureCacheConfig(doc, configPath, repoRoot, flags) {
     fail(`cache.src already set to ${existingSrc}; refusing to overwrite in ${configPath}`);
   }
 
-  doc.setIn(["cache", "root"], expected.root);
+  // Only persist cache.root when explicitly requested; otherwise runtime
+  // composes ${MORPHEUS_DATA_ROOT}/cache and infers namespace from workspace.
+  if (expected.writeRoot) {
+    doc.setIn(["cache", "root"], expected.root);
+  } else if (existingRoot) {
+    // Drop stale absolute/relative cache.root so auto-compose wins.
+    doc.deleteIn(["cache", "root"]);
+  }
   doc.setIn(["cache", "namespace"], expected.namespace);
   doc.setIn(["cache", "downloads"], expected.downloads);
   doc.setIn(["cache", "builds"], expected.builds);

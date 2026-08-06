@@ -160,11 +160,11 @@
     ],
     "local": {
       "sourceTemplate": "tools/llcg/src",
-      "buildDirTemplate": "tools/llcg/build",
+      "buildDirTemplate": "tools/llcg/builds/native",
       "outputDirTemplate": "tools/llcg/builds/{buildDirKey}/output",
       "artifacts": {
         "build-dir": {
-          "pathTemplate": "tools/llcg/build"
+          "pathTemplate": "tools/llcg/builds/native"
         },
         "output-dir": {
           "pathTemplate": "tools/llcg/builds/{buildDirKey}/output"
@@ -185,7 +185,7 @@
           ],
           "repeatableFlags": [],
           "pathFlags": {
-            "build-dir": "tools/llcg/build"
+            "build-dir": "tools/llcg/builds/native"
           },
           "script": {
             "path": "scripts/build.sh",
@@ -231,7 +231,7 @@
             "filter"
           ],
           "pathFlags": {
-            "build-dir": "tools/llcg/build",
+            "build-dir": "tools/llcg/builds/native",
             "output": "tools/llcg/builds/{buildDirKey}/output"
           },
           "script": {

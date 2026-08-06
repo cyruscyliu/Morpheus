@@ -25,8 +25,31 @@ function workRoot() {
   return path.resolve(configured);
 }
 
+function dataRoot() {
+  if (process.env.MORPHEUS_DATA_ROOT) {
+    return path.resolve(process.env.MORPHEUS_DATA_ROOT);
+  }
+  if (process.env.MORPHEUS_WORKSPACES_ROOT) {
+    return path.resolve(path.dirname(process.env.MORPHEUS_WORKSPACES_ROOT));
+  }
+  return null;
+}
+
+function defaultCacheRoot() {
+  if (process.env.MORPHEUS_CACHE_ROOT) {
+    return path.resolve(process.env.MORPHEUS_CACHE_ROOT);
+  }
+  const root = dataRoot();
+  if (!root) {
+    return null;
+  }
+  return path.join(root, "cache");
+}
+
 function workspacePaths() {
   const root = workRoot();
+  const cacheRoot = defaultCacheRoot() || path.join(root, "cache");
+
   return {
     root,
     tools: path.join(root, "tools"),
@@ -35,7 +58,7 @@ function workspacePaths() {
     builds: path.join(root, "builds"),
     llbicBuilds: path.join(root, "builds", "llbic"),
     runs: path.join(root, "runs"),
-    cache: path.join(root, "cache"),
+    cache: cacheRoot,
     tmp: path.join(root, "tmp")
   };
 }
@@ -43,5 +66,7 @@ function workspacePaths() {
 module.exports = {
   repoRoot,
   workRoot,
+  dataRoot,
+  defaultCacheRoot,
   workspacePaths
 };

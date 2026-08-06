@@ -10,7 +10,8 @@ clang_version="${MORPHEUS_LLBASE_CLANG_VERSION:-18}"
 image_tag="${MORPHEUS_LLBASE_IMAGE_TAG:-}"
 prepare_irdumper="${MORPHEUS_LLBASE_PREPARE_IRDUMPER:-false}"
 build_image="${MORPHEUS_LLBASE_BUILD_IMAGE:-false}"
-pull_image="${MORPHEUS_LLBASE_PULL_IMAGE:-true}"
+# Default is local-only: never pull from ghcr unless explicitly requested.
+pull_image="${MORPHEUS_LLBASE_PULL_IMAGE:-false}"
 result_file="${MORPHEUS_LLBASE_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 contract_path="${output_dir}/runtime-contract.json"
 irdumper_root="${output_dir}/irdumper"
@@ -46,23 +47,40 @@ if [ -n "${image_tag}" ] && [ "${#selected_families[@]}" -ne 1 ]; then
   exit 1
 fi
 
+llbase_dockerfile_for_family() {
+  case "$1" in
+    latest) echo "docker/Dockerfile" ;;
+    mid) echo "docker/Dockerfile.mid" ;;
+    legacy) echo "docker/Dockerfile.legacy" ;;
+    *) echo "docker/Dockerfile" ;;
+  esac
+}
+
+llbase_image_present() {
+  local tag="$1"
+  "${docker_runner[@]}" image inspect "${tag}" >/dev/null 2>&1
+}
+
+llbase_build_local_image() {
+  local selected_family="$1"
+  local resolved_tag="$2"
+  local dockerfile
+  dockerfile="$(llbase_dockerfile_for_family "${selected_family}")"
+  echo "[llbase] docker build (local) family=${selected_family} tag=${resolved_tag}" >&2
+  env DOCKER_BUILDKIT=0 "${docker_runner[@]}" build -f "${source_dir}/${dockerfile}" -t "${resolved_tag}" "${source_dir}"
+}
+
 if [ "${build_image}" = "true" ]; then
   if [ "${docker_available}" != "true" ]; then
     echo "[llbase] build-image=true but no usable docker daemon is available" >&2
     exit 1
   fi
   for selected_family in "${selected_families[@]}"; do
-    dockerfile="docker/Dockerfile"
     resolved_tag="${image_tag:-ghcr.io/cyruscyliu/llbase:${selected_family}}"
-    case "${selected_family}" in
-      latest) dockerfile="docker/Dockerfile" ;;
-      mid) dockerfile="docker/Dockerfile.mid" ;;
-      legacy) dockerfile="docker/Dockerfile.legacy" ;;
-    esac
-    echo "[llbase] docker build family=${selected_family} tag=${resolved_tag}" >&2
-    env DOCKER_BUILDKIT=0 "${docker_runner[@]}" build -f "${source_dir}/${dockerfile}" -t "${resolved_tag}" "${source_dir}"
+    llbase_build_local_image "${selected_family}" "${resolved_tag}"
   done
 elif [ "${pull_image}" = "true" ]; then
+  # Explicit opt-in only. Do not default to registry pull.
   if [ "${docker_available}" != "true" ]; then
     echo "[llbase] pull-image=true but no usable docker daemon is available" >&2
     exit 1
@@ -71,6 +89,17 @@ elif [ "${pull_image}" = "true" ]; then
     resolved_tag="${image_tag:-ghcr.io/cyruscyliu/llbase:${selected_family}}"
     echo "[llbase] docker pull family=${selected_family} tag=${resolved_tag}" >&2
     "${docker_runner[@]}" pull "${resolved_tag}"
+  done
+elif [ "${docker_available}" = "true" ]; then
+  # Default path: reuse local image, or build it locally if missing.
+  for selected_family in "${selected_families[@]}"; do
+    resolved_tag="${image_tag:-ghcr.io/cyruscyliu/llbase:${selected_family}}"
+    if llbase_image_present "${resolved_tag}"; then
+      echo "[llbase] reusing local image tag=${resolved_tag}" >&2
+    else
+      echo "[llbase] local image missing; building instead of pulling tag=${resolved_tag}" >&2
+      llbase_build_local_image "${selected_family}" "${resolved_tag}"
+    fi
   done
 fi
 

@@ -172,13 +172,13 @@ test("resolveToolDependencies keeps workspace paths when cache is workspace-scop
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
-test("resolveToolDependencies rejects global cache configs without a namespace", () => {
-  const projectRoot = tempDir("morpheus-resolve-missing-namespace-");
-  const workspaceRoot = path.join(projectRoot, "workspace");
+test("resolveToolDependencies infers cache namespace from workspace.root when missing", () => {
+  const projectRoot = tempDir("morpheus-resolve-infer-namespace-");
+  const workspaceRoot = path.join(projectRoot, "hyperarm");
   fs.mkdirSync(workspaceRoot, { recursive: true });
   const configPath = writeConfig(projectRoot, [
     "workspace:",
-    "  root: ./workspace",
+    "  root: ./hyperarm",
     "cache:",
     "  root: ./.cache",
     "  downloads: global",
@@ -199,8 +199,55 @@ test("resolveToolDependencies rejects global cache configs without a namespace",
   ]);
 
   withConfig(configPath, () => {
-    assert.throws(() => {
-      dependencyResolver.resolveToolDependencies(
+    const microkit = dependencyResolver.resolveToolDependencies(
+      {
+        tool: "microkit-sdk",
+        workspace: workspaceRoot,
+        localWorkspace: workspaceRoot,
+        json: true,
+      },
+      "build",
+    );
+    assert.equal(
+      microkit.sel4,
+      path.join(projectRoot, ".cache", "hyperarm", "tools", "sel4", "builds", "sel4-c0fc3245", "source"),
+    );
+  });
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("resolveToolDependencies auto-composes cache from MORPHEUS_DATA_ROOT when cache.root is omitted", () => {
+  const projectRoot = tempDir("morpheus-resolve-auto-cache-");
+  const dataRoot = path.join(projectRoot, "data");
+  const workspaceRoot = path.join(dataRoot, "workspaces", "hyperarm");
+  fs.mkdirSync(workspaceRoot, { recursive: true });
+  const configPath = writeConfig(projectRoot, [
+    "workspace:",
+    "  root: ./data/workspaces/hyperarm",
+    "cache:",
+    "  downloads: global",
+    "  builds: global",
+    "  src: global",
+    "tools:",
+    "  sel4:",
+    "    build-version: c0fc32450fb5e8460083b89a84d067249b109cfc",
+    "    build-dir-key: sel4-c0fc3245",
+    "  microkit-sdk:",
+    "    build-version: 119044f9573674342cedb9694142cce7b832d2ff",
+    "    build-dir-key: microkit-sdk-2.1.0",
+    "    dependencies:",
+    "      sel4:",
+    "        tool: sel4",
+    "        artifact: source-dir",
+    "",
+  ]);
+
+  const previousDataRoot = process.env.MORPHEUS_DATA_ROOT;
+  process.env.MORPHEUS_DATA_ROOT = dataRoot;
+  try {
+    withConfig(configPath, () => {
+      const microkit = dependencyResolver.resolveToolDependencies(
         {
           tool: "microkit-sdk",
           workspace: workspaceRoot,
@@ -209,10 +256,19 @@ test("resolveToolDependencies rejects global cache configs without a namespace",
         },
         "build",
       );
-    }, /cache\.namespace must be configured when cache\.root is set/);
-  });
-
-  fs.rmSync(projectRoot, { recursive: true, force: true });
+      assert.equal(
+        microkit.sel4,
+        path.join(dataRoot, "cache", "hyperarm", "tools", "sel4", "builds", "sel4-c0fc3245", "source"),
+      );
+    });
+  } finally {
+    if (previousDataRoot == null) {
+      delete process.env.MORPHEUS_DATA_ROOT;
+    } else {
+      process.env.MORPHEUS_DATA_ROOT = previousDataRoot;
+    }
+    fs.rmSync(projectRoot, { recursive: true, force: true });
+  }
 });
 
 test("resolveToolDependencies projects nvirsh runtime inputs through Morpheus", () => {

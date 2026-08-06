@@ -339,7 +339,7 @@
           "repeatableFlags": [],
           "pathFlags": {
             "build-dir": "tools/devilang/build",
-            "llcg-build-dir": "tools/llcg/build"
+            "llcg-build-dir": "tools/llcg/builds/native"
           },
           "script": {
             "path": "scripts/test-phase-models.sh",

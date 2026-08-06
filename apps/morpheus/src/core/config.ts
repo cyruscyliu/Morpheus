@@ -275,29 +275,98 @@ function resolveLocalPath(baseDir, inputPath) {
   return path.resolve(baseDir, value);
 }
 
+function inferCacheNamespace(configValue, baseDir) {
+  const cache = isPlainObject(configValue && configValue.cache) ? configValue.cache : {};
+  if (cache.namespace) {
+    return String(cache.namespace);
+  }
+  const workspaceRootRaw = configValue
+    && configValue.workspace
+    && configValue.workspace.root
+    ? String(configValue.workspace.root)
+    : null;
+  if (workspaceRootRaw) {
+    const expanded = expandEnvironmentVariables(workspaceRootRaw);
+    const resolved = resolveLocalPath(baseDir || process.cwd(), expanded);
+    const base = path.basename(resolved);
+    if (base && base !== "." && base !== ".." && base !== "workspaces") {
+      return base;
+    }
+  }
+  return null;
+}
+
 function resolveCachePolicy(configValue, configPath, baseDir) {
-  if (!isPlainObject(configValue) || !isPlainObject(configValue.cache) || !configValue.cache.root) {
+  if (!isPlainObject(configValue)) {
     return null;
   }
-  if (!configValue.cache.namespace) {
-    throw new Error("cache.namespace must be configured when cache.root is set");
+  const cache = isPlainObject(configValue.cache) ? configValue.cache : {};
+  const { defaultCacheRoot } = require("./paths");
+
+  let root = null;
+  if (cache.root) {
+    root = resolveLocalPath(baseDir, cache.root);
+  } else {
+    // Prefer env-composed path: ${MORPHEUS_DATA_ROOT}/cache
+    // Explicit cache.root remains supported for tests and overrides.
+    root = defaultCacheRoot();
   }
+  if (!root) {
+    return null;
+  }
+
+  const namespace = inferCacheNamespace(configValue, baseDir);
+  if (!namespace) {
+    // Explicit cache.root without a resolvable namespace is a config error.
+    // Auto-composed cache (from MORPHEUS_DATA_ROOT) also needs a namespace
+    // inferred from workspace.root; otherwise stay workspace-local.
+    if (cache.root) {
+      throw new Error("cache.namespace must be configured when cache.root is set");
+    }
+    return null;
+  }
+
   return {
-    root: resolveLocalPath(baseDir, configValue.cache.root),
-    namespace: String(configValue.cache.namespace),
-    downloads: String(configValue.cache.downloads || "workspace"),
-    builds: String(configValue.cache.builds || "workspace"),
-    src: String(configValue.cache.src || "workspace"),
+    root,
+    namespace: String(namespace),
+    downloads: String(cache.downloads || "global"),
+    builds: String(cache.builds || "global"),
+    src: String(cache.src || "global"),
   };
 }
 
-function resolveManagedToolPath(baseDir, workspaceRoot, toolName, inputPath) {
+function resolveManagedToolPath(baseDir, workspaceRoot, toolName, inputPath, cachePolicy = null) {
   if (!inputPath) {
     return inputPath;
   }
   const value = String(inputPath);
   if (value.startsWith("~") || path.isAbsolute(value)) {
     return value;
+  }
+  const normalized = value.replace(/\\/g, "/");
+  // Route tools/<tool>/{src,sources,downloads,builds} through global cache when
+  // the matching policy is "global". "sources" is a legacy alias for src;
+  // both use cache.src / __cache_src and land under on-disk "src".
+  if (cachePolicy && cachePolicy.root && cachePolicy.namespace) {
+    const match = normalized.match(/^tools\/([^/]+)\/(src|sources|downloads|builds)(\/.*)?$/);
+    if (match) {
+      const [, matchedTool, sectionRaw, suffix = ""] = match;
+      const section = sectionRaw === "sources" ? "src" : sectionRaw;
+      const mode = section === "src"
+        ? (cachePolicy.src || "workspace")
+        : (section === "downloads" ? (cachePolicy.downloads || "workspace") : (cachePolicy.builds || "workspace"));
+      if (mode === "global") {
+        const rest = String(suffix || "").replace(/^\/+/, "");
+        return path.join(
+          cachePolicy.root,
+          cachePolicy.namespace,
+          "tools",
+          matchedTool || toolName,
+          section,
+          rest,
+        );
+      }
+    }
   }
   if (workspaceRoot && value.startsWith(`tools/${toolName}/`)) {
     return path.resolve(workspaceRoot, value);
@@ -549,7 +618,13 @@ function applyConfigDefaults(flags, options) {
   }
 
   if (toolEntry && toolEntry["source"] && !next.source) {
-    next.source = resolveManagedToolPath(baseDir, next.localWorkspace, next.tool, toolEntry["source"]);
+    next.source = resolveManagedToolPath(
+      baseDir,
+      next.localWorkspace,
+      next.tool,
+      toolEntry["source"],
+      cachePolicy,
+    );
   }
 
   const fieldMeta = toolEntry && toolEntry.__fieldMeta ? toolEntry.__fieldMeta : {};
@@ -560,7 +635,13 @@ function applyConfigDefaults(flags, options) {
     const meta = fieldMeta[key] || {};
     if (meta.path) {
       if (!next[key]) {
-        next[key] = resolveManagedToolPath(baseDir, next.localWorkspace, next.tool, value);
+        next[key] = resolveManagedToolPath(
+          baseDir,
+          next.localWorkspace,
+          next.tool,
+          value,
+          cachePolicy,
+        );
       }
       continue;
     }

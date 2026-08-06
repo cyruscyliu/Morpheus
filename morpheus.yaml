@@ -1,7 +1,6 @@
 workspace:
   root: ${MORPHEUS_DATA_ROOT}/workspaces/root
 cache:
-  root: ./.cache
   namespace: root
   downloads: global
   builds: global

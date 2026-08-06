@@ -14,7 +14,8 @@
           "source",
           "sources"
         ],
-        "path": true
+        "path": true,
+        "optional": true
       },
       "output": {
         "aliases": [
@@ -150,12 +151,12 @@
       "remote"
     ],
     "local": {
-      "sourceTemplate": "tools/llbic/sources",
-      "downloadsDir": "tools/llbic/sources",
+      "sourceTemplate": "tools/llbic/src",
+      "downloadsDir": "tools/llbic/src",
       "outputDirTemplate": "tools/llbic/builds/{buildDirKey}/output",
       "artifacts": {
         "sources-root": {
-          "pathTemplate": "tools/llbic/sources"
+          "pathTemplate": "tools/llbic/src"
         },
         "output-dir": {
           "pathTemplate": "tools/llbic/builds/{buildDirKey}/output"
@@ -176,7 +177,6 @@
       "commands": {
         "build": {
           "requiredFlags": [
-            "source",
             "output",
             "build-version",
             "llbase-contract"
@@ -197,7 +197,6 @@
             "rust-target"
           ],
           "pathFlags": {
-            "source": "tools/llbic/sources",
             "output": "tools/llbic/builds/{buildDirKey}/output",
             "llbase-contract": "tools/llbase/builds/{buildDirKey}/output/runtime-contract.json"
           },
@@ -214,7 +213,6 @@
               "locationTemplate": "{output}"
             },
             "details": {
-              "source": "{source}",
               "output": "{output}",
               "build_version": {
                 "fromFlag": "build-version"

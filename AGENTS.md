@@ -1,81 +1,93 @@
-# AGENTS.md
+# Principles
 
-## General Principles
+## Investigation and verification
 
-- Do not bypass Morpheus for repo work. Use Morpheus workflows, steps, and
-  tool entrypoints instead of ad hoc local builds, runs, or manual tool
-  invocation.
+- Clarify the user's intention before acting.
+- Investigate comprehensively; require root cause instead of surface fixes.
+- Propose verifiable actions, then execute them.
+- When fixing bugs: identify the root cause, add unit tests, fix the bug, and
+  rerun the tests.
+- Do not cheat around constraints, tests, or review expectations.
+- Do not short-circuit verification; evidence must support the claim.
+
+## Long-term running
+
+- For long-running or multi-step work, prepare durable execution up front.
+- Propose `/goal` or `/loop` when those tools fit and are available.
+- Prefer looped progress over one-shot guesses for open-ended tasks.
+- For `third_party` submodules, default to two commits: commit inside the
+  submodule first, then commit the parent repo submodule pointer update.
+
+## Self-reflection and self-improving
+
+- Reflect after each completed task on what worked and what did not.
+- Propose concrete improvements to this file when lessons apply broadly.
+- Apply those updates only with the user's confirmation.
+
+## Writing style
+
 - Prefer clear, concise writing.
 - Prefer one-line sentences when possible.
 - Wrap generated Markdown at 80 chars.
 - Use repo-relative paths or plain code references.
 - Do not add absolute filesystem paths.
-- Do not hardcode environment-specific `/workspace/...` discovery paths or
-  similar host-layout assumptions into repo code.
-- Do not create random files, temp files, marker files, or other ad hoc
-  filesystem artifacts unless the user explicitly asks for them or they are a
-  defined part of the repo workflow.
+- Do not hardcode environment-specific paths or similar host-layout
+  assumptions into repo code.
+- Do not write business data, or real repository identifiers into tests; use
+  generic placeholders and synthetic fixtures instead.
 - Add comments when they improve clarity.
-- If you are uncertain, ask instead of fabricating results under pressure.
-- Before pushing, run `pnpm run ci:pre-push`.
-- For repo file layout changes, or when cleaning stray files or directories,
-  run `pnpm --filter @morpheus/app test:repo-structure`.
-- After modifying the repo-root `morpheus.yaml`, run
-  `pnpm test:root-config`.
-- Keep workflow phase boundaries strict.
-- `patch.sh` focuses on patching.
-- `build.sh` focuses on building, with no patching.
-- `run.sh` focuses on running, with no patching and no building.
-- `overrides/` source mutation trees are not acceptable.
-- Repo-managed source changes must go through a tool patch phase and a
-  `patch-dir`, not fetch-time or build-time overrides.
-- When a tool exposes project hook scripts, the tool-owned script is an
-  adapter and must delegate explicitly to the configured project hook.
-- Do not accept hook-script config fields without implementing the matching
-  runtime delegation path.
+- Do not report intermediate results or say "if you want" when the next step
+  is clear; default to taking action directly.
 
-## Review Principles
+## Wanghai 0.3 Surface Contract
 
-- For review requests scoped by time, release, tag, or similar history
-  boundaries, first resolve the exact review boundary from the repo's release
-  history.
-- Prefer real Git tags when they exist.
-- If tags are missing or incomplete, use release/version commits and
-  `CHANGELOG.md` as the authoritative fallback.
-- State the exact commit or version boundary used in the review.
-- Structure the review in this order:
-  1. inspect the code changes in the requested scope
-  2. identify regressions, risks, and behavior changes in those changes
-  3. verify that the relevant skills, docs, or contracts still match the live
-     implementation
-- When reviewing a Morpheus-managed tool, always use the Morpheus skill as part
-  of the review, even if a tool-specific skill also applies.
+Wanghai is a Polaris vault-scoped surface extension in integrated mode. Read
+the canonical Polaris Docs Design and Release TODO before changing
+gateway, storage, or actor behavior. Do not add an internal release-directory
+path to Wanghai code or tooling.
 
-## CLI Principles
+- Verify the short-lived Polaris assertion on every non-health route and match
+  its tenant/vault claims to the configured vault root.
+- Own UI/API behavior, strict workspace resolution, symlink/path safety,
+  bounded JSON/multipart parsing, safe asset responses, health/readiness, and
+  claim-derived actor context.
+- Do not create a second identity, tenant, role, rate-limit, quota, lifecycle,
+  job queue, or audit authority. Polaris owns those decisions and forwards the
+  resulting verified context.
+- In integrated mode, reject live external side effects and backup, restore, or
+  rollback commands until Polaris supplies the durable permission, idempotency,
+  outbox, lifecycle, and audit path. The only format-adapter exceptions are
+  non-portal `scripts/polaris-backup-workspaces.sh` and
+  `scripts/polaris-restore-workspaces.sh`, invoked only by Polaris's
+  network-disabled Docker jobs with fixed mounts. Backup reads the selected
+  vault and writes `/backup`; restore reads `/backup` and writes a separate
+  `/restore` target. They are not Wanghai lifecycle APIs; portal restore,
+  activation, and rollback remain blocked. Dry-run and local surface state may
+  be available only when it neither executes an external action nor bypasses a
+  Polaris workflow job.
+- Do not execute integrated workflow tools directly. `workflow run`, including
+  `--dry-run`, must reject Polaris mode until Polaris provides a durable job,
+  lease, idempotency, recovery, and audit contract. Wanghai may show status or
+  a future submit UI only.
+- Treat manual intelligence-analysis completion as workflow execution: portal
+  review export may remain a surface action, but `complete-review`, `prepare`,
+  `run`, and `finalize` must reject Polaris mode until Polaris owns the durable
+  job. The portal must return unavailable before it writes review output or
+  invokes an executor.
+- Keep synchronous derived surface work bounded with child-process deadlines,
+  output caps, and tool resource limits. This is local availability protection,
+  not a Wanghai job queue, rate limiter, or quota authority.
+- In integrated mode use `/vault/project` and derive `workspaces/`,
+  `backups/`, and `cache/` under it. Do not require a separate workspace root.
+- Standalone mode requires `WANGHAI_DATA_ROOT` and the separate signed
+  external-identity adapter described in the gateway operations guide. Do not
+  silently accept Polaris assertion headers or fall back to a shared current
+  directory. The adapter supplies actor, tenant, role, and capabilities;
+  enforce no competing rate or quota policy in Wanghai.
+- Never add a public `9090` route or browser bypass around the Polaris gateway.
+- Add path/bypass/cross-scope regressions with every boundary change and run
+  focused core, workflow, gateway-auth, and request-policy tests.
 
-- Design CLIs in a Unix-like style.
-- Prefer simple, composable commands.
-- Prefer clear top-level verbs over deep nesting.
-- Treat `--json` as a first-class interface.
-- Keep `--help`, success output, and error output consistent.
-- Prefer explicit flags and arguments over hidden state.
-- Use stable field names and predictable exit codes.
-- Keep output deterministic for scripts and agents.
-- Keep tool semantics thin and testable.
-- Require explicit user intent for ambiguous or destructive actions.
-- When adding a new CLI package or tool, update the relevant build, lint,
-  test, and smoke commands.
-
-## Commit Messages
-
-- Use `component: action short-summary` subject-only commit messages.
-
-## Skills-First Docs
-
-This repo treats `skills/` and tool descriptors as the canonical documentation
-source, and avoids maintaining per-tool `README.md` files.
-`.codex/skills/` and `.claude/skills/` may contain additional third-party
-skills with `omssr-*` entries symlinked to `skills/`.
-
-Standalone tool docs are allowed when they explain non-Morpheus usage, such as
-`tools/nqc2/README.md`.
+The release TODO records P0 implementation and deployed evidence separately
+from deferred 0.3.2 perimeter and standalone work. Do not mark a release
+gate complete from unit tests alone.

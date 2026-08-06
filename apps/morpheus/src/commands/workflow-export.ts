@@ -136,7 +136,19 @@ function hardlinkTree(sourceRoot, destinationRoot, exclusions) {
     }
     if (stat.isFile()) {
       fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
-      fs.linkSync(sourcePath, destinationPath);
+      try {
+        fs.linkSync(sourcePath, destinationPath);
+      } catch (error) {
+        // pnpm and prior exports can already exhaust nlink; fall back to copy.
+        const code = error && typeof error === "object" && "code" in error
+          ? String(error.code)
+          : "";
+        if (code === "EMLINK" || code === "EPERM" || code === "EXDEV") {
+          fs.copyFileSync(sourcePath, destinationPath);
+        } else {
+          throw error;
+        }
+      }
       continue;
     }
   }
@@ -219,11 +231,11 @@ function exportWorkflowBundle(options) {
   const bundleWorkspaceRoot = path.join(outputDir, "data", "workspaces", workspaceName);
   mirrorTree(repoRoot(), bundleRepoRoot, {
     linkMode,
-    excludeNames: [".git", ".cache", ".morpheus-sync"]
+    excludeNames: [".git", ".cache", ".morpheus-sync", "artifacts"]
   });
   mirrorTree(loaded.workspaceRoot, bundleWorkspaceRoot, {
     linkMode,
-    excludeNames: ["runs", "workflows"]
+    excludeNames: [".git", ".cache", ".morpheus-sync", "artifacts", "tmp", "runs", "workflows", "poison"]
   });
 
   const bundleConfigPath = path.join(outputDir, bundleConfigRel);

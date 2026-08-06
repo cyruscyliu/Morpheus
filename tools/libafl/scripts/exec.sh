@@ -38,6 +38,19 @@ disable_nqc2_plugin="false"
 replay_inputs=()
 seed_inputs=()
 
+# Morpheus scripted exec passes repeatable harness-arg via env/file, not argv.
+# Load those when the script is invoked with no positional args.
+if [ "$#" -eq 0 ]; then
+  harness_arg_file="${MORPHEUS_LIBAFL_HARNESS_ARG_FILE:-}"
+  if [ -n "${harness_arg_file}" ] && [ -s "${harness_arg_file}" ]; then
+    mapfile -t _harness_from_file < "${harness_arg_file}"
+    set -- "${_harness_from_file[@]}"
+  elif [ -n "${MORPHEUS_LIBAFL_HARNESS_ARG:-}" ]; then
+    mapfile -t _harness_from_env <<< "${MORPHEUS_LIBAFL_HARNESS_ARG}"
+    set -- "${_harness_from_env[@]}"
+  fi
+fi
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --nvirsh-state) shift; nvirsh_state="${1:-}" ;;

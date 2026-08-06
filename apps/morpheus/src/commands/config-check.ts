@@ -123,12 +123,19 @@ function checkCacheConfig(value) {
   if (!cache || typeof cache !== "object") {
     return issues;
   }
+  // cache.root is optional: when omitted, Morpheus composes
+  // ${MORPHEUS_DATA_ROOT}/cache and infers namespace from workspace.root.
   if (cache.root && !cache.namespace) {
-    issues.push({
-      level: "error",
-      path: "cache.namespace",
-      message: "cache.namespace is required when cache.root is configured"
-    });
+    const workspaceRoot = value.workspace && value.workspace.root
+      ? String(value.workspace.root)
+      : "";
+    if (!workspaceRoot) {
+      issues.push({
+        level: "error",
+        path: "cache.namespace",
+        message: "cache.namespace is required when cache.root is configured without workspace.root"
+      });
+    }
   }
   return issues;
 }

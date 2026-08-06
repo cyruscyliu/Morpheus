@@ -136,9 +136,12 @@ function resolveManagedRelativePath(workspace, relativePath, cachePolicy) {
   const relative = String(relativePath || "");
   const normalized = relative.replace(/\\/g, "/");
   if (cachePolicy && cachePolicy.root) {
-    const match = normalized.match(/^tools\/([^/]+)\/(src|downloads|builds)(\/.*)?$/);
+    // Path sections src|sources|downloads|builds. "sources" is a legacy alias
+    // for src (same cache.src / __cache_src policy); on-disk name is always src.
+    const match = normalized.match(/^tools\/([^/]+)\/(src|sources|downloads|builds)(\/.*)?$/);
     if (match) {
-      const [, toolName, section, suffix = ""] = match;
+      const [, toolName, sectionRaw, suffix = ""] = match;
+      const section = sectionRaw === "sources" ? "src" : sectionRaw;
       const mode = section === "src"
         ? cachePolicy.src
         : (section === "downloads" ? cachePolicy.downloads : cachePolicy.builds);
@@ -435,7 +438,18 @@ function parseScriptedArgs(descriptor, args) {
       }
       continue;
     }
-    if (!booleanFlags.has(key) && typeof next === "string" && !next.startsWith("--")) {
+    if (booleanFlags.has(key)) {
+      // Accept explicit --flag true|false so config defaults like pull-image:
+      // false survive re-parse inside scripted tool invocation.
+      if (typeof next === "string" && (next === "true" || next === "false")) {
+        flags[key] = next === "true";
+        index += 1;
+      } else {
+        flags[key] = true;
+      }
+      continue;
+    }
+    if (typeof next === "string" && !next.startsWith("--")) {
       flags[key] = next;
       index += 1;
     } else {
@@ -616,10 +630,16 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
     if (key.startsWith("__")) {
       continue;
     }
-    if (value == null || value === false) {
+    if (value == null) {
       continue;
     }
     const envKey = `${prefix}_${String(key).replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").toUpperCase()}`;
+    if (value === false) {
+      // Explicit false must reach scripts (e.g. pull-image=false); omit would
+      // leave shell defaults like pull_image=true.
+      env[envKey] = "false";
+      continue;
+    }
     if (Array.isArray(value)) {
       const listFile = path.join(runtimeDir, `.morpheus-${String(key)}.txt`);
       fs.writeFileSync(listFile, value.join("\n"), "utf8");
@@ -1502,8 +1522,25 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
   const descriptorPathFields = descriptor && descriptor.config && descriptor.config.fields
     ? descriptor.config.fields
     : {};
+  const resolveSourcePath = (raw) => {
+    if (raw == null || raw === "") {
+      return defaultSourceDir(workspace, tool, descriptor, buildVersion, buildDirKey, templateExtras, cachePolicy);
+    }
+    const value = String(raw);
+    // Relative managed paths (and workspace-absolute tools/<tool>/sources) must
+    // still honor global src/downloads/builds cache policy.
+    if (!path.isAbsolute(value) || (workspace && value.startsWith(path.join(workspace, "tools") + path.sep))) {
+      const relative = path.isAbsolute(value)
+        ? path.relative(workspace, value).replace(/\\/g, "/")
+        : value.replace(/\\/g, "/");
+      if (relative.startsWith("tools/")) {
+        return resolveManagedRelativePath(workspace, relative, cachePolicy);
+      }
+    }
+    return value;
+  };
   const effectivePaths = {
-    source: resolved.source || defaultSourceDir(workspace, tool, descriptor, buildVersion, buildDirKey, templateExtras, cachePolicy),
+    source: resolveSourcePath(resolved.source),
     "build-version": buildVersion,
   };
   const optionalManagedPathResolvers = {
@@ -1613,8 +1650,14 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
     }
     const value = resolved[key];
     if (booleanFlags.has(key)) {
-      if (value === true && !args.includes(`--${key}`)) {
+      if (args.includes(`--${key}`)) {
+        continue;
+      }
+      if (value === true) {
         args.push(`--${key}`);
+      } else if (value === false) {
+        // Explicit false must be forwarded (e.g. --pull-image false).
+        args.push(`--${key}`, "false");
       }
       continue;
     }
@@ -1724,13 +1767,18 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
       args.push(`--${key}`);
       continue;
     }
+    if (rawValue === false) {
+      // Pass explicit false so tool scripts do not fall back to true defaults.
+      args.push(`--${key}`, "false");
+      continue;
+    }
     if (Array.isArray(rawValue)) {
       for (const item of rawValue) {
         args.push(`--${key}`, String(item));
       }
       continue;
     }
-    if (rawValue === false || rawValue == null) {
+    if (rawValue == null) {
       continue;
     }
     args.push(`--${key}`, String(rawValue));

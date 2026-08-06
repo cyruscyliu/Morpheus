@@ -17,9 +17,14 @@ mkdir -p "${build_dir}"
 }
 
 cache_file="${build_dir}/CMakeCache.txt"
-if [ -f "${cache_file}" ] && ! grep -q "^CMAKE_HOME_DIRECTORY:INTERNAL=${tool_root}$" "${cache_file}"; then
-  rm -rf "${build_dir}"
-  mkdir -p "${build_dir}"
+# Drop stale CMake state when source root or build dir moved (e.g. workspace
+# tools/llcg/build -> cache .../builds/native under cache.builds=global).
+if [ -f "${cache_file}" ]; then
+  if ! grep -q "^CMAKE_HOME_DIRECTORY:INTERNAL=${tool_root}$" "${cache_file}" \
+    || ! grep -q "^CMAKE_CACHEFILE_DIR:INTERNAL=${build_dir}$" "${cache_file}"; then
+    rm -rf "${build_dir}"
+    mkdir -p "${build_dir}"
+  fi
 fi
 
 kallgraph_bin="${build_dir}/kallgraph/bin/KallGraph"

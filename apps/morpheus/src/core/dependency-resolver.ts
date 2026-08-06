@@ -36,10 +36,11 @@ function cachePolicyForConfig(config) {
 function resolveManagedArtifactPath(rootDir, relativePath, cachePolicy) {
   const normalized = String(relativePath || "").replace(/\\/g, "/");
   if (cachePolicy && cachePolicy.root) {
-    const match = normalized.match(/^tools\/([^/]+)\/(src|downloads|builds)(\/.*)?$/);
+    // "sources" is the llbic-style source/download tree and uses the src policy.
+    const match = normalized.match(/^tools\/([^/]+)\/(src|sources|downloads|builds)(\/.*)?$/);
     if (match) {
       const [, toolName, section, suffix = ""] = match;
-      const mode = section === "src"
+      const mode = (section === "src" || section === "sources")
         ? cachePolicy.src
         : (section === "downloads" ? cachePolicy.downloads : cachePolicy.builds);
       if (mode === "global") {

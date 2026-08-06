@@ -5,24 +5,19 @@ use std::{
     process,
 };
 
-use libafl_bolts::Named;
 use libafl::{
-    corpus::CorpusId,
     corpus::{Corpus, OnDiskCorpus, Testcase},
-    executors::ShadowExecutor,
     events::{EventConfig, SimpleEventManager, launcher::Launcher},
     feedback_or, feedback_or_fast,
     feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
     fuzzer::{Evaluator, Fuzzer, StdFuzzer},
     generators::Generator,
-    inputs::{BytesInput, HasTargetBytes, Input},
-    mutators::{MutationResult, Mutator, token_mutations::I2SRandReplaceBinonly},
+    inputs::Input,
     monitors::MultiMonitor,
     observers::{CanTrack, HitcountsMapObserver, TimeObserver, VariableMapObserver},
     schedulers::{IndexesLenTimeMinimizerScheduler, QueueScheduler},
-    stages::{ShadowTracingStage, StdMutationalStage},
-    state::{HasCorpus, HasMaxSize, HasRand, StdState},
-    HasMetadata,
+    stages::{StdMutationalStage},
+    state::{HasCorpus, StdState},
     Error,
 };
 use libafl_bolts::{
@@ -36,7 +31,7 @@ use libafl_bolts::{
 use libafl_nesting::{ScenarioGenerator, ScenarioInput, ScenarioMutator, decode_scenario};
 use libafl_qemu::{
     QemuSnapshotManager, emu::Emulator, executor::QemuExecutor,
-    modules::{cmplog::CmpLogObserver, edges::StdEdgeCoverageModule, CmpLogModule},
+    modules::edges::StdEdgeCoverageModule,
 };
 use libafl_targets::{EDGES_MAP_DEFAULT_SIZE, MAX_EDGES_FOUND, edges_map_mut_ptr};
 
@@ -44,48 +39,6 @@ pub static mut MAX_INPUT_SIZE: usize = 512;
 
 fn parse_env_u64(name: &str) -> Option<u64> {
     env::var(name).ok()?.parse::<u64>().ok()
-}
-
-#[derive(Debug, Default)]
-struct CmpLogScenarioMutator {
-    inner: I2SRandReplaceBinonly,
-}
-
-impl Named for CmpLogScenarioMutator {
-    fn name(&self) -> &std::borrow::Cow<'static, str> {
-        static NAME: std::borrow::Cow<'static, str> =
-            std::borrow::Cow::Borrowed("CmpLogScenarioMutator");
-        &NAME
-    }
-}
-
-impl<S> Mutator<ScenarioInput, S> for CmpLogScenarioMutator
-where
-    S: HasMetadata + HasRand + HasMaxSize,
-{
-    fn mutate(&mut self, state: &mut S, input: &mut ScenarioInput) -> Result<MutationResult, Error> {
-        let mut encoded = BytesInput::new(input.target_bytes().to_vec());
-        let result = self.inner.mutate(state, &mut encoded)?;
-        if !matches!(result, MutationResult::Mutated) {
-            return Ok(result);
-        }
-
-        let decoded = match decode_scenario(encoded.as_ref()) {
-            Ok(decoded) => decoded,
-            Err(_) => return Ok(MutationResult::Skipped),
-        };
-
-        *input = decoded;
-        Ok(MutationResult::Mutated)
-    }
-
-    fn post_exec(
-        &mut self,
-        _state: &mut S,
-        _new_corpus_id: Option<CorpusId>,
-    ) -> Result<(), Error> {
-        Ok(())
-    }
 }
 
 fn executor_timeout(replay_enabled: bool) -> Duration {
@@ -194,8 +147,7 @@ pub fn fuzz() {
                 let modules = tuple_list!(
                     StdEdgeCoverageModule::builder()
                         .map_observer(edges_observer.as_mut())
-                        .build()?,
-                    CmpLogModule::default(),
+                        .build()?
                 );
 
                 let mut emu = Emulator::builder()
@@ -295,10 +247,6 @@ pub fn fuzz() {
                             });
                     }
                 } else {
-                    let cmplog_observer = CmpLogObserver::new("cmplog", true);
-                    let mut executor =
-                        ShadowExecutor::new(executor, tuple_list!(cmplog_observer));
-
                     if initial_inputs.is_some() {
                         let corpus_ids = state.corpus().ids().collect::<Vec<_>>();
                         for corpus_id in corpus_ids {
@@ -316,13 +264,14 @@ pub fn fuzz() {
                         }
                     }
 
-                    let tracing = ShadowTracingStage::new();
-                    let cmplog_mutator = CmpLogScenarioMutator::default();
-                    let mut stages = tuple_list!(
-                        tracing,
-                        StdMutationalStage::new(cmplog_mutator),
-                        StdMutationalStage::new(ScenarioMutator::default())
-                    );
+                    // The shadow/CmpLog stage would boot a second nested L2 for
+                    // every fuzz input. Guest-side compare logs do not justify
+                    // that cost for this systemmode target, so keep only the
+                    // structured scenario mutation stage on the hot path.
+                    let mut executor = executor;
+                    let mut stages = tuple_list!(StdMutationalStage::new(
+                        ScenarioMutator::default()
+                    ));
 
                     fuzzer
                         .fuzz_loop(&mut stages, &mut executor, &mut state, &mut $mgr)

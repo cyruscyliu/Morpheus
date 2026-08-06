@@ -566,12 +566,20 @@ Main ways to improve throughput:
 - Reduce trace/log volume during fuzzing.
 - Shorten the per-input run window and executor timeout.
 
+The normal L2 timeout path does not serialize runtime files through the L1
+hypercall log. Full runtime diagnostics are disabled on the fuzzing hot path;
+pass the LibAFL harness argument `--capture-runtime` when a crash or abnormal
+exit needs the complete runtime snapshot. The guest stub also places each
+launcher in its own process group and reaps the group with a bounded timeout,
+so a stuck `lkvm` child cannot prevent the next LibAFL input from starting.
+
 ## Coverage
 
-During fuzzing, the L1 stub writes runtime files under `/run/morpheus-libafl`
-and `libafl_exec` reconstructs them from step log records into
-`runtime/l1-runtime`. nqc2 postprocessing consumes that reconstructed guest
-trace instead of reading trace files back from the L1 root filesystem.
+During fuzzing, the L1 stub writes runtime files under `/run/morpheus-libafl`.
+When runtime capture is enabled, `libafl_exec` reconstructs those files from
+step log records into `runtime/l1-runtime`. nqc2 postprocessing consumes that
+reconstructed guest trace instead of reading trace files back from the L1 root
+filesystem.
 
 The LibAFL input corpus is also persisted under the `libafl_exec` runtime
 directory. Normal generated corpus entries are written to `runtime/corpus`.

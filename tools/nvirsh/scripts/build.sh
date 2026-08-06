@@ -1038,12 +1038,32 @@ l2_console_pty_file="\${runtime_dir}/l2-console.pty"
 console_input="/dev/console"
 console_capture_pid=""
 lkvm_pid=""
+stop_lkvm() {
+  local pid="\${lkvm_pid}"
+  lkvm_pid=""
+  if [ -z "\${pid}" ]; then
+    return 0
+  fi
+  if kill -0 "\${pid}" 2>/dev/null; then
+    kill -TERM "\${pid}" 2>/dev/null || true
+    for _ in \$(seq 1 20); do
+      if ! kill -0 "\${pid}" 2>/dev/null; then
+        break
+      fi
+      sleep 0.1
+    done
+    kill -KILL "\${pid}" 2>/dev/null || true
+  fi
+  wait "\${pid}" 2>/dev/null || true
+}
 cleanup() {
   set +e
   if [ -n "\${console_capture_pid}" ] && kill -0 "\${console_capture_pid}" 2>/dev/null; then
     kill "\${console_capture_pid}" 2>/dev/null || true
     wait "\${console_capture_pid}" 2>/dev/null || true
+    console_capture_pid=""
   fi
+  stop_lkvm
   set -e
 }
 trap cleanup EXIT INT TERM
@@ -1536,10 +1556,21 @@ if [ "${l1_replace_kernel}" = "true" ] \
    && [ -f "${build_l1_host_boot_dir}/initrd.img" ] \
    && [ -f "${build_l1_host_boot_dir}/cmdline.txt" ]; then
   printf '[nvirsh] launching l1 with replacement kernel artifacts\n'
+  # A reused CVM host-boot cmdline normally points PID 1 at the LibAFL stub.
+  # Provisioning must boot systemd so SSH can refresh the guest artifacts;
+  # the final cmdline written below still restores the fuzzing stub init.
+  l1_provision_cmdline="$({
+    cat "${build_l1_host_boot_dir}/cmdline.txt"
+    printf '\n'
+  } | sed \
+    -e 's/\\<init=[^ ]*//g' \
+    -e 's/  */ /g' \
+    -e 's/^ //' \
+    -e 's/ $//')"
   l1_qemu_cmd+=(
     -kernel "${build_l1_host_boot_dir}/vmlinuz"
     -initrd "${build_l1_host_boot_dir}/initrd.img"
-    -append "$(cat "${build_l1_host_boot_dir}/cmdline.txt")"
+    -append "${l1_provision_cmdline}"
   )
 else
   l1_qemu_cmd+=(-bios "${firmware}")

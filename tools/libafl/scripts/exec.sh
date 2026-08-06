@@ -35,6 +35,7 @@ l2_mode="vm"
 l2_accel="auto"
 l2_cpu=""
 disable_nqc2_plugin="false"
+capture_runtime="false"
 replay_inputs=()
 seed_inputs=()
 
@@ -61,6 +62,7 @@ while [ "$#" -gt 0 ]; do
     --replay-input) shift; replay_inputs+=("${1:-}") ;;
     --seed-input) shift; seed_inputs+=("${1:-}") ;;
     --disable-nqc2-plugin) disable_nqc2_plugin="true" ;;
+    --capture-runtime) capture_runtime="true" ;;
     *) echo "unknown qemu_nesting harness argument: $1" >&2; exit 1 ;;
   esac
   shift
@@ -420,6 +422,9 @@ EOF
 # Propagate L2 controls into the L1 guest (fw_cfg + cmdline + smbios).
 if [ "${disable_nqc2_plugin}" = "true" ]; then
   direct_l1_append="${direct_l1_append} morpheus.l2_disable_nqc2_plugin=1"
+fi
+if [ "${capture_runtime}" = "true" ]; then
+  direct_l1_append="${direct_l1_append} morpheus.capture_runtime=1"
 fi
 if [ -n "${l2_run_window_ms}" ]; then
   direct_l1_append="${direct_l1_append} morpheus.l2_run_window_ms=${l2_run_window_ms}"

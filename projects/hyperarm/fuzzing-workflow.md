@@ -158,7 +158,7 @@ Fuzzing happens during `libafl_exec`.
 The host command assembled by `tools/libafl/scripts/exec.sh` is equivalent to:
 
 ```bash
-CACHE="$REPO_ROOT/.cache/hyperarm"
+CACHE="${MORPHEUS_DATA_ROOT:?set MORPHEUS_DATA_ROOT}/cache/hyperarm"
 FW="$CACHE/tools/qemu/builds/qemu-11.0.3-aarch64-softmmu/install/share/qemu"
 DISK="$CACHE/tools/nvirsh/builds/qemu-debian-arm64/build/l0/overlay.qcow2"
 QEMU_DATA="$CACHE/tools/libafl/builds/libafl-main/build/qemu-libafl-bridge"

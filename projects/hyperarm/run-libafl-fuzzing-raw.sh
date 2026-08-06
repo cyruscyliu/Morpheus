@@ -5,7 +5,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 cd "${repo_root}"
 
-config="$("${repo_root}/projects/hyperarm/scripts/config-path.sh")"
+config="${MORPHEUS_CONFIG:-}"
 seconds=""
 cache_root=""
 run_dir=""
@@ -76,6 +76,10 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
+if [ -z "${config}" ]; then
+  config="$("${repo_root}/projects/hyperarm/scripts/config-path.sh")"
+fi
+
 [ -n "${seconds}" ] || die "choose one of --seconds, --minutes, or --hours"
 [[ "${seconds}" =~ ^[0-9]+$ ]] || die "timeout must be an integer"
 [ "${seconds}" -gt 0 ] || die "timeout must be greater than zero"
@@ -85,11 +89,32 @@ if [ -n "${l2_run_window_ms}" ]; then
   [ "${l2_run_window_ms}" -le 900000 ] || die "l2-run-window-ms must be at most 900000"
 fi
 
+workspace_root="$("${repo_root}/projects/hyperarm/scripts/workspace-root.sh" --config "${config}")"
 if [ -z "${cache_root}" ]; then
-  cache_root="${repo_root}/.cache/hyperarm"
+  if [ -n "${MORPHEUS_CACHE_ROOT:-}" ]; then
+    cache_root="${MORPHEUS_CACHE_ROOT%/}/hyperarm"
+  else
+    data_root="${MORPHEUS_DATA_ROOT:-}"
+    if [ -z "${data_root}" ] && [ -n "${MORPHEUS_WORKSPACES_ROOT:-}" ]; then
+      data_root="$(dirname "${MORPHEUS_WORKSPACES_ROOT%/}")"
+    fi
+
+    # A standard HyperArm config is stored below <data-root>/workspaces.
+    # Derive the data root from it when the shell did not inherit the env.
+    if [ -z "${data_root}" ]; then
+      config_dir="$(cd "$(dirname "${config}")" && pwd)"
+      if [ "$(basename "${config_dir}")" = "hyperarm" ] && \
+         [ "$(basename "$(dirname "${config_dir}")")" = "workspaces" ]; then
+        data_root="$(cd "${config_dir}/../.." && pwd)"
+      fi
+    fi
+
+    [ -n "${data_root}" ] || die \
+      "unable to resolve HyperArm data root; pass --cache-root or set MORPHEUS_DATA_ROOT"
+    cache_root="${data_root%/}/cache/hyperarm"
+  fi
 fi
 
-workspace_root="$("${repo_root}/projects/hyperarm/scripts/workspace-root.sh" --config "${config}")"
 if [ -z "${run_dir}" ]; then
   run_dir="${workspace_root}/raw-libafl-runs/$(date -u +%Y%m%dT%H%M%SZ)"
 fi

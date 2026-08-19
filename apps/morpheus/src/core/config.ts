@@ -141,7 +141,7 @@ function findConfigPath(startDir, options = {}) {
   }
 }
 
-function importedRootConfigPath(filePath) {
+function importedParentConfigPath(filePath) {
   const selectedConfigPath = path.resolve(filePath);
   let current = path.dirname(selectedConfigPath);
   let skippedNearestConfig = false;
@@ -160,7 +160,7 @@ function importedRootConfigPath(filePath) {
     }
     current = parent;
   }
-  return path.resolve(__dirname, "..", "..", "..", "..", "morpheus.yaml");
+  return null;
 }
 
 function mergeImportedWorkflows(configValue, filePath, options = {}) {
@@ -174,9 +174,9 @@ function mergeImportedWorkflows(configValue, filePath, options = {}) {
   const requested = Array.isArray(imports.workflows)
     ? imports.workflows
     : [imports.workflows];
-  const importPath = importedRootConfigPath(filePath);
-  if (!fs.existsSync(importPath)) {
-    throw new Error("root morpheus.yaml not found for workflow imports");
+  const importPath = importedParentConfigPath(filePath);
+  if (!importPath || !fs.existsSync(importPath)) {
+    throw new Error("parent morpheus.yaml not found for workflow imports");
   }
   const importedValue = yaml.parse(fs.readFileSync(importPath, "utf8")) || {};
   const importedWorkflowsAll = isPlainObject(importedValue.workflows)

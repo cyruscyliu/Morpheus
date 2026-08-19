@@ -19,11 +19,12 @@ olddefconfig:
 	@printf '%s\n' 'applied olddefconfig' >> $(O)/defconfig.log
 
 $(O)/images/$(TARGET_NAME).tar: $(O)/.config
-	@mkdir -p $(O)/images $(O)/target
+	@mkdir -p $(O)/images $(O)/target $(O)/build/linux-6.18.16
 	@printf '%s\n' 'hello from minimal buildroot smoke target' > $(O)/target/hello.txt
 	@tar -cf $@ -C $(O)/target hello.txt
 	@printf '%s\n' 'fake arm64 kernel image' > $(O)/images/Image
 	@gzip -nc $(O)/target/hello.txt > $(O)/images/rootfs.cpio.gz
+	@printf '%s\n' 'fake vmlinux elf' > $(O)/build/linux-6.18.16/vmlinux
 	@printf '%s\n' 'built $(TARGET_NAME).tar' > $(O)/build.log
 
 clean:

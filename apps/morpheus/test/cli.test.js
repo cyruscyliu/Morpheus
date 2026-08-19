@@ -9,6 +9,7 @@ const { spawnSync, spawn } = require("node:child_process");
 const appRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(appRoot, "..", "..");
 const bin = path.join(appRoot, "dist", "cli.js");
+const ciConfigPath = path.join(repoRoot, "tests", "morpheus.yaml");
 const buildrootFixture = path.join(repoRoot, "tools", "buildroot", "tests", "fixtures", "minimal-buildroot");
 const devilangAuditFixture = path.join(
   repoRoot,
@@ -50,6 +51,14 @@ function isolatedEnv(extra = {}) {
     ...env,
     ...extra,
   };
+}
+
+function ciWorkspaceRoot(dataRoot) {
+  return path.join(dataRoot, "workspaces", "ci");
+}
+
+function ciCacheRoot(dataRoot) {
+  return path.join(dataRoot, "cache", "ci");
 }
 
 function pidState(pid) {
@@ -313,7 +322,7 @@ test("tool list discovers repo-local tools", () => {
   assert.equal(Object.prototype.hasOwnProperty.call(payload, "tools"), false);
   assert.deepEqual(
     payload.details.tools.map((tool) => tool.name),
-    ["buildroot", "devilang", "driver-callgraph", "libafl", "libvmm", "llbase", "llbic", "llcg", "microkit-sdk", "nqc2", "nvirsh", "pkvm-aarch64", "qemu", "sel4"]
+    ["buildroot", "devilang", "driver-callgraph", "libafl", "libvmm", "linux", "llbase", "llbic", "llcg", "microkit-sdk", "nqc2", "nvirsh", "nvirsh-buildroot-based-cvm", "pkvm-aarch64", "qemu", "sel4"]
   );
 });
 
@@ -399,7 +408,7 @@ test("config show loads .env from cwd and expands MORPHEUS_DATA_ROOT", () => {
   fs.rmSync(dataRoot, { recursive: true, force: true });
 });
 
-test("workflow imports resolve root morpheus.yaml relative to the selected config file", () => {
+test("workflow imports resolve a parent morpheus.yaml relative to the selected config file", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-root-import-"));
   const projectConfigDir = path.join(projectRoot, "projects", "hyperarm");
   fs.mkdirSync(projectConfigDir, { recursive: true });
@@ -439,6 +448,29 @@ test("workflow imports resolve root morpheus.yaml relative to the selected confi
     payload.details.workflows.map((workflow) => workflow.name),
     ["nvirsh-arm64-build"],
   );
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
+test("workflow imports do not fall back to the repository CI fixture", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-import-no-parent-"));
+  writeConfig(
+    projectRoot,
+    [
+      "workspace:",
+      "  root: ./workspace",
+      "imports:",
+      "  workflows:",
+      "    - root.qemu-build",
+      "",
+    ].join("\n"),
+  );
+
+  const result = run(["--config", path.join(projectRoot, "morpheus.yaml"), "workflow", "list", "--json"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr || result.stdout, /parent morpheus\.yaml not found/);
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
@@ -1844,16 +1876,16 @@ test("workflow run resolves prior step artifacts in configured workflows", () =>
 });
 
 test("workflow run builds qemu through scripted fetch patch build steps", () => {
-  const workspaceRoot = path.join(repoRoot, "workspace");
   const dataRoot = sharedDataRoot;
   assert.ok(dataRoot);
-  const cacheRoot = path.join(dataRoot, "cache", "root");
+  const workspaceRoot = ciWorkspaceRoot(dataRoot);
+  const cacheRoot = ciCacheRoot(dataRoot);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 
   const result = run([
     "--json",
     "--config",
-    path.join(repoRoot, "morpheus.yaml"),
+    ciConfigPath,
     "workflow",
     "run",
     "--name",
@@ -1904,16 +1936,16 @@ test("workflow run builds qemu through scripted fetch patch build steps", () => 
 });
 
 test("workflow run builds buildroot through scripted fetch patch build steps", () => {
-  const workspaceRoot = path.join(repoRoot, "workspace");
   const dataRoot = sharedDataRoot;
   assert.ok(dataRoot);
-  const cacheRoot = path.join(dataRoot, "cache", "root");
+  const workspaceRoot = ciWorkspaceRoot(dataRoot);
+  const cacheRoot = ciCacheRoot(dataRoot);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 
   const result = run([
     "--json",
     "--config",
-    path.join(repoRoot, "morpheus.yaml"),
+    ciConfigPath,
     "workflow",
     "run",
     "--name",
@@ -1956,16 +1988,16 @@ test("workflow run builds buildroot through scripted fetch patch build steps", (
 });
 
 test("workflow run fetches and patches sel4 through scripted fetch patch steps", () => {
-  const workspaceRoot = path.join(repoRoot, "workspace");
   const dataRoot = sharedDataRoot;
   assert.ok(dataRoot);
-  const cacheRoot = path.join(dataRoot, "cache", "root");
+  const workspaceRoot = ciWorkspaceRoot(dataRoot);
+  const cacheRoot = ciCacheRoot(dataRoot);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 
   const result = run([
     "--json",
     "--config",
-    path.join(repoRoot, "morpheus.yaml"),
+    ciConfigPath,
     "workflow",
     "run",
     "--name",
@@ -1999,7 +2031,7 @@ test("workflow run builds microkit-sdk through scripted fetch patch build steps"
   const configView = run([
     "--json",
     "--config",
-    path.join(repoRoot, "morpheus.yaml"),
+    ciConfigPath,
     "config",
     "show",
   ]);
@@ -2012,7 +2044,7 @@ test("workflow run builds microkit-sdk through scripted fetch patch build steps"
   const result = run([
     "--json",
     "--config",
-    path.join(repoRoot, "morpheus.yaml"),
+    ciConfigPath,
     "workflow",
     "run",
     "--name",
@@ -2053,15 +2085,15 @@ test("workflow run builds microkit-sdk through scripted fetch patch build steps"
 });
 
 test("workflow run builds libvmm through scripted fetch patch build steps", () => {
-  const workspaceRoot = path.join(repoRoot, "workspace");
   const dataRoot = sharedDataRoot;
   assert.ok(dataRoot);
+  const workspaceRoot = ciWorkspaceRoot(dataRoot);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 
   const result = run([
     "--json",
     "--config",
-    path.join(repoRoot, "morpheus.yaml"),
+    ciConfigPath,
     "workflow",
     "run",
     "--name",
@@ -2073,7 +2105,7 @@ test("workflow run builds libvmm through scripted fetch patch build steps", () =
   assert.equal(payload.details.steps.length, 8);
 
   const contract = path.join(
-    path.join(dataRoot, "cache", "root"),
+    ciCacheRoot(dataRoot),
     "tools",
     "libvmm",
     "builds",
@@ -2082,7 +2114,7 @@ test("workflow run builds libvmm through scripted fetch patch build steps", () =
     "runtime-contract.json",
   );
   const guest = path.join(
-    path.join(dataRoot, "cache", "root"),
+    ciCacheRoot(dataRoot),
     "tools",
     "libvmm",
     "builds",
@@ -2429,8 +2461,7 @@ test("exec inside a workflow stage keeps libafl run-dir in the stage data", () =
 });
 
 test("workflow resume reuses workflow config path for nondefault workflow files", () => {
-  const projectsRoot = path.join(repoRoot, "projects");
-  const projectRoot = fs.mkdtempSync(path.join(projectsRoot, "morpheus-resume-nondefault-"));
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-resume-nondefault-"));
   const workspaceRoot = path.join(projectRoot, "workspace");
   const configPath = path.join(projectRoot, "morpheus.yaml");
   const llbicFixture = path.join(repoRoot, "tools", "llbic", "tests", "fixtures", "linux-6.18.16-arm64-clang15", "llbic.json");

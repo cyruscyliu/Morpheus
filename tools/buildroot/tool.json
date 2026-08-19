@@ -112,6 +112,9 @@
         "output-dir": {
           "pathTemplate": "tools/buildroot/builds/{buildDirKey}/output"
         },
+        "target-dir": {
+          "pathTemplate": "tools/buildroot/builds/{buildDirKey}/output/target"
+        },
         "images-dir": {
           "pathTemplate": "tools/buildroot/builds/{buildDirKey}/output/images"
         },
@@ -120,6 +123,12 @@
         },
         "images/rootfs.cpio.gz": {
           "pathTemplate": "tools/buildroot/builds/{buildDirKey}/output/images/rootfs.cpio.gz"
+        },
+        "target/usr/bin/qemu-system-aarch64": {
+          "pathTemplate": "tools/buildroot/builds/{buildDirKey}/output/target/usr/bin/qemu-system-aarch64"
+        },
+        "target/usr/share/qemu": {
+          "pathTemplate": "tools/buildroot/builds/{buildDirKey}/output/target/usr/share/qemu"
         }
       },
       "fetchFlags": [

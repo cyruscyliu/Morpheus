@@ -23,8 +23,9 @@
 #define LAUNCH_MARKER_PATH RUNTIME_DIR "/launch-l2.marker"
 #define LAUNCH_STDOUT_PATH RUNTIME_DIR "/launch-l2.stdout.log"
 #define LAUNCH_STDERR_PATH RUNTIME_DIR "/launch-l2.stderr.log"
-#define LKVM_STDOUT_PATH RUNTIME_DIR "/lkvm.stdout.log"
-#define LKVM_STDERR_PATH RUNTIME_DIR "/lkvm.stderr.log"
+#define QEMU_STDOUT_PATH RUNTIME_DIR "/qemu.stdout.log"
+#define QEMU_STDERR_PATH RUNTIME_DIR "/qemu.stderr.log"
+#define QEMU_INPUT_STATUS_PATH RUNTIME_DIR "/qemu-input.status"
 #define L2_CONSOLE_PATH RUNTIME_DIR "/l2-console.log"
 #define L2_CONSOLE_PTY_PATH RUNTIME_DIR "/l2-console.pty"
 #define QEMU_TRACE_EVENTS_PATH RUNTIME_DIR "/morpheus-qemu-trace-events.txt"
@@ -43,6 +44,7 @@
 #define HOST_SHARE_DIR "/host"
 #define HOST_SHARE_TAG "host"
 #define HOSTSTACK_LAUNCH_PATH HOST_SHARE_DIR "/launch-l2-hoststack.sh"
+#define HOSTSTACK_LOCAL_LAUNCH_PATH "/root/launch-l2-hoststack.sh"
 #define L2_CPU_TCG "cortex-a57"
 #define L2_CPU_KVM "host"
 #define L2_MEMORY_MB "1024"
@@ -551,8 +553,9 @@ static bool write_input_snapshot(const uint8_t *data, size_t len) {
       LAUNCH_MARKER_PATH,
       LAUNCH_STDOUT_PATH,
       LAUNCH_STDERR_PATH,
-      LKVM_STDOUT_PATH,
-      LKVM_STDERR_PATH,
+      QEMU_STDOUT_PATH,
+      QEMU_STDERR_PATH,
+      QEMU_INPUT_STATUS_PATH,
       L2_CONSOLE_PATH,
       L2_CONSOLE_PTY_PATH,
       RUNTIME_DIR "/launch-l2.ldd",
@@ -647,8 +650,9 @@ static void dump_runtime_snapshot(void) {
       "launch-l2.marker",
       "launch-l2.stdout.log",
       "launch-l2.stderr.log",
-      "lkvm.stdout.log",
-      "lkvm.stderr.log",
+      "qemu.stdout.log",
+      "qemu.stderr.log",
+      "qemu-input.status",
       "l2-console.log",
       "l2-console.pty",
       "launch-l2.ldd",
@@ -703,9 +707,9 @@ static bool l2_guest_crash_logged(void) {
                            sizeof(needles) / sizeof(needles[0])) ||
          file_contains_any(LAUNCH_STDERR_PATH, needles,
                            sizeof(needles) / sizeof(needles[0])) ||
-         file_contains_any(LKVM_STDERR_PATH, needles,
+         file_contains_any(QEMU_STDERR_PATH, needles,
                            sizeof(needles) / sizeof(needles[0])) ||
-         file_contains_any(LKVM_STDOUT_PATH, needles,
+         file_contains_any(QEMU_STDOUT_PATH, needles,
                            sizeof(needles) / sizeof(needles[0]));
 }
 
@@ -727,24 +731,24 @@ static void dump_l2_diagnostics(void) {
   log_file_state(LAUNCH_MARKER_PATH, "launch-l2.marker");
   log_file_state(LAUNCH_STDOUT_PATH, "launch-l2.stdout.log");
   log_file_state(LAUNCH_STDERR_PATH, "launch-l2.stderr.log");
-  log_file_state(LKVM_STDOUT_PATH, "lkvm.stdout.log");
-  log_file_state(LKVM_STDERR_PATH, "lkvm.stderr.log");
+  log_file_state(QEMU_STDOUT_PATH, "qemu.stdout.log");
+  log_file_state(QEMU_STDERR_PATH, "qemu.stderr.log");
   log_file_state(L2_CONSOLE_PATH, "l2-console.log");
   log_file_state(L2_CONSOLE_PTY_PATH, "l2-console.pty");
   log_file_state(LAUNCH_MARKER_PATH, "launch-l2.marker");
   log_file_state(QEMU_TRACE_LOG_PATH, "morpheus-qemu-trace.log");
   log_file_state(NQC2_TRACE_PATH, "morpheus-nqc2.trace");
 
-  FILE *stdout_fp = fopen(LKVM_STDOUT_PATH, "rb");
-  FILE *stderr_fp = fopen(LKVM_STDERR_PATH, "rb");
+  FILE *stdout_fp = fopen(QEMU_STDOUT_PATH, "rb");
+  FILE *stderr_fp = fopen(QEMU_STDERR_PATH, "rb");
   if (stdout_fp) {
     fseek(stdout_fp, 0, SEEK_END);
-    lqprintf("stub: lkvm.stdout.log size=%ld\n", ftell(stdout_fp));
+    lqprintf("stub: qemu.stdout.log size=%ld\n", ftell(stdout_fp));
     fclose(stdout_fp);
   }
   if (stderr_fp) {
     fseek(stderr_fp, 0, SEEK_END);
-    lqprintf("stub: lkvm.stderr.log size=%ld\n", ftell(stderr_fp));
+    lqprintf("stub: qemu.stderr.log size=%ld\n", ftell(stderr_fp));
     fclose(stderr_fp);
   }
 
@@ -907,10 +911,10 @@ static bool log_first_matching_line(const char *path, const char *needle,
 static void log_cvm_evidence(void) {
   static const char *needle = "Realm shared GPA mask:";
 
-  if (log_first_matching_line(LKVM_STDOUT_PATH, needle, "cvm evidence:")) {
+  if (log_first_matching_line(QEMU_STDOUT_PATH, needle, "cvm evidence:")) {
     return;
   }
-  if (log_first_matching_line(LKVM_STDERR_PATH, needle, "cvm evidence:")) {
+  if (log_first_matching_line(QEMU_STDERR_PATH, needle, "cvm evidence:")) {
     return;
   }
   if (log_first_matching_line(LAUNCH_STDOUT_PATH, needle, "cvm evidence:")) {
@@ -923,6 +927,46 @@ static void log_cvm_evidence(void) {
     return;
   }
   lqprintf("stub: cvm evidence missing\n");
+}
+
+static bool log_l2_input_source(const char *needle, const char *label) {
+  if (log_first_matching_line(QEMU_INPUT_STATUS_PATH, needle, label)) {
+    return true;
+  }
+  if (log_first_matching_line(QEMU_STDOUT_PATH, needle, label)) {
+    return true;
+  }
+  if (log_first_matching_line(QEMU_STDERR_PATH, needle, label)) {
+    return true;
+  }
+  if (log_first_matching_line(LAUNCH_STDOUT_PATH, needle, label)) {
+    return true;
+  }
+  if (log_first_matching_line(LAUNCH_STDERR_PATH, needle, label)) {
+    return true;
+  }
+  return false;
+}
+
+static void log_l2_input_evidence(void) {
+  bool handoff_logged;
+
+  if (!runtime_capture_enabled()) {
+    return;
+  }
+  handoff_logged = log_first_matching_line(LAUNCH_MARKER_PATH,
+                                           "input-status-path=",
+                                           "input handoff:");
+  if (log_l2_input_source("input-path=", "input evidence:") ||
+      log_l2_input_source("input-size=", "input evidence:")) {
+    return;
+  }
+  if (log_l2_input_source("input-status-path=", "input evidence:")) {
+    return;
+  }
+  lqprintf("stub: input %s\n",
+           handoff_logged ? "handoff evidence missing"
+                          : "launch marker missing input status");
 }
 
 static const char *resolve_qemu_bin(void) {
@@ -1059,8 +1103,8 @@ static void signal_l2_process_group(pid_t pid, int signal_number) {
     return;
   }
 
-  /* The launcher owns the nested lkvm/QEMU descendants. Kill the whole
-   * process group so a shell waiting on lkvm cannot hold up the next input. */
+  /* The launcher owns the nested QEMU descendants. Kill the whole
+   * process group so a shell waiting on QEMU cannot hold up the next input. */
   (void)kill(-pid, signal_number);
   (void)kill(pid, signal_number);
 }
@@ -1149,10 +1193,11 @@ static bool launch_l2(const uint8_t *data, size_t len, bool *oracle_hit) {
   int status = 0;
   pid_t wait_ret = waitpid(pid, &status, WNOHANG);
   if (wait_ret == 0) {
+    const bool crash_logged = l2_guest_crash_logged();
     /* Normal timeout is the hot path. Avoid serializing every runtime file
      * through the L1 hypercall log; retain the full snapshot only for an
      * actual guest crash when runtime capture is explicitly enabled. */
-    if (l2_guest_crash_logged()) {
+    if (crash_logged) {
       maybe_dump_l2_diagnostics();
       lqprintf("stub: l2 guest crash marker found before timeout kill\n");
       *oracle_hit = true;
@@ -1161,6 +1206,10 @@ static bool launch_l2(const uint8_t *data, size_t len, bool *oracle_hit) {
     if (!reap_l2_process(pid, &status)) {
       lqprintf("stub: failed to reap l2 process group\n");
       return false;
+    }
+    log_l2_input_evidence();
+    if (runtime_capture_enabled() && !crash_logged) {
+      dump_l2_diagnostics();
     }
     lqprintf("stub: l2 timed out and was terminated\n");
     return true;
@@ -1182,11 +1231,13 @@ static bool launch_l2(const uint8_t *data, size_t len, bool *oracle_hit) {
         lqprintf("stub: l2 exited without guest crash marker\n");
       }
     }
+    log_l2_input_evidence();
     return true;
   }
   if (WIFSIGNALED(status)) {
     lqprintf("stub: l2 killed by signal=%d\n", WTERMSIG(status));
     maybe_dump_l2_diagnostics();
+    log_l2_input_evidence();
     *oracle_hit = true;
     return true;
   }

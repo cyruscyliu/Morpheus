@@ -9,9 +9,6 @@ const appRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(appRoot, "..", "..");
 const bin = path.join(appRoot, "dist", "cli.js");
 const profileSource = path.join(repoRoot, "tools", "nvirsh", "profiles", "qemu-debian-arm");
-const repoEnv = fs.readFileSync(path.join(repoRoot, ".env"), "utf8");
-const sharedDataRootMatch = repoEnv.match(/^MORPHEUS_DATA_ROOT=(.+)$/m);
-const sharedDataRoot = process.env.MORPHEUS_DATA_ROOT || (sharedDataRootMatch ? sharedDataRootMatch[1].trim() : null);
 
 function run(args, options = {}) {
   return spawnSync(process.execPath, [bin, ...args], {
@@ -55,14 +52,16 @@ function makeProject(dataRoot) {
 }
 
 test("nvirsh inspect and stop use the shared data-root cache", () => {
-  assert.ok(sharedDataRoot);
-  const { root: projectRoot, configPath } = makeProject(sharedDataRoot);
+  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-nvirsh-data-"));
+  const { root: projectRoot, configPath } = makeProject(dataRoot);
   const env = {
     ...process.env,
-    MORPHEUS_DATA_ROOT: sharedDataRoot,
+    MORPHEUS_DATA_ROOT: dataRoot,
+    MORPHEUS_CACHE_ROOT: "",
+    MORPHEUS_WORKSPACES_ROOT: "",
   };
   const expectedState = path.join(
-    sharedDataRoot,
+    dataRoot,
     "cache",
     "hyperarm",
     "tools",
@@ -72,33 +71,42 @@ test("nvirsh inspect and stop use the shared data-root cache", () => {
     "install",
     "state.json",
   );
+  fs.mkdirSync(path.dirname(expectedState), { recursive: true });
+  fs.writeFileSync(expectedState, JSON.stringify({
+    status: "prepared",
+    currentPhase: "prepared",
+    runtime: {},
+  }, null, 2) + "\n");
 
-  let result = run(["--config", configPath, "inspect", "--tool", "nvirsh", "--json"], {
-    cwd: projectRoot,
-    env,
-  });
-  assert.equal(result.status, 0, result.stderr || result.stdout);
-  let payload = JSON.parse(result.stdout);
-  assert.equal(payload.status, "success");
-  assert.equal(payload.details.manifest, expectedState);
-  assert.ok(["prepared", "stopped"].includes(payload.details.status));
+  try {
+    let result = run(["--config", configPath, "inspect", "--tool", "nvirsh", "--json"], {
+      cwd: projectRoot,
+      env,
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    let payload = JSON.parse(result.stdout);
+    assert.equal(payload.status, "success");
+    assert.equal(payload.details.manifest, expectedState);
+    assert.ok(["prepared", "stopped"].includes(payload.details.status));
 
-  result = run(["--config", configPath, "stop", "--tool", "nvirsh", "--json"], {
-    cwd: projectRoot,
-    env,
-  });
-  assert.equal(result.status, 0, result.stderr || result.stdout);
-  payload = JSON.parse(result.stdout);
-  assert.equal(payload.details.stopped, true);
+    result = run(["--config", configPath, "stop", "--tool", "nvirsh", "--json"], {
+      cwd: projectRoot,
+      env,
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    payload = JSON.parse(result.stdout);
+    assert.equal(payload.details.stopped, true);
 
-  result = run(["--config", configPath, "inspect", "--tool", "nvirsh", "--json"], {
-    cwd: projectRoot,
-    env,
-  });
-  assert.equal(result.status, 0, result.stderr || result.stdout);
-  payload = JSON.parse(result.stdout);
-  assert.equal(payload.details.current_phase, "stopped");
-  assert.equal(payload.details.manifest, expectedState);
-
-  fs.rmSync(projectRoot, { recursive: true, force: true });
+    result = run(["--config", configPath, "inspect", "--tool", "nvirsh", "--json"], {
+      cwd: projectRoot,
+      env,
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    payload = JSON.parse(result.stdout);
+    assert.equal(payload.details.current_phase, "stopped");
+    assert.equal(payload.details.manifest, expectedState);
+  } finally {
+    fs.rmSync(projectRoot, { recursive: true, force: true });
+    fs.rmSync(dataRoot, { recursive: true, force: true });
+  }
 });

@@ -24,8 +24,8 @@
     "provisionScript": "l1-provision.sh",
     "replaceKernel": true,
     "ccaHostStack": {
-      "archiveUrl": "https://github.com/p-b-o/qemu-linux-stack/releases/download/build/rme_release-39bdde9.tar.xz",
-      "archiveSha256": "4b80d63f74be6a3ab1f316ae7130ffcf466ec60f742471cb584470ad5ace1a65"
+      "archiveUrl": "https://github.com/p-b-o/qemu-linux-stack/releases/download/build/master-11247fd.tar.xz",
+      "archiveSha256": "0d9cc57c109bcdc42294a41334e2909fa51c42784160fb5a7396dfce49c90d07"
     },
     "sshPort": 2222
   },

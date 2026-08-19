@@ -72,6 +72,25 @@
           "archiveUrl"
         ]
       },
+      "git-url": {
+        "aliases": [
+          "git-url",
+          "gitUrl"
+        ]
+      },
+      "git-ref": {
+        "aliases": [
+          "git-ref",
+          "gitRef"
+        ]
+      },
+      "fetch-submodules": {
+        "aliases": [
+          "fetch-submodules",
+          "fetchSubmodules"
+        ],
+        "boolean": true
+      },
       "target-list": {
         "aliases": [
           "target-list",
@@ -217,6 +236,9 @@
           "scalarFlags": [
             "archive-url",
             "build-version",
+            "git-url",
+            "git-ref",
+            "fetch-submodules",
             "seed-dir"
           ],
           "repeatableFlags": [],
@@ -246,6 +268,12 @@
               "archive_url": {
                 "fromFlag": "archive-url"
               },
+              "git_url": {
+                "fromFlag": "git-url"
+              },
+              "git_ref": {
+                "fromFlag": "git-ref"
+              },
               "build_version": {
                 "fromFlag": "build-version"
               }
@@ -260,7 +288,10 @@
           "scalarFlags": [
             "patch-dir",
             "build-version",
-            "archive-url"
+            "archive-url",
+            "git-url",
+            "git-ref",
+            "fetch-submodules"
           ],
           "repeatableFlags": [],
           "script": {
@@ -295,6 +326,9 @@
             "install-dir",
             "archive-url",
             "build-version",
+            "git-url",
+            "git-ref",
+            "fetch-submodules",
             "seed-dir"
           ],
           "repeatableFlags": [

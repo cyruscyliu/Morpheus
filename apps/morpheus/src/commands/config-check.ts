@@ -221,8 +221,8 @@ function runConfigShow() {
   };
 }
 
-function runConfigCheck() {
-  const config = loadConfig(process.cwd());
+function runConfigCheck(explicitConfigPath = null) {
+  const config = loadConfig(process.cwd(), { explicitPath: explicitConfigPath });
   if (!config.path) {
     throw new Error("could not find morpheus.yaml");
   }

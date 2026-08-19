@@ -5,6 +5,12 @@ const os = require("node:os");
 const path = require("node:path");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
+const nvirshWorkflowFixturePath = path.resolve(
+  __dirname,
+  "fixtures",
+  "nvirsh-workflows",
+  "morpheus.yaml",
+);
 const dependencyResolver = require("../dist/core/dependency-resolver.js");
 const { applyConfigDefaults, loadConfig } = require("../dist/core/config.js");
 
@@ -386,16 +392,15 @@ test("applyConfigDefaults preserves explicit nvirsh l2 mode selector", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
-test("repo nvirsh vm and cvm workflows build their dependent artifacts before nvirsh", () => {
-  const configRoot = path.resolve(repoRoot, "..");
-  const rootConfig = loadConfig(configRoot, {
-    explicitPath: path.join(configRoot, "morpheus.yaml"),
+test("nvirsh workflow fixture builds dependent artifacts before nvirsh", () => {
+  const workflowConfig = loadConfig(path.dirname(nvirshWorkflowFixturePath), {
+    explicitPath: nvirshWorkflowFixturePath,
   }).value;
 
-  for (const workflowName of ["nvirsh-qemu-arm64-vm-exec-ci", "nvirsh-qemu-arm64-cvm-exec-ci"]) {
-    const rootWorkflow = rootConfig.workflows[workflowName];
-    assert.ok(rootWorkflow, `missing root ${workflowName} workflow`);
-    const stepIds = workflowStepIds(rootWorkflow);
+  for (const workflowName of ["nvirsh-qemu-arm64-vm-exec", "nvirsh-qemu-arm64-cvm-exec"]) {
+    const workflow = workflowConfig.workflows[workflowName];
+    assert.ok(workflow, `missing fixture ${workflowName} workflow`);
+    const stepIds = workflowStepIds(workflow);
     assert.ok(
       stepIds.indexOf("buildroot_fetch") < stepIds.indexOf("buildroot_patch"),
       `expected buildroot_fetch before buildroot_patch in ${workflowName}`,
@@ -408,7 +413,7 @@ test("repo nvirsh vm and cvm workflows build their dependent artifacts before nv
       stepIds.indexOf("buildroot_build") < stepIds.indexOf("nvirsh_build"),
       `expected buildroot_build before nvirsh_build in ${workflowName}`,
     );
-    if (workflowName === "nvirsh-qemu-arm64-cvm-exec-ci") {
+    if (workflowName === "nvirsh-qemu-arm64-cvm-exec") {
       assert.ok(
         stepIds.indexOf("linux_fetch") < stepIds.indexOf("linux_patch"),
         `expected linux_fetch before linux_patch in ${workflowName}`,
@@ -422,7 +427,7 @@ test("repo nvirsh vm and cvm workflows build their dependent artifacts before nv
         `expected linux_build before nvirsh_build in ${workflowName}`,
       );
     }
-    const terminalStep = workflowName === "nvirsh-qemu-arm64-cvm-exec-ci"
+    const terminalStep = workflowName === "nvirsh-qemu-arm64-cvm-exec"
       ? "nvirsh_inspect"
       : "nvirsh_exec";
     assert.ok(

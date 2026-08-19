@@ -269,6 +269,9 @@ function resolvePreferredStepLogFile(step) {
 }
 
 function resolveWorkspaceRoot(flags) {
+  if (flags.workspace) {
+    return path.resolve(String(flags.workspace));
+  }
   const { flags: resolved } = applyConfigDefaults(
     {
       tool: "workflow",
@@ -2230,8 +2233,8 @@ function resolveConfiguredStageSelection(configured, stageId) {
   return { fromStepId: target, endIndex: null };
 }
 
-function runWorkflowBuildPreflight(steps) {
-  const configResult = runConfigCheck();
+function runWorkflowBuildPreflight(steps, configPath = null) {
+  const configResult = runConfigCheck(configPath);
   if (configResult.exit_code !== 0) {
     const firstError = Array.isArray(configResult.issues)
       ? configResult.issues.find((issue) => issue.level !== "warn")
@@ -2274,7 +2277,7 @@ async function runToolWorkflow({
   metadata = null,
 }) {
   if (category === "build") {
-    runWorkflowBuildPreflight(steps);
+    runWorkflowBuildPreflight(steps, configPath);
   }
   const workflow = existingWorkflow || createWorkflowRun(workspaceRoot, workflowName, {
     category,

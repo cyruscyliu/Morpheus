@@ -8,6 +8,26 @@ const { spawnSync } = require("node:child_process");
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
 const scriptPath = path.join(repoRoot, "scripts", "enable-cache.mjs");
 
+test("enable-cache requires an explicit project config", () => {
+  const result = spawnSync(process.execPath, [scriptPath], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /--config PATH is required/);
+});
+
+test("enable-cache rejects the CI-only config", () => {
+  const result = spawnSync(process.execPath, [scriptPath, "--config", "tests/morpheus.yaml"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /CI-only/);
+});
+
 test("enable-cache migrates legacy .cache roots into MORPHEUS_DATA_ROOT/cache", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-enable-cache-"));
   const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-enable-cache-data-"));

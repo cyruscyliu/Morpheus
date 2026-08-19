@@ -44,9 +44,6 @@ function inferNamespace(configPath, repoRoot) {
   if (parts.length >= 3 && parts[0] === "projects" && parts[2] === "morpheus.yaml") {
     return parts[1];
   }
-  if (path.resolve(configPath) === path.join(repoRoot, "morpheus.yaml")) {
-    return "root";
-  }
   return path.basename(path.dirname(configPath)) || "default";
 }
 
@@ -172,9 +169,14 @@ function ensureCacheConfig(doc, configPath, repoRoot, flags) {
 function main() {
   const flags = parseArgs(process.argv.slice(2));
   const repoRoot = path.resolve(new URL("..", import.meta.url).pathname);
-  const configPath = flags.config
-    ? path.resolve(flags.config)
-    : path.join(repoRoot, "morpheus.yaml");
+  if (!flags.config) {
+    fail("--config PATH is required");
+  }
+  const configPath = path.resolve(flags.config);
+  const ciConfigPath = path.join(repoRoot, "tests", "morpheus.yaml");
+  if (configPath === ciConfigPath) {
+    fail("tests/morpheus.yaml is CI-only and cannot be used for cache migration");
+  }
   if (!fs.existsSync(configPath)) {
     fail(`config file not found: ${configPath}`);
   }

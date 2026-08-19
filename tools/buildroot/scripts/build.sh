@@ -32,9 +32,13 @@ stale_host_fakeroot() {
 }
 
 compute_build_inputs_fingerprint() {
+  local include_defconfig="${1:-true}"
   local patch_state_file="${source_dir}/.morpheus-patches.json"
 
   {
+    if [ "${include_defconfig}" = "true" ]; then
+      printf 'defconfig=%s\n' "${defconfig}"
+    fi
     if [ -f "${patch_state_file}" ]; then
       printf '%s\n' "${patch_state_file}"
       sha256sum "${patch_state_file}"
@@ -82,17 +86,8 @@ if stale_host_fakeroot "${host_dir}/bin/fakeroot" "${host_dir}"; then
   mkdir -p "${output_dir}"
 fi
 
-if [ -n "${defconfig}" ]; then
-  make -C "${source_dir}" "O=${output_dir}" "${defconfig}"
-fi
-
-if [ -n "${config_fragment_file}" ] && [ -s "${config_fragment_file}" ]; then
-  cat "${config_fragment_file}" >> "${output_dir}/.config"
-fi
-
-make -C "${source_dir}" "O=${output_dir}" olddefconfig
-
-build_inputs_fingerprint="$(compute_build_inputs_fingerprint)"
+build_inputs_fingerprint="$(compute_build_inputs_fingerprint true)"
+legacy_build_inputs_fingerprint="$(compute_build_inputs_fingerprint false)"
 previous_build_inputs_fingerprint=""
 if [ -f "${build_inputs_state_file}" ]; then
   previous_build_inputs_fingerprint="$(
@@ -107,8 +102,65 @@ try {
 ' "${build_inputs_state_file}"
   )"
 fi
+
+build_inputs_compatible="false"
+if [ "${previous_build_inputs_fingerprint}" = "${build_inputs_fingerprint}" ] \
+  || [ "${previous_build_inputs_fingerprint}" = "${legacy_build_inputs_fingerprint}" ]; then
+  build_inputs_compatible="true"
+fi
+
+vmlinux_path=""
+for candidate in "${output_dir}"/build/linux-*/vmlinux; do
+  [ -f "${candidate}" ] || continue
+  vmlinux_path="${candidate}"
+  break
+done
+
 if [ "${reuse_build_dir}" = "true" ] \
-  && [ "${previous_build_inputs_fingerprint}" != "${build_inputs_fingerprint}" ] \
+  && [ "${build_inputs_compatible}" = "true" ] \
+  && [ -s "${output_dir}/images/Image" ] \
+  && [ -s "${output_dir}/images/rootfs.cpio.gz" ]; then
+  kernel_image="${output_dir}/images/Image"
+  initrd_image="${output_dir}/images/rootfs.cpio.gz"
+  artifacts_json="$(
+    node -e '
+const fs = require("fs");
+const artifacts = [];
+const add = (artifactPath, location) => {
+  if (location && fs.existsSync(location)) {
+    artifacts.push({ path: artifactPath, location });
+  }
+};
+add("output-dir", process.argv[1]);
+add("images-dir", process.argv[2]);
+add("images/Image", process.argv[3]);
+add("images/rootfs.cpio.gz", process.argv[4]);
+add("build/vmlinux", process.argv[5]);
+process.stdout.write(JSON.stringify(artifacts));
+' "${output_dir}" "${output_dir}/images" "${kernel_image}" "${initrd_image}" "${vmlinux_path}"
+  )"
+  cat > "${build_inputs_state_file}" <<EOF
+{
+  "fingerprint": "${build_inputs_fingerprint}"
+}
+EOF
+  cat > "${result_file}" <<EOF
+{"details":{"built":true,"reused":true},"artifacts":${artifacts_json}}
+EOF
+  exit 0
+fi
+
+if [ -n "${defconfig}" ]; then
+  make -C "${source_dir}" "O=${output_dir}" "${defconfig}"
+fi
+
+if [ -n "${config_fragment_file}" ] && [ -s "${config_fragment_file}" ]; then
+  cat "${config_fragment_file}" >> "${output_dir}/.config"
+fi
+
+make -C "${source_dir}" "O=${output_dir}" olddefconfig
+if [ "${reuse_build_dir}" = "true" ] \
+  && [ "${build_inputs_compatible}" != "true" ] \
   && linux_build_dir_present; then
   printf '[buildroot] prepared build inputs changed; cleaning reused linux build tree\n'
   make -C "${source_dir}" "O=${output_dir}" linux-dirclean
@@ -129,43 +181,6 @@ if [ -n "${make_arg_file}" ] && [ -s "${make_arg_file}" ]; then
   done
 else
   make_args=(-j"$(morpheus_default_jobs)")
-fi
-
-if [ "${reuse_build_dir}" = "true" ] \
-  && [ "${previous_build_inputs_fingerprint}" = "${build_inputs_fingerprint}" ] \
-  && [ -f "${output_dir}/images/Image" ] \
-  && [ -f "${output_dir}/images/rootfs.cpio.gz" ]; then
-  if make -C "${source_dir}" "O=${output_dir}" -q >/dev/null 2>&1; then
-    vmlinux_path=""
-    for candidate in "${output_dir}"/build/linux-*/vmlinux; do
-      [ -f "${candidate}" ] || continue
-      vmlinux_path="${candidate}"
-      break
-    done
-    kernel_image="${output_dir}/images/Image"
-    initrd_image="${output_dir}/images/rootfs.cpio.gz"
-    artifacts_json="$(
-      node -e '
-const fs = require("fs");
-const artifacts = [];
-const add = (artifactPath, location) => {
-  if (location && fs.existsSync(location)) {
-    artifacts.push({ path: artifactPath, location });
-  }
-};
-add("output-dir", process.argv[1]);
-add("images-dir", process.argv[2]);
-add("images/Image", process.argv[3]);
-add("images/rootfs.cpio.gz", process.argv[4]);
-add("build/vmlinux", process.argv[5]);
-process.stdout.write(JSON.stringify(artifacts));
-' "${output_dir}" "${output_dir}/images" "${kernel_image}" "${initrd_image}" "${vmlinux_path}"
-    )"
-    cat > "${result_file}" <<EOF
-{"details":{"built":true,"reused":true},"artifacts":${artifacts_json}}
-EOF
-    exit 0
-  fi
 fi
 
 make -C "${source_dir}" "O=${output_dir}" "${make_args[@]}"

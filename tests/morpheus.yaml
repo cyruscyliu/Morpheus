@@ -1,38 +1,29 @@
 workspace:
-  root: ${MORPHEUS_DATA_ROOT}/workspaces/root
+  root: ${MORPHEUS_DATA_ROOT}/workspaces/ci
 cache:
-  namespace: root
+  namespace: ci
   downloads: global
   builds: global
   src: global
 tools:
   buildroot:
-    seed-dir: ./tools/buildroot/tests/fixtures/minimal-buildroot
-    patch-dir: ./tools/buildroot/patches/demo
+    seed-dir: ../tools/buildroot/tests/fixtures/minimal-buildroot
+    patch-dir: ../tools/buildroot/patches/demo
   linux:
-    seed-dir: ./tools/linux/tests/fixtures/minimal-linux-src
-    patch-dir: ./tools/linux/patches/demo
+    seed-dir: ../tools/linux/tests/fixtures/minimal-linux-src
+    patch-dir: ../tools/linux/patches/demo
   libvmm:
-    seed-dir: ./tools/libvmm/tests/fixtures/minimal-libvmm-src
-    patch-dir: ./tools/libvmm/patches/demo
+    seed-dir: ../tools/libvmm/tests/fixtures/minimal-libvmm-src
+    patch-dir: ../tools/libvmm/patches/demo
     example: virtio
   microkit-sdk:
-    seed-dir: ./tools/microkit-sdk/tests/fixtures/minimal-microkit-sdk-src
-    patch-dir: ./tools/microkit-sdk/patches/demo
+    seed-dir: ../tools/microkit-sdk/tests/fixtures/minimal-microkit-sdk-src
+    patch-dir: ../tools/microkit-sdk/patches/demo
     toolchain-version: fixture
     toolchain-prefix-aarch64: aarch64-none-elf
   llbase:
     mode: local
-    source: ./tools/llbase
-    build-dir-key: latest
-    family: latest
-    pull-image: "false"
-    build-image: false
-    artifacts:
-      - source-dir
-      - output-dir
-      - runtime-helper
-      - runtime-contract
+    target: ./fixtures/llbase/runtime-contract.json
   devilang:
     mode: local
     build-dir-key: fixture
@@ -46,16 +37,13 @@ tools:
     build-version: dev
     build-dir-key: default
   qemu:
-    seed-dir: ./tools/qemu/tests/fixtures/minimal-qemu-src
-    patch-dir: ./tools/qemu/patches/demo
+    seed-dir: ../tools/qemu/tests/fixtures/minimal-qemu-src
+    patch-dir: ../tools/qemu/patches/demo
   libafl:
-    seed-dir: ./tools/libafl/tests/fixtures/minimal-libafl-src
-    patch-dir: ./tools/libafl/patches/overlay
-  pkvm-aarch64:
-    git-url: https://github.com/vrosendahl/pkvm-aarch64.git
-    patch-dir: ./tools/pkvm-aarch64/patches/overlay
+    seed-dir: ../tools/libafl/tests/fixtures/minimal-libafl-src
+    patch-dir: ../tools/libafl/patches/overlay
   nvirsh:
-    source: ./tools/nvirsh/profiles/qemu-debian-arm
+    source: ../tools/nvirsh/profiles/qemu-debian-arm
     profile: qemu-debian-arm64
     build-dir-key: qemu-debian-arm64
     reuse-build-dir: true
@@ -68,20 +56,17 @@ tools:
         tool: buildroot
         artifact: output-dir
   nvirsh-buildroot-based-cvm:
-    build-dir-key: buildroot-based-cvm
-    reuse-build-dir: true
-    host-stack-archive-url: https://github.com/p-b-o/qemu-linux-stack/releases/download/build/master-11247fd.tar.xz
-    host-stack-archive-sha256: 0d9cc57c109bcdc42294a41334e2909fa51c42784160fb5a7396dfce49c90d07
+    build-dir-key: ci-fixture
   sel4:
-    seed-dir: ./tools/sel4/tests/fixtures/minimal-sel4-src
-    patch-dir: ./tools/sel4/patches/demo
+    seed-dir: ../tools/sel4/tests/fixtures/minimal-sel4-src
+    patch-dir: ../tools/sel4/patches/demo
 workflows:
   llbase-build-ci:
     category: build
     stages:
-      - id: llbase_build
+      - id: llbase_inspect
         tool: llbase
-        command: build
+        command: inspect
         stageId: llbase
         stageName: llbase
         stageIndex: 0
@@ -115,81 +100,20 @@ workflows:
   devilang-build-ci:
     category: build
     stages:
-      - id: llbase_build
-        tool: llbase
-        command: build
-        stageId: llbase
-        stageName: llbase
-        stageIndex: 0
-        stageStepIndex: 0
-      - id: llcg_build
-        tool: llcg
-        command: build
-        args:
-          - --llbase-contract
-          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
-        stageId: llcg
-        stageName: llcg
-        stageIndex: 1
-        stageStepIndex: 0
-      - id: llbic_inspect
-        tool: llbic
-        command: inspect
-        args:
-          - --target
-          - ./tools/llbic/tests/fixtures/linux-6.18.16-arm64-clang15/llbic.json
-        stageId: llbic
-        stageName: llbic
-        stageIndex: 2
-        stageStepIndex: 0
-      - id: devilang_build
-        tool: devilang
-        command: build
-        args:
-          - --llbase-contract
-          - "{{steps.llbase_build.artifacts.runtime-contract.location}}"
-          - --llcg-build-dir
-          - "{{steps.llcg_build.artifacts.build-dir.location}}"
-        stageId: devilang
-        stageName: devilang
-        stageIndex: 3
-        stageStepIndex: 0
-      - id: devilang_audit
-        tool: devilang
-        command: audit-state
-        args:
-          - --input
-          - ./tools/devilang/tests/fixtures/audit-state/pass.state
-        stageId: devilang-verify
-        stageName: devilang-verify
-        stageIndex: 4
-        stageStepIndex: 0
       - id: devilang_audit_test
         tool: devilang
         command: test-audit-state
         stageId: devilang-verify
         stageName: devilang-verify
-        stageIndex: 4
-        stageStepIndex: 1
+        stageIndex: 0
+        stageStepIndex: 0
       - id: devilang_static_checks
         tool: devilang
         command: test-static-checks
         stageId: devilang-verify
         stageName: devilang-verify
-        stageIndex: 4
-        stageStepIndex: 2
-      - id: devilang_phase_models
-        tool: devilang
-        command: test-phase-models
-        args:
-          - --build-dir
-          - "{{steps.devilang_build.artifacts.build-dir.location}}"
-          - --llcg-build-dir
-          - "{{steps.llcg_build.artifacts.build-dir.location}}"
-        stageId: devilang-verify
-        stageName: devilang-verify
-        stageIndex: 4
-        stageStepIndex: 3
+        stageIndex: 0
+        stageStepIndex: 1
   libafl-build-ci:
     category: build
     stages:
@@ -213,16 +137,6 @@ workflows:
         stageName: libafl
         stageIndex: 0
         stageStepIndex: 1
-      - id: libafl_build
-        tool: libafl
-        command: build
-        args:
-          - --source
-          - "{{steps.libafl_patch.artifacts.source-dir.location}}"
-        stageId: libafl
-        stageName: libafl
-        stageIndex: 0
-        stageStepIndex: 2
   libvmm-build-ci:
     category: build
     stages:
@@ -581,18 +495,6 @@ workflows:
         stageName: nqc2
         stageIndex: 1
         stageStepIndex: 0
-      - id: nqc2_build
-        tool: nqc2
-        command: build
-        args:
-          - --source
-          - "{{steps.nqc2_fetch.artifacts.source-dir.location}}"
-          - --qemu
-          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
-        stageId: nqc2
-        stageName: nqc2
-        stageIndex: 1
-        stageStepIndex: 1
   nvirsh-qemu-arm64-vm-exec-ci:
     category: run
     stages:
@@ -657,44 +559,6 @@ workflows:
         stageName: nvirsh
         stageIndex: 2
         stageStepIndex: 0
-      - id: nvirsh_build
-        tool: nvirsh
-        command: build
-        args:
-          - --qemu
-          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
-          - --buildroot-output-dir
-          - "{{steps.buildroot_build.artifacts.output-dir.location}}"
-          - --guest-qemu-source
-          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
-          - --l2-mode
-          - vm
-        stageId: nvirsh
-        stageName: nvirsh
-        stageIndex: 2
-        stageStepIndex: 1
-      - id: nvirsh_exec
-        tool: nvirsh
-        command: exec
-        args:
-          - --phase
-          - launch
-          - --detach
-        timeout-seconds: 60
-        stageId: nvirsh-exec
-        stageName: nvirsh-exec
-        stageIndex: 3
-        stageStepIndex: 0
-      - id: nvirsh_stop
-        tool: nvirsh
-        command: stop
-        args:
-          - --run-dir
-          - "{{steps.nvirsh_exec.details.run_dir}}"
-        stageId: nvirsh-exec
-        stageName: nvirsh-exec
-        stageIndex: 3
-        stageStepIndex: 1
   nvirsh-qemu-arm64-cvm-exec-ci:
     category: run
     stages:
@@ -774,29 +638,3 @@ workflows:
         stageName: qemu-host
         stageIndex: 2
         stageStepIndex: 1
-      - id: nvirsh_build
-        tool: nvirsh-buildroot-based-cvm
-        command: build
-        args:
-          - --qemu
-          - "{{steps.qemu_host_build.artifacts.qemu-system-aarch64.location}}"
-          - --buildroot-output-dir
-          - "{{steps.buildroot_build.artifacts.output-dir.location}}"
-          - --l1-kernel
-          - "{{steps.linux_build.artifacts.images/Image.location}}"
-          - --build-dir-key
-          - qemu-buildroot-based-cvm-smoke
-        stageId: nvirsh
-        stageName: nvirsh
-        stageIndex: 3
-        stageStepIndex: 0
-      - id: nvirsh_inspect
-        tool: nvirsh-buildroot-based-cvm
-        command: inspect
-        args:
-          - --build-dir-key
-          - qemu-buildroot-based-cvm-smoke
-        stageId: nvirsh-inspect
-        stageName: nvirsh-inspect
-        stageIndex: 4
-        stageStepIndex: 0

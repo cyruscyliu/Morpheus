@@ -134,8 +134,8 @@ Operational rule:
 - `overrides/` source mutation trees are not acceptable anywhere in this repo.
 - Expected source modifications live in a tool patch phase and patch working
   tree, such as `tools/<tool>/patches/` for repo-shipped patches or
-  `projects/<project>/workspace/tools/<tool>/patches/` for project-owned
-  managed patch trees.
+  workspace-owned managed patch trees under the configured workspace for
+  workspace-specific patches.
 - When a tool descriptor exposes project hook scripts such as
   `patch-script`, `build-script`, `inspect-script`, or `harness-script`,
   treat the tool-owned script as an adapter that must delegate explicitly to
@@ -156,8 +156,8 @@ Operational rule:
 - Point repo configs, smoke workflows, and tests at that same
   `tools/<tool>/tests/fixtures/` path instead of duplicating fixture trees
   under both `tools/<tool>/fixtures/` and `tools/<tool>/test/fixtures/`.
-- When this repo carries multiple projects, prefer project-owned managed patch
-  trees such as `projects/<project>/workspace/tools/<tool>/patches`.
+- When this repo carries multiple workspace configurations, prefer each
+  workspace's managed patch tree for workspace-specific patches.
 - When patch sets change, prefer resetting managed patch targets before
   reapplying patches so patch iteration stays consistent, unless a tool
   contract defines a different update strategy.

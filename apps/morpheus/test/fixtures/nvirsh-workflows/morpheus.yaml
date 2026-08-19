@@ -1,0 +1,138 @@
+tools:
+  linux:
+    seed-dir: ./minimal-linux-src
+    patch-dir: ./patches
+  nvirsh-buildroot-based-cvm:
+    host-stack-archive-url: https://example.invalid/host-stack.tar.xz
+    host-stack-archive-sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+workflows:
+  nvirsh-qemu-arm64-vm-exec:
+    category: build
+    stages:
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+      - id: buildroot_build
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+      - id: qemu_fetch
+        tool: qemu
+        command: fetch
+      - id: qemu_patch
+        tool: qemu
+        command: patch
+        args:
+          - --source
+          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
+      - id: qemu_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+      - id: nvirsh_fetch
+        tool: nvirsh
+        command: fetch
+      - id: nvirsh_build
+        tool: nvirsh
+        command: build
+        args:
+          - --qemu
+          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+          - --buildroot-output-dir
+          - "{{steps.buildroot_build.artifacts.output-dir.location}}"
+          - --guest-qemu-source
+          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
+          - --l2-mode
+          - vm
+      - id: nvirsh_exec
+        tool: nvirsh
+        command: exec
+        args:
+          - --phase
+          - launch
+          - --detach
+  nvirsh-qemu-arm64-cvm-exec:
+    category: build
+    stages:
+      - id: buildroot_fetch
+        tool: buildroot
+        command: fetch
+        stageIndex: 0
+      - id: buildroot_patch
+        tool: buildroot
+        command: patch
+        args:
+          - --source
+          - "{{steps.buildroot_fetch.artifacts.source-dir.location}}"
+        stageIndex: 0
+      - id: buildroot_build
+        tool: buildroot
+        command: build
+        args:
+          - --source
+          - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+        stageIndex: 0
+      - id: linux_fetch
+        tool: linux
+        command: fetch
+        stageIndex: 1
+      - id: linux_patch
+        tool: linux
+        command: patch
+        args:
+          - --source
+          - "{{steps.linux_fetch.artifacts.source-dir.location}}"
+        stageIndex: 1
+      - id: linux_build
+        tool: linux
+        command: build
+        args:
+          - --source
+          - "{{steps.linux_patch.artifacts.source-dir.location}}"
+          - --defconfig
+          - qemu_virt_defconfig
+        stageIndex: 1
+      - id: qemu_host_fetch
+        tool: qemu
+        command: fetch
+        stageIndex: 2
+      - id: qemu_host_build
+        tool: qemu
+        command: build
+        args:
+          - --source
+          - "{{steps.qemu_host_fetch.artifacts.source-dir.location}}"
+          - --build-dir-key
+          - qemu-ci-host-fixture
+          - --reuse-build-dir
+        stageIndex: 2
+      - id: nvirsh_build
+        tool: nvirsh-buildroot-based-cvm
+        command: build
+        args:
+          - --qemu
+          - "{{steps.qemu_host_build.artifacts.qemu-system-aarch64.location}}"
+          - --buildroot-output-dir
+          - "{{steps.buildroot_build.artifacts.output-dir.location}}"
+          - --l1-kernel
+          - "{{steps.linux_build.artifacts.images/Image.location}}"
+          - --build-dir-key
+          - qemu-buildroot-based-cvm-smoke
+        stageIndex: 3
+      - id: nvirsh_inspect
+        tool: nvirsh-buildroot-based-cvm
+        command: inspect
+        args:
+          - --build-dir-key
+          - qemu-buildroot-based-cvm-smoke
+        stageIndex: 4

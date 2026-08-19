@@ -1,0 +1,12 @@
+diff --git a/hw/virtio/trace-events b/hw/virtio/trace-events
+--- a/hw/virtio/trace-events
++++ b/hw/virtio/trace-events
+@@ -97,6 +97,8 @@ virtio_balloon_to_target(uint64_t target, uint32_t num_pages) "balloon target: 0
+ # virtio-mmio.c
+ virtio_mmio_read(uint64_t offset) "virtio_mmio_read offset 0x%" PRIx64
+ virtio_mmio_write_offset(uint64_t offset, uint64_t value) "virtio_mmio_write offset 0x%" PRIx64 " value 0x%" PRIx64
++virtio_mmio_fuzz_read(uint64_t offset, uint64_t base, uint64_t fuzzed, unsigned size, uint64_t cursor) "virtio_mmio_fuzz_read offset 0x%" PRIx64 " base 0x%" PRIx64 " fuzzed 0x%" PRIx64 " size %u cursor %" PRIu64
++virtio_mmio_dma_fuzz(uint64_t addr, unsigned len, uint32_t event, uint8_t opcode, uint8_t direction, uint64_t cursor, int status) "virtio_mmio_dma_fuzz addr 0x%" PRIx64 " len %u event 0x%" PRIx32 " opcode 0x%" PRIx8 " direction 0x%" PRIx8 " cursor %" PRIu64 " status %d"
+ virtio_mmio_guest_page(uint64_t size, int shift) "guest page size 0x%" PRIx64 " shift %d"
+ virtio_mmio_queue_write(uint64_t value, int max_size) "mmio_queue write 0x%" PRIx64 " max %d"
+ virtio_mmio_setting_irq(int level) "virtio_mmio setting IRQ %d"

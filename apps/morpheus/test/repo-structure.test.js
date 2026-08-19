@@ -16,7 +16,6 @@ const allowedRootEntries = new Set([
   "apps",
   "bin",
   "install-dependencies.sh",
-  "morpheus.yaml",
   "node_modules",
   "openspec",
   "package.json",
@@ -26,6 +25,7 @@ const allowedRootEntries = new Set([
   "projects",
   "scripts",
   "skills",
+  "tests",
   "tools",
   "tsconfig.base.json",
 ]);
@@ -36,6 +36,7 @@ const repoManagedRoots = [
   "projects",
   "scripts",
   "skills",
+  "tests",
   "tools",
 ];
 const allowedHiddenFiles = new Set([

@@ -7,6 +7,9 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 source_dir="${MORPHEUS_QEMU_SOURCE:?}"
 seed_dir="${MORPHEUS_QEMU_SEED_DIR:-}"
 archive_url="${MORPHEUS_QEMU_ARCHIVE_URL:-}"
+git_url="${MORPHEUS_QEMU_GIT_URL:-}"
+git_ref="${MORPHEUS_QEMU_GIT_REF:-}"
+fetch_submodules="${MORPHEUS_QEMU_FETCH_SUBMODULES:-false}"
 downloads_dir="${MORPHEUS_QEMU_DOWNLOADS_DIR:-}"
 result_file="${MORPHEUS_QEMU_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 build_version="${MORPHEUS_QEMU_BUILD_VERSION:-}"
@@ -28,16 +31,24 @@ state_file="${source_dir}/.morpheus-fetch.json"
 
 mkdir -p "$(dirname "${source_dir}")"
 
+if [ -z "${archive_url}" ] && [ -z "${seed_dir}" ] && [ -z "${git_url}" ] && [ -n "${build_version}" ]; then
+  archive_url="https://download.qemu.org/qemu-${build_version}.tar.xz"
+fi
+
 mode="empty"
 input_fingerprint=""
-if [ -n "${seed_dir}" ]; then
+resolved_git_ref="${git_ref:-${build_version}}"
+if [ -n "${archive_url}" ]; then
+  mode="archive"
+elif [ -n "${seed_dir}" ]; then
   mode="seed"
   input_fingerprint="$(morpheus_hash_tree "${seed_dir}")"
-else
-  resolved_archive_url="${archive_url}"
-  if [ -z "${resolved_archive_url}" ] && [ -n "${build_version}" ]; then
-    resolved_archive_url="https://download.qemu.org/qemu-${build_version}.tar.xz"
-  fi
+elif [ -n "${git_url}" ]; then
+  mode="git"
+  input_fingerprint="$(
+    printf '%s\n%s\n%s\n%s\n' "${git_url}" "${resolved_git_ref}" "${build_version}" "${fetch_submodules}" \
+      | sha256sum | awk '{print $1}'
+  )"
 fi
 
 if [ -x "${source_dir}/configure" ] \
@@ -48,26 +59,6 @@ if [ -x "${source_dir}/configure" ] \
 {"details":{"reused":true,"fetched_source":false,"build_version":"${build_version}"}}
 EOF
   exit 0
-fi
-
-if [ -n "${seed_dir}" ]; then
-  rm -rf "${source_dir}"
-  cp -R "${seed_dir}" "${source_dir}"
-  morpheus_write_state_json \
-    "${state_file}" \
-    "fetchedAt" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    "mode" "seed" \
-    "input_fingerprint" "${input_fingerprint}" \
-    "seed_dir" "${seed_dir}" \
-    "build_version" "${build_version}"
-  cat > "${result_file}" <<EOF
-{"details":{"fetched_source":true,"seed_dir":"${seed_dir}","build_version":"${build_version}"}}
-EOF
-  exit 0
-fi
-
-if [ -z "${archive_url}" ] && [ -n "${build_version}" ]; then
-  archive_url="https://download.qemu.org/qemu-${build_version}.tar.xz"
 fi
 
 if [ -n "${archive_url}" ]; then
@@ -81,25 +72,24 @@ if [ -n "${archive_url}" ]; then
       curl -L "${archive_url}" -o "${archive_path}"
     fi
   fi
-  mode="archive"
   archive_hash="$(sha256sum "${archive_path}" | awk '{print $1}')"
   input_fingerprint="$(
     printf '%s\n%s\n%s\n' "${archive_url}" "${build_version}" "${archive_hash}" \
       | sha256sum | awk '{print $1}'
   )"
   if [ -x "${source_dir}/configure" ] \
-    && morpheus_state_matches "${state_file}" "mode" "${mode}" \
+    && morpheus_state_matches "${state_file}" "mode" "archive" \
     && morpheus_state_matches "${state_file}" "input_fingerprint" "${input_fingerprint}"; then
     printf '[qemu] reuse source %s version=%s\n' "${source_dir}" "${build_version}"
     cat > "${result_file}" <<EOF
-{"details":{"reused":true,"fetched_source":false,"build_version":"${build_version}"}}
+{"details":{"reused":true,"fetched_source":false,"build_version":"${build_version}","git_ref":"${resolved_git_ref}"}}
 EOF
     exit 0
   fi
   extract_root="${downloads_dir}/.extract"
   rm -rf "${extract_root}"
   mkdir -p "${extract_root}"
-  tar --no-same-owner -xJf "${archive_path}" -C "${extract_root}"
+  tar --no-same-owner -xf "${archive_path}" -C "${extract_root}"
   first_dir="$(find "${extract_root}" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
   if [ -z "${first_dir}" ]; then
     echo "archive did not extract a source directory" >&2
@@ -114,13 +104,66 @@ EOF
     "mode" "archive" \
     "input_fingerprint" "${input_fingerprint}" \
     "archive_url" "${archive_url}" \
-    "build_version" "${build_version}"
+    "build_version" "${build_version}" \
+    "git_url" "${git_url}" \
+    "git_ref" "${resolved_git_ref}"
   printf '[qemu] fetched source %s from %s version=%s\n' "${source_dir}" "${archive_path}" "${build_version}"
   cat > "${result_file}" <<EOF
-{"details":{"fetched_source":true,"archive":"${archive_path}","build_version":"${build_version}"}}
+{"details":{"fetched_source":true,"archive":"${archive_path}","build_version":"${build_version}","git_ref":"${resolved_git_ref}"}}
 EOF
   exit 0
 fi
 
-echo "fetch requires MORPHEUS_QEMU_SEED_DIR, MORPHEUS_QEMU_ARCHIVE_URL, or MORPHEUS_QEMU_BUILD_VERSION when the source tree is missing" >&2
+if [ -n "${seed_dir}" ]; then
+  rm -rf "${source_dir}"
+  cp -R "${seed_dir}" "${source_dir}"
+  morpheus_write_state_json \
+    "${state_file}" \
+    "fetchedAt" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "mode" "seed" \
+    "input_fingerprint" "${input_fingerprint}" \
+    "seed_dir" "${seed_dir}" \
+    "build_version" "${build_version}" \
+    "git_url" "${git_url}" \
+    "git_ref" "${resolved_git_ref}" \
+    "fetch_submodules" "${fetch_submodules}"
+  cat > "${result_file}" <<EOF
+{"details":{"fetched_source":true,"seed_dir":"${seed_dir}","build_version":"${build_version}","git_ref":"${resolved_git_ref}"}}
+EOF
+  exit 0
+fi
+
+if [ -n "${git_url}" ]; then
+  rm -rf "${source_dir}"
+  if [ -n "${resolved_git_ref}" ]; then
+    if [[ "${resolved_git_ref}" =~ ^[0-9a-f]{40}$ ]]; then
+      git clone "${git_url}" "${source_dir}"
+      git -C "${source_dir}" checkout "${resolved_git_ref}"
+    else
+      git clone --depth 1 --branch "${resolved_git_ref}" "${git_url}" "${source_dir}"
+    fi
+  else
+    git clone --depth 1 "${git_url}" "${source_dir}"
+  fi
+  if [ "${fetch_submodules}" = "true" ] && [ -f "${source_dir}/.gitmodules" ]; then
+    git -C "${source_dir}" submodule update --init --recursive
+  fi
+  morpheus_write_state_json \
+    "${state_file}" \
+    "fetchedAt" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "mode" "git" \
+    "input_fingerprint" "${input_fingerprint}" \
+    "archive_url" "${archive_url}" \
+    "git_url" "${git_url}" \
+    "git_ref" "${resolved_git_ref}" \
+    "fetch_submodules" "${fetch_submodules}" \
+    "build_version" "${build_version}"
+  printf '[qemu] fetched source %s from %s ref=%s version=%s\n' "${source_dir}" "${git_url}" "${resolved_git_ref}" "${build_version}"
+  cat > "${result_file}" <<EOF
+{"details":{"fetched_source":true,"git_url":"${git_url}","git_ref":"${resolved_git_ref}","build_version":"${build_version}"}}
+EOF
+  exit 0
+fi
+
+echo "fetch requires MORPHEUS_QEMU_SEED_DIR, MORPHEUS_QEMU_ARCHIVE_URL, MORPHEUS_QEMU_GIT_URL, or MORPHEUS_QEMU_BUILD_VERSION when the source tree is missing" >&2
 exit 1

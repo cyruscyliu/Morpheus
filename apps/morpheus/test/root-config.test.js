@@ -5,9 +5,18 @@ const path = require("node:path");
 const yaml = require("yaml");
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
-const rootConfigPath = path.join(repoRoot, "morpheus.yaml");
+const ciConfigPath = path.join(repoRoot, "tests", "morpheus.yaml");
 const trackedConfigPaths = [
-  rootConfigPath,
+  ciConfigPath,
+  path.join(
+    repoRoot,
+    "apps",
+    "morpheus",
+    "test",
+    "fixtures",
+    "nvirsh-workflows",
+    "morpheus.yaml",
+  ),
   path.join(
     repoRoot,
     "apps",
@@ -18,6 +27,85 @@ const trackedConfigPaths = [
     "morpheus.yaml",
   ),
 ];
+const expectedWorkflowSteps = {
+  "llbase-build-ci": [["llbase", "inspect"]],
+  "llbic-build-ci": [["llbic", "inspect"]],
+  "llcg-build-ci": [["llcg", "inspect"]],
+  "devilang-build-ci": [
+    ["devilang", "test-audit-state"],
+    ["devilang", "test-static-checks"],
+  ],
+  "libafl-build-ci": [
+    ["libafl", "fetch"],
+    ["libafl", "patch"],
+  ],
+  "libvmm-build-ci": [
+    ["sel4", "fetch"],
+    ["sel4", "patch"],
+    ["microkit-sdk", "fetch"],
+    ["microkit-sdk", "patch"],
+    ["microkit-sdk", "build"],
+    ["libvmm", "fetch"],
+    ["libvmm", "patch"],
+    ["libvmm", "build"],
+  ],
+  "microkit-sdk-build-ci": [
+    ["sel4", "fetch"],
+    ["sel4", "patch"],
+    ["microkit-sdk", "fetch"],
+    ["microkit-sdk", "patch"],
+    ["microkit-sdk", "build"],
+  ],
+  "sel4-fetch-patch-ci": [
+    ["sel4", "fetch"],
+    ["sel4", "patch"],
+  ],
+  "buildroot-build-ci": [
+    ["buildroot", "fetch"],
+    ["buildroot", "patch"],
+    ["buildroot", "build"],
+  ],
+  "buildroot-fetch-ci": [["buildroot", "fetch"]],
+  "buildroot-patch-ci": [
+    ["buildroot", "fetch"],
+    ["buildroot", "patch"],
+  ],
+  "qemu-fetch-ci": [["qemu", "fetch"]],
+  "qemu-patch-ci": [
+    ["qemu", "fetch"],
+    ["qemu", "patch"],
+  ],
+  "qemu-build-ci": [
+    ["qemu", "fetch"],
+    ["qemu", "patch"],
+    ["qemu", "build"],
+  ],
+  "nqc2-build-ci": [
+    ["qemu", "fetch"],
+    ["qemu", "patch"],
+    ["qemu", "build"],
+    ["nqc2", "fetch"],
+  ],
+  "nvirsh-qemu-arm64-vm-exec-ci": [
+    ["buildroot", "fetch"],
+    ["buildroot", "patch"],
+    ["buildroot", "build"],
+    ["qemu", "fetch"],
+    ["qemu", "patch"],
+    ["qemu", "build"],
+    ["nvirsh", "fetch"],
+  ],
+  "nvirsh-qemu-arm64-cvm-exec-ci": [
+    ["buildroot", "fetch"],
+    ["buildroot", "patch"],
+    ["buildroot", "build"],
+    ["linux", "fetch"],
+    ["linux", "patch"],
+    ["linux", "build"],
+    ["qemu", "fetch"],
+    ["qemu", "build"],
+  ],
+};
 
 function repoRelative(filePath) {
   return path.relative(repoRoot, filePath) || ".";
@@ -46,57 +134,56 @@ test("tracked morpheus configs parse without duplicate keys", () => {
   }
 });
 
-test("root morpheus.yaml keeps CI-only workflow names", () => {
-  const config = parseYaml(rootConfigPath);
-  const workflowNames = Object.keys(config.workflows || {});
+test("repository root has no implicit Morpheus config", () => {
+  assert.equal(fs.existsSync(path.join(repoRoot, "morpheus.yaml")), false);
+});
 
-  assert.notEqual(workflowNames.length, 0, "root morpheus.yaml should define CI workflows");
+test("CI config is an explicit, fixture-only fast workflow set", () => {
+  const config = parseYaml(ciConfigPath);
+  const workflows = config.workflows || {};
+  const workflowNames = Object.keys(workflows).sort();
+
+  assert.deepEqual(workflowNames, Object.keys(expectedWorkflowSteps).sort());
+  assert.doesNotMatch(readYaml(ciConfigPath), /https?:\/\//);
+
   for (const workflowName of workflowNames) {
-    assert.match(
-      workflowName,
-      /-ci$/,
-      `root workflow ${workflowName} must end with -ci`,
+    assert.match(workflowName, /-ci$/, `CI workflow ${workflowName} must end with -ci`);
+    const stages = workflows[workflowName].stages || [];
+    assert.deepEqual(
+      stages.map((stage) => [stage.tool, stage.command]),
+      expectedWorkflowSteps[workflowName],
+      `${workflowName} must stay fixture-backed`,
     );
+    for (const stage of stages) {
+      assert.notEqual(stage.command, "exec", `${workflowName} must not execute a runtime`);
+    }
   }
 });
 
-test("root morpheus.yaml uses canonical fixture seed paths", () => {
-  const config = parseYaml(rootConfigPath);
+test("CI config resolves every seed directory from a checked-in fixture", () => {
+  const config = parseYaml(ciConfigPath);
   const tools = config.tools || {};
 
-  for (const [toolName, toolConfig] of Object.entries(tools)) {
-    const seedDir = toolConfig && toolConfig["seed-dir"];
-    if (!seedDir) {
-      continue;
-    }
-    const expectedPrefix = `./tools/${toolName}/tests/fixtures/`;
-    assert.ok(
-      seedDir.startsWith(expectedPrefix),
-      `tools.${toolName}.seed-dir must stay under ${expectedPrefix}`,
-    );
+  const fixtureTools = Object.entries(tools)
+    .filter(([, toolConfig]) => toolConfig["seed-dir"])
+    .map(([toolName]) => toolName)
+    .sort();
+  assert.deepEqual(fixtureTools, [
+    "buildroot",
+    "libafl",
+    "libvmm",
+    "linux",
+    "microkit-sdk",
+    "qemu",
+    "sel4",
+  ]);
+  for (const toolName of fixtureTools) {
+    const toolConfig = tools[toolName];
+    const seedDir = toolConfig["seed-dir"];
+    const expectedPrefix = `../tools/${toolName}/tests/fixtures/`;
+    assert.ok(seedDir.startsWith(expectedPrefix), `${toolName} must use ${expectedPrefix}`);
 
-    const resolvedSeedDir = path.join(repoRoot, seedDir.replace(/^\.\//, ""));
-    assert.ok(
-      fs.existsSync(resolvedSeedDir),
-      `tools.${toolName}.seed-dir target is missing: ${seedDir}`,
-    );
-  }
-});
-
-test("root build-ci workflows do not include exec steps", () => {
-  const config = parseYaml(rootConfigPath);
-  const workflows = config.workflows || {};
-
-  for (const [workflowName, workflow] of Object.entries(workflows)) {
-    if (!workflowName.endsWith("-build-ci")) {
-      continue;
-    }
-    for (const step of workflow.steps || []) {
-      assert.notEqual(
-        step.command,
-        "exec",
-        `${workflowName} must not include exec step ${step.id || "<unnamed>"}`,
-      );
-    }
+    const resolvedSeedDir = path.resolve(path.dirname(ciConfigPath), seedDir);
+    assert.ok(fs.existsSync(resolvedSeedDir), `${toolName} fixture is missing: ${seedDir}`);
   }
 });

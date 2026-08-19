@@ -24,6 +24,7 @@ mapfile -t manifest_fields < <(
 const fs = require("fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 process.stdout.write(`${String(manifest.status || "")}\n`);
+process.stdout.write(`${String(manifest.buildDir || "")}\n`);
 const values = [
   manifest.runtime && manifest.runtime.pid ? Number(manifest.runtime.pid) : null,
   manifest.runtime && manifest.runtime.supervisorPid ? Number(manifest.runtime.supervisorPid) : null,
@@ -34,7 +35,8 @@ NODE
 )
 
 current_status="${manifest_fields[0]:-}"
-pids=("${manifest_fields[@]:1}")
+build_dir="${manifest_fields[1]:-}"
+pids=("${manifest_fields[@]:2}")
 had_live_pid=false
 for pid in "${pids[@]}"; do
   [ -n "${pid}" ] || continue
@@ -43,6 +45,17 @@ for pid in "${pids[@]}"; do
   fi
   kill "${pid}" 2>/dev/null || true
 done
+
+if [ "${had_live_pid}" != "true" ] && [ -n "${build_dir}" ] && [ -f "${build_dir}/l0/l1.pid" ]; then
+  pid="$(cat "${build_dir}/l0/l1.pid" 2>/dev/null || true)"
+  if [ -n "${pid}" ]; then
+    pids=("${pids[@]}" "${pid}")
+    if kill -0 "${pid}" 2>/dev/null; then
+      had_live_pid=true
+      kill "${pid}" 2>/dev/null || true
+    fi
+  fi
+fi
 
 node - "${manifest_file}" "${current_status}" "${had_live_pid}" <<'NODE'
 const fs = require("fs");

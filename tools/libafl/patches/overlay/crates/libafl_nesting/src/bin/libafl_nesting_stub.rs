@@ -15,8 +15,8 @@ const INPUT_LEN: usize = 512;
 const RUNTIME_DIR: &str = "/run/morpheus-libafl";
 const INPUT_PATH: &str = "/run/morpheus-libafl/morpheus-qemu-input.bin";
 const LAUNCH_MARKER_PATH: &str = "/run/morpheus-libafl/launch-l2.marker";
-const LKVM_STDOUT_PATH: &str = "/run/morpheus-libafl/lkvm.stdout.log";
-const LKVM_STDERR_PATH: &str = "/run/morpheus-libafl/lkvm.stderr.log";
+const QEMU_STDOUT_PATH: &str = "/run/morpheus-libafl/qemu.stdout.log";
+const QEMU_STDERR_PATH: &str = "/run/morpheus-libafl/qemu.stderr.log";
 const L2_CONSOLE_PATH: &str = "/run/morpheus-libafl/l2-console.log";
 const L2_CONSOLE_PTY_PATH: &str = "/run/morpheus-libafl/l2-console.pty";
 
@@ -95,8 +95,8 @@ fn log_runtime_file(path: &str, label: &str, prefix: &str) {
 
 fn log_runtime_snapshot() {
     log_runtime_file(LAUNCH_MARKER_PATH, "launch-l2.marker", "stub: launch marker: ");
-    log_runtime_file(LKVM_STDOUT_PATH, "lkvm.stdout.log", "stub: lkvm stdout: ");
-    log_runtime_file(LKVM_STDERR_PATH, "lkvm.stderr.log", "stub: lkvm stderr: ");
+    log_runtime_file(QEMU_STDOUT_PATH, "qemu.stdout.log", "stub: qemu stdout: ");
+    log_runtime_file(QEMU_STDERR_PATH, "qemu.stderr.log", "stub: qemu stderr: ");
     log_runtime_file(L2_CONSOLE_PATH, "l2-console.log", "stub: l2 console: ");
     log_runtime_file(L2_CONSOLE_PTY_PATH, "l2-console.pty", "stub: l2 console pty: ");
 }

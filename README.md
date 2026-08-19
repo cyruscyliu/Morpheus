@@ -81,14 +81,13 @@ pnpm --filter @morpheus/app build
 pnpm run install:bin
 ```
 
-- enable cache for a config at the beginning or in the middle of development:
+- enable cache for a project config at the beginning or in the middle of development:
 
 ```bash
-pnpm cache:enable -- --config morpheus.yaml
 pnpm cache:enable -- --config <workspace-root>/morpheus.yaml
 ```
 
-The shared cache root defaults to `./.cache`.
+The shared cache root defaults to `${MORPHEUS_DATA_ROOT}/cache`.
 
 - check available scripts:
 
@@ -104,8 +103,7 @@ pnpm run
 ```
 
 Project configs live under `<workspace-root>/morpheus.yaml`.
-The root `morpheus.yaml` is intentionally minimal and exists only as a default
-CI/testing stub.
+The CI-only fixture lives at `tests/morpheus.yaml`; it is not a project config.
 
 For runtime-managed runs, keep the lifecycle split explicit:
 

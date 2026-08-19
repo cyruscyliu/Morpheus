@@ -5,8 +5,19 @@ const path = require("node:path");
 const yaml = require("yaml");
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
-const rootConfig = yaml.parse(
-  fs.readFileSync(path.join(repoRoot, "morpheus.yaml"), "utf8"),
+const workflowFixture = yaml.parse(
+  fs.readFileSync(
+    path.join(
+      repoRoot,
+      "apps",
+      "morpheus",
+      "test",
+      "fixtures",
+      "nvirsh-workflows",
+      "morpheus.yaml",
+    ),
+    "utf8",
+  ),
 );
 
 function workflowStep(workflow, id) {
@@ -22,13 +33,13 @@ function stepArg(step, flag) {
   return args[index + 1];
 }
 
-test("repo CVM exec CI wires explicit linux, qemu, and buildroot artifacts into the independent buildroot-based CVM tool", () => {
-  const workflow = rootConfig.workflows["nvirsh-qemu-arm64-cvm-exec-ci"];
-  assert.ok(workflow, "missing nvirsh-qemu-arm64-cvm-exec-ci");
-  assert.equal(rootConfig.tools["qemu-cca"], undefined);
+test("CVM workflow fixture wires explicit linux, qemu, and buildroot artifacts into the independent buildroot-based CVM tool", () => {
+  const workflow = workflowFixture.workflows["nvirsh-qemu-arm64-cvm-exec"];
+  assert.ok(workflow, "missing nvirsh-qemu-arm64-cvm-exec fixture");
+  assert.equal(workflowFixture.tools["qemu-cca"], undefined);
 
-  const linuxTool = rootConfig.tools["linux"];
-  const cvmTool = rootConfig.tools["nvirsh-buildroot-based-cvm"];
+  const linuxTool = workflowFixture.tools["linux"];
+  const cvmTool = workflowFixture.tools["nvirsh-buildroot-based-cvm"];
   assert.ok(linuxTool, "missing linux tool config");
   assert.ok(cvmTool, "missing nvirsh-buildroot-based-cvm tool config");
 
@@ -49,12 +60,12 @@ test("repo CVM exec CI wires explicit linux, qemu, and buildroot artifacts into 
   assert.equal(nvirshBuild.tool, "nvirsh-buildroot-based-cvm");
   assert.equal(nvirshInspect.tool, "nvirsh-buildroot-based-cvm");
 
-  assert.equal(linuxTool["seed-dir"], "./tools/linux/tests/fixtures/minimal-linux-src");
-  assert.equal(linuxTool["patch-dir"], "./tools/linux/patches/demo");
-  assert.equal(cvmTool["host-stack-archive-url"], "https://github.com/p-b-o/qemu-linux-stack/releases/download/build/master-11247fd.tar.xz");
+  assert.equal(linuxTool["seed-dir"], "./minimal-linux-src");
+  assert.equal(linuxTool["patch-dir"], "./patches");
+  assert.equal(cvmTool["host-stack-archive-url"], "https://example.invalid/host-stack.tar.xz");
   assert.equal(
     cvmTool["host-stack-archive-sha256"],
-    "0d9cc57c109bcdc42294a41334e2909fa51c42784160fb5a7396dfce49c90d07",
+    "0000000000000000000000000000000000000000000000000000000000000000",
   );
 
   assert.equal(stepArg(linuxPatch, "--source"), "{{steps.linux_fetch.artifacts.source-dir.location}}");

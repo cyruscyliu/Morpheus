@@ -14,6 +14,8 @@ configure_arg_raw="${MORPHEUS_QEMU_CONFIGURE_ARG:-}"
 jobs="${MORPHEUS_QEMU_JOBS:-$(morpheus_default_jobs)}"
 result_file="${MORPHEUS_QEMU_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 archive_url="${MORPHEUS_QEMU_ARCHIVE_URL:-}"
+git_url="${MORPHEUS_QEMU_GIT_URL:-}"
+git_ref="${MORPHEUS_QEMU_GIT_REF:-}"
 seed_dir="${MORPHEUS_QEMU_SEED_DIR:-}"
 build_version="${MORPHEUS_QEMU_BUILD_VERSION:-}"
 artifact_path="${install_dir}/bin/qemu-system-aarch64"
@@ -88,23 +90,8 @@ stale_target_list_config() {
   return 0
 }
 
-stale_meson_build_tree() {
-  local build_root="$1"
-  local candidate=""
-  for candidate in \
-    "${build_root}/build.ninja" \
-    "${build_root}/build.ninja.stamp" \
-    "${build_root}/config-host.mak"; do
-    [ -f "${candidate}" ] || continue
-    if grep -q '/pyvenv/bin/' "${candidate}"; then
-      return 0
-    fi
-  done
-  return 1
-}
-
 if [ ! -x "${source_dir}/configure" ]; then
-  if [ -n "${seed_dir}" ] || [ -n "${archive_url}" ] || [ -n "${build_version}" ]; then
+  if [ -n "${seed_dir}" ] || [ -n "${archive_url}" ] || [ -n "${git_url}" ] || [ -n "${git_ref}" ] || [ -n "${build_version}" ]; then
     "$(dirname "$0")/fetch.sh"
   fi
 fi
@@ -128,10 +115,6 @@ if [ -f "${build_dir}/build.ninja" ] && grep -q "/pyvenv/bin/" "${build_dir}/bui
   if [ ! -x "${build_dir}/pyvenv/bin/meson" ] || [ ! -x "${build_dir}/pyvenv/bin/python3" ]; then
     rm -rf "${build_dir}" "${install_dir}"
   fi
-fi
-
-if stale_meson_build_tree "${build_dir}"; then
-  rm -rf "${build_dir}" "${install_dir}"
 fi
 
 mkdir -p "${build_dir}" "${install_dir}"
@@ -190,12 +173,6 @@ fi
 if [ "${reuse_build_dir}" = "true" ] && [ -f "${artifact_path}" ] && [ -f "${build_dir}/build.ninja" ]; then
   needs_rebuild="false"
   if find "${source_dir}" -type f -newer "${artifact_path}" -print -quit | grep -q .; then
-    needs_rebuild="true"
-  fi
-  if [ -n "${target_list_file}" ] && [ -f "${target_list_file}" ] && [ "${target_list_file}" -nt "${artifact_path}" ]; then
-    needs_rebuild="true"
-  fi
-  if [ -n "${configure_arg_file}" ] && [ -f "${configure_arg_file}" ] && [ "${configure_arg_file}" -nt "${artifact_path}" ]; then
     needs_rebuild="true"
   fi
   if [ "${needs_rebuild}" = "false" ]; then

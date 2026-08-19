@@ -49,6 +49,13 @@ const details = {
   guest_kernel_image: buildrootImages && buildrootImages.image ? buildrootImages.image : null,
   guest_initrd: buildrootImages && buildrootImages.initrd ? buildrootImages.initrd : null,
   guest_qemu: buildrootImages && buildrootImages.qemu ? buildrootImages.qemu : null,
+  guest_launch_mode: buildrootImages && buildrootImages.launchMode ? buildrootImages.launchMode : null,
+  guest_helper_cfg: buildrootImages && buildrootImages.helperCfg ? buildrootImages.helperCfg : null,
+  guest_share_initrd: buildrootImages && buildrootImages.shareInitrd ? buildrootImages.shareInitrd : null,
+  guest_disk: buildrootImages && buildrootImages.guestDisk ? buildrootImages.guestDisk : null,
+  guest_qemu_efi: buildrootImages && buildrootImages.qemuEfi ? buildrootImages.qemuEfi : null,
+  guest_rsi_evidence: manifest.runtime && manifest.runtime.l2 ? (manifest.runtime.l2.rsiEvidence || null) : null,
+  guest_rsi_evidence_missing: manifest.runtime && manifest.runtime.l2 ? Boolean(manifest.runtime.l2.rsiEvidenceMissing) : false,
 };
 const artifacts = [];
 if (details.guest_kernel_vmlinux && fs.existsSync(details.guest_kernel_vmlinux)) {
@@ -62,6 +69,12 @@ if (details.guest_initrd && fs.existsSync(details.guest_initrd)) {
 }
 if (details.guest_qemu && fs.existsSync(details.guest_qemu)) {
   artifacts.push({ path: "guest-qemu", location: details.guest_qemu });
+}
+if (details.guest_helper_cfg && fs.existsSync(details.guest_helper_cfg)) {
+  artifacts.push({ path: "guest-helper-cfg", location: details.guest_helper_cfg });
+}
+if (details.guest_disk && fs.existsSync(details.guest_disk)) {
+  artifacts.push({ path: "guest-disk", location: details.guest_disk });
 }
 fs.writeFileSync(resultFile, `${JSON.stringify({ details, artifacts }, null, 2)}\n`);
 NODE

@@ -24,16 +24,69 @@
         ],
         "path": true
       },
-      "host-stack-archive-url": {
+      "l1-firmware-a": {
         "aliases": [
-          "host-stack-archive-url",
-          "hostStackArchiveUrl"
+          "l1-firmware-a",
+          "l1FirmwareA"
+        ],
+        "path": true
+      },
+      "l1-firmware-b": {
+        "aliases": [
+          "l1-firmware-b",
+          "l1FirmwareB"
+        ],
+        "path": true
+      },
+      "qemu-edk2": {
+        "aliases": [
+          "qemu-edk2",
+          "qemuEdk2"
+        ],
+        "path": true
+      },
+      "l2-guest-disk": {
+        "aliases": [
+          "l2-guest-disk",
+          "l2GuestDisk"
+        ],
+        "path": true
+      },
+      "l2-kvmtool-efi": {
+        "aliases": [
+          "l2-kvmtool-efi",
+          "l2KvmtoolEfi"
+        ],
+        "path": true
+      },
+      "l1-machine": {
+        "aliases": [
+          "l1-machine",
+          "l1Machine"
         ]
       },
-      "host-stack-archive-sha256": {
+      "l1-cpu": {
         "aliases": [
-          "host-stack-archive-sha256",
-          "hostStackArchiveSha256"
+          "l1-cpu",
+          "l1Cpu"
+        ]
+      },
+      "l1-cmdline": {
+        "aliases": [
+          "l1-cmdline",
+          "l1Cmdline"
+        ]
+      },
+      "l1-memory-mb": {
+        "aliases": [
+          "l1-memory-mb",
+          "l1MemoryMb"
+        ]
+      },
+      "l1-cpus": {
+        "aliases": [
+          "l1-cpus",
+          "l1Cpus"
         ]
       },
       "reuse-build-dir": {
@@ -98,7 +151,7 @@
           "pathTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/install/state.json"
         },
         "share-dir": {
-          "pathTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/build/share"
+          "pathTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/build/l1"
         },
         "run-manifest": {
           "pathTemplate": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}/manifest.json"
@@ -110,7 +163,10 @@
             "build-dir",
             "install-dir",
             "qemu",
-            "buildroot-output-dir"
+            "buildroot-output-dir",
+            "l1-kernel",
+            "l1-firmware-a",
+            "l1-firmware-b"
           ],
           "scalarFlags": [
             "build-dir",
@@ -118,8 +174,16 @@
             "qemu",
             "buildroot-output-dir",
             "l1-kernel",
-            "host-stack-archive-url",
-            "host-stack-archive-sha256",
+            "l1-firmware-a",
+            "l1-firmware-b",
+            "qemu-edk2",
+            "l2-guest-disk",
+            "l2-kvmtool-efi",
+            "l1-machine",
+            "l1-cpu",
+            "l1-cmdline",
+            "l1-memory-mb",
+            "l1-cpus",
             "reuse-build-dir",
             "build-dir-key"
           ],

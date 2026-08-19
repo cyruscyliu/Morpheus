@@ -27,7 +27,95 @@ function writeExecutable(filePath, contents) {
   fs.chmodSync(filePath, 0o755);
 }
 
-test("buildroot-based CVM build stages explicit linux, buildroot, and host-stack artifacts", () => {
+function createCpioArchive(archivePath, files) {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-cpio-root-"));
+  for (const [relativePath, value] of Object.entries(files)) {
+    const targetPath = path.join(rootDir, relativePath);
+    if (value && typeof value === "object" && value.directory) {
+      fs.mkdirSync(targetPath, { recursive: true });
+      continue;
+    }
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.writeFileSync(targetPath, value.contents);
+    if (value.mode != null) {
+      fs.chmodSync(targetPath, value.mode);
+    }
+  }
+  const archive = spawnSync(
+    "bash",
+    ["-lc", "find . | LC_ALL=C sort | cpio --reproducible --quiet -o -H newc"],
+    { cwd: rootDir },
+  );
+  assert.equal(archive.status, 0, archive.stderr?.toString() || archive.stdout?.toString());
+  fs.writeFileSync(archivePath, archive.stdout);
+}
+
+function alignTo4(value) {
+  return (value + 3) & ~3;
+}
+
+function parseNewcEntries(archivePath) {
+  const archive = fs.readFileSync(archivePath);
+  const entries = [];
+  let offset = 0;
+
+  while (offset + 110 <= archive.length) {
+    while (offset < archive.length && archive[offset] === 0) {
+      offset += 1;
+    }
+    if (offset + 110 > archive.length) {
+      break;
+    }
+
+    const magic = archive.toString("ascii", offset, offset + 6);
+    assert.match(magic, /^07070[12]$/);
+
+    const parseHexField = (fieldOffset) =>
+      Number.parseInt(archive.toString("ascii", offset + fieldOffset, offset + fieldOffset + 8), 16);
+
+    const fileSize = parseHexField(54);
+    const nameSize = parseHexField(94);
+    const nameStart = offset + 110;
+    const nameEnd = nameStart + nameSize;
+    const name = archive.toString("utf8", nameStart, nameEnd - 1).replace(/^\.\//, "");
+    const dataStart = alignTo4(nameEnd);
+    const dataEnd = dataStart + fileSize;
+
+    offset = alignTo4(dataEnd);
+    if (name === "TRAILER!!!") {
+      continue;
+    }
+
+    entries.push({
+      name,
+      content: archive.subarray(dataStart, dataEnd),
+    });
+  }
+
+  return entries;
+}
+
+function listCpioEntries(archivePath) {
+  return parseNewcEntries(archivePath).map((entry) => entry.name);
+}
+
+function readCpioEntry(archivePath, entryPath) {
+  const normalizedEntryPath = entryPath.replace(/^\.\//, "");
+  const entries = parseNewcEntries(archivePath);
+  const matchedEntry = [...entries].reverse().find((entry) => entry.name === normalizedEntryPath);
+  assert.ok(matchedEntry, `missing cpio entry: ${normalizedEntryPath}`);
+  return matchedEntry.content.toString("utf8");
+}
+
+function gunzipFile(gzipPath) {
+  const result = spawnSync("gzip", ["-dc"], {
+    input: fs.readFileSync(gzipPath),
+  });
+  assert.equal(result.status, 0, result.stderr?.toString() || result.stdout?.toString());
+  return result.stdout;
+}
+
+test("buildroot-based CVM build stages explicit linux, buildroot, and firmware-backed host artifacts", () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-buildroot-cvm-"));
   const buildDir = path.join(tmpDir, "build");
   const installDir = path.join(tmpDir, "install");
@@ -35,13 +123,16 @@ test("buildroot-based CVM build stages explicit linux, buildroot, and host-stack
   const inspectResultFile = path.join(tmpDir, "inspect.json");
   const hostQemu = path.join(tmpDir, "host-qemu", "bin", "qemu-system-aarch64");
   const l1Kernel = path.join(tmpDir, "linux-out", "Image");
+  const l1FirmwareA = path.join(tmpDir, "firmware", "SBSA_FLASH0.fd");
+  const l1FirmwareB = path.join(tmpDir, "firmware", "SBSA_FLASH1.fd");
   const buildrootOutputDir = path.join(tmpDir, "buildroot-out");
-  const archiveRoot = path.join(tmpDir, "host-stack-root");
-  const archivePath = path.join(tmpDir, "host-stack.tar.xz");
 
   writeExecutable(hostQemu, "#!/bin/sh\nexit 0\n");
   fs.mkdirSync(path.dirname(l1Kernel), { recursive: true });
   fs.writeFileSync(l1Kernel, "l1-kernel\n");
+  fs.mkdirSync(path.dirname(l1FirmwareA), { recursive: true });
+  fs.writeFileSync(l1FirmwareA, "flash-a\n");
+  fs.writeFileSync(l1FirmwareB, "flash-b\n");
 
   fs.mkdirSync(path.join(buildrootOutputDir, "images"), { recursive: true });
   fs.mkdirSync(path.join(buildrootOutputDir, "build"), { recursive: true });
@@ -51,6 +142,7 @@ test("buildroot-based CVM build stages explicit linux, buildroot, and host-stack
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "lib"), { recursive: true });
   fs.writeFileSync(path.join(buildrootOutputDir, "images", "Image"), "l2-image\n");
   fs.writeFileSync(path.join(buildrootOutputDir, "images", "rootfs.cpio.gz"), "l2-initrd\n");
+  fs.writeFileSync(path.join(buildrootOutputDir, "images", "rootfs.ext2"), "l1-rootfs\n");
   fs.writeFileSync(path.join(buildrootOutputDir, "build", "vmlinux"), "l2-vmlinux\n");
   writeExecutable(
     path.join(buildrootOutputDir, "target", "usr", "bin", "qemu-system-aarch64"),
@@ -67,19 +159,6 @@ test("buildroot-based CVM build stages explicit linux, buildroot, and host-stack
     JSON.stringify({ fingerprint: "buildroot-fixture-fingerprint" }, null, 2),
   );
 
-  fs.mkdirSync(path.join(archiveRoot, "out"), { recursive: true });
-  fs.writeFileSync(path.join(archiveRoot, "out", "host.ext4"), "host-rootfs\n");
-  fs.writeFileSync(path.join(archiveRoot, "out", "flash.bin"), "host-flash\n");
-  const tarResult = spawnSync("tar", ["-cJf", archivePath, "-C", archiveRoot, "."], {
-    encoding: "utf8",
-  });
-  assert.equal(tarResult.status, 0, tarResult.stderr || tarResult.stdout);
-  const archiveSha256 = spawnSync("sha256sum", [archivePath], {
-    encoding: "utf8",
-  });
-  assert.equal(archiveSha256.status, 0, archiveSha256.stderr || archiveSha256.stdout);
-  const archiveHash = archiveSha256.stdout.trim().split(/\s+/)[0];
-
   const firstRun = spawnSync("bash", [buildScript], {
     encoding: "utf8",
     env: {
@@ -89,8 +168,13 @@ test("buildroot-based CVM build stages explicit linux, buildroot, and host-stack
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_QEMU: hostQemu,
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILDROOT_OUTPUT_DIR: buildrootOutputDir,
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_KERNEL: l1Kernel,
-      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_HOST_STACK_ARCHIVE_URL: `file://${archivePath}`,
-      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_HOST_STACK_ARCHIVE_SHA256: archiveHash,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_FIRMWARE_A: l1FirmwareA,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_FIRMWARE_B: l1FirmwareB,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_MACHINE: "sbsa-ref",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_CPU: "max,x-rme=on,sme=off,pauth-impdef=on,sve=off",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_CMDLINE: "root=/dev/vda console=ttyAMA0",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_MEMORY_MB: "4096",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_CPUS: "1",
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_REUSE_BUILD_DIR: "true",
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE: resultFile,
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR_KEY: "fixture-cvm",
@@ -99,15 +183,30 @@ test("buildroot-based CVM build stages explicit linux, buildroot, and host-stack
   assert.equal(firstRun.status, 0, firstRun.stderr + firstRun.stdout);
   const firstResult = JSON.parse(fs.readFileSync(resultFile, "utf8"));
   assert.equal(firstResult.details.reused, false);
+  assert.deepEqual(firstResult.artifacts, [
+    { path: "prepared-state", location: path.join(installDir, "state.json") },
+    { path: "share-dir", location: path.join(buildDir, "l1") },
+  ]);
 
   const stateFile = path.join(installDir, "state.json");
   const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
   assert.equal(state.tool, "nvirsh-buildroot-based-cvm");
   assert.equal(state.layeredState.l2.mode, "cvm");
   assert.equal(state.hostLaunch.qemu, hostQemu);
-  assert.equal(state.hostLaunch.kernel, path.join(buildDir, "l1", "host-boot", "vmlinuz"));
+  assert.equal(state.hostLaunch.firmwareA, path.join(buildDir, "l1", "host-firmware", "SBSA_FLASH0.fd"));
+  assert.equal(state.hostLaunch.firmwareB, path.join(buildDir, "l1", "host-firmware", "SBSA_FLASH1.fd"));
+  assert.equal(state.hostLaunch.kernel, path.join(buildDir, "l1", "host-boot", "Image"));
+  assert.equal(state.hostLaunch.machine, "sbsa-ref");
+  assert.equal(state.hostLaunch.cpu, "max,x-rme=on,sme=off,pauth-impdef=on,sve=off");
+  assert.equal(state.hostLaunch.cmdline, "root=/dev/vda console=ttyAMA0");
   assert.equal(state.hostLaunch.memory, "4096");
   assert.equal(state.hostLaunch.cpus, "1");
+  assert.equal(state.hostLaunch.enableKvm, false);
+  assert.equal(
+    state.layeredState.l1.rootfs,
+    path.join(buildDir, "l1", "host-rootfs", "rootfs.ext2"),
+  );
+  assert.equal(state.layeredState.l1.hostStackArchive, undefined);
   assert.equal(
     fs.existsSync(path.join(buildDir, "l1", "guest-qemu", "bin", "qemu-system-aarch64")),
     true,
@@ -124,6 +223,22 @@ test("buildroot-based CVM build stages explicit linux, buildroot, and host-stack
     fs.existsSync(path.join(buildDir, "l1", "guest-qemu", "runtime-libs", "lib", "libfdt.so.1")),
     true,
   );
+  assert.match(
+    fs.readFileSync(path.join(buildDir, "l1", "launch-l2.sh"), "utf8"),
+    /^#!\/bin\/sh$/m,
+  );
+  assert.match(
+    fs.readFileSync(path.join(buildDir, "l1", "launch-l2.sh"), "utf8"),
+    /runtime_dir="\$\{MORPHEUS_L2_RUNTIME_DIR:-\/mnt\/morpheus-l2-runtime\}"/,
+  );
+  assert.match(
+    fs.readFileSync(path.join(buildDir, "l1", "launch-l2-hoststack.sh"), "utf8"),
+    /^#!\/bin\/sh$/m,
+  );
+  assert.match(
+    fs.readFileSync(path.join(buildDir, "l1", "launch-l2-hoststack.sh"), "utf8"),
+    /exec \/mnt\/launch-l2\.sh/,
+  );
 
   const secondRun = spawnSync("bash", [buildScript], {
     encoding: "utf8",
@@ -134,8 +249,13 @@ test("buildroot-based CVM build stages explicit linux, buildroot, and host-stack
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_QEMU: hostQemu,
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILDROOT_OUTPUT_DIR: buildrootOutputDir,
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_KERNEL: l1Kernel,
-      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_HOST_STACK_ARCHIVE_URL: `file://${archivePath}`,
-      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_HOST_STACK_ARCHIVE_SHA256: archiveHash,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_FIRMWARE_A: l1FirmwareA,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_FIRMWARE_B: l1FirmwareB,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_MACHINE: "sbsa-ref",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_CPU: "max,x-rme=on,sme=off,pauth-impdef=on,sve=off",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_CMDLINE: "root=/dev/vda console=ttyAMA0",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_MEMORY_MB: "4096",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_CPUS: "1",
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_REUSE_BUILD_DIR: "true",
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE: resultFile,
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR_KEY: "fixture-cvm",
@@ -158,4 +278,282 @@ test("buildroot-based CVM build stages explicit linux, buildroot, and host-stack
   assert.equal(inspectRun.status, 0, inspectRun.stderr + inspectRun.stdout);
   const inspectResult = JSON.parse(fs.readFileSync(inspectResultFile, "utf8"));
   assert.equal(inspectResult.details.guest_kernel_vmlinux, path.join(buildrootOutputDir, "build", "vmlinux"));
+});
+
+test("buildroot-based CVM build reuses the linux kernel when buildroot does not provide one", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-buildroot-cvm-shared-kernel-"));
+  const buildDir = path.join(tmpDir, "build");
+  const installDir = path.join(tmpDir, "install");
+  const resultFile = path.join(tmpDir, "result.json");
+  const inspectResultFile = path.join(tmpDir, "inspect.json");
+  const hostQemu = path.join(tmpDir, "host-qemu", "bin", "qemu-system-aarch64");
+  const l1Kernel = path.join(tmpDir, "linux-out", "Image");
+  const l1FirmwareA = path.join(tmpDir, "firmware", "SBSA_FLASH0.fd");
+  const l1FirmwareB = path.join(tmpDir, "firmware", "SBSA_FLASH1.fd");
+  const buildrootOutputDir = path.join(tmpDir, "buildroot-out");
+
+  writeExecutable(hostQemu, "#!/bin/sh\nexit 0\n");
+  fs.mkdirSync(path.dirname(l1Kernel), { recursive: true });
+  fs.writeFileSync(l1Kernel, "shared-kernel\n");
+  fs.mkdirSync(path.dirname(l1FirmwareA), { recursive: true });
+  fs.writeFileSync(l1FirmwareA, "flash-a\n");
+  fs.writeFileSync(l1FirmwareB, "flash-b\n");
+
+  fs.mkdirSync(path.join(buildrootOutputDir, "images"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "bin"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "share", "qemu"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "target", "lib"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "lib"), { recursive: true });
+  fs.writeFileSync(path.join(buildrootOutputDir, "images", "rootfs.cpio.gz"), "l2-initrd\n");
+  fs.writeFileSync(path.join(buildrootOutputDir, "images", "rootfs.ext2"), "l1-rootfs\n");
+  writeExecutable(
+    path.join(buildrootOutputDir, "target", "usr", "bin", "qemu-system-aarch64"),
+    "#!/bin/sh\nexit 0\n",
+  );
+  writeExecutable(
+    path.join(buildrootOutputDir, "target", "lib", "ld-linux-aarch64.so.1"),
+    "#!/bin/sh\nexit 0\n",
+  );
+  fs.writeFileSync(
+    path.join(buildrootOutputDir, "target", "usr", "share", "qemu", "edk2.bin"),
+    "qemu-data\n",
+  );
+  fs.writeFileSync(
+    path.join(buildrootOutputDir, "target", "usr", "lib", "libfdt.so.1"),
+    "libfdt\n",
+  );
+  fs.writeFileSync(
+    path.join(buildrootOutputDir, ".morpheus-build-inputs.json"),
+    JSON.stringify({ fingerprint: "buildroot-fixture-fingerprint" }, null, 2),
+  );
+
+  const buildRun = spawnSync("bash", [buildScript], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR: buildDir,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_INSTALL_DIR: installDir,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_QEMU: hostQemu,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILDROOT_OUTPUT_DIR: buildrootOutputDir,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_KERNEL: l1Kernel,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_FIRMWARE_A: l1FirmwareA,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_FIRMWARE_B: l1FirmwareB,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_MACHINE: "sbsa-ref",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_CPU: "max,x-rme=on,sme=off,pauth-impdef=on,sve=off",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_CMDLINE: "root=/dev/vda console=ttyAMA0",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_MEMORY_MB: "4096",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_CPUS: "1",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_REUSE_BUILD_DIR: "true",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE: resultFile,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR_KEY: "fixture-cvm-shared-kernel",
+    },
+  });
+  assert.equal(buildRun.status, 0, buildRun.stderr + buildRun.stdout);
+
+  assert.equal(
+    fs.readFileSync(path.join(buildDir, "l1", "guest-images", "Image"), "utf8"),
+    "shared-kernel\n",
+  );
+
+  const inspectRun = spawnSync("bash", [inspectScript], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_INSTALL_DIR: installDir,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RUN_DIR: path.join(tmpDir, "run"),
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR_KEY: "fixture-cvm-shared-kernel",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE: inspectResultFile,
+    },
+  });
+  assert.equal(inspectRun.status, 0, inspectRun.stderr + inspectRun.stdout);
+
+  const inspectResult = JSON.parse(fs.readFileSync(inspectResultFile, "utf8"));
+  assert.equal(inspectResult.details.guest_kernel_vmlinux, null);
+  assert.equal(
+    inspectResult.details.guest_kernel_image,
+    path.join(buildDir, "l1", "guest-images", "Image"),
+  );
+});
+
+test("buildroot-based CVM build switches to the Linaro helper launch path when realm helper artifacts are provided", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-buildroot-cvm-linaro-helper-"));
+  const buildDir = path.join(tmpDir, "build");
+  const installDir = path.join(tmpDir, "install");
+  const resultFile = path.join(tmpDir, "result.json");
+  const inspectResultFile = path.join(tmpDir, "inspect.json");
+  const hostQemu = path.join(tmpDir, "host-qemu", "bin", "qemu-system-aarch64");
+  const qemuEdk2 = path.join(tmpDir, "host-qemu", "share", "qemu", "edk2-aarch64-code.fd");
+  const l2GuestDisk = path.join(tmpDir, "linaro", "guest-disk.img");
+  const l2KvmtoolEfi = path.join(tmpDir, "linaro", "KVMTOOL_EFI.fd");
+  const l1Kernel = path.join(tmpDir, "linux-out", "Image");
+  const l1FirmwareA = path.join(tmpDir, "firmware", "SBSA_FLASH0.fd");
+  const l1FirmwareB = path.join(tmpDir, "firmware", "SBSA_FLASH1.fd");
+  const buildrootOutputDir = path.join(tmpDir, "buildroot-out");
+
+  writeExecutable(hostQemu, "#!/bin/sh\nexit 0\n");
+  fs.mkdirSync(path.dirname(qemuEdk2), { recursive: true });
+  fs.writeFileSync(qemuEdk2, "qemu-edk2\n");
+  fs.mkdirSync(path.dirname(l2GuestDisk), { recursive: true });
+  fs.writeFileSync(l2GuestDisk, "guest-disk\n");
+  fs.writeFileSync(l2KvmtoolEfi, "kvmtool-efi\n");
+  fs.mkdirSync(path.dirname(l1Kernel), { recursive: true });
+  fs.writeFileSync(l1Kernel, "shared-kernel\n");
+  fs.mkdirSync(path.dirname(l1FirmwareA), { recursive: true });
+  fs.writeFileSync(l1FirmwareA, "flash-a\n");
+  fs.writeFileSync(l1FirmwareB, "flash-b\n");
+
+  fs.mkdirSync(path.join(buildrootOutputDir, "images"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "build"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "bin"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "share", "qemu"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "target", "lib"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "lib"), { recursive: true });
+  fs.writeFileSync(path.join(buildrootOutputDir, "images", "Image"), "l2-image\n");
+  createCpioArchive(path.join(buildrootOutputDir, "images", "rootfs.cpio"), {
+    "init": {
+      contents: "#!/bin/sh\nexec /sbin/init\n",
+      mode: 0o755,
+    },
+    "etc": { directory: true },
+    "etc/init.d": { directory: true },
+  });
+  fs.writeFileSync(path.join(buildrootOutputDir, "images", "rootfs.cpio.gz"), "l2-initrd\n");
+  fs.writeFileSync(path.join(buildrootOutputDir, "images", "rootfs.ext2"), "l1-rootfs\n");
+  fs.writeFileSync(path.join(buildrootOutputDir, "build", "vmlinux"), "l2-vmlinux\n");
+  writeExecutable(
+    path.join(buildrootOutputDir, "target", "usr", "bin", "qemu-system-aarch64"),
+    "#!/bin/sh\nexit 0\n",
+  );
+  writeExecutable(
+    path.join(buildrootOutputDir, "target", "usr", "bin", "gen-run-vmm.sh"),
+    "#!/bin/sh\nexit 0\n",
+  );
+  writeExecutable(
+    path.join(buildrootOutputDir, "target", "usr", "bin", "realm-measurements"),
+    "#!/bin/sh\nexit 0\n",
+  );
+  writeExecutable(
+    path.join(buildrootOutputDir, "target", "usr", "bin", "lkvm"),
+    "#!/bin/sh\nexit 0\n",
+  );
+  writeExecutable(
+    path.join(buildrootOutputDir, "target", "lib", "ld-linux-aarch64.so.1"),
+    "#!/bin/sh\nexit 0\n",
+  );
+  fs.writeFileSync(
+    path.join(buildrootOutputDir, "target", "usr", "share", "qemu", "edk2.bin"),
+    "qemu-data\n",
+  );
+  fs.writeFileSync(
+    path.join(buildrootOutputDir, "target", "usr", "lib", "libfdt.so.1"),
+    "libfdt\n",
+  );
+  fs.writeFileSync(
+    path.join(buildrootOutputDir, ".morpheus-build-inputs.json"),
+    JSON.stringify({ fingerprint: "buildroot-fixture-fingerprint" }, null, 2),
+  );
+
+  const buildRun = spawnSync("bash", [buildScript], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR: buildDir,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_INSTALL_DIR: installDir,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_QEMU: hostQemu,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_QEMU_EDK2: qemuEdk2,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_GUEST_DISK: l2GuestDisk,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_KVMTOOL_EFI: l2KvmtoolEfi,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILDROOT_OUTPUT_DIR: buildrootOutputDir,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_KERNEL: l1Kernel,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_FIRMWARE_A: l1FirmwareA,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_FIRMWARE_B: l1FirmwareB,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_MACHINE: "sbsa-ref",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_CPU: "max,x-rme=on,sme=off,pauth-impdef=on,sve=off",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_CMDLINE: "root=/dev/vda console=ttyAMA0",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_MEMORY_MB: "4096",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_CPUS: "1",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_REUSE_BUILD_DIR: "true",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE: resultFile,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR_KEY: "fixture-cvm-linaro-helper",
+    },
+  });
+  assert.equal(buildRun.status, 0, buildRun.stderr + buildRun.stdout);
+
+  const state = JSON.parse(fs.readFileSync(path.join(installDir, "state.json"), "utf8"));
+  assert.equal(state.layeredState.l2.buildrootImages.launchMode, "linaro-gen-run-vmm");
+  assert.equal(
+    state.layeredState.l2.buildrootImages.helperCfg,
+    path.join(buildDir, "l1", "gen-run-vmm.cfg"),
+  );
+  assert.equal(
+    state.layeredState.l2.buildrootImages.guestDisk,
+    path.join(buildDir, "l1", "guest-disk.img"),
+  );
+  assert.equal(
+    state.layeredState.l2.buildrootImages.qemuEfi,
+    path.join(buildDir, "l1", "Build", "ArmVirtQemu-AARCH64", "DEBUG_GCC5", "FV", "QEMU_EFI.fd"),
+  );
+  assert.equal(
+    fs.readFileSync(path.join(buildDir, "l1", "gen-run-vmm.cfg"), "utf8"),
+    "KERNEL=/mnt/Image\nINITRD=/mnt/rootfs.cpio\nEDK2_DIR=/mnt/\nRUN_DISK=/mnt/guest-disk.img\n",
+  );
+  assert.equal(
+    listCpioEntries(path.join(buildDir, "l1", "rootfs.cpio")).includes("etc/init.d/S60morpheus-rsi-evidence"),
+    true,
+  );
+  assert.match(
+    readCpioEntry(
+      path.join(buildDir, "l1", "rootfs.cpio"),
+      "etc/init.d/S60morpheus-rsi-evidence",
+    ),
+    /MORPHEUS_RSI_EVIDENCE:/,
+  );
+  fs.writeFileSync(
+    path.join(tmpDir, "inflated-rootfs.cpio"),
+    gunzipFile(path.join(buildDir, "l1", "rootfs.cpio.gz")),
+  );
+  assert.equal(
+    listCpioEntries(path.join(tmpDir, "inflated-rootfs.cpio")).includes("etc/init.d/S60morpheus-rsi-evidence"),
+    true,
+  );
+  assert.equal(
+    fs.readFileSync(path.join(buildDir, "l1", "guest-disk.img"), "utf8"),
+    "guest-disk\n",
+  );
+  assert.match(
+    fs.readFileSync(path.join(buildDir, "l1", "launch-l2.sh"), "utf8"),
+    /gen-run-vmm\.sh --tap/,
+  );
+  assert.match(
+    fs.readFileSync(path.join(buildDir, "l1", "launch-l2-hoststack.sh"), "utf8"),
+    /MORPHEUS_L2_GEN_RUN_VMM_CFG/,
+  );
+  assert.match(
+    fs.readFileSync(path.join(buildDir, "l1", "launch-l2-hoststack.sh"), "utf8"),
+    /mount -t sysfs sysfs \/sys/,
+  );
+  assert.match(
+    fs.readFileSync(path.join(buildDir, "l1", "launch-l2-hoststack.sh"), "utf8"),
+    /\/etc\/init\.d\/S50macvtap start/,
+  );
+
+  const inspectRun = spawnSync("bash", [inspectScript], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_INSTALL_DIR: installDir,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RUN_DIR: path.join(tmpDir, "run"),
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR_KEY: "fixture-cvm-linaro-helper",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE: inspectResultFile,
+    },
+  });
+  assert.equal(inspectRun.status, 0, inspectRun.stderr + inspectRun.stdout);
+
+  const inspectResult = JSON.parse(fs.readFileSync(inspectResultFile, "utf8"));
+  assert.equal(inspectResult.details.guest_launch_mode, "linaro-gen-run-vmm");
+  assert.equal(
+    inspectResult.details.guest_helper_cfg,
+    path.join(buildDir, "l1", "gen-run-vmm.cfg"),
+  );
+  assert.equal(inspectResult.details.guest_rsi_evidence, null);
 });

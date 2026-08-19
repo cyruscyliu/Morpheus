@@ -55,8 +55,6 @@ tools:
       buildroot:
         tool: buildroot
         artifact: output-dir
-  nvirsh-buildroot-based-cvm:
-    build-dir-key: ci-fixture
   sel4:
     seed-dir: ../tools/sel4/tests/fixtures/minimal-sel4-src
     patch-dir: ../tools/sel4/patches/demo
@@ -521,6 +519,8 @@ workflows:
         args:
           - --source
           - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+          - --defconfig
+          - qemu_aarch64_virt_defconfig
         stageId: buildroot
         stageName: buildroot
         stageIndex: 0
@@ -585,6 +585,8 @@ workflows:
         args:
           - --source
           - "{{steps.buildroot_patch.artifacts.source-dir.location}}"
+          - --defconfig
+          - qemu_aarch64_virt_defconfig
         stageId: buildroot
         stageName: buildroot
         stageIndex: 0
@@ -638,3 +640,43 @@ workflows:
         stageName: qemu-host
         stageIndex: 2
         stageStepIndex: 1
+      - id: nvirsh_build
+        tool: nvirsh-buildroot-based-cvm
+        command: build
+        args:
+          - --qemu
+          - "{{steps.qemu_host_build.artifacts.qemu-system-aarch64.location}}"
+          - --buildroot-output-dir
+          - "{{steps.buildroot_build.artifacts.output-dir.location}}"
+          - --l1-kernel
+          - "{{steps.linux_build.artifacts.images/Image.location}}"
+          - --l1-firmware-a
+          - ./tests/fixtures/nvirsh-cvm/SBSA_FLASH0.fd
+          - --l1-firmware-b
+          - ./tests/fixtures/nvirsh-cvm/SBSA_FLASH1.fd
+          - --l1-machine
+          - sbsa-ref
+          - --l1-cpu
+          - max,x-rme=on,sme=off,pauth-impdef=on,sve=off
+          - --l1-cmdline
+          - root=/dev/vda console=ttyAMA0
+          - --l1-memory-mb
+          - "4096"
+          - --l1-cpus
+          - "1"
+          - --build-dir-key
+          - qemu-buildroot-based-cvm-smoke
+        stageId: nvirsh
+        stageName: nvirsh
+        stageIndex: 3
+        stageStepIndex: 0
+      - id: nvirsh_inspect
+        tool: nvirsh-buildroot-based-cvm
+        command: inspect
+        args:
+          - --build-dir-key
+          - qemu-buildroot-based-cvm-smoke
+        stageId: nvirsh
+        stageName: nvirsh
+        stageIndex: 4
+        stageStepIndex: 0

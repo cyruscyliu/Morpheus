@@ -20,6 +20,17 @@ export PATH="${PATH}:/usr/sbin:/usr/bin:/sbin:/bin"
 mkdir -p "${tmp_dir}"
 export TMPDIR="${tmp_dir}"
 
+make_args=()
+if [ -n "${make_arg_file}" ] && [ -s "${make_arg_file}" ]; then
+  mapfile -t make_args < "${make_arg_file}"
+  nproc_value="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 1)"
+  for i in "${!make_args[@]}"; do
+    make_args[$i]="${make_args[$i]//\$(nproc)/${nproc_value}}"
+  done
+else
+  make_args=(-j"$(morpheus_default_jobs)")
+fi
+
 stale_host_fakeroot() {
   local fakeroot_bin="$1"
   local expected_host_dir="$2"
@@ -38,6 +49,10 @@ compute_build_inputs_fingerprint() {
   {
     if [ "${include_defconfig}" = "true" ]; then
       printf 'defconfig=%s\n' "${defconfig}"
+    fi
+    if [ -n "${make_arg_file}" ] && [ -f "${make_arg_file}" ]; then
+      printf '%s\n' "${make_arg_file}"
+      sha256sum "${make_arg_file}"
     fi
     if [ -f "${patch_state_file}" ]; then
       printf '%s\n' "${patch_state_file}"
@@ -151,19 +166,19 @@ EOF
 fi
 
 if [ -n "${defconfig}" ]; then
-  make -C "${source_dir}" "O=${output_dir}" "${defconfig}"
+  make -C "${source_dir}" "O=${output_dir}" "${make_args[@]}" "${defconfig}"
 fi
 
 if [ -n "${config_fragment_file}" ] && [ -s "${config_fragment_file}" ]; then
   cat "${config_fragment_file}" >> "${output_dir}/.config"
 fi
 
-make -C "${source_dir}" "O=${output_dir}" olddefconfig
+make -C "${source_dir}" "O=${output_dir}" "${make_args[@]}" olddefconfig
 if [ "${reuse_build_dir}" = "true" ] \
   && [ "${build_inputs_compatible}" != "true" ] \
   && linux_build_dir_present; then
   printf '[buildroot] prepared build inputs changed; cleaning reused linux build tree\n'
-  make -C "${source_dir}" "O=${output_dir}" linux-dirclean
+  make -C "${source_dir}" "O=${output_dir}" "${make_args[@]}" linux-dirclean
 fi
 
 cat > "${build_inputs_state_file}" <<EOF
@@ -171,17 +186,6 @@ cat > "${build_inputs_state_file}" <<EOF
   "fingerprint": "${build_inputs_fingerprint}"
 }
 EOF
-
-make_args=()
-if [ -n "${make_arg_file}" ] && [ -s "${make_arg_file}" ]; then
-  mapfile -t make_args < "${make_arg_file}"
-  nproc_value="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 1)"
-  for i in "${!make_args[@]}"; do
-    make_args[$i]="${make_args[$i]//\$(nproc)/${nproc_value}}"
-  done
-else
-  make_args=(-j"$(morpheus_default_jobs)")
-fi
 
 make -C "${source_dir}" "O=${output_dir}" "${make_args[@]}"
 

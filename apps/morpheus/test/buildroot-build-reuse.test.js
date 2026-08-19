@@ -177,3 +177,83 @@ test("buildroot build reuses valid artifacts even when the output tree looks sta
   assert.equal(secondResult.details.reused, true);
   assert.equal(fs.statSync(buildLog).mtimeMs, buildLogMtime);
 });
+
+test("buildroot build applies make args to defconfig and fingerprints them for reuse", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-buildroot-make-args-"));
+  const sourceDir = path.join(tmpDir, "source");
+  const outputDir = path.join(tmpDir, "output");
+  const resultFile = path.join(tmpDir, "result.json");
+  const makeArgFile = path.join(tmpDir, "make-args.txt");
+
+  fs.cpSync(fixtureSource, sourceDir, { recursive: true });
+  fs.writeFileSync(makeArgFile, "BR2_EXTERNAL=/tmp/cca-a\n", "utf8");
+
+  const firstRun = spawnSync("bash", [buildScript], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      MORPHEUS_BUILDROOT_SOURCE: sourceDir,
+      MORPHEUS_BUILDROOT_OUTPUT: outputDir,
+      MORPHEUS_BUILDROOT_DEFCONFIG: "qemu_aarch64_virt_defconfig",
+      MORPHEUS_BUILDROOT_MAKE_ARG_FILE: makeArgFile,
+      MORPHEUS_BUILDROOT_RESULT_FILE: resultFile,
+      MORPHEUS_BUILDROOT_REUSE_BUILD_DIR: "true",
+    },
+  });
+  assert.equal(firstRun.status, 0, firstRun.stderr + firstRun.stdout);
+  assert.equal(JSON.parse(fs.readFileSync(resultFile, "utf8")).details.reused, false);
+  assert.deepEqual(
+    fs.readFileSync(path.join(outputDir, "defconfig.log"), "utf8").trim().split("\n"),
+    [
+      "configured qemu_aarch64_virt_defconfig",
+      "BR2_EXTERNAL=/tmp/cca-a",
+      "applied olddefconfig",
+      "BR2_EXTERNAL=/tmp/cca-a",
+    ],
+  );
+  const buildLog = path.join(outputDir, "build.log");
+  const firstBuildLogMtime = fs.statSync(buildLog).mtimeMs;
+
+  const secondRun = spawnSync("bash", [buildScript], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      MORPHEUS_BUILDROOT_SOURCE: sourceDir,
+      MORPHEUS_BUILDROOT_OUTPUT: outputDir,
+      MORPHEUS_BUILDROOT_DEFCONFIG: "qemu_aarch64_virt_defconfig",
+      MORPHEUS_BUILDROOT_MAKE_ARG_FILE: makeArgFile,
+      MORPHEUS_BUILDROOT_RESULT_FILE: resultFile,
+      MORPHEUS_BUILDROOT_REUSE_BUILD_DIR: "true",
+    },
+  });
+  assert.equal(secondRun.status, 0, secondRun.stderr + secondRun.stdout);
+  assert.equal(JSON.parse(fs.readFileSync(resultFile, "utf8")).details.reused, true);
+  assert.equal(fs.statSync(buildLog).mtimeMs, firstBuildLogMtime);
+
+  fs.writeFileSync(makeArgFile, "BR2_EXTERNAL=/tmp/cca-b\n", "utf8");
+
+  const thirdRun = spawnSync("bash", [buildScript], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      MORPHEUS_BUILDROOT_SOURCE: sourceDir,
+      MORPHEUS_BUILDROOT_OUTPUT: outputDir,
+      MORPHEUS_BUILDROOT_DEFCONFIG: "qemu_aarch64_virt_defconfig",
+      MORPHEUS_BUILDROOT_MAKE_ARG_FILE: makeArgFile,
+      MORPHEUS_BUILDROOT_RESULT_FILE: resultFile,
+      MORPHEUS_BUILDROOT_REUSE_BUILD_DIR: "true",
+    },
+  });
+  assert.equal(thirdRun.status, 0, thirdRun.stderr + thirdRun.stdout);
+  assert.equal(JSON.parse(fs.readFileSync(resultFile, "utf8")).details.reused, false);
+  assert.notEqual(fs.statSync(buildLog).mtimeMs, firstBuildLogMtime);
+  assert.deepEqual(
+    fs.readFileSync(path.join(outputDir, "defconfig.log"), "utf8").trim().split("\n"),
+    [
+      "configured qemu_aarch64_virt_defconfig",
+      "BR2_EXTERNAL=/tmp/cca-b",
+      "applied olddefconfig",
+      "BR2_EXTERNAL=/tmp/cca-b",
+    ],
+  );
+});

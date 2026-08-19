@@ -37,11 +37,10 @@ test("CVM workflow fixture wires explicit linux, qemu, and buildroot artifacts i
   const workflow = workflowFixture.workflows["nvirsh-qemu-arm64-cvm-exec"];
   assert.ok(workflow, "missing nvirsh-qemu-arm64-cvm-exec fixture");
   assert.equal(workflowFixture.tools["qemu-cca"], undefined);
+  assert.equal(workflowFixture.tools["nvirsh-buildroot-based-cvm"], undefined);
 
   const linuxTool = workflowFixture.tools["linux"];
-  const cvmTool = workflowFixture.tools["nvirsh-buildroot-based-cvm"];
   assert.ok(linuxTool, "missing linux tool config");
-  assert.ok(cvmTool, "missing nvirsh-buildroot-based-cvm tool config");
 
   const buildrootBuild = workflowStep(workflow, "buildroot_build");
   const linuxFetch = workflowStep(workflow, "linux_fetch");
@@ -62,11 +61,6 @@ test("CVM workflow fixture wires explicit linux, qemu, and buildroot artifacts i
 
   assert.equal(linuxTool["seed-dir"], "./minimal-linux-src");
   assert.equal(linuxTool["patch-dir"], "./patches");
-  assert.equal(cvmTool["host-stack-archive-url"], "https://example.invalid/host-stack.tar.xz");
-  assert.equal(
-    cvmTool["host-stack-archive-sha256"],
-    "0000000000000000000000000000000000000000000000000000000000000000",
-  );
 
   assert.equal(stepArg(linuxPatch, "--source"), "{{steps.linux_fetch.artifacts.source-dir.location}}");
   assert.equal(stepArg(linuxBuild, "--source"), "{{steps.linux_patch.artifacts.source-dir.location}}");
@@ -87,10 +81,27 @@ test("CVM workflow fixture wires explicit linux, qemu, and buildroot artifacts i
     stepArg(nvirshBuild, "--buildroot-output-dir"),
     "{{steps.buildroot_build.artifacts.output-dir.location}}",
   );
+  assert.equal(stepArg(buildrootBuild, "--defconfig"), "qemu_aarch64_virt_defconfig");
   assert.equal(
     stepArg(nvirshBuild, "--l1-kernel"),
     "{{steps.linux_build.artifacts.images/Image.location}}",
   );
+  assert.equal(
+    stepArg(nvirshBuild, "--l1-firmware-a"),
+    "./apps/morpheus/test/fixtures/nvirsh-workflows/SBSA_FLASH0.fd",
+  );
+  assert.equal(
+    stepArg(nvirshBuild, "--l1-firmware-b"),
+    "./apps/morpheus/test/fixtures/nvirsh-workflows/SBSA_FLASH1.fd",
+  );
+  assert.equal(stepArg(nvirshBuild, "--l1-machine"), "sbsa-ref");
+  assert.equal(
+    stepArg(nvirshBuild, "--l1-cpu"),
+    "max,x-rme=on,sme=off,pauth-impdef=on,sve=off",
+  );
+  assert.equal(stepArg(nvirshBuild, "--l1-cmdline"), "root=/dev/vda console=ttyAMA0");
+  assert.equal(stepArg(nvirshBuild, "--l1-memory-mb"), "4096");
+  assert.equal(stepArg(nvirshBuild, "--l1-cpus"), "1");
   assert.equal(
     stepArg(nvirshBuild, "--build-dir-key"),
     "qemu-buildroot-based-cvm-smoke",

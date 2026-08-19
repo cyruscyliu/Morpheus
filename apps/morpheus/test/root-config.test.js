@@ -104,6 +104,8 @@ const expectedWorkflowSteps = {
     ["linux", "build"],
     ["qemu", "fetch"],
     ["qemu", "build"],
+    ["nvirsh-buildroot-based-cvm", "build"],
+    ["nvirsh-buildroot-based-cvm", "inspect"],
   ],
 };
 
@@ -117,6 +119,19 @@ function readYaml(filePath) {
 
 function parseYaml(filePath) {
   return yaml.parse(readYaml(filePath)) || {};
+}
+
+function workflowStep(workflow, id) {
+  const step = (workflow.stages || []).find((entry) => entry.id === id);
+  assert.ok(step, `missing workflow step ${id}`);
+  return step;
+}
+
+function stepArg(step, flag) {
+  const args = Array.isArray(step.args) ? step.args : [];
+  const index = args.indexOf(flag);
+  assert.ok(index >= 0, `missing ${flag} in ${step.id}`);
+  return args[index + 1];
 }
 
 function assertNoYamlParseErrors(filePath) {
@@ -186,4 +201,63 @@ test("CI config resolves every seed directory from a checked-in fixture", () => 
     const resolvedSeedDir = path.resolve(path.dirname(ciConfigPath), seedDir);
     assert.ok(fs.existsSync(resolvedSeedDir), `${toolName} fixture is missing: ${seedDir}`);
   }
+});
+
+test("CI CVM workflow wires the buildroot-based CVM tool after linux and host qemu", () => {
+  const config = parseYaml(ciConfigPath);
+  const workflow = config.workflows["nvirsh-qemu-arm64-cvm-exec-ci"];
+  assert.ok(workflow, "missing nvirsh-qemu-arm64-cvm-exec-ci");
+
+  const qemuHostBuild = workflowStep(workflow, "qemu_host_build");
+  const nvirshBuild = workflowStep(workflow, "nvirsh_build");
+  const nvirshInspect = workflowStep(workflow, "nvirsh_inspect");
+
+  assert.equal(nvirshBuild.tool, "nvirsh-buildroot-based-cvm");
+  assert.equal(nvirshInspect.tool, "nvirsh-buildroot-based-cvm");
+  assert.equal(
+    stepArg(qemuHostBuild, "--source"),
+    "{{steps.qemu_host_fetch.artifacts.source-dir.location}}",
+  );
+  assert.equal(
+    stepArg(nvirshBuild, "--qemu"),
+    "{{steps.qemu_host_build.artifacts.qemu-system-aarch64.location}}",
+  );
+  assert.equal(
+    stepArg(nvirshBuild, "--buildroot-output-dir"),
+    "{{steps.buildroot_build.artifacts.output-dir.location}}",
+  );
+  assert.equal(
+    stepArg(workflowStep(workflow, "buildroot_build"), "--defconfig"),
+    "qemu_aarch64_virt_defconfig",
+  );
+  assert.equal(
+    stepArg(nvirshBuild, "--l1-kernel"),
+    "{{steps.linux_build.artifacts.images/Image.location}}",
+  );
+  assert.equal(
+    stepArg(nvirshBuild, "--l1-firmware-a"),
+    "./tests/fixtures/nvirsh-cvm/SBSA_FLASH0.fd",
+  );
+  assert.equal(
+    stepArg(nvirshBuild, "--l1-firmware-b"),
+    "./tests/fixtures/nvirsh-cvm/SBSA_FLASH1.fd",
+  );
+  assert.equal(stepArg(nvirshBuild, "--l1-machine"), "sbsa-ref");
+  assert.equal(
+    stepArg(nvirshBuild, "--l1-cpu"),
+    "max,x-rme=on,sme=off,pauth-impdef=on,sve=off",
+  );
+  assert.equal(stepArg(nvirshBuild, "--l1-cmdline"), "root=/dev/vda console=ttyAMA0");
+  assert.equal(stepArg(nvirshBuild, "--l1-memory-mb"), "4096");
+  assert.equal(stepArg(nvirshBuild, "--l1-cpus"), "1");
+  assert.equal(
+    stepArg(nvirshBuild, "--build-dir-key"),
+    "qemu-buildroot-based-cvm-smoke",
+  );
+  assert.equal(
+    stepArg(nvirshInspect, "--build-dir-key"),
+    "qemu-buildroot-based-cvm-smoke",
+  );
+  assert.equal(nvirshBuild.stageIndex, 3);
+  assert.equal(nvirshInspect.stageIndex, 4);
 });

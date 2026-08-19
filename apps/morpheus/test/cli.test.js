@@ -1987,6 +1987,93 @@ test("workflow run builds buildroot through scripted fetch patch build steps", (
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 
+test("workflow run completes the CI buildroot-based CVM workflow end-to-end", () => {
+  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-cvm-workflow-"));
+  const env = isolatedEnv({
+    MORPHEUS_DATA_ROOT: dataRoot,
+    MORPHEUS_WORKSPACES_ROOT: "",
+    MORPHEUS_CACHE_ROOT: "",
+  });
+
+  try {
+    const result = run([
+      "--json",
+      "--config",
+      ciConfigPath,
+      "workflow",
+      "run",
+      "--name",
+      "nvirsh-qemu-arm64-cvm-exec-ci",
+    ], {
+      env,
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+    assert.equal(payload.status, "success");
+    assert.equal(payload.details.steps.length, 10);
+    assert.deepEqual(
+      payload.details.steps.map((step) => step.id),
+      [
+        "buildroot_fetch",
+        "buildroot_patch",
+        "buildroot_build",
+        "linux_fetch",
+        "linux_patch",
+        "linux_build",
+        "qemu_host_fetch",
+        "qemu_host_build",
+        "nvirsh_build",
+        "nvirsh_inspect",
+      ],
+    );
+    assert.deepEqual(
+      payload.details.stages.map((stage) => [stage.id, stage.status]),
+      [
+        ["buildroot", "success"],
+        ["linux", "success"],
+        ["qemu-host", "success"],
+        ["nvirsh", "success"],
+      ],
+    );
+
+    const cacheRoot = ciCacheRoot(dataRoot);
+    assert.equal(
+      fs.existsSync(
+        path.join(
+          cacheRoot,
+          "tools",
+          "buildroot",
+          "builds",
+          "default",
+          "output",
+          "target",
+          "usr",
+          "bin",
+          "qemu-system-aarch64",
+        ),
+      ),
+      true,
+    );
+    assert.equal(
+      fs.existsSync(
+        path.join(
+          cacheRoot,
+          "tools",
+          "nvirsh-buildroot-based-cvm",
+          "builds",
+          "qemu-buildroot-based-cvm-smoke",
+          "install",
+          "state.json",
+        ),
+      ),
+      true,
+    );
+  } finally {
+    fs.rmSync(dataRoot, { recursive: true, force: true });
+    fs.rmSync(env.MORPHEUS_WORK_ROOT, { recursive: true, force: true });
+  }
+});
+
 test("workflow run fetches and patches sel4 through scripted fetch patch steps", () => {
   const dataRoot = sharedDataRoot;
   assert.ok(dataRoot);

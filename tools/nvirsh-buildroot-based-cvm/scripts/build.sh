@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/state.sh"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
@@ -56,6 +57,8 @@ launch_script="${l1_dir}/launch-l2.sh"
 hoststack_launch_script="${l1_dir}/launch-l2-hoststack.sh"
 state_file="${install_dir}/state.json"
 fingerprint_file="${install_dir}/inputs.fingerprint"
+l1_cpus="$(morpheus_default_cvm_l1_qemu_cpus)"
+l1_memory="$(morpheus_default_cvm_l1_qemu_memory_mb)"
 
 require_file() {
   local path="$1"
@@ -304,7 +307,7 @@ try {
   )"
 fi
 
-node - "${state_file}" "${build_dir_key}" "${build_dir}" "${install_dir}" "${current_fingerprint}" "${qemu}" "${host_boot_dir}/flash.bin" "${host_boot_dir}/vmlinuz" "${host_stack_dir}/out/host.ext4" "${l1_dir}" "${launch_script}" "${hoststack_launch_script}" "${guest_images_dir}/Image" "${guest_images_dir}/rootfs.cpio.gz" "${buildroot_vmlinux}" "${guest_qemu_dir}/bin/qemu-system-aarch64" "${guest_qemu_runtime_lib_dir}" "${buildroot_inputs_fingerprint}" "${profile_sha256}" "${host_stack_archive_url}" "${host_stack_archive_sha256}" <<'NODE'
+node - "${state_file}" "${build_dir_key}" "${build_dir}" "${install_dir}" "${current_fingerprint}" "${qemu}" "${host_boot_dir}/flash.bin" "${host_boot_dir}/vmlinuz" "${host_stack_dir}/out/host.ext4" "${l1_dir}" "${launch_script}" "${hoststack_launch_script}" "${guest_images_dir}/Image" "${guest_images_dir}/rootfs.cpio.gz" "${buildroot_vmlinux}" "${guest_qemu_dir}/bin/qemu-system-aarch64" "${guest_qemu_runtime_lib_dir}" "${buildroot_inputs_fingerprint}" "${profile_sha256}" "${host_stack_archive_url}" "${host_stack_archive_sha256}" "${l1_memory}" "${l1_cpus}" <<'NODE'
 const fs = require("fs");
 const path = require("path");
 const [
@@ -329,6 +332,8 @@ const [
   profileSha256,
   hostStackArchiveUrl,
   hostStackArchiveSha256,
+  l1Memory,
+  l1Cpus,
 ] = process.argv.slice(2);
 const buildrootOutputDir = path.dirname(path.dirname(l2Image));
 const now = new Date().toISOString();
@@ -348,8 +353,8 @@ const state = {
     kernel: l1Kernel,
     machine: "virt,virtualization=on,gic-version=3,its=on",
     cpu: "max,x-rme=on,sme=off,pauth-impdef=on,sve=off",
-    memory: "4096",
-    cpus: "1",
+    memory: String(l1Memory),
+    cpus: String(l1Cpus),
     accel: "tcg",
     enableKvm: false,
   },

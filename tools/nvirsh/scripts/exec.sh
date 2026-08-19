@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
+
 source_dir="${MORPHEUS_NVIRSH_SOURCE:?}"
 run_dir="${MORPHEUS_NVIRSH_RUN_DIR:?}"
 install_dir="${MORPHEUS_NVIRSH_INSTALL_DIR:?}"
@@ -72,17 +74,18 @@ let l1Accel = "";
 let l1EnableKvm = "false";
 
 if (l2Cvm) {
-  l1Machine = "virt,acpi=off,virtualization=on,secure=on,gic-version=3,iommu=smmuv3";
-  l1Accel = "tcg";
-  l1Memory = "2048";
+  /*
+   * Match the upstream cca-host-stack QEMU host recipe here.
+   *
+   * The CVM exec path boots the pinned host stack directly rather than the
+   * Debian L1 snapshot used during provisioning. Re-deriving a different
+   * machine/CPU/memory tuple here can hang before /init reaches
+   * /host/launch-l2-hoststack.sh, which leaves the runtime share empty and
+   * makes the detached launch look like a silent stall.
+   */
+  l1Machine = "virt,secure=on,virtualization=on,gic-version=3,iommu=smmuv3";
   l1Cpus = "1";
-  if (!(l1Cpu === "max" || l1Cpu.startsWith("max,"))) {
-    l1Cpu = "max";
-  }
-  l1Cpu = ensureCpuFlag(l1Cpu, "x-rme", "on");
-  l1Cpu = ensureCpuFlag(l1Cpu, "sme", "off");
-  l1Cpu = ensureCpuFlag(l1Cpu, "pauth-impdef", "on");
-  l1Cpu = ensureCpuFlag(l1Cpu, "sve", "off");
+  l1Cpu = "max";
 }
 
 const workspaceRoot = path.resolve(installDir, "..", "..", "..", "..", "..");
@@ -225,6 +228,14 @@ if [ "${l2_cvm}" = "true" ]; then
   l2_console_pty_file="${run_dir}/l2-console.pty"
 fi
 
+if [ "${l2_cvm}" != "true" ]; then
+  l1_cpus="$(morpheus_resolve_l1_qemu_cpus "${l1_cpus:-}")"
+  l1_memory="$(morpheus_resolve_l1_qemu_memory_mb "${l1_memory:-}")"
+else
+  l1_cpus="$(morpheus_default_cvm_l1_qemu_cpus)"
+  l1_memory="$(morpheus_default_cvm_l1_qemu_memory_mb)"
+fi
+
 if [ "${l2_cvm}" != "true" ] && [ ! -f "${ssh_key}" ]; then
   echo "missing ssh key for l1 access: ${ssh_key}" >&2
   exit 1
@@ -282,9 +293,9 @@ if [ "${l2_cvm}" = "true" ]; then
     "${l2_console_log}" \
     "${l2_console_pty_file}"
   ln -sfn "${l2_runtime_share_dir}/launch-l2.marker" "${l2_launch_marker_log}"
-  ln -sfn "${l2_runtime_share_dir}/lkvm.stdout.log" "${l2_launcher_stdout_log}"
-  ln -sfn "${l2_runtime_share_dir}/lkvm.stderr.log" "${l2_launcher_stderr_log}"
-  ln -sfn "${l2_runtime_share_dir}/l2-console.log" "${l2_console_log}"
+  ln -sfn "${l2_runtime_share_dir}/qemu.stdout.log" "${l2_launcher_stdout_log}"
+  ln -sfn "${l2_runtime_share_dir}/qemu.stderr.log" "${l2_launcher_stderr_log}"
+  ln -sfn "${l2_runtime_share_dir}/qemu.stdout.log" "${l2_console_log}"
   ln -sfn "${l2_runtime_share_dir}/l2-console.pty" "${l2_console_pty_file}"
 fi
 
@@ -383,6 +394,7 @@ l2_console_pty_file="${MORPHEUS_NVIRSH_RUNTIME_L2_CONSOLE_PTY_FILE:-}"
 qemu_pid=""
 qemu_stdin_fifo=""
 qemu_stdin_writer_pid=""
+preserve_qemu_pid_file="false"
 
 wait_for_ssh() {
   local keyfile="$1"
@@ -429,6 +441,61 @@ wait_for_log_pattern() {
   done
   echo "timed out waiting for ${description}" >&2
   return 124
+}
+
+cvm_l2_failure_detail() {
+  local detail=""
+  if [ -n "${l2_launcher_stderr_log}" ] && [ -f "${l2_launcher_stderr_log}" ]; then
+    detail="$(tail -n 1 "${l2_launcher_stderr_log}" | tr -d '\r')"
+  fi
+  if [ -z "${detail}" ] && [ -n "${l2_launch_marker_log}" ] && [ -f "${l2_launch_marker_log}" ]; then
+    detail="$(
+      LC_ALL=C grep -a -- 'qemu-exit-status=' "${l2_launch_marker_log}" 2>/dev/null | \
+        tail -n 1 | tr -d '\r'
+    )"
+  fi
+  printf '%s' "${detail}"
+}
+
+wait_for_cvm_l2_ready() {
+  local console_log="$1"
+  local pid="$2"
+  local timeout_seconds="$3"
+  local deadline=$((SECONDS + timeout_seconds))
+  while [ "${SECONDS}" -lt "${deadline}" ]; do
+    if [ -f "${console_log}" ] && LC_ALL=C grep -a -q -- 'buildroot login:' "${console_log}" 2>/dev/null; then
+      return 0
+    fi
+    if [ -n "${l2_launch_marker_log}" ] && [ -f "${l2_launch_marker_log}" ] && \
+       LC_ALL=C grep -a -q -- 'qemu-exit-status=' "${l2_launch_marker_log}" 2>/dev/null; then
+      local detail
+      detail="$(cvm_l2_failure_detail)"
+      if [ -n "${detail}" ]; then
+        echo "${detail}" >&2
+      else
+        echo "l2 qemu exited before buildroot login prompt" >&2
+      fi
+      return 125
+    fi
+    if [ -n "${pid}" ] && ! kill -0 "${pid}" 2>/dev/null; then
+      echo "l2 buildroot login prompt not observed before l1 qemu exited" >&2
+      return 1
+    fi
+    sleep 2
+  done
+  echo "timed out waiting for l2 buildroot login prompt" >&2
+  return 124
+}
+
+summarize_l2_failure() {
+  local base="$1"
+  local detail
+  detail="$(cvm_l2_failure_detail)"
+  if [ -n "${detail}" ]; then
+    printf '%s: %s' "${base}" "${detail}"
+    return 0
+  fi
+  printf '%s' "${base}"
 }
 
 normalize_console_log() {
@@ -588,7 +655,9 @@ cleanup() {
   if [ -n "${qemu_stdin_fifo}" ]; then
     rm -f "${qemu_stdin_fifo}"
   fi
-  rm -f "${qemu_pid_file}"
+  if [ "${preserve_qemu_pid_file}" != "true" ]; then
+    rm -f "${qemu_pid_file}"
+  fi
   set -e
 }
 
@@ -646,16 +715,11 @@ if [ "${l2_cvm}" = "true" ]; then
   printf '%s\n' "${qemu_pid}" > "${qemu_pid_file}"
   write_manifest "running" "" ""
 
-  if wait_for_log_pattern "${l2_console_log}" "buildroot login:" "${qemu_pid}" 900 "l2 buildroot login prompt"; then
+  if wait_for_cvm_l2_ready "${l2_console_log}" "${qemu_pid}" 2100; then
     printf '[nvirsh] exec observed l2 buildroot login prompt\n' | tee -a "${stdout_log}"
     if [ "${detached}" = "true" ]; then
       normalize_runtime_logs
-      while kill -0 "${qemu_pid}" 2>/dev/null; do
-        sleep 5
-      done
-      set +e
-      wait "${qemu_pid}" 2>/dev/null || true
-      set -e
+      preserve_qemu_pid_file="true"
       qemu_pid=""
       exit 0
     fi
@@ -757,7 +821,7 @@ fi
 
 normalize_runtime_logs
 if [ "${l2_cvm}" = "true" ]; then
-  write_manifest "error" "${launch_status}" "launch-l2-hoststack.sh failed"
+  write_manifest "error" "${launch_status}" "$(summarize_l2_failure "launch-l2-hoststack.sh failed")"
 else
   write_manifest "error" "${launch_status}" "launch-l2.sh failed"
 fi

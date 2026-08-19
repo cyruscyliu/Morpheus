@@ -28,6 +28,7 @@ install_dir="${MORPHEUS_LIBAFL_INSTALL_DIR:?}"
 detach="${MORPHEUS_LIBAFL_DETACH:-false}"
 run_seconds="${MORPHEUS_LIBAFL_RUN_SECONDS:-0}"
 result_file="${MORPHEUS_LIBAFL_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
 
 nvirsh_state=""
 l2_run_window_ms=""
@@ -298,7 +299,10 @@ l1_build_dir="${state_fields[6]}"
 l1_hoststack_rootfs="${state_fields[7]:-}"
 l1_hoststack_share_dir="${state_fields[8]:-}"
 l1_hoststack_launch="${state_fields[9]:-}"
-libafl_l1_smp="${MORPHEUS_LIBAFL_L1_SMP:-1}"
+libafl_l1_smp_requested="${MORPHEUS_LIBAFL_L1_SMP:-${l1_smp:-}}"
+l1_memory_requested="${MORPHEUS_LIBAFL_L1_MEMORY:-${l1_memory:-}}"
+libafl_l1_smp="$(morpheus_resolve_l1_qemu_cpus "${libafl_l1_smp_requested}")"
+l1_memory="$(morpheus_resolve_l1_qemu_memory_mb "${l1_memory_requested}")"
 qemu_data_dir="${qemu_bundle_dir}"
 firmware_data_dir="$(dirname "${firmware}")"
 direct_l1_kernel="${l1_build_dir}/l1/host-boot/vmlinuz"
@@ -470,7 +474,7 @@ ensure_cpu_flag() {
 if [ "${l2_mode}" = "cvm" ]; then
   # Match nvirsh CVM L1: RME-capable machine + max CPU with x-rme.
   # Keep the debian overlay + stub init so libafl nesting still owns the
-  # fuzz loop; the stub mounts virtfs tag "host" and runs hoststack lkvm.
+  # fuzz loop; the stub mounts virtfs tag "host" and runs hoststack qemu.
   if [ -z "${l1_hoststack_share_dir}" ]; then
     l1_hoststack_share_dir="${l1_build_dir}/l1"
   fi
@@ -504,9 +508,10 @@ if [ "${l2_mode}" = "cvm" ]; then
   l1_cpu_effective="$(ensure_cpu_flag "${l1_cpu_effective}" "pauth-impdef" "on")"
   l1_cpu_effective="$(ensure_cpu_flag "${l1_cpu_effective}" "sve" "off")"
 
-  # nvirsh cvm L1 uses 2048M / 1 cpu under tcg; keep libafl smp override.
-  l1_memory_cvm="${MORPHEUS_LIBAFL_L1_MEMORY:-2048}"
-  l1_smp_cvm="${libafl_l1_smp}"
+  # Keep the CVM L1 aligned with nvirsh: 4096M is the known-good floor for
+  # booting the inner 1G Realm guest under the README pure-QEMU path.
+  l1_memory_cvm="$(morpheus_default_cvm_l1_qemu_memory_mb)"
+  l1_smp_cvm="$(morpheus_default_cvm_l1_qemu_cpus)"
 
   args=(
     "-machine" "virt,acpi=off,virtualization=on,secure=on,gic-version=3,iommu=smmuv3"

@@ -106,6 +106,8 @@ test("buildroot-based CVM build stages explicit linux, buildroot, and host-stack
   assert.equal(state.layeredState.l2.mode, "cvm");
   assert.equal(state.hostLaunch.qemu, hostQemu);
   assert.equal(state.hostLaunch.kernel, path.join(buildDir, "l1", "host-boot", "vmlinuz"));
+  assert.equal(state.hostLaunch.memory, "4096");
+  assert.equal(state.hostLaunch.cpus, "1");
   assert.equal(
     fs.existsSync(path.join(buildDir, "l1", "guest-qemu", "bin", "qemu-system-aarch64")),
     true,

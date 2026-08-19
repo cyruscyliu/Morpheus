@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
+
 install_dir="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_INSTALL_DIR:?}"
 run_dir="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RUN_DIR:?}"
 phase="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_PHASE:?}"
@@ -76,6 +78,8 @@ hoststack_rootfs="${runtime_fields[9]}"
 hoststack_share_dir="${runtime_fields[10]}"
 hoststack_launch_script_local="${runtime_fields[11]}"
 l2_runtime_share_dir="${runtime_fields[12]}"
+l1_cpus="$(morpheus_default_cvm_l1_qemu_cpus)"
+l1_memory="$(morpheus_default_cvm_l1_qemu_memory_mb)"
 
 require_file() {
   local path="$1"

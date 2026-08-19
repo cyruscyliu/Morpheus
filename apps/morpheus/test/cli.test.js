@@ -22,6 +22,9 @@ const devilangAuditFixture = path.join(
 );
 const { applyConfigDefaults } = require("../dist/core/config.js");
 const { effectiveBuildDirKey, syncRemotePathToLocal } = require("../dist/transport/remote.js");
+const repoEnv = fs.readFileSync(path.join(repoRoot, ".env"), "utf8");
+const sharedDataRootMatch = repoEnv.match(/^MORPHEUS_DATA_ROOT=(.+)$/m);
+const sharedDataRoot = process.env.MORPHEUS_DATA_ROOT || (sharedDataRootMatch ? sharedDataRootMatch[1].trim() : null);
 
 function run(args, options = {}) {
   return spawnSync(process.execPath, [bin, ...args], {
@@ -1842,7 +1845,9 @@ test("workflow run resolves prior step artifacts in configured workflows", () =>
 
 test("workflow run builds qemu through scripted fetch patch build steps", () => {
   const workspaceRoot = path.join(repoRoot, "workspace");
-  const cacheRoot = path.join(repoRoot, ".cache", "root");
+  const dataRoot = sharedDataRoot;
+  assert.ok(dataRoot);
+  const cacheRoot = path.join(dataRoot, "cache", "root");
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 
   const result = run([
@@ -1900,7 +1905,9 @@ test("workflow run builds qemu through scripted fetch patch build steps", () => 
 
 test("workflow run builds buildroot through scripted fetch patch build steps", () => {
   const workspaceRoot = path.join(repoRoot, "workspace");
-  const cacheRoot = path.join(repoRoot, ".cache", "root");
+  const dataRoot = sharedDataRoot;
+  assert.ok(dataRoot);
+  const cacheRoot = path.join(dataRoot, "cache", "root");
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 
   const result = run([
@@ -1950,7 +1957,9 @@ test("workflow run builds buildroot through scripted fetch patch build steps", (
 
 test("workflow run fetches and patches sel4 through scripted fetch patch steps", () => {
   const workspaceRoot = path.join(repoRoot, "workspace");
-  const cacheRoot = path.join(repoRoot, ".cache", "root");
+  const dataRoot = sharedDataRoot;
+  assert.ok(dataRoot);
+  const cacheRoot = path.join(dataRoot, "cache", "root");
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 
   const result = run([
@@ -1996,6 +2005,8 @@ test("workflow run builds microkit-sdk through scripted fetch patch build steps"
   ]);
   assert.equal(configView.status, 0, configView.stderr || configView.stdout);
   const workspaceRoot = JSON.parse(configView.stdout).details.workspace_root;
+  const dataRoot = sharedDataRoot;
+  assert.ok(dataRoot);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 
   const result = run([
@@ -2013,7 +2024,7 @@ test("workflow run builds microkit-sdk through scripted fetch patch build steps"
   assert.equal(payload.details.steps.length, 5);
 
   const generated = path.join(
-    path.join(repoRoot, ".cache", "root"),
+    path.join(dataRoot, "cache", "root"),
     "tools",
     "microkit-sdk",
     "builds",
@@ -2043,6 +2054,8 @@ test("workflow run builds microkit-sdk through scripted fetch patch build steps"
 
 test("workflow run builds libvmm through scripted fetch patch build steps", () => {
   const workspaceRoot = path.join(repoRoot, "workspace");
+  const dataRoot = sharedDataRoot;
+  assert.ok(dataRoot);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 
   const result = run([
@@ -2060,7 +2073,7 @@ test("workflow run builds libvmm through scripted fetch patch build steps", () =
   assert.equal(payload.details.steps.length, 8);
 
   const contract = path.join(
-    path.join(repoRoot, ".cache", "root"),
+    path.join(dataRoot, "cache", "root"),
     "tools",
     "libvmm",
     "builds",
@@ -2069,7 +2082,7 @@ test("workflow run builds libvmm through scripted fetch patch build steps", () =
     "runtime-contract.json",
   );
   const guest = path.join(
-    path.join(repoRoot, ".cache", "root"),
+    path.join(dataRoot, "cache", "root"),
     "tools",
     "libvmm",
     "builds",

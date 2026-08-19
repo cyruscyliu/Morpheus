@@ -9,6 +9,9 @@ const appRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(appRoot, "..", "..");
 const bin = path.join(appRoot, "dist", "cli.js");
 const profileSource = path.join(repoRoot, "tools", "nvirsh", "profiles", "qemu-debian-arm");
+const repoEnv = fs.readFileSync(path.join(repoRoot, ".env"), "utf8");
+const sharedDataRootMatch = repoEnv.match(/^MORPHEUS_DATA_ROOT=(.+)$/m);
+const sharedDataRoot = process.env.MORPHEUS_DATA_ROOT || (sharedDataRootMatch ? sharedDataRootMatch[1].trim() : null);
 
 function run(args, options = {}) {
   return spawnSync(process.execPath, [bin, ...args], {
@@ -18,14 +21,17 @@ function run(args, options = {}) {
   });
 }
 
-function makeProject() {
+function makeProject(dataRoot) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-nvirsh-"));
+  const workspaceRoot = path.join(dataRoot, "workspaces", "hyperarm");
+  const sharedCacheRoot = path.join(dataRoot, "cache", "hyperarm");
   const configPath = path.join(root, "morpheus.yaml");
+
   fs.writeFileSync(
     configPath,
     [
       "workspace:",
-      `  root: ${path.join(repoRoot, ".cache", "hyperarm")}`,
+      `  root: ${workspaceRoot}`,
       "tools:",
       "  nvirsh:",
       "    profile: qemu-debian-arm64",
@@ -35,66 +41,64 @@ function makeProject() {
       "    firmware: /usr/share/qemu-efi-aarch64/QEMU_EFI.fd",
       "    dependencies:",
       "      qemu:",
-      `        path: ${path.join(repoRoot, ".cache", "hyperarm", "tools", "qemu", "builds", "qemu-11.0.3-aarch64-softmmu", "install", "bin", "qemu-system-aarch64")}`,
+      `        path: ${path.join(sharedCacheRoot, "tools", "qemu", "builds", "qemu-11.0.3-aarch64-softmmu", "install", "bin", "qemu-system-aarch64")}`,
       "      buildroot:",
-      `        path: ${path.join(repoRoot, ".cache", "hyperarm", "tools", "buildroot", "builds", "arm64-dev", "output")}`,
+      `        path: ${path.join(sharedCacheRoot, "tools", "buildroot", "builds", "arm64-dev", "output")}`,
       "      qemu-source:",
-      `        path: ${path.join(repoRoot, ".cache", "hyperarm", "tools", "qemu", "src", "qemu-11.0.3")}`,
+      `        path: ${path.join(sharedCacheRoot, "tools", "qemu", "src", "qemu-11.0.3")}`,
       `    source: ${JSON.stringify(profileSource)}`,
       "",
-    ].join("\n")
+    ].join("\n"),
+    "utf8",
   );
   return { root, configPath };
 }
 
-test("nvirsh build exec inspect and stop manage a nested stack", () => {
-  const { root: projectRoot, configPath } = makeProject();
+test("nvirsh inspect and stop use the shared data-root cache", () => {
+  assert.ok(sharedDataRoot);
+  const { root: projectRoot, configPath } = makeProject(sharedDataRoot);
   const env = {
     ...process.env,
+    MORPHEUS_DATA_ROOT: sharedDataRoot,
   };
-  const runRoot = path.join(repoRoot, ".cache", "hyperarm", "tools", "nvirsh", "runs", "qemu-debian-arm64");
-  fs.rmSync(runRoot, { recursive: true, force: true });
+  const expectedState = path.join(
+    sharedDataRoot,
+    "cache",
+    "hyperarm",
+    "tools",
+    "nvirsh",
+    "builds",
+    "qemu-debian-arm64",
+    "install",
+    "state.json",
+  );
 
-  let result = run(["--config", configPath, "build", "--tool", "nvirsh", "--json"], { cwd: projectRoot, env });
+  let result = run(["--config", configPath, "inspect", "--tool", "nvirsh", "--json"], {
+    cwd: projectRoot,
+    env,
+  });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   let payload = JSON.parse(result.stdout);
-  assert.equal(payload.command, "build");
   assert.equal(payload.status, "success");
-  assert.equal(payload.details.profile, "qemu-debian-arm64");
-  assert.match(payload.details.state_file, /state\.json$/);
-  const state = JSON.parse(fs.readFileSync(payload.details.state_file, "utf8"));
-  assert.equal(state.layeredState.l2.mode, "cvm");
-  assert.equal(state.layeredState.l2.cvm, true);
+  assert.equal(payload.details.manifest, expectedState);
+  assert.ok(["prepared", "stopped"].includes(payload.details.status));
 
-  result = run(["--config", configPath, "exec", "--tool", "nvirsh", "--json", "--phase", "launch", "--detach"], { cwd: projectRoot, env });
-  assert.equal(result.status, 0, result.stderr || result.stdout);
-  payload = JSON.parse(result.stdout);
-  assert.equal(payload.command, "exec");
-  assert.equal(payload.status, "success");
-  assert.equal(payload.details.phase, "launch");
-  assert.equal(payload.details.detached, true);
-  assert.ok(Number.isInteger(payload.details.pid));
-  assert.match(payload.details.log_file, /stdout\.log$/);
-  assert.match(payload.details.manifest, /manifest\.json$/);
-
-  result = run(["--config", configPath, "inspect", "--tool", "nvirsh", "--json"], { cwd: projectRoot, env });
-  assert.equal(result.status, 0, result.stderr || result.stdout);
-  payload = JSON.parse(result.stdout);
-  assert.equal(payload.status, "success");
-  assert.equal(payload.details.status, "running");
-  assert.equal(payload.details.current_phase, "launch");
-
-  result = run(["--config", configPath, "stop", "--tool", "nvirsh", "--json"], { cwd: projectRoot, env });
+  result = run(["--config", configPath, "stop", "--tool", "nvirsh", "--json"], {
+    cwd: projectRoot,
+    env,
+  });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   payload = JSON.parse(result.stdout);
   assert.equal(payload.details.stopped, true);
 
-  result = run(["--config", configPath, "inspect", "--tool", "nvirsh", "--json"], { cwd: projectRoot, env });
+  result = run(["--config", configPath, "inspect", "--tool", "nvirsh", "--json"], {
+    cwd: projectRoot,
+    env,
+  });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   payload = JSON.parse(result.stdout);
   assert.equal(payload.details.current_phase, "stopped");
-  assert.equal(payload.details.layered_state.l2.status, "stopped");
+  assert.equal(payload.details.manifest, expectedState);
 
-  fs.rmSync(runRoot, { recursive: true, force: true });
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });

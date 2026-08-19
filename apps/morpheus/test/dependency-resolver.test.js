@@ -61,7 +61,7 @@ test("resolveToolDependencies projects managed artifacts into the global cache",
     "workspace:",
     "  root: ./workspace",
     "cache:",
-    "  root: ./.cache",
+    "  root: ./cache",
     "  namespace: hyperarm",
     "  downloads: global",
     "  builds: global",
@@ -102,7 +102,7 @@ test("resolveToolDependencies projects managed artifacts into the global cache",
 
     assert.equal(
       libvmm["microkit-sdk"],
-      path.join(projectRoot, ".cache", "hyperarm", "tools", "microkit-sdk", "builds", "microkit-sdk-2.1.0", "install"),
+      path.join(projectRoot, "cache", "hyperarm", "tools", "microkit-sdk", "builds", "microkit-sdk-2.1.0", "install"),
     );
 
     const microkit = dependencyResolver.resolveToolDependencies(
@@ -117,7 +117,7 @@ test("resolveToolDependencies projects managed artifacts into the global cache",
 
     assert.equal(
       microkit.sel4,
-      path.join(projectRoot, ".cache", "hyperarm", "tools", "sel4", "builds", "sel4-c0fc3245", "source"),
+      path.join(projectRoot, "cache", "hyperarm", "tools", "sel4", "builds", "sel4-c0fc3245", "source"),
     );
   });
 
@@ -132,7 +132,7 @@ test("resolveToolDependencies keeps workspace paths when cache is workspace-scop
     "workspace:",
     "  root: ./workspace",
     "cache:",
-    "  root: ./.cache",
+    "  root: ./cache",
     "  namespace: hyperarm",
     "  downloads: workspace",
     "  builds: workspace",
@@ -180,7 +180,7 @@ test("resolveToolDependencies infers cache namespace from workspace.root when mi
     "workspace:",
     "  root: ./hyperarm",
     "cache:",
-    "  root: ./.cache",
+    "  root: ./cache",
     "  downloads: global",
     "  builds: global",
     "  src: global",
@@ -210,7 +210,7 @@ test("resolveToolDependencies infers cache namespace from workspace.root when mi
     );
     assert.equal(
       microkit.sel4,
-      path.join(projectRoot, ".cache", "hyperarm", "tools", "sel4", "builds", "sel4-c0fc3245", "source"),
+      path.join(projectRoot, "cache", "hyperarm", "tools", "sel4", "builds", "sel4-c0fc3245", "source"),
     );
   });
 
@@ -279,7 +279,7 @@ test("resolveToolDependencies projects nvirsh runtime inputs through Morpheus", 
     "workspace:",
     "  root: ./workspace",
     "cache:",
-    "  root: ./.cache",
+    "  root: ./cache",
     "  namespace: hyperarm",
     "  downloads: global",
     "  builds: global",
@@ -316,11 +316,11 @@ test("resolveToolDependencies projects nvirsh runtime inputs through Morpheus", 
 
     assert.equal(
       nvirsh.qemu,
-      path.join(projectRoot, ".cache", "hyperarm", "tools", "qemu", "builds", "qemu-11.0.3-aarch64-softmmu", "install", "bin", "qemu-system-aarch64"),
+      path.join(projectRoot, "cache", "hyperarm", "tools", "qemu", "builds", "qemu-11.0.3-aarch64-softmmu", "install", "bin", "qemu-system-aarch64"),
     );
     assert.equal(
       nvirsh["buildroot-output-dir"],
-      path.join(projectRoot, ".cache", "hyperarm", "tools", "buildroot", "builds", "arm64-dev", "output"),
+      path.join(projectRoot, "cache", "hyperarm", "tools", "buildroot", "builds", "arm64-dev", "output"),
     );
   });
 

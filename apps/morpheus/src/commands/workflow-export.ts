@@ -231,11 +231,11 @@ function exportWorkflowBundle(options) {
   const bundleWorkspaceRoot = path.join(outputDir, "data", "workspaces", workspaceName);
   mirrorTree(repoRoot(), bundleRepoRoot, {
     linkMode,
-    excludeNames: [".git", ".cache", ".morpheus-sync", "artifacts"]
+    excludeNames: [".git", ".morpheus-sync", "artifacts"]
   });
   mirrorTree(loaded.workspaceRoot, bundleWorkspaceRoot, {
     linkMode,
-    excludeNames: [".git", ".cache", ".morpheus-sync", "artifacts", "tmp", "runs", "workflows", "poison"]
+    excludeNames: [".git", ".morpheus-sync", "artifacts", "tmp", "runs", "workflows", "poison"]
   });
 
   const bundleConfigPath = path.join(outputDir, bundleConfigRel);

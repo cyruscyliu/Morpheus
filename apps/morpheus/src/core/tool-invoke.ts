@@ -518,7 +518,14 @@ function buildScriptValues(descriptor, tool, command, spec, flags) {
   const archiveFlag = archive && typeof archive.flag === "string" && archive.flag
     ? archive.flag
     : "archive-url";
-  if (!values[archiveFlag] && archive && typeof archive.urlTemplate === "string" && archive.urlTemplate) {
+  if (
+    !values[archiveFlag]
+    && !values["seed-dir"]
+    && !values["git-url"]
+    && archive
+    && typeof archive.urlTemplate === "string"
+    && archive.urlTemplate
+  ) {
     values[archiveFlag] = renderScriptTemplate(archive.urlTemplate, {
       ...values,
       buildVersion: buildVersion || "default",

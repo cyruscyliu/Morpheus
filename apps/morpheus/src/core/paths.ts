@@ -48,7 +48,10 @@ function defaultCacheRoot() {
 
 function workspacePaths() {
   const root = workRoot();
-  const cacheRoot = defaultCacheRoot() || path.join(root, "cache");
+  const cacheRoot = defaultCacheRoot();
+  if (!cacheRoot) {
+    throw new Error("MORPHEUS_DATA_ROOT or MORPHEUS_CACHE_ROOT must be configured");
+  }
 
   return {
     root,

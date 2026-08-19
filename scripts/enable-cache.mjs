@@ -117,7 +117,13 @@ function ensureCacheConfig(doc, configPath, repoRoot, flags) {
   // into yaml unless the user passes --root explicitly.
   const dataRoot = process.env.MORPHEUS_DATA_ROOT || null;
   const autoCacheRoot = dataRoot ? path.join(dataRoot, "cache") : null;
-  const cacheRootRaw = flags.root || readScalar(doc, ["cache", "root"]) || autoCacheRoot || "./.cache";
+  const existingRoot = readScalar(doc, ["cache", "root"]);
+  const legacyCacheRoot = existingRoot
+    && path.resolve(path.dirname(configPath), existingRoot).endsWith(`${path.sep}.cache`);
+  const cacheRootRaw = flags.root || autoCacheRoot || (!legacyCacheRoot ? existingRoot : null);
+  if (!cacheRootRaw) {
+    fail("MORPHEUS_DATA_ROOT must be set or --root must be provided");
+  }
   const expected = {
     root: cacheRootRaw,
     namespace,
@@ -127,7 +133,6 @@ function ensureCacheConfig(doc, configPath, repoRoot, flags) {
     writeRoot: Boolean(flags.root),
   };
 
-  const existingRoot = readScalar(doc, ["cache", "root"]);
   const existingNamespace = readScalar(doc, ["cache", "namespace"]);
   const existingDownloads = readScalar(doc, ["cache", "downloads"]);
   const existingBuilds = readScalar(doc, ["cache", "builds"]);

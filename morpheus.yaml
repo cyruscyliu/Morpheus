@@ -9,6 +9,9 @@ tools:
   buildroot:
     seed-dir: ./tools/buildroot/tests/fixtures/minimal-buildroot
     patch-dir: ./tools/buildroot/patches/demo
+  linux:
+    seed-dir: ./tools/linux/tests/fixtures/minimal-linux-src
+    patch-dir: ./tools/linux/patches/demo
   libvmm:
     seed-dir: ./tools/libvmm/tests/fixtures/minimal-libvmm-src
     patch-dir: ./tools/libvmm/patches/demo
@@ -64,6 +67,11 @@ tools:
       buildroot:
         tool: buildroot
         artifact: output-dir
+  nvirsh-buildroot-based-cvm:
+    build-dir-key: buildroot-based-cvm
+    reuse-build-dir: true
+    host-stack-archive-url: https://github.com/p-b-o/qemu-linux-stack/releases/download/build/master-11247fd.tar.xz
+    host-stack-archive-sha256: 0d9cc57c109bcdc42294a41334e2909fa51c42784160fb5a7396dfce49c90d07
   sel4:
     seed-dir: ./tools/sel4/tests/fixtures/minimal-sel4-src
     patch-dir: ./tools/sel4/patches/demo
@@ -717,75 +725,78 @@ workflows:
         stageName: buildroot
         stageIndex: 0
         stageStepIndex: 2
-      - id: qemu_fetch
-        tool: qemu
+      - id: linux_fetch
+        tool: linux
         command: fetch
-        stageId: qemu
-        stageName: qemu
+        stageId: linux
+        stageName: linux
         stageIndex: 1
         stageStepIndex: 0
-      - id: qemu_patch
-        tool: qemu
+      - id: linux_patch
+        tool: linux
         command: patch
         args:
           - --source
-          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
-        stageId: qemu
-        stageName: qemu
+          - "{{steps.linux_fetch.artifacts.source-dir.location}}"
+        stageId: linux
+        stageName: linux
         stageIndex: 1
         stageStepIndex: 1
-      - id: qemu_build
+      - id: linux_build
+        tool: linux
+        command: build
+        args:
+          - --source
+          - "{{steps.linux_patch.artifacts.source-dir.location}}"
+          - --defconfig
+          - qemu_virt_defconfig
+        stageId: linux
+        stageName: linux
+        stageIndex: 1
+        stageStepIndex: 2
+      - id: qemu_host_fetch
+        tool: qemu
+        command: fetch
+        stageId: qemu-host
+        stageName: qemu-host
+        stageIndex: 2
+        stageStepIndex: 0
+      - id: qemu_host_build
         tool: qemu
         command: build
         args:
           - --source
-          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
-        stageId: qemu
-        stageName: qemu
-        stageIndex: 1
-        stageStepIndex: 2
-      - id: nvirsh_fetch
-        tool: nvirsh
-        command: fetch
-        stageId: nvirsh
-        stageName: nvirsh
+          - "{{steps.qemu_host_fetch.artifacts.source-dir.location}}"
+          - --build-dir-key
+          - qemu-ci-host-fixture
+          - --reuse-build-dir
+        stageId: qemu-host
+        stageName: qemu-host
         stageIndex: 2
-        stageStepIndex: 0
+        stageStepIndex: 1
       - id: nvirsh_build
-        tool: nvirsh
+        tool: nvirsh-buildroot-based-cvm
         command: build
         args:
           - --qemu
-          - "{{steps.qemu_build.artifacts.qemu-system-aarch64.location}}"
+          - "{{steps.qemu_host_build.artifacts.qemu-system-aarch64.location}}"
           - --buildroot-output-dir
           - "{{steps.buildroot_build.artifacts.output-dir.location}}"
-          - --guest-qemu-source
-          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
-          - --l2-mode
-          - cvm
+          - --l1-kernel
+          - "{{steps.linux_build.artifacts.images/Image.location}}"
+          - --build-dir-key
+          - qemu-buildroot-based-cvm-smoke
         stageId: nvirsh
         stageName: nvirsh
-        stageIndex: 2
-        stageStepIndex: 1
-      - id: nvirsh_exec
-        tool: nvirsh
-        command: exec
-        args:
-          - --phase
-          - launch
-          - --detach
-        timeout-seconds: 300
-        stageId: nvirsh-exec
-        stageName: nvirsh-exec
         stageIndex: 3
         stageStepIndex: 0
-      - id: nvirsh_stop
-        tool: nvirsh
-        command: stop
+      - id: nvirsh_inspect
+        tool: nvirsh-buildroot-based-cvm
+        command: inspect
         args:
-          - --run-dir
-          - "{{steps.nvirsh_exec.details.run_dir}}"
-        stageId: nvirsh-exec
-        stageName: nvirsh-exec
-        stageIndex: 3
-        stageStepIndex: 1
+          - --build-dir-key
+          - qemu-buildroot-based-cvm-smoke
+        stageId: nvirsh-inspect
+        stageName: nvirsh-inspect
+        stageIndex: 4
+        stageStepIndex: 0

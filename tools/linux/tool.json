@@ -1,0 +1,266 @@
+{
+  "name": "linux",
+  "runtime": null,
+  "cli-contract": "fetch,patch,build,inspect",
+  "config": {
+    "fields": {
+      "mode": {
+        "aliases": [
+          "mode"
+        ]
+      },
+      "remote": {
+        "aliases": [
+          "remote"
+        ]
+      },
+      "source": {
+        "aliases": [
+          "source"
+        ],
+        "path": true
+      },
+      "seed-dir": {
+        "aliases": [
+          "seed-dir",
+          "seedDir"
+        ],
+        "path": true
+      },
+      "patch-dir": {
+        "aliases": [
+          "patch-dir",
+          "patchDir"
+        ],
+        "path": true
+      },
+      "reuse-build-dir": {
+        "aliases": [
+          "reuse-build-dir",
+          "reuseBuildDir"
+        ],
+        "boolean": true
+      },
+      "build-dir-key": {
+        "aliases": [
+          "build-dir-key",
+          "buildDirKey"
+        ]
+      },
+      "build-version": {
+        "aliases": [
+          "build-version",
+          "buildVersion",
+          "linux-version",
+          "linuxVersion"
+        ]
+      },
+      "archive-url": {
+        "aliases": [
+          "archive-url",
+          "archiveUrl"
+        ]
+      },
+      "git-url": {
+        "aliases": [
+          "git-url",
+          "gitUrl"
+        ]
+      },
+      "git-ref": {
+        "aliases": [
+          "git-ref",
+          "gitRef"
+        ]
+      },
+      "fetch-submodules": {
+        "aliases": [
+          "fetch-submodules",
+          "fetchSubmodules"
+        ],
+        "boolean": true
+      },
+      "output": {
+        "aliases": [
+          "output"
+        ],
+        "path": true
+      },
+      "defconfig": {
+        "aliases": [
+          "defconfig"
+        ]
+      },
+      "make-arg": {
+        "aliases": [
+          "make-arg",
+          "make-args",
+          "makeArgs"
+        ],
+        "repeatable": true
+      },
+      "config-fragment": {
+        "aliases": [
+          "config-fragment",
+          "configFragment"
+        ],
+        "repeatable": true
+      },
+      "artifacts": {
+        "aliases": [
+          "artifacts"
+        ],
+        "repeatable": true
+      }
+    }
+  },
+  "managed": {
+    "schemaVersion": 1,
+    "modes": [
+      "local",
+      "remote"
+    ],
+    "local": {
+      "sourceTemplate": "tools/linux/src/linux-{buildVersion}",
+      "outputDirTemplate": "tools/linux/builds/{buildDirKey}/output",
+      "downloadsDir": "tools/linux/downloads",
+      "artifacts": {
+        "source-dir": {
+          "pathTemplate": "tools/linux/src/linux-{buildVersion}"
+        },
+        "output-dir": {
+          "pathTemplate": "tools/linux/builds/{buildDirKey}/output"
+        },
+        "images/Image": {
+          "pathTemplate": "tools/linux/builds/{buildDirKey}/output/arch/arm64/boot/Image"
+        },
+        "build/vmlinux": {
+          "pathTemplate": "tools/linux/builds/{buildDirKey}/output/vmlinux"
+        }
+      },
+      "commands": {
+        "fetch": {
+          "requiredFlags": [
+            "source"
+          ],
+          "scalarFlags": [
+            "archive-url",
+            "build-version",
+            "git-url",
+            "git-ref",
+            "fetch-submodules",
+            "seed-dir"
+          ],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/fetch.sh",
+            "shell": "bash"
+          },
+          "fetch": {
+            "archive": {
+              "urlTemplate": "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-{buildVersion}.tar.xz"
+            }
+          },
+          "pathFlags": {
+            "source": "tools/linux/src/linux-{buildVersion}",
+            "downloads-dir": "tools/linux/downloads"
+          },
+          "result": {
+            "successSummary": "fetched managed Linux source tree",
+            "reusedSummary": "reused managed Linux source tree",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{source}"
+            }
+          }
+        },
+        "patch": {
+          "requiredFlags": [
+            "source",
+            "patch-dir"
+          ],
+          "scalarFlags": [
+            "patch-dir"
+          ],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/patch.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "source": "tools/linux/src/linux-{buildVersion}"
+          },
+          "result": {
+            "successSummary": "patched managed Linux source tree",
+            "reusedSummary": "reused patched Linux source tree",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{source}"
+            }
+          }
+        },
+        "build": {
+          "requiredFlags": [
+            "source",
+            "output"
+          ],
+          "scalarFlags": [
+            "defconfig",
+            "output",
+            "seed-dir",
+            "archive-url",
+            "reuse-build-dir",
+            "build-version",
+            "git-url",
+            "git-ref",
+            "fetch-submodules"
+          ],
+          "repeatableFlags": [
+            "make-arg",
+            "config-fragment"
+          ],
+          "script": {
+            "path": "scripts/build.sh",
+            "shell": "bash",
+            "cwdTemplate": "{output}"
+          },
+          "pathFlags": {
+            "source": "tools/linux/src/linux-{buildVersion}",
+            "output": "tools/linux/builds/{buildDirKey}/output"
+          },
+          "result": {
+            "successSummary": "completed local Linux build",
+            "errorSummary": "local Linux build failed",
+            "manifestTemplate": "{output}/manifest.json",
+            "details": {
+              "source": "{source}",
+              "output": "{output}",
+              "manifest": "{output}/manifest.json",
+              "defconfig": {
+                "fromFlag": "defconfig"
+              }
+            }
+          }
+        },
+        "inspect": {
+          "requiredFlags": [],
+          "scalarFlags": [
+            "output",
+            "build-version"
+          ],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/inspect.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "output": "tools/linux/builds/{buildDirKey}/output"
+          },
+          "result": {
+            "successSummary": "inspected Linux build outputs"
+          }
+        }
+      }
+    }
+  }
+}

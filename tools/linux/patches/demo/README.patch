@@ -1,0 +1,10 @@
+--- a/README.md
++++ b/README.md
+@@ -1,5 +1,7 @@
+ This is a synthetic Linux source tree fixture.
+ 
+ It exists only for CLI smoke tests. It validates that `linux build`
+ stages an `arch/arm64/boot/Image` and a `vmlinux` artifact without
++touching a real upstream kernel checkout.
++ 
+ building a real kernel.

@@ -1,0 +1,203 @@
+{
+  "name": "nvirsh-buildroot-based-cvm",
+  "runtime": null,
+  "cli-contract": "build,exec,inspect",
+  "config": {
+    "fields": {
+      "qemu": {
+        "aliases": [
+          "qemu"
+        ],
+        "path": true
+      },
+      "buildroot-output-dir": {
+        "aliases": [
+          "buildroot-output-dir",
+          "buildrootOutputDir"
+        ],
+        "path": true
+      },
+      "l1-kernel": {
+        "aliases": [
+          "l1-kernel",
+          "l1Kernel"
+        ],
+        "path": true
+      },
+      "host-stack-archive-url": {
+        "aliases": [
+          "host-stack-archive-url",
+          "hostStackArchiveUrl"
+        ]
+      },
+      "host-stack-archive-sha256": {
+        "aliases": [
+          "host-stack-archive-sha256",
+          "hostStackArchiveSha256"
+        ]
+      },
+      "reuse-build-dir": {
+        "aliases": [
+          "reuse-build-dir",
+          "reuseBuildDir"
+        ],
+        "boolean": true
+      },
+      "run-dir": {
+        "aliases": [
+          "run-dir",
+          "runDir"
+        ],
+        "path": true
+      },
+      "build-dir-key": {
+        "aliases": [
+          "build-dir-key",
+          "buildDirKey"
+        ]
+      },
+      "phase": {
+        "aliases": [
+          "phase"
+        ]
+      },
+      "detach": {
+        "aliases": [
+          "detach"
+        ],
+        "boolean": true
+      }
+    }
+  },
+  "inputs": {
+    "build": {
+      "dependencies": {
+        "qemu": {
+          "flag": "qemu"
+        },
+        "buildroot": {
+          "flag": "buildroot-output-dir"
+        },
+        "linux": {
+          "flag": "l1-kernel"
+        }
+      }
+    }
+  },
+  "managed": {
+    "schemaVersion": 1,
+    "modes": [
+      "local"
+    ],
+    "local": {
+      "buildDirTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/build",
+      "installDirTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/install",
+      "execDirTemplate": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}",
+      "artifacts": {
+        "prepared-state": {
+          "pathTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/install/state.json"
+        },
+        "share-dir": {
+          "pathTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/build/share"
+        },
+        "run-manifest": {
+          "pathTemplate": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}/manifest.json"
+        }
+      },
+      "commands": {
+        "build": {
+          "requiredFlags": [
+            "build-dir",
+            "install-dir",
+            "qemu",
+            "buildroot-output-dir"
+          ],
+          "scalarFlags": [
+            "build-dir",
+            "install-dir",
+            "qemu",
+            "buildroot-output-dir",
+            "l1-kernel",
+            "host-stack-archive-url",
+            "host-stack-archive-sha256",
+            "reuse-build-dir",
+            "build-dir-key"
+          ],
+          "repeatableFlags": [],
+          "pathFlags": {
+            "build-dir": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/build",
+            "install-dir": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/install",
+            "qemu": "tools/qemu/builds/{buildDirKey}/install/bin/qemu-system-aarch64",
+            "buildroot-output-dir": "tools/buildroot/builds/{buildDirKey}/output",
+            "l1-kernel": "tools/linux/builds/{buildDirKey}/output/arch/arm64/boot/Image"
+          },
+          "script": {
+            "path": "scripts/build.sh",
+            "shell": "bash",
+            "cwdTemplate": "{build-dir}"
+          },
+          "result": {
+            "successSummary": "prepared buildroot-based CVM launch state",
+            "reusedSummary": "reused buildroot-based CVM launch state",
+            "artifact": {
+              "path": "prepared-state",
+              "locationTemplate": "{install-dir}/state.json"
+            }
+          }
+        },
+        "exec": {
+          "requiredFlags": [
+            "install-dir",
+            "run-dir",
+            "phase"
+          ],
+          "scalarFlags": [
+            "install-dir",
+            "run-dir",
+            "phase",
+            "detach",
+            "build-dir-key"
+          ],
+          "repeatableFlags": [],
+          "pathFlags": {
+            "install-dir": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/install",
+            "run-dir": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}"
+          },
+          "script": {
+            "path": "scripts/exec.sh",
+            "shell": "bash",
+            "cwdTemplate": "{run-dir}"
+          },
+          "result": {
+            "successSummary": "executed buildroot-based CVM launch",
+            "errorSummary": "buildroot-based CVM launch failed",
+            "artifact": {
+              "path": "run-manifest",
+              "locationTemplate": "{run-dir}/manifest.json"
+            }
+          }
+        },
+        "inspect": {
+          "requiredFlags": [],
+          "scalarFlags": [
+            "install-dir",
+            "run-dir",
+            "build-dir-key"
+          ],
+          "repeatableFlags": [],
+          "pathFlags": {
+            "install-dir": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/install",
+            "run-dir": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}"
+          },
+          "script": {
+            "path": "scripts/inspect.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "inspected buildroot-based CVM state"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/state.sh"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+
+source_dir="${MORPHEUS_LINUX_SOURCE:?}"
+seed_dir="${MORPHEUS_LINUX_SEED_DIR:-}"
+archive_url="${MORPHEUS_LINUX_ARCHIVE_URL:-}"
+git_url="${MORPHEUS_LINUX_GIT_URL:-}"
+git_ref="${MORPHEUS_LINUX_GIT_REF:-}"
+fetch_submodules="${MORPHEUS_LINUX_FETCH_SUBMODULES:-false}"
+downloads_dir="${MORPHEUS_LINUX_DOWNLOADS_DIR:-}"
+result_file="${MORPHEUS_LINUX_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
+build_version="${MORPHEUS_LINUX_BUILD_VERSION:-}"
+state_file="${source_dir}/.morpheus-fetch.json"
+
+if [[ "${source_dir}" != /* ]]; then
+  source_dir="${repo_root}/${source_dir#./}"
+fi
+if [ -n "${seed_dir}" ] && [[ "${seed_dir}" != /* ]]; then
+  seed_dir="${repo_root}/${seed_dir#./}"
+fi
+if [ -n "${downloads_dir}" ] && [[ "${downloads_dir}" != /* ]]; then
+  downloads_dir="${repo_root}/${downloads_dir#./}"
+fi
+if [[ "${result_file}" != /* ]]; then
+  result_file="$(pwd)/${result_file#./}"
+fi
+
+mkdir -p "$(dirname "${source_dir}")"
+
+if [ -z "${archive_url}" ] && [ -z "${seed_dir}" ] && [ -z "${git_url}" ] && [ -n "${build_version}" ]; then
+  archive_url="https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${build_version}.tar.xz"
+fi
+
+mode="empty"
+input_fingerprint=""
+resolved_git_ref="${git_ref:-${build_version}}"
+if [ -n "${archive_url}" ]; then
+  mode="archive"
+elif [ -n "${seed_dir}" ]; then
+  mode="seed"
+  input_fingerprint="$(morpheus_hash_tree "${seed_dir}")"
+elif [ -n "${git_url}" ]; then
+  mode="git"
+  input_fingerprint="$(
+    printf '%s\n%s\n%s\n%s\n' "${git_url}" "${resolved_git_ref}" "${build_version}" "${fetch_submodules}" \
+      | sha256sum | awk '{print $1}'
+  )"
+fi
+
+if [ -f "${source_dir}/Makefile" ] \
+  && morpheus_state_matches "${state_file}" "mode" "${mode}" \
+  && morpheus_state_matches "${state_file}" "input_fingerprint" "${input_fingerprint}"; then
+  cat > "${result_file}" <<EOF
+{"details":{"reused":true,"fetched_source":false,"build_version":"${build_version}"}}
+EOF
+  exit 0
+fi
+
+if [ -n "${archive_url}" ]; then
+  mkdir -p "${downloads_dir}"
+  archive_name="$(basename "${archive_url}")"
+  archive_path="${downloads_dir}/${archive_name}"
+  if [ ! -f "${archive_path}" ]; then
+    if [[ "${archive_url}" == file://* ]]; then
+      cp "${archive_url#file://}" "${archive_path}"
+    else
+      curl -L "${archive_url}" -o "${archive_path}"
+    fi
+  fi
+  archive_hash="$(sha256sum "${archive_path}" | awk '{print $1}')"
+  input_fingerprint="$(
+    printf '%s\n%s\n%s\n' "${archive_url}" "${build_version}" "${archive_hash}" \
+      | sha256sum | awk '{print $1}'
+  )"
+  if [ -f "${source_dir}/Makefile" ] \
+    && morpheus_state_matches "${state_file}" "mode" "archive" \
+    && morpheus_state_matches "${state_file}" "input_fingerprint" "${input_fingerprint}"; then
+    cat > "${result_file}" <<EOF
+{"details":{"reused":true,"fetched_source":false,"build_version":"${build_version}","git_ref":"${resolved_git_ref}"}}
+EOF
+    exit 0
+  fi
+  extract_root="${downloads_dir}/.extract"
+  rm -rf "${extract_root}"
+  mkdir -p "${extract_root}"
+  tar --no-same-owner -xf "${archive_path}" -C "${extract_root}"
+  first_dir="$(find "${extract_root}" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+  if [ -z "${first_dir}" ]; then
+    echo "archive did not extract a source directory" >&2
+    exit 1
+  fi
+  rm -rf "${source_dir}"
+  mv "${first_dir}" "${source_dir}"
+  rm -rf "${extract_root}"
+  morpheus_write_state_json \
+    "${state_file}" \
+    "fetchedAt" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "mode" "archive" \
+    "input_fingerprint" "${input_fingerprint}" \
+    "archive_url" "${archive_url}" \
+    "build_version" "${build_version}" \
+    "git_url" "${git_url}" \
+    "git_ref" "${resolved_git_ref}"
+  cat > "${result_file}" <<EOF
+{"details":{"fetched_source":true,"archive":"${archive_path}","build_version":"${build_version}","git_ref":"${resolved_git_ref}"}}
+EOF
+  exit 0
+fi
+
+if [ -n "${seed_dir}" ]; then
+  rm -rf "${source_dir}"
+  cp -R "${seed_dir}" "${source_dir}"
+  morpheus_write_state_json \
+    "${state_file}" \
+    "fetchedAt" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "mode" "seed" \
+    "input_fingerprint" "${input_fingerprint}" \
+    "seed_dir" "${seed_dir}" \
+    "build_version" "${build_version}" \
+    "git_url" "${git_url}" \
+    "git_ref" "${resolved_git_ref}" \
+    "fetch_submodules" "${fetch_submodules}"
+  cat > "${result_file}" <<EOF
+{"details":{"fetched_source":true,"seed_dir":"${seed_dir}","build_version":"${build_version}","git_ref":"${resolved_git_ref}"}}
+EOF
+  exit 0
+fi
+
+if [ -n "${git_url}" ]; then
+  rm -rf "${source_dir}"
+  if [ -n "${resolved_git_ref}" ]; then
+    if [[ "${resolved_git_ref}" =~ ^[0-9a-f]{40}$ ]]; then
+      git clone "${git_url}" "${source_dir}"
+      git -C "${source_dir}" checkout "${resolved_git_ref}"
+    else
+      git clone --depth 1 --branch "${resolved_git_ref}" "${git_url}" "${source_dir}"
+    fi
+  else
+    git clone --depth 1 "${git_url}" "${source_dir}"
+  fi
+  if [ "${fetch_submodules}" = "true" ] && [ -f "${source_dir}/.gitmodules" ]; then
+    git -C "${source_dir}" submodule update --init --recursive
+  fi
+  morpheus_write_state_json \
+    "${state_file}" \
+    "fetchedAt" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "mode" "git" \
+    "input_fingerprint" "${input_fingerprint}" \
+    "archive_url" "${archive_url}" \
+    "git_url" "${git_url}" \
+    "git_ref" "${resolved_git_ref}" \
+    "fetch_submodules" "${fetch_submodules}" \
+    "build_version" "${build_version}"
+  cat > "${result_file}" <<EOF
+{"details":{"fetched_source":true,"git_url":"${git_url}","git_ref":"${resolved_git_ref}","build_version":"${build_version}"}}
+EOF
+  exit 0
+fi
+
+echo "fetch requires MORPHEUS_LINUX_SEED_DIR, MORPHEUS_LINUX_ARCHIVE_URL, MORPHEUS_LINUX_GIT_URL, or MORPHEUS_LINUX_BUILD_VERSION when the source tree is missing" >&2
+exit 1

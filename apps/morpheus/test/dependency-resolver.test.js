@@ -386,7 +386,7 @@ test("applyConfigDefaults preserves explicit nvirsh l2 mode selector", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
-test("repo nvirsh vm and cvm workflows build Buildroot before nvirsh", () => {
+test("repo nvirsh vm and cvm workflows build their dependent artifacts before nvirsh", () => {
   const configRoot = path.resolve(repoRoot, "..");
   const rootConfig = loadConfig(configRoot, {
     explicitPath: path.join(configRoot, "morpheus.yaml"),
@@ -408,9 +408,26 @@ test("repo nvirsh vm and cvm workflows build Buildroot before nvirsh", () => {
       stepIds.indexOf("buildroot_build") < stepIds.indexOf("nvirsh_build"),
       `expected buildroot_build before nvirsh_build in ${workflowName}`,
     );
+    if (workflowName === "nvirsh-qemu-arm64-cvm-exec-ci") {
+      assert.ok(
+        stepIds.indexOf("linux_fetch") < stepIds.indexOf("linux_patch"),
+        `expected linux_fetch before linux_patch in ${workflowName}`,
+      );
+      assert.ok(
+        stepIds.indexOf("linux_patch") < stepIds.indexOf("linux_build"),
+        `expected linux_patch before linux_build in ${workflowName}`,
+      );
+      assert.ok(
+        stepIds.indexOf("linux_build") < stepIds.indexOf("nvirsh_build"),
+        `expected linux_build before nvirsh_build in ${workflowName}`,
+      );
+    }
+    const terminalStep = workflowName === "nvirsh-qemu-arm64-cvm-exec-ci"
+      ? "nvirsh_inspect"
+      : "nvirsh_exec";
     assert.ok(
-      stepIds.indexOf("nvirsh_build") < stepIds.indexOf("nvirsh_exec"),
-      `expected nvirsh_build before nvirsh_exec in ${workflowName}`,
+      stepIds.indexOf("nvirsh_build") < stepIds.indexOf(terminalStep),
+      `expected nvirsh_build before ${terminalStep} in ${workflowName}`,
     );
   }
 });

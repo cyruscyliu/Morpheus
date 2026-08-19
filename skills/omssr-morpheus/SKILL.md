@@ -41,9 +41,10 @@ workspace:
 ```
 
 Project configs can live under `<workspace-root>/morpheus.yaml`.
-The repo-root `morpheus.yaml` may be only a minimal CI/testing stub.
-Projects may import shared workflows explicitly from the repo root config using
-references such as `root.buildroot-build`.
+The repository has no default project config at its root.
+`tests/morpheus.yaml` is CI-only and must not be used for project workflows.
+Projects may import shared workflows explicitly from a parent project config
+using references such as `root.buildroot-build`.
 
 ## Config Schema
 
@@ -62,7 +63,7 @@ The main field families are:
   `remote.*`, `workspaces.*`
 
 Shared workflow imports are explicit.
-Project configs should import shared root workflows with references such as:
+Project configs should import shared parent workflows with references such as:
 
 ```yaml
 imports:

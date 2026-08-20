@@ -492,6 +492,15 @@ fi
 set -- \
   -L "${guest_qemu_data_dir}"
 
+if [ "${guest_virtio_transport}" = "mmio" ]; then
+  # Nested KVM cannot reliably route virtio-mmio ioeventfds through the
+  # Realm boundary. Keep queue notifications in QEMU and use the modern
+  # transport interface expected by the MMIO-only L2 kernel.
+  set -- "$@" \
+    -global "virtio-mmio.force-legacy=off" \
+    -global "virtio-mmio.ioeventfd=off"
+fi
+
 if [ "${guest_qemu_has_morpheus_mmio_patch}" = "true" ]; then
   set -- "$@" \
     -trace "events=${guest_qemu_trace_events},file=${runtime_dir}/morpheus-qemu-trace.log"

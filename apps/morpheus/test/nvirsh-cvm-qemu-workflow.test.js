@@ -103,6 +103,18 @@ test("CVM workflow fixture wires explicit linux, qemu, and buildroot artifacts i
     stepArg(nvirshBuild, "--buildroot-output-dir"),
     "{{steps.buildroot_build.artifacts.output-dir.location}}",
   );
+  assert.equal(
+    stepArg(nvirshBuild, "--l2-kernel"),
+    "{{steps.buildroot_build.artifacts.images/Image.location}}",
+  );
+  assert.equal(
+    stepArg(nvirshBuild, "--l2-qemu"),
+    "{{steps.buildroot_build.artifacts.target/usr/bin/qemu-system-aarch64.location}}",
+  );
+  assert.equal(stepArg(nvirshBuild, "--l2-virtio-transport"), "mmio");
+  assert.equal((nvirshBuild.args || []).includes("--qemu-edk2"), false);
+  assert.equal((nvirshBuild.args || []).includes("--l2-guest-disk"), false);
+  assert.equal((nvirshBuild.args || []).includes("--l2-kvmtool-efi"), false);
   assert.equal(stepArg(buildrootBuild, "--defconfig"), "qemu_aarch64_virt_defconfig");
   assert.equal(
     stepArg(nvirshBuild, "--l1-kernel"),

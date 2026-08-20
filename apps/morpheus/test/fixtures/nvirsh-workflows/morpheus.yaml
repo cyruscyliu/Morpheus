@@ -125,6 +125,12 @@ workflows:
           - "{{steps.qemu_host_build.artifacts.qemu-system-aarch64.location}}"
           - --buildroot-output-dir
           - "{{steps.buildroot_build.artifacts.output-dir.location}}"
+          - --l2-kernel
+          - "{{steps.buildroot_build.artifacts.images/Image.location}}"
+          - --l2-qemu
+          - "{{steps.buildroot_build.artifacts.target/usr/bin/qemu-system-aarch64.location}}"
+          - --l2-virtio-transport
+          - mmio
           - --l1-kernel
           - "{{steps.linux_build.artifacts.images/Image.location}}"
           - --l1-firmware-a

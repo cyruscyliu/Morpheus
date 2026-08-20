@@ -45,6 +45,16 @@ function stepArg(step, flag) {
   return args[index + 1];
 }
 
+function stepHasFlagValue(step, flag, value) {
+  const args = Array.isArray(step.args) ? step.args : [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === flag && args[index + 1] === value) {
+      return true;
+    }
+  }
+  return false;
+}
+
 test("CVM workflow fixture wires explicit linux, qemu, and buildroot artifacts into the independent buildroot-based CVM tool", () => {
   const workflow = workflowFixture.workflows["nvirsh-qemu-arm64-cvm-exec"];
   assert.ok(workflow, "missing nvirsh-qemu-arm64-cvm-exec fixture");
@@ -177,6 +187,7 @@ test("DMA/MMIO CVM workflow fixture wires separate L1 and L2 kernels plus Buildr
   assert.equal(nvirshExec.tool, "nvirsh-buildroot-based-cvm");
 
   assert.equal(stepArg(buildrootBuild, "--defconfig"), "qemu_aarch64_virt_defconfig");
+  assert.equal(stepHasFlagValue(buildrootBuild, "--config-fragment", "BR2_JLEVEL=2"), true);
   assert.equal(
     (buildrootBuild.args || []).some((arg) => String(arg).includes("BR2_LINUX_KERNEL")),
     false,
@@ -187,12 +198,14 @@ test("DMA/MMIO CVM workflow fixture wires separate L1 and L2 kernels plus Buildr
   );
 
   assert.equal(stepArg(linuxBuild, "--source"), "{{steps.linux_fetch.artifacts.source-dir.location}}");
+  assert.equal(stepHasFlagValue(linuxBuild, "--make-arg", "-j2"), true);
   assert.equal(stepArg(linuxL2Patch, "--source"), "{{steps.linux_l2_fetch.artifacts.source-dir.location}}");
   assert.equal(stepArg(linuxL2Patch, "--patch-dir"), "./patches/l2-mmio");
   assert.equal(
     stepArg(linuxL2Build, "--source"),
     "{{steps.linux_l2_patch.artifacts.source-dir.location}}",
   );
+  assert.equal(stepHasFlagValue(linuxL2Build, "--make-arg", "-j2"), true);
 
   assert.equal(
     stepArg(qemuHostBuild, "--source"),
@@ -242,6 +255,9 @@ test("DMA/MMIO CVM workflow fixture wires separate L1 and L2 kernels plus Buildr
     stepArg(nvirshBuild, "--build-dir-key"),
     "qemu-buildroot-based-cvm-dma-mmio-fixture",
   );
+  assert.equal((nvirshBuild.args || []).includes("--qemu-edk2"), false);
+  assert.equal((nvirshBuild.args || []).includes("--l2-guest-disk"), false);
+  assert.equal((nvirshBuild.args || []).includes("--l2-kvmtool-efi"), false);
   assert.equal(
     stepArg(nvirshExec, "--build-dir-key"),
     "qemu-buildroot-based-cvm-dma-mmio-fixture",

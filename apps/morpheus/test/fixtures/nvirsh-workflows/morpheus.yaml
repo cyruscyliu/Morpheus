@@ -190,6 +190,8 @@ workflows:
               - "{{steps.linux_fetch.artifacts.source-dir.location}}"
               - --defconfig
               - qemu_virt_defconfig
+              - --make-arg
+              - -j2
       - id: linux-l2
         name: linux-l2
         steps:
@@ -212,6 +214,8 @@ workflows:
               - "{{steps.linux_l2_patch.artifacts.source-dir.location}}"
               - --defconfig
               - qemu_virt_defconfig
+              - --make-arg
+              - -j2
       - id: qemu-host
         name: qemu-host
         steps:

@@ -10,11 +10,13 @@ install_dir="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_INSTALL_DIR:?}"
 qemu="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_QEMU:?}"
 buildroot_output_dir="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILDROOT_OUTPUT_DIR:?}"
 l1_kernel="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_KERNEL:?}"
+l2_kernel="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_KERNEL:-}"
 l1_firmware_a="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_FIRMWARE_A:?}"
 l1_firmware_b="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_FIRMWARE_B:?}"
 qemu_edk2="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_QEMU_EDK2:-}"
 l2_guest_disk="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_GUEST_DISK:-}"
 l2_kvmtool_efi="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_KVMTOOL_EFI:-}"
+l2_qemu="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_QEMU:-}"
 l2_virtio_transport="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_VIRTIO_TRANSPORT:-pci}"
 l1_machine="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_MACHINE:-sbsa-ref}"
 l1_cpu="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_CPU:-max,x-rme=on,sme=off,pauth-impdef=on,sve=off}"
@@ -38,6 +40,9 @@ fi
 if [[ "${l1_kernel}" != /* ]]; then
   l1_kernel="${repo_root}/${l1_kernel#./}"
 fi
+if [[ -n "${l2_kernel}" && "${l2_kernel}" != /* ]]; then
+  l2_kernel="${repo_root}/${l2_kernel#./}"
+fi
 if [[ "${l1_firmware_a}" != /* ]]; then
   l1_firmware_a="${repo_root}/${l1_firmware_a#./}"
 fi
@@ -52,6 +57,9 @@ if [[ -n "${l2_guest_disk}" && "${l2_guest_disk}" != /* ]]; then
 fi
 if [[ -n "${l2_kvmtool_efi}" && "${l2_kvmtool_efi}" != /* ]]; then
   l2_kvmtool_efi="${repo_root}/${l2_kvmtool_efi#./}"
+fi
+if [[ -n "${l2_qemu}" && "${l2_qemu}" != /* ]]; then
+  l2_qemu="${repo_root}/${l2_qemu#./}"
 fi
 if [[ "${result_file}" != /* ]]; then
   result_file="$(pwd)/${result_file#./}"
@@ -76,8 +84,14 @@ buildroot_inputs_state_file="${buildroot_output_dir}/.morpheus-build-inputs.json
 buildroot_vmlinux="${buildroot_output_dir}/build/vmlinux"
 
 guest_kernel_image_source="${buildroot_image}"
-if [ ! -f "${guest_kernel_image_source}" ]; then
+if [ -n "${l2_kernel}" ]; then
+  guest_kernel_image_source="${l2_kernel}"
+elif [ ! -f "${guest_kernel_image_source}" ]; then
   guest_kernel_image_source="${l1_kernel}"
+fi
+guest_qemu_source="${buildroot_guest_qemu}"
+if [ -n "${l2_qemu}" ]; then
+  guest_qemu_source="${l2_qemu}"
 fi
 
 l1_dir="${build_dir}/l1"
@@ -205,6 +219,7 @@ try {
     printf 'buildroot_inputs_fingerprint=%s\n' "${buildroot_inputs_fingerprint}"
     printf 'qemu=%s\n' "${qemu}"
     printf 'l1_kernel=%s\n' "${l1_kernel}"
+    printf 'l2_kernel=%s\n' "${l2_kernel}"
     printf 'l1_firmware_a=%s\n' "${l1_firmware_a}"
     printf 'l1_firmware_b=%s\n' "${l1_firmware_b}"
     printf 'l1_machine=%s\n' "${l1_machine}"
@@ -222,7 +237,7 @@ try {
     printf '%s\n' "${guest_kernel_image_source}"
     printf '%s\n' "${buildroot_initrd}"
     printf '%s\n' "${buildroot_rootfs}"
-    printf '%s\n' "${buildroot_guest_qemu}"
+    printf '%s\n' "${guest_qemu_source}"
     if [ "${use_linaro_helper}" = "true" ]; then
       printf '%s\n' "${buildroot_initrd_plain}"
       printf '%s\n' "${buildroot_gen_run_vmm}"
@@ -267,7 +282,8 @@ require_file "${l1_firmware_a}" "l1 firmware a"
 require_file "${l1_firmware_b}" "l1 firmware b"
 require_file "${buildroot_initrd}" "buildroot initramfs"
 require_file "${buildroot_rootfs}" "buildroot l1 rootfs image"
-require_file "${buildroot_guest_qemu}" "buildroot guest qemu"
+require_file "${guest_kernel_image_source}" "l2 kernel image"
+require_file "${guest_qemu_source}" "l2 guest qemu"
 if [ "${use_linaro_helper}" = "true" ]; then
   require_file "${buildroot_initrd_plain}" "buildroot plain initramfs"
   require_file "${buildroot_gen_run_vmm}" "buildroot gen-run-vmm.sh"
@@ -309,7 +325,7 @@ cp -f "${l1_firmware_b}" "${host_firmware_b_path}"
 cp -f "${buildroot_rootfs}" "${host_rootfs_path}"
 cp -f "${guest_kernel_image_source}" "${guest_images_dir}/Image"
 cp -f "${buildroot_initrd}" "${guest_images_dir}/rootfs.cpio.gz"
-cp -f "${buildroot_guest_qemu}" "${guest_qemu_dir}/bin/qemu-system-aarch64"
+cp -f "${guest_qemu_source}" "${guest_qemu_dir}/bin/qemu-system-aarch64"
 chmod +x "${guest_qemu_dir}/bin/qemu-system-aarch64"
 
 if [ -d "${buildroot_guest_qemu_data_dir}" ]; then
@@ -331,7 +347,7 @@ if [ "${use_linaro_helper}" = "true" ]; then
   cp -f "${l2_kvmtool_efi}" "${l2_shared_kvmtool_build_efi}"
   cp -f "${qemu_edk2}" "${l2_shared_qemu_efi}"
   cp -f "${buildroot_lkvm}" "${l2_shared_lkvm}"
-  cp -f "${buildroot_guest_qemu}" "${l2_shared_qemu_binary}"
+  cp -f "${guest_qemu_source}" "${l2_shared_qemu_binary}"
   chmod +x "${l2_shared_lkvm}" "${l2_shared_qemu_binary}"
   inject_morpheus_rsi_evidence_into_initrd "${l2_shared_initrd}"
   gzip -9 -c -n "${l2_shared_initrd}" > "${l2_shared_initrd_gz}"
@@ -421,6 +437,7 @@ guest_qemu_trace_events="${runtime_dir}/morpheus-qemu-trace-events.txt"
 guest_qemu_stdout="${runtime_dir}/qemu.stdout.log"
 guest_qemu_stderr="${runtime_dir}/qemu.stderr.log"
 guest_qemu_ld_library_path=""
+guest_qemu_has_morpheus_mmio_patch="false"
 
 if [ "${guest_virtio_transport}" = "mmio" ]; then
   guest_virtio_serial_device="virtio-serial-device"
@@ -441,15 +458,25 @@ if [ ! -e /dev/kvm ]; then
   exit 1
 fi
 
-printf 'virtio_mmio_fuzz_read\n' > "${guest_qemu_trace_events}"
-printf 'virtio_mmio_dma_fuzz\n' >> "${guest_qemu_trace_events}"
+if LC_ALL=C grep -a -q 'virtio_mmio_fuzz_read' "${guest_qemu}" 2>/dev/null &&
+  LC_ALL=C grep -a -q 'virtio_mmio_dma_fuzz' "${guest_qemu}" 2>/dev/null; then
+  guest_qemu_has_morpheus_mmio_patch="true"
+  printf 'virtio_mmio_fuzz_read\n' > "${guest_qemu_trace_events}"
+  printf 'virtio_mmio_dma_fuzz\n' >> "${guest_qemu_trace_events}"
+fi
 
 set -- \
   "${guest_qemu}" \
-  -L "${guest_qemu_data_dir}" \
-  -trace "events=${guest_qemu_trace_events},file=${runtime_dir}/morpheus-qemu-trace.log" \
+  -L "${guest_qemu_data_dir}"
+
+if [ "${guest_qemu_has_morpheus_mmio_patch}" = "true" ]; then
+  set -- "$@" \
+    -trace "events=${guest_qemu_trace_events},file=${runtime_dir}/morpheus-qemu-trace.log"
+fi
+
+set -- "$@" \
   -machine "virt,gic-version=3,its=on,confidential-guest-support=rme0" \
-  -object "rme-guest,id=rme0,measurement-algorithm=sha512" \
+  -object "rme-guest,id=rme0" \
   -cpu host \
   -enable-kvm \
   -m 1024M \
@@ -491,7 +518,7 @@ fi
 printf 'qemu-cmd=' >> "${launch_marker}"
 printf '%s ' "$@" >> "${launch_marker}"
 printf '\n' >> "${launch_marker}"
-if LC_ALL=C grep -a -q 'virtio_mmio_fuzz_read' "${guest_qemu}" 2>/dev/null; then
+if [ "${guest_qemu_has_morpheus_mmio_patch}" = "true" ]; then
   printf 'qemu-patch-symbols=present\n' >> "${launch_marker}"
 else
   printf 'qemu-patch-symbols=missing\n' >> "${launch_marker}"

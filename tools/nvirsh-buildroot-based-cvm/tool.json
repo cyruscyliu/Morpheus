@@ -24,6 +24,13 @@
         ],
         "path": true
       },
+      "l2-kernel": {
+        "aliases": [
+          "l2-kernel",
+          "l2Kernel"
+        ],
+        "path": true
+      },
       "l1-firmware-a": {
         "aliases": [
           "l1-firmware-a",
@@ -56,6 +63,13 @@
         "aliases": [
           "l2-kvmtool-efi",
           "l2KvmtoolEfi"
+        ],
+        "path": true
+      },
+      "l2-qemu": {
+        "aliases": [
+          "l2-qemu",
+          "l2Qemu"
         ],
         "path": true
       },
@@ -180,11 +194,13 @@
             "qemu",
             "buildroot-output-dir",
             "l1-kernel",
+            "l2-kernel",
             "l1-firmware-a",
             "l1-firmware-b",
             "qemu-edk2",
             "l2-guest-disk",
             "l2-kvmtool-efi",
+            "l2-qemu",
             "l2-virtio-transport",
             "l1-machine",
             "l1-cpu",

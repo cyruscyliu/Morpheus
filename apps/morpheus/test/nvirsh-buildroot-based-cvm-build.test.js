@@ -126,10 +126,15 @@ test("buildroot-based CVM build stages explicit linux, buildroot, and firmware-b
   const l1FirmwareA = path.join(tmpDir, "firmware", "SBSA_FLASH0.fd");
   const l1FirmwareB = path.join(tmpDir, "firmware", "SBSA_FLASH1.fd");
   const buildrootOutputDir = path.join(tmpDir, "buildroot-out");
+  const explicitL2Kernel = path.join(tmpDir, "explicit-l2", "Image");
+  const explicitL2Qemu = path.join(tmpDir, "explicit-l2", "qemu-system-aarch64");
 
   writeExecutable(hostQemu, "#!/bin/sh\nexit 0\n");
   fs.mkdirSync(path.dirname(l1Kernel), { recursive: true });
   fs.writeFileSync(l1Kernel, "l1-kernel\n");
+  fs.mkdirSync(path.dirname(explicitL2Kernel), { recursive: true });
+  fs.writeFileSync(explicitL2Kernel, "explicit-l2-kernel\n");
+  writeExecutable(explicitL2Qemu, "#!/bin/sh\nexit 0\n");
   fs.mkdirSync(path.dirname(l1FirmwareA), { recursive: true });
   fs.writeFileSync(l1FirmwareA, "flash-a\n");
   fs.writeFileSync(l1FirmwareB, "flash-b\n");
@@ -574,10 +579,15 @@ test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", 
   const l1FirmwareA = path.join(tmpDir, "firmware", "SBSA_FLASH0.fd");
   const l1FirmwareB = path.join(tmpDir, "firmware", "SBSA_FLASH1.fd");
   const buildrootOutputDir = path.join(tmpDir, "buildroot-out");
+  const explicitL2Kernel = path.join(tmpDir, "explicit-l2", "Image");
+  const explicitL2Qemu = path.join(tmpDir, "explicit-l2", "qemu-system-aarch64");
 
   writeExecutable(hostQemu, "#!/bin/sh\nexit 0\n");
   fs.mkdirSync(path.dirname(l1Kernel), { recursive: true });
   fs.writeFileSync(l1Kernel, "l1-kernel\n");
+  fs.mkdirSync(path.dirname(explicitL2Kernel), { recursive: true });
+  fs.writeFileSync(explicitL2Kernel, "explicit-l2-kernel\n");
+  writeExecutable(explicitL2Qemu, "#!/bin/sh\nexit 0\n");
   fs.mkdirSync(path.dirname(l1FirmwareA), { recursive: true });
   fs.writeFileSync(l1FirmwareA, "flash-a\n");
   fs.writeFileSync(l1FirmwareB, "flash-b\n");
@@ -622,8 +632,10 @@ test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", 
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_QEMU: hostQemu,
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILDROOT_OUTPUT_DIR: buildrootOutputDir,
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_KERNEL: l1Kernel,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_KERNEL: explicitL2Kernel,
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_FIRMWARE_A: l1FirmwareA,
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_FIRMWARE_B: l1FirmwareB,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_QEMU: explicitL2Qemu,
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_VIRTIO_TRANSPORT: "mmio",
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_REUSE_BUILD_DIR: "true",
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE: resultFile,
@@ -635,17 +647,50 @@ test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", 
   const state = JSON.parse(fs.readFileSync(path.join(installDir, "state.json"), "utf8"));
   assert.equal(state.layeredState.l2.buildrootImages.launchMode, "direct-qemu");
   assert.equal(state.layeredState.l2.buildrootImages.virtioTransport, "mmio");
+  assert.equal(
+    fs.readFileSync(path.join(buildDir, "l1", "guest-images", "Image"), "utf8"),
+    "explicit-l2-kernel\n",
+  );
+  assert.equal(
+    fs.readFileSync(path.join(buildDir, "l1", "guest-qemu", "bin", "qemu-system-aarch64"), "utf8"),
+    "#!/bin/sh\nexit 0\n",
+  );
+  const launchScript = fs.readFileSync(path.join(buildDir, "l1", "launch-l2.sh"), "utf8");
   assert.match(
-    fs.readFileSync(path.join(buildDir, "l1", "launch-l2.sh"), "utf8"),
+    launchScript,
     /guest_virtio_transport="mmio"/,
   );
   assert.match(
-    fs.readFileSync(path.join(buildDir, "l1", "launch-l2.sh"), "utf8"),
+    launchScript,
     /guest_virtio_serial_device="virtio-serial-device"/,
   );
   assert.match(
-    fs.readFileSync(path.join(buildDir, "l1", "launch-l2.sh"), "utf8"),
+    launchScript,
     /guest_virtio_net_device="virtio-net-device,netdev=net0"/,
+  );
+  assert.match(
+    launchScript,
+    /guest_qemu_has_morpheus_mmio_patch="false"/,
+  );
+  assert.match(
+    launchScript,
+    /if LC_ALL=C grep -a -q 'virtio_mmio_fuzz_read' "\$\{guest_qemu\}" 2>\/dev\/null &&/,
+  );
+  assert.match(
+    launchScript,
+    /LC_ALL=C grep -a -q 'virtio_mmio_dma_fuzz' "\$\{guest_qemu\}" 2>\/dev\/null; then/,
+  );
+  assert.match(
+    launchScript,
+    /if \[ "\$\{guest_qemu_has_morpheus_mmio_patch\}" = "true" \]; then\s+set -- "\$@" \\\s+-trace "events=\$\{guest_qemu_trace_events\},file=\$\{runtime_dir\}\/morpheus-qemu-trace\.log"/,
+  );
+  assert.match(
+    launchScript,
+    /-object "rme-guest,id=rme0"/,
+  );
+  assert.doesNotMatch(
+    launchScript,
+    /measurement-algorithm=sha512/,
   );
 
   const inspectRun = spawnSync("bash", [inspectScript], {

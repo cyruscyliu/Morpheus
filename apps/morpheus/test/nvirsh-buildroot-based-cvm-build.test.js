@@ -146,6 +146,12 @@ test("buildroot-based CVM build stages explicit linux, buildroot, and firmware-b
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "lib"), { recursive: true });
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "lib"), { recursive: true });
   fs.writeFileSync(path.join(buildrootOutputDir, "images", "Image"), "l2-image\n");
+  createCpioArchive(path.join(buildrootOutputDir, "images", "rootfs.cpio"), {
+    "init": {
+      contents: "#!/bin/sh\nexec /sbin/init\n",
+      mode: 0o755,
+    },
+  });
   fs.writeFileSync(path.join(buildrootOutputDir, "images", "rootfs.cpio.gz"), "l2-initrd\n");
   fs.writeFileSync(path.join(buildrootOutputDir, "images", "rootfs.ext2"), "l1-rootfs\n");
   fs.writeFileSync(path.join(buildrootOutputDir, "build", "vmlinux"), "l2-vmlinux\n");
@@ -311,6 +317,12 @@ test("buildroot-based CVM build reuses the linux kernel when buildroot does not 
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "share", "qemu"), { recursive: true });
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "lib"), { recursive: true });
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "lib"), { recursive: true });
+  createCpioArchive(path.join(buildrootOutputDir, "images", "rootfs.cpio"), {
+    "init": {
+      contents: "#!/bin/sh\nexec /sbin/init\n",
+      mode: 0o755,
+    },
+  });
   fs.writeFileSync(path.join(buildrootOutputDir, "images", "rootfs.cpio.gz"), "l2-initrd\n");
   fs.writeFileSync(path.join(buildrootOutputDir, "images", "rootfs.ext2"), "l1-rootfs\n");
   writeExecutable(
@@ -599,6 +611,12 @@ test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", 
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "lib"), { recursive: true });
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "lib"), { recursive: true });
   fs.writeFileSync(path.join(buildrootOutputDir, "images", "Image"), "l2-image\n");
+  createCpioArchive(path.join(buildrootOutputDir, "images", "rootfs.cpio"), {
+    "init": {
+      contents: "#!/bin/sh\nexec /sbin/init\n",
+      mode: 0o755,
+    },
+  });
   fs.writeFileSync(path.join(buildrootOutputDir, "images", "rootfs.cpio.gz"), "l2-initrd\n");
   fs.writeFileSync(path.join(buildrootOutputDir, "images", "rootfs.ext2"), "l1-rootfs\n");
   fs.writeFileSync(path.join(buildrootOutputDir, "build", "vmlinux"), "l2-vmlinux\n");
@@ -662,6 +680,14 @@ test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", 
   );
   assert.match(
     launchScript,
+    /guest_realm_measurements="\/usr\/bin\/realm-measurements"/,
+  );
+  assert.match(
+    launchScript,
+    /guest_qemu_dtb="\$\{runtime_dir\}\/qemu-gen\.dtb"/,
+  );
+  assert.match(
+    launchScript,
     /guest_virtio_serial_device="virtio-serial-device"/,
   );
   assert.match(
@@ -686,7 +712,27 @@ test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", 
   );
   assert.match(
     launchScript,
+    /-dtb "\$\{guest_qemu_dtb\}"/,
+  );
+  assert.match(
+    launchScript,
+    /-initrd "\$\{guest_image_dir\}\/rootfs\.cpio"/,
+  );
+  assert.match(
+    launchScript,
+    /"\$\{guest_realm_measurements\}" \\\s+-c "\$\{guest_realm_configs_dir\}\/qemu-max-8\.2\.conf" \\\s+-c "\$\{guest_realm_configs_dir\}\/kvm\.conf" \\\s+-k "\$\{guest_image_dir\}\/Image" \\\s+-i "\$\{guest_image_dir\}\/rootfs\.cpio" \\\s+--no-measurements \\\s+--output-dtb "\$\{guest_qemu_dtb\}" \\\s+qemu \\\s+"\$@"/,
+  );
+  assert.match(
+    launchScript,
+    /-M "confidential-guest-support=rme0"/,
+  );
+  assert.match(
+    launchScript,
     /-object "rme-guest,id=rme0"/,
+  );
+  assert.match(
+    launchScript,
+    /-M virt \\\s+-enable-kvm \\\s+-M "gic-version=3,its=on" \\\s+-smp 2/,
   );
   assert.doesNotMatch(
     launchScript,

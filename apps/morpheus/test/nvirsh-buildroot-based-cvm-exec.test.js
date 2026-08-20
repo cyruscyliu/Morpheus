@@ -73,16 +73,14 @@ function prepareBuildFixture(tmpDir, hostQemu, options = {}) {
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "lib"), { recursive: true });
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "lib"), { recursive: true });
   fs.writeFileSync(path.join(buildrootOutputDir, "images", "Image"), "l2-image\n");
-  if (helperMode) {
-    createCpioArchive(path.join(buildrootOutputDir, "images", "rootfs.cpio"), {
-      "init": {
-        contents: "#!/bin/sh\nexec /sbin/init\n",
-        mode: 0o755,
-      },
-      "etc": { directory: true },
-      "etc/init.d": { directory: true },
-    });
-  }
+  createCpioArchive(path.join(buildrootOutputDir, "images", "rootfs.cpio"), {
+    "init": {
+      contents: "#!/bin/sh\nexec /sbin/init\n",
+      mode: 0o755,
+    },
+    "etc": { directory: true },
+    "etc/init.d": { directory: true },
+  });
   fs.writeFileSync(path.join(buildrootOutputDir, "images", "rootfs.cpio.gz"), "l2-initrd\n");
   fs.writeFileSync(path.join(buildrootOutputDir, "images", "rootfs.ext2"), "l1-rootfs\n");
   fs.writeFileSync(path.join(buildrootOutputDir, "build", "vmlinux"), "l2-vmlinux\n");

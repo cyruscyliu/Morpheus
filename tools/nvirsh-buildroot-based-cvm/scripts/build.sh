@@ -235,6 +235,7 @@ try {
     printf '%s\n' "${l1_firmware_a}"
     printf '%s\n' "${l1_firmware_b}"
     printf '%s\n' "${guest_kernel_image_source}"
+    printf '%s\n' "${buildroot_initrd_plain}"
     printf '%s\n' "${buildroot_initrd}"
     printf '%s\n' "${buildroot_rootfs}"
     printf '%s\n' "${guest_qemu_source}"
@@ -262,6 +263,7 @@ state_matches() {
   [ -f "${host_firmware_b_path}" ] || return 1
   [ -f "${host_rootfs_path}" ] || return 1
   [ -f "${guest_images_dir}/Image" ] || return 1
+  [ -f "${guest_images_dir}/rootfs.cpio" ] || return 1
   [ -f "${guest_images_dir}/rootfs.cpio.gz" ] || return 1
   [ -f "${guest_qemu_dir}/bin/qemu-system-aarch64" ] || return 1
   [ -f "${launch_script}" ] || return 1
@@ -280,6 +282,7 @@ require_file "${qemu}" "host qemu binary"
 require_file "${l1_kernel}" "l1 kernel image"
 require_file "${l1_firmware_a}" "l1 firmware a"
 require_file "${l1_firmware_b}" "l1 firmware b"
+require_file "${buildroot_initrd_plain}" "buildroot plain initramfs"
 require_file "${buildroot_initrd}" "buildroot initramfs"
 require_file "${buildroot_rootfs}" "buildroot l1 rootfs image"
 require_file "${guest_kernel_image_source}" "l2 kernel image"
@@ -324,6 +327,7 @@ cp -f "${l1_firmware_a}" "${host_firmware_a_path}"
 cp -f "${l1_firmware_b}" "${host_firmware_b_path}"
 cp -f "${buildroot_rootfs}" "${host_rootfs_path}"
 cp -f "${guest_kernel_image_source}" "${guest_images_dir}/Image"
+cp -f "${buildroot_initrd_plain}" "${guest_images_dir}/rootfs.cpio"
 cp -f "${buildroot_initrd}" "${guest_images_dir}/rootfs.cpio.gz"
 cp -f "${guest_qemu_source}" "${guest_qemu_dir}/bin/qemu-system-aarch64"
 chmod +x "${guest_qemu_dir}/bin/qemu-system-aarch64"
@@ -429,11 +433,14 @@ guest_image_dir="${MORPHEUS_L2_GUEST_IMAGE_DIR:-/mnt/guest-images}"
 guest_qemu="/mnt/guest-qemu/bin/qemu-system-aarch64"
 guest_qemu_data_dir="/mnt/guest-qemu/share/qemu"
 guest_qemu_runtime_lib_dir="/mnt/guest-qemu/runtime-libs"
+guest_realm_measurements="/usr/bin/realm-measurements"
+guest_realm_configs_dir="/usr/share/cca-realm-measurements/configs"
 guest_virtio_transport="__MORPHEUS_L2_VIRTIO_TRANSPORT__"
 guest_virtio_serial_device="virtio-serial-pci"
 guest_virtio_net_device="virtio-net-pci,netdev=net0,romfile=''"
 launch_marker="${runtime_dir}/launch-l2.marker"
 guest_qemu_trace_events="${runtime_dir}/morpheus-qemu-trace-events.txt"
+guest_qemu_dtb="${runtime_dir}/qemu-gen.dtb"
 guest_qemu_stdout="${runtime_dir}/qemu.stdout.log"
 guest_qemu_stderr="${runtime_dir}/qemu.stderr.log"
 guest_qemu_ld_library_path=""
@@ -453,10 +460,26 @@ if [ ! -x "${guest_qemu}" ]; then
   echo "missing qemu-system-aarch64 in host share: ${guest_qemu}" >&2
   exit 1
 fi
+if [ ! -f "${guest_image_dir}/rootfs.cpio" ]; then
+  echo "missing plain initrd in host share: ${guest_image_dir}/rootfs.cpio" >&2
+  exit 1
+fi
 if [ ! -e /dev/kvm ]; then
   echo "missing /dev/kvm for l2 cvm launch" >&2
   exit 1
 fi
+if [ ! -x "${guest_realm_measurements}" ]; then
+  echo "missing realm-measurements in l1 host rootfs: ${guest_realm_measurements}" >&2
+  exit 1
+fi
+for path in \
+  "${guest_realm_configs_dir}/qemu-max-8.2.conf" \
+  "${guest_realm_configs_dir}/kvm.conf"; do
+  if [ ! -f "${path}" ]; then
+    echo "missing realm-measurements config: ${path}" >&2
+    exit 1
+  fi
+done
 
 if LC_ALL=C grep -a -q 'virtio_mmio_fuzz_read' "${guest_qemu}" 2>/dev/null &&
   LC_ALL=C grep -a -q 'virtio_mmio_dma_fuzz' "${guest_qemu}" 2>/dev/null; then
@@ -466,7 +489,6 @@ if LC_ALL=C grep -a -q 'virtio_mmio_fuzz_read' "${guest_qemu}" 2>/dev/null &&
 fi
 
 set -- \
-  "${guest_qemu}" \
   -L "${guest_qemu_data_dir}"
 
 if [ "${guest_qemu_has_morpheus_mmio_patch}" = "true" ]; then
@@ -475,10 +497,13 @@ if [ "${guest_qemu_has_morpheus_mmio_patch}" = "true" ]; then
 fi
 
 set -- "$@" \
-  -machine "virt,gic-version=3,its=on,confidential-guest-support=rme0" \
+  -M "confidential-guest-support=rme0" \
   -object "rme-guest,id=rme0" \
   -cpu host \
+  -M virt \
   -enable-kvm \
+  -M "gic-version=3,its=on" \
+  -smp 2 \
   -m 1024M \
   -nographic \
   -nodefaults \
@@ -487,11 +512,36 @@ set -- "$@" \
   -device "${guest_virtio_serial_device}" \
   -device "virtconsole,chardev=chr0" \
   -mon "chardev=chr0,mode=readline" \
+  -dtb "${guest_qemu_dtb}" \
   -kernel "${guest_image_dir}/Image" \
-  -initrd "${guest_image_dir}/rootfs.cpio.gz" \
+  -initrd "${guest_image_dir}/rootfs.cpio" \
   -netdev "user,id=net0" \
   -device "${guest_virtio_net_device}" \
   -append "console=hvc0 oops=panic panic_on_warn=1 panic=-1 kasan.fault=panic"
+
+rm -f "${guest_qemu_dtb}"
+printf 'dtb-generator=realm-measurements\n' >> "${launch_marker}"
+set +e
+"${guest_realm_measurements}" \
+  -c "${guest_realm_configs_dir}/qemu-max-8.2.conf" \
+  -c "${guest_realm_configs_dir}/kvm.conf" \
+  -k "${guest_image_dir}/Image" \
+  -i "${guest_image_dir}/rootfs.cpio" \
+  --no-measurements \
+  --output-dtb "${guest_qemu_dtb}" \
+  qemu \
+  "$@" >> "${guest_qemu_stderr}" 2>> "${guest_qemu_stderr}"
+dtb_status="$?"
+set -e
+if [ "${dtb_status}" -ne 0 ]; then
+  printf 'dtb-exit-status=%s\n' "${dtb_status}" >> "${launch_marker}"
+  exit "${dtb_status}"
+fi
+if [ ! -s "${guest_qemu_dtb}" ]; then
+  echo "failed to generate realm dtb: ${guest_qemu_dtb}" >&2
+  exit 1
+fi
+printf 'dtb-generated=%s\n' "${guest_qemu_dtb}" >> "${launch_marker}"
 
 if [ -d "${guest_qemu_runtime_lib_dir}" ]; then
   guest_qemu_runtime_loader=""
@@ -504,6 +554,7 @@ if [ -d "${guest_qemu_runtime_lib_dir}" ]; then
     fi
   done
   guest_qemu_runtime_library_path="${guest_qemu_runtime_lib_dir}/lib"
+  set -- "${guest_qemu}" "$@"
   if [ -n "${guest_qemu_runtime_loader}" ]; then
     set -- \
       "${guest_qemu_runtime_loader}" \
@@ -513,6 +564,8 @@ if [ -d "${guest_qemu_runtime_lib_dir}" ]; then
   else
     guest_qemu_ld_library_path="${guest_qemu_runtime_library_path}"
   fi
+else
+  set -- "${guest_qemu}" "$@"
 fi
 
 printf 'qemu-cmd=' >> "${launch_marker}"
@@ -595,7 +648,7 @@ try {
   )"
 fi
 
-node - "${state_file}" "${build_dir_key}" "${build_dir}" "${install_dir}" "${current_fingerprint}" "${qemu}" "${host_firmware_a_path}" "${host_firmware_b_path}" "${host_boot_dir}/Image" "${host_rootfs_path}" "${l1_dir}" "${launch_script}" "${hoststack_launch_script}" "${guest_images_dir}/Image" "${guest_images_dir}/rootfs.cpio.gz" "${buildroot_vmlinux}" "${guest_qemu_dir}/bin/qemu-system-aarch64" "${guest_qemu_runtime_lib_dir}" "${buildroot_inputs_fingerprint}" "${profile_sha256}" "${l1_machine}" "${l1_cpu}" "${l1_cmdline}" "${l1_memory}" "${l1_cpus}" "${use_linaro_helper}" "${l2_shared_cfg}" "${l2_shared_image}" "${l2_shared_initrd}" "${l2_shared_guest_disk}" "${l2_shared_qemu_efi}" "${l2_shared_kvmtool_efi}" "${l2_virtio_transport}" <<'NODE'
+node - "${state_file}" "${build_dir_key}" "${build_dir}" "${install_dir}" "${current_fingerprint}" "${qemu}" "${host_firmware_a_path}" "${host_firmware_b_path}" "${host_boot_dir}/Image" "${host_rootfs_path}" "${l1_dir}" "${launch_script}" "${hoststack_launch_script}" "${guest_images_dir}/Image" "${guest_images_dir}/rootfs.cpio" "${buildroot_vmlinux}" "${guest_qemu_dir}/bin/qemu-system-aarch64" "${guest_qemu_runtime_lib_dir}" "${buildroot_inputs_fingerprint}" "${profile_sha256}" "${l1_machine}" "${l1_cpu}" "${l1_cmdline}" "${l1_memory}" "${l1_cpus}" "${use_linaro_helper}" "${l2_shared_cfg}" "${l2_shared_image}" "${l2_shared_initrd}" "${l2_shared_guest_disk}" "${l2_shared_qemu_efi}" "${l2_shared_kvmtool_efi}" "${l2_virtio_transport}" <<'NODE'
 const fs = require("fs");
 const path = require("path");
 const [

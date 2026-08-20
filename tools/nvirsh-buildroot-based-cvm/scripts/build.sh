@@ -438,6 +438,7 @@ guest_realm_configs_dir="/usr/share/cca-realm-measurements/configs"
 guest_virtio_transport="__MORPHEUS_L2_VIRTIO_TRANSPORT__"
 guest_virtio_serial_device="virtio-serial-pci"
 guest_virtio_net_device="virtio-net-pci,netdev=net0,romfile=''"
+guest_bootargs="console=hvc0 oops=panic panic_on_warn=1 panic=-1 kasan.fault=panic"
 launch_marker="${runtime_dir}/launch-l2.marker"
 guest_qemu_trace_events="${runtime_dir}/morpheus-qemu-trace-events.txt"
 guest_qemu_dtb="${runtime_dir}/qemu-gen.dtb"
@@ -447,8 +448,8 @@ guest_qemu_ld_library_path=""
 guest_qemu_has_morpheus_mmio_patch="false"
 
 if [ "${guest_virtio_transport}" = "mmio" ]; then
-  guest_virtio_serial_device="virtio-serial-device"
   guest_virtio_net_device="virtio-net-device,netdev=net0"
+  guest_bootargs="console=ttyAMA0 oops=panic panic_on_warn=1 panic=-1 kasan.fault=panic"
 fi
 
 mkdir -p "${runtime_dir}"
@@ -509,15 +510,19 @@ set -- "$@" \
   -nodefaults \
   -chardev "stdio,mux=on,id=chr0,signal=off" \
   -serial "chardev:chr0" \
-  -device "${guest_virtio_serial_device}" \
-  -device "virtconsole,chardev=chr0" \
   -mon "chardev=chr0,mode=readline" \
   -dtb "${guest_qemu_dtb}" \
   -kernel "${guest_image_dir}/Image" \
   -initrd "${guest_image_dir}/rootfs.cpio" \
   -netdev "user,id=net0" \
   -device "${guest_virtio_net_device}" \
-  -append "console=hvc0 oops=panic panic_on_warn=1 panic=-1 kasan.fault=panic"
+  -append "${guest_bootargs}"
+
+if [ "${guest_virtio_transport}" != "mmio" ]; then
+  set -- "$@" \
+    -device "${guest_virtio_serial_device}" \
+    -device "virtconsole,chardev=chr0"
+fi
 
 rm -f "${guest_qemu_dtb}"
 printf 'dtb-generator=realm-measurements\n' >> "${launch_marker}"

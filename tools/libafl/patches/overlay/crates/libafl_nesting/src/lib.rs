@@ -1,6 +1,6 @@
-extern crate alloc;
-
 //! Structured nested fuzzing support for `LibAFL`.
+
+extern crate alloc;
 
 pub mod encoding;
 pub mod generator;

@@ -86,6 +86,20 @@ const fuzzerSource = fs.readFileSync(
   ),
   "utf8",
 );
+const libaflNestingLibSource = fs.readFileSync(
+  path.join(
+    repoRoot,
+    "tools",
+    "libafl",
+    "patches",
+    "overlay",
+    "crates",
+    "libafl_nesting",
+    "src",
+    "lib.rs",
+  ),
+  "utf8",
+);
 
 test("nested L2 timeout cleanup cannot serialize the next fuzz input", () => {
   assert.match(stubSource, /setpgid\(0, 0\)/);
@@ -412,6 +426,13 @@ test("full runtime capture is opt-in for the fuzzing harness", () => {
   assert.match(harnessSource, /--capture-runtime\)/);
   assert.match(harnessSource, /morpheus\.capture_runtime=1/);
   assert.match(stubSource, /qemu\.stdout\.log/);
+});
+
+test("LibAFL nesting crate keeps the module doc comment before Rust items", () => {
+  assert.match(
+    libaflNestingLibSource,
+    /^\/\/! Structured nested fuzzing support for `LibAFL`\.\n\nextern crate alloc;/,
+  );
 });
 
 test("LibAFL build installs the C guest stub used by nesting fuzzing", () => {

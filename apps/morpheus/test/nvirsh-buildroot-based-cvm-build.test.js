@@ -688,11 +688,15 @@ test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", 
   );
   assert.match(
     launchScript,
-    /guest_virtio_serial_device="virtio-serial-device"/,
+    /guest_bootargs="console=hvc0 oops=panic panic_on_warn=1 panic=-1 kasan\.fault=panic"/,
   );
   assert.match(
     launchScript,
     /guest_virtio_net_device="virtio-net-device,netdev=net0"/,
+  );
+  assert.match(
+    launchScript,
+    /guest_bootargs="console=ttyAMA0 oops=panic panic_on_warn=1 panic=-1 kasan\.fault=panic"/,
   );
   assert.match(
     launchScript,
@@ -733,6 +737,26 @@ test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", 
   assert.match(
     launchScript,
     /-M virt \\\s+-enable-kvm \\\s+-M "gic-version=3,its=on" \\\s+-smp 2/,
+  );
+  const mmioCommandSection = launchScript.slice(
+    0,
+    launchScript.indexOf('if [ "${guest_virtio_transport}" != "mmio" ]; then'),
+  );
+  assert.doesNotMatch(
+    mmioCommandSection,
+    /-device "\$\{guest_virtio_serial_device\}"/,
+  );
+  assert.doesNotMatch(
+    mmioCommandSection,
+    /-device "virtconsole,chardev=chr0"/,
+  );
+  assert.match(
+    launchScript,
+    /if \[ "\$\{guest_virtio_transport\}" != "mmio" \]; then\s+set -- "\$@" \\\s+-device "\$\{guest_virtio_serial_device\}" \\\s+-device "virtconsole,chardev=chr0"\s+fi/,
+  );
+  assert.match(
+    launchScript,
+    /-append "\$\{guest_bootargs\}"/,
   );
   assert.doesNotMatch(
     launchScript,

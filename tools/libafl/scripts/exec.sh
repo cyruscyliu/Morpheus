@@ -553,10 +553,12 @@ if [ "${l2_mode}" = "cvm" ]; then
   l1_cpu_effective="$(ensure_cpu_flag "${l1_cpu_effective}" "pauth-impdef" "on")"
   l1_cpu_effective="$(ensure_cpu_flag "${l1_cpu_effective}" "sve" "off")"
 
-  # Keep the CVM L1 aligned with nvirsh: 4096M is the known-good floor for
-  # booting the inner 1G Realm guest under the README pure-QEMU path.
-  l1_memory_cvm="$(morpheus_default_cvm_l1_qemu_memory_mb)"
-  l1_smp_cvm="$(morpheus_default_cvm_l1_qemu_cpus)"
+  # Keep the CVM L1 aligned with the prepared nvirsh state. The workflow
+  # already chooses the outer L1 memory and vCPU sizing, and the nesting
+  # fuzzing path must honor those values instead of falling back to the older
+  # 4096M / 1-vCPU default.
+  l1_memory_cvm="${l1_memory}"
+  l1_smp_cvm="${libafl_l1_smp}"
 
   args=(
     "-machine" "virt,acpi=off,virtualization=on,secure=on,gic-version=3,iommu=smmuv3"

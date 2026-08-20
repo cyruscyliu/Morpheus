@@ -181,11 +181,11 @@ test("generated CVM hoststack uses QEMU and keeps the runtime shared", () => {
   );
   assert.match(
     harnessSource,
-    /l1_memory_cvm="\$\(morpheus_default_cvm_l1_qemu_memory_mb\)"/,
+    /l1_memory_cvm="\$\{l1_memory\}"/,
   );
   assert.match(
     harnessSource,
-    /l1_smp_cvm="\$\(morpheus_default_cvm_l1_qemu_cpus\)"/,
+    /l1_smp_cvm="\$\{libafl_l1_smp\}"/,
   );
   assert.match(
     nvirshBuildrootBasedCvmBuildSource,

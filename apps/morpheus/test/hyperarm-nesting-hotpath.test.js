@@ -386,6 +386,50 @@ test("LibAFL input is handed from the CVM hoststack to QEMU", () => {
   assert.doesNotMatch(nvirshBuildSource, /kvmtool-virtio-mmio-input/);
 });
 
+test("LibAFL CVM harness supports buildroot-based prepared state", () => {
+  assert.match(harnessSource, /const tool = String\(state\.tool \|\| ""\)/);
+  assert.match(
+    harnessSource,
+    /const hoststackRootfs = l1State\.rootfs\s+\|\| hostStack\.rootfs/,
+  );
+  assert.match(
+    harnessSource,
+    /const hoststackShareDir = l1State\.shareDir\s+\|\| l1State\.runtimeShareDir/,
+  );
+  assert.match(
+    harnessSource,
+    /const hostKernel = String\(host\.kernel \|\| ""\)/,
+  );
+  assert.match(
+    harnessSource,
+    /cp -f "\$\{stub_elf\}" "\$\{l1_share_stub\}"/,
+  );
+  assert.match(
+    harnessSource,
+    /direct_l1_share_stub_path="\/host\/libafl_nesting_stub"/,
+  );
+  assert.match(
+    harnessSource,
+    /direct_l1_stub_launch_cmd="mount -t 9p -o trans=virtio,version=9p2000\.L host \/host && exec \$\{direct_l1_share_stub_path\}"/,
+  );
+  assert.match(
+    harnessSource,
+    /if \[ "\$\{nvirsh_state_tool\}" = "nvirsh-buildroot-based-cvm" \]; then/,
+  );
+  assert.match(
+    harnessSource,
+    /-drive" "format=raw,id=hd0,if=none,file=\$\{l1_hoststack_rootfs\}"/,
+  );
+  assert.match(
+    harnessSource,
+    /-device" "virtio-9p-pci,fsdev=hostshare,mount_tag=host"/,
+  );
+  assert.match(
+    harnessSource,
+    /-fsdev" "local,security_model=none,path=\$\{l1_hoststack_share_dir\},id=hostshare"/,
+  );
+});
+
 test("CVM stub prefers the shared hoststack launcher and mounts /host if needed", () => {
   assert.match(stubSource, /HOSTSTACK_LAUNCH_PATH/);
   assert.match(stubSource, /HOSTSTACK_LOCAL_LAUNCH_PATH/);

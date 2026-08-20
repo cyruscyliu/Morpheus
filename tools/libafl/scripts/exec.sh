@@ -290,79 +290,113 @@ MORPHEUS_NVIRSH_INSTALL_DIR="$(dirname "${nvirsh_state}")" \
 MORPHEUS_NVIRSH_RESULT_FILE="${run_dir}/nvirsh-stop.json" \
 "${repo_root}/tools/nvirsh/scripts/stop.sh"
 
-readarray -t state_fields < <(
+mapfile -d '' -t state_fields < <(
   node - "${nvirsh_state}" <<'NODE'
 const fs = require("fs");
 const path = require("path");
 const state = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-const firmware = (state.hostLaunch && state.hostLaunch.firmware) || "";
-const overlay = (state.hostLaunch && state.hostLaunch.overlayImage) || "";
+const tool = String(state.tool || "");
+const host = (state.hostLaunch && typeof state.hostLaunch === "object")
+  ? state.hostLaunch
+  : {};
+const firmware = String(host.firmwareA || host.firmware || "");
+const firmwareB = String(host.firmwareB || "");
+const overlay = String(host.overlayImage || "");
 const seed = (state.hostLaunch && state.hostLaunch.seedImage) || "";
 const buildDir = state.buildDir || "";
 const l1Args = (state.profileData && state.profileData.l1 && Array.isArray(state.profileData.l1.launcherArgs))
   ? state.profileData.l1.launcherArgs
   : [];
-let cpu = "cortex-a57";
-let memory = "8192";
-let smp = "4";
+let cpu = String(host.cpu || "cortex-a57");
+let memory = String(host.memory || "8192");
+let smp = String(host.cpus || "4");
+let machine = String(host.machine || "");
+let cmdline = String(host.cmdline || "");
+let accel = String(host.accel || "");
+let enableKvm = String(Boolean(host.enableKvm));
 for (let i = 0; i < l1Args.length - 1; i += 1) {
-  if (l1Args[i] === "-cpu") cpu = String(l1Args[i + 1]);
-  if (l1Args[i] === "-m") memory = String(l1Args[i + 1]);
-  if (l1Args[i] === "-smp") smp = String(l1Args[i + 1]);
+  if (!host.cpu && l1Args[i] === "-cpu") cpu = String(l1Args[i + 1]);
+  if (!host.memory && l1Args[i] === "-m") memory = String(l1Args[i + 1]);
+  if (!host.cpus && l1Args[i] === "-smp") smp = String(l1Args[i + 1]);
+  if (!host.machine && l1Args[i] === "-machine") machine = String(l1Args[i + 1]);
+  if (!host.cmdline && l1Args[i] === "-append") cmdline = String(l1Args[i + 1]);
+  if (!host.accel && l1Args[i] === "-accel") accel = String(l1Args[i + 1]);
+  if (!host.enableKvm && l1Args[i] === "-enable-kvm") enableKvm = "true";
 }
 const l1State = (state.layeredState && state.layeredState.l1) || {};
 const hostStack = l1State.hostStack || {};
-const hoststackRootfs = hostStack.rootfs
+const hoststackRootfs = l1State.rootfs
+  || hostStack.rootfs
   || path.join(buildDir, "l1", "cca-host-stack", "out", "host.ext4");
-const hoststackShareDir = l1State.runtimeShareDir
+const hoststackShareDir = l1State.shareDir
+  || l1State.runtimeShareDir
   || path.join(buildDir, "l1");
 const hoststackLaunch = l1State.launchScriptHoststack
   || path.join(buildDir, "l1", "launch-l2-hoststack.sh");
+const hostKernel = String(host.kernel || "");
 process.stdout.write(
   [
+    tool,
     firmware,
+    firmwareB,
     overlay,
     seed,
+    buildDir,
     cpu,
     memory,
     smp,
-    buildDir,
+    machine,
+    cmdline,
     hoststackRootfs,
     hoststackShareDir,
     hoststackLaunch,
-  ].join("\n") + "\n",
+    hostKernel,
+    accel,
+    enableKvm,
+  ].join("\0"),
 );
+process.stdout.write("\0");
 NODE
 )
 
-firmware="${state_fields[0]}"
-overlay_image="${state_fields[1]}"
-l1_cpu="${state_fields[3]}"
-l1_memory="${state_fields[4]}"
-l1_smp="${state_fields[5]}"
-l1_build_dir="${state_fields[6]}"
-l1_hoststack_rootfs="${state_fields[7]:-}"
-l1_hoststack_share_dir="${state_fields[8]:-}"
-l1_hoststack_launch="${state_fields[9]:-}"
+nvirsh_state_tool="${state_fields[0]:-}"
+firmware="${state_fields[1]:-}"
+firmware_b="${state_fields[2]:-}"
+overlay_image="${state_fields[3]:-}"
+l1_build_dir="${state_fields[5]:-}"
+l1_cpu="${state_fields[6]:-}"
+l1_memory="${state_fields[7]:-}"
+l1_smp="${state_fields[8]:-}"
+l1_machine="${state_fields[9]:-}"
+l1_cmdline_from_state="${state_fields[10]:-}"
+l1_hoststack_rootfs="${state_fields[11]:-}"
+l1_hoststack_share_dir="${state_fields[12]:-}"
+l1_hoststack_launch="${state_fields[13]:-}"
+l1_host_kernel="${state_fields[14]:-}"
+l1_accel="${state_fields[15]:-}"
+l1_enable_kvm="${state_fields[16]:-false}"
 libafl_l1_smp_requested="${MORPHEUS_LIBAFL_L1_SMP:-${l1_smp:-}}"
 l1_memory_requested="${MORPHEUS_LIBAFL_L1_MEMORY:-${l1_memory:-}}"
 libafl_l1_smp="$(morpheus_resolve_l1_qemu_cpus "${libafl_l1_smp_requested}")"
 l1_memory="$(morpheus_resolve_l1_qemu_memory_mb "${l1_memory_requested}")"
 qemu_data_dir="${qemu_bundle_dir}"
 firmware_data_dir="$(dirname "${firmware}")"
-direct_l1_kernel="${l1_build_dir}/l1/host-boot/vmlinuz"
+direct_l1_kernel="${l1_host_kernel:-${l1_build_dir}/l1/host-boot/vmlinuz}"
 direct_l1_initrd="${l1_build_dir}/l1/host-boot/initrd.img"
 direct_l1_cmdline="${l1_build_dir}/l1/host-boot/cmdline.txt"
+sanitize_bootargs() {
+  printf '%s\n' "$1" \
+    | sed \
+        -e 's/\<BOOT_IMAGE=[^ ]*//g' \
+        -e 's/\<init=[^ ]*//g' \
+        -e 's/  */ /g' \
+        -e 's/^ //' \
+        -e 's/ $//'
+}
 if [ -f "${direct_l1_cmdline}" ]; then
-  direct_l1_append="$(
-    sed \
-      -e 's/\<BOOT_IMAGE=[^ ]*//g' \
-      -e 's/\<init=[^ ]*//g' \
-      -e 's/  */ /g' \
-      -e 's/^ //' \
-      -e 's/ $//' \
-      "${direct_l1_cmdline}"
-  )"
+  direct_l1_append="$(sanitize_bootargs "$(cat "${direct_l1_cmdline}")")"
+elif [ -n "${l1_cmdline_from_state}" ]; then
+  direct_l1_append="$(sanitize_bootargs "${l1_cmdline_from_state}")"
 else
   direct_l1_append="root=PARTUUID=48bd50df-bfd1-4457-8648-8026f634af47 ro"
 fi
@@ -506,6 +540,12 @@ append_l2_fw_cfg() {
   fi
 }
 
+l1_boot_dir="${run_dir}/l1-boot-fat"
+l1_share_stub="${l1_hoststack_share_dir}/libafl_nesting_stub"
+direct_l1_share_stub_path="/host/libafl_nesting_stub"
+direct_l1_stub_launch_cmd="mount -t 9p -o trans=virtio,version=9p2000.L host /host && exec ${direct_l1_share_stub_path}"
+direct_l1_share_append="${direct_l1_append/init=\/root\/libafl_nesting_stub/init=\/bin\/sh -- -c \"${direct_l1_stub_launch_cmd}\"}"
+
 ensure_cpu_flag() {
   local cpu="$1"
   local flag="$2"
@@ -518,8 +558,9 @@ ensure_cpu_flag() {
 
 if [ "${l2_mode}" = "cvm" ]; then
   # Match nvirsh CVM L1: RME-capable machine + max CPU with x-rme.
-  # Keep the debian overlay + stub init so libafl nesting still owns the
-  # fuzz loop; the stub mounts virtfs tag "host" and runs hoststack qemu.
+  # Keep the libafl stub as PID 1 so the fuzz loop still runs inside the L1
+  # guest. For buildroot-based CVM states, stage the stub on the shared host
+  # tree and boot the prepared rootfs with a host-share mount handoff.
   if [ -z "${l1_hoststack_share_dir}" ]; then
     l1_hoststack_share_dir="${l1_build_dir}/l1"
   fi
@@ -532,10 +573,6 @@ if [ "${l2_mode}" = "cvm" ]; then
   fi
   if [ ! -x "${l1_hoststack_share_dir}/launch-l2-hoststack.sh" ] &&      [ ! -x "${l1_hoststack_launch:-}" ]; then
     echo "missing launch-l2-hoststack.sh under ${l1_hoststack_share_dir}" >&2
-    exit 1
-  fi
-  if [ ! -f "${direct_l1_kernel}" ] || [ ! -f "${direct_l1_initrd}" ]; then
-    echo "missing cvm l1 host-boot kernel/initrd under ${l1_build_dir}/l1/host-boot" >&2
     exit 1
   fi
   if [ -z "${firmware}" ] || [ ! -f "${firmware}" ]; then
@@ -560,23 +597,98 @@ if [ "${l2_mode}" = "cvm" ]; then
   l1_memory_cvm="${l1_memory}"
   l1_smp_cvm="${libafl_l1_smp}"
 
-  args=(
-    "-machine" "virt,acpi=off,virtualization=on,secure=on,gic-version=3,iommu=smmuv3"
-    "-cpu" "${l1_cpu_effective}"
-    "-m" "${l1_memory_cvm}"
-    "-smp" "${l1_smp_cvm}"
-    "-nographic"
-    "-accel" "tcg"
-    "-bios" "${firmware}"
-    "-kernel" "${direct_l1_kernel}"
-    "-initrd" "${direct_l1_initrd}"
-    "-append" "${direct_l1_append}"
-    "-drive" "file=${overlay_image},if=virtio,format=qcow2"
-    "-L" "${qemu_data_dir}"
-  )
-  append_l2_fw_cfg
-  printf '[libafl/qemu_nesting] cvm l1: cpu=%s memory=%s smp=%s share=%s\n' \
-    "${l1_cpu_effective}" "${l1_memory_cvm}" "${l1_smp_cvm}" "${l1_hoststack_share_dir}" >&2
+  if [ "${nvirsh_state_tool}" = "nvirsh-buildroot-based-cvm" ]; then
+    if [ ! -f "${direct_l1_kernel}" ]; then
+      echo "missing cvm l1 kernel for buildroot-based state: ${direct_l1_kernel}" >&2
+      exit 1
+    fi
+    if [ ! -f "${l1_hoststack_rootfs}" ]; then
+      echo "missing cvm l1 rootfs for buildroot-based state: ${l1_hoststack_rootfs}" >&2
+      exit 1
+    fi
+    if [ -n "${firmware_b}" ] && [ ! -f "${firmware_b}" ]; then
+      echo "missing cvm l1 firmware b for buildroot-based state: ${firmware_b}" >&2
+      exit 1
+    fi
+
+    cp -f "${stub_elf}" "${l1_share_stub}"
+    chmod 0755 "${l1_share_stub}"
+    rm -rf "${l1_boot_dir}"
+    mkdir -p "${l1_boot_dir}"
+    cp -f "${direct_l1_kernel}" "${l1_boot_dir}/Image"
+    cat > "${l1_boot_dir}/startup.nsh" <<EOF
+mode 100 31
+pci
+fs0:\Image ${direct_l1_share_append}
+reset -c
+EOF
+
+    l1_machine_effective="${l1_machine:-sbsa-ref}"
+    args=(
+      "-display" "none"
+      "-nographic"
+      "-nodefaults"
+      "-serial" "mon:stdio"
+      "-action" "panic=exit-failure"
+      "-machine" "${l1_machine_effective}"
+      "-cpu" "${l1_cpu_effective}"
+      "-m" "${l1_memory_cvm}"
+      "-smp" "${l1_smp_cvm}"
+      "-drive" "format=raw,id=hd0,if=none,file=${l1_hoststack_rootfs}"
+      "-device" "virtio-blk-pci,drive=hd0"
+      "-device" "virtio-9p-pci,fsdev=hostshare,mount_tag=host"
+      "-fsdev" "local,security_model=none,path=${l1_hoststack_share_dir},id=hostshare"
+      "-device" "virtio-net-pci,netdev=net0"
+      "-netdev" "user,id=net0"
+    )
+    append_l2_fw_cfg
+    if [ -n "${firmware_b}" ]; then
+      args+=(
+        "-drive" "file=${firmware},format=raw,if=pflash"
+        "-drive" "file=${firmware_b},format=raw,if=pflash"
+        "-drive" "file=fat:rw:${l1_boot_dir},format=raw"
+      )
+    else
+      args+=(
+        "-bios" "${firmware}"
+        "-kernel" "${direct_l1_kernel}"
+        "-append" "${direct_l1_share_append}"
+      )
+    fi
+    if [ -n "${l1_accel}" ]; then
+      args+=("-accel" "${l1_accel}")
+    else
+      args+=("-accel" "tcg")
+    fi
+    if [ "${l1_enable_kvm}" = "true" ]; then
+      args+=("-enable-kvm")
+    fi
+    printf '[libafl/qemu_nesting] cvm l1 buildroot-state: cpu=%s memory=%s smp=%s rootfs=%s share=%s\n' \
+      "${l1_cpu_effective}" "${l1_memory_cvm}" "${l1_smp_cvm}" "${l1_hoststack_rootfs}" "${l1_hoststack_share_dir}" >&2
+  else
+    if [ ! -f "${direct_l1_kernel}" ] || [ ! -f "${direct_l1_initrd}" ]; then
+      echo "missing cvm l1 host-boot kernel/initrd under ${l1_build_dir}/l1/host-boot" >&2
+      exit 1
+    fi
+
+    args=(
+      "-machine" "virt,acpi=off,virtualization=on,secure=on,gic-version=3,iommu=smmuv3"
+      "-cpu" "${l1_cpu_effective}"
+      "-m" "${l1_memory_cvm}"
+      "-smp" "${l1_smp_cvm}"
+      "-nographic"
+      "-accel" "tcg"
+      "-bios" "${firmware}"
+      "-kernel" "${direct_l1_kernel}"
+      "-initrd" "${direct_l1_initrd}"
+      "-append" "${direct_l1_append}"
+      "-drive" "file=${overlay_image},if=virtio,format=qcow2"
+      "-L" "${qemu_data_dir}"
+    )
+    append_l2_fw_cfg
+    printf '[libafl/qemu_nesting] cvm l1 legacy-state: cpu=%s memory=%s smp=%s share=%s\n' \
+      "${l1_cpu_effective}" "${l1_memory_cvm}" "${l1_smp_cvm}" "${l1_hoststack_share_dir}" >&2
+  fi
 else
   args=(
     "-machine" "virt,virtualization=on,gic-version=3"

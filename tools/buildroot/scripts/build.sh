@@ -147,12 +147,23 @@ const add = (artifactPath, location) => {
   }
 };
 add("output-dir", process.argv[1]);
-add("images-dir", process.argv[2]);
-add("images/Image", process.argv[3]);
-add("images/rootfs.cpio.gz", process.argv[4]);
-add("build/vmlinux", process.argv[5]);
+add("target-dir", process.argv[2]);
+add("images-dir", process.argv[3]);
+add("images/Image", process.argv[4]);
+add("images/rootfs.cpio.gz", process.argv[5]);
+add("build/vmlinux", process.argv[6]);
+add("target/usr/bin/qemu-system-aarch64", process.argv[7]);
+add("target/usr/share/qemu", process.argv[8]);
 process.stdout.write(JSON.stringify(artifacts));
-' "${output_dir}" "${output_dir}/images" "${kernel_image}" "${initrd_image}" "${vmlinux_path}"
+' \
+    "${output_dir}" \
+    "${output_dir}/target" \
+    "${output_dir}/images" \
+    "${kernel_image}" \
+    "${initrd_image}" \
+    "${vmlinux_path}" \
+    "${output_dir}/target/usr/bin/qemu-system-aarch64" \
+    "${output_dir}/target/usr/share/qemu"
   )"
   cat > "${build_inputs_state_file}" <<EOF
 {
@@ -211,12 +222,23 @@ const add = (artifactPath, location) => {
   }
 };
 add("output-dir", process.argv[1]);
-add("images-dir", process.argv[2]);
-add("images/Image", process.argv[3]);
-add("images/rootfs.cpio.gz", process.argv[4]);
-add("build/vmlinux", process.argv[5]);
+add("target-dir", process.argv[2]);
+add("images-dir", process.argv[3]);
+add("images/Image", process.argv[4]);
+add("images/rootfs.cpio.gz", process.argv[5]);
+add("build/vmlinux", process.argv[6]);
+add("target/usr/bin/qemu-system-aarch64", process.argv[7]);
+add("target/usr/share/qemu", process.argv[8]);
 process.stdout.write(JSON.stringify(artifacts));
-' "${output_dir}" "${output_dir}/images" "${kernel_image}" "${initrd_image}" "${vmlinux_path}"
+' \
+  "${output_dir}" \
+  "${output_dir}/target" \
+  "${output_dir}/images" \
+  "${kernel_image}" \
+  "${initrd_image}" \
+  "${vmlinux_path}" \
+  "${output_dir}/target/usr/bin/qemu-system-aarch64" \
+  "${output_dir}/target/usr/share/qemu"
 )"
 
 cat > "${result_file}" <<EOF

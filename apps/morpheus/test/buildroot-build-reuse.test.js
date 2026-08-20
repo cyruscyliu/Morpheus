@@ -21,6 +21,31 @@ function sha256(text) {
   return crypto.createHash("sha256").update(text).digest("hex");
 }
 
+function artifactMap(result) {
+  return new Map((result.artifacts || []).map((entry) => [entry.path, entry.location]));
+}
+
+function assertManagedGuestArtifacts(result, outputDir) {
+  const artifacts = artifactMap(result);
+  assert.equal(artifacts.get("output-dir"), outputDir);
+  assert.equal(artifacts.get("target-dir"), path.join(outputDir, "target"));
+  assert.equal(artifacts.get("images-dir"), path.join(outputDir, "images"));
+  assert.equal(artifacts.get("images/Image"), path.join(outputDir, "images", "Image"));
+  assert.equal(
+    artifacts.get("images/rootfs.cpio.gz"),
+    path.join(outputDir, "images", "rootfs.cpio.gz"),
+  );
+  assert.equal(artifacts.get("build/vmlinux"), path.join(outputDir, "build", "linux-6.18.16", "vmlinux"));
+  assert.equal(
+    artifacts.get("target/usr/bin/qemu-system-aarch64"),
+    path.join(outputDir, "target", "usr", "bin", "qemu-system-aarch64"),
+  );
+  assert.equal(
+    artifacts.get("target/usr/share/qemu"),
+    path.join(outputDir, "target", "usr", "share", "qemu"),
+  );
+}
+
 test("buildroot build reuses an existing output tree before mutating .config", () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-buildroot-build-"));
   const sourceDir = path.join(tmpDir, "source");
@@ -43,6 +68,7 @@ test("buildroot build reuses an existing output tree before mutating .config", (
   assert.equal(firstRun.status, 0, firstRun.stderr + firstRun.stdout);
   const firstResult = JSON.parse(fs.readFileSync(resultFile, "utf8"));
   assert.equal(firstResult.details.reused, false);
+  assertManagedGuestArtifacts(firstResult, outputDir);
 
   const buildLog = path.join(outputDir, "build.log");
   const defconfigLog = path.join(outputDir, "defconfig.log");
@@ -69,6 +95,7 @@ test("buildroot build reuses an existing output tree before mutating .config", (
   assert.equal(secondRun.status, 0, secondRun.stderr + secondRun.stdout);
   const secondResult = JSON.parse(fs.readFileSync(resultFile, "utf8"));
   assert.equal(secondResult.details.reused, true);
+  assertManagedGuestArtifacts(secondResult, outputDir);
   assert.equal(fs.statSync(buildLog).mtimeMs, buildLogMtime);
   assert.deepEqual(
     fs.readFileSync(defconfigLog, "utf8").trim().split("\n"),

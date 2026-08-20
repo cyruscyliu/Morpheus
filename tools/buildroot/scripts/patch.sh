@@ -97,18 +97,7 @@ collect_source_tree_patch_files() {
 
 collect_fingerprint_files() {
   local root="$1"
-  local file
-
-  {
-    for file in "${root}"/*; do
-      [ -f "${file}" ] && printf '%s\n' "${file}"
-    done
-    for file in "${root}"/linux/* "${root}"/linux-headers/* "${root}"/buildroot/*; do
-      [ -f "${file}" ] && printf '%s\n' "${file}"
-    done
-  } | sort
-
-  return 0
+  find "${root}" \( -type f -o -type l \) | sort
 }
 
 patch_files=""

@@ -59,6 +59,12 @@
         ],
         "path": true
       },
+      "l2-virtio-transport": {
+        "aliases": [
+          "l2-virtio-transport",
+          "l2VirtioTransport"
+        ]
+      },
       "l1-machine": {
         "aliases": [
           "l1-machine",
@@ -179,6 +185,7 @@
             "qemu-edk2",
             "l2-guest-disk",
             "l2-kvmtool-efi",
+            "l2-virtio-transport",
             "l1-machine",
             "l1-cpu",
             "l1-cmdline",

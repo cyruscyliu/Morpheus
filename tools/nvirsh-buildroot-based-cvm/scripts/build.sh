@@ -15,6 +15,7 @@ l1_firmware_b="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_FIRMWARE_B:?}"
 qemu_edk2="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_QEMU_EDK2:-}"
 l2_guest_disk="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_GUEST_DISK:-}"
 l2_kvmtool_efi="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_KVMTOOL_EFI:-}"
+l2_virtio_transport="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_VIRTIO_TRANSPORT:-pci}"
 l1_machine="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_MACHINE:-sbsa-ref}"
 l1_cpu="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_CPU:-max,x-rme=on,sme=off,pauth-impdef=on,sve=off}"
 l1_cmdline="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_CMDLINE:-root=/dev/vda console=ttyAMA0}"
@@ -123,6 +124,19 @@ if [ -n "${qemu_edk2}" ] || [ -n "${l2_guest_disk}" ] || [ -n "${l2_kvmtool_efi}
   use_linaro_helper="true"
 fi
 
+case "${l2_virtio_transport}" in
+  pci|mmio)
+    ;;
+  *)
+    echo "unsupported l2 virtio transport: ${l2_virtio_transport}" >&2
+    exit 1
+    ;;
+esac
+if [ "${use_linaro_helper}" = "true" ] && [ "${l2_virtio_transport}" != "pci" ]; then
+  echo "linaro helper launch only supports l2 virtio transport pci" >&2
+  exit 1
+fi
+
 require_file() {
   local path="$1"
   local description="$2"
@@ -199,6 +213,7 @@ try {
     printf 'l1_memory=%s\n' "${l1_memory}"
     printf 'l1_cpus=%s\n' "${l1_cpus}"
     printf 'use_linaro_helper=%s\n' "${use_linaro_helper}"
+    printf 'l2_virtio_transport=%s\n' "${l2_virtio_transport}"
     printf '%s\n' "${BASH_SOURCE[0]}"
     printf '%s\n' "${qemu}"
     printf '%s\n' "${l1_kernel}"
@@ -398,11 +413,19 @@ guest_image_dir="${MORPHEUS_L2_GUEST_IMAGE_DIR:-/mnt/guest-images}"
 guest_qemu="/mnt/guest-qemu/bin/qemu-system-aarch64"
 guest_qemu_data_dir="/mnt/guest-qemu/share/qemu"
 guest_qemu_runtime_lib_dir="/mnt/guest-qemu/runtime-libs"
+guest_virtio_transport="__MORPHEUS_L2_VIRTIO_TRANSPORT__"
+guest_virtio_serial_device="virtio-serial-pci"
+guest_virtio_net_device="virtio-net-pci,netdev=net0,romfile=''"
 launch_marker="${runtime_dir}/launch-l2.marker"
 guest_qemu_trace_events="${runtime_dir}/morpheus-qemu-trace-events.txt"
 guest_qemu_stdout="${runtime_dir}/qemu.stdout.log"
 guest_qemu_stderr="${runtime_dir}/qemu.stderr.log"
 guest_qemu_ld_library_path=""
+
+if [ "${guest_virtio_transport}" = "mmio" ]; then
+  guest_virtio_serial_device="virtio-serial-device"
+  guest_virtio_net_device="virtio-net-device,netdev=net0"
+fi
 
 mkdir -p "${runtime_dir}"
 : > "${guest_qemu_stdout}"
@@ -434,13 +457,13 @@ set -- \
   -nodefaults \
   -chardev "stdio,mux=on,id=chr0,signal=off" \
   -serial "chardev:chr0" \
-  -device virtio-serial-pci \
+  -device "${guest_virtio_serial_device}" \
   -device "virtconsole,chardev=chr0" \
   -mon "chardev=chr0,mode=readline" \
   -kernel "${guest_image_dir}/Image" \
   -initrd "${guest_image_dir}/rootfs.cpio.gz" \
   -netdev "user,id=net0" \
-  -device "virtio-net-pci,netdev=net0,romfile=''" \
+  -device "${guest_virtio_net_device}" \
   -append "console=hvc0 oops=panic panic_on_warn=1 panic=-1 kasan.fault=panic"
 
 if [ -d "${guest_qemu_runtime_lib_dir}" ]; then
@@ -485,6 +508,7 @@ set -e
 printf 'qemu-exit-status=%s\n' "${qemu_status}" >> "${launch_marker}"
 exit "${qemu_status}"
 EOF
+  perl -0pi -e 's/__MORPHEUS_L2_VIRTIO_TRANSPORT__/'"${l2_virtio_transport}"'/g' "${launch_script}"
 fi
 chmod +x "${launch_script}"
 
@@ -544,7 +568,7 @@ try {
   )"
 fi
 
-node - "${state_file}" "${build_dir_key}" "${build_dir}" "${install_dir}" "${current_fingerprint}" "${qemu}" "${host_firmware_a_path}" "${host_firmware_b_path}" "${host_boot_dir}/Image" "${host_rootfs_path}" "${l1_dir}" "${launch_script}" "${hoststack_launch_script}" "${guest_images_dir}/Image" "${guest_images_dir}/rootfs.cpio.gz" "${buildroot_vmlinux}" "${guest_qemu_dir}/bin/qemu-system-aarch64" "${guest_qemu_runtime_lib_dir}" "${buildroot_inputs_fingerprint}" "${profile_sha256}" "${l1_machine}" "${l1_cpu}" "${l1_cmdline}" "${l1_memory}" "${l1_cpus}" "${use_linaro_helper}" "${l2_shared_cfg}" "${l2_shared_image}" "${l2_shared_initrd}" "${l2_shared_guest_disk}" "${l2_shared_qemu_efi}" "${l2_shared_kvmtool_efi}" <<'NODE'
+node - "${state_file}" "${build_dir_key}" "${build_dir}" "${install_dir}" "${current_fingerprint}" "${qemu}" "${host_firmware_a_path}" "${host_firmware_b_path}" "${host_boot_dir}/Image" "${host_rootfs_path}" "${l1_dir}" "${launch_script}" "${hoststack_launch_script}" "${guest_images_dir}/Image" "${guest_images_dir}/rootfs.cpio.gz" "${buildroot_vmlinux}" "${guest_qemu_dir}/bin/qemu-system-aarch64" "${guest_qemu_runtime_lib_dir}" "${buildroot_inputs_fingerprint}" "${profile_sha256}" "${l1_machine}" "${l1_cpu}" "${l1_cmdline}" "${l1_memory}" "${l1_cpus}" "${use_linaro_helper}" "${l2_shared_cfg}" "${l2_shared_image}" "${l2_shared_initrd}" "${l2_shared_guest_disk}" "${l2_shared_qemu_efi}" "${l2_shared_kvmtool_efi}" "${l2_virtio_transport}" <<'NODE'
 const fs = require("fs");
 const path = require("path");
 const [
@@ -580,6 +604,7 @@ const [
   l2GuestDisk,
   l2QemuEfi,
   l2KvmtoolEfi,
+  l2VirtioTransport,
 ] = process.argv.slice(2);
 const buildrootOutputDir = path.dirname(path.dirname(l2Image));
 const now = new Date().toISOString();
@@ -632,6 +657,7 @@ const state = {
         guestDisk: fs.existsSync(l2GuestDisk) ? l2GuestDisk : null,
         qemuEfi: fs.existsSync(l2QemuEfi) ? l2QemuEfi : null,
         kvmtoolEfi: fs.existsSync(l2KvmtoolEfi) ? l2KvmtoolEfi : null,
+        virtioTransport: l2VirtioTransport,
         buildInputsFingerprint: buildrootInputsFingerprint,
       },
     },

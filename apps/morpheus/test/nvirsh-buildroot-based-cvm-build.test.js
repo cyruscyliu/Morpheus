@@ -192,6 +192,7 @@ test("buildroot-based CVM build stages explicit linux, buildroot, and firmware-b
   const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
   assert.equal(state.tool, "nvirsh-buildroot-based-cvm");
   assert.equal(state.layeredState.l2.mode, "cvm");
+  assert.equal(state.layeredState.l2.buildrootImages.virtioTransport, "pci");
   assert.equal(state.hostLaunch.qemu, hostQemu);
   assert.equal(state.hostLaunch.firmwareA, path.join(buildDir, "l1", "host-firmware", "SBSA_FLASH0.fd"));
   assert.equal(state.hostLaunch.firmwareB, path.join(buildDir, "l1", "host-firmware", "SBSA_FLASH1.fd"));
@@ -278,6 +279,7 @@ test("buildroot-based CVM build stages explicit linux, buildroot, and firmware-b
   assert.equal(inspectRun.status, 0, inspectRun.stderr + inspectRun.stdout);
   const inspectResult = JSON.parse(fs.readFileSync(inspectResultFile, "utf8"));
   assert.equal(inspectResult.details.guest_kernel_vmlinux, path.join(buildrootOutputDir, "build", "vmlinux"));
+  assert.equal(inspectResult.details.guest_virtio_transport, "pci");
 });
 
 test("buildroot-based CVM build reuses the linux kernel when buildroot does not provide one", () => {
@@ -373,6 +375,7 @@ test("buildroot-based CVM build reuses the linux kernel when buildroot does not 
     inspectResult.details.guest_kernel_image,
     path.join(buildDir, "l1", "guest-images", "Image"),
   );
+  assert.equal(inspectResult.details.guest_virtio_transport, "pci");
 });
 
 test("buildroot-based CVM build switches to the Linaro helper launch path when realm helper artifacts are provided", () => {
@@ -481,6 +484,7 @@ test("buildroot-based CVM build switches to the Linaro helper launch path when r
 
   const state = JSON.parse(fs.readFileSync(path.join(installDir, "state.json"), "utf8"));
   assert.equal(state.layeredState.l2.buildrootImages.launchMode, "linaro-gen-run-vmm");
+  assert.equal(state.layeredState.l2.buildrootImages.virtioTransport, "pci");
   assert.equal(
     state.layeredState.l2.buildrootImages.helperCfg,
     path.join(buildDir, "l1", "gen-run-vmm.cfg"),
@@ -551,9 +555,211 @@ test("buildroot-based CVM build switches to the Linaro helper launch path when r
 
   const inspectResult = JSON.parse(fs.readFileSync(inspectResultFile, "utf8"));
   assert.equal(inspectResult.details.guest_launch_mode, "linaro-gen-run-vmm");
+  assert.equal(inspectResult.details.guest_virtio_transport, "pci");
   assert.equal(
     inspectResult.details.guest_helper_cfg,
     path.join(buildDir, "l1", "gen-run-vmm.cfg"),
   );
   assert.equal(inspectResult.details.guest_rsi_evidence, null);
+});
+
+test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-buildroot-cvm-mmio-"));
+  const buildDir = path.join(tmpDir, "build");
+  const installDir = path.join(tmpDir, "install");
+  const resultFile = path.join(tmpDir, "result.json");
+  const inspectResultFile = path.join(tmpDir, "inspect.json");
+  const hostQemu = path.join(tmpDir, "host-qemu", "bin", "qemu-system-aarch64");
+  const l1Kernel = path.join(tmpDir, "linux-out", "Image");
+  const l1FirmwareA = path.join(tmpDir, "firmware", "SBSA_FLASH0.fd");
+  const l1FirmwareB = path.join(tmpDir, "firmware", "SBSA_FLASH1.fd");
+  const buildrootOutputDir = path.join(tmpDir, "buildroot-out");
+
+  writeExecutable(hostQemu, "#!/bin/sh\nexit 0\n");
+  fs.mkdirSync(path.dirname(l1Kernel), { recursive: true });
+  fs.writeFileSync(l1Kernel, "l1-kernel\n");
+  fs.mkdirSync(path.dirname(l1FirmwareA), { recursive: true });
+  fs.writeFileSync(l1FirmwareA, "flash-a\n");
+  fs.writeFileSync(l1FirmwareB, "flash-b\n");
+
+  fs.mkdirSync(path.join(buildrootOutputDir, "images"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "build"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "bin"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "share", "qemu"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "target", "lib"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "lib"), { recursive: true });
+  fs.writeFileSync(path.join(buildrootOutputDir, "images", "Image"), "l2-image\n");
+  fs.writeFileSync(path.join(buildrootOutputDir, "images", "rootfs.cpio.gz"), "l2-initrd\n");
+  fs.writeFileSync(path.join(buildrootOutputDir, "images", "rootfs.ext2"), "l1-rootfs\n");
+  fs.writeFileSync(path.join(buildrootOutputDir, "build", "vmlinux"), "l2-vmlinux\n");
+  writeExecutable(
+    path.join(buildrootOutputDir, "target", "usr", "bin", "qemu-system-aarch64"),
+    "#!/bin/sh\nexit 0\n",
+  );
+  writeExecutable(
+    path.join(buildrootOutputDir, "target", "lib", "ld-linux-aarch64.so.1"),
+    "#!/bin/sh\nexit 0\n",
+  );
+  fs.writeFileSync(
+    path.join(buildrootOutputDir, "target", "usr", "share", "qemu", "edk2.bin"),
+    "qemu-data\n",
+  );
+  fs.writeFileSync(
+    path.join(buildrootOutputDir, "target", "usr", "lib", "libfdt.so.1"),
+    "libfdt\n",
+  );
+  fs.writeFileSync(
+    path.join(buildrootOutputDir, ".morpheus-build-inputs.json"),
+    JSON.stringify({ fingerprint: "buildroot-fixture-fingerprint" }, null, 2),
+  );
+
+  const buildRun = spawnSync("bash", [buildScript], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR: buildDir,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_INSTALL_DIR: installDir,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_QEMU: hostQemu,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILDROOT_OUTPUT_DIR: buildrootOutputDir,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_KERNEL: l1Kernel,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_FIRMWARE_A: l1FirmwareA,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_FIRMWARE_B: l1FirmwareB,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_VIRTIO_TRANSPORT: "mmio",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_REUSE_BUILD_DIR: "true",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE: resultFile,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR_KEY: "fixture-cvm-mmio",
+    },
+  });
+  assert.equal(buildRun.status, 0, buildRun.stderr + buildRun.stdout);
+
+  const state = JSON.parse(fs.readFileSync(path.join(installDir, "state.json"), "utf8"));
+  assert.equal(state.layeredState.l2.buildrootImages.launchMode, "direct-qemu");
+  assert.equal(state.layeredState.l2.buildrootImages.virtioTransport, "mmio");
+  assert.match(
+    fs.readFileSync(path.join(buildDir, "l1", "launch-l2.sh"), "utf8"),
+    /guest_virtio_transport="mmio"/,
+  );
+  assert.match(
+    fs.readFileSync(path.join(buildDir, "l1", "launch-l2.sh"), "utf8"),
+    /guest_virtio_serial_device="virtio-serial-device"/,
+  );
+  assert.match(
+    fs.readFileSync(path.join(buildDir, "l1", "launch-l2.sh"), "utf8"),
+    /guest_virtio_net_device="virtio-net-device,netdev=net0"/,
+  );
+
+  const inspectRun = spawnSync("bash", [inspectScript], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_INSTALL_DIR: installDir,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RUN_DIR: path.join(tmpDir, "run"),
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR_KEY: "fixture-cvm-mmio",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE: inspectResultFile,
+    },
+  });
+  assert.equal(inspectRun.status, 0, inspectRun.stderr + inspectRun.stdout);
+
+  const inspectResult = JSON.parse(fs.readFileSync(inspectResultFile, "utf8"));
+  assert.equal(inspectResult.details.guest_launch_mode, "direct-qemu");
+  assert.equal(inspectResult.details.guest_virtio_transport, "mmio");
+});
+
+test("buildroot-based CVM build rejects MMIO transport in Linaro helper mode", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-buildroot-cvm-helper-mmio-"));
+  const buildDir = path.join(tmpDir, "build");
+  const installDir = path.join(tmpDir, "install");
+  const resultFile = path.join(tmpDir, "result.json");
+  const hostQemu = path.join(tmpDir, "host-qemu", "bin", "qemu-system-aarch64");
+  const qemuEdk2 = path.join(tmpDir, "host-qemu", "share", "qemu", "edk2-aarch64-code.fd");
+  const l2GuestDisk = path.join(tmpDir, "linaro", "guest-disk.img");
+  const l2KvmtoolEfi = path.join(tmpDir, "linaro", "KVMTOOL_EFI.fd");
+  const l1Kernel = path.join(tmpDir, "linux-out", "Image");
+  const l1FirmwareA = path.join(tmpDir, "firmware", "SBSA_FLASH0.fd");
+  const l1FirmwareB = path.join(tmpDir, "firmware", "SBSA_FLASH1.fd");
+  const buildrootOutputDir = path.join(tmpDir, "buildroot-out");
+
+  writeExecutable(hostQemu, "#!/bin/sh\nexit 0\n");
+  fs.mkdirSync(path.dirname(qemuEdk2), { recursive: true });
+  fs.writeFileSync(qemuEdk2, "qemu-edk2\n");
+  fs.mkdirSync(path.dirname(l2GuestDisk), { recursive: true });
+  fs.writeFileSync(l2GuestDisk, "guest-disk\n");
+  fs.writeFileSync(l2KvmtoolEfi, "kvmtool-efi\n");
+  fs.mkdirSync(path.dirname(l1Kernel), { recursive: true });
+  fs.writeFileSync(l1Kernel, "shared-kernel\n");
+  fs.mkdirSync(path.dirname(l1FirmwareA), { recursive: true });
+  fs.writeFileSync(l1FirmwareA, "flash-a\n");
+  fs.writeFileSync(l1FirmwareB, "flash-b\n");
+
+  fs.mkdirSync(path.join(buildrootOutputDir, "images"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "build"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "bin"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "share", "qemu"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "target", "lib"), { recursive: true });
+  fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "lib"), { recursive: true });
+  fs.writeFileSync(path.join(buildrootOutputDir, "images", "Image"), "l2-image\n");
+  createCpioArchive(path.join(buildrootOutputDir, "images", "rootfs.cpio"), {
+    "init": {
+      contents: "#!/bin/sh\nexec /sbin/init\n",
+      mode: 0o755,
+    },
+    "etc": { directory: true },
+    "etc/init.d": { directory: true },
+  });
+  fs.writeFileSync(path.join(buildrootOutputDir, "images", "rootfs.cpio.gz"), "l2-initrd\n");
+  fs.writeFileSync(path.join(buildrootOutputDir, "images", "rootfs.ext2"), "l1-rootfs\n");
+  fs.writeFileSync(path.join(buildrootOutputDir, "build", "vmlinux"), "l2-vmlinux\n");
+  writeExecutable(
+    path.join(buildrootOutputDir, "target", "usr", "bin", "qemu-system-aarch64"),
+    "#!/bin/sh\nexit 0\n",
+  );
+  writeExecutable(
+    path.join(buildrootOutputDir, "target", "usr", "bin", "gen-run-vmm.sh"),
+    "#!/bin/sh\nexit 0\n",
+  );
+  writeExecutable(
+    path.join(buildrootOutputDir, "target", "usr", "bin", "realm-measurements"),
+    "#!/bin/sh\nexit 0\n",
+  );
+  writeExecutable(
+    path.join(buildrootOutputDir, "target", "usr", "bin", "lkvm"),
+    "#!/bin/sh\nexit 0\n",
+  );
+  writeExecutable(
+    path.join(buildrootOutputDir, "target", "lib", "ld-linux-aarch64.so.1"),
+    "#!/bin/sh\nexit 0\n",
+  );
+  fs.writeFileSync(
+    path.join(buildrootOutputDir, "target", "usr", "share", "qemu", "edk2.bin"),
+    "qemu-data\n",
+  );
+  fs.writeFileSync(
+    path.join(buildrootOutputDir, "target", "usr", "lib", "libfdt.so.1"),
+    "libfdt\n",
+  );
+
+  const buildRun = spawnSync("bash", [buildScript], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR: buildDir,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_INSTALL_DIR: installDir,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_QEMU: hostQemu,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_QEMU_EDK2: qemuEdk2,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_GUEST_DISK: l2GuestDisk,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_KVMTOOL_EFI: l2KvmtoolEfi,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILDROOT_OUTPUT_DIR: buildrootOutputDir,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_KERNEL: l1Kernel,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_FIRMWARE_A: l1FirmwareA,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_FIRMWARE_B: l1FirmwareB,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_VIRTIO_TRANSPORT: "mmio",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE: resultFile,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR_KEY: "fixture-cvm-helper-mmio",
+    },
+  });
+  assert.equal(buildRun.status, 1);
+  assert.match(
+    buildRun.stderr + buildRun.stdout,
+    /linaro helper launch only supports l2 virtio transport pci/,
+  );
 });

@@ -50,6 +50,7 @@ const details = {
   guest_initrd: buildrootImages && buildrootImages.initrd ? buildrootImages.initrd : null,
   guest_qemu: buildrootImages && buildrootImages.qemu ? buildrootImages.qemu : null,
   guest_launch_mode: buildrootImages && buildrootImages.launchMode ? buildrootImages.launchMode : null,
+  guest_virtio_transport: buildrootImages && buildrootImages.virtioTransport ? buildrootImages.virtioTransport : null,
   guest_helper_cfg: buildrootImages && buildrootImages.helperCfg ? buildrootImages.helperCfg : null,
   guest_share_initrd: buildrootImages && buildrootImages.shareInitrd ? buildrootImages.shareInitrd : null,
   guest_disk: buildrootImages && buildrootImages.guestDisk ? buildrootImages.guestDisk : null,

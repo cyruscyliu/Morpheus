@@ -397,7 +397,11 @@ test("nvirsh workflow fixture builds dependent artifacts before nvirsh", () => {
     explicitPath: nvirshWorkflowFixturePath,
   }).value;
 
-  for (const workflowName of ["nvirsh-qemu-arm64-vm-exec", "nvirsh-qemu-arm64-cvm-exec"]) {
+  for (const workflowName of [
+    "nvirsh-qemu-arm64-vm-exec",
+    "nvirsh-qemu-arm64-cvm-exec",
+    "nvirsh-qemu-arm64-cvm-dma-mmio-exec",
+  ]) {
     const workflow = workflowConfig.workflows[workflowName];
     assert.ok(workflow, `missing fixture ${workflowName} workflow`);
     const stepIds = workflowStepIds(workflow);
@@ -425,6 +429,36 @@ test("nvirsh workflow fixture builds dependent artifacts before nvirsh", () => {
       assert.ok(
         stepIds.indexOf("linux_build") < stepIds.indexOf("nvirsh_build"),
         `expected linux_build before nvirsh_build in ${workflowName}`,
+      );
+    }
+    if (workflowName === "nvirsh-qemu-arm64-cvm-dma-mmio-exec") {
+      assert.ok(
+        stepIds.indexOf("linux_fetch") < stepIds.indexOf("linux_build"),
+        `expected linux_fetch before linux_build in ${workflowName}`,
+      );
+      assert.ok(
+        stepIds.indexOf("linux_build") < stepIds.indexOf("nvirsh_build"),
+        `expected linux_build before nvirsh_build in ${workflowName}`,
+      );
+      assert.ok(
+        stepIds.indexOf("linux_l2_fetch") < stepIds.indexOf("linux_l2_patch"),
+        `expected linux_l2_fetch before linux_l2_patch in ${workflowName}`,
+      );
+      assert.ok(
+        stepIds.indexOf("linux_l2_patch") < stepIds.indexOf("linux_l2_build"),
+        `expected linux_l2_patch before linux_l2_build in ${workflowName}`,
+      );
+      assert.ok(
+        stepIds.indexOf("linux_l2_build") < stepIds.indexOf("nvirsh_build"),
+        `expected linux_l2_build before nvirsh_build in ${workflowName}`,
+      );
+      assert.ok(
+        stepIds.indexOf("qemu_host_fetch") < stepIds.indexOf("qemu_host_build"),
+        `expected qemu_host_fetch before qemu_host_build in ${workflowName}`,
+      );
+      assert.ok(
+        stepIds.indexOf("qemu_host_build") < stepIds.indexOf("nvirsh_build"),
+        `expected qemu_host_build before nvirsh_build in ${workflowName}`,
       );
     }
     const terminalStep = workflowName === "nvirsh-qemu-arm64-cvm-exec"

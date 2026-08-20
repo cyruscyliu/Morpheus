@@ -6,11 +6,13 @@ use libafl_bolts::{nonzero, rands::Rand};
 use crate::input::{
     Action, ActionGroup, CpuAction, HyperAction, PageTableAction, ScenarioInput, VmAction,
 };
+use crate::model::{DevilangModel, MmioDirection};
 
 #[derive(Debug, Clone)]
 pub struct ScenarioGenerator {
     max_groups: NonZeroUsize,
     max_actions_per_group: NonZeroUsize,
+    devilang_model: Option<DevilangModel>,
 }
 
 impl Default for ScenarioGenerator {
@@ -27,7 +29,23 @@ impl ScenarioGenerator {
         Self {
             max_groups,
             max_actions_per_group,
+            devilang_model: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_devilang_model(mut self, devilang_model: DevilangModel) -> Self {
+        self.devilang_model = Some(devilang_model);
+        self
+    }
+
+    #[cfg(feature = "std")]
+    pub fn from_env() -> Result<Self, String> {
+        let mut generator = Self::default();
+        if let Some(devilang_model) = DevilangModel::from_env()? {
+            generator.devilang_model = Some(devilang_model);
+        }
+        Ok(generator)
     }
 
     fn oracle_action() -> Action {
@@ -38,7 +56,47 @@ impl ScenarioGenerator {
         })
     }
 
-    pub(crate) fn random_action<R: Rand>(rand: &mut R) -> Action {
+    fn random_u64_for_width<R: Rand>(rand: &mut R, width: u8) -> u64 {
+        let width = width.clamp(1, 8);
+        let mut value = 0u64;
+        for shift in 0..usize::from(width) {
+            value |= (rand.below(nonzero!(256)) as u64) << (shift * 8);
+        }
+        value
+    }
+
+    pub(crate) fn model_mmio_action<R: Rand>(&self, rand: &mut R) -> Option<Action> {
+        let model = self.devilang_model.as_ref()?;
+        let mmio_ops = model.mmio_ops();
+        if mmio_ops.is_empty() {
+            return None;
+        }
+
+        let op = &mmio_ops[rand.below(unsafe {
+            NonZeroUsize::new_unchecked(mmio_ops.len())
+        })];
+        match op.direction() {
+            MmioDirection::Read => Some(Action::Hyper(HyperAction::MmioRead {
+                addr: op.address(),
+                width: op.size(),
+            })),
+            MmioDirection::Write => Some(Action::Hyper(HyperAction::MmioWrite {
+                addr: op.address(),
+                width: op.size(),
+                value: op
+                    .data()
+                    .unwrap_or_else(|| Self::random_u64_for_width(rand, op.size())),
+            })),
+        }
+    }
+
+    pub(crate) fn random_action<R: Rand>(&self, rand: &mut R) -> Action {
+        if rand.below(nonzero!(3)) == 0 {
+            if let Some(action) = self.model_mmio_action(rand) {
+                return action;
+            }
+        }
+
         match rand.below(nonzero!(4)) {
             0 => Action::Vm(match rand.below(nonzero!(3)) {
                 0 => VmAction::Continue,
@@ -144,7 +202,7 @@ where
                     // Seed empty-corpus fuzzing with an oracle-bearing scenario.
                     actions.push(Self::oracle_action());
                 } else {
-                    actions.push(Self::random_action(state.rand_mut()));
+                    actions.push(self.random_action(state.rand_mut()));
                 }
             }
             groups.push(ActionGroup::new(actions));
@@ -162,6 +220,7 @@ mod tests {
     use libafl_bolts::rands::StdRand;
 
     use super::*;
+    use crate::model::DevilangModel;
 
     #[derive(Clone, Debug)]
     struct TestState {
@@ -199,5 +258,37 @@ mod tests {
             input.groups().last().and_then(|g| g.actions().last()),
             Some(Action::Vm(crate::input::VmAction::Stop))
         ));
+    }
+
+    #[test]
+    fn generator_can_emit_devilang_mmio_actions() {
+        let devilang_model = DevilangModel::parse_state_text(
+            r#"
+op virtio_mmio_queue_notify_write {
+    mmio virtio_mmio_queue_notify_write {
+        direction = w;
+        address = 80;
+        size = 4;
+        data = 85;
+    }
+}
+"#,
+        )
+        .expect("model parsing should work");
+
+        let generator = ScenarioGenerator::default().with_devilang_model(devilang_model);
+        let mut rand = StdRand::with_seed(0);
+        let action = generator
+            .model_mmio_action(&mut rand)
+            .expect("model-backed action should exist");
+
+        assert_eq!(
+            action,
+            Action::Hyper(HyperAction::MmioWrite {
+                addr: 80,
+                width: 4,
+                value: 85,
+            })
+        );
     }
 }

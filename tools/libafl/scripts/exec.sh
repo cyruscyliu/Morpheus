@@ -39,6 +39,7 @@ disable_nqc2_plugin="false"
 capture_runtime="false"
 replay_inputs=()
 seed_inputs=()
+devilang_states=()
 
 # Morpheus scripted exec passes repeatable harness-arg via env/file, not argv.
 # Load those when the script is invoked with no positional args.
@@ -62,6 +63,7 @@ while [ "$#" -gt 0 ]; do
     --l2-cpu) shift; l2_cpu="${1:-}" ;;
     --replay-input) shift; replay_inputs+=("${1:-}") ;;
     --seed-input) shift; seed_inputs+=("${1:-}") ;;
+    --devilang-state) shift; devilang_states+=("${1:-}") ;;
     --disable-nqc2-plugin) disable_nqc2_plugin="true" ;;
     --capture-runtime) capture_runtime="true" ;;
     *) echo "unknown qemu_nesting harness argument: $1" >&2; exit 1 ;;
@@ -76,6 +78,7 @@ objective_dir="${run_dir}/crashes"
 replay_inputs_file="${run_dir}/replay-inputs.txt"
 replay_state_file="${run_dir}/replay-state.json"
 seed_inputs_file="${run_dir}/seed-inputs.txt"
+devilang_states_file="${run_dir}/devilang-states.txt"
 step_log_file="${run_dir%/}/../stdout.log"
 runner_log_file="${run_dir}/launcher.stdout.log"
 fuzzer_bin="${install_dir}/bin/qemu_nesting"
@@ -100,6 +103,7 @@ find "${corpus_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 find "${objective_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 rm -f "${replay_inputs_file}" "${replay_state_file}"
 rm -f "${seed_inputs_file}"
+rm -f "${devilang_states_file}"
 : > "${runner_log_file}"
 
 manifest_pid=""
@@ -218,6 +222,47 @@ for (const root of roots) {
 }
 const unique = [...new Set(inputs)].sort();
 if (unique.length === 0) throw new Error("no seed inputs resolved");
+fs.writeFileSync(outputFile, `${unique.join("\n")}\n`);
+NODE
+fi
+
+if [ "${#devilang_states[@]}" -gt 0 ]; then
+  node - "${devilang_states_file}" "${workspace_root}" "${repo_root}" "${devilang_states[@]}" <<'NODE'
+const fs = require("fs");
+const path = require("path");
+const outputFile = process.argv[2];
+const workspaceRoot = process.argv[3];
+const repoRoot = process.argv[4];
+const roots = process.argv.slice(5);
+const inputs = [];
+function resolveInputPath(input) {
+  const candidates = [
+    path.resolve(input),
+    path.resolve(workspaceRoot, input),
+    path.resolve(repoRoot, input),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return path.resolve(input);
+}
+function addFile(file) {
+  const stat = fs.statSync(file);
+  if (!stat.isFile()) return;
+  if (!file.endsWith(".state")) return;
+  inputs.push(path.resolve(file));
+}
+for (const root of roots) {
+  const resolved = resolveInputPath(root);
+  const stat = fs.statSync(resolved);
+  if (stat.isDirectory()) {
+    for (const entry of fs.readdirSync(resolved).sort()) addFile(path.join(resolved, entry));
+  } else {
+    addFile(resolved);
+  }
+}
+const unique = [...new Set(inputs)].sort();
+if (unique.length === 0) throw new Error("no devilang state files resolved");
 fs.writeFileSync(outputFile, `${unique.join("\n")}\n`);
 NODE
 fi
@@ -573,6 +618,9 @@ if [ "${replay_enabled}" = "true" ]; then
 fi
 if [ -f "${seed_inputs_file}" ] && [ -s "${seed_inputs_file}" ]; then
   launch_env+=("MORPHEUS_LIBAFL_INITIAL_INPUTS=${seed_inputs_file}")
+fi
+if [ -f "${devilang_states_file}" ] && [ -s "${devilang_states_file}" ]; then
+  launch_env+=("MORPHEUS_LIBAFL_DEVILANG_STATES=${devilang_states_file}")
 fi
 
 launch_cmd=(env "${launch_env[@]}" "${fuzzer_bin}" "${args[@]}")

@@ -65,6 +65,16 @@ fn initial_input_paths() -> Option<Vec<PathBuf>> {
     input_paths_from_manifest(&manifest, "initial")
 }
 
+fn scenario_generator_from_env() -> ScenarioGenerator {
+    match ScenarioGenerator::from_env() {
+        Ok(generator) => generator,
+        Err(err) => {
+            eprintln!("failed to load Devilang-backed scenario generator: {err}");
+            ScenarioGenerator::default()
+        }
+    }
+}
+
 fn input_paths_from_manifest(manifest: &str, kind: &str) -> Option<Vec<PathBuf>> {
     let content = fs::read_to_string(&manifest)
         .unwrap_or_else(|err| panic!("failed to read {kind} input manifest {manifest}: {err}"));
@@ -167,6 +177,7 @@ pub fn fuzz() {
                 let mut objective = feedback_or_fast!(CrashFeedback::new(), TimeoutFeedback::new());
 
                 let mut state = $state.unwrap_or_else(|| {
+                    let mut scenario_generator = scenario_generator_from_env();
                     let mut state = StdState::new(
                         StdRand::with_seed(current_nanos()),
                         OnDiskCorpus::new(corpus_dir.clone()).unwrap(),
@@ -206,9 +217,8 @@ pub fn fuzz() {
                             panic!("no valid initial fuzz inputs loaded");
                         }
                     } else {
-                        let mut generator = ScenarioGenerator::default();
                         for _ in 0..4 {
-                            let input = generator.generate(&mut state).unwrap();
+                            let input = scenario_generator.generate(&mut state).unwrap();
                             state.corpus_mut().add(input.into()).unwrap();
                         }
                     }
@@ -269,8 +279,9 @@ pub fn fuzz() {
                     // that cost for this systemmode target, so keep only the
                     // structured scenario mutation stage on the hot path.
                     let mut executor = executor;
+                    let scenario_generator = scenario_generator_from_env();
                     let mut stages = tuple_list!(StdMutationalStage::new(
-                        ScenarioMutator::default()
+                        ScenarioMutator::new(scenario_generator)
                     ));
 
                     fuzzer

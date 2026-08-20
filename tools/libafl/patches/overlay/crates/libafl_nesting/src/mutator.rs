@@ -231,7 +231,8 @@ where
                     if let Some(action_idx) =
                         Self::random_action_index(state.rand_mut(), group.len())
                     {
-                        group.actions_mut()[action_idx] = ScenarioGenerator::random_action(state.rand_mut());
+                        group.actions_mut()[action_idx] =
+                            self.generator.random_action(state.rand_mut());
                         mutated = true;
                     }
                 }
@@ -250,7 +251,7 @@ where
                     };
                     group
                         .actions_mut()
-                        .insert(insert_at, ScenarioGenerator::random_action(state.rand_mut()));
+                        .insert(insert_at, self.generator.random_action(state.rand_mut()));
                     mutated = true;
                 }
             }
@@ -308,7 +309,7 @@ where
                     };
                     group
                         .actions_mut()
-                        .insert(insert_at, ScenarioGenerator::random_action(state.rand_mut()));
+                        .insert(insert_at, self.generator.random_action(state.rand_mut()));
                     mutated = true;
                 }
             }
@@ -354,9 +355,8 @@ where
                     Self::random_group_index(state.rand_mut(), input.groups().len())
                 {
                     let group = input.groups()[group_idx].clone();
-                    let other = ActionGroup::new(vec![ScenarioGenerator::random_action(
-                        state.rand_mut(),
-                    )]);
+                    let other =
+                        ActionGroup::new(vec![self.generator.random_action(state.rand_mut())]);
                     input.groups_mut().insert(group_idx, other);
                     input.groups_mut().remove(group_idx + 1);
                     input.groups_mut().insert(group_idx, group);

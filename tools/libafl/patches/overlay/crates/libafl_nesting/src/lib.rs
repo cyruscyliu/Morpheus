@@ -1,8 +1,11 @@
+extern crate alloc;
+
 //! Structured nested fuzzing support for `LibAFL`.
 
 pub mod encoding;
 pub mod generator;
 pub mod input;
+pub mod model;
 pub mod mutator;
 pub mod stub;
 
@@ -13,5 +16,6 @@ pub use generator::ScenarioGenerator;
 pub use input::{
     Action, ActionGroup, CpuAction, HyperAction, PageTableAction, ScenarioInput, VmAction,
 };
+pub use model::{DevilangMmioOp, DevilangModel, MmioDirection};
 pub use mutator::ScenarioMutator;
 pub use stub::{GUEST_STUB_BINARY, guest_stub_build_hint};

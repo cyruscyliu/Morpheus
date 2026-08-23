@@ -674,6 +674,12 @@ test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", 
     "#!/bin/sh\nexit 0\n",
   );
   const launchScript = fs.readFileSync(path.join(buildDir, "l1", "launch-l2.sh"), "utf8");
+  assert.equal(
+    launchScript.includes(
+      "printf 'launch-mode=direct-qemu\\n' >> \"${launch_marker}\"",
+    ),
+    true,
+  );
   assert.match(
     launchScript,
     /guest_virtio_transport="mmio"/,

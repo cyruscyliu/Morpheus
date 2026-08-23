@@ -57,6 +57,10 @@ const details = {
   guest_qemu_efi: buildrootImages && buildrootImages.qemuEfi ? buildrootImages.qemuEfi : null,
   guest_rsi_evidence: manifest.runtime && manifest.runtime.l2 ? (manifest.runtime.l2.rsiEvidence || null) : null,
   guest_rsi_evidence_missing: manifest.runtime && manifest.runtime.l2 ? Boolean(manifest.runtime.l2.rsiEvidenceMissing) : false,
+  guest_l2_ready: manifest.runtime && manifest.runtime.l2 ? Boolean(manifest.runtime.l2.ready) : false,
+  guest_cvm_evidence: manifest.runtime && manifest.runtime.l2
+    ? (manifest.runtime.l2.cvmEvidence || null)
+    : null,
 };
 const artifacts = [];
 if (details.guest_kernel_vmlinux && fs.existsSync(details.guest_kernel_vmlinux)) {

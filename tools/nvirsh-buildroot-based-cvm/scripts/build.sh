@@ -460,6 +460,7 @@ fi
 : > "${guest_qemu_stdout}"
 : > "${guest_qemu_stderr}"
 printf 'script-start\n' > "${launch_marker}"
+printf 'launch-mode=direct-qemu\n' >> "${launch_marker}"
 
 if [ ! -x "${guest_qemu}" ]; then
   echo "missing qemu-system-aarch64 in host share: ${guest_qemu}" >&2

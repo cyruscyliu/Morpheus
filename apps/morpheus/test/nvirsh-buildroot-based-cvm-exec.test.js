@@ -20,6 +20,20 @@ const execScript = path.join(
   "scripts",
   "exec.sh",
 );
+const stopScript = path.join(
+  repoRoot,
+  "tools",
+  "nvirsh-buildroot-based-cvm",
+  "scripts",
+  "stop.sh",
+);
+const inspectScript = path.join(
+  repoRoot,
+  "tools",
+  "nvirsh-buildroot-based-cvm",
+  "scripts",
+  "inspect.sh",
+);
 const appBin = path.join(repoRoot, "apps", "morpheus", "dist", "cli.js");
 
 function writeExecutable(filePath, contents) {
@@ -95,6 +109,22 @@ function writeBlockingHostQemu(hostQemu, childPidFile) {
       "#!/usr/bin/env sh",
       "set -eu",
       `child_pid_file=${JSON.stringify(childPidFile)}`,
+      "share_dir=''",
+      "for arg in \"$@\"; do",
+      "  case \"$arg\" in",
+      "    local,security_model=none,path=*,id=hostshare)",
+      "      share_dir=\"${arg#local,security_model=none,path=}\"",
+      "      share_dir=\"${share_dir%,id=hostshare}\"",
+      "      ;;",
+      "  esac",
+      "done",
+      "if [ -n \"$share_dir\" ]; then",
+      "  runtime_dir=\"$share_dir/morpheus-l2-runtime\"",
+      "  mkdir -p \"$runtime_dir\"",
+      "  printf '%s\\n' 'script-start' 'launch-mode=direct-qemu' 'qemu-cmd=/mnt/guest-qemu/bin/qemu-system-aarch64 -M confidential-guest-support=rme0 -object rme-guest,id=rme0 -enable-kvm' 'qemu-exec-start' > \"$runtime_dir/launch-l2.marker\"",
+      "  printf 'l2 boot detail: guest started\\r\\r\\nbuildroot login:\\n' > \"$runtime_dir/qemu.stdout.log\"",
+      "  : > \"$runtime_dir/qemu.stderr.log\"",
+      "fi",
       "(",
       "  trap 'exit 0' TERM INT",
       "  while :; do sleep 1; done",
@@ -122,6 +152,28 @@ function stopL1FromManifest(manifest) {
       process.kill(pid, "SIGKILL");
     } catch {}
   }
+}
+
+function execEnvironment(installDir, runDir, resultFile) {
+  return {
+    ...process.env,
+    MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_INSTALL_DIR: installDir,
+    MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RUN_DIR: runDir,
+    MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_PHASE: "launch",
+    MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR_KEY: "fixture-cvm",
+    MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE: resultFile,
+  };
+}
+
+function stopExec(runDir, resultFile) {
+  return spawnSync("bash", [stopScript], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RUN_DIR: runDir,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE: resultFile,
+    },
+  });
 }
 
 function createCpioArchive(archivePath, files) {
@@ -256,7 +308,7 @@ function prepareHelperArtifacts(tmpDir) {
   fs.writeFileSync(path.join(helperDir, "KVMTOOL_EFI.fd"), "kvmtool-efi\n");
 }
 
-test("buildroot-based CVM exec launches L1 with explicit firmware, rootfs, share, and append wiring", () => {
+test("buildroot-based CVM exec streams L2 CVM evidence and stays running until stop", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-buildroot-cvm-exec-"));
   const hostQemu = path.join(tmpDir, "host-qemu", "bin", "qemu-system-aarch64");
   const argsLog = path.join(tmpDir, "host-qemu.args.log");
@@ -281,7 +333,8 @@ test("buildroot-based CVM exec launches L1 with explicit firmware, rootfs, share
       "if [ -n \"$share_dir\" ]; then",
       "  runtime_dir=\"$share_dir/morpheus-l2-runtime\"",
       "  mkdir -p \"$runtime_dir\"",
-      "  printf '%s\\n' 'l2 boot detail: guest started' > \"$runtime_dir/qemu.stdout.log\"",
+      "  printf '%s\\n' 'script-start' 'launch-mode=direct-qemu' 'qemu-cmd=/mnt/guest-qemu/bin/qemu-system-aarch64 -M confidential-guest-support=rme0 -object rme-guest,id=rme0 -enable-kvm' 'qemu-exec-start' > \"$runtime_dir/launch-l2.marker\"",
+      "  printf 'l2 boot detail: guest started\\r\\r\\n[   21.710994] rtc-pl031 9010000.pl031: registered as rtc0\\r\\r\\n[   21.897624] i2c_dev: i2c /dev entries driver\\r\\n' > \"$runtime_dir/qemu.stdout.log\"",
       "  printf '%s\\n' 'buildroot login:' >> \"$runtime_dir/qemu.stdout.log\"",
       "  : > \"$runtime_dir/qemu.stderr.log\"",
       "fi",
@@ -292,29 +345,64 @@ test("buildroot-based CVM exec launches L1 with explicit firmware, rootfs, share
 
   const { buildDir, installDir } = prepareBuildFixture(tmpDir, hostQemu);
 
-  const execRun = spawnSync("bash", [execScript], {
+  const execChild = spawn("bash", [execScript], {
+    env: execEnvironment(installDir, runDir, execResultFile),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const resultPromise = collectChildResult(execChild);
+  const manifest = await waitFor(() => {
+    const value = readJsonIfExists(path.join(runDir, "manifest.json"));
+    return value && value.status === "running" && value.runtime?.l2?.ready
+      && value.runtime?.l2?.cvmEvidence?.observed
+      ? value
+      : null;
+  }, "L2 CVM readiness and evidence");
+  assert.equal(processIsActive(manifest.runtime.l1.pid), true);
+  assert.equal(manifest.runtime.l2.cvmEvidence.directRmeEvidence.confidentialGuestSupport, true);
+  assert.equal(manifest.runtime.l2.cvmEvidence.directRmeEvidence.rmeGuestObject, true);
+  assert.equal(manifest.runtime.l2.cvmEvidence.directRmeEvidence.enableKvm, true);
+  assert.match(manifest.runtime.l2.cvmEvidence.qemuCommand, /confidential-guest-support=rme0/);
+  assert.match(manifest.runtime.l2.cvmEvidence.qemuCommand, /rme-guest,id=rme0/);
+
+  const stopRun = stopExec(runDir, execResultFile);
+  assert.equal(stopRun.status, 0, stopRun.stderr + stopRun.stdout);
+  const execRun = await resultPromise;
+  assert.equal(execRun.code, 130, execRun.stderr + execRun.stdout);
+  assert.match(execRun.stderr, /observed L2 CVM launch evidence/);
+  assert.match(execRun.stderr, /l2 boot detail: guest started/);
+  assert.match(execRun.stderr, /buildroot login:/);
+  assert.doesNotMatch(
+    execRun.stderr,
+    /rtc-pl031 9010000\.pl031: registered as rtc0\n\n\[   21\.897624\] i2c_dev/,
+  );
+
+  const stoppedManifest = JSON.parse(
+    fs.readFileSync(path.join(runDir, "manifest.json"), "utf8"),
+  );
+  assert.equal(stoppedManifest.status, "stopped");
+  assert.equal(stoppedManifest.runtime.l1.pid, null);
+  assert.equal(stoppedManifest.runtime.l2.ready, true);
+  assert.equal(stoppedManifest.runtime.l2.cvmEvidence.observed, true);
+  assert.doesNotMatch(
+    fs.readFileSync(path.join(runDir, "l2-console.log"), "utf8"),
+    /rtc-pl031 9010000\.pl031: registered as rtc0\n\n\[   21\.897624\] i2c_dev/,
+  );
+  const inspectResultFile = path.join(tmpDir, "inspect-result.json");
+  const inspectRun = spawnSync("bash", [inspectScript], {
     encoding: "utf8",
     env: {
       ...process.env,
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_INSTALL_DIR: installDir,
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RUN_DIR: runDir,
-      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_PHASE: "launch",
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR_KEY: "fixture-cvm",
-      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE: execResultFile,
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE: inspectResultFile,
     },
   });
-  assert.equal(execRun.status, 0, execRun.stderr + execRun.stdout);
-  assert.match(execRun.stderr, /l2 boot detail: guest started/);
-  assert.match(execRun.stderr, /buildroot login:/);
+  assert.equal(inspectRun.status, 0, inspectRun.stderr + inspectRun.stdout);
+  const inspectResult = JSON.parse(fs.readFileSync(inspectResultFile, "utf8"));
+  assert.equal(inspectResult.details.guest_l2_ready, true);
+  assert.equal(inspectResult.details.guest_cvm_evidence.observed, true);
 
-  const execResult = JSON.parse(fs.readFileSync(execResultFile, "utf8"));
-  assert.equal(execResult.details.phase, "launch");
-  assert.equal(execResult.details.build_dir_key, "fixture-cvm");
-
-  const manifest = JSON.parse(
-    fs.readFileSync(path.join(runDir, "manifest.json"), "utf8"),
-  );
-  assert.equal(manifest.status, "success");
   assert.equal(manifest.hostLaunch.machine, "sbsa-ref");
   assert.equal(
     manifest.hostLaunch.firmwareA,
@@ -389,7 +477,7 @@ test("buildroot-based CVM exec writes an error manifest when the L1 host launch 
     [
       "#!/usr/bin/env sh",
       "set -eu",
-      "exit 1",
+      "exit 0",
     ].join("\n"),
   );
 
@@ -414,9 +502,13 @@ test("buildroot-based CVM exec writes an error manifest when the L1 host launch 
   );
   assert.equal(manifest.status, "error");
   assert.equal(manifest.exitCode, 1);
+  assert.equal(
+    JSON.parse(fs.readFileSync(execResultFile, "utf8")).details.error_message,
+    "L1 host stack exited before the CVM workflow was stopped",
+  );
 });
 
-test("buildroot-based CVM exec helper mode requires guest RSI evidence before success", () => {
+test("buildroot-based CVM exec helper mode streams RSI evidence and stays running", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-buildroot-cvm-exec-helper-"));
   const hostQemu = path.join(tmpDir, "host-qemu", "bin", "qemu-system-aarch64");
   const execResultFile = path.join(tmpDir, "exec-result.json");
@@ -439,6 +531,7 @@ test("buildroot-based CVM exec helper mode requires guest RSI evidence before su
       "done",
       "runtime_dir=\"$share_dir/morpheus-l2-runtime\"",
       "mkdir -p \"$runtime_dir\"",
+      "printf '%s\\n' 'script-start' 'launch-mode=linaro-gen-run-vmm' 'helper-cmd=gen-run-vmm.sh --tap --serial' 'qemu-exec-start' > \"$runtime_dir/launch-l2.marker\"",
       "printf '%s\\n' 'MORPHEUS_RSI_EVIDENCE: [    0.000000] RME: Using RSI version 1.0' > \"$runtime_dir/qemu.stdout.log\"",
       "printf '%s\\n' 'buildroot login:' >> \"$runtime_dir/qemu.stdout.log\"",
       ": > \"$runtime_dir/qemu.stderr.log\"",
@@ -449,31 +542,32 @@ test("buildroot-based CVM exec helper mode requires guest RSI evidence before su
 
   const { installDir } = prepareBuildFixture(tmpDir, hostQemu, { helperMode: true });
 
-  const execRun = spawnSync("bash", [execScript], {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_INSTALL_DIR: installDir,
-      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RUN_DIR: runDir,
-      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_PHASE: "launch",
-      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR_KEY: "fixture-cvm",
-      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE: execResultFile,
-    },
+  const execChild = spawn("bash", [execScript], {
+    env: execEnvironment(installDir, runDir, execResultFile),
+    stdio: ["ignore", "pipe", "pipe"],
   });
-  assert.equal(execRun.status, 0, execRun.stderr + execRun.stdout);
-
-  const manifest = JSON.parse(
-    fs.readFileSync(path.join(runDir, "manifest.json"), "utf8"),
-  );
-  assert.equal(manifest.status, "success");
+  const resultPromise = collectChildResult(execChild);
+  const manifest = await waitFor(() => {
+    const value = readJsonIfExists(path.join(runDir, "manifest.json"));
+    return value && value.status === "running" && value.runtime?.l2?.ready
+      && value.runtime?.l2?.rsiEvidence
+      ? value
+      : null;
+  }, "helper L2 RSI evidence");
+  assert.equal(manifest.runtime.l2.cvmEvidence.observed, true);
   assert.equal(
     manifest.runtime.l2.rsiEvidence,
     "MORPHEUS_RSI_EVIDENCE: [    0.000000] RME: Using RSI version 1.0",
   );
   assert.equal(manifest.runtime.l2.rsiEvidenceMissing, false);
+  const stopRun = stopExec(runDir, execResultFile);
+  assert.equal(stopRun.status, 0, stopRun.stderr + stopRun.stdout);
+  const execRun = await resultPromise;
+  assert.equal(execRun.code, 130, execRun.stderr + execRun.stdout);
+  assert.match(execRun.stderr, /observed guest RSI evidence/);
 });
 
-test("buildroot-based CVM exec helper mode fails when guest RSI evidence is missing", () => {
+test("buildroot-based CVM exec helper mode records missing RSI evidence without stopping", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-buildroot-cvm-exec-helper-fail-"));
   const hostQemu = path.join(tmpDir, "host-qemu", "bin", "qemu-system-aarch64");
   const execResultFile = path.join(tmpDir, "exec-result.json");
@@ -496,6 +590,7 @@ test("buildroot-based CVM exec helper mode fails when guest RSI evidence is miss
       "done",
       "runtime_dir=\"$share_dir/morpheus-l2-runtime\"",
       "mkdir -p \"$runtime_dir\"",
+      "printf '%s\\n' 'script-start' 'launch-mode=linaro-gen-run-vmm' 'helper-cmd=gen-run-vmm.sh --tap --serial' 'qemu-exec-start' > \"$runtime_dir/launch-l2.marker\"",
       "printf '%s\\n' 'MORPHEUS_RSI_EVIDENCE_MISSING' > \"$runtime_dir/qemu.stdout.log\"",
       "printf '%s\\n' 'buildroot login:' >> \"$runtime_dir/qemu.stdout.log\"",
       ": > \"$runtime_dir/qemu.stderr.log\"",
@@ -506,24 +601,30 @@ test("buildroot-based CVM exec helper mode fails when guest RSI evidence is miss
 
   const { installDir } = prepareBuildFixture(tmpDir, hostQemu, { helperMode: true });
 
-  const execRun = spawnSync("bash", [execScript], {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_INSTALL_DIR: installDir,
-      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RUN_DIR: runDir,
-      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_PHASE: "launch",
-      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR_KEY: "fixture-cvm",
-      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE: execResultFile,
-    },
+  const execChild = spawn("bash", [execScript], {
+    env: execEnvironment(installDir, runDir, execResultFile),
+    stdio: ["ignore", "pipe", "pipe"],
   });
-  assert.equal(execRun.status, 1, execRun.stderr + execRun.stdout);
+  const resultPromise = collectChildResult(execChild);
+  const runningManifest = await waitFor(() => {
+    const value = readJsonIfExists(path.join(runDir, "manifest.json"));
+    return value && value.status === "running" && value.runtime?.l2?.ready
+      && value.runtime?.l2?.rsiEvidenceMissing
+      ? value
+      : null;
+  }, "helper missing RSI marker");
+  assert.equal(runningManifest.runtime.l2.cvmEvidence.observed, true);
+  assert.equal(runningManifest.status, "running");
+  const stopRun = stopExec(runDir, execResultFile);
+  assert.equal(stopRun.status, 0, stopRun.stderr + stopRun.stdout);
+  const execRun = await resultPromise;
+  assert.equal(execRun.code, 130, execRun.stderr + execRun.stdout);
+  assert.match(execRun.stderr, /guest RSI evidence marker reported missing/);
 
   const manifest = JSON.parse(
     fs.readFileSync(path.join(runDir, "manifest.json"), "utf8"),
   );
-  assert.equal(manifest.status, "error");
-  assert.equal(manifest.errorMessage, "guest RSI evidence missing from realm console");
+  assert.equal(manifest.status, "stopped");
   assert.equal(manifest.runtime.l2.rsiEvidence, null);
   assert.equal(manifest.runtime.l2.rsiEvidenceMissing, true);
 });
@@ -556,6 +657,7 @@ test("buildroot-based CVM exec handles SIGINT by stopping the L1 process group",
     initialManifest = await waitFor(() => {
       const manifest = readJsonIfExists(path.join(runDir, "manifest.json"));
       return manifest && manifest.status === "running" && manifest.runtime.l1.pid
+        && manifest.runtime?.l2?.ready && manifest.runtime?.l2?.cvmEvidence?.observed
         ? manifest
         : null;
     }, "running CVM manifest");
@@ -576,10 +678,14 @@ test("buildroot-based CVM exec handles SIGINT by stopping the L1 process group",
     const manifest = readJsonIfExists(path.join(runDir, "manifest.json"));
     assert.equal(manifest.status, "stopped");
     assert.equal(manifest.exitCode, 130);
+    assert.equal(manifest.currentPhase, "stopped");
     assert.equal(manifest.runtime.l1.pid, null);
     assert.equal(manifest.runtime.l1.processGroupId, null);
     assert.equal(fs.existsSync(path.join(runDir, "l1.pid")), false);
-    assert.match(result.stderr, /waiting for l2 buildroot login prompt/);
+    assert.match(result.stderr, /observed L2 CVM launch evidence/);
+    const execResult = JSON.parse(fs.readFileSync(execResultFile, "utf8"));
+    assert.equal(execResult.details.stopped, true);
+    assert.match(execResult.details.stop_reason, /SIGINT/);
     await waitFor(
       () => !processIsActive(l1Pid) && !processIsActive(l1ChildPid),
       "L1 process group shutdown",
@@ -647,6 +753,7 @@ test("workflow SIGINT stops the CVM stage and clears its timeout", async () => {
     initialManifest = await waitFor(() => {
       const manifest = readJsonIfExists(path.join(toolRunDir, "manifest.json"));
       return manifest && manifest.status === "running" && manifest.runtime.l1.pid
+        && manifest.runtime?.l2?.ready && manifest.runtime?.l2?.cvmEvidence?.observed
         ? manifest
         : null;
     }, "running workflow CVM manifest");
@@ -663,6 +770,9 @@ test("workflow SIGINT stops the CVM stage and clears its timeout", async () => {
     const elapsedMs = Date.now() - interruptedAt;
     assert.equal(result.code, 130, result.stderr + result.stdout);
     assert.ok(elapsedMs < 20000, `workflow interruption took ${elapsedMs}ms`);
+    assert.match(result.stderr, /observed L2 CVM launch evidence/);
+    assert.match(result.stderr, /buildroot login:/);
+    assert.doesNotMatch(result.stderr, /rtc-pl031.*\n\n.*i2c_dev/);
 
     const workflowManifest = readJsonIfExists(path.join(workflowRunDir, "workflow.json"));
     const stageManifest = readJsonIfExists(path.join(toolRunDir, "stage.json"));

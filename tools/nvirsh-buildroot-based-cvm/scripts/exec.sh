@@ -23,6 +23,12 @@ stop_request_file="${run_dir}/stop-requested"
 l1_pid=""
 l1_process_group_id=""
 l2_console_stream_pid=""
+l2_launcher_stderr_stream_pid=""
+l2_marker_stream_pid=""
+l2_cvm_evidence_reported="false"
+l2_ready_reported="false"
+l2_rsi_status_reported="false"
+failure_message=""
 
 if [ "${phase}" != "launch" ]; then
   echo "unsupported buildroot-based CVM exec phase: ${phase}" >&2
@@ -67,48 +73,6 @@ l2_launch_mode="${runtime_fields[3]:-direct-qemu}"
 l2_rsi_evidence_marker="MORPHEUS_RSI_EVIDENCE:"
 l2_rsi_evidence_missing_marker="MORPHEUS_RSI_EVIDENCE_MISSING"
 
-wait_for_cvm_l2_ready() {
-  local console_log="$1"
-  local pid="$2"
-  local timeout_seconds="$3"
-  local deadline=$((SECONDS + timeout_seconds))
-  local started_at="${SECONDS}"
-  local next_progress_at="${SECONDS}"
-  local require_rsi_evidence="false"
-  local wait_target="l2 buildroot login prompt"
-  if [ "${l2_launch_mode}" = "linaro-gen-run-vmm" ]; then
-    require_rsi_evidence="true"
-    wait_target="guest RSI evidence and l2 buildroot login prompt"
-  fi
-  while [ "${SECONDS}" -lt "${deadline}" ]; do
-    if [ "${SECONDS}" -ge "${next_progress_at}" ]; then
-      local elapsed=$((SECONDS - started_at))
-      printf '[nvirsh-buildroot-based-cvm] waiting for %s (%ss elapsed, %ss timeout)\n' \
-        "${wait_target}" "${elapsed}" "${timeout_seconds}" \
-        | tee -a "${stdout_log}" >&2
-      next_progress_at=$((SECONDS + 15))
-    fi
-    if [ -f "${console_log}" ]; then
-      if [ "${require_rsi_evidence}" = "true" ] && LC_ALL=C grep -a -q -- "${l2_rsi_evidence_missing_marker}" "${console_log}" 2>/dev/null; then
-        return 2
-      fi
-      if LC_ALL=C grep -a -q -- 'buildroot login:' "${console_log}" 2>/dev/null; then
-        if [ "${require_rsi_evidence}" != "true" ] || LC_ALL=C grep -a -q -- "${l2_rsi_evidence_marker}" "${console_log}" 2>/dev/null; then
-          return 0
-        fi
-      fi
-    fi
-    if [ -f "${l2_launch_marker_log}" ] && LC_ALL=C grep -a -q -- 'qemu-exit-status=' "${l2_launch_marker_log}" 2>/dev/null; then
-      return 1
-    fi
-    if ! kill -0 "${pid}" 2>/dev/null; then
-      return 1
-    fi
-    sleep 2
-  done
-  return 124
-}
-
 failure_detail() {
   local detail=""
   if [ "${l2_launch_mode}" = "linaro-gen-run-vmm" ] && [ -f "${l2_console_log}" ] && LC_ALL=C grep -a -q -- "${l2_rsi_evidence_missing_marker}" "${l2_console_log}" 2>/dev/null; then
@@ -121,7 +85,7 @@ failure_detail() {
   if [ -z "${detail}" ] && [ -f "${l2_launch_marker_log}" ]; then
     detail="$(
       LC_ALL=C grep -a -- 'qemu-exit-status=' "${l2_launch_marker_log}" 2>/dev/null | \
-        tail -n 1 | tr -d '\r'
+        tail -n 1 | tr -d '\r' || true
     )"
   fi
   printf '%s' "${detail}"
@@ -129,20 +93,149 @@ failure_detail() {
 
 normalize_console_log() {
   local logfile="$1"
+  local normalized_logfile="${logfile}"
   if [ ! -f "${logfile}" ]; then
     return 0
   fi
-  perl -0pi -e 's/\r\r\n/\n/g; s/\r\n/\n/g; s/\r/\n/g;' "${logfile}"
+  if [ -L "${logfile}" ]; then
+    normalized_logfile="$(readlink -f "${logfile}" 2>/dev/null || true)"
+  fi
+  if [ -n "${normalized_logfile}" ] && [ -f "${normalized_logfile}" ]; then
+    perl -0pi -e 's/\r\r\n/\n/g; s/\r\n/\n/g; s/\r/\n/g;' "${normalized_logfile}"
+  fi
+}
+
+follow_runtime_log() {
+  local logfile="$1"
+  local prefix="${2:-}"
+  exec perl - "${logfile}" "${prefix}" <<'PERL'
+use strict;
+use warnings;
+use IO::Handle;
+use Time::HiRes qw(sleep time);
+
+my ($path, $prefix) = @ARGV;
+$prefix = "" unless defined $prefix;
+STDOUT->autoflush(1);
+
+my ($handle, $device, $inode, $offset);
+my $pending_cr = "";
+my $pending_since = 0;
+my $at_line_start = 1;
+
+sub emit_text {
+  my ($text) = @_;
+  return unless length($text);
+  while (length($text)) {
+    if ($at_line_start) {
+      print STDOUT $prefix;
+      $at_line_start = 0;
+    }
+    my $newline = index($text, "\n");
+    if ($newline < 0) {
+      print STDOUT $text;
+      last;
+    }
+    print STDOUT substr($text, 0, $newline + 1, "");
+    $at_line_start = 1;
+  }
+}
+
+sub close_handle {
+  if ($handle) {
+    close($handle);
+  }
+  undef $handle;
+  undef $device;
+  undef $inode;
+  undef $offset;
+}
+
+sub open_handle {
+  return 0 unless -e $path;
+  open(my $candidate, '<', $path) or return 0;
+  binmode($candidate);
+  my @file_stat = stat($candidate);
+  close_handle();
+  $handle = $candidate;
+  $device = $file_stat[0];
+  $inode = $file_stat[1];
+  $offset = 0;
+  seek($handle, 0, 0);
+  return 1;
+}
+
+sub normalize_chunk {
+  my ($chunk) = @_;
+  $pending_cr .= $chunk;
+  my $body = $pending_cr;
+  my $trailing_cr = "";
+  if ($body =~ /(\r+)$/) {
+    $trailing_cr = $1;
+    substr($body, -length($trailing_cr), length($trailing_cr), "");
+  }
+  $body =~ s/\r+\n/\n/g;
+  $body =~ s/\r/\n/g;
+  emit_text($body);
+  $pending_cr = $trailing_cr;
+  $pending_since = length($pending_cr) ? time() : 0;
+}
+
+while (1) {
+  unless ($handle) {
+    open_handle();
+    sleep(0.05);
+    next;
+  }
+
+  my @path_stat = stat($path);
+  if (!@path_stat
+      || $path_stat[0] != $device
+      || $path_stat[1] != $inode
+      || $path_stat[7] < $offset) {
+    close_handle();
+    next;
+  }
+
+  my $read = sysread($handle, my $chunk, 8192);
+  if (defined($read) && $read > 0) {
+    $offset += $read;
+    normalize_chunk($chunk);
+    next;
+  }
+  if (!defined($read)) {
+    close_handle();
+    sleep(0.05);
+    next;
+  }
+
+  # Do not leave a terminal carriage return buffered forever when a writer
+  # emits a progress update without a following newline.
+  if (length($pending_cr) && time() - $pending_since >= 0.25) {
+    emit_text("\n");
+    $pending_cr = "";
+    $pending_since = 0;
+  }
+  sleep(0.05);
+}
+PERL
 }
 
 stop_l2_console_stream() {
-  local stream_pid="${l2_console_stream_pid}"
-  if [ -z "${stream_pid}" ]; then
-    return 0
-  fi
+  local stream_pid=""
+  for stream_pid in \
+    "${l2_console_stream_pid}" \
+    "${l2_launcher_stderr_stream_pid}" \
+    "${l2_marker_stream_pid}"; do
+    if [ -z "${stream_pid}" ]; then
+      continue
+    fi
+    kill "${stream_pid}" 2>/dev/null || true
+    wait "${stream_pid}" 2>/dev/null || true
+  done
   l2_console_stream_pid=""
-  kill "${stream_pid}" 2>/dev/null || true
-  wait "${stream_pid}" 2>/dev/null || true
+  l2_launcher_stderr_stream_pid=""
+  l2_marker_stream_pid=""
 }
 
 trap 'stop_l2_console_stream' EXIT
@@ -215,13 +308,62 @@ const now = new Date().toISOString();
 const exitCode = exitCodeRaw === "" ? null : Number(exitCodeRaw);
 const l1Pid = l1PidRaw === "" ? null : Number(l1PidRaw);
 const l1ProcessGroupId = l1ProcessGroupIdRaw === "" ? null : Number(l1ProcessGroupIdRaw);
+let previousManifest = null;
+if (fs.existsSync(manifestFile)) {
+  try {
+    previousManifest = JSON.parse(fs.readFileSync(manifestFile, "utf8"));
+  } catch {}
+}
 const l2ConsoleText = fs.existsSync(l2ConsoleLog)
   ? fs.readFileSync(l2ConsoleLog, "utf8")
   : "";
+const l2LaunchMarkerText = fs.existsSync(l2LaunchMarkerLog)
+  ? fs.readFileSync(l2LaunchMarkerLog, "utf8")
+  : "";
+const l2LaunchMarkerLines = l2LaunchMarkerText
+  .replace(/\r/g, "")
+  .split("\n")
+  .map((line) => line.trim())
+  .filter(Boolean);
+const launchMode = l2LaunchMarkerLines
+  .find((line) => line.startsWith("launch-mode=")) || null;
+const qemuCommandLine = l2LaunchMarkerLines
+  .find((line) => line.startsWith("qemu-cmd=")) || null;
+const qemuCommand = qemuCommandLine ? qemuCommandLine.slice("qemu-cmd=".length) : null;
+const directRmeEvidence = {
+  confidentialGuestSupport: Boolean(qemuCommand && qemuCommand.includes("confidential-guest-support=rme0")),
+  rmeGuestObject: Boolean(qemuCommand && qemuCommand.includes("rme-guest,id=rme0")),
+  enableKvm: Boolean(qemuCommand && qemuCommand.includes("-enable-kvm")),
+};
+const helperLaunchEvidence = launchMode === "launch-mode=linaro-gen-run-vmm"
+  && l2LaunchMarkerLines.includes("qemu-exec-start");
+const cvmEvidenceObserved = (
+  directRmeEvidence.confidentialGuestSupport
+  && directRmeEvidence.rmeGuestObject
+  && directRmeEvidence.enableKvm
+) || helperLaunchEvidence;
+const cvmEvidenceLines = l2LaunchMarkerLines.filter((line) => (
+  line.startsWith("launch-mode=")
+  || line.startsWith("helper-cmd=")
+  || line.startsWith("qemu-cmd=")
+  || line.startsWith("qemu-patch-symbols=")
+  || line.startsWith("dtb-generator=")
+  || line.startsWith("dtb-generated=")
+  || line === "qemu-exec-start"
+  || line.startsWith("qemu-exit-status=")
+));
 const guestRsiEvidence = l2ConsoleText
-  .split(/\r?\n/)
+  .replace(/\r/g, "")
+  .split("\n")
   .find((line) => line.includes("MORPHEUS_RSI_EVIDENCE:")) || null;
 const guestRsiEvidenceMissing = l2ConsoleText.includes("MORPHEUS_RSI_EVIDENCE_MISSING");
+const l2Ready = l2ConsoleText.includes("buildroot login:");
+const previousL2 = previousManifest
+  && previousManifest.runtime
+  && previousManifest.runtime.l2
+  && typeof previousManifest.runtime.l2 === "object"
+  ? previousManifest.runtime.l2
+  : {};
 const manifest = {
   schemaVersion: 1,
   tool: "nvirsh-buildroot-based-cvm",
@@ -230,7 +372,11 @@ const manifest = {
   installDir: state.installDir,
   runDir,
   status,
-  currentPhase: status === "running" ? "launch" : "done",
+  currentPhase: status === "running"
+    ? "launch"
+    : status === "stopped"
+      ? "stopped"
+      : "done",
   hostLaunch: state.hostLaunch || null,
   layeredState: state.layeredState || null,
   phases: {
@@ -264,8 +410,23 @@ const manifest = {
     l2LauncherStderr: l2LauncherStderrLog,
     l2LaunchMarker: l2LaunchMarkerLog,
   },
-  createdAt: now,
+  createdAt: previousManifest && previousManifest.createdAt ? previousManifest.createdAt : now,
   updatedAt: now,
+};
+manifest.runtime.l2.ready = l2Ready || Boolean(previousL2.ready);
+manifest.runtime.l2.readyAt = manifest.runtime.l2.ready
+  ? (previousL2.readyAt || now)
+  : null;
+manifest.runtime.l2.cvmEvidence = {
+  observed: cvmEvidenceObserved || Boolean(previousL2.cvmEvidence && previousL2.cvmEvidence.observed),
+  observedAt: cvmEvidenceObserved
+    ? (previousL2.cvmEvidence && previousL2.cvmEvidence.observedAt) || now
+    : (previousL2.cvmEvidence && previousL2.cvmEvidence.observedAt) || null,
+  launchMode,
+  markerLines: cvmEvidenceLines,
+  qemuCommand,
+  directRmeEvidence,
+  helperLaunchEvidence,
 };
 if (status !== "running") {
   manifest.completedAt = now;
@@ -283,6 +444,127 @@ fs.writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
 NODE
 }
 
+write_result() {
+  local result_status="$1"
+  local exit_code="$2"
+  local message="${3:-}"
+  node - "${result_file}" "${run_dir}" "${manifest_file}" "${phase}" "${build_dir_key}" \
+    "${l1_console_log}" "${l2_console_log}" "${l2_launcher_stdout_log}" \
+    "${l2_launcher_stderr_log}" "${l2_launch_marker_log}" "${result_status}" \
+    "${exit_code}" "${message}" <<'NODE'
+const fs = require("fs");
+const path = require("path");
+const [
+  resultFile,
+  runDir,
+  manifestFile,
+  phase,
+  buildDirKey,
+  l1ConsoleLog,
+  l2ConsoleLog,
+  l2LauncherStdoutLog,
+  l2LauncherStderrLog,
+  l2LaunchMarkerLog,
+  resultStatus,
+  exitCodeRaw,
+  message,
+] = process.argv.slice(2);
+const details = {
+  run_dir: runDir,
+  manifest: manifestFile,
+  phase,
+  build_dir_key: buildDirKey,
+  detached: false,
+  l1_console_log: l1ConsoleLog,
+  l2_console_log: l2ConsoleLog,
+  l2_launcher_stdout_log: l2LauncherStdoutLog,
+  l2_launcher_stderr_log: l2LauncherStderrLog,
+  l2_launch_marker: l2LaunchMarkerLog,
+};
+if (resultStatus === "stopped") {
+  details.stopped = true;
+  details.stop_reason = message || "buildroot-based CVM launch stopped";
+} else if (message) {
+  details.error_message = message;
+}
+const payload = {
+  details,
+};
+const exitCode = Number(exitCodeRaw);
+if (Number.isInteger(exitCode)) {
+  payload.exit_code = exitCode;
+}
+fs.mkdirSync(path.dirname(resultFile), { recursive: true });
+fs.writeFileSync(resultFile, `${JSON.stringify(payload, null, 2)}\n`);
+NODE
+}
+
+append_runtime_notice() {
+  local message="$1"
+  printf '%s\n' "${message}" | tee -a "${stdout_log}" >&2
+}
+
+observe_l2_runtime() {
+  local manifest_changed="false"
+  local launch_mode_line=""
+  local qemu_cmd_line=""
+  local helper_cmd_line=""
+  local rsi_line=""
+
+  if [ "${l2_cvm_evidence_reported}" != "true" ] \
+    && [ -f "${l2_launch_marker_log}" ] \
+    && LC_ALL=C grep -a -q -- 'qemu-exec-start' "${l2_launch_marker_log}" 2>/dev/null; then
+    launch_mode_line="$(LC_ALL=C grep -a -m1 -- '^launch-mode=' "${l2_launch_marker_log}" 2>/dev/null | tr -d '\r' || true)"
+    qemu_cmd_line="$(LC_ALL=C grep -a -m1 -- '^qemu-cmd=' "${l2_launch_marker_log}" 2>/dev/null | tr -d '\r' || true)"
+    helper_cmd_line="$(LC_ALL=C grep -a -m1 -- '^helper-cmd=' "${l2_launch_marker_log}" 2>/dev/null | tr -d '\r' || true)"
+    append_runtime_notice "[nvirsh-buildroot-based-cvm] observed L2 CVM launch evidence"
+    [ -n "${launch_mode_line}" ] && append_runtime_notice "[nvirsh-buildroot-based-cvm] ${launch_mode_line}"
+    [ -n "${qemu_cmd_line}" ] && append_runtime_notice "[nvirsh-buildroot-based-cvm] ${qemu_cmd_line}"
+    [ -n "${helper_cmd_line}" ] && append_runtime_notice "[nvirsh-buildroot-based-cvm] ${helper_cmd_line}"
+    if [ -n "${qemu_cmd_line}" ] \
+      && [[ "${qemu_cmd_line}" == *"confidential-guest-support=rme0"* ]] \
+      && [[ "${qemu_cmd_line}" == *"rme-guest,id=rme0"* ]] \
+      && [[ "${qemu_cmd_line}" == *"-enable-kvm"* ]]; then
+      append_runtime_notice "[nvirsh-buildroot-based-cvm] L2 QEMU is configured as an RME confidential guest with KVM"
+    elif [ "${l2_launch_mode}" = "linaro-gen-run-vmm" ]; then
+      append_runtime_notice "[nvirsh-buildroot-based-cvm] L2 helper launch reached its guest execution point"
+    else
+      append_runtime_notice "[nvirsh-buildroot-based-cvm] L2 launch marker reached guest execution without a complete RME command line"
+    fi
+    l2_cvm_evidence_reported="true"
+    manifest_changed="true"
+  fi
+
+  if [ "${l2_rsi_status_reported}" != "true" ] \
+    && [ "${l2_launch_mode}" = "linaro-gen-run-vmm" ] \
+    && [ -f "${l2_console_log}" ]; then
+    if LC_ALL=C grep -a -q -- "${l2_rsi_evidence_marker}" "${l2_console_log}" 2>/dev/null; then
+      rsi_line="$(LC_ALL=C grep -a -m1 -- "${l2_rsi_evidence_marker}" "${l2_console_log}" 2>/dev/null | tr -d '\r' || true)"
+      append_runtime_notice "[nvirsh-buildroot-based-cvm] observed guest RSI evidence: ${rsi_line}"
+      l2_rsi_status_reported="true"
+      manifest_changed="true"
+    elif LC_ALL=C grep -a -q -- "${l2_rsi_evidence_missing_marker}" "${l2_console_log}" 2>/dev/null; then
+      append_runtime_notice "[nvirsh-buildroot-based-cvm] guest RSI evidence marker reported missing"
+      l2_rsi_status_reported="true"
+      manifest_changed="true"
+    fi
+  fi
+
+  if [ "${l2_ready_reported}" != "true" ] \
+    && [ -f "${l2_console_log}" ] \
+    && LC_ALL=C grep -a -q -- 'buildroot login:' "${l2_console_log}" 2>/dev/null; then
+    append_runtime_notice "[nvirsh-buildroot-based-cvm] observed L2 buildroot login prompt; continuing until stop"
+    l2_ready_reported="true"
+    manifest_changed="true"
+  fi
+
+  if [ "${manifest_changed}" = "true" ]; then
+    if ! write_manifest "running" "" "" "${l1_pid}" "${l1_process_group_id}"; then
+      append_runtime_notice "[nvirsh-buildroot-based-cvm] warning: could not update the running manifest"
+    fi
+  fi
+}
+
 finish_stopped() {
   local reason="${1:-buildroot-based CVM launch stopped}"
   terminate_l1_process "${l1_pid}" "${l1_process_group_id}"
@@ -295,6 +577,7 @@ finish_stopped() {
   normalize_console_log "${l2_launcher_stderr_log}"
   normalize_console_log "${l2_console_log}"
   write_manifest "stopped" "130" "${reason}" "" ""
+  write_result "stopped" "130" "${reason}"
 }
 
 handle_interrupt() {
@@ -335,9 +618,15 @@ ln -sfn "${l2_runtime_share_dir}/qemu.stdout.log" "${l2_launcher_stdout_log}"
 ln -sfn "${l2_runtime_share_dir}/qemu.stderr.log" "${l2_launcher_stderr_log}"
 ln -sfn "${l2_runtime_share_dir}/qemu.stdout.log" "${l2_console_log}"
 : > "${l2_runtime_share_dir}/qemu.stdout.log"
-if command -v tail >/dev/null 2>&1; then
-  tail --sleep-interval=0.05 -n +1 -f -- "${l2_console_log}" >&2 &
+if command -v perl >/dev/null 2>&1; then
+  follow_runtime_log "${l2_console_log}" "" >&2 &
   l2_console_stream_pid="$!"
+  follow_runtime_log "${l2_launcher_stderr_log}" \
+    '[nvirsh-buildroot-based-cvm] L2 launcher stderr: ' >&2 &
+  l2_launcher_stderr_stream_pid="$!"
+  follow_runtime_log "${l2_launch_marker_log}" \
+    '[nvirsh-buildroot-based-cvm] L2 launch marker: ' >&2 &
+  l2_marker_stream_pid="$!"
 fi
 
 l1_launch_cmd="mount -t 9p -o trans=virtio,version=9p2000.L host /mnt && exec /mnt/launch-l2-hoststack.sh"
@@ -361,60 +650,68 @@ fi
 printf '%s\n' "${l1_pid}" > "${l1_pid_file}"
 write_manifest "running" "" "" "${l1_pid}" "${l1_process_group_id}"
 
-set +e
-wait_for_cvm_l2_ready "${l2_console_log}" "${l1_pid}" 2100
-launch_wait_status="$?"
-set -e
+launch_started_at="${SECONDS}"
+next_progress_at="${SECONDS}"
+launch_timeout_seconds="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_LAUNCH_TIMEOUT_SECONDS:-2100}"
+while :; do
+  observe_l2_runtime
+
+  if [ -f "${stop_request_file}" ]; then
+    finish_stopped "stop requested"
+    exit 130
+  fi
+
+  if ! kill -0 "${l1_pid}" 2>/dev/null; then
+    set +e
+    wait "${l1_pid}"
+    l1_exit_status="$?"
+    set -e
+    break
+  fi
+
+  if [ "${SECONDS}" -ge "${next_progress_at}" ]; then
+    elapsed=$((SECONDS - launch_started_at))
+    printf '[nvirsh-buildroot-based-cvm] L1 host stack running; waiting for L2 CVM evidence/login (%ss elapsed)\n' \
+      "${elapsed}" | tee -a "${stdout_log}" >&2
+    next_progress_at=$((SECONDS + 15))
+  fi
+
+  if [ "${launch_timeout_seconds}" -gt 0 ] \
+    && [ "$((SECONDS - launch_started_at))" -ge "${launch_timeout_seconds}" ]; then
+    l1_exit_status=124
+    failure_message="timed out while keeping L1 host stack running"
+    terminate_l1_process "${l1_pid}" "${l1_process_group_id}"
+    break
+  fi
+  sleep 1
+done
 
 if [ -f "${stop_request_file}" ]; then
   finish_stopped "stop requested"
   exit 130
 fi
 
-if [ "${launch_wait_status}" -eq 0 ]; then
-  if [ "${l2_launch_mode}" = "linaro-gen-run-vmm" ]; then
-    printf '[nvirsh-buildroot-based-cvm] observed l2 guest RSI evidence and buildroot login prompt\n' | tee -a "${stdout_log}"
-  else
-    printf '[nvirsh-buildroot-based-cvm] observed l2 buildroot login prompt\n' | tee -a "${stdout_log}"
-  fi
-  terminate_l1_process "${l1_pid}" "${l1_process_group_id}"
-  stop_l2_console_stream
-  rm -f "${l1_pid_file}"
-  normalize_console_log "${stdout_log}"
-  normalize_console_log "${stderr_log}"
-  normalize_console_log "${l1_console_log}"
-  normalize_console_log "${l2_launcher_stdout_log}"
-  normalize_console_log "${l2_launcher_stderr_log}"
-  normalize_console_log "${l2_console_log}"
-  write_manifest "success" "0" "" "" ""
-  cat > "${result_file}" <<EOF
-{"details":{"run_dir":"${run_dir}","manifest":"${manifest_file}","phase":"${phase}","build_dir_key":"${build_dir_key}","detached":false,"l1_console_log":"${l1_console_log}","l2_console_log":"${l2_console_log}","l2_launcher_stdout_log":"${l2_launcher_stdout_log}","l2_launcher_stderr_log":"${l2_launcher_stderr_log}","l2_launch_marker":"${l2_launch_marker_log}"}}
-EOF
-  exit 0
-fi
-
-terminate_l1_process "${l1_pid}" "${l1_process_group_id}"
 stop_l2_console_stream
 rm -f "${l1_pid_file}"
-l1_exit_status=1
-
 normalize_console_log "${stdout_log}"
 normalize_console_log "${stderr_log}"
 normalize_console_log "${l1_console_log}"
 normalize_console_log "${l2_launcher_stdout_log}"
 normalize_console_log "${l2_launcher_stderr_log}"
 normalize_console_log "${l2_console_log}"
-failure_message="$(failure_detail)"
-if [ -z "${failure_message}" ]; then
-  if [ "${launch_wait_status}" -eq 124 ]; then
-    if [ "${l2_launch_mode}" = "linaro-gen-run-vmm" ]; then
-      failure_message="timed out waiting for guest RSI evidence and realm login prompt"
-    else
-      failure_message="timed out waiting for l2 buildroot login prompt"
-    fi
-  elif [ "${launch_wait_status}" -eq 2 ]; then
-    failure_message="guest RSI evidence missing from realm console"
-  fi
+if [ "${l1_exit_status:-1}" -eq 124 ]; then
+  failure_message="timed out while keeping L1 host stack running"
+else
+  failure_message="$(failure_detail)"
 fi
-write_manifest "error" "${l1_exit_status}" "${failure_message}" "" ""
-exit "${l1_exit_status}"
+if [ -z "${failure_message}" ]; then
+  failure_message="L1 host stack exited before the CVM workflow was stopped"
+fi
+case "${l1_exit_status:-1}" in
+  0|137|143)
+    l1_exit_status=1
+    ;;
+esac
+write_manifest "error" "${l1_exit_status:-1}" "${failure_message}" "" ""
+write_result "error" "${l1_exit_status:-1}" "${failure_message}"
+exit "${l1_exit_status:-1}"

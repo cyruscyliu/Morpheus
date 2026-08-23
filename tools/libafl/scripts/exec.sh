@@ -523,28 +523,371 @@ if [ -n "${l2_cpu}" ]; then
 fi
 
 append_l2_fw_cfg() {
+  local machine="${1:-}"
+  local machine_base="${machine%%,*}"
+  local fw_cfg_supported="false"
+
+  # sbsa-ref intentionally has no fw_cfg device. The same controls are
+  # present in the L1 kernel command line, and SMBIOS remains a fallback for
+  # machine types that expose it.
+  case "${machine_base}" in
+    virt|virt-*) fw_cfg_supported="true" ;;
+  esac
+
   if [ "${disable_nqc2_plugin}" = "true" ]; then
-    args+=("-fw_cfg" "name=opt/morpheus/l2-disable-nqc2-plugin,string=1" "-smbios" "type=11,value=morpheus.l2_disable_nqc2_plugin=1")
+    if [ "${fw_cfg_supported}" = "true" ]; then
+      args+=("-fw_cfg" "name=opt/morpheus/l2-disable-nqc2-plugin,string=1")
+    fi
+    args+=("-smbios" "type=11,value=morpheus.l2_disable_nqc2_plugin=1")
+  fi
+  if [ "${capture_runtime}" = "true" ]; then
+    if [ "${fw_cfg_supported}" = "true" ]; then
+      args+=("-fw_cfg" "name=opt/morpheus/capture-runtime,string=1")
+    fi
+    args+=("-smbios" "type=11,value=morpheus.capture_runtime=1")
   fi
   if [ -n "${l2_run_window_ms}" ]; then
-    args+=("-fw_cfg" "name=opt/morpheus/l2-run-window-ms,string=${l2_run_window_ms}" "-smbios" "type=11,value=morpheus.l2_run_window_ms=${l2_run_window_ms}")
+    if [ "${fw_cfg_supported}" = "true" ]; then
+      args+=("-fw_cfg" "name=opt/morpheus/l2-run-window-ms,string=${l2_run_window_ms}")
+    fi
+    args+=("-smbios" "type=11,value=morpheus.l2_run_window_ms=${l2_run_window_ms}")
   fi
   if [ "${l2_mode}" != "vm" ]; then
-    args+=("-fw_cfg" "name=opt/morpheus/l2-mode,string=${l2_mode}" "-smbios" "type=11,value=morpheus.l2_mode=${l2_mode}")
+    if [ "${fw_cfg_supported}" = "true" ]; then
+      args+=("-fw_cfg" "name=opt/morpheus/l2-mode,string=${l2_mode}")
+    fi
+    args+=("-smbios" "type=11,value=morpheus.l2_mode=${l2_mode}")
   fi
   if [ "${l2_accel}" != "auto" ]; then
-    args+=("-fw_cfg" "name=opt/morpheus/l2-accel,string=${l2_accel}" "-smbios" "type=11,value=morpheus.l2_accel=${l2_accel}")
+    if [ "${fw_cfg_supported}" = "true" ]; then
+      args+=("-fw_cfg" "name=opt/morpheus/l2-accel,string=${l2_accel}")
+    fi
+    args+=("-smbios" "type=11,value=morpheus.l2_accel=${l2_accel}")
   fi
   if [ -n "${l2_cpu}" ]; then
-    args+=("-fw_cfg" "name=opt/morpheus/l2-cpu,string=${l2_cpu}" "-smbios" "type=11,value=morpheus.l2_cpu=${l2_cpu}")
+    if [ "${fw_cfg_supported}" = "true" ]; then
+      args+=("-fw_cfg" "name=opt/morpheus/l2-cpu,string=${l2_cpu}")
+    fi
+    args+=("-smbios" "type=11,value=morpheus.l2_cpu=${l2_cpu}")
+  fi
+  if [ "${fw_cfg_supported}" = "true" ]; then
+    printf '[libafl/qemu_nesting] l1 metadata: fw_cfg+smbios machine=%s\n' \
+      "${machine}" >&2
+  else
+    printf '[libafl/qemu_nesting] l1 metadata: cmdline+smbios machine=%s\n' \
+      "${machine}" >&2
   fi
 }
 
-l1_boot_dir="${run_dir}/l1-boot-fat"
-l1_share_stub="${l1_hoststack_share_dir}/libafl_nesting_stub"
-direct_l1_share_stub_path="/host/libafl_nesting_stub"
-direct_l1_stub_launch_cmd="mount -t 9p -o trans=virtio,version=9p2000.L host /host && exec ${direct_l1_share_stub_path}"
-direct_l1_share_append="${direct_l1_append/init=\/root\/libafl_nesting_stub/init=\/bin\/sh -- -c \"${direct_l1_stub_launch_cmd}\"}"
+l1_boot_image="${run_dir}/l1-boot-fat.img"
+l1_boot_startup="${run_dir}/l1-boot-fat-startup.nsh"
+l1_share_staging_dir="${run_dir}/l1-share-staging"
+l1_share_image="${run_dir}/l1-share.ext4"
+direct_l1_share_stub_path="/mnt/libafl_nesting_stub"
+direct_l1_stub_env="MORPHEUS_L2_MODE=${l2_mode}"
+if [ -n "${l2_run_window_ms}" ]; then
+  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_RUN_WINDOW_MS=${l2_run_window_ms}"
+fi
+if [ "${capture_runtime}" = "true" ]; then
+  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_CAPTURE_RUNTIME=1"
+fi
+direct_l1_stub_launch_cmd="mkdir -p /mnt && mount -t ext4 -o ro /dev/vdb /mnt && ${direct_l1_stub_env} exec ${direct_l1_share_stub_path}"
+direct_l1_share_prefix="${direct_l1_append%% init=/root/libafl_nesting_stub *}"
+direct_l1_share_suffix="${direct_l1_append#* init=/root/libafl_nesting_stub }"
+if [ "${direct_l1_share_prefix}" = "${direct_l1_append}" ]; then
+  echo "missing init token in CVM L1 boot arguments" >&2
+  exit 1
+fi
+direct_l1_share_append="${direct_l1_share_prefix} init=/bin/sh -- -c \"${direct_l1_stub_launch_cmd}\" ${direct_l1_share_suffix}"
+
+stage_buildroot_cvm_share() {
+  local staging_dir="$1"
+  local share_image="$2"
+  local source_share="$3"
+  local launch_source="${4:-${source_share}/launch-l2-hoststack.sh}"
+  local inner_launch_source="${source_share}/launch-l2.sh"
+  local qemu_img_bin="${MORPHEUS_QEMU_IMG_BIN:-${MORPHEUS_QEMU_IMG:-}}"
+  local mkfs_ext4_bin="${MORPHEUS_MKFS_EXT4_BIN:-${MORPHEUS_MKFS_EXT4:-}}"
+  local staging_bytes
+  local image_bytes
+  local image_mb
+  local align_bytes=$((64 * 1024 * 1024))
+  local minimum_bytes=$((256 * 1024 * 1024))
+  local headroom_bytes=$((128 * 1024 * 1024))
+
+  [ -f "${stub_elf}" ] || {
+    echo "missing LibAFL guest stub: ${stub_elf}" >&2
+    exit 1
+  }
+  [ -f "${launch_source}" ] || {
+    echo "missing host-stack launcher: ${launch_source}" >&2
+    exit 1
+  }
+  [ -f "${inner_launch_source}" ] || {
+    echo "missing L2 launcher: ${inner_launch_source}" >&2
+    exit 1
+  }
+  [ -d "${source_share}/guest-images" ] || {
+    echo "missing staged guest images: ${source_share}/guest-images" >&2
+    exit 1
+  }
+  [ -d "${source_share}/guest-qemu" ] || {
+    echo "missing staged guest QEMU: ${source_share}/guest-qemu" >&2
+    exit 1
+  }
+
+  rm -rf "${staging_dir}" "${share_image}"
+  mkdir -p "${staging_dir}"
+  cp -f "${stub_elf}" "${staging_dir}/libafl_nesting_stub"
+  chmod 0755 "${staging_dir}/libafl_nesting_stub"
+  cp -f "${launch_source}" "${staging_dir}/launch-l2-hoststack.sh"
+  chmod 0755 "${staging_dir}/launch-l2-hoststack.sh"
+  cp -f "${inner_launch_source}" "${staging_dir}/launch-l2-inner.sh"
+  chmod 0755 "${staging_dir}/launch-l2-inner.sh"
+  cp -a "${source_share}/guest-images" "${staging_dir}/"
+  cp -a "${source_share}/guest-qemu" "${staging_dir}/"
+
+  # The buildroot launcher predates LibAFL's input-status contract. Keep the
+  # generated launcher intact and add the contract in this per-run wrapper.
+  cat > "${staging_dir}/launch-l2.sh" <<'EOF'
+#!/bin/sh
+set -eu
+
+runtime_dir="${MORPHEUS_L2_RUNTIME_DIR:-/run/morpheus-libafl}"
+status_path="${MORPHEUS_QEMU_INPUT_STATUS_PATH:-${runtime_dir}/qemu-input.status}"
+input_path="${MORPHEUS_QEMU_INPUT_PATH:-}"
+
+if [ ! -d "${runtime_dir}" ]; then
+  mkdir -p "${runtime_dir}"
+fi
+: > "${status_path}"
+input_size="missing"
+if [ -n "${input_path}" ]; then
+  input_size="$(stat -c %s "${input_path}" 2>/dev/null || printf missing)"
+fi
+printf 'input-status-path=%s\n' "${status_path}" >> "${status_path}"
+printf 'input-path=%s\n' "${input_path:-unset}" >> "${status_path}"
+printf 'input-size=%s\n' "${input_size}" >> "${status_path}"
+printf 'qemu-exec-start\n' >> "${status_path}"
+export MORPHEUS_QEMU_INPUT_STATUS_PATH="${status_path}"
+exec /mnt/launch-l2-inner.sh
+EOF
+  chmod 0755 "${staging_dir}/launch-l2.sh"
+
+  staging_bytes="$(du -s -B1 --apparent-size "${staging_dir}" | awk '{print $1}')"
+  image_bytes=$((staging_bytes + headroom_bytes))
+  if [ "${image_bytes}" -lt "${minimum_bytes}" ]; then
+    image_bytes="${minimum_bytes}"
+  fi
+  image_bytes=$(((image_bytes + align_bytes - 1) / align_bytes * align_bytes))
+  image_mb=$((image_bytes / 1024 / 1024))
+
+  if [ -z "${qemu_img_bin}" ]; then
+    qemu_img_bin="$(command -v qemu-img 2>/dev/null || true)"
+  fi
+  [ -x "${qemu_img_bin}" ] || {
+    echo "missing qemu-img for LibAFL CVM staging" >&2
+    exit 1
+  }
+  if [ -z "${mkfs_ext4_bin}" ]; then
+    mkfs_ext4_bin="$(command -v mkfs.ext4 2>/dev/null || true)"
+  fi
+  if [ -z "${mkfs_ext4_bin}" ] || [ ! -x "${mkfs_ext4_bin}" ]; then
+    for candidate in /sbin/mkfs.ext4 /usr/sbin/mkfs.ext4; do
+      if [ -x "${candidate}" ]; then
+        mkfs_ext4_bin="${candidate}"
+        break
+      fi
+    done
+  fi
+  [ -x "${mkfs_ext4_bin}" ] || {
+    echo "missing mkfs.ext4 for LibAFL CVM staging" >&2
+    exit 1
+  }
+
+  "${qemu_img_bin}" create -f raw "${share_image}" "${image_mb}M" >/dev/null
+  "${mkfs_ext4_bin}" -m 0 -d "${staging_dir}" "${share_image}" >/dev/null
+  printf '[libafl/qemu_nesting] staged buildroot CVM share: bytes=%s image=%s\n' \
+    "${staging_bytes}" "${share_image}" >&2
+}
+
+create_l1_uefi_boot_image() {
+  local image_path="$1"
+  local kernel_path="$2"
+  local startup_path="$3"
+  node - "${image_path}" "${kernel_path}" "${startup_path}" <<'NODE'
+const fs = require("fs");
+
+const [imagePath, kernelPath, startupPath] = process.argv.slice(2);
+const bootFiles = [
+  { name: "IMAGE", data: fs.readFileSync(kernelPath) },
+  { name: "STARTUP.NSH", data: fs.readFileSync(startupPath) },
+];
+
+const bytesPerSector = 512;
+const partitionStartSectors = 63;
+const sectorsPerCluster = 8;
+const reservedSectors = 1;
+const fatCopies = 2;
+const rootEntryCount = 512;
+const rootDirSectors = Math.ceil((rootEntryCount * 32) / bytesPerSector);
+const mediaDescriptor = 0xf8;
+const minimumFat16Clusters = 4085;
+const bytesPerCluster = bytesPerSector * sectorsPerCluster;
+
+function encodeShortName(name) {
+  const upper = String(name).toUpperCase();
+  const parts = upper.split(".");
+  const base = (parts.shift() || "").replace(/[^A-Z0-9_$~!#%&'(){}@^`-]/g, "_");
+  const ext = parts.join("").replace(/[^A-Z0-9_$~!#%&'(){}@^`-]/g, "_");
+  return {
+    base: base.slice(0, 8).padEnd(8, " "),
+    ext: ext.slice(0, 3).padEnd(3, " "),
+  };
+}
+
+function clustersForSize(size) {
+  return Math.max(1, Math.ceil(size / bytesPerCluster));
+}
+
+let usedClusters = 0;
+for (const file of bootFiles) {
+  file.clusterCount = clustersForSize(file.data.length);
+  usedClusters += file.clusterCount;
+}
+
+let totalClusters = Math.max(usedClusters, minimumFat16Clusters);
+let sectorsPerFat = 1;
+while (true) {
+  const nextSectorsPerFat = Math.ceil(((totalClusters + 2) * 2) / bytesPerSector);
+  const nextTotalClusters = Math.max(usedClusters, minimumFat16Clusters);
+  if (nextSectorsPerFat === sectorsPerFat && nextTotalClusters === totalClusters) {
+    break;
+  }
+  sectorsPerFat = nextSectorsPerFat;
+  totalClusters = nextTotalClusters;
+}
+
+const volumeSectors =
+  reservedSectors +
+  (fatCopies * sectorsPerFat) +
+  rootDirSectors +
+  (totalClusters * sectorsPerCluster);
+const totalSectors = partitionStartSectors + volumeSectors;
+if (totalSectors > 0xffffffff || volumeSectors > 0xffffffff) {
+  throw new Error(`boot image too large: ${totalSectors} sectors`);
+}
+const volumeSectors16 = volumeSectors < 0x10000 ? volumeSectors : 0;
+const volumeSectors32 = volumeSectors16 === 0 ? volumeSectors : 0;
+const image = Buffer.alloc(totalSectors * bytesPerSector, 0);
+const volumeStart = partitionStartSectors * bytesPerSector;
+
+function writeAscii(target, offset, text, width) {
+  const bytes = Buffer.from(String(text).padEnd(width, " ").slice(0, width), "ascii");
+  bytes.copy(target, offset);
+}
+
+function encodeChs(lba) {
+  const sectorsPerTrack = 63;
+  const heads = 16;
+  const sectorIndex = lba % sectorsPerTrack;
+  const head = Math.floor(lba / sectorsPerTrack) % heads;
+  const cylinder = Math.floor(lba / (sectorsPerTrack * heads));
+  if (cylinder > 1023) {
+    return Buffer.from([0xff, 0xff, 0xff]);
+  }
+  return Buffer.from([
+    head,
+    (sectorIndex + 1) | ((cylinder >> 8) << 6),
+    cylinder & 0xff,
+  ]);
+}
+
+function writeEntry(target, entryIndex, file) {
+  const offset = entryIndex * 32;
+  const shortName = encodeShortName(file.name);
+  writeAscii(target, offset, shortName.base, 8);
+  writeAscii(target, offset + 8, shortName.ext, 3);
+  target[offset + 11] = 0x20;
+  target.writeUInt16LE(file.startCluster, offset + 26);
+  target.writeUInt32LE(file.data.length, offset + 28);
+}
+
+const mbr = image.subarray(0, bytesPerSector);
+mbr[0] = 0xeb;
+mbr[1] = 0x3c;
+mbr[2] = 0x90;
+writeAscii(mbr, 3, "MSWIN4.1", 8);
+const partitionEntry = 446;
+const endLba = partitionStartSectors + volumeSectors - 1;
+mbr[partitionEntry] = 0x80;
+encodeChs(partitionStartSectors).copy(mbr, partitionEntry + 1);
+mbr[partitionEntry + 4] = 0x06;
+encodeChs(endLba).copy(mbr, partitionEntry + 5);
+mbr.writeUInt32LE(partitionStartSectors, partitionEntry + 8);
+mbr.writeUInt32LE(volumeSectors, partitionEntry + 12);
+mbr.writeUInt32LE(0x4d4f5250, 440);
+mbr[510] = 0x55;
+mbr[511] = 0xaa;
+
+const bootSector = image.subarray(volumeStart, volumeStart + bytesPerSector);
+bootSector[0] = 0xeb;
+bootSector[1] = 0x3c;
+bootSector[2] = 0x90;
+writeAscii(bootSector, 3, "MSWIN4.1", 8);
+bootSector.writeUInt16LE(bytesPerSector, 11);
+bootSector[13] = sectorsPerCluster;
+bootSector.writeUInt16LE(reservedSectors, 14);
+bootSector[16] = fatCopies;
+bootSector.writeUInt16LE(rootEntryCount, 17);
+bootSector.writeUInt16LE(volumeSectors16, 19);
+bootSector[21] = mediaDescriptor;
+bootSector.writeUInt16LE(sectorsPerFat, 22);
+bootSector.writeUInt16LE(32, 24);
+bootSector.writeUInt16LE(64, 26);
+bootSector.writeUInt32LE(volumeSectors32, 32);
+bootSector[36] = 0x80;
+bootSector[38] = 0x29;
+bootSector.writeUInt32LE(0x4d4f5250, 39);
+writeAscii(bootSector, 43, "MORPHEUS", 11);
+writeAscii(bootSector, 54, "FAT16", 8);
+bootSector[510] = 0x55;
+bootSector[511] = 0xaa;
+
+const fatStart = volumeStart + (reservedSectors * bytesPerSector);
+const fatSizeBytes = sectorsPerFat * bytesPerSector;
+const rootDirStart = fatStart + (fatCopies * fatSizeBytes);
+const dataStart = rootDirStart + (rootDirSectors * bytesPerSector);
+const fat = image.subarray(fatStart, fatStart + fatSizeBytes);
+fat.writeUInt16LE(0xfff8, 0);
+fat.writeUInt16LE(0xffff, 2);
+
+let nextCluster = 2;
+for (const [index, file] of bootFiles.entries()) {
+  file.startCluster = nextCluster;
+  for (let clusterOffset = 0; clusterOffset < file.clusterCount; clusterOffset += 1) {
+    const cluster = nextCluster + clusterOffset;
+    const nextValue =
+      clusterOffset + 1 < file.clusterCount ? cluster + 1 : 0xffff;
+    fat.writeUInt16LE(nextValue, cluster * 2);
+  }
+  const fileOffset = dataStart + ((file.startCluster - 2) * bytesPerCluster);
+  file.data.copy(image, fileOffset);
+  writeEntry(
+    image.subarray(rootDirStart, rootDirStart + (rootDirSectors * bytesPerSector)),
+    index,
+    file,
+  );
+  nextCluster += file.clusterCount;
+}
+
+for (let fatIndex = 1; fatIndex < fatCopies; fatIndex += 1) {
+  fat.copy(image, fatStart + (fatIndex * fatSizeBytes));
+}
+
+fs.writeFileSync(imagePath, image);
+NODE
+}
 
 ensure_cpu_flag() {
   local cpu="$1"
@@ -611,17 +954,18 @@ if [ "${l2_mode}" = "cvm" ]; then
       exit 1
     fi
 
-    cp -f "${stub_elf}" "${l1_share_stub}"
-    chmod 0755 "${l1_share_stub}"
-    rm -rf "${l1_boot_dir}"
-    mkdir -p "${l1_boot_dir}"
-    cp -f "${direct_l1_kernel}" "${l1_boot_dir}/Image"
-    cat > "${l1_boot_dir}/startup.nsh" <<EOF
+    stage_buildroot_cvm_share \
+      "${l1_share_staging_dir}" \
+      "${l1_share_image}" \
+      "${l1_hoststack_share_dir}" \
+      "${l1_hoststack_launch:-${l1_hoststack_share_dir}/launch-l2-hoststack.sh}"
+    cat > "${l1_boot_startup}" <<EOF
 mode 100 31
 pci
 fs0:\Image ${direct_l1_share_append}
 reset -c
 EOF
+    create_l1_uefi_boot_image "${l1_boot_image}" "${direct_l1_kernel}" "${l1_boot_startup}"
 
     l1_machine_effective="${l1_machine:-sbsa-ref}"
     args=(
@@ -634,19 +978,18 @@ EOF
       "-cpu" "${l1_cpu_effective}"
       "-m" "${l1_memory_cvm}"
       "-smp" "${l1_smp_cvm}"
-      "-drive" "format=raw,id=hd0,if=none,file=${l1_hoststack_rootfs}"
-      "-device" "virtio-blk-pci,drive=hd0"
-      "-device" "virtio-9p-pci,fsdev=hostshare,mount_tag=host"
-      "-fsdev" "local,security_model=none,path=${l1_hoststack_share_dir},id=hostshare"
-      "-device" "virtio-net-pci,netdev=net0"
-      "-netdev" "user,id=net0"
+      "-drive" "format=raw,id=hd0,if=none,file=${l1_hoststack_rootfs},snapshot=on"
+      "-device" "virtio-blk-pci,drive=hd0,num-queues=1"
+      "-drive" "format=raw,id=share,if=none,file=${l1_share_image},snapshot=on"
+      "-device" "virtio-blk-pci,drive=share,num-queues=1"
+      "-drive" "file=${l1_boot_image},format=raw,snapshot=on"
+      "-L" "${qemu_data_dir}"
     )
-    append_l2_fw_cfg
+    append_l2_fw_cfg "${l1_machine_effective}"
     if [ -n "${firmware_b}" ]; then
       args+=(
-        "-drive" "file=${firmware},format=raw,if=pflash"
-        "-drive" "file=${firmware_b},format=raw,if=pflash"
-        "-drive" "file=fat:rw:${l1_boot_dir},format=raw"
+        "-drive" "file=${firmware},format=raw,if=pflash,snapshot=on"
+        "-drive" "file=${firmware_b},format=raw,if=pflash,snapshot=on"
       )
     else
       args+=(
@@ -664,7 +1007,7 @@ EOF
       args+=("-enable-kvm")
     fi
     printf '[libafl/qemu_nesting] cvm l1 buildroot-state: cpu=%s memory=%s smp=%s rootfs=%s share=%s\n' \
-      "${l1_cpu_effective}" "${l1_memory_cvm}" "${l1_smp_cvm}" "${l1_hoststack_rootfs}" "${l1_hoststack_share_dir}" >&2
+      "${l1_cpu_effective}" "${l1_memory_cvm}" "${l1_smp_cvm}" "${l1_hoststack_rootfs}" "${l1_share_image}" >&2
   else
     if [ ! -f "${direct_l1_kernel}" ] || [ ! -f "${direct_l1_initrd}" ]; then
       echo "missing cvm l1 host-boot kernel/initrd under ${l1_build_dir}/l1/host-boot" >&2
@@ -685,7 +1028,7 @@ EOF
       "-drive" "file=${overlay_image},if=virtio,format=qcow2"
       "-L" "${qemu_data_dir}"
     )
-    append_l2_fw_cfg
+    append_l2_fw_cfg "virt"
     printf '[libafl/qemu_nesting] cvm l1 legacy-state: cpu=%s memory=%s smp=%s share=%s\n' \
       "${l1_cpu_effective}" "${l1_memory_cvm}" "${l1_smp_cvm}" "${l1_hoststack_share_dir}" >&2
   fi
@@ -699,7 +1042,7 @@ else
     "-drive" "file=${overlay_image},if=virtio,format=qcow2"
     "-L" "${qemu_data_dir}"
   )
-  append_l2_fw_cfg
+  append_l2_fw_cfg "virt"
   if [ -f "${direct_l1_kernel}" ] && [ -f "${direct_l1_initrd}" ]; then
     args+=("-kernel" "${direct_l1_kernel}" "-initrd" "${direct_l1_initrd}" "-append" "${direct_l1_append}")
   else

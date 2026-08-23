@@ -281,7 +281,8 @@ test("buildroot-based CVM exec launches L1 with explicit firmware, rootfs, share
       "if [ -n \"$share_dir\" ]; then",
       "  runtime_dir=\"$share_dir/morpheus-l2-runtime\"",
       "  mkdir -p \"$runtime_dir\"",
-      "  printf '%s\\n' 'buildroot login:' > \"$runtime_dir/qemu.stdout.log\"",
+      "  printf '%s\\n' 'l2 boot detail: guest started' > \"$runtime_dir/qemu.stdout.log\"",
+      "  printf '%s\\n' 'buildroot login:' >> \"$runtime_dir/qemu.stdout.log\"",
       "  : > \"$runtime_dir/qemu.stderr.log\"",
       "fi",
       "trap 'exit 0' TERM INT",
@@ -303,6 +304,8 @@ test("buildroot-based CVM exec launches L1 with explicit firmware, rootfs, share
     },
   });
   assert.equal(execRun.status, 0, execRun.stderr + execRun.stdout);
+  assert.match(execRun.stderr, /l2 boot detail: guest started/);
+  assert.match(execRun.stderr, /buildroot login:/);
 
   const execResult = JSON.parse(fs.readFileSync(execResultFile, "utf8"));
   assert.equal(execResult.details.phase, "launch");

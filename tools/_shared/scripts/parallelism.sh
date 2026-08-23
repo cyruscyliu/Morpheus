@@ -44,7 +44,7 @@ morpheus_default_cvm_l1_qemu_cpus() {
 }
 
 morpheus_default_cvm_l1_qemu_memory_mb() {
-  printf '%s\n' "4096"
+  printf '%s\n' "8192"
 }
 
 morpheus_resolve_positive_int_with_cap() {

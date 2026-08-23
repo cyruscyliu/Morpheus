@@ -543,7 +543,7 @@ test("buildroot-based CVM build switches to the Linaro helper launch path when r
   );
   assert.match(
     fs.readFileSync(path.join(buildDir, "l1", "launch-l2.sh"), "utf8"),
-    /gen-run-vmm\.sh --tap/,
+    /gen-run-vmm\.sh --tap --serial/,
   );
   assert.match(
     fs.readFileSync(path.join(buildDir, "l1", "launch-l2-hoststack.sh"), "utf8"),

@@ -19,6 +19,12 @@ bridge_storage_dir="${MORPHEUS_LIBAFL_BRIDGE_STORAGE_DIR:-${tmp_root}/qemu-libaf
 bridge_build_dir="${bridge_storage_dir}/build"
 bridge_lib="${bridge_build_dir}/libqemu-system-aarch64.so"
 installed_bridge_lib="${install_dir}/lib/libqemu-system-aarch64.so"
+bridge_config_fingerprint_file="${install_dir}/.qemu_bridge.config"
+bridge_patch_file="${repo_root}/tools/libafl/patches/qemu-libafl-bridge/0001-handle-bufferless-zero-writes-in-snapshot-cow.patch"
+bridge_patch_stamp_file="${bridge_storage_dir}/.morpheus-qemu-libafl.patch"
+bridge_git_url="${MORPHEUS_LIBAFL_QEMU_GIT_URL:-https://github.com/AFLplusplus/qemu-libafl-bridge}"
+bridge_git_revision="${MORPHEUS_LIBAFL_QEMU_GIT_REV:-c9c6db9127509e1eeaf10daad8fa6bc12cc54f56}"
+bridge_config_version="virtfs-9p-cow-v2"
 stub_c_src="${source_dir}/crates/libafl_nesting/c_src/libafl_nesting_stub.c"
 crate_src_dir="${source_dir}/crates/libafl_nesting"
 fuzzer_src_dir="${source_dir}/fuzzers/full_system/qemu_nesting"
@@ -60,6 +66,7 @@ fi
 [ -d "${crate_src_dir}" ] || { echo "missing libafl_nesting crate: ${crate_src_dir}" >&2; exit 1; }
 [ -f "${source_dir}/fuzzers/full_system/qemu_nesting/Cargo.toml" ] || { echo "missing qemu_nesting example: ${source_dir}/fuzzers/full_system/qemu_nesting/Cargo.toml" >&2; exit 1; }
 [ -f "${stub_c_src}" ] || { echo "missing guest stub source: ${stub_c_src}" >&2; exit 1; }
+[ -f "${bridge_patch_file}" ] || { echo "missing QEMU bridge patch: ${bridge_patch_file}" >&2; exit 1; }
 
 mkdir -p "${install_dir}/bin" "${install_dir}/lib"
 
@@ -76,6 +83,76 @@ fuzzer_current() {
   [ -x "${fuzzer_bin}" ] \
     && [ -f "${fuzzer_fingerprint_file}" ] \
     && [ "$(cat "${fuzzer_fingerprint_file}")" = "$(fuzzer_fingerprint)" ]
+}
+bridge_current() {
+  [ -f "${installed_bridge_lib}" ] \
+    && [ -f "${bridge_config_fingerprint_file}" ] \
+    && [ "$(cat "${bridge_config_fingerprint_file}")" = "${bridge_config_fingerprint}" ]
+}
+record_bridge_config() {
+  printf '%s\n' "${bridge_config_fingerprint}" > "${bridge_config_fingerprint_file}"
+}
+install_bridge() {
+  [ -f "${bridge_lib}" ] || {
+    echo "missing built LibAFL QEMU bridge library: ${bridge_lib}" >&2
+    exit 1
+  }
+  cp "${bridge_lib}" "${installed_bridge_lib}"
+  record_bridge_config
+}
+bridge_patch_fingerprint() {
+  printf '%s\n%s\n' "${bridge_git_revision}" \
+    "$(sha256sum "${bridge_patch_file}" | awk '{print $1}')" \
+    | sha256sum | awk '{print $1}'
+}
+prepare_bridge_source() {
+  local current_revision=""
+  local expected_patch_fingerprint="$(bridge_patch_fingerprint)"
+  local recorded_patch_fingerprint=""
+  local qemu_revision_file="${bridge_storage_dir}/QEMU_REVISION"
+
+  if [ -d "${bridge_storage_dir}/.git" ]; then
+    current_revision="$(git -C "${bridge_storage_dir}" rev-parse HEAD 2>/dev/null || true)"
+  fi
+  if [ "${current_revision}" != "${bridge_git_revision}" ]; then
+    rm -rf "${bridge_storage_dir}"
+    mkdir -p "${bridge_storage_dir}"
+    git -C "${bridge_storage_dir}" init
+    git -C "${bridge_storage_dir}" remote add origin "${bridge_git_url}"
+    git -C "${bridge_storage_dir}" fetch --depth 1 origin "${bridge_git_revision}"
+    git -C "${bridge_storage_dir}" checkout FETCH_HEAD
+    printf '%s' "${bridge_git_revision}" > "${qemu_revision_file}"
+  elif [ ! -f "${qemu_revision_file}" ]; then
+    printf '%s' "${bridge_git_revision}" > "${qemu_revision_file}"
+  fi
+
+  if [ -f "${bridge_patch_stamp_file}" ]; then
+    recorded_patch_fingerprint="$(cat "${bridge_patch_stamp_file}")"
+  fi
+  if [ "${recorded_patch_fingerprint}" = "${expected_patch_fingerprint}" ] \
+    && git -C "${bridge_storage_dir}" apply --reverse --check "${bridge_patch_file}" >/dev/null 2>&1; then
+    return 0
+  fi
+  if git -C "${bridge_storage_dir}" apply --reverse --check "${bridge_patch_file}" >/dev/null 2>&1; then
+    printf '%s\n' "${expected_patch_fingerprint}" > "${bridge_patch_stamp_file}"
+    return 0
+  fi
+
+  if [ -n "${recorded_patch_fingerprint}" ] \
+    && [ "${recorded_patch_fingerprint}" != "${expected_patch_fingerprint}" ]; then
+    git -C "${bridge_storage_dir}" checkout -- \
+      libafl/syx-snapshot/syx-cow-cache.c \
+      libafl/syx-snapshot/syx-snapshot.c
+  fi
+  if ! git -C "${bridge_storage_dir}" apply --check "${bridge_patch_file}" >/dev/null 2>&1; then
+    echo "cannot apply LibAFL QEMU bridge patch at ${bridge_storage_dir}" >&2
+    git -C "${bridge_storage_dir}" diff -- \
+      libafl/syx-snapshot/syx-cow-cache.c \
+      libafl/syx-snapshot/syx-snapshot.c >&2 || true
+    exit 1
+  fi
+  git -C "${bridge_storage_dir}" apply "${bridge_patch_file}"
+  printf '%s\n' "${expected_patch_fingerprint}" > "${bridge_patch_stamp_file}"
 }
 
 if ! command -v aarch64-linux-gnu-gcc >/dev/null 2>&1; then
@@ -100,14 +177,30 @@ if ! command -v llvm-config >/dev/null 2>&1; then
 fi
 
 qemu_build_rs="${source_dir}/crates/libafl_qemu/libafl_qemu_build/src/build.rs"
-if [ -f "${qemu_build_rs}" ]; then
-  sed -i \
-    -e 's#// \\.arg#// .arg#g' \
-    -e 's#// .arg(\"--disable-gtk\")#.arg(\"--disable-gtk\")#' \
-    -e 's#// .arg(\"--disable-guest-agent\")#.arg(\"--disable-guest-agent\")#' \
-    -e 's#// .arg(\"--disable-guest-agent-msi\")#.arg(\"--disable-guest-agent-msi\")#' \
-    "${qemu_build_rs}"
+[ -f "${qemu_build_rs}" ] || {
+  echo "missing LibAFL QEMU build configuration: ${qemu_build_rs}" >&2
+  exit 1
+}
+sed -i \
+  -e 's#// \\.arg#// .arg#g' \
+  -e 's#// .arg(\"--disable-gtk\")#.arg(\"--disable-gtk\")#' \
+  -e 's#// .arg(\"--disable-guest-agent\")#.arg(\"--disable-guest-agent\")#' \
+  -e 's#// .arg(\"--disable-guest-agent-msi\")#.arg(\"--disable-guest-agent-msi\")#' \
+  -e 's#--disable-attr#--enable-attr#g' \
+  -e 's#--disable-virtfs#--enable-virtfs#g' \
+  "${qemu_build_rs}"
+if ! rg -q '\.arg\("--enable-attr"\)' "${qemu_build_rs}" \
+  || ! rg -q '\.arg\("--enable-virtfs"\)' "${qemu_build_rs}"; then
+  echo "LibAFL QEMU bridge must enable attr and virtfs for the 9p host share" >&2
+  exit 1
 fi
+printf '[libafl/build] QEMU bridge transport: virtfs/9p enabled\n' >&2
+
+bridge_config_fingerprint="$({
+  printf '%s\n' "${bridge_config_version}" "${bridge_git_url}" "${bridge_git_revision}"
+  sha256sum "${qemu_build_rs}" | awk '{print $1}'
+  sha256sum "${bridge_patch_file}" | awk '{print $1}'
+} | sha256sum | awk '{print $1}')"
 
 cargo_args=()
 if [ -n "${cargo_arg_file}" ] && [ -s "${cargo_arg_file}" ]; then
@@ -162,21 +255,22 @@ build_guest_stub() {
     -o "${stub_bin}"
 }
 
-if [ "${reuse_build_dir}" = "true" ] && [ -x "${fuzzer_bin}" ] && [ ! -f "${fuzzer_fingerprint_file}" ] && [ -f "${installed_bridge_lib}" ]; then
+if [ "${reuse_build_dir}" = "true" ] && [ -x "${fuzzer_bin}" ] && [ ! -f "${fuzzer_fingerprint_file}" ] && bridge_current; then
   record_fuzzer_fingerprint
 fi
 
-if [ "${reuse_build_dir}" = "true" ] && stub_current && fuzzer_current && [ -f "${installed_bridge_lib}" ]; then
+if [ "${reuse_build_dir}" = "true" ] && stub_current && fuzzer_current && bridge_current; then
   cat > "${result_file}" <<EOF
 {"details":{"built":true,"reused":true,"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}"},"artifacts":[{"path":"guest-stub-binary","location":"${stub_bin}"},{"path":"qemu-nesting-fuzzer","location":"${fuzzer_bin}"},{"path":"qemu-bridge-dir","location":"${bridge_dir}"},{"path":"qemu-bridge-lib","location":"${installed_bridge_lib}"}]}
 EOF
   exit 0
 fi
 
-if [ "${reuse_build_dir}" = "true" ] && [ -f "${installed_bridge_lib}" ] && [ -d "${bridge_storage_dir}" ] && [ -d "${host_target_dir}/debug/libvharness/include" ] && [ -d "${host_target_dir}/debug/libvharness/src/api/lqemu" ] && [ -f "${host_target_dir}/debug/libvharness/src/api/lqemu/arch/aarch64/calls.c" ]; then
+if [ "${reuse_build_dir}" = "true" ] && bridge_current && [ -d "${bridge_storage_dir}" ] && [ -d "${host_target_dir}/debug/libvharness/include" ] && [ -d "${host_target_dir}/debug/libvharness/src/api/lqemu" ] && [ -f "${host_target_dir}/debug/libvharness/src/api/lqemu/arch/aarch64/calls.c" ]; then
   fuzzer_rebuilt=false
   stub_rebuilt=false
   if ! fuzzer_current; then
+    prepare_bridge_source
     LIBAFL_QEMU_DIR="${bridge_storage_dir}" cargo build "${fuzzer_cargo_args[@]}" "${cargo_args[@]}"
     cp "${fuzzer_target_dir}/debug/qemu_nesting" "${fuzzer_bin}"
     record_fuzzer_fingerprint
@@ -192,7 +286,8 @@ EOF
   exit 0
 fi
 
-if [ "${reuse_build_dir}" = "true" ] && stub_current && [ -f "${installed_bridge_lib}" ] && [ -d "${bridge_storage_dir}" ]; then
+if [ "${reuse_build_dir}" = "true" ] && stub_current && bridge_current && [ -d "${bridge_storage_dir}" ]; then
+  prepare_bridge_source
   LIBAFL_QEMU_DIR="${bridge_storage_dir}" cargo build "${fuzzer_cargo_args[@]}" "${cargo_args[@]}"
   cp "${fuzzer_target_dir}/debug/qemu_nesting" "${fuzzer_bin}"
   record_fuzzer_fingerprint
@@ -204,16 +299,15 @@ fi
 
 if [ "${reuse_build_dir}" = "true" ] && [ -x "${stub_bin}" ]; then
   rm -rf "${bridge_build_dir}"
-  LIBAFL_QEMU_CLONE_DIR="${bridge_storage_dir}" cargo build "${bridge_cargo_args[@]}" --lib "${cargo_args[@]}"
+  prepare_bridge_source
+  LIBAFL_QEMU_DIR="${bridge_storage_dir}" cargo build "${bridge_cargo_args[@]}" --lib "${cargo_args[@]}"
   rm -rf "${bridge_dir}"
   ln -s "${bridge_storage_dir}" "${bridge_dir}"
   LIBAFL_QEMU_DIR="${bridge_storage_dir}" cargo build "${fuzzer_cargo_args[@]}" "${cargo_args[@]}"
   build_guest_stub
   cp "${fuzzer_target_dir}/debug/qemu_nesting" "${fuzzer_bin}"
   record_fuzzer_fingerprint
-  if [ -f "${bridge_lib}" ]; then
-    cp "${bridge_lib}" "${installed_bridge_lib}"
-  fi
+  install_bridge
   cat > "${result_file}" <<EOF
 {"details":{"built":true,"reused":true,"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}"},"artifacts":[{"path":"guest-stub-binary","location":"${stub_bin}"},{"path":"qemu-nesting-fuzzer","location":"${fuzzer_bin}"},{"path":"qemu-bridge-dir","location":"${bridge_dir}"},{"path":"qemu-bridge-lib","location":"${installed_bridge_lib}"}]}
 EOF
@@ -221,16 +315,15 @@ EOF
 fi
 
 rm -rf "${bridge_build_dir}"
-LIBAFL_QEMU_CLONE_DIR="${bridge_storage_dir}" cargo build "${bridge_cargo_args[@]}" --lib "${cargo_args[@]}"
+prepare_bridge_source
+LIBAFL_QEMU_DIR="${bridge_storage_dir}" cargo build "${bridge_cargo_args[@]}" --lib "${cargo_args[@]}"
 rm -rf "${bridge_dir}"
 ln -s "${bridge_storage_dir}" "${bridge_dir}"
 LIBAFL_QEMU_DIR="${bridge_storage_dir}" cargo build "${fuzzer_cargo_args[@]}" "${cargo_args[@]}"
 build_guest_stub
 cp "${fuzzer_target_dir}/debug/qemu_nesting" "${fuzzer_bin}"
 record_fuzzer_fingerprint
-if [ -f "${bridge_lib}" ]; then
-  cp "${bridge_lib}" "${installed_bridge_lib}"
-fi
+install_bridge
 
 cat > "${result_file}" <<EOF
 {"details":{"built":true,"reused":false,"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}","stub":"${stub_bin}","fuzzer":"${fuzzer_bin}","qemu_bridge_dir":"${bridge_dir}","qemu_bridge_lib":"${installed_bridge_lib}"},"artifacts":[{"path":"guest-stub-binary","location":"${stub_bin}"},{"path":"qemu-nesting-fuzzer","location":"${fuzzer_bin}"},{"path":"qemu-bridge-dir","location":"${bridge_dir}"},{"path":"qemu-bridge-lib","location":"${installed_bridge_lib}"}]}

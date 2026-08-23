@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <spawn.h>
 #include <unistd.h>
 
 #include "lqemu.h"
@@ -41,9 +42,12 @@
 #define L2_INITRD_PATH "/root/nvirsh-images/rootfs.cpio.gz"
 #define NQC2_PLUGIN_PATH "/root/morpheus-nqc2/lib/nqc2/nqc2-plugin.so"
 #define ROOT_LAUNCH_PATH "/root/launch-l2.sh"
-#define HOST_SHARE_DIR "/host"
+#define HOST_SHARE_DIR "/mnt"
+#define HOST_SHARE_FALLBACK_DIR "/host"
 #define HOST_SHARE_TAG "host"
 #define HOSTSTACK_LAUNCH_PATH HOST_SHARE_DIR "/launch-l2-hoststack.sh"
+#define HOSTSTACK_FALLBACK_LAUNCH_PATH \
+  HOST_SHARE_FALLBACK_DIR "/launch-l2-hoststack.sh"
 #define HOSTSTACK_LOCAL_LAUNCH_PATH "/root/launch-l2-hoststack.sh"
 #define L2_CPU_TCG "cortex-a57"
 #define L2_CPU_KVM "host"
@@ -62,12 +66,15 @@
   "/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/l2-accel/raw"
 #define L2_CPU_FW_CFG \
   "/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/l2-cpu/raw"
+#define RUNTIME_CAPTURE_FW_CFG \
+  "/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/capture-runtime/raw"
 #define DMI_ENTRIES_DIR "/sys/firmware/dmi/entries"
 #define L2_DISABLE_NQC2_DMI "morpheus.l2_disable_nqc2_plugin=1"
 #define L2_RUN_WINDOW_DMI "morpheus.l2_run_window_ms="
 #define L2_MODE_DMI "morpheus.l2_mode="
 #define L2_ACCEL_DMI "morpheus.l2_accel="
 #define L2_CPU_DMI "morpheus.l2_cpu="
+#define RUNTIME_CAPTURE_DMI "morpheus.capture_runtime=1"
 #define PROC_CMDLINE_PATH "/proc/cmdline"
 #define L2_DISABLE_NQC2_CMDLINE "morpheus.l2_disable_nqc2_plugin=1"
 #define L2_RUN_WINDOW_CMDLINE "morpheus.l2_run_window_ms="
@@ -75,8 +82,15 @@
 #define L2_ACCEL_CMDLINE "morpheus.l2_accel="
 #define L2_CPU_CMDLINE "morpheus.l2_cpu="
 #define RUNTIME_CAPTURE_CMDLINE "morpheus.capture_runtime=1"
+#define RUNTIME_CAPTURE_ENV "MORPHEUS_CAPTURE_RUNTIME"
+#define L2_MODE_ENV "MORPHEUS_L2_MODE"
+#define L2_RUN_WINDOW_ENV "MORPHEUS_L2_RUN_WINDOW_MS"
 
 static uint8_t FUZZ_INPUT[INPUT_LEN];
+static const char *selected_hoststack_launch_path = NULL;
+extern char **environ;
+
+static bool ensure_runtime_dir(void);
 
 static bool read_text_prefix_value(const char *path, const char *prefix,
                                    char *out, size_t out_len) {
@@ -178,6 +192,11 @@ static bool parse_l2_mode(const char *value, bool *out) {
     return true;
   }
   return false;
+}
+
+static bool env_l2_mode(bool *out) {
+  const char *value = getenv(L2_MODE_ENV);
+  return value && parse_l2_mode(value, out);
 }
 
 static const char *parse_l2_cpu(const char *value) {
@@ -417,6 +436,11 @@ static bool proc_cmdline_run_window_ms(unsigned *out) {
   return parse_run_window_ms(value, out);
 }
 
+static bool env_run_window_ms(unsigned *out) {
+  const char *value = getenv(L2_RUN_WINDOW_ENV);
+  return value && parse_run_window_ms(value, out);
+}
+
 static bool dmi_run_window_ms(unsigned *out) {
   DIR *dir = opendir(DMI_ENTRIES_DIR);
   struct dirent *entry = NULL;
@@ -471,6 +495,7 @@ static unsigned run_window_ms(const uint8_t *data) {
   if (!configured_checked) {
     configured_checked = true;
     (void)(fw_cfg_run_window_ms(&configured_window) ||
+           env_run_window_ms(&configured_window) ||
            proc_cmdline_run_window_ms(&configured_window) ||
            dmi_run_window_ms(&configured_window));
   }
@@ -547,6 +572,46 @@ static bool l2_disable_nqc2_plugin_enabled(void) {
   return found;
 }
 
+static bool dmi_has_token(const char *token) {
+  DIR *dir = opendir(DMI_ENTRIES_DIR);
+  struct dirent *entry = NULL;
+  bool found = false;
+  const size_t token_len = strlen(token);
+
+  if (!dir) {
+    return false;
+  }
+
+  while (!found && (entry = readdir(dir)) != NULL) {
+    char raw_path[256];
+    int written;
+    FILE *raw;
+    char data[512];
+    size_t len;
+
+    if (strncmp(entry->d_name, "11-", 3) != 0) {
+      continue;
+    }
+    written = snprintf(raw_path, sizeof(raw_path), "%s/%s/raw",
+                       DMI_ENTRIES_DIR, entry->d_name);
+    if (written < 0 || (size_t)written >= sizeof(raw_path)) {
+      continue;
+    }
+    raw = fopen(raw_path, "rb");
+    if (!raw) {
+      continue;
+    }
+    len = fread(data, 1, sizeof(data), raw);
+    fclose(raw);
+    if (len >= token_len && memmem(data, len, token, token_len) != NULL) {
+      found = true;
+    }
+  }
+
+  closedir(dir);
+  return found;
+}
+
 static bool write_input_snapshot(const uint8_t *data, size_t len) {
   static const char *runtime_files[] = {
       INPUT_PATH,
@@ -563,19 +628,52 @@ static bool write_input_snapshot(const uint8_t *data, size_t len) {
       QEMU_TRACE_LOG_PATH,
       NQC2_TRACE_PATH,
   };
-  mkdir(RUNTIME_DIR, 0700);
+  if (!ensure_runtime_dir()) {
+    lqprintf("stub: runtime directory unavailable errno=%d\n", errno);
+    return false;
+  }
   for (size_t i = 0; i < sizeof(runtime_files) / sizeof(runtime_files[0]); i++) {
     unlink(runtime_files[i]);
   }
-  FILE *fp = fopen(INPUT_PATH, "wb");
-  if (!fp) {
-    lqprintf("stub: failed to open input snapshot file\n");
+
+  int fd = open(INPUT_PATH, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (fd < 0) {
+    int error_number = errno;
+    lqprintf("stub: input open failed errno=%d\n", error_number);
+    errno = error_number;
     return false;
   }
-  bool ok = fwrite(data, 1, len, fp) == len;
-  fclose(fp);
-  if (!ok) {
-    lqprintf("stub: failed to write input snapshot\n");
+
+  bool ok = true;
+  size_t offset = 0;
+  while (offset < len) {
+    ssize_t written = write(fd, data + offset, len - offset);
+    if (written < 0) {
+      int error_number = errno;
+      lqprintf("stub: input write failed errno=%d offset=%zu\n",
+               error_number, offset);
+      errno = error_number;
+      ok = false;
+      break;
+    }
+    if (written == 0) {
+      lqprintf("stub: input write failed errno=%d offset=%zu\n", EIO,
+               offset);
+      errno = EIO;
+      ok = false;
+      break;
+    }
+    offset += (size_t)written;
+  }
+
+  if (close(fd) != 0) {
+    int error_number = errno;
+    lqprintf("stub: input close failed errno=%d\n", error_number);
+    errno = error_number;
+    ok = false;
+  }
+  if (ok) {
+    lqprintf("stub: input path=%s input-size=%zu\n", INPUT_PATH, len);
   }
   return ok;
 }
@@ -718,7 +816,26 @@ static bool runtime_capture_enabled(void) {
   static bool enabled = false;
 
   if (!resolved) {
-    enabled = proc_cmdline_has_token(RUNTIME_CAPTURE_CMDLINE);
+    const char *environment = getenv(RUNTIME_CAPTURE_ENV);
+
+    enabled = environment && environment[0] == '1';
+    FILE *fw_cfg = fopen(RUNTIME_CAPTURE_FW_CFG, "rb");
+    if (!enabled && fw_cfg) {
+      char value[8] = {0};
+      size_t n = fread(value, 1, sizeof(value) - 1, fw_cfg);
+      fclose(fw_cfg);
+      enabled = n > 0 && value[0] == '1';
+    } else if (fw_cfg) {
+      fclose(fw_cfg);
+    }
+    if (!enabled) {
+      enabled = dmi_has_token(RUNTIME_CAPTURE_DMI);
+    }
+    if (!enabled) {
+      enabled = proc_cmdline_has_token(RUNTIME_CAPTURE_CMDLINE);
+    }
+    lqprintf("stub: runtime-capture=%u source=%s\n", (unsigned)enabled,
+             environment && environment[0] == '1' ? "env" : "metadata");
     resolved = true;
   }
   return enabled;
@@ -764,13 +881,61 @@ static void maybe_dump_l2_diagnostics(void) {
   }
 }
 
-static void redirect_child_log(const char *path, int target_fd) {
-  int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
-  if (fd < 0) {
-    return;
+static int open_launch_log(const char *path) {
+  return open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+}
+
+struct launch_env_override {
+  const char *key;
+  const char *entry;
+};
+
+static bool env_entry_has_key(const char *entry, const char *key) {
+  size_t key_len = strlen(key);
+  return strncmp(entry, key, key_len) == 0 && entry[key_len] == '=';
+}
+
+static bool env_entry_is_overridden(
+    const char *entry, const struct launch_env_override *overrides,
+    size_t override_count) {
+  for (size_t i = 0; i < override_count; i++) {
+    if (env_entry_has_key(entry, overrides[i].key)) {
+      return true;
+    }
   }
-  dup2(fd, target_fd);
-  close(fd);
+  return false;
+}
+
+static char **build_launch_environment(
+    const struct launch_env_override *overrides, size_t override_count) {
+  size_t inherited_count = 0;
+  size_t env_count = 0;
+  char **environment;
+
+  for (char **entry = environ; entry && *entry; entry++) {
+    if (!env_entry_is_overridden(*entry, overrides, override_count)) {
+      inherited_count++;
+    }
+  }
+
+  environment = calloc(inherited_count + override_count + 1,
+                       sizeof(*environment));
+  if (!environment) {
+    return NULL;
+  }
+
+  for (char **entry = environ; entry && *entry; entry++) {
+    if (!env_entry_is_overridden(*entry, overrides, override_count)) {
+      environment[env_count++] = *entry;
+    }
+  }
+  for (size_t i = 0; i < override_count; i++) {
+    if (overrides[i].entry) {
+      environment[env_count++] = (char *)overrides[i].entry;
+    }
+  }
+  environment[env_count] = NULL;
+  return environment;
 }
 
 static bool path_exists(const char *path) {
@@ -782,10 +947,98 @@ static bool path_executable(const char *path) {
 }
 
 static bool ensure_directory(const char *path, mode_t mode) {
-  if (mkdir(path, mode) == 0 || errno == EEXIST) {
+  struct stat st;
+
+  if (mkdir(path, mode) == 0) {
     return true;
   }
-  return false;
+  if (errno != EEXIST) {
+    return false;
+  }
+  if (stat(path, &st) != 0) {
+    return false;
+  }
+  if (!S_ISDIR(st.st_mode)) {
+    errno = ENOTDIR;
+    return false;
+  }
+  return true;
+}
+
+static bool mount_runtime_tmpfs(void) {
+  int mount_errno;
+
+  if (mount("tmpfs", "/run", "tmpfs", MS_NOSUID | MS_NODEV,
+            "mode=0755") == 0) {
+    return true;
+  }
+  mount_errno = errno;
+  lqprintf("stub: runtime mount-run-tmpfs failed errno=%d\n", mount_errno);
+  errno = mount_errno;
+  return mount_errno == EBUSY;
+}
+
+static bool ensure_runtime_dir(void) {
+  static bool prepared = false;
+  static bool root_remount_attempted = false;
+  static bool tmpfs_attempted = false;
+  struct stat st;
+  int error_number;
+
+  if (prepared && stat(RUNTIME_DIR, &st) == 0 && S_ISDIR(st.st_mode)) {
+    return true;
+  }
+
+  if (!root_remount_attempted) {
+    root_remount_attempted = true;
+    if (mount(NULL, "/", NULL, MS_REMOUNT, NULL) != 0) {
+      error_number = errno;
+      lqprintf("stub: runtime remount-root failed errno=%d\n", error_number);
+      errno = error_number;
+    }
+  }
+
+  if (stat("/run", &st) != 0) {
+    if (mkdir("/run", 0755) != 0 && errno != EEXIST) {
+      error_number = errno;
+      lqprintf("stub: runtime mkdir-run failed errno=%d\n", error_number);
+      errno = error_number;
+    }
+  }
+
+  if (stat("/run", &st) != 0 || !S_ISDIR(st.st_mode) ||
+      access("/run", W_OK) != 0) {
+    if (!tmpfs_attempted) {
+      tmpfs_attempted = true;
+      (void)mount_runtime_tmpfs();
+    }
+  }
+
+  if (!ensure_directory(RUNTIME_DIR, 0700)) {
+    error_number = errno;
+    lqprintf("stub: runtime mkdir failed path=%s errno=%d\n", RUNTIME_DIR,
+             error_number);
+    errno = error_number;
+    if (!tmpfs_attempted) {
+      tmpfs_attempted = true;
+      if (mount_runtime_tmpfs() && ensure_directory(RUNTIME_DIR, 0700)) {
+        prepared = true;
+      }
+    }
+    if (!prepared) {
+      return false;
+    }
+  }
+
+  if (chmod(RUNTIME_DIR, 0700) != 0) {
+    error_number = errno;
+    lqprintf("stub: runtime chmod failed path=%s errno=%d\n", RUNTIME_DIR,
+             error_number);
+    errno = error_number;
+    return false;
+  }
+  prepared = true;
+  return true;
 }
 
 static bool run_command(char *const argv[]) {
@@ -825,36 +1078,64 @@ static void try_modprobe_module(const char *module) {
   }
 }
 
-static bool mount_host_share_if_needed(void) {
-  static const char *mount_opts = "trans=virtio,version=9p2000.L,msize=1048576";
+static bool try_mount_host_share(const char *share_dir,
+                                 const char *launch_path,
+                                 const char *mount_opts) {
   int mount_errno = 0;
 
-  if (path_executable(HOSTSTACK_LAUNCH_PATH)) {
+  if (path_executable(launch_path)) {
+    selected_hoststack_launch_path = launch_path;
     return true;
   }
-  if (!ensure_directory(HOST_SHARE_DIR, 0755)) {
-    lqprintf("stub: failed to create %s errno=%d\n", HOST_SHARE_DIR, errno);
+  if (!ensure_directory(share_dir, 0755)) {
+    lqprintf("stub: failed to create %s errno=%d\n", share_dir, errno);
     return false;
   }
-  if (mount(HOST_SHARE_TAG, HOST_SHARE_DIR, "9p", 0, mount_opts) == 0) {
-    return path_executable(HOSTSTACK_LAUNCH_PATH);
+  if (mount(HOST_SHARE_TAG, share_dir, "9p", 0, mount_opts) == 0) {
+    if (path_executable(launch_path)) {
+      selected_hoststack_launch_path = launch_path;
+      return true;
+    }
   }
-  if (errno == EBUSY && path_executable(HOSTSTACK_LAUNCH_PATH)) {
+  mount_errno = errno;
+  if (mount_errno == EBUSY && path_executable(launch_path)) {
+    selected_hoststack_launch_path = launch_path;
     return true;
+  }
+  return false;
+}
+
+static bool mount_host_share_if_needed(void) {
+  static const char *mount_opts = "trans=virtio,version=9p2000.L,msize=1048576";
+  static const char *share_dirs[] = {
+      HOST_SHARE_DIR,
+      HOST_SHARE_FALLBACK_DIR,
+  };
+  static const char *launch_paths[] = {
+      HOSTSTACK_LAUNCH_PATH,
+      HOSTSTACK_FALLBACK_LAUNCH_PATH,
+  };
+  int mount_errno = 0;
+
+  for (size_t i = 0; i < sizeof(launch_paths) / sizeof(launch_paths[0]);
+       i++) {
+    if (path_executable(launch_paths[i])) {
+      selected_hoststack_launch_path = launch_paths[i];
+      return true;
+    }
   }
 
   try_modprobe_module("9p");
   try_modprobe_module("9pnet");
   try_modprobe_module("9pnet_virtio");
 
-  if (mount(HOST_SHARE_TAG, HOST_SHARE_DIR, "9p", 0, mount_opts) == 0) {
-    return path_executable(HOSTSTACK_LAUNCH_PATH);
-  }
-  if (errno == EBUSY && path_executable(HOSTSTACK_LAUNCH_PATH)) {
-    return true;
+  for (size_t i = 0; i < sizeof(share_dirs) / sizeof(share_dirs[0]); i++) {
+    if (try_mount_host_share(share_dirs[i], launch_paths[i], mount_opts)) {
+      return true;
+    }
+    mount_errno = errno;
   }
 
-  mount_errno = errno;
   lqprintf("stub: failed to mount host share errno=%d\n", mount_errno);
   return false;
 }
@@ -1008,7 +1289,9 @@ static bool resolve_l2_cvm_mode(void) {
   if (resolved) {
     return cached_enabled;
   }
-  if (fw_cfg_l2_mode(&enabled)) {
+  if (env_l2_mode(&enabled)) {
+    cached_enabled = enabled;
+  } else if (fw_cfg_l2_mode(&enabled)) {
     cached_enabled = enabled;
   } else if (dmi_l2_mode(&enabled)) {
     cached_enabled = enabled;
@@ -1068,10 +1351,26 @@ static void log_process_state(pid_t pid) {
   }
 }
 
-static void exec_l2_launcher(void) {
+static const char *resolve_l2_shell(void) {
+  /* Buildroot commonly makes /bin/sh a symlink to bash. Keep the launcher
+   * invocation consistent with the original /bin/bash contract and use sh
+   * only for images that do not ship bash. */
+  if (path_executable("/bin/bash")) {
+    return "/bin/bash";
+  }
+  if (path_executable("/bin/sh")) {
+    return "/bin/sh";
+  }
+  return NULL;
+}
+
+static bool prepare_l2_launcher(const char **shell_out,
+                                const char **launch_script_out) {
   const bool l2_cvm = resolve_l2_cvm_mode();
   const char *launch_script = ROOT_LAUNCH_PATH;
-  char *argv[] = {"/bin/bash", (char *)launch_script, NULL};
+  const char *shell = resolve_l2_shell();
+  char shell_target[128];
+  ssize_t shell_target_len;
 
   write_text_file(LAUNCH_MARKER_PATH, "stub-launch-start\n");
   append_marker("cvm=%u\n", (unsigned)l2_cvm);
@@ -1081,21 +1380,34 @@ static void exec_l2_launcher(void) {
   if (l2_cvm) {
     if (!mount_host_share_if_needed()) {
       append_marker("mount-host-share=failed\n");
-      _exit(2);
+      return false;
     }
-    launch_script = HOSTSTACK_LAUNCH_PATH;
-    argv[1] = (char *)launch_script;
+    launch_script = selected_hoststack_launch_path;
+    append_marker("hoststack-launch=%s\n", launch_script);
   }
 
+  if (!shell) {
+    append_marker("missing-launch-shell\n");
+    return false;
+  }
+  append_marker("launch-shell=%s\n", shell);
+  if (access(shell, X_OK) != 0) {
+    append_marker("launch-shell-access-failed errno=%d\n", errno);
+  }
+  shell_target_len = readlink(shell, shell_target, sizeof(shell_target) - 1);
+  if (shell_target_len >= 0) {
+    shell_target[shell_target_len] = '\0';
+    append_marker("launch-shell-target=%s\n", shell_target);
+  }
   if (!path_executable(launch_script)) {
     append_marker("missing-launch-script=%s\n", launch_script);
-    _exit(127);
+    return false;
   }
 
   append_marker("launch-script=%s\n", launch_script);
-  execv(argv[0], argv);
-  append_marker("launcher-execv-failed\n");
-  _exit(127);
+  *shell_out = shell;
+  *launch_script_out = launch_script;
+  return true;
 }
 
 static void signal_l2_process_group(pid_t pid, int signal_number) {
@@ -1137,6 +1449,27 @@ static bool reap_l2_process(pid_t pid, int *status) {
 static bool launch_l2(const uint8_t *data, size_t len, bool *oracle_hit) {
   char period_ms[32];
   char vintid[32];
+  char input_env[128];
+  char runtime_env[128];
+  char period_env[128];
+  char nqc2_env[128];
+  char oracle_env[128];
+  char vintid_env[128];
+  const char *shell = NULL;
+  const char *launch_script = NULL;
+  struct launch_env_override overrides[6];
+  size_t override_count = 0;
+  char **launch_environment = NULL;
+  int launch_stdout_fd = -1;
+  int launch_stderr_fd = -1;
+  posix_spawn_file_actions_t file_actions;
+  posix_spawnattr_t spawn_attributes;
+  bool file_actions_initialized = false;
+  bool spawn_attributes_initialized = false;
+  int setup_error = 0;
+  int spawn_error;
+  pid_t pid;
+  char *argv[3];
   bool enable_oracle_bug = true;
   bool have_vintid = !enable_oracle_bug &&
                      injected_vintid(data, vintid, sizeof(vintid));
@@ -1147,37 +1480,155 @@ static bool launch_l2(const uint8_t *data, size_t len, bool *oracle_hit) {
     lqprintf("stub: enabling l2 oracle test bug\n");
   }
 
-  pid_t pid = fork();
-  if (pid < 0) {
-    lqprintf("stub: fork failed\n");
+  /* Everything up to posix_spawn runs in the parent. The old fork child
+   * walked mounted files, changed libc's environment, and formatted marker
+   * logs before exec; that is unsafe after the harness has started threads. */
+  if (!prepare_l2_launcher(&shell, &launch_script)) {
     return false;
   }
 
-  if (pid == 0) {
-    (void)setpgid(0, 0);
-    redirect_child_log(LAUNCH_STDOUT_PATH, STDOUT_FILENO);
-    redirect_child_log(LAUNCH_STDERR_PATH, STDERR_FILENO);
-    setenv("MORPHEUS_QEMU_INPUT_PATH", INPUT_PATH, 1);
-    setenv("MORPHEUS_L2_RUNTIME_DIR", RUNTIME_DIR, 1);
-    setenv("MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS", period_ms, 1);
-    if (l2_disable_nqc2_plugin_enabled() ||
-        getenv("MORPHEUS_L2_DISABLE_NQC2_PLUGIN")) {
-      setenv("MORPHEUS_L2_DISABLE_NQC2_PLUGIN", "1", 1);
-    }
-    if (enable_oracle_bug) {
-      setenv("MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG", "1", 1);
-    } else {
-      unsetenv("MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG");
-    }
-    if (have_vintid) {
-      setenv("MORPHEUS_QEMU_INJECT_VIRQ", vintid, 1);
-    } else {
-      unsetenv("MORPHEUS_QEMU_INJECT_VIRQ");
-    }
-    exec_l2_launcher();
+  if (snprintf(input_env, sizeof(input_env),
+               "MORPHEUS_QEMU_INPUT_PATH=%s", INPUT_PATH) < 0 ||
+      snprintf(runtime_env, sizeof(runtime_env),
+               "MORPHEUS_L2_RUNTIME_DIR=%s", RUNTIME_DIR) < 0 ||
+      snprintf(period_env, sizeof(period_env),
+               "MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS=%s", period_ms) < 0) {
+    append_marker("launcher-environment-format-failed\n");
+    return false;
   }
 
-  (void)setpgid(pid, pid);
+  overrides[override_count++] = (struct launch_env_override){
+      "MORPHEUS_QEMU_INPUT_PATH", input_env};
+  overrides[override_count++] = (struct launch_env_override){
+      "MORPHEUS_L2_RUNTIME_DIR", runtime_env};
+  overrides[override_count++] = (struct launch_env_override){
+      "MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS", period_env};
+
+  if (l2_disable_nqc2_plugin_enabled() ||
+      getenv("MORPHEUS_L2_DISABLE_NQC2_PLUGIN")) {
+    snprintf(nqc2_env, sizeof(nqc2_env),
+             "MORPHEUS_L2_DISABLE_NQC2_PLUGIN=1");
+    overrides[override_count++] = (struct launch_env_override){
+        "MORPHEUS_L2_DISABLE_NQC2_PLUGIN", nqc2_env};
+  }
+
+  if (enable_oracle_bug) {
+    snprintf(oracle_env, sizeof(oracle_env),
+             "MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG=1");
+    overrides[override_count++] = (struct launch_env_override){
+        "MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG", oracle_env};
+  } else {
+    overrides[override_count++] = (struct launch_env_override){
+        "MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG", NULL};
+  }
+
+  if (have_vintid) {
+    if (snprintf(vintid_env, sizeof(vintid_env),
+                 "MORPHEUS_QEMU_INJECT_VIRQ=%s", vintid) < 0) {
+      append_marker("launcher-environment-format-failed\n");
+      return false;
+    }
+    overrides[override_count++] = (struct launch_env_override){
+        "MORPHEUS_QEMU_INJECT_VIRQ", vintid_env};
+  } else {
+    overrides[override_count++] = (struct launch_env_override){
+        "MORPHEUS_QEMU_INJECT_VIRQ", NULL};
+  }
+
+  launch_stdout_fd = open_launch_log(LAUNCH_STDOUT_PATH);
+  if (launch_stdout_fd < 0) {
+    int error_number = errno;
+    append_marker("launcher-stdout-open-failed errno=%d\n", error_number);
+    return false;
+  }
+  launch_stderr_fd = open_launch_log(LAUNCH_STDERR_PATH);
+  if (launch_stderr_fd < 0) {
+    int error_number = errno;
+    append_marker("launcher-stderr-open-failed errno=%d\n", error_number);
+    close(launch_stdout_fd);
+    return false;
+  }
+
+  launch_environment =
+      build_launch_environment(overrides, override_count);
+  if (!launch_environment) {
+    append_marker("launcher-environment-alloc-failed\n");
+    close(launch_stdout_fd);
+    close(launch_stderr_fd);
+    return false;
+  }
+
+  setup_error = posix_spawn_file_actions_init(&file_actions);
+  if (setup_error != 0) {
+    goto spawn_setup_failed;
+  }
+  file_actions_initialized = true;
+  setup_error = posix_spawn_file_actions_adddup2(
+      &file_actions, launch_stdout_fd, STDOUT_FILENO);
+  if (setup_error != 0) {
+    goto spawn_setup_failed;
+  }
+  setup_error = posix_spawn_file_actions_adddup2(
+      &file_actions, launch_stderr_fd, STDERR_FILENO);
+  if (setup_error != 0) {
+    goto spawn_setup_failed;
+  }
+  if (launch_stdout_fd > STDERR_FILENO) {
+    setup_error =
+        posix_spawn_file_actions_addclose(&file_actions, launch_stdout_fd);
+    if (setup_error != 0) {
+      goto spawn_setup_failed;
+    }
+  }
+  if (launch_stderr_fd > STDERR_FILENO &&
+      launch_stderr_fd != launch_stdout_fd) {
+    setup_error =
+        posix_spawn_file_actions_addclose(&file_actions, launch_stderr_fd);
+    if (setup_error != 0) {
+      goto spawn_setup_failed;
+    }
+  }
+
+  setup_error = posix_spawnattr_init(&spawn_attributes);
+  if (setup_error != 0) {
+    goto spawn_setup_failed;
+  }
+  spawn_attributes_initialized = true;
+  setup_error = posix_spawnattr_setflags(&spawn_attributes,
+                                         POSIX_SPAWN_SETPGROUP);
+  if (setup_error != 0) {
+    goto spawn_setup_failed;
+  }
+  setup_error = posix_spawnattr_setpgroup(&spawn_attributes, 0);
+  if (setup_error != 0) {
+    goto spawn_setup_failed;
+  }
+
+  argv[0] = (char *)shell;
+  argv[1] = (char *)launch_script;
+  argv[2] = NULL;
+  spawn_error = posix_spawn(&pid, shell, &file_actions, &spawn_attributes,
+                            argv, launch_environment);
+  posix_spawnattr_destroy(&spawn_attributes);
+  spawn_attributes_initialized = false;
+  posix_spawn_file_actions_destroy(&file_actions);
+  file_actions_initialized = false;
+  close(launch_stdout_fd);
+  close(launch_stderr_fd);
+  free(launch_environment);
+  launch_environment = NULL;
+  if (spawn_error != 0) {
+    append_marker("launcher-spawn-failed errno=%d\n", spawn_error);
+    lqprintf("stub: launcher spawn failed shell=%s script=%s errno=%d\n",
+             shell, launch_script, spawn_error);
+    return false;
+  }
+
+  /* The spawn attributes establish the group before the launcher runs. This
+   * parent-side call also covers libcs that report success before exec. */
+  if (setpgid(pid, pid) != 0 && errno != EACCES && errno != ESRCH) {
+    lqprintf("stub: setpgid failed pid=%u errno=%d\n", (unsigned)pid, errno);
+  }
 
   lqprintf("stub: launched l2 pid=%u\n", (unsigned)pid);
   lqprintf("stub: entering l2 run window pid=%u\n", (unsigned)pid);
@@ -1242,6 +1693,23 @@ static bool launch_l2(const uint8_t *data, size_t len, bool *oracle_hit) {
     return true;
   }
   return true;
+
+spawn_setup_failed:
+  if (spawn_attributes_initialized) {
+    posix_spawnattr_destroy(&spawn_attributes);
+  }
+  if (file_actions_initialized) {
+    posix_spawn_file_actions_destroy(&file_actions);
+  }
+  if (launch_stdout_fd >= 0) {
+    close(launch_stdout_fd);
+  }
+  if (launch_stderr_fd >= 0 && launch_stderr_fd != launch_stdout_fd) {
+    close(launch_stderr_fd);
+  }
+  free(launch_environment);
+  append_marker("launcher-spawn-setup-failed errno=%d\n", setup_error);
+  return false;
 }
 
 int main(void) {

@@ -22,6 +22,7 @@ l2_console_log="${run_dir}/l2-console.log"
 stop_request_file="${run_dir}/stop-requested"
 l1_pid=""
 l1_process_group_id=""
+l2_console_stream_pid=""
 
 if [ "${phase}" != "launch" ]; then
   echo "unsupported buildroot-based CVM exec phase: ${phase}" >&2
@@ -133,6 +134,18 @@ normalize_console_log() {
   fi
   perl -0pi -e 's/\r\r\n/\n/g; s/\r\n/\n/g; s/\r/\n/g;' "${logfile}"
 }
+
+stop_l2_console_stream() {
+  local stream_pid="${l2_console_stream_pid}"
+  if [ -z "${stream_pid}" ]; then
+    return 0
+  fi
+  l2_console_stream_pid=""
+  kill "${stream_pid}" 2>/dev/null || true
+  wait "${stream_pid}" 2>/dev/null || true
+}
+
+trap 'stop_l2_console_stream' EXIT
 
 terminate_l1_process() {
   local pid="$1"
@@ -273,6 +286,7 @@ NODE
 finish_stopped() {
   local reason="${1:-buildroot-based CVM launch stopped}"
   terminate_l1_process "${l1_pid}" "${l1_process_group_id}"
+  stop_l2_console_stream
   rm -f "${l1_pid_file}"
   normalize_console_log "${stdout_log}"
   normalize_console_log "${stderr_log}"
@@ -320,6 +334,11 @@ ln -sfn "${l2_runtime_share_dir}/launch-l2.marker" "${l2_launch_marker_log}"
 ln -sfn "${l2_runtime_share_dir}/qemu.stdout.log" "${l2_launcher_stdout_log}"
 ln -sfn "${l2_runtime_share_dir}/qemu.stderr.log" "${l2_launcher_stderr_log}"
 ln -sfn "${l2_runtime_share_dir}/qemu.stdout.log" "${l2_console_log}"
+: > "${l2_runtime_share_dir}/qemu.stdout.log"
+if command -v tail >/dev/null 2>&1; then
+  tail --sleep-interval=0.05 -n +1 -f -- "${l2_console_log}" >&2 &
+  l2_console_stream_pid="$!"
+fi
 
 l1_launch_cmd="mount -t 9p -o trans=virtio,version=9p2000.L host /mnt && exec /mnt/launch-l2-hoststack.sh"
 l1_args_file="$(mktemp "${run_dir}/l1-qemu-args.XXXXXX")"
@@ -359,6 +378,7 @@ if [ "${launch_wait_status}" -eq 0 ]; then
     printf '[nvirsh-buildroot-based-cvm] observed l2 buildroot login prompt\n' | tee -a "${stdout_log}"
   fi
   terminate_l1_process "${l1_pid}" "${l1_process_group_id}"
+  stop_l2_console_stream
   rm -f "${l1_pid_file}"
   normalize_console_log "${stdout_log}"
   normalize_console_log "${stderr_log}"
@@ -374,6 +394,7 @@ EOF
 fi
 
 terminate_l1_process "${l1_pid}" "${l1_process_group_id}"
+stop_l2_console_stream
 rm -f "${l1_pid_file}"
 l1_exit_status=1
 

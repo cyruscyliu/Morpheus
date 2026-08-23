@@ -30,7 +30,7 @@ use libafl_bolts::{
 };
 use libafl_nesting::{ScenarioGenerator, ScenarioInput, ScenarioMutator, decode_scenario};
 use libafl_qemu::{
-    QemuSnapshotManager, emu::Emulator, executor::QemuExecutor,
+    FastSnapshotManager, emu::Emulator, executor::QemuExecutor,
     modules::edges::StdEdgeCoverageModule,
 };
 use libafl_targets::{EDGES_MAP_DEFAULT_SIZE, MAX_EDGES_FOUND, edges_map_mut_ptr};
@@ -163,7 +163,9 @@ pub fn fuzz() {
                 let mut emu = Emulator::builder()
                     .qemu_parameters(args)
                     .modules(modules)
-                    .snapshot_manager(QemuSnapshotManager::default())
+                    // The fast systemmode manager creates the LibAFL COW
+                    // layer used by the patched block backend.
+                    .snapshot_manager(FastSnapshotManager::default())
                     .build()?;
 
                 unsafe {

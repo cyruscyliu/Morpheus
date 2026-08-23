@@ -375,13 +375,15 @@ launch_marker="${runtime_dir}/launch-l2.marker"
 guest_qemu_stdout="${runtime_dir}/qemu.stdout.log"
 guest_qemu_stderr="${runtime_dir}/qemu.stderr.log"
 
-mkdir -p "${runtime_dir}"
+if [ ! -d "${runtime_dir}" ]; then
+  mkdir -p "${runtime_dir}"
+fi
 : > "${guest_qemu_stdout}"
 : > "${guest_qemu_stderr}"
 printf 'script-start\n' > "${launch_marker}"
 printf 'launch-mode=linaro-gen-run-vmm\n' >> "${launch_marker}"
 printf 'helper-cfg=%s\n' "${helper_cfg}" >> "${launch_marker}"
-printf 'helper-cmd=gen-run-vmm.sh --tap\n' >> "${launch_marker}"
+printf 'helper-cmd=gen-run-vmm.sh --tap --serial\n' >> "${launch_marker}"
 
 if [ ! -x /usr/bin/gen-run-vmm.sh ]; then
   echo "missing /usr/bin/gen-run-vmm.sh in l1 host rootfs" >&2
@@ -416,7 +418,7 @@ printf 'qemu-exec-start\n' >> "${launch_marker}"
 set +e
 (
   cd "${runtime_dir}"
-  env CFG="${helper_cfg}" /usr/bin/gen-run-vmm.sh --tap
+  env CFG="${helper_cfg}" /usr/bin/gen-run-vmm.sh --tap --serial
 ) >> "${guest_qemu_stdout}" 2>> "${guest_qemu_stderr}"
 qemu_status="$?"
 set -e
@@ -452,7 +454,9 @@ if [ "${guest_virtio_transport}" = "mmio" ]; then
   guest_bootargs="console=ttyAMA0 oops=panic panic_on_warn=1 panic=-1 kasan.fault=panic"
 fi
 
-mkdir -p "${runtime_dir}"
+if [ ! -d "${runtime_dir}" ]; then
+  mkdir -p "${runtime_dir}"
+fi
 : > "${guest_qemu_stdout}"
 : > "${guest_qemu_stderr}"
 printf 'script-start\n' > "${launch_marker}"
@@ -619,7 +623,9 @@ mount -t devpts devpts /dev/pts 2>/dev/null || true
 mount -t tmpfs -o mode=1777 tmpfs /dev/shm 2>/dev/null || true
 mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /run 2>/dev/null || true
 mount -t tmpfs -o mode=1777 tmpfs /tmp 2>/dev/null || true
-mkdir -p /run/lock/subsys
+if [ ! -d /run/lock/subsys ]; then
+  mkdir -p /run/lock/subsys
+fi
 [ -L /dev/fd ] || ln -sf /proc/self/fd /dev/fd
 [ -L /dev/stdin ] || ln -sf /proc/self/fd/0 /dev/stdin
 [ -L /dev/stdout ] || ln -sf /proc/self/fd/1 /dev/stdout
@@ -628,7 +634,9 @@ mkdir -p /run/lock/subsys
 [ -x /etc/init.d/S40network ] && /etc/init.d/S40network start || true
 [ -x /sbin/ip ] && [ -d /sys/class/net/eth0 ] && /sbin/ip link set eth0 up || true
 [ -x /etc/init.d/S50macvtap ] && [ ! -d /sys/class/net/macvtap0 ] && /etc/init.d/S50macvtap start || true
-mkdir -p "${runtime_dir}"
+if [ ! -d "${runtime_dir}" ]; then
+  mkdir -p "${runtime_dir}"
+fi
 export MORPHEUS_L2_RUNTIME_DIR="${runtime_dir}"
 export MORPHEUS_L2_GEN_RUN_VMM_CFG="${MORPHEUS_L2_GEN_RUN_VMM_CFG:-/mnt/gen-run-vmm.cfg}"
 exec /mnt/launch-l2.sh
@@ -638,7 +646,9 @@ else
 #!/bin/sh
 set -eu
 runtime_dir="${MORPHEUS_L2_RUNTIME_DIR:-/mnt/morpheus-l2-runtime}"
-mkdir -p "${runtime_dir}"
+if [ ! -d "${runtime_dir}" ]; then
+  mkdir -p "${runtime_dir}"
+fi
 export MORPHEUS_L2_RUNTIME_DIR="${runtime_dir}"
 export MORPHEUS_L2_GUEST_IMAGE_DIR="${MORPHEUS_L2_GUEST_IMAGE_DIR:-/mnt/guest-images}"
 exec /mnt/launch-l2.sh

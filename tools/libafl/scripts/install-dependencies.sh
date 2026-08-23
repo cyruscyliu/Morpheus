@@ -15,6 +15,7 @@ if command -v apt-get >/dev/null 2>&1; then
     meson \
     ninja-build \
     libglib2.0-dev \
+    libattr1-dev \
     libpixman-1-dev \
     libslirp-dev \
     zlib1g-dev

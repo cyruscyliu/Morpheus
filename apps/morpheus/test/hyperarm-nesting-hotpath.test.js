@@ -1,7 +1,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
 const stubSource = fs.readFileSync(
@@ -63,12 +65,33 @@ const nvirshBuildrootBasedCvmExecSource = fs.readFileSync(
   ),
   "utf8",
 );
+const nvirshBuildrootBasedCvmL1LaunchSource = fs.readFileSync(
+  path.join(
+    repoRoot,
+    "tools",
+    "nvirsh-buildroot-based-cvm",
+    "scripts",
+    "l1-launch.sh",
+  ),
+  "utf8",
+);
 const nvirshStopSource = fs.readFileSync(
   path.join(repoRoot, "tools", "nvirsh", "scripts", "stop.sh"),
   "utf8",
 );
 const libaflBuildSource = fs.readFileSync(
   path.join(repoRoot, "tools", "libafl", "scripts", "build.sh"),
+  "utf8",
+);
+const libaflBridgePatchSource = fs.readFileSync(
+  path.join(
+    repoRoot,
+    "tools",
+    "libafl",
+    "patches",
+    "qemu-libafl-bridge",
+    "0001-handle-bufferless-zero-writes-in-snapshot-cow.patch",
+  ),
   "utf8",
 );
 const fuzzerSource = fs.readFileSync(
@@ -101,8 +124,16 @@ const libaflNestingLibSource = fs.readFileSync(
   "utf8",
 );
 
+function writeExecutable(filePath, contents) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, contents);
+  fs.chmodSync(filePath, 0o755);
+}
+
 test("nested L2 timeout cleanup cannot serialize the next fuzz input", () => {
-  assert.match(stubSource, /setpgid\(0, 0\)/);
+  assert.match(stubSource, /POSIX_SPAWN_SETPGROUP/);
+  assert.match(stubSource, /posix_spawnattr_setpgroup\(&spawn_attributes, 0\)/);
+  assert.match(stubSource, /setpgid\(pid, pid\)/);
   assert.match(stubSource, /signal_l2_process_group\(pid, SIGTERM\)/);
   assert.match(stubSource, /signal_l2_process_group\(pid, SIGKILL\)/);
   assert.match(stubSource, /reap_l2_process\(pid, &status\)/);
@@ -128,6 +159,26 @@ test("nested L2 timeout cleanup cannot serialize the next fuzz input", () => {
     /dump_runtime_snapshot\(\)/,
     "normal timeout must not dump every runtime file through hypercalls",
   );
+});
+
+test("nested L2 launcher prepares libc state before spawning", () => {
+  assert.match(stubSource, /#include <spawn\.h>/);
+  assert.match(stubSource, /prepare_l2_launcher\(&shell, &launch_script\)/);
+  assert.match(stubSource, /open_launch_log\(LAUNCH_STDOUT_PATH\)/);
+  assert.match(stubSource, /build_launch_environment\(overrides, override_count\)/);
+  assert.match(
+    stubSource,
+    /posix_spawn_file_actions_adddup2\(\s*&file_actions, launch_stdout_fd, STDOUT_FILENO\)/,
+  );
+
+  const launchStart = stubSource.indexOf("static bool launch_l2(");
+  const launchEnd = stubSource.indexOf("\nint main(void)", launchStart);
+  assert.ok(launchStart >= 0 && launchEnd > launchStart);
+  const launchSource = stubSource.slice(launchStart, launchEnd);
+  assert.doesNotMatch(launchSource, /if \(pid == 0\)/);
+  assert.doesNotMatch(launchSource, /fork\(\)/);
+  assert.doesNotMatch(launchSource, /setenv\(|unsetenv\(/);
+  assert.match(launchSource, /posix_spawn\(&pid, shell/);
 });
 
 test("generated CVM hoststack uses QEMU and keeps the runtime shared", () => {
@@ -210,12 +261,16 @@ test("generated CVM hoststack uses QEMU and keeps the runtime shared", () => {
     /l1_memory="\$\(morpheus_default_cvm_l1_qemu_memory_mb\)"/,
   );
   assert.match(
-    nvirshBuildrootBasedCvmExecSource,
+    nvirshBuildrootBasedCvmL1LaunchSource,
     /l1_cpus="\$\(morpheus_default_cvm_l1_qemu_cpus\)"/,
   );
   assert.match(
-    nvirshBuildrootBasedCvmExecSource,
+    nvirshBuildrootBasedCvmL1LaunchSource,
     /l1_memory="\$\(morpheus_default_cvm_l1_qemu_memory_mb\)"/,
+  );
+  assert.match(
+    nvirshBuildrootBasedCvmExecSource,
+    /bash "\$\{script_dir\}\/l1-launch\.sh"/,
   );
   assert.match(nvirshBuildSource, /normalize_cvm_qemu_cpu\(\)/);
   assert.match(nvirshBuildSource, /l2_launch_mode="cvm-kvm"/);
@@ -402,15 +457,60 @@ test("LibAFL CVM harness supports buildroot-based prepared state", () => {
   );
   assert.match(
     harnessSource,
-    /cp -f "\$\{stub_elf\}" "\$\{l1_share_stub\}"/,
+    /stage_buildroot_cvm_share\(\) \{/,
   );
   assert.match(
     harnessSource,
-    /direct_l1_share_stub_path="\/host\/libafl_nesting_stub"/,
+    /cp -f "\$\{stub_elf\}" "\$\{staging_dir\}\/libafl_nesting_stub"/,
   );
   assert.match(
     harnessSource,
-    /direct_l1_stub_launch_cmd="mount -t 9p -o trans=virtio,version=9p2000\.L host \/host && exec \$\{direct_l1_share_stub_path\}"/,
+    /cp -a "\$\{source_share\}\/guest-images" "\$\{staging_dir\}\/"/,
+  );
+  assert.match(
+    harnessSource,
+    /cp -a "\$\{source_share\}\/guest-qemu" "\$\{staging_dir\}\/"/,
+  );
+  assert.match(
+    harnessSource,
+    /direct_l1_stub_env="MORPHEUS_L2_MODE=\$\{l2_mode\}"/,
+  );
+  assert.match(
+    harnessSource,
+    /direct_l1_stub_launch_cmd="mkdir -p \/mnt && mount -t ext4 -o ro \/dev\/vdb \/mnt && \$\{direct_l1_stub_env\} exec \$\{direct_l1_share_stub_path\}"/,
+  );
+  assert.match(
+    harnessSource,
+    /direct_l1_share_stub_path="\/mnt\/libafl_nesting_stub"/,
+  );
+  assert.match(
+    harnessSource,
+    /direct_l1_share_prefix="\$\{direct_l1_append%% init=\/root\/libafl_nesting_stub \*\}"/,
+  );
+  assert.match(
+    harnessSource,
+    /direct_l1_share_suffix="\$\{direct_l1_append#\* init=\/root\/libafl_nesting_stub \}"/,
+  );
+  assert.match(
+    harnessSource,
+    /direct_l1_share_append="\$\{direct_l1_share_prefix\} init=\/bin\/sh -- -c \\\"\$\{direct_l1_stub_launch_cmd\}\\\" \$\{direct_l1_share_suffix\}"/,
+  );
+  assert.doesNotMatch(
+    harnessSource,
+    /direct_l1_share_append="\$\{direct_l1_append\//,
+    "CVM boot command must not use Bash replacement with an && payload",
+  );
+  assert.match(
+    harnessSource,
+    /create_l1_uefi_boot_image\(\) \{/,
+  );
+  assert.match(
+    harnessSource,
+    /l1_boot_image="\$\{run_dir\}\/l1-boot-fat\.img"/,
+  );
+  assert.match(
+    harnessSource,
+    /l1_boot_startup="\$\{run_dir\}\/l1-boot-fat-startup\.nsh"/,
   );
   assert.match(
     harnessSource,
@@ -418,29 +518,385 @@ test("LibAFL CVM harness supports buildroot-based prepared state", () => {
   );
   assert.match(
     harnessSource,
-    /-drive" "format=raw,id=hd0,if=none,file=\$\{l1_hoststack_rootfs\}"/,
+    /create_l1_uefi_boot_image "\$\{l1_boot_image\}" "\$\{direct_l1_kernel\}" "\$\{l1_boot_startup\}"/,
+  );
+  assert.match(harnessSource, /partitionStartSectors = 63/);
+  assert.match(harnessSource, /mbr\.writeUInt32LE\(partitionStartSectors/);
+  assert.match(harnessSource, /volumeStart = partitionStartSectors \* bytesPerSector/);
+  assert.match(
+    harnessSource,
+    /-drive" "format=raw,id=hd0,if=none,file=\$\{l1_hoststack_rootfs\},snapshot=on"/,
   );
   assert.match(
     harnessSource,
-    /-device" "virtio-9p-pci,fsdev=hostshare,mount_tag=host"/,
+    /-drive" "format=raw,id=share,if=none,file=\$\{l1_share_image\},snapshot=on"/,
   );
   assert.match(
     harnessSource,
-    /-fsdev" "local,security_model=none,path=\$\{l1_hoststack_share_dir\},id=hostshare"/,
+    /-drive" "file=\$\{l1_boot_image\},format=raw,snapshot=on"/,
+  );
+  assert.doesNotMatch(harnessSource, /virtio-blk-pci,drive=bootfat/);
+  assert.match(
+    harnessSource,
+    /file=\$\{firmware\},format=raw,if=pflash,snapshot=on/,
+  );
+  assert.match(
+    harnessSource,
+    /file=\$\{firmware_b\},format=raw,if=pflash,snapshot=on/,
+  );
+  const buildrootCvmStart = harnessSource.indexOf(
+    'if [ "${nvirsh_state_tool}" = "nvirsh-buildroot-based-cvm" ]; then',
+  );
+  const buildrootCvmEnd = harnessSource.indexOf(
+    '\n  else\n    if [ ! -f "${direct_l1_kernel}" ]',
+    buildrootCvmStart,
+  );
+  assert.ok(buildrootCvmStart >= 0 && buildrootCvmEnd > buildrootCvmStart);
+  const buildrootCvmSource = harnessSource.slice(buildrootCvmStart, buildrootCvmEnd);
+  assert.match(buildrootCvmSource, /"-L" "\$\{qemu_data_dir\}"/);
+  assert.match(buildrootCvmSource, /stage_buildroot_cvm_share/);
+  assert.doesNotMatch(buildrootCvmSource, /virtio-9p/);
+  assert.doesNotMatch(buildrootCvmSource, /-fsdev/);
+  assert.doesNotMatch(
+    harnessSource,
+    /file=fat:rw:\$\{l1_boot_dir\},format=raw/,
   );
 });
 
-test("CVM stub prefers the shared hoststack launcher and mounts /host if needed", () => {
+test("LibAFL bridge keeps the 9p transport enabled across cached builds", () => {
+  const dependencySource = fs.readFileSync(
+    path.join(repoRoot, "tools", "libafl", "scripts", "install-dependencies.sh"),
+    "utf8",
+  );
+  assert.match(libaflBuildSource, /--enable-attr/);
+  assert.match(libaflBuildSource, /--enable-virtfs/);
+  assert.match(libaflBuildSource, /bridge_config_fingerprint_file/);
+  assert.match(libaflBuildSource, /bridge_current\(\)/);
+  assert.match(libaflBuildSource, /install_bridge\(\)/);
+  assert.match(libaflBuildSource, /bridge_patch_file=/);
+  assert.match(libaflBuildSource, /prepare_bridge_source\(\)/);
+  assert.match(libaflBuildSource, /LIBAFL_QEMU_DIR="\$\{bridge_storage_dir\}"/);
+  assert.doesNotMatch(libaflBuildSource, /LIBAFL_QEMU_CLONE_DIR=/);
+  assert.match(
+    libaflBuildSource,
+    /QEMU bridge transport: virtfs\/9p enabled/,
+  );
+  assert.match(libaflBridgePatchSource, /BDRV_REQ_ZERO_WRITE/);
+  assert.match(libaflBridgePatchSource, /if \(!qiov\)/);
+  assert.match(libaflBridgePatchSource, /write_zeroes_to_cache_layer/);
+  assert.match(libaflBridgePatchSource, /new_chunks/);
+  const cacheInvalidateStart = libaflBridgePatchSource.indexOf(
+    "diff --git a/system/physmem.c",
+  );
+  const cacheInvalidateEnd = libaflBridgePatchSource.indexOf(
+    "diff --git ",
+    cacheInvalidateStart + 1,
+  );
+  assert.ok(cacheInvalidateStart >= 0 && cacheInvalidateEnd > cacheInvalidateStart);
+  const cacheInvalidateSource = libaflBridgePatchSource.slice(
+    cacheInvalidateStart,
+    cacheInvalidateEnd,
+  );
+  assert.match(
+    cacheInvalidateSource,
+    /\+\s+syx_snapshot_dirty_list_add_hostaddr_range\(cache->ptr \+ addr,\s+\+\s+access_len\);/,
+    "DMA cache writes must enter LibAFL snapshot dirty tracking",
+  );
+  const rootRestoreStart = libaflBridgePatchSource.indexOf(
+    "void syx_snapshot_root_restore",
+  );
+  const rootRestoreEnd = libaflBridgePatchSource.indexOf(
+    "@@ -768,19",
+    rootRestoreStart,
+  );
+  assert.ok(rootRestoreStart >= 0 && rootRestoreEnd > rootRestoreStart);
+  const rootRestoreSource = libaflBridgePatchSource.slice(
+    rootRestoreStart,
+    rootRestoreEnd,
+  );
+  assert.ok(
+    rootRestoreSource.indexOf("+    g_hash_table_foreach") <
+      rootRestoreSource.indexOf("+    device_restore_all"),
+    "snapshot RAM must be restored before device state",
+  );
+  assert.match(
+    libaflBridgePatchSource,
+    /restore_to_increment\(snapshot, last_increment\);\n\+\s+device_restore_all\(last_increment->dss\);/,
+  );
+  assert.match(dependencySource, /libattr1-dev/);
+});
+
+test("LibAFL systemmode nesting uses the COW snapshot manager", () => {
+  assert.match(fuzzerSource, /FastSnapshotManager/);
+  assert.match(
+    fuzzerSource,
+    /\.snapshot_manager\(FastSnapshotManager::default\(\)\)/,
+  );
+  assert.doesNotMatch(
+    fuzzerSource,
+    /QemuSnapshotManager/,
+    "migration snapshots do not initialize the LibAFL block COW layer",
+  );
+});
+
+test("buildroot CVM launch preserves the handoff and requested L1 memory", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-libafl-exec-"));
+  const runDir = path.join(tmpDir, "run");
+  const installDir = path.join(tmpDir, "libafl-install");
+  const nvirshInstallDir = path.join(tmpDir, "nvirsh-install");
+  const nvirshBuildDir = path.join(tmpDir, "nvirsh-build");
+  const sourceDir = path.join(tmpDir, "libafl-source");
+  const workspaceDir = path.join(tmpDir, "workspace");
+  const shareDir = path.join(nvirshBuildDir, "l1");
+  const qemuDataDir = path.join(
+    tmpDir,
+    "build",
+    "qemu-libafl-bridge",
+    "build",
+    "qemu-bundle",
+    "usr",
+    "local",
+    "share",
+    "qemu",
+  );
+  const captureFile = path.join(tmpDir, "qemu-args.txt");
+  const qemuImgArgsFile = path.join(tmpDir, "qemu-img-args.txt");
+  const mkfsExt4ArgsFile = path.join(tmpDir, "mkfs-ext4-args.txt");
+  const resultFile = path.join(tmpDir, "result.json");
+  const stateFile = path.join(nvirshInstallDir, "state.json");
+  const firmwareA = path.join(tmpDir, "firmware-a.fd");
+  const firmwareB = path.join(tmpDir, "firmware-b.fd");
+  const l1Kernel = path.join(nvirshBuildDir, "l1", "host-boot", "Image");
+  const l1Rootfs = path.join(nvirshBuildDir, "l1", "host-rootfs", "rootfs.ext2");
+  const fakeFuzzer = path.join(installDir, "bin", "qemu_nesting");
+  const fakeStub = path.join(installDir, "bin", "libafl_nesting_stub");
+  const fakeQemuImg = path.join(tmpDir, "bin", "qemu-img");
+  const fakeMkfsExt4 = path.join(tmpDir, "bin", "mkfs.ext4");
+  const harnessScript = path.join(repoRoot, "tools", "libafl", "scripts", "exec.sh");
+
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.mkdirSync(workspaceDir, { recursive: true });
+  fs.mkdirSync(path.dirname(fakeStub), { recursive: true });
+  fs.mkdirSync(nvirshInstallDir, { recursive: true });
+  fs.mkdirSync(qemuDataDir, { recursive: true });
+  fs.mkdirSync(path.dirname(l1Kernel), { recursive: true });
+  fs.mkdirSync(path.dirname(l1Rootfs), { recursive: true });
+  fs.mkdirSync(path.dirname(firmwareA), { recursive: true });
+  fs.mkdirSync(shareDir, { recursive: true });
+  fs.writeFileSync(path.join(qemuDataDir, "efi-virtio.rom"), "synthetic-rom\n");
+  fs.writeFileSync(l1Kernel, "synthetic-kernel\n");
+  fs.writeFileSync(l1Rootfs, "synthetic-rootfs\n");
+  fs.writeFileSync(firmwareA, "synthetic-firmware-a\n");
+  fs.writeFileSync(firmwareB, "synthetic-firmware-b\n");
+  fs.writeFileSync(fakeStub, "synthetic-stub\n");
+  writeExecutable(
+    path.join(shareDir, "launch-l2-hoststack.sh"),
+    "#!/bin/sh\nexit 0\n",
+  );
+  writeExecutable(
+    path.join(shareDir, "launch-l2.sh"),
+    "#!/bin/sh\nexit 0\n",
+  );
+  fs.mkdirSync(path.join(shareDir, "guest-images"), { recursive: true });
+  fs.mkdirSync(path.join(shareDir, "guest-qemu"), { recursive: true });
+  fs.writeFileSync(
+    path.join(shareDir, "guest-images", "Image"),
+    "synthetic-guest-image\n",
+  );
+  fs.writeFileSync(
+    path.join(shareDir, "guest-qemu", "qemu-system-aarch64"),
+    "synthetic-guest-qemu\n",
+  );
+  writeExecutable(
+    fakeQemuImg,
+    "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$MORPHEUS_QEMU_IMG_ARGS\"\ntruncate -s \"$5\" \"$4\"\n",
+  );
+  writeExecutable(
+    fakeMkfsExt4,
+    "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$MORPHEUS_MKFS_EXT4_ARGS\"\nlast=\"\"\nfor arg in \"$@\"; do last=\"$arg\"; done\n: > \"$last\"\n",
+  );
+  writeExecutable(
+    fakeFuzzer,
+    "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$MORPHEUS_TEST_CAPTURE\"\n",
+  );
+
+  fs.writeFileSync(
+    stateFile,
+    JSON.stringify({
+      schemaVersion: 1,
+      tool: "nvirsh-buildroot-based-cvm",
+      status: "stopped",
+      currentPhase: "stopped",
+      buildDir: nvirshBuildDir,
+      hostLaunch: {
+        firmwareA,
+        firmwareB,
+        kernel: l1Kernel,
+        machine: "sbsa-ref",
+        cpu: "max,x-rme=on,sme=off,pauth-impdef=on,sve=off",
+        cmdline: "root=/dev/vda console=ttyAMA0",
+        memory: "4096",
+        cpus: "8",
+        accel: "",
+        enableKvm: false,
+      },
+      layeredState: {
+        l1: {
+          rootfs: l1Rootfs,
+          shareDir,
+          launchScriptHoststack: path.join(shareDir, "launch-l2-hoststack.sh"),
+        },
+        l2: { mode: "cvm" },
+      },
+    }, null, 2),
+  );
+
+  const run = spawnSync(
+    "bash",
+    [
+      harnessScript,
+      "--nvirsh-state",
+      stateFile,
+      "--l2-mode",
+      "cvm",
+      "--l2-accel",
+      "kvm",
+      "--l2-cpu",
+      "host",
+      "--l2-run-window-ms",
+      "1000",
+    ],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        MORPHEUS_LIBAFL_SOURCE: sourceDir,
+        MORPHEUS_LIBAFL_RUN_DIR: runDir,
+        MORPHEUS_LIBAFL_INSTALL_DIR: installDir,
+        MORPHEUS_LIBAFL_WORKSPACE: workspaceDir,
+        MORPHEUS_LIBAFL_RESULT_FILE: resultFile,
+        MORPHEUS_LIBAFL_RUN_SECONDS: "0",
+        MORPHEUS_NVIRSH_INSTALL_DIR: nvirshInstallDir,
+        MORPHEUS_TEST_CAPTURE: captureFile,
+        MORPHEUS_QEMU_IMG_BIN: fakeQemuImg,
+        MORPHEUS_MKFS_EXT4_BIN: fakeMkfsExt4,
+        MORPHEUS_QEMU_IMG_ARGS: qemuImgArgsFile,
+        MORPHEUS_MKFS_EXT4_ARGS: mkfsExt4ArgsFile,
+        MORPHEUS_REPO_ROOT: repoRoot,
+      },
+    },
+  );
+  assert.equal(run.status, 0, `${run.stderr}\n${run.stdout}`);
+
+  const stagingDir = path.join(runDir, "l1-share-staging");
+  const shareImage = path.join(runDir, "l1-share.ext4");
+  assert.ok(fs.statSync(stagingDir).isDirectory());
+  assert.ok(fs.statSync(shareImage).isFile());
+  for (const relativePath of [
+    "libafl_nesting_stub",
+    "launch-l2-hoststack.sh",
+    "launch-l2.sh",
+    "launch-l2-inner.sh",
+    "guest-images/Image",
+    "guest-qemu/qemu-system-aarch64",
+  ]) {
+    assert.ok(
+      fs.statSync(path.join(stagingDir, relativePath)).isFile(),
+      `staged share is missing ${relativePath}`,
+    );
+  }
+  assert.equal(
+    fs.readFileSync(path.join(stagingDir, "libafl_nesting_stub"), "utf8"),
+    "synthetic-stub\n",
+  );
+  assert.equal(fs.readFileSync(fakeStub, "utf8"), "synthetic-stub\n");
+  assert.equal(
+    fs.readFileSync(path.join(shareDir, "launch-l2.sh"), "utf8"),
+    "#!/bin/sh\nexit 0\n",
+  );
+
+  const qemuImgArgs = fs.readFileSync(qemuImgArgsFile, "utf8").trimEnd().split("\n");
+  assert.deepEqual(qemuImgArgs.slice(0, 3), ["create", "-f", "raw"]);
+  assert.equal(path.normalize(qemuImgArgs[3]), path.normalize(shareImage));
+  assert.match(qemuImgArgs[4], /^[0-9]+M$/);
+  const mkfsExt4Args = fs.readFileSync(mkfsExt4ArgsFile, "utf8").trimEnd().split("\n");
+  assert.deepEqual(mkfsExt4Args, ["-m", "0", "-d", stagingDir, shareImage]);
+
+  const qemuArgs = fs.readFileSync(captureFile, "utf8").trimEnd().split("\n");
+  const memoryIndex = qemuArgs.indexOf("-m");
+  assert.ok(memoryIndex >= 0, "L1 QEMU args must include memory");
+  assert.equal(qemuArgs[memoryIndex + 1], "4096");
+  const searchPathIndex = qemuArgs.indexOf("-L");
+  assert.ok(searchPathIndex >= 0, "buildroot CVM QEMU args must include -L");
+  assert.equal(
+    path.normalize(qemuArgs[searchPathIndex + 1]),
+    path.normalize(qemuDataDir),
+  );
+  assert.equal(
+    qemuArgs.includes("-fw_cfg"),
+    false,
+    "sbsa-ref does not provide a fw_cfg device",
+  );
+  assert.ok(qemuArgs.includes("-smbios"), "L1 controls retain SMBIOS fallback");
+
+  const startup = fs.readFileSync(
+    path.join(runDir, "l1-boot-fat-startup.nsh"),
+    "utf8",
+  );
+  assert.match(startup, /^fs0:\\Image /m);
+  assert.match(
+    startup,
+    /init=\/bin\/sh -- -c "mkdir -p \/mnt && mount [^\n]* && MORPHEUS_L2_MODE=cvm(?: MORPHEUS_L2_RUN_WINDOW_MS=1000)? exec \/mnt\/libafl_nesting_stub"/,
+  );
+  assert.match(startup, /MORPHEUS_L2_MODE=cvm/);
+  assert.match(startup, /MORPHEUS_L2_RUN_WINDOW_MS=1000/);
+  assert.doesNotMatch(startup, /init=\/root\/libafl_nesting_stub/);
+  assert.equal((startup.match(/init=/g) || []).length, 1);
+
+  const bootImage = fs.readFileSync(path.join(runDir, "l1-boot-fat.img"));
+  const partitionEntry = 446;
+  const partitionStart = bootImage.readUInt32LE(partitionEntry + 8);
+  const partitionLength = bootImage.readUInt32LE(partitionEntry + 12);
+  assert.equal(bootImage[partitionEntry + 4], 0x06);
+  assert.equal(partitionStart, 63);
+  assert.equal(
+    partitionLength,
+    Math.floor(bootImage.length / 512) - partitionStart,
+  );
+  const volumeOffset = partitionStart * 512;
+  assert.equal(bootImage[volumeOffset + 510], 0x55);
+  assert.equal(bootImage[volumeOffset + 511], 0xaa);
+});
+
+test("CVM stub prefers the mounted /mnt hoststack and falls back to /host", () => {
+  assert.match(stubSource, /#define HOST_SHARE_DIR "\/mnt"/);
+  assert.match(stubSource, /#define HOST_SHARE_FALLBACK_DIR "\/host"/);
   assert.match(stubSource, /HOSTSTACK_LAUNCH_PATH/);
+  assert.match(stubSource, /HOSTSTACK_FALLBACK_LAUNCH_PATH/);
   assert.match(stubSource, /HOSTSTACK_LOCAL_LAUNCH_PATH/);
-  assert.match(
-    stubSource,
-    /if \(!mount_host_share_if_needed\(\)\) \{\s*append_marker\("mount-host-share=failed\\n"\);/,
+  assert.ok(stubSource.includes("if (!mount_host_share_if_needed()) {"));
+  assert.ok(
+    stubSource.includes(
+      String.raw`append_marker("mount-host-share=failed\n");`,
+    ),
   );
   assert.match(
     stubSource,
-    /launch_script = HOSTSTACK_LAUNCH_PATH;\s*argv\[1\] = \(char \*\)launch_script;/,
+    /selected_hoststack_launch_path = launch_paths\[i\];/,
   );
+  assert.match(
+    stubSource,
+    /launch_script = selected_hoststack_launch_path;\s*append_marker\("hoststack-launch=%s\\n", launch_script\);/,
+  );
+  const bashShellCheck = stubSource.indexOf(
+    'if (path_executable("/bin/bash"))',
+  );
+  const shShellCheck = stubSource.indexOf(
+    'if (path_executable("/bin/sh"))',
+  );
+  assert.ok(bashShellCheck >= 0, "stub keeps bash as the primary launcher shell");
+  assert.ok(shShellCheck > bashShellCheck, "stub uses sh only as a fallback");
+  assert.match(stubSource, /posix_spawn\(&pid, shell, &file_actions, &spawn_attributes/);
   assert.doesNotMatch(
     stubSource,
     /path_executable\(HOSTSTACK_LOCAL_LAUNCH_PATH\)/,
@@ -469,7 +925,26 @@ test("nested fuzz loop avoids a duplicate L2 shadow execution", () => {
 test("full runtime capture is opt-in for the fuzzing harness", () => {
   assert.match(harnessSource, /--capture-runtime\)/);
   assert.match(harnessSource, /morpheus\.capture_runtime=1/);
+  assert.match(
+    harnessSource,
+    /direct_l1_stub_env="\$\{direct_l1_stub_env\} MORPHEUS_CAPTURE_RUNTIME=1"/,
+  );
+  assert.match(stubSource, /MORPHEUS_L2_MODE/);
+  assert.match(stubSource, /env_l2_mode\(/);
+  assert.match(stubSource, /MORPHEUS_L2_RUN_WINDOW_MS/);
+  assert.match(stubSource, /MORPHEUS_CAPTURE_RUNTIME/);
   assert.match(stubSource, /qemu\.stdout\.log/);
+});
+
+test("LibAFL CVM snapshot devices use single virtio-blk queues", () => {
+  assert.match(
+    harnessSource,
+    /virtio-blk-pci,drive=hd0,num-queues=1/,
+  );
+  assert.match(
+    harnessSource,
+    /virtio-blk-pci,drive=share,num-queues=1/,
+  );
 });
 
 test("LibAFL nesting crate keeps the module doc comment before Rust items", () => {

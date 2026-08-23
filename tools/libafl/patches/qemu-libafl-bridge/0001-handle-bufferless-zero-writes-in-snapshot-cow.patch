@@ -1,0 +1,184 @@
+diff --git a/libafl/syx-snapshot/syx-cow-cache.c b/libafl/syx-snapshot/syx-cow-cache.c
+index f89fa48..0d6bf4d 100644
+--- a/libafl/syx-snapshot/syx-cow-cache.c
++++ b/libafl/syx-snapshot/syx-cow-cache.c
+@@ -169,6 +169,12 @@ static bool write_to_cache_layer(SyxCowCacheLayer* sccl, BlockBackend* blk,
+                                  int64_t offset, int64_t bytes,
+                                  QEMUIOVector* qiov)
+ {
++    uint64_t new_chunks = 0;
++
++    if (!qiov) {
++        return false;
++    }
++
+     if (qiov->size % sccl->chunk_size) {
+         // todo: determine if it is worth developing an unaligned access
+         // version.
+@@ -192,8 +198,17 @@ static bool write_to_cache_layer(SyxCowCacheLayer* sccl, BlockBackend* blk,
+ 
+     assert(cache_entry && cache_entry->data);
+ 
+-    if (cache_entry->data->len + (qiov->size / sccl->chunk_size) >
+-        sccl->max_nb_chunks) {
++    for (uint64_t blk_offset = offset, qiov_offset = 0;
++         qiov_offset < qiov->size;
++         blk_offset += sccl->chunk_size, qiov_offset += sccl->chunk_size) {
++        if (!g_hash_table_contains(cache_entry->positions,
++                                   GUINT_TO_POINTER(blk_offset))) {
++            new_chunks++;
++        }
++    }
++
++    if (cache_entry->data->len > sccl->max_nb_chunks ||
++        new_chunks > sccl->max_nb_chunks - cache_entry->data->len) {
+         return false;
+     }
+ 
+@@ -209,6 +224,39 @@ static bool write_to_cache_layer(SyxCowCacheLayer* sccl, BlockBackend* blk,
+     return true;
+ }
+ 
++static bool write_zeroes_to_cache_layer(SyxCowCacheLayer* sccl,
++                                        BlockBackend* blk, int64_t offset,
++                                        int64_t bytes)
++{
++    const uint64_t chunk_size = sccl->chunk_size;
++    bool ok = true;
++
++    if (bytes < 0 || offset < 0 ||
++        ((uint64_t)offset % chunk_size) != 0 ||
++        ((uint64_t)bytes % chunk_size) != 0) {
++        return false;
++    }
++    if (bytes == 0) {
++        return true;
++    }
++
++    uint8_t* zero_chunk = g_malloc0(chunk_size);
++    QEMUIOVector zero_qiov;
++    qemu_iovec_init_buf(&zero_qiov, zero_chunk, chunk_size);
++
++    for (uint64_t written = 0; written < (uint64_t)bytes;
++         written += chunk_size) {
++        if (!write_to_cache_layer(sccl, blk, offset + written, chunk_size,
++                                  &zero_qiov)) {
++            ok = false;
++            break;
++        }
++    }
++
++    g_free(zero_chunk);
++    return ok;
++}
++
+ void syx_cow_cache_read_entry(SyxCowCache* scc, BlockBackend* blk,
+                               int64_t offset, int64_t bytes, QEMUIOVector* qiov,
+                               size_t _qiov_offset, BdrvRequestFlags flags)
+@@ -251,10 +299,16 @@ bool syx_cow_cache_write_entry(SyxCowCache* scc, BlockBackend* blk,
+     // offset);
+ 
+     layer = QTAILQ_FIRST(&scc->layers);
+-    if (layer) {
+-        assert(write_to_cache_layer(layer, blk, offset, bytes, qiov));
+-        return true;
+-    } else {
++    if (!layer) {
+         return false;
+     }
++
++    if (!qiov) {
++        if (!(flags & BDRV_REQ_ZERO_WRITE)) {
++            return false;
++        }
++        return write_zeroes_to_cache_layer(layer, blk, offset, bytes);
++    }
++
++    return write_to_cache_layer(layer, blk, offset, bytes, qiov);
+ }
+diff --git a/system/physmem.c b/system/physmem.c
+index a125396..0370363 100644
+--- a/system/physmem.c
++++ b/system/physmem.c
+@@ -3903,6 +3903,8 @@ void address_space_cache_invalidate(MemoryRegionCache *cache,
+     assert(cache->is_write);
+     if (likely(cache->ptr)) {
++        syx_snapshot_dirty_list_add_hostaddr_range(cache->ptr + addr,
++                                                   access_len);
+         invalidate_and_set_dirty(cache->mrs.mr, addr + cache->xlat, access_len);
+     }
+ }
+
+diff --git a/libafl/syx-snapshot/syx-snapshot.c b/libafl/syx-snapshot/syx-snapshot.c
+index 663caf5..8cdf4f9 100644
+--- a/libafl/syx-snapshot/syx-snapshot.c
++++ b/libafl/syx-snapshot/syx-snapshot.c
+@@ -454,8 +454,8 @@ void syx_snapshot_increment_pop(SyxSnapshot* snapshot)
+ {
+     SyxSnapshotIncrement* last_increment = snapshot->last_incremental_snapshot;
+ 
+-    device_restore_all(last_increment->dss);
+     restore_to_increment(snapshot, last_increment);
++    device_restore_all(last_increment->dss);
+ 
+     snapshot->last_incremental_snapshot = last_increment->parent;
+     syx_snapshot_increment_free(last_increment);
+@@ -467,8 +467,8 @@ void syx_snapshot_increment_restore_last(SyxSnapshot* snapshot)
+ {
+     SyxSnapshotIncrement* last_increment = snapshot->last_incremental_snapshot;
+ 
+-    device_restore_all(last_increment->dss);
+     restore_to_increment(snapshot, last_increment);
++    device_restore_all(last_increment->dss);
+ 
+     syx_snapshot_dirty_list_flush(snapshot);
+ }
+@@ -722,11 +722,14 @@ void syx_snapshot_root_restore(SyxSnapshot* snapshot)
+         must_unlock_bql = true;
+     }
+ 
+-    // In case, we first restore devices if there is a modification of memory
+-    // layout
+-    device_restore_all(snapshot->root_snapshot->dss);
+-
++    /*
++     * Device loaders can inspect guest RAM while restoring their state.  Keep
++     * queue metadata and device indices from the same snapshot generation by
++     * restoring RAM before devices.  Fast snapshots keep the RAM layout
++     * fixed, so the old device-first ordering is unnecessary here.
++     */
+     g_hash_table_foreach(snapshot->rbs_dirty_list, root_restore_rb, snapshot);
++    device_restore_all(snapshot->root_snapshot->dss);
+ 
+     syx_cow_cache_flush_highest_layer(snapshot->bdrvs_cow_cache);
+ 
+@@ -768,19 +771,18 @@ bool syx_snapshot_cow_cache_write_entry(BlockBackend* blk, int64_t offset,
+                                         size_t qiov_offset,
+                                         BdrvRequestFlags flags)
+ {
++    SyxCowCache* cache;
++
+     if (!syx_snapshot_state.active_bdrv_cache_snapshot) {
+-        if (syx_snapshot_state.before_fuzz_cache) {
+-            assert(syx_cow_cache_write_entry(
+-                syx_snapshot_state.before_fuzz_cache, blk, offset, bytes, qiov,
+-                qiov_offset, flags));
+-            return true;
+-        }
++        cache = syx_snapshot_state.before_fuzz_cache;
++    } else {
++        cache = syx_snapshot_state.active_bdrv_cache_snapshot->bdrvs_cow_cache;
++    }
+ 
++    if (!cache) {
+         return false;
+-    } else {
+-        assert(syx_cow_cache_write_entry(
+-            syx_snapshot_state.active_bdrv_cache_snapshot->bdrvs_cow_cache, blk,
+-            offset, bytes, qiov, qiov_offset, flags));
+-        return true;
+     }
++
++    return syx_cow_cache_write_entry(cache, blk, offset, bytes, qiov,
++                                     qiov_offset, flags);
+ }

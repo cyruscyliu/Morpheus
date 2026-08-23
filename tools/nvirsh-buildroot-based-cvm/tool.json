@@ -1,7 +1,7 @@
 {
   "name": "nvirsh-buildroot-based-cvm",
   "runtime": null,
-  "cli-contract": "build,exec,inspect",
+  "cli-contract": "build,exec,inspect,stop",
   "config": {
     "fields": {
       "qemu": {
@@ -282,6 +282,24 @@
           },
           "result": {
             "successSummary": "inspected buildroot-based CVM state"
+          }
+        },
+        "stop": {
+          "requiredFlags": [],
+          "scalarFlags": [
+            "run-dir",
+            "build-dir-key"
+          ],
+          "repeatableFlags": [],
+          "pathFlags": {
+            "run-dir": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}"
+          },
+          "script": {
+            "path": "scripts/stop.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "stopped buildroot-based CVM launch"
           }
         }
       }

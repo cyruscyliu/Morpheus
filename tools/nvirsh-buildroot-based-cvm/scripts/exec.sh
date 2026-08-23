@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 install_dir="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_INSTALL_DIR:?}"
 run_dir="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RUN_DIR:?}"
@@ -19,7 +19,9 @@ l2_launch_marker_log="${run_dir}/launch-l2.marker"
 l2_launcher_stdout_log="${run_dir}/l2-launcher.stdout.log"
 l2_launcher_stderr_log="${run_dir}/l2-launcher.stderr.log"
 l2_console_log="${run_dir}/l2-console.log"
-l1_boot_dir="${run_dir}/l1-boot-fat"
+stop_request_file="${run_dir}/stop-requested"
+l1_pid=""
+l1_process_group_id=""
 
 if [ "${phase}" != "launch" ]; then
   echo "unsupported buildroot-based CVM exec phase: ${phase}" >&2
@@ -37,33 +39,19 @@ fi
 mkdir -p "${run_dir}"
 
 mapfile -d '' -t runtime_fields < <(
-  node - "${state_file}" "${run_dir}" <<'NODE'
+  node - "${state_file}" <<'NODE'
 const fs = require("fs");
 const path = require("path");
-const [stateFile, runDir] = process.argv.slice(2);
+const [stateFile] = process.argv.slice(2);
 const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
-const host = state.hostLaunch || {};
 const l1 = state.layeredState && state.layeredState.l1 ? state.layeredState.l1 : {};
-const shareDir = l1.shareDir || "";
-const runtimeShareDir = path.join(shareDir, "morpheus-l2-runtime");
 const l2 = state.layeredState && state.layeredState.l2 ? state.layeredState.l2 : {};
+const shareDir = String(l1.shareDir || "");
 const buildrootImages = l2.buildrootImages || {};
 const values = [
-  String(host.qemu || ""),
-  String(host.firmwareA || host.firmware || ""),
-  String(host.firmwareB || ""),
-  String(host.kernel || ""),
-  String(host.machine || "sbsa-ref"),
-  String(host.cpu || "max,x-rme=on,sme=off,pauth-impdef=on,sve=off"),
-  String(host.memory || "4096"),
-  String(host.cpus || "1"),
-  String(host.accel || ""),
-  String(Boolean(host.enableKvm)),
-  String(host.cmdline || "root=/dev/vda console=ttyAMA0"),
-  String(l1.rootfs || ""),
-  String(shareDir),
+  shareDir,
   String(l1.launchScriptHoststack || ""),
-  String(runtimeShareDir),
+  shareDir ? path.join(shareDir, "morpheus-l2-runtime") : "",
   String(buildrootImages.launchMode || "direct-qemu"),
 ];
 process.stdout.write(values.join("\0"));
@@ -71,50 +59,34 @@ process.stdout.write("\0");
 NODE
 )
 
-host_qemu="${runtime_fields[0]}"
-firmware_a="${runtime_fields[1]}"
-firmware_b="${runtime_fields[2]}"
-l1_kernel="${runtime_fields[3]}"
-l1_machine="${runtime_fields[4]}"
-l1_cpu="${runtime_fields[5]}"
-l1_memory="${runtime_fields[6]}"
-l1_cpus="${runtime_fields[7]}"
-l1_accel="${runtime_fields[8]}"
-l1_enable_kvm="${runtime_fields[9]}"
-l1_cmdline="${runtime_fields[10]}"
-hoststack_rootfs="${runtime_fields[11]}"
-hoststack_share_dir="${runtime_fields[12]}"
-hoststack_launch_script_local="${runtime_fields[13]}"
-l2_runtime_share_dir="${runtime_fields[14]}"
-l2_launch_mode="${runtime_fields[15]}"
-if [ -z "${l1_cpus}" ]; then
-  l1_cpus="$(morpheus_default_cvm_l1_qemu_cpus)"
-fi
-if [ -z "${l1_memory}" ]; then
-  l1_memory="$(morpheus_default_cvm_l1_qemu_memory_mb)"
-fi
+hoststack_share_dir="${runtime_fields[0]:-}"
+hoststack_launch_script_local="${runtime_fields[1]:-}"
+l2_runtime_share_dir="${runtime_fields[2]:-}"
+l2_launch_mode="${runtime_fields[3]:-direct-qemu}"
 l2_rsi_evidence_marker="MORPHEUS_RSI_EVIDENCE:"
 l2_rsi_evidence_missing_marker="MORPHEUS_RSI_EVIDENCE_MISSING"
-
-require_file() {
-  local path="$1"
-  local description="$2"
-  if [ ! -f "${path}" ]; then
-    echo "missing ${description}: ${path}" >&2
-    exit 1
-  fi
-}
 
 wait_for_cvm_l2_ready() {
   local console_log="$1"
   local pid="$2"
   local timeout_seconds="$3"
   local deadline=$((SECONDS + timeout_seconds))
+  local started_at="${SECONDS}"
+  local next_progress_at="${SECONDS}"
   local require_rsi_evidence="false"
+  local wait_target="l2 buildroot login prompt"
   if [ "${l2_launch_mode}" = "linaro-gen-run-vmm" ]; then
     require_rsi_evidence="true"
+    wait_target="guest RSI evidence and l2 buildroot login prompt"
   fi
   while [ "${SECONDS}" -lt "${deadline}" ]; do
+    if [ "${SECONDS}" -ge "${next_progress_at}" ]; then
+      local elapsed=$((SECONDS - started_at))
+      printf '[nvirsh-buildroot-based-cvm] waiting for %s (%ss elapsed, %ss timeout)\n' \
+        "${wait_target}" "${elapsed}" "${timeout_seconds}" \
+        | tee -a "${stdout_log}" >&2
+      next_progress_at=$((SECONDS + 15))
+    fi
     if [ -f "${console_log}" ]; then
       if [ "${require_rsi_evidence}" = "true" ] && LC_ALL=C grep -a -q -- "${l2_rsi_evidence_missing_marker}" "${console_log}" 2>/dev/null; then
         return 2
@@ -162,12 +134,50 @@ normalize_console_log() {
   perl -0pi -e 's/\r\r\n/\n/g; s/\r\n/\n/g; s/\r/\n/g;' "${logfile}"
 }
 
+terminate_l1_process() {
+  local pid="$1"
+  local process_group_id="${2:-}"
+  local use_process_group="false"
+  if [ -z "${pid}" ]; then
+    return 0
+  fi
+  if [[ "${process_group_id}" =~ ^[1-9][0-9]*$ ]] \
+    && kill -0 -- "-${process_group_id}" 2>/dev/null; then
+    use_process_group="true"
+    kill -TERM -- "-${process_group_id}" 2>/dev/null || true
+  elif kill -0 "${pid}" 2>/dev/null; then
+    kill -TERM "${pid}" 2>/dev/null || true
+  else
+    wait "${pid}" 2>/dev/null || true
+    return 0
+  fi
+
+  for _ in $(seq 1 30); do
+    if [ "${use_process_group}" = "true" ]; then
+      if ! kill -0 -- "-${process_group_id}" 2>/dev/null; then
+        break
+      fi
+    elif ! kill -0 "${pid}" 2>/dev/null; then
+      break
+    fi
+    sleep 0.1
+  done
+
+  if [ "${use_process_group}" = "true" ]; then
+    kill -KILL -- "-${process_group_id}" 2>/dev/null || true
+  elif kill -0 "${pid}" 2>/dev/null; then
+    kill -KILL "${pid}" 2>/dev/null || true
+  fi
+  wait "${pid}" 2>/dev/null || true
+}
+
 write_manifest() {
   local status="$1"
   local exit_code="$2"
   local error_message="$3"
   local l1_pid="${4:-}"
-  node - "${state_file}" "${manifest_file}" "${run_dir}" "${status}" "${exit_code}" "${error_message}" "${l1_pid}" "${stdout_log}" "${stderr_log}" "${l1_console_log}" "${l2_console_log}" "${l2_launcher_stdout_log}" "${l2_launcher_stderr_log}" "${l2_launch_marker_log}" "${l2_runtime_share_dir}" <<'NODE'
+  local l1_process_group_id="${5:-}"
+  node - "${state_file}" "${manifest_file}" "${run_dir}" "${status}" "${exit_code}" "${error_message}" "${l1_pid}" "${l1_process_group_id}" "${stdout_log}" "${stderr_log}" "${l1_console_log}" "${l2_console_log}" "${l2_launcher_stdout_log}" "${l2_launcher_stderr_log}" "${l2_launch_marker_log}" "${l2_runtime_share_dir}" <<'NODE'
 const fs = require("fs");
 const [
   stateFile,
@@ -177,6 +187,7 @@ const [
   exitCodeRaw,
   errorMessage,
   l1PidRaw,
+  l1ProcessGroupIdRaw,
   stdoutLog,
   stderrLog,
   l1ConsoleLog,
@@ -190,6 +201,7 @@ const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
 const now = new Date().toISOString();
 const exitCode = exitCodeRaw === "" ? null : Number(exitCodeRaw);
 const l1Pid = l1PidRaw === "" ? null : Number(l1PidRaw);
+const l1ProcessGroupId = l1ProcessGroupIdRaw === "" ? null : Number(l1ProcessGroupIdRaw);
 const l2ConsoleText = fs.existsSync(l2ConsoleLog)
   ? fs.readFileSync(l2ConsoleLog, "utf8")
   : "";
@@ -215,6 +227,7 @@ const manifest = {
   runtime: {
     l1: {
       pid: Number.isInteger(l1Pid) ? l1Pid : null,
+      processGroupId: Number.isInteger(l1ProcessGroupId) ? l1ProcessGroupId : null,
       consoleLog: l1ConsoleLog,
     },
     l2: {
@@ -247,6 +260,9 @@ if (status !== "running") {
 if (status === "error") {
   manifest.errorMessage = errorMessage || "buildroot-based CVM launch failed";
 }
+if (status === "stopped") {
+  manifest.stopReason = errorMessage || "buildroot-based CVM launch stopped";
+}
 if (Number.isInteger(exitCode)) {
   manifest.exitCode = exitCode;
 }
@@ -254,23 +270,40 @@ fs.writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
 NODE
 }
 
-require_file "${host_qemu}" "host qemu"
-require_file "${firmware_a}" "l1 firmware a"
-if [ -n "${firmware_b}" ]; then
-  require_file "${firmware_b}" "l1 firmware b"
-fi
-require_file "${l1_kernel}" "l1 kernel"
-require_file "${hoststack_rootfs}" "l1 host stack rootfs"
-require_file "${hoststack_launch_script_local}" "host-stack launch script"
-if [ ! -d "${hoststack_share_dir}" ]; then
+finish_stopped() {
+  local reason="${1:-buildroot-based CVM launch stopped}"
+  terminate_l1_process "${l1_pid}" "${l1_process_group_id}"
+  rm -f "${l1_pid_file}"
+  normalize_console_log "${stdout_log}"
+  normalize_console_log "${stderr_log}"
+  normalize_console_log "${l1_console_log}"
+  normalize_console_log "${l2_launcher_stdout_log}"
+  normalize_console_log "${l2_launcher_stderr_log}"
+  normalize_console_log "${l2_console_log}"
+  write_manifest "stopped" "130" "${reason}" "" ""
+}
+
+handle_interrupt() {
+  local signal="$1"
+  trap - INT TERM
+  finish_stopped "interrupted by SIG${signal}"
+  exit 130
+}
+
+trap 'handle_interrupt INT' INT
+trap 'handle_interrupt TERM' TERM
+
+if [ -z "${hoststack_share_dir}" ] || [ ! -d "${hoststack_share_dir}" ]; then
   echo "missing host share directory: ${hoststack_share_dir}" >&2
+  exit 1
+fi
+if [ ! -f "${hoststack_launch_script_local}" ]; then
+  echo "missing host-stack launch script: ${hoststack_launch_script_local}" >&2
   exit 1
 fi
 
 rm -rf "${l2_runtime_share_dir}"
 mkdir -p "${l2_runtime_share_dir}"
-rm -rf "${l1_boot_dir}"
-mkdir -p "${l1_boot_dir}"
 rm -f \
   "${manifest_file}" \
   "${stdout_log}" \
@@ -280,7 +313,8 @@ rm -f \
   "${l2_launch_marker_log}" \
   "${l2_launcher_stdout_log}" \
   "${l2_launcher_stderr_log}" \
-  "${l2_console_log}"
+  "${l2_console_log}" \
+  "${stop_request_file}"
 
 ln -sfn "${l2_runtime_share_dir}/launch-l2.marker" "${l2_launch_marker_log}"
 ln -sfn "${l2_runtime_share_dir}/qemu.stdout.log" "${l2_launcher_stdout_log}"
@@ -288,64 +322,35 @@ ln -sfn "${l2_runtime_share_dir}/qemu.stderr.log" "${l2_launcher_stderr_log}"
 ln -sfn "${l2_runtime_share_dir}/qemu.stdout.log" "${l2_console_log}"
 
 l1_launch_cmd="mount -t 9p -o trans=virtio,version=9p2000.L host /mnt && exec /mnt/launch-l2-hoststack.sh"
-l1_boot_cmdline="${l1_cmdline} init=/bin/sh -- -c \"${l1_launch_cmd}\""
-
-cp -f "${l1_kernel}" "${l1_boot_dir}/Image"
-cat > "${l1_boot_dir}/startup.nsh" <<EOF
-mode 100 31
-pci
-fs0:\Image ${l1_boot_cmdline}
-reset -c
-EOF
-
-l1_qemu_cmd=(
-  "${host_qemu}"
-  -display none
-  -nographic
-  -nodefaults
-  -serial mon:stdio
-  -action panic=exit-failure
-  -machine "${l1_machine}"
-  -cpu "${l1_cpu}"
-  -m "${l1_memory}"
-  -smp "${l1_cpus}"
-  -drive "format=raw,id=hd0,if=none,file=${hoststack_rootfs}"
-  -device virtio-blk-pci,drive=hd0
-  -device virtio-9p-pci,fsdev=hostshare,mount_tag=host
-  -fsdev "local,security_model=none,path=${hoststack_share_dir},id=hostshare"
-  -device virtio-net-pci,netdev=net0
-  -netdev user,id=net0
-)
-if [ -n "${firmware_b}" ]; then
-  l1_qemu_cmd+=(
-    -drive "file=${firmware_a},format=raw,if=pflash"
-    -drive "file=${firmware_b},format=raw,if=pflash"
-    -drive "file=fat:rw:${l1_boot_dir},format=raw"
-  )
-else
-  l1_qemu_cmd+=(
-    -bios "${firmware_a}"
-    -kernel "${l1_kernel}"
-    -append "${l1_boot_cmdline}"
-  )
-fi
-if [ -n "${l1_accel}" ]; then
-  l1_qemu_cmd+=(-accel "${l1_accel}")
-fi
-if [ "${l1_enable_kvm}" = "true" ]; then
-  l1_qemu_cmd+=(-enable-kvm)
-fi
+l1_args_file="$(mktemp "${run_dir}/l1-qemu-args.XXXXXX")"
+bash "${script_dir}/l1-launch.sh" \
+  --state "${state_file}" \
+  --run-dir "${run_dir}" \
+  --boot-command "${l1_launch_cmd}" > "${l1_args_file}"
+mapfile -d '' -t l1_qemu_cmd < "${l1_args_file}"
+rm -f "${l1_args_file}"
 
 printf '[nvirsh-buildroot-based-cvm] launching l1 host stack\n' | tee -a "${stdout_log}"
-"${l1_qemu_cmd[@]}" >> "${l1_console_log}" 2>&1 < /dev/null &
-l1_pid="$!"
+if command -v setsid >/dev/null 2>&1; then
+  setsid "${l1_qemu_cmd[@]}" >> "${l1_console_log}" 2>&1 < /dev/null &
+  l1_pid="$!"
+  l1_process_group_id="${l1_pid}"
+else
+  "${l1_qemu_cmd[@]}" >> "${l1_console_log}" 2>&1 < /dev/null &
+  l1_pid="$!"
+fi
 printf '%s\n' "${l1_pid}" > "${l1_pid_file}"
-write_manifest "running" "" "" "${l1_pid}"
+write_manifest "running" "" "" "${l1_pid}" "${l1_process_group_id}"
 
 set +e
 wait_for_cvm_l2_ready "${l2_console_log}" "${l1_pid}" 2100
 launch_wait_status="$?"
 set -e
+
+if [ -f "${stop_request_file}" ]; then
+  finish_stopped "stop requested"
+  exit 130
+fi
 
 if [ "${launch_wait_status}" -eq 0 ]; then
   if [ "${l2_launch_mode}" = "linaro-gen-run-vmm" ]; then
@@ -353,40 +358,24 @@ if [ "${launch_wait_status}" -eq 0 ]; then
   else
     printf '[nvirsh-buildroot-based-cvm] observed l2 buildroot login prompt\n' | tee -a "${stdout_log}"
   fi
-  if kill -0 "${l1_pid}" 2>/dev/null; then
-    kill "${l1_pid}" 2>/dev/null || true
-    set +e
-    wait "${l1_pid}"
-    set -e
-  fi
+  terminate_l1_process "${l1_pid}" "${l1_process_group_id}"
+  rm -f "${l1_pid_file}"
   normalize_console_log "${stdout_log}"
   normalize_console_log "${stderr_log}"
   normalize_console_log "${l1_console_log}"
   normalize_console_log "${l2_launcher_stdout_log}"
   normalize_console_log "${l2_launcher_stderr_log}"
   normalize_console_log "${l2_console_log}"
-  write_manifest "success" "0" "" ""
+  write_manifest "success" "0" "" "" ""
   cat > "${result_file}" <<EOF
 {"details":{"run_dir":"${run_dir}","manifest":"${manifest_file}","phase":"${phase}","build_dir_key":"${build_dir_key}","detached":false,"l1_console_log":"${l1_console_log}","l2_console_log":"${l2_console_log}","l2_launcher_stdout_log":"${l2_launcher_stdout_log}","l2_launcher_stderr_log":"${l2_launcher_stderr_log}","l2_launch_marker":"${l2_launch_marker_log}"}}
 EOF
   exit 0
 fi
 
-if kill -0 "${l1_pid}" 2>/dev/null; then
-  kill "${l1_pid}" 2>/dev/null || true
-  set +e
-  wait "${l1_pid}"
-  l1_exit_status="$?"
-  set -e
-else
-  l1_exit_status=1
-fi
-if [ "${l1_exit_status}" -eq 0 ]; then
-  l1_exit_status=1
-fi
-if [ "${l1_exit_status}" -eq 143 ] || [ "${l1_exit_status}" -eq 137 ]; then
-  l1_exit_status=1
-fi
+terminate_l1_process "${l1_pid}" "${l1_process_group_id}"
+rm -f "${l1_pid_file}"
+l1_exit_status=1
 
 normalize_console_log "${stdout_log}"
 normalize_console_log "${stderr_log}"
@@ -406,5 +395,5 @@ if [ -z "${failure_message}" ]; then
     failure_message="guest RSI evidence missing from realm console"
   fi
 fi
-write_manifest "error" "${l1_exit_status}" "${failure_message}"
+write_manifest "error" "${l1_exit_status}" "${failure_message}" "" ""
 exit "${l1_exit_status}"

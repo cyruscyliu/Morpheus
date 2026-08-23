@@ -35,7 +35,8 @@ $(O)/images/$(TARGET_NAME).tar: $(O)/.config
 	@printf '%s\n' 'hello from minimal buildroot smoke target' > $(O)/target/hello.txt
 	@tar -cf $@ -C $(O)/target hello.txt
 	@printf '%s\n' 'fake arm64 kernel image' > $(O)/images/Image
-	@gzip -nc $(O)/target/hello.txt > $(O)/images/rootfs.cpio.gz
+	@cp $(O)/target/hello.txt $(O)/images/rootfs.cpio
+	@gzip -nc $(O)/images/rootfs.cpio > $(O)/images/rootfs.cpio.gz
 	@printf '%s\n' 'fake buildroot ext2 rootfs' > $(O)/images/rootfs.ext2
 	@printf '%s\n' '#!/bin/sh' 'exit 0' > $(O)/target/usr/bin/qemu-system-aarch64
 	@chmod +x $(O)/target/usr/bin/qemu-system-aarch64

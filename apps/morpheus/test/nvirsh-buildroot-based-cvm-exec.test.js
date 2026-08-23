@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
 const buildScript = path.join(
@@ -20,11 +20,108 @@ const execScript = path.join(
   "scripts",
   "exec.sh",
 );
+const appBin = path.join(repoRoot, "apps", "morpheus", "dist", "cli.js");
 
 function writeExecutable(filePath, contents) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, contents);
   fs.chmodSync(filePath, 0o755);
+}
+
+function readJsonIfExists(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function processIsActive(pid) {
+  const result = spawnSync("ps", ["-o", "stat=", "-p", String(pid)], {
+    encoding: "utf8",
+  });
+  const state = result.status === 0 ? result.stdout.trim() : "";
+  return Boolean(state && !state.startsWith("Z"));
+}
+
+async function waitFor(predicate, description, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const value = predicate();
+      if (value) {
+        return value;
+      }
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`timed out waiting for ${description}`);
+}
+
+function collectChildResult(child) {
+  return new Promise((resolve, reject) => {
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.once("error", reject);
+    child.once("close", (code, signal) => {
+      resolve({ code, signal, stdout, stderr });
+    });
+  });
+}
+
+function isolatedWorkflowEnv(tmpDir) {
+  const env = {
+    ...process.env,
+    MORPHEUS_WORK_ROOT: path.join(tmpDir, "work-root"),
+  };
+  delete env.MORPHEUS_CONFIG;
+  delete env.MORPHEUS_DATA_ROOT;
+  delete env.MORPHEUS_WORKSPACES_ROOT;
+  return env;
+}
+
+function writeBlockingHostQemu(hostQemu, childPidFile) {
+  writeExecutable(
+    hostQemu,
+    [
+      "#!/usr/bin/env sh",
+      "set -eu",
+      `child_pid_file=${JSON.stringify(childPidFile)}`,
+      "(",
+      "  trap 'exit 0' TERM INT",
+      "  while :; do sleep 1; done",
+      ") &",
+      "child_pid=$!",
+      "printf '%s\\n' \"$child_pid\" > \"$child_pid_file\"",
+      "trap 'exit 0' TERM INT",
+      "while :; do sleep 1; done",
+    ].join("\n"),
+  );
+}
+
+function stopL1FromManifest(manifest) {
+  const l1 = manifest && manifest.runtime && manifest.runtime.l1;
+  const processGroupId = Number(l1 && l1.processGroupId);
+  const pid = Number(l1 && l1.pid);
+  if (Number.isInteger(processGroupId) && processGroupId > 0) {
+    try {
+      process.kill(-processGroupId, "SIGKILL");
+    } catch {}
+    return;
+  }
+  if (Number.isInteger(pid) && pid > 0) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {}
+  }
 }
 
 function createCpioArchive(archivePath, files) {
@@ -426,4 +523,160 @@ test("buildroot-based CVM exec helper mode fails when guest RSI evidence is miss
   assert.equal(manifest.errorMessage, "guest RSI evidence missing from realm console");
   assert.equal(manifest.runtime.l2.rsiEvidence, null);
   assert.equal(manifest.runtime.l2.rsiEvidenceMissing, true);
+});
+
+test("buildroot-based CVM exec handles SIGINT by stopping the L1 process group", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-buildroot-cvm-exec-interrupt-"));
+  const hostQemu = path.join(tmpDir, "host-qemu", "bin", "qemu-system-aarch64");
+  const childPidFile = path.join(tmpDir, "l1-child.pid");
+  const execResultFile = path.join(tmpDir, "exec-result.json");
+  const runDir = path.join(tmpDir, "run");
+  let execChild = null;
+  let initialManifest = null;
+
+  writeBlockingHostQemu(hostQemu, childPidFile);
+  const { installDir } = prepareBuildFixture(tmpDir, hostQemu);
+
+  try {
+    execChild = spawn("bash", [execScript], {
+      env: {
+        ...process.env,
+        MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_INSTALL_DIR: installDir,
+        MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RUN_DIR: runDir,
+        MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_PHASE: "launch",
+        MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR_KEY: "fixture-cvm",
+        MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE: execResultFile,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const resultPromise = collectChildResult(execChild);
+    initialManifest = await waitFor(() => {
+      const manifest = readJsonIfExists(path.join(runDir, "manifest.json"));
+      return manifest && manifest.status === "running" && manifest.runtime.l1.pid
+        ? manifest
+        : null;
+    }, "running CVM manifest");
+    const l1Pid = initialManifest.runtime.l1.pid;
+    const l1ProcessGroupId = initialManifest.runtime.l1.processGroupId;
+    const l1ChildPid = await waitFor(() => {
+      const raw = fs.existsSync(childPidFile) ? fs.readFileSync(childPidFile, "utf8").trim() : "";
+      const pid = Number(raw);
+      return Number.isInteger(pid) && pid > 0 ? pid : null;
+    }, "L1 child pid");
+    assert.equal(processIsActive(l1Pid), true);
+    assert.equal(processIsActive(l1ChildPid), true);
+
+    execChild.kill("SIGINT");
+    const result = await resultPromise;
+    assert.equal(result.code, 130, result.stderr + result.stdout);
+
+    const manifest = readJsonIfExists(path.join(runDir, "manifest.json"));
+    assert.equal(manifest.status, "stopped");
+    assert.equal(manifest.exitCode, 130);
+    assert.equal(manifest.runtime.l1.pid, null);
+    assert.equal(manifest.runtime.l1.processGroupId, null);
+    assert.equal(fs.existsSync(path.join(runDir, "l1.pid")), false);
+    assert.match(result.stderr, /waiting for l2 buildroot login prompt/);
+    await waitFor(
+      () => !processIsActive(l1Pid) && !processIsActive(l1ChildPid),
+      "L1 process group shutdown",
+    );
+    assert.ok(Number.isInteger(l1ProcessGroupId) && l1ProcessGroupId > 0);
+  } finally {
+    if (execChild && processIsActive(execChild.pid)) {
+      execChild.kill("SIGKILL");
+    }
+    stopL1FromManifest(initialManifest || readJsonIfExists(path.join(runDir, "manifest.json")));
+  }
+});
+
+test("workflow SIGINT stops the CVM stage and clears its timeout", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-cvm-workflow-interrupt-"));
+  const workspaceRoot = path.join(tmpDir, "workspace");
+  const configPath = path.join(tmpDir, "morpheus.yaml");
+  const workflowName = "interrupt-cvm";
+  const stepId = "cvm-exec";
+  const hostQemu = path.join(tmpDir, "host-qemu", "bin", "qemu-system-aarch64");
+  const childPidFile = path.join(tmpDir, "l1-child.pid");
+  const workflowRunDir = path.join(workspaceRoot, "workflows", workflowName);
+  const toolRunDir = path.join(workflowRunDir, "stages", stepId);
+  let workflowChild = null;
+  let initialManifest = null;
+
+  writeBlockingHostQemu(hostQemu, childPidFile);
+  const { installDir } = prepareBuildFixture(tmpDir, hostQemu);
+  fs.mkdirSync(workspaceRoot, { recursive: true });
+  fs.writeFileSync(
+    configPath,
+    [
+      "workspace:",
+      `  root: ${JSON.stringify(workspaceRoot)}`,
+      "workflows:",
+      `  ${workflowName}:`,
+      "    category: run",
+      "    steps:",
+      `      - id: ${stepId}`,
+      "        tool: nvirsh-buildroot-based-cvm",
+      "        command: exec",
+      "        timeout-seconds: 30",
+      "        args:",
+      "          - --install-dir",
+      `          - ${JSON.stringify(installDir)}`,
+      "          - --build-dir-key",
+      "          - fixture-cvm",
+      "          - --phase",
+      "          - launch",
+      "",
+    ].join("\n"),
+  );
+
+  try {
+    workflowChild = spawn(
+      process.execPath,
+      [appBin, "--json", "--config", configPath, "workflow", "run", "--name", workflowName],
+      {
+        cwd: tmpDir,
+        env: isolatedWorkflowEnv(tmpDir),
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    const resultPromise = collectChildResult(workflowChild);
+    initialManifest = await waitFor(() => {
+      const manifest = readJsonIfExists(path.join(toolRunDir, "manifest.json"));
+      return manifest && manifest.status === "running" && manifest.runtime.l1.pid
+        ? manifest
+        : null;
+    }, "running workflow CVM manifest");
+    const l1Pid = initialManifest.runtime.l1.pid;
+    const l1ChildPid = await waitFor(() => {
+      const raw = fs.existsSync(childPidFile) ? fs.readFileSync(childPidFile, "utf8").trim() : "";
+      const pid = Number(raw);
+      return Number.isInteger(pid) && pid > 0 ? pid : null;
+    }, "workflow L1 child pid");
+
+    const interruptedAt = Date.now();
+    workflowChild.kill("SIGINT");
+    const result = await resultPromise;
+    const elapsedMs = Date.now() - interruptedAt;
+    assert.equal(result.code, 130, result.stderr + result.stdout);
+    assert.ok(elapsedMs < 20000, `workflow interruption took ${elapsedMs}ms`);
+
+    const workflowManifest = readJsonIfExists(path.join(workflowRunDir, "workflow.json"));
+    const stageManifest = readJsonIfExists(path.join(toolRunDir, "stage.json"));
+    const toolManifest = readJsonIfExists(path.join(toolRunDir, "manifest.json"));
+    assert.equal(workflowManifest.status, "stopped");
+    assert.equal(stageManifest.status, "stopped");
+    assert.equal(toolManifest.status, "stopped");
+    assert.equal(toolManifest.runtime.l1.pid, null);
+    assert.equal(toolManifest.runtime.l1.processGroupId, null);
+    await waitFor(
+      () => !processIsActive(l1Pid) && !processIsActive(l1ChildPid),
+      "workflow L1 process group shutdown",
+    );
+  } finally {
+    if (workflowChild && processIsActive(workflowChild.pid)) {
+      workflowChild.kill("SIGKILL");
+    }
+    stopL1FromManifest(initialManifest || readJsonIfExists(path.join(toolRunDir, "manifest.json")));
+  }
 });

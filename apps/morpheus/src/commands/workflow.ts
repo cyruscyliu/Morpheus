@@ -1235,22 +1235,36 @@ function listRunDirsForWorkflow(workspaceRoot, workflowName) {
   }
 }
 
-function stopPid(pid) {
-  if (!pid || pid <= 0) {
+function stopPid(pid, options = {}) {
+  const normalizedPid = Number(pid);
+  if (!Number.isInteger(normalizedPid) || normalizedPid <= 0) {
     return;
   }
-  spawnSync("pkill", ["-TERM", "-P", String(pid)], { stdio: "ignore" });
-  spawnSync("kill", ["-TERM", String(pid)], { stdio: "ignore" });
+  const processGroup = Boolean(options.processGroup) && process.platform !== "win32";
+  const signalTarget = processGroup ? -normalizedPid : normalizedPid;
+  const killTarget = processGroup ? `-${normalizedPid}` : String(normalizedPid);
+  const signal = (name) => {
+    try {
+      process.kill(signalTarget, name);
+    } catch {}
+  };
+
+  if (!processGroup) {
+    spawnSync("pkill", ["-TERM", "-P", String(normalizedPid)], { stdio: "ignore" });
+  }
+  signal("SIGTERM");
   const waited = spawnSync(
     "bash",
-    ["-lc", `for i in $(seq 1 30); do if ! kill -0 ${pid} 2>/dev/null; then exit 0; fi; sleep 0.1; done; exit 1`],
+    ["-lc", `for i in $(seq 1 30); do if ! kill -0 -- ${killTarget} 2>/dev/null; then exit 0; fi; sleep 0.1; done; exit 1`],
     { stdio: "ignore" },
   );
   if (waited.status === 0) {
     return;
   }
-  spawnSync("pkill", ["-KILL", "-P", String(pid)], { stdio: "ignore" });
-  spawnSync("kill", ["-KILL", String(pid)], { stdio: "ignore" });
+  if (!processGroup) {
+    spawnSync("pkill", ["-KILL", "-P", String(normalizedPid)], { stdio: "ignore" });
+  }
+  signal("SIGKILL");
 }
 
 function isRunningPid(pid) {
@@ -1388,6 +1402,8 @@ function stopWorkflowStepTool(step) {
       "stop",
       "--tool",
       step.tool,
+      "--run-dir",
+      stepToolRunDir(step.stepDir),
       "--json",
     ];
     return spawnSync(command, args, {
@@ -1399,8 +1415,8 @@ function stopWorkflowStepTool(step) {
 
   const entryPath = path.join(repoRoot(), descriptor.installRoot, descriptor.entry);
   const args = descriptor.runtime === "node"
-    ? [entryPath, "stop", "--json"]
-    : ["stop", "--json"];
+    ? [entryPath, "stop", "--run-dir", stepToolRunDir(step.stepDir), "--json"]
+    : ["stop", "--run-dir", stepToolRunDir(step.stepDir), "--json"];
   const command = descriptor.runtime === "node"
     ? process.execPath
     : entryPath;
@@ -1417,14 +1433,36 @@ function stopWorkflowStepToolProcesses(step) {
   if (!manifest) {
     return;
   }
+  const runtimeL1 = manifest.runtime && manifest.runtime.l1 && typeof manifest.runtime.l1 === "object"
+    ? manifest.runtime.l1
+    : null;
+  const l1ProcessGroupId = Number(runtimeL1 && runtimeL1.processGroupId || 0);
+  const l1Pid = Number(runtimeL1 && runtimeL1.pid || 0);
+  const stopped = new Set();
+  const stop = (pid, options = {}) => {
+    const normalizedPid = Number(pid || 0);
+    if (!Number.isInteger(normalizedPid) || normalizedPid <= 0) {
+      return;
+    }
+    const key = `${options.processGroup ? "group" : "pid"}:${normalizedPid}`;
+    if (stopped.has(key)) {
+      return;
+    }
+    stopped.add(key);
+    stopPid(normalizedPid, options);
+  };
+
+  if (l1ProcessGroupId > 0) {
+    stop(l1ProcessGroupId, { processGroup: true });
+  } else {
+    stop(l1Pid);
+  }
   for (const pid of [
     Number(manifest.pid || 0),
     Number(manifest.launcherPid || 0),
     Number(manifest.runnerPid || 0),
   ]) {
-    if (pid > 0) {
-      stopPid(pid);
-    }
+    stop(pid);
   }
 }
 
@@ -1448,7 +1486,7 @@ function stopWorkflowRun(workspaceRoot, id) {
   }
 
   if (currentChildPid > 0) {
-    stopPid(currentChildPid);
+    stopPid(currentChildPid, { processGroup: true });
   }
   if (runnerPid > 0 && runnerPid !== process.pid) {
     stopPid(runnerPid);
@@ -1521,7 +1559,7 @@ function removeWorkflowRun(workspaceRoot, id) {
   const currentChildPid = Number(workflow.currentChildPid || 0);
   const runnerPid = Number(workflow.runnerPid || 0);
   if (currentChildPid > 0) {
-    stopPid(currentChildPid);
+    stopPid(currentChildPid, { processGroup: true });
   }
   if (runnerPid > 0 && runnerPid !== process.pid) {
     stopPid(runnerPid);
@@ -1845,6 +1883,7 @@ function runWorkflowChild(args, stepLogFile, env, onSpawn, options = {}) {
       cwd: childCwd,
       env,
       stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
     });
     if (typeof onSpawn === "function") {
       onSpawn(child.pid);
@@ -2284,6 +2323,25 @@ async function runToolWorkflow({
     configPath,
     metadata,
   });
+  let interruptedSignal = null;
+  let activeWorkflowChildPid = 0;
+  let acceptingInterrupts = true;
+  const stopForSignal = (signal) => {
+    if (!acceptingInterrupts || interruptedSignal) {
+      return;
+    }
+    interruptedSignal = signal;
+    try {
+      stopWorkflowRun(workspaceRoot, workflow.id);
+    } catch {}
+    if (activeWorkflowChildPid > 0) {
+      stopPid(activeWorkflowChildPid, { processGroup: true });
+    }
+  };
+  process.on("SIGINT", stopForSignal);
+  process.on("SIGTERM", stopForSignal);
+
+  try {
   return await withLogFile(workflowEventLogPath(workflow.runDir), async () => withEventContext({
     workflow_id: workflow.id,
   }, async () => {
@@ -2412,6 +2470,11 @@ async function runToolWorkflow({
   let activeStep = null;
   try {
   for (let stepIndex = startIndex; stepIndex < stopIndex; stepIndex += 1) {
+    if (interruptedSignal) {
+      workflowStatus = "stopped";
+      exitCode = 130;
+      break;
+    }
     const step = createdSteps[stepIndex];
     activeStep = step;
     updateWorkflowRun(workflow.runDir, (current) => ({
@@ -2501,6 +2564,7 @@ async function runToolWorkflow({
       tool: step.tool,
     });
     let stepChildPid = 0;
+    activeWorkflowChildPid = 0;
     const executionPromise = runWorkflowChild(
       args,
       step.logFile,
@@ -2518,6 +2582,7 @@ async function runToolWorkflow({
       },
       (childPid) => {
         stepChildPid = Number(childPid || 0);
+        activeWorkflowChildPid = stepChildPid;
         updateWorkflowRun(workflow.runDir, (current) => ({
           ...current,
           currentStepId: step.id,
@@ -2527,11 +2592,12 @@ async function runToolWorkflow({
       },
       { attach, cwd: step.stepDir, eventContext: { workflowId: workflow.id, stepId: step.id, tool: step.tool } },
     );
-    const result = spec && Number(spec.timeoutSeconds || 0) > 0
-      ? await Promise.race([
-          executionPromise,
-          (async () => {
-            await sleep(Number(spec.timeoutSeconds || 0) * 1000);
+    let result;
+    if (spec && Number(spec.timeoutSeconds || 0) > 0) {
+      let timeoutHandle = null;
+      try {
+        result = await new Promise((resolve, reject) => {
+          timeoutHandle = setTimeout(() => {
             emitEvent("step.timeout", {
               workflow: workflow.id,
               step: step.id,
@@ -2543,11 +2609,25 @@ async function runToolWorkflow({
               stepId: step.id,
               tool: step.tool,
             });
-            stopPid(stepChildPid);
-            throw new Error(`workflow stage timed out after ${Number(spec.timeoutSeconds || 0)} seconds`);
-          })(),
-        ])
-      : await executionPromise;
+            stopPid(stepChildPid, { processGroup: true });
+            reject(new Error(`workflow stage timed out after ${Number(spec.timeoutSeconds || 0)} seconds`));
+          }, Number(spec.timeoutSeconds || 0) * 1000);
+          executionPromise.then(resolve, reject);
+        });
+      } finally {
+        if (timeoutHandle != null) {
+          clearTimeout(timeoutHandle);
+        }
+      }
+    } else {
+      result = await executionPromise;
+    }
+    activeWorkflowChildPid = 0;
+    if (interruptedSignal) {
+      workflowStatus = "stopped";
+      exitCode = 130;
+      break;
+    }
     let toolPayload = attach
       ? attachedWorkflowStepPayload(step, toolCommand, result)
       : result.toolPayload;
@@ -2618,47 +2698,58 @@ async function runToolWorkflow({
 
   }
   } catch (error) {
-    workflowStatus = "error";
-    exitCode = exitCode || 1;
-    lastStderr = error instanceof Error ? (error.stack || error.message) : String(error);
-    if (activeStep) {
-      updateWorkflowStep(activeStep.stepDir, (current) => ({
-        ...current,
-        status: "error",
-        exitCode,
-      }));
-      fs.appendFileSync(
-        activeStep.logFile,
-        `\n${lastStderr}\n`,
-        "utf8",
-      );
-      updateWorkflowRun(workflow.runDir, (current) => ({
-        ...current,
-        status: "error",
-        currentChildPid: null,
-        stages: workflowStageEntries(current).map((entry) => entry.id === activeStep.id
-          ? { ...entry, status: "error" }
-          : entry
-        ),
-        steps: workflowStageEntries(current).map((entry) => entry.id === activeStep.id
-          ? { ...entry, status: "error" }
-          : entry
-        ),
-      }));
-      emitEvent("step.failed", {
-        workflow: workflow.id,
-        step: activeStep.id,
-        tool: activeStep.tool,
-        log_file: path.relative(process.cwd(), activeStep.logFile),
-        error: error instanceof Error ? error.message : String(error),
-      }, {
-        scope: "step",
-        workflowId: workflow.id,
-        stepId: activeStep.id,
-        tool: activeStep.tool,
-      });
+    if (interruptedSignal) {
+      workflowStatus = "stopped";
+      exitCode = 130;
+    } else {
+      workflowStatus = "error";
+      exitCode = exitCode || 1;
+      lastStderr = error instanceof Error ? (error.stack || error.message) : String(error);
+      if (activeStep) {
+        updateWorkflowStep(activeStep.stepDir, (current) => ({
+          ...current,
+          status: "error",
+          exitCode,
+        }));
+        fs.appendFileSync(
+          activeStep.logFile,
+          `\n${lastStderr}\n`,
+          "utf8",
+        );
+        updateWorkflowRun(workflow.runDir, (current) => ({
+          ...current,
+          status: "error",
+          currentChildPid: null,
+          stages: workflowStageEntries(current).map((entry) => entry.id === activeStep.id
+            ? { ...entry, status: "error" }
+            : entry
+          ),
+          steps: workflowStageEntries(current).map((entry) => entry.id === activeStep.id
+            ? { ...entry, status: "error" }
+            : entry
+          ),
+        }));
+        emitEvent("step.failed", {
+          workflow: workflow.id,
+          step: activeStep.id,
+          tool: activeStep.tool,
+          log_file: path.relative(process.cwd(), activeStep.logFile),
+          error: error instanceof Error ? error.message : String(error),
+        }, {
+          scope: "step",
+          workflowId: workflow.id,
+          stepId: activeStep.id,
+          tool: activeStep.tool,
+        });
+      }
     }
   }
+
+  if (interruptedSignal) {
+    workflowStatus = "stopped";
+    exitCode = 130;
+  }
+  acceptingInterrupts = false;
 
   const updatedWorkflow = updateWorkflowRun(workflow.runDir, (current) => ({
     ...current,
@@ -2768,6 +2859,11 @@ async function runToolWorkflow({
 
   return payload.exit_code || 0;
   }));
+  } finally {
+    acceptingInterrupts = false;
+    process.removeListener("SIGINT", stopForSignal);
+    process.removeListener("SIGTERM", stopForSignal);
+  }
 }
 
 function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) {

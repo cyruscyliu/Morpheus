@@ -13,30 +13,21 @@ const nestingPatch = fs.readFileSync(
   path.join(nestingPatchDir, "qemu-virtio-mmio-fuzz-input.patch"),
   "utf8",
 );
-const buildrootCcaPatch = fs.readFileSync(
-  path.join(
-    repoRoot,
-    "tools",
-    "buildroot",
-    "patches",
-    "qemu-cca",
-    "0002-qemu-cca-virtio-mmio-libafl-guest-fuzz.patch",
-  ),
-  "utf8",
-);
 
-test("buildroot CCA QEMU patch follows the L2 DMA telemetry protocol", () => {
-  assert.match(buildrootCcaPatch, /MORPHEUS_HP_DMA_EVENT_OFFSET 0x0c0u/);
-  assert.match(buildrootCcaPatch, /MORPHEUS_HP_DMA_ADDR_LO_OFFSET 0x0c4u/);
-  assert.match(buildrootCcaPatch, /MORPHEUS_HP_DMA_ADDR_HI_OFFSET 0x0c8u/);
-  assert.match(buildrootCcaPatch, /MORPHEUS_HP_DMA_LENGTH_OFFSET 0x0ccu/);
-  assert.match(buildrootCcaPatch, /vdev->device_id == VIRTIO_ID_NET/);
-  assert.match(buildrootCcaPatch, /address_space_write\(vdev->dma_as/);
-  assert.match(buildrootCcaPatch, /g_try_malloc\(len\)/);
-  assert.match(buildrootCcaPatch, /MORPHEUS_QEMU_DMA_MAX_LEN/);
-  assert.match(buildrootCcaPatch, /addr > UINT64_MAX -/);
-  assert.doesNotMatch(buildrootCcaPatch, /address_space_write\(&address_space_memory/);
-  assert.doesNotMatch(buildrootCcaPatch, /MORPHEUS_HP_DMA_EVENT_SIZE_MASK/);
+test("nesting fuzz patch follows the L2 DMA telemetry protocol", () => {
+  assert.match(nestingPatch, /MORPHEUS_HP_DMA_EVENT_OFFSET 0x0c0u/);
+  assert.match(nestingPatch, /MORPHEUS_HP_DMA_ADDR_LO_OFFSET 0x0c4u/);
+  assert.match(nestingPatch, /MORPHEUS_HP_DMA_ADDR_HI_OFFSET 0x0c8u/);
+  assert.match(nestingPatch, /MORPHEUS_HP_DMA_LENGTH_OFFSET 0x0ccu/);
+  assert.match(nestingPatch, /MORPHEUS_QEMU_FUZZ_VIRTIO_IDS/);
+  assert.match(nestingPatch, /VIRTIO_ID_NET/);
+  assert.match(nestingPatch, /MORPHEUS_HP_DMA_EVENT_DIR_FROM_DEVICE/);
+  assert.match(nestingPatch, /morpheus_virtio_mmio_fuzz_dma_write\(vdev, offset/);
+  assert.match(nestingPatch, /address_space_write\(&address_space_memory/);
+  assert.match(nestingPatch, /g_try_malloc\(len\)/);
+  assert.match(nestingPatch, /MORPHEUS_QEMU_DMA_MAX_LEN/);
+  assert.match(nestingPatch, /addr > UINT64_MAX -/);
+  assert.doesNotMatch(nestingPatch, /MORPHEUS_HP_DMA_EVENT_SIZE_MASK/);
 });
 
 test("nesting fuzz patch matches the current guest QEMU address-spaces header path", () => {
@@ -62,7 +53,7 @@ test("nesting fuzz patch wires the guest QEMU read/write hotpath", () => {
   );
   assert.match(
     nestingPatch,
-    /morpheus_virtio_mmio_fuzz_dma_write\(offset, value, size\)/,
+    /morpheus_virtio_mmio_fuzz_dma_write\(vdev, offset, value, size\)/,
   );
 });
 

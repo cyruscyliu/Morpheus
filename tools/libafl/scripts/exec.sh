@@ -40,6 +40,9 @@ capture_runtime="false"
 replay_inputs=()
 seed_inputs=()
 devilang_states=()
+devilang_grammar=""
+fuzz_virtio_ids=""
+fuzz_virtio_ids_set=false
 
 # Morpheus scripted exec passes repeatable harness-arg via env/file, not argv.
 # Load those when the script is invoked with no positional args.
@@ -64,12 +67,33 @@ while [ "$#" -gt 0 ]; do
     --replay-input) shift; replay_inputs+=("${1:-}") ;;
     --seed-input) shift; seed_inputs+=("${1:-}") ;;
     --devilang-state) shift; devilang_states+=("${1:-}") ;;
+    --devilang-grammar) shift; devilang_grammar="${1:-}" ;;
+    --fuzz-virtio-ids)
+      shift
+      fuzz_virtio_ids="${1:-}"
+      fuzz_virtio_ids_set=true
+      ;;
     --disable-nqc2-plugin) disable_nqc2_plugin="true" ;;
     --capture-runtime) capture_runtime="true" ;;
     *) echo "unknown qemu_nesting harness argument: $1" >&2; exit 1 ;;
   esac
   shift
 done
+
+if [ "${fuzz_virtio_ids_set}" = "false" ] &&
+   [ "${MORPHEUS_QEMU_FUZZ_VIRTIO_IDS+x}" = "x" ]; then
+  fuzz_virtio_ids="${MORPHEUS_QEMU_FUZZ_VIRTIO_IDS}"
+  fuzz_virtio_ids_set=true
+fi
+
+if [ "${fuzz_virtio_ids_set}" = "true" ]; then
+  case "${fuzz_virtio_ids}" in
+    *[!0-9A-Fa-fxX,]*)
+      echo "--fuzz-virtio-ids accepts comma-separated decimal or hexadecimal IDs" >&2
+      exit 1
+      ;;
+  esac
+fi
 
 manifest_file="${run_dir}/manifest.json"
 l1_runtime_dir="${run_dir}/l1-runtime"
@@ -79,6 +103,7 @@ replay_inputs_file="${run_dir}/replay-inputs.txt"
 replay_state_file="${run_dir}/replay-state.json"
 seed_inputs_file="${run_dir}/seed-inputs.txt"
 devilang_states_file="${run_dir}/devilang-states.txt"
+devilang_grammar_file="${run_dir}/devilang-grammar.path"
 step_log_file="${run_dir%/}/../stdout.log"
 runner_log_file="${run_dir}/launcher.stdout.log"
 fuzzer_bin="${install_dir}/bin/qemu_nesting"
@@ -104,6 +129,7 @@ find "${objective_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 rm -f "${replay_inputs_file}" "${replay_state_file}"
 rm -f "${seed_inputs_file}"
 rm -f "${devilang_states_file}"
+rm -f "${devilang_grammar_file}"
 : > "${runner_log_file}"
 
 manifest_pid=""
@@ -264,6 +290,27 @@ for (const root of roots) {
 const unique = [...new Set(inputs)].sort();
 if (unique.length === 0) throw new Error("no devilang state files resolved");
 fs.writeFileSync(outputFile, `${unique.join("\n")}\n`);
+NODE
+fi
+
+if [ -n "${devilang_grammar}" ]; then
+  node - "${devilang_grammar_file}" "${workspace_root}" "${repo_root}" "${devilang_grammar}" <<'NODE'
+const fs = require("fs");
+const path = require("path");
+const outputFile = process.argv[2];
+const workspaceRoot = process.argv[3];
+const repoRoot = process.argv[4];
+const input = process.argv[5];
+const candidates = [
+  path.resolve(input),
+  path.resolve(workspaceRoot, input),
+  path.resolve(repoRoot, input),
+];
+const resolved = candidates.find((candidate) => fs.existsSync(candidate));
+if (!resolved) {
+  throw new Error(`no Devilang grammar path found for ${input}`);
+}
+fs.writeFileSync(outputFile, `${path.resolve(resolved)}\n`);
 NODE
 fi
 
@@ -585,6 +632,9 @@ l1_share_staging_dir="${run_dir}/l1-share-staging"
 l1_share_image="${run_dir}/l1-share.ext4"
 direct_l1_share_stub_path="/mnt/libafl_nesting_stub"
 direct_l1_stub_env="MORPHEUS_L2_MODE=${l2_mode}"
+if [ "${fuzz_virtio_ids_set}" = "true" ]; then
+  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_QEMU_FUZZ_VIRTIO_IDS=${fuzz_virtio_ids}"
+fi
 if [ -n "${l2_run_window_ms}" ]; then
   direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_RUN_WINDOW_MS=${l2_run_window_ms}"
 fi
@@ -1078,6 +1128,10 @@ if [ -f "${seed_inputs_file}" ] && [ -s "${seed_inputs_file}" ]; then
 fi
 if [ -f "${devilang_states_file}" ] && [ -s "${devilang_states_file}" ]; then
   launch_env+=("MORPHEUS_LIBAFL_DEVILANG_STATES=${devilang_states_file}")
+fi
+if [ -f "${devilang_grammar_file}" ] && [ -s "${devilang_grammar_file}" ]; then
+  devilang_grammar_path="$(sed -n '1p' "${devilang_grammar_file}")"
+  launch_env+=("MORPHEUS_LIBAFL_DEVILANG_GRAMMAR=${devilang_grammar_path}")
 fi
 
 launch_cmd=(env "${launch_env[@]}" "${fuzzer_bin}" "${args[@]}")

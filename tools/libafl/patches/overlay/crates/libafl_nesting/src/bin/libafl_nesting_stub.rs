@@ -11,7 +11,7 @@ use libvharness_sys::{
     lqprintf, libafl_qemu_end, libafl_qemu_start_virt,
 };
 
-const INPUT_LEN: usize = 512;
+const INPUT_LEN: usize = 4096;
 const RUNTIME_DIR: &str = "/run/morpheus-libafl";
 const INPUT_PATH: &str = "/run/morpheus-libafl/morpheus-qemu-input.bin";
 const LAUNCH_MARKER_PATH: &str = "/run/morpheus-libafl/launch-l2.marker";
@@ -138,7 +138,9 @@ fn launch_l2(data: &[u8]) -> std::io::Result<Child> {
     command.env("MORPHEUS_QEMU_INPUT_PATH", INPUT_PATH);
     command.env("MORPHEUS_L2_RUNTIME_DIR", RUNTIME_DIR);
     command.env("MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS", injected_period_ms(data));
-    command.env("MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG", "1");
+    if let Ok(ids) = std::env::var("MORPHEUS_QEMU_FUZZ_VIRTIO_IDS") {
+        command.env("MORPHEUS_QEMU_FUZZ_VIRTIO_IDS", ids);
+    }
     if let Some(vintid) = injected_vintid(data) {
         command.env("MORPHEUS_QEMU_INJECT_VIRQ", vintid);
     }

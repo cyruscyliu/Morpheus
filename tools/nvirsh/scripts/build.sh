@@ -1225,9 +1225,6 @@ if [ "${l2_cvm}" = "true" ]; then
 else
   l2_append="console=ttyAMA0 oops=panic panic_on_warn=1 panic=-1 kasan.fault=panic"
 fi
-if [ "\${MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG:-0}" = "1" ]; then
-  l2_append="\${l2_append} virtio_mmio.hyperarm_oracle_bug=1"
-fi
 printf 'l2-cvm=%s\n' "${l2_cvm}" >> "\${launch_marker}"
 printf 'launch-mode=%s\n' "${l2_launch_mode}" >> "\${launch_marker}"
 printf 'machine=%s\n' "${l2_machine_effective}" >> "\${launch_marker}"

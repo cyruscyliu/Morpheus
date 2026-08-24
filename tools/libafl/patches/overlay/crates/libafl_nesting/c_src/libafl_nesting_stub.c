@@ -18,7 +18,7 @@
 
 #include "lqemu.h"
 
-#define INPUT_LEN 512
+#define INPUT_LEN 4096
 #define RUNTIME_DIR "/run/morpheus-libafl"
 #define INPUT_PATH RUNTIME_DIR "/morpheus-qemu-input.bin"
 #define LAUNCH_MARKER_PATH RUNTIME_DIR "/launch-l2.marker"
@@ -54,8 +54,6 @@
 #define L2_MEMORY_MB "1024"
 #define RUNTIME_DUMP_MAX_BYTES (256U * 1024U)
 #define RUNTIME_DUMP_CHUNK_BYTES 128U
-#define ORACLE_TEST_MAGIC0 0xa5U
-#define ORACLE_TEST_MAGIC1 0x5aU
 #define L2_DISABLE_NQC2_FW_CFG \
   "/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/l2-disable-nqc2-plugin/raw"
 #define L2_RUN_WINDOW_FW_CFG \
@@ -509,18 +507,6 @@ static unsigned run_window_ms(const uint8_t *data) {
   return 5000U + (raw % 5000U);
 }
 
-static bool oracle_test_bug_enabled(const uint8_t *data, size_t len) {
-  if (len < 2) {
-    return false;
-  }
-  for (size_t i = 0; i + 1 < len; i++) {
-    if (data[i] == ORACLE_TEST_MAGIC0 && data[i + 1] == ORACLE_TEST_MAGIC1) {
-      return true;
-    }
-  }
-  return false;
-}
-
 static bool l2_disable_nqc2_plugin_enabled(void) {
   char value[8] = {0};
   FILE *fp = fopen(L2_DISABLE_NQC2_FW_CFG, "rb");
@@ -792,7 +778,6 @@ static bool file_contains_any(const char *path, const char **needles,
 
 static bool l2_guest_crash_logged(void) {
   static const char *needles[] = {
-      "HyperArm oracle",
       "Kernel panic",
       "Oops",
       "BUG:",
@@ -1446,15 +1431,16 @@ static bool reap_l2_process(pid_t pid, int *status) {
   return true;
 }
 
-static bool launch_l2(const uint8_t *data, size_t len, bool *oracle_hit) {
+static bool launch_l2(const uint8_t *data, size_t len, bool *crash_detected) {
   char period_ms[32];
   char vintid[32];
   char input_env[128];
   char runtime_env[128];
   char period_env[128];
   char nqc2_env[128];
-  char oracle_env[128];
   char vintid_env[128];
+  char *fuzz_ids_env = NULL;
+  const char *fuzz_ids = getenv("MORPHEUS_QEMU_FUZZ_VIRTIO_IDS");
   const char *shell = NULL;
   const char *launch_script = NULL;
   struct launch_env_override overrides[6];
@@ -1470,15 +1456,10 @@ static bool launch_l2(const uint8_t *data, size_t len, bool *oracle_hit) {
   int spawn_error;
   pid_t pid;
   char *argv[3];
-  bool enable_oracle_bug = true;
-  bool have_vintid = !enable_oracle_bug &&
-                     injected_vintid(data, vintid, sizeof(vintid));
-  *oracle_hit = false;
+  bool have_vintid = injected_vintid(data, vintid, sizeof(vintid));
+  *crash_detected = false;
 
   injected_period_ms(data, period_ms, sizeof(period_ms));
-  if (enable_oracle_bug) {
-    lqprintf("stub: enabling l2 oracle test bug\n");
-  }
 
   /* Everything up to posix_spawn runs in the parent. The old fork child
    * walked mounted files, changed libc's environment, and formatted marker
@@ -1512,16 +1493,6 @@ static bool launch_l2(const uint8_t *data, size_t len, bool *oracle_hit) {
         "MORPHEUS_L2_DISABLE_NQC2_PLUGIN", nqc2_env};
   }
 
-  if (enable_oracle_bug) {
-    snprintf(oracle_env, sizeof(oracle_env),
-             "MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG=1");
-    overrides[override_count++] = (struct launch_env_override){
-        "MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG", oracle_env};
-  } else {
-    overrides[override_count++] = (struct launch_env_override){
-        "MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG", NULL};
-  }
-
   if (have_vintid) {
     if (snprintf(vintid_env, sizeof(vintid_env),
                  "MORPHEUS_QEMU_INJECT_VIRQ=%s", vintid) < 0) {
@@ -1533,6 +1504,16 @@ static bool launch_l2(const uint8_t *data, size_t len, bool *oracle_hit) {
   } else {
     overrides[override_count++] = (struct launch_env_override){
         "MORPHEUS_QEMU_INJECT_VIRQ", NULL};
+  }
+
+  if (fuzz_ids) {
+    if (asprintf(&fuzz_ids_env, "MORPHEUS_QEMU_FUZZ_VIRTIO_IDS=%s",
+                 fuzz_ids) < 0) {
+      append_marker("launcher-environment-format-failed\n");
+      return false;
+    }
+    overrides[override_count++] = (struct launch_env_override){
+        "MORPHEUS_QEMU_FUZZ_VIRTIO_IDS", fuzz_ids_env};
   }
 
   launch_stdout_fd = open_launch_log(LAUNCH_STDOUT_PATH);
@@ -1553,6 +1534,7 @@ static bool launch_l2(const uint8_t *data, size_t len, bool *oracle_hit) {
       build_launch_environment(overrides, override_count);
   if (!launch_environment) {
     append_marker("launcher-environment-alloc-failed\n");
+    free(fuzz_ids_env);
     close(launch_stdout_fd);
     close(launch_stderr_fd);
     return false;
@@ -1617,6 +1599,8 @@ static bool launch_l2(const uint8_t *data, size_t len, bool *oracle_hit) {
   close(launch_stderr_fd);
   free(launch_environment);
   launch_environment = NULL;
+  free(fuzz_ids_env);
+  fuzz_ids_env = NULL;
   if (spawn_error != 0) {
     append_marker("launcher-spawn-failed errno=%d\n", spawn_error);
     lqprintf("stub: launcher spawn failed shell=%s script=%s errno=%d\n",
@@ -1651,7 +1635,7 @@ static bool launch_l2(const uint8_t *data, size_t len, bool *oracle_hit) {
     if (crash_logged) {
       maybe_dump_l2_diagnostics();
       lqprintf("stub: l2 guest crash marker found before timeout kill\n");
-      *oracle_hit = true;
+      *crash_detected = true;
     }
     signal_l2_process_group(pid, SIGTERM);
     if (!reap_l2_process(pid, &status)) {
@@ -1677,7 +1661,7 @@ static bool launch_l2(const uint8_t *data, size_t len, bool *oracle_hit) {
       maybe_dump_l2_diagnostics();
       if (crash_logged) {
         lqprintf("stub: l2 guest crash marker found\n");
-        *oracle_hit = true;
+        *crash_detected = true;
       } else {
         lqprintf("stub: l2 exited without guest crash marker\n");
       }
@@ -1689,7 +1673,7 @@ static bool launch_l2(const uint8_t *data, size_t len, bool *oracle_hit) {
     lqprintf("stub: l2 killed by signal=%d\n", WTERMSIG(status));
     maybe_dump_l2_diagnostics();
     log_l2_input_evidence();
-    *oracle_hit = true;
+    *crash_detected = true;
     return true;
   }
   return true;
@@ -1708,6 +1692,7 @@ spawn_setup_failed:
     close(launch_stderr_fd);
   }
   free(launch_environment);
+  free(fuzz_ids_env);
   append_marker("launcher-spawn-setup-failed errno=%d\n", setup_error);
   return false;
 }
@@ -1721,11 +1706,11 @@ int main(void) {
       len = INPUT_LEN;
     }
 
-    bool oracle_hit = false;
+    bool crash_detected = false;
     bool ok = write_input_snapshot(FUZZ_INPUT, len) &&
-              launch_l2(FUZZ_INPUT, len, &oracle_hit);
+              launch_l2(FUZZ_INPUT, len, &crash_detected);
 
-    libafl_qemu_end((ok && !oracle_hit) ? LIBAFL_QEMU_END_OK
+    libafl_qemu_end((ok && !crash_detected) ? LIBAFL_QEMU_END_OK
                                         : LIBAFL_QEMU_END_CRASH);
   }
 }

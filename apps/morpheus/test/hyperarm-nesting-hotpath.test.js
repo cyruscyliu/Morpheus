@@ -20,6 +20,35 @@ const stubSource = fs.readFileSync(
   ),
   "utf8",
 );
+const rustStubSource = fs.readFileSync(
+  path.join(
+    repoRoot,
+    "tools",
+    "libafl",
+    "patches",
+    "overlay",
+    "crates",
+    "libafl_nesting",
+    "src",
+    "bin",
+    "libafl_nesting_stub.rs",
+  ),
+  "utf8",
+);
+const generatorSource = fs.readFileSync(
+  path.join(
+    repoRoot,
+    "tools",
+    "libafl",
+    "patches",
+    "overlay",
+    "crates",
+    "libafl_nesting",
+    "src",
+    "generator.rs",
+  ),
+  "utf8",
+);
 const nvirshBuildSource = fs.readFileSync(
   path.join(repoRoot, "tools", "nvirsh", "scripts", "build.sh"),
   "utf8",
@@ -179,6 +208,16 @@ test("nested L2 launcher prepares libc state before spawning", () => {
   assert.doesNotMatch(launchSource, /fork\(\)/);
   assert.doesNotMatch(launchSource, /setenv\(|unsetenv\(/);
   assert.match(launchSource, /posix_spawn\(&pid, shell/);
+});
+
+test("nested fuzzing has no synthetic L2 oracle trigger", () => {
+  assert.doesNotMatch(stubSource, /MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG/);
+  assert.doesNotMatch(stubSource, /oracle test bug/i);
+  assert.doesNotMatch(stubSource, /0x5aa5|0xa5U|0x5aU/);
+  assert.doesNotMatch(rustStubSource, /MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG/);
+  assert.doesNotMatch(generatorSource, /oracle_action|0x5aa5/i);
+  assert.doesNotMatch(nvirshBuildSource, /hyperarm_oracle_bug/);
+  assert.doesNotMatch(nvirshBuildSource, /MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG/);
 });
 
 test("generated CVM hoststack uses QEMU and keeps the runtime shared", () => {
@@ -474,6 +513,11 @@ test("LibAFL CVM harness supports buildroot-based prepared state", () => {
   assert.match(
     harnessSource,
     /direct_l1_stub_env="MORPHEUS_L2_MODE=\$\{l2_mode\}"/,
+  );
+  assert.match(harnessSource, /--fuzz-virtio-ids\)/);
+  assert.match(
+    harnessSource,
+    /MORPHEUS_QEMU_FUZZ_VIRTIO_IDS=\$\{fuzz_virtio_ids\}/,
   );
   assert.match(
     harnessSource,
@@ -933,6 +977,8 @@ test("full runtime capture is opt-in for the fuzzing harness", () => {
   assert.match(stubSource, /env_l2_mode\(/);
   assert.match(stubSource, /MORPHEUS_L2_RUN_WINDOW_MS/);
   assert.match(stubSource, /MORPHEUS_CAPTURE_RUNTIME/);
+  assert.match(stubSource, /MORPHEUS_QEMU_FUZZ_VIRTIO_IDS/);
+  assert.match(rustStubSource, /MORPHEUS_QEMU_FUZZ_VIRTIO_IDS/);
   assert.match(stubSource, /qemu\.stdout\.log/);
 });
 

@@ -1,8 +1,8 @@
 diff --git a/hw/virtio/trace-events b/hw/virtio/trace-events
-index 76f0d45..5b51350 100644
+index 2a57edc21e..874a05b028 100644
 --- a/hw/virtio/trace-events
 +++ b/hw/virtio/trace-events
-@@ -98,6 +98,8 @@ virtio_balloon_to_target(uint64_t target, uint32_t num_pages) "balloon target: 0
+@@ -105,6 +105,8 @@ virtio_balloon_to_target(uint64_t target, uint32_t num_pages) "balloon target: 0
  # virtio-mmio.c
  virtio_mmio_read(uint64_t offset) "virtio_mmio_read offset 0x%" PRIx64
  virtio_mmio_write_offset(uint64_t offset, uint64_t value) "virtio_mmio_write offset 0x%" PRIx64 " value 0x%" PRIx64
@@ -12,36 +12,45 @@ index 76f0d45..5b51350 100644
  virtio_mmio_queue_write(uint64_t value, int max_size) "mmio_queue write 0x%" PRIx64 " max %d"
  virtio_mmio_setting_irq(int level) "virtio_mmio setting IRQ %d"
 diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
-index 532c671..437d5a5 100644
+index 55ceaeef5f..e9fb0324d8 100644
 --- a/hw/virtio/virtio-mmio.c
 +++ b/hw/virtio/virtio-mmio.c
-@@ -33,8 +33,215 @@
+@@ -22,5 +22,6 @@
+ #include "qemu/osdep.h"
+ #include "standard-headers/linux/virtio_mmio.h"
++#include "standard-headers/linux/virtio_ids.h"
+ #include "hw/core/irq.h"
+ #include "hw/core/qdev-properties.h"
+ #include "hw/core/sysbus.h"
+@@ -33,9 +34,298 @@
  #include "hw/virtio/virtio-mmio.h"
  #include "qemu/error-report.h"
  #include "qemu/log.h"
++#include "qemu/cutils.h"
 +#include "system/address-spaces.h"
  #include "trace.h"
+ #include "qapi/error.h"
  
 +#define MORPHEUS_QEMU_INPUT_PATH_ENV "MORPHEUS_QEMU_INPUT_PATH"
++#define MORPHEUS_QEMU_INPUT_MAX_BYTES (1U << 20)
++#define MORPHEUS_QEMU_DMA_MAX_LEN (1U << 20)
++#define MORPHEUS_QEMU_FUZZ_VIRTIO_IDS_ENV "MORPHEUS_QEMU_FUZZ_VIRTIO_IDS"
++#define MORPHEUS_QEMU_MAX_FUZZ_VIRTIO_IDS 64u
++
 +#define MORPHEUS_HP_DMA_EVENT_OFFSET 0x0c0u
 +#define MORPHEUS_HP_DMA_ADDR_LO_OFFSET 0x0c4u
 +#define MORPHEUS_HP_DMA_ADDR_HI_OFFSET 0x0c8u
++#define MORPHEUS_HP_DMA_LENGTH_OFFSET 0x0ccu
 +#define MORPHEUS_HP_DMA_EVENT_OPCODE_SHIFT 0u
 +#define MORPHEUS_HP_DMA_EVENT_OPCODE_MASK 0x000000ffu
 +#define MORPHEUS_HP_DMA_EVENT_DIRECTION_SHIFT 8u
 +#define MORPHEUS_HP_DMA_EVENT_DIRECTION_MASK 0x00000300u
-+#define MORPHEUS_HP_DMA_EVENT_SIZE_SHIFT 10u
-+#define MORPHEUS_HP_DMA_EVENT_SIZE_MASK 0x0003fc00u
-+#define MORPHEUS_HP_DMA_EVENT_OP_ALLOC_SUCCESS 0x01u
-+#define MORPHEUS_HP_DMA_EVENT_OP_ALLOC_FAIL 0x02u
-+#define MORPHEUS_HP_DMA_EVENT_OP_FREE 0x03u
++#define MORPHEUS_HP_DMA_EVENT_PATH_SHIFT 10u
++#define MORPHEUS_HP_DMA_EVENT_PATH_MASK 0x00000c00u
++#define MORPHEUS_HP_DMA_EVENT_SEQUENCE_SHIFT 16u
++#define MORPHEUS_HP_DMA_EVENT_SEQUENCE_MASK 0xffff0000u
 +#define MORPHEUS_HP_DMA_EVENT_OP_MAP 0x04u
-+#define MORPHEUS_HP_DMA_EVENT_OP_MAP_FAIL 0x05u
 +#define MORPHEUS_HP_DMA_EVENT_OP_UNMAP 0x06u
-+#define MORPHEUS_HP_DMA_EVENT_OP_VQ_POLL_HIT 0x07u
-+#define MORPHEUS_HP_DMA_EVENT_OP_VQ_POLL_MISS 0x08u
-+#define MORPHEUS_HP_DMA_EVENT_OP_VQ_GET_BUF 0x09u
-+#define MORPHEUS_HP_DMA_EVENT_OP_VQ_GET_BUF_EMPTY 0x0au
 +#define MORPHEUS_HP_DMA_EVENT_DIR_FROM_DEVICE 0x2u
 +#define MORPHEUS_HP_DMA_EVENT_DIR_BIDIRECTIONAL 0x3u
 +
@@ -53,37 +62,116 @@ index 532c671..437d5a5 100644
 +    uint64_t cursor;
 +    uint32_t dma_addr_lo;
 +    uint32_t dma_addr_hi;
++    uint32_t dma_len;
++    uint16_t fuzz_device_ids[MORPHEUS_QEMU_MAX_FUZZ_VIRTIO_IDS];
++    size_t fuzz_device_id_count;
 +} MorpheusVirtIOMMIOFuzzState;
 +
 +static MorpheusVirtIOMMIOFuzzState morpheus_virtio_mmio_fuzz;
 +
++static void morpheus_virtio_mmio_fuzz_init(void);
++
++static bool morpheus_virtio_mmio_add_fuzz_device_id(uint32_t id)
++{
++    size_t i;
++
++    if (id > UINT16_MAX) {
++        return false;
++    }
++    for (i = 0; i < morpheus_virtio_mmio_fuzz.fuzz_device_id_count; i++) {
++        if (morpheus_virtio_mmio_fuzz.fuzz_device_ids[i] == id) {
++            return true;
++        }
++    }
++    if (morpheus_virtio_mmio_fuzz.fuzz_device_id_count >=
++        MORPHEUS_QEMU_MAX_FUZZ_VIRTIO_IDS) {
++        return false;
++    }
++    morpheus_virtio_mmio_fuzz.fuzz_device_ids[
++        morpheus_virtio_mmio_fuzz.fuzz_device_id_count++] = (uint16_t)id;
++    return true;
++}
++
++static void morpheus_virtio_mmio_parse_fuzz_device_ids(void)
++{
++    const char *raw = g_getenv(MORPHEUS_QEMU_FUZZ_VIRTIO_IDS_ENV);
++    char *copy;
++    char *remaining;
++    char *token;
++
++    if (!raw) {
++        morpheus_virtio_mmio_add_fuzz_device_id(VIRTIO_ID_NET);
++        return;
++    }
++    if (!*raw) {
++        return;
++    }
++
++    copy = g_strdup(raw);
++    remaining = copy;
++    while ((token = qemu_strsep(&remaining, ",")) != NULL) {
++        const char *end;
++        unsigned int id;
++
++        token = g_strstrip(token);
++        if (!*token || qemu_strtoui(token, &end, 0, &id) < 0 ||
++            *end != '\0' || id > UINT16_MAX) {
++            warn_report("ignoring invalid virtio fuzz device ID '%s'", token);
++            continue;
++        }
++        if (!morpheus_virtio_mmio_add_fuzz_device_id(id)) {
++            warn_report("ignoring virtio fuzz device ID '%s'", token);
++        }
++    }
++    g_free(copy);
++}
++
++static bool morpheus_virtio_mmio_is_configured_device(VirtIODevice *vdev)
++{
++    size_t i;
++
++    morpheus_virtio_mmio_fuzz_init();
++    if (!vdev) {
++        return false;
++    }
++    for (i = 0; i < morpheus_virtio_mmio_fuzz.fuzz_device_id_count; i++) {
++        if (morpheus_virtio_mmio_fuzz.fuzz_device_ids[i] == vdev->device_id) {
++            return true;
++        }
++    }
++    return false;
++}
++
 +static void morpheus_virtio_mmio_fuzz_init(void)
 +{
-+    const char *path = NULL;
++    const char *path;
++    gchar *data = NULL;
++    gsize len = 0;
 +
 +    if (morpheus_virtio_mmio_fuzz.initialized) {
 +        return;
 +    }
 +
 +    morpheus_virtio_mmio_fuzz.initialized = true;
++    morpheus_virtio_mmio_parse_fuzz_device_ids();
 +    path = g_getenv(MORPHEUS_QEMU_INPUT_PATH_ENV);
-+    if (!path || !*path) {
++    if (!path || !*path ||
++        !g_file_get_contents(path, &data, &len, NULL) ||
++        len == 0 || len > MORPHEUS_QEMU_INPUT_MAX_BYTES) {
++        g_free(data);
 +        return;
 +    }
 +
-+    if (!g_file_get_contents(path, (gchar **)&morpheus_virtio_mmio_fuzz.data,
-+                             &morpheus_virtio_mmio_fuzz.len, NULL)) {
-+        return;
-+    }
-+
-+    morpheus_virtio_mmio_fuzz.enabled = morpheus_virtio_mmio_fuzz.len > 0;
++    morpheus_virtio_mmio_fuzz.data = (uint8_t *)data;
++    morpheus_virtio_mmio_fuzz.len = len;
++    morpheus_virtio_mmio_fuzz.enabled = true;
 +}
 +
 +static bool morpheus_virtio_mmio_should_fuzz(VirtIODevice *vdev)
 +{
 +    morpheus_virtio_mmio_fuzz_init();
 +    return morpheus_virtio_mmio_fuzz.enabled &&
-+           vdev;
++           morpheus_virtio_mmio_is_configured_device(vdev);
 +}
 +
 +static uint64_t morpheus_virtio_mmio_next(unsigned size)
@@ -94,25 +182,19 @@ index 532c671..437d5a5 100644
 +    if (!morpheus_virtio_mmio_fuzz.len) {
 +        return 0;
 +    }
-+
++    size = MIN(size, sizeof(value));
 +    for (i = 0; i < size; i++) {
-+        value |= ((uint64_t)morpheus_virtio_mmio_fuzz
-+                  .data[morpheus_virtio_mmio_fuzz.cursor %
-+                        morpheus_virtio_mmio_fuzz.len]) << (i * 8);
++        value |= (uint64_t)morpheus_virtio_mmio_fuzz
++                 .data[morpheus_virtio_mmio_fuzz.cursor %
++                       morpheus_virtio_mmio_fuzz.len] << (i * 8);
 +        morpheus_virtio_mmio_fuzz.cursor++;
 +    }
-+
 +    return value;
 +}
 +
-+static void morpheus_virtio_mmio_next_buf(uint8_t *buf, unsigned len)
++static void morpheus_virtio_mmio_next_buf(uint8_t *buf, size_t len)
 +{
-+    unsigned i;
-+
-+    if (!morpheus_virtio_mmio_fuzz.len) {
-+        memset(buf, 0, len);
-+        return;
-+    }
++    size_t i;
 +
 +    for (i = 0; i < len; i++) {
 +        buf[i] = morpheus_virtio_mmio_fuzz
@@ -122,10 +204,24 @@ index 532c671..437d5a5 100644
 +    }
 +}
 +
-+static bool morpheus_virtio_mmio_dma_writable(uint8_t direction)
++static uint64_t morpheus_virtio_mmio_fuzz_mix(hwaddr offset, uint64_t base,
++                                              unsigned size, bool keep_nonzero)
 +{
-+    return direction == MORPHEUS_HP_DMA_EVENT_DIR_FROM_DEVICE ||
-+           direction == MORPHEUS_HP_DMA_EVENT_DIR_BIDIRECTIONAL;
++    uint64_t mask;
++    uint64_t fuzzed;
++
++    if (size >= sizeof(uint64_t)) {
++        mask = UINT64_MAX;
++    } else {
++        mask = (UINT64_C(1) << (size * 8)) - 1;
++    }
++    fuzzed = (base ^ morpheus_virtio_mmio_next(size)) & mask;
++    if (keep_nonzero && base != 0 && fuzzed == 0) {
++        fuzzed = base & mask;
++    }
++    trace_virtio_mmio_fuzz_read(offset, base, fuzzed, size,
++                                morpheus_virtio_mmio_fuzz.cursor);
++    return fuzzed;
 +}
 +
 +static uint8_t morpheus_virtio_mmio_dma_event_opcode(uint32_t event)
@@ -140,79 +236,74 @@ index 532c671..437d5a5 100644
 +           MORPHEUS_HP_DMA_EVENT_DIRECTION_SHIFT;
 +}
 +
-+static unsigned morpheus_virtio_mmio_dma_event_len(uint32_t event)
-+{
-+    return (event & MORPHEUS_HP_DMA_EVENT_SIZE_MASK) >>
-+           MORPHEUS_HP_DMA_EVENT_SIZE_SHIFT;
-+}
-+
 +static bool morpheus_virtio_mmio_dma_event_injects(uint8_t opcode,
 +                                                   uint8_t direction)
 +{
 +    return opcode == MORPHEUS_HP_DMA_EVENT_OP_MAP &&
-+           morpheus_virtio_mmio_dma_writable(direction);
++           (direction == MORPHEUS_HP_DMA_EVENT_DIR_FROM_DEVICE ||
++            direction == MORPHEUS_HP_DMA_EVENT_DIR_BIDIRECTIONAL);
 +}
 +
-+static bool morpheus_virtio_mmio_fuzz_dma_write(hwaddr offset, uint64_t value,
++static bool morpheus_virtio_mmio_fuzz_dma_write(VirtIODevice *vdev,
++                                                hwaddr offset, uint64_t value,
 +                                                unsigned size)
 +{
 +    uint32_t event;
-+    uint64_t addr;
 +    uint8_t opcode;
 +    uint8_t direction;
-+    unsigned len;
++    uint64_t addr;
++    uint32_t len;
 +    uint8_t *buf;
 +    MemTxResult status;
 +
-+    if (offset == MORPHEUS_HP_DMA_ADDR_LO_OFFSET && size == 4) {
++    if (size != sizeof(uint32_t)) {
++        return false;
++    }
++    if (offset == MORPHEUS_HP_DMA_ADDR_LO_OFFSET) {
 +        morpheus_virtio_mmio_fuzz.dma_addr_lo = (uint32_t)value;
 +        return true;
 +    }
-+    if (offset == MORPHEUS_HP_DMA_ADDR_HI_OFFSET && size == 4) {
++    if (offset == MORPHEUS_HP_DMA_ADDR_HI_OFFSET) {
 +        morpheus_virtio_mmio_fuzz.dma_addr_hi = (uint32_t)value;
 +        return true;
 +    }
-+    if (offset != MORPHEUS_HP_DMA_EVENT_OFFSET || size != 4) {
++    if (offset == MORPHEUS_HP_DMA_LENGTH_OFFSET) {
++        morpheus_virtio_mmio_fuzz.dma_len = (uint32_t)value;
++        return true;
++    }
++    if (offset != MORPHEUS_HP_DMA_EVENT_OFFSET) {
 +        return false;
 +    }
 +
 +    event = (uint32_t)value;
 +    opcode = morpheus_virtio_mmio_dma_event_opcode(event);
 +    direction = morpheus_virtio_mmio_dma_event_direction(event);
-+    len = morpheus_virtio_mmio_dma_event_len(event);
 +    addr = ((uint64_t)morpheus_virtio_mmio_fuzz.dma_addr_hi << 32) |
 +           morpheus_virtio_mmio_fuzz.dma_addr_lo;
++    len = morpheus_virtio_mmio_fuzz.dma_len;
 +
 +    if (!morpheus_virtio_mmio_dma_event_injects(opcode, direction) ||
-+        !addr || !len) {
++        !addr || !len || len > MORPHEUS_QEMU_DMA_MAX_LEN ||
++        addr > UINT64_MAX - ((uint64_t)len - 1) || !vdev->dma_as ||
++        !morpheus_virtio_mmio_fuzz.enabled) {
 +        trace_virtio_mmio_dma_fuzz(addr, len, event, opcode, direction,
 +                                   morpheus_virtio_mmio_fuzz.cursor, -1);
 +        return true;
 +    }
 +
-+    buf = g_malloc(len);
++    buf = g_try_malloc(len);
++    if (!buf) {
++        trace_virtio_mmio_dma_fuzz(addr, len, event, opcode, direction,
++                                   morpheus_virtio_mmio_fuzz.cursor, -2);
++        return true;
++    }
 +    morpheus_virtio_mmio_next_buf(buf, len);
 +    status = address_space_write(&address_space_memory, addr,
 +                                 MEMTXATTRS_UNSPECIFIED, buf, len);
 +    g_free(buf);
 +    trace_virtio_mmio_dma_fuzz(addr, len, event, opcode, direction,
-+                               morpheus_virtio_mmio_fuzz.cursor, status);
++                               morpheus_virtio_mmio_fuzz.cursor, (int)status);
 +    return true;
-+}
-+
-+static uint64_t morpheus_virtio_mmio_fuzz_mix(hwaddr offset, uint64_t base,
-+                                              unsigned size, bool keep_nonzero)
-+{
-+    uint64_t mask = size >= 8 ? UINT64_MAX : ((1ULL << (size * 8)) - 1);
-+    uint64_t fuzz = morpheus_virtio_mmio_next(size);
-+    uint64_t fuzzed = (base ^ fuzz) & mask;
-+
-+    if (keep_nonzero && base != 0 && fuzzed == 0) {
-+        fuzzed = base & mask;
-+    }
-+    trace_virtio_mmio_fuzz_read(offset, base, fuzzed, size,
-+                                morpheus_virtio_mmio_fuzz.cursor);
-+    return fuzzed;
 +}
 +
 +static uint64_t morpheus_virtio_mmio_maybe_fuzz_read(VirtIODevice *vdev,
@@ -224,14 +315,13 @@ index 532c671..437d5a5 100644
 +    if (!morpheus_virtio_mmio_should_fuzz(vdev)) {
 +        return value;
 +    }
-+
 +    return morpheus_virtio_mmio_fuzz_mix(offset, value, size, keep_nonzero);
 +}
 +
  static bool virtio_mmio_ioeventfd_enabled(DeviceState *d)
  {
      VirtIOMMIOProxy *proxy = VIRTIO_MMIO(d);
-@@ -85,6 +292,7 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
+@@ -86,6 +376,7 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
  {
      VirtIOMMIOProxy *proxy = (VirtIOMMIOProxy *)opaque;
      VirtIODevice *vdev = virtio_bus_get_device(&proxy->bus);
@@ -239,7 +329,7 @@ index 532c671..437d5a5 100644
  
      trace_virtio_mmio_read(offset);
  
-@@ -114,30 +322,41 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
+@@ -115,30 +406,40 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
      }
  
      if (offset >= VIRTIO_MMIO_CONFIG) {
@@ -281,13 +371,12 @@ index 532c671..437d5a5 100644
                  abort();
              }
          }
-+
 +        return morpheus_virtio_mmio_maybe_fuzz_read(vdev, config_offset,
-+                                                    value, size, false);
++                                                     value, size, false);
      }
      if (size != 4) {
          qemu_log_mask(LOG_GUEST_ERROR,
-@@ -161,20 +380,24 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
+@@ -162,17 +463,21 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
      case VIRTIO_MMIO_DEVICE_FEATURES:
          if (proxy->legacy) {
              if (proxy->host_features_sel) {
@@ -305,19 +394,16 @@ index 532c671..437d5a5 100644
 +                    (32 * proxy->host_features_sel);
          }
 +        return morpheus_virtio_mmio_maybe_fuzz_read(vdev, offset, value, size,
-+                                                    true);
++                                                     true);
      case VIRTIO_MMIO_QUEUE_NUM_MAX:
-         if (!virtio_queue_get_num(vdev, vdev->queue_sel)) {
-             return 0;
-         }
--        return VIRTQUEUE_MAX_SIZE;
-+        return morpheus_virtio_mmio_maybe_fuzz_read(vdev, offset,
-+                                                    VIRTQUEUE_MAX_SIZE, size,
-+                                                    true);
+-        return virtio_queue_get_max_num(vdev, vdev->queue_sel);
++        return morpheus_virtio_mmio_maybe_fuzz_read(
++            vdev, offset, virtio_queue_get_max_num(vdev, vdev->queue_sel),
++            size, true);
      case VIRTIO_MMIO_QUEUE_PFN:
          if (!proxy->legacy) {
              qemu_log_mask(LOG_GUEST_ERROR,
-@@ -183,8 +406,10 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
+@@ -181,8 +486,10 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
                            __func__, offset);
              return 0;
          }
@@ -326,11 +412,11 @@ index 532c671..437d5a5 100644
 +        value = virtio_queue_get_addr(vdev, vdev->queue_sel) >>
 +                proxy->guest_page_shift;
 +        return morpheus_virtio_mmio_maybe_fuzz_read(vdev, offset, value, size,
-+                                                    true);
++                                                     true);
      case VIRTIO_MMIO_QUEUE_READY:
          if (proxy->legacy) {
              qemu_log_mask(LOG_GUEST_ERROR,
-@@ -193,11 +418,14 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
+@@ -191,11 +498,14 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
                            __func__, offset);
              return 0;
          }
@@ -344,29 +430,28 @@ index 532c671..437d5a5 100644
      case VIRTIO_MMIO_STATUS:
 -        return vdev->status;
 +        return morpheus_virtio_mmio_maybe_fuzz_read(vdev, offset, vdev->status,
-+                                                    size, true);
++                                                     size, true);
      case VIRTIO_MMIO_CONFIG_GENERATION:
          if (proxy->legacy) {
              qemu_log_mask(LOG_GUEST_ERROR,
-@@ -206,7 +434,9 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
+@@ -204,7 +514,9 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
                            __func__, offset);
              return 0;
          }
 -        return vdev->generation;
 +        return morpheus_virtio_mmio_maybe_fuzz_read(vdev, offset,
-+                                                    vdev->generation, size,
-+                                                    true);
++                                                     vdev->generation, size,
++                                                     true);
     case VIRTIO_MMIO_SHM_LEN_LOW:
     case VIRTIO_MMIO_SHM_LEN_HIGH:
          /*
-@@ -300,6 +530,10 @@ static void virtio_mmio_write(void *opaque, hwaddr offset, uint64_t value,
-                       __func__);
-         return;
-     }
-+    if (morpheus_virtio_mmio_should_fuzz(vdev) &&
-+        morpheus_virtio_mmio_fuzz_dma_write(offset, value, size)) {
-+        return;
-+    }
-     switch (offset) {
-     case VIRTIO_MMIO_DEVICE_FEATURES_SEL:
-         if (value) {
+@@ -261,5 +573,9 @@ static void virtio_mmio_write(void *opaque, hwaddr offset, uint64_t value,
+     if (offset >= VIRTIO_MMIO_CONFIG) {
+         offset -= VIRTIO_MMIO_CONFIG;
++        if (morpheus_virtio_mmio_should_fuzz(vdev) &&
++            morpheus_virtio_mmio_fuzz_dma_write(vdev, offset, value, size)) {
++            return;
++        }
+         if (proxy->legacy) {
+             switch (size) {
+             case 1:

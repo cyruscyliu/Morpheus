@@ -3,6 +3,7 @@
 extern crate alloc;
 
 pub mod encoding;
+pub mod devilang_grammar;
 pub mod generator;
 pub mod input;
 pub mod model;
@@ -12,6 +13,7 @@ pub mod stub;
 pub use encoding::{
     ACTION_RECORD_SIZE, GROUP_HEADER_SIZE, ScenarioCodec, decode_scenario, encode_scenario,
 };
+pub use devilang_grammar::{DevilangGrammar, DevilangGrammarState, format_scenario};
 pub use generator::ScenarioGenerator;
 pub use input::{
     Action, ActionGroup, CpuAction, HyperAction, PageTableAction, ScenarioInput, VmAction,

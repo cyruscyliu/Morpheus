@@ -35,7 +35,7 @@ use libafl_qemu::{
 };
 use libafl_targets::{EDGES_MAP_DEFAULT_SIZE, MAX_EDGES_FOUND, edges_map_mut_ptr};
 
-pub static mut MAX_INPUT_SIZE: usize = 512;
+pub static mut MAX_INPUT_SIZE: usize = 4096;
 
 fn parse_env_u64(name: &str) -> Option<u64> {
     env::var(name).ok()?.parse::<u64>().ok()

@@ -159,7 +159,7 @@ function writeExecutable(filePath, contents) {
   fs.chmodSync(filePath, 0o755);
 }
 
-test("nested L2 timeout cleanup cannot serialize the next fuzz input", () => {
+test("nested L2 crash feedback requires a verified kernel panic", () => {
   assert.match(stubSource, /POSIX_SPAWN_SETPGROUP/);
   assert.match(stubSource, /posix_spawnattr_setpgroup\(&spawn_attributes, 0\)/);
   assert.match(stubSource, /setpgid\(pid, pid\)/);
@@ -171,15 +171,10 @@ test("nested L2 timeout cleanup cannot serialize the next fuzz input", () => {
     /if \(wait_ret == 0\) \{([\s\S]*?)\n  \}\n  if \(wait_ret < 0\)/,
   );
   assert.ok(timeoutBody, "expected the L2 timeout branch");
-  assert.match(timeoutBody[1], /l2_guest_crash_logged\(\)/);
+  assert.match(timeoutBody[1], /l2_kernel_panic_logged\(\)/);
   assert.match(timeoutBody[1], /signal_l2_process_group\(pid, SIGTERM\)/);
   assert.match(stubSource, /morpheus\.capture_runtime=1/);
-  assert.match(stubSource, /maybe_dump_l2_diagnostics\(\)/);
   assert.match(timeoutBody[1], /log_l2_input_evidence\(\)/);
-  assert.match(
-    timeoutBody[1],
-    /if \(runtime_capture_enabled\(\) && !crash_logged\) \{\s*dump_l2_diagnostics\(\);/,
-  );
   assert.match(stubSource, /QEMU_STDOUT_PATH/);
   assert.match(stubSource, /QEMU_STDERR_PATH/);
   assert.match(stubSource, /QEMU_INPUT_STATUS_PATH/);
@@ -188,6 +183,111 @@ test("nested L2 timeout cleanup cannot serialize the next fuzz input", () => {
     /dump_runtime_snapshot\(\)/,
     "normal timeout must not dump every runtime file through hypercalls",
   );
+
+  const panicDetector = stubSource.match(
+    /static bool l2_kernel_panic_logged\(void\) \{([\s\S]*?)\n\}/,
+  );
+  assert.ok(panicDetector, "expected the L2 kernel panic detector");
+  assert.match(panicDetector[1], /"Kernel panic"/);
+  assert.match(panicDetector[1], /L2_CONSOLE_PATH/);
+  assert.match(panicDetector[1], /QEMU_STDOUT_PATH/);
+  assert.doesNotMatch(panicDetector[1], /Oops|BUG:|KASAN/);
+  assert.doesNotMatch(panicDetector[1], /LAUNCH_STDOUT_PATH|LAUNCH_STDERR_PATH|QEMU_STDERR_PATH/);
+
+  const exitedBody = stubSource.match(
+    /if \(WIFEXITED\(status\)\) \{([\s\S]*?)\n  \}\n  if \(WIFSIGNALED\(status\)\)/,
+  );
+  assert.ok(exitedBody, "expected the L2 exit-status branch");
+  assert.match(exitedBody[1], /L2_OUTCOME_LAUNCHER_EXIT/);
+  assert.doesNotMatch(exitedBody[1], /LIBAFL_QEMU_END_CRASH/);
+
+  const signaledBody = stubSource.match(
+    /if \(WIFSIGNALED\(status\)\) \{([\s\S]*?)\n  \}\n  return false;/,
+  );
+  assert.ok(signaledBody, "expected the L2 signal-status branch");
+  assert.match(signaledBody[1], /L2_OUTCOME_LAUNCHER_SIGNAL/);
+  assert.doesNotMatch(signaledBody[1], /LIBAFL_QEMU_END_CRASH/);
+  assert.match(stubSource, /stub-outcome kind=%s detail=%d/);
+  assert.match(
+    stubSource,
+    /libafl_qemu_end\(outcome == L2_OUTCOME_KERNEL_PANIC\s*\? LIBAFL_QEMU_END_CRASH\s*:\s*LIBAFL_QEMU_END_OK\)/,
+  );
+});
+
+test("non-panic L2 outcomes are archived separately from LibAFL objectives", () => {
+  assert.match(harnessSource, /objective_dir="\$\{run_dir\}\/objectives"/);
+  assert.match(
+    harnessSource,
+    /stub-outcome kind=\(kernel-panic\|launcher-exit\|launcher-signal\|harness-error\)/,
+  );
+  assert.match(harnessSource, /path\.join\(outputDir, "outcomes", groupName\)/);
+  assert.match(harnessSource, /outcome\.json/);
+  assert.match(harnessSource, /outcomes\.json/);
+  assert.match(harnessSource, /state\.outcomes = outcomes/);
+});
+
+test("runtime extraction preserves an anomalous L2 outcome and its input", () => {
+  const functionStart = harnessSource.indexOf("extract_l1_runtime_from_log() {");
+  const functionEnd = harnessSource.indexOf("\n}\n\nwrite_result()", functionStart);
+  assert.ok(functionStart >= 0 && functionEnd > functionStart);
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-l2-outcome-"));
+  try {
+    const outputDir = path.join(tempDir, "runtime");
+    const logPath = path.join(tempDir, "launcher.log");
+    const extractorPath = path.join(tempDir, "extract.sh");
+    fs.writeFileSync(
+      logPath,
+      [
+        "LQPRINTF: stub-outcome kind=launcher-exit detail=139",
+        "LQPRINTF: stub-runtime begin name=morpheus-qemu-input.bin size=2 dumped=2 truncated=0",
+        "LQPRINTF: stub-runtime data name=morpheus-qemu-input.bin offset=0 hex=1234",
+        "LQPRINTF: stub-runtime end name=morpheus-qemu-input.bin",
+        "LQPRINTF: stub-runtime begin name=qemu.stdout.log size=12 dumped=12 truncated=0",
+        "LQPRINTF: stub-runtime data name=qemu.stdout.log offset=0 hex=6c32206c6f67206c696e650a",
+        "LQPRINTF: stub-runtime end name=qemu.stdout.log",
+        "LQPRINTF: stub: dumped runtime files to log",
+      ].join("\n"),
+    );
+    writeExecutable(
+      extractorPath,
+      [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        harnessSource.slice(functionStart, functionEnd + 2),
+        'extract_l1_runtime_from_log "$1" "$2" false',
+      ].join("\n"),
+    );
+
+    const result = spawnSync("bash", [extractorPath, outputDir, logPath], {
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(path.join(outputDir, "outcomes.json"), "utf8")),
+      [
+        {
+          index: 0,
+          kind: "launcher-exit",
+          detail: 139,
+          dir: path.join(outputDir, "outcomes", "000000-launcher-exit"),
+        },
+      ],
+    );
+    assert.deepEqual(
+      fs.readFileSync(
+        path.join(
+          outputDir,
+          "outcomes",
+          "000000-launcher-exit",
+          "morpheus-qemu-input.bin",
+        ),
+      ),
+      Buffer.from([0x12, 0x34]),
+    );
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test("nested L2 launcher prepares libc state before spawning", () => {

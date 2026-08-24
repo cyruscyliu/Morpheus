@@ -98,7 +98,7 @@ fi
 manifest_file="${run_dir}/manifest.json"
 l1_runtime_dir="${run_dir}/l1-runtime"
 corpus_dir="${run_dir}/corpus"
-objective_dir="${run_dir}/crashes"
+objective_dir="${run_dir}/objectives"
 replay_inputs_file="${run_dir}/replay-inputs.txt"
 replay_state_file="${run_dir}/replay-state.json"
 seed_inputs_file="${run_dir}/seed-inputs.txt"
@@ -470,7 +470,10 @@ const replayStateFile = process.argv[5] || "";
 const safeName = /^[A-Za-z0-9._-]+$/;
 const records = new Map();
 const runtimeGroups = [];
+const outcomes = [];
 let replayIndex = 0;
+let outcomeIndex = 0;
+let pendingOutcome = null;
 function resetRecord(name, size, dumped, truncated) {
   if (!safeName.test(name)) return;
   records.set(name, { size: Number(size), dumped: Number(dumped), truncated: truncated === "1", chunks: new Map(), complete: false });
@@ -485,30 +488,59 @@ function writeRecordToDir(dir, name, record) {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, name), Buffer.concat(chunks));
 }
-function flushReplayGroup() {
-  if (!replayMode || records.size === 0) return;
-  const groupName = `replay-${String(replayIndex).padStart(6, "0")}`;
-  const groupDir = path.join(outputDir, groupName);
+function flushRuntimeGroup() {
+  if (records.size === 0) {
+    pendingOutcome = null;
+    return;
+  }
+
   let wrote = false;
-  for (const [name, record] of records.entries()) {
-    if (record.complete) {
-      writeRecordToDir(groupDir, name, record);
-      writeRecordToDir(outputDir, name, record);
-      wrote = true;
+  if (pendingOutcome) {
+    const groupName = `${String(outcomeIndex).padStart(6, "0")}-${pendingOutcome.kind}`;
+    const groupDir = path.join(outputDir, "outcomes", groupName);
+    for (const [name, record] of records.entries()) {
+      if (record.complete) {
+        writeRecordToDir(groupDir, name, record);
+        wrote = true;
+      }
+    }
+    if (wrote) {
+      fs.writeFileSync(
+        path.join(groupDir, "outcome.json"),
+        JSON.stringify(pendingOutcome, null, 2),
+      );
+      outcomes.push({ index: outcomeIndex, ...pendingOutcome, dir: groupDir });
+      outcomeIndex += 1;
+    }
+  } else if (replayMode) {
+    const groupName = `replay-${String(replayIndex).padStart(6, "0")}`;
+    const groupDir = path.join(outputDir, groupName);
+    for (const [name, record] of records.entries()) {
+      if (record.complete) {
+        writeRecordToDir(groupDir, name, record);
+        writeRecordToDir(outputDir, name, record);
+        wrote = true;
+      }
+    }
+    if (wrote) {
+      runtimeGroups.push({ index: replayIndex, dir: groupDir });
+      replayIndex += 1;
     }
   }
-  if (wrote) {
-    runtimeGroups.push({ index: replayIndex, dir: groupDir });
-    replayIndex += 1;
-  }
   records.clear();
+  pendingOutcome = null;
 }
 const logPrefix = "LQPRINTF: ";
 const content = fs.readFileSync(logFile, "utf8");
 for (const line of content.split(/\r?\n/)) {
   const index = line.indexOf(logPrefix);
   const message = index >= 0 ? line.slice(index + logPrefix.length) : line;
-  let match = message.match(/^stub-runtime begin name=([A-Za-z0-9._-]+) size=(\d+) dumped=(\d+) truncated=([01])$/);
+  let match = message.match(/^stub-outcome kind=(kernel-panic|launcher-exit|launcher-signal|harness-error) detail=(-?\d+)$/);
+  if (match) {
+    pendingOutcome = { kind: match[1], detail: Number(match[2]) };
+    continue;
+  }
+  match = message.match(/^stub-runtime begin name=([A-Za-z0-9._-]+) size=(\d+) dumped=(\d+) truncated=([01])$/);
   if (match) { resetRecord(match[1], match[2], match[3], match[4]); continue; }
   match = message.match(/^stub-runtime data name=([A-Za-z0-9._-]+) offset=(\d+) hex=([0-9a-f]*)$/);
   if (match) {
@@ -522,16 +554,20 @@ for (const line of content.split(/\r?\n/)) {
     const record = recordFor(match[1]);
     if (record) {
       record.complete = true;
-      if (!replayMode) writeRecordToDir(outputDir, match[1], record);
+      if (!replayMode && !pendingOutcome) writeRecordToDir(outputDir, match[1], record);
     }
     continue;
   }
-  if (message === "stub: dumped runtime files to log") flushReplayGroup();
+  if (message === "stub: dumped runtime files to log") flushRuntimeGroup();
 }
-flushReplayGroup();
+flushRuntimeGroup();
+if (outcomes.length > 0) {
+  fs.writeFileSync(path.join(outputDir, "outcomes.json"), JSON.stringify(outcomes, null, 2));
+}
 if (replayMode && replayStateFile && fs.existsSync(replayStateFile)) {
   const state = JSON.parse(fs.readFileSync(replayStateFile, "utf8"));
   state.runtimeGroups = runtimeGroups;
+  state.outcomes = outcomes;
   fs.writeFileSync(replayStateFile, JSON.stringify(state, null, 2));
 }
 NODE

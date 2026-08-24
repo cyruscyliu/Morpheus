@@ -776,21 +776,46 @@ static bool file_contains_any(const char *path, const char **needles,
   return found;
 }
 
-static bool l2_guest_crash_logged(void) {
+enum l2_outcome {
+  L2_OUTCOME_HARNESS_ERROR,
+  L2_OUTCOME_COMPLETE,
+  L2_OUTCOME_RUN_WINDOW_COMPLETE,
+  L2_OUTCOME_KERNEL_PANIC,
+  L2_OUTCOME_LAUNCHER_EXIT,
+  L2_OUTCOME_LAUNCHER_SIGNAL,
+};
+
+static const char *l2_outcome_name(enum l2_outcome outcome) {
+  switch (outcome) {
+    case L2_OUTCOME_COMPLETE:
+      return "complete";
+    case L2_OUTCOME_RUN_WINDOW_COMPLETE:
+      return "run-window-complete";
+    case L2_OUTCOME_KERNEL_PANIC:
+      return "kernel-panic";
+    case L2_OUTCOME_LAUNCHER_EXIT:
+      return "launcher-exit";
+    case L2_OUTCOME_LAUNCHER_SIGNAL:
+      return "launcher-signal";
+    case L2_OUTCOME_HARNESS_ERROR:
+      return "harness-error";
+  }
+  return "harness-error";
+}
+
+static void log_l2_outcome(enum l2_outcome outcome, int detail) {
+  lqprintf("stub-outcome kind=%s detail=%d\n", l2_outcome_name(outcome),
+           detail);
+}
+
+static bool l2_kernel_panic_logged(void) {
   static const char *needles[] = {
       "Kernel panic",
-      "Oops",
-      "BUG:",
-      "KASAN",
   };
 
+  /* These files carry L2 console output. Launcher and QEMU stderr can report
+   * host-side failures, so they are diagnostic artifacts, not panic evidence. */
   return file_contains_any(L2_CONSOLE_PATH, needles,
-                           sizeof(needles) / sizeof(needles[0])) ||
-         file_contains_any(LAUNCH_STDOUT_PATH, needles,
-                           sizeof(needles) / sizeof(needles[0])) ||
-         file_contains_any(LAUNCH_STDERR_PATH, needles,
-                           sizeof(needles) / sizeof(needles[0])) ||
-         file_contains_any(QEMU_STDERR_PATH, needles,
                            sizeof(needles) / sizeof(needles[0])) ||
          file_contains_any(QEMU_STDOUT_PATH, needles,
                            sizeof(needles) / sizeof(needles[0]));
@@ -857,12 +882,6 @@ static void dump_l2_diagnostics(void) {
   dump_runtime_snapshot();
   if (resolve_l2_cvm_mode()) {
     log_cvm_evidence();
-  }
-}
-
-static void maybe_dump_l2_diagnostics(void) {
-  if (runtime_capture_enabled()) {
-    dump_l2_diagnostics();
   }
 }
 
@@ -1431,7 +1450,8 @@ static bool reap_l2_process(pid_t pid, int *status) {
   return true;
 }
 
-static bool launch_l2(const uint8_t *data, size_t len, bool *crash_detected) {
+static bool launch_l2(const uint8_t *data, size_t len,
+                      enum l2_outcome *outcome, int *outcome_detail) {
   char period_ms[32];
   char vintid[32];
   char input_env[128];
@@ -1457,7 +1477,8 @@ static bool launch_l2(const uint8_t *data, size_t len, bool *crash_detected) {
   pid_t pid;
   char *argv[3];
   bool have_vintid = injected_vintid(data, vintid, sizeof(vintid));
-  *crash_detected = false;
+  *outcome = L2_OUTCOME_HARNESS_ERROR;
+  *outcome_detail = 0;
 
   injected_period_ms(data, period_ms, sizeof(period_ms));
 
@@ -1628,24 +1649,21 @@ static bool launch_l2(const uint8_t *data, size_t len, bool *crash_detected) {
   int status = 0;
   pid_t wait_ret = waitpid(pid, &status, WNOHANG);
   if (wait_ret == 0) {
-    const bool crash_logged = l2_guest_crash_logged();
-    /* Normal timeout is the hot path. Avoid serializing every runtime file
-     * through the L1 hypercall log; retain the full snapshot only for an
-     * actual guest crash when runtime capture is explicitly enabled. */
-    if (crash_logged) {
-      maybe_dump_l2_diagnostics();
-      lqprintf("stub: l2 guest crash marker found before timeout kill\n");
-      *crash_detected = true;
+    const bool kernel_panic_logged = l2_kernel_panic_logged();
+    /* A run-window completion is the hot path. Diagnostics are emitted only
+     * after outcome classification, unless runtime capture is explicitly on. */
+    if (kernel_panic_logged) {
+      lqprintf("stub: l2 kernel panic found before timeout kill\n");
+      *outcome = L2_OUTCOME_KERNEL_PANIC;
+    } else {
+      *outcome = L2_OUTCOME_RUN_WINDOW_COMPLETE;
     }
     signal_l2_process_group(pid, SIGTERM);
     if (!reap_l2_process(pid, &status)) {
       lqprintf("stub: failed to reap l2 process group\n");
-      return false;
+      return *outcome == L2_OUTCOME_KERNEL_PANIC;
     }
     log_l2_input_evidence();
-    if (runtime_capture_enabled() && !crash_logged) {
-      dump_l2_diagnostics();
-    }
     lqprintf("stub: l2 timed out and was terminated\n");
     return true;
   }
@@ -1655,28 +1673,29 @@ static bool launch_l2(const uint8_t *data, size_t len, bool *crash_detected) {
   }
   if (WIFEXITED(status)) {
     const int exit_status = WEXITSTATUS(status);
-    const bool crash_logged = l2_guest_crash_logged();
+    const bool kernel_panic_logged = l2_kernel_panic_logged();
     lqprintf("stub: l2 exited status=%d\n", exit_status);
-    if (exit_status != 0 || crash_logged) {
-      maybe_dump_l2_diagnostics();
-      if (crash_logged) {
-        lqprintf("stub: l2 guest crash marker found\n");
-        *crash_detected = true;
-      } else {
-        lqprintf("stub: l2 exited without guest crash marker\n");
-      }
+    if (kernel_panic_logged) {
+      lqprintf("stub: l2 kernel panic found\n");
+      *outcome = L2_OUTCOME_KERNEL_PANIC;
+    } else if (exit_status != 0) {
+      lqprintf("stub: l2 launcher exited without kernel panic evidence\n");
+      *outcome = L2_OUTCOME_LAUNCHER_EXIT;
+      *outcome_detail = exit_status;
+    } else {
+      *outcome = L2_OUTCOME_COMPLETE;
     }
     log_l2_input_evidence();
     return true;
   }
   if (WIFSIGNALED(status)) {
-    lqprintf("stub: l2 killed by signal=%d\n", WTERMSIG(status));
-    maybe_dump_l2_diagnostics();
+    *outcome = L2_OUTCOME_LAUNCHER_SIGNAL;
+    *outcome_detail = WTERMSIG(status);
+    lqprintf("stub: l2 launcher killed by signal=%d\n", *outcome_detail);
     log_l2_input_evidence();
-    *crash_detected = true;
     return true;
   }
-  return true;
+  return false;
 
 spawn_setup_failed:
   if (spawn_attributes_initialized) {
@@ -1706,11 +1725,26 @@ int main(void) {
       len = INPUT_LEN;
     }
 
-    bool crash_detected = false;
-    bool ok = write_input_snapshot(FUZZ_INPUT, len) &&
-              launch_l2(FUZZ_INPUT, len, &crash_detected);
+    enum l2_outcome outcome = L2_OUTCOME_HARNESS_ERROR;
+    int outcome_detail = 0;
+    bool launched = write_input_snapshot(FUZZ_INPUT, len) &&
+                    launch_l2(FUZZ_INPUT, len, &outcome, &outcome_detail);
 
-    libafl_qemu_end((ok && !crash_detected) ? LIBAFL_QEMU_END_OK
-                                        : LIBAFL_QEMU_END_CRASH);
+    if (!launched && outcome == L2_OUTCOME_HARNESS_ERROR) {
+      lqprintf("stub: l2 harness operation failed\n");
+    }
+    log_l2_outcome(outcome, outcome_detail);
+    if (outcome == L2_OUTCOME_KERNEL_PANIC ||
+        outcome == L2_OUTCOME_LAUNCHER_EXIT ||
+        outcome == L2_OUTCOME_LAUNCHER_SIGNAL ||
+        outcome == L2_OUTCOME_HARNESS_ERROR ||
+        (outcome == L2_OUTCOME_RUN_WINDOW_COMPLETE &&
+         runtime_capture_enabled())) {
+      dump_l2_diagnostics();
+    }
+
+    libafl_qemu_end(outcome == L2_OUTCOME_KERNEL_PANIC
+                        ? LIBAFL_QEMU_END_CRASH
+                        : LIBAFL_QEMU_END_OK);
   }
 }

@@ -1109,3 +1109,27 @@ test("LibAFL build installs the C guest stub used by nesting fuzzing", () => {
   assert.match(libaflBuildSource, /aarch64-linux-gnu-gcc/);
   assert.match(libaflBuildSource, /"\$\{stub_c_src\}"/);
 });
+
+test("LibAFL rebuild invalidates stale overlay Cargo packages", () => {
+  assert.match(libaflBuildSource, /build_bridge_crate\(\)/);
+  assert.match(libaflBuildSource, /build_fuzzer\(\)/);
+  assert.match(
+    libaflBuildSource,
+    /cargo clean[\s\S]*-p libafl_nesting[\s\S]*-p qemu_nesting/,
+  );
+  assert.doesNotMatch(
+    libaflBuildSource,
+    /LIBAFL_QEMU_DIR="\$\{bridge_storage_dir\}" cargo build/,
+  );
+});
+
+test("LibAFL stub rebuild uses content fingerprints instead of mtimes", () => {
+  assert.match(libaflBuildSource, /stub_fingerprint_file=/);
+  assert.match(libaflBuildSource, /stub_fingerprint\(\)/);
+  assert.match(libaflBuildSource, /sha256sum "\$\{stub_c_src\}"/);
+  assert.match(libaflBuildSource, /record_stub_fingerprint\(\)/);
+  assert.doesNotMatch(
+    libaflBuildSource,
+    /stub_current\(\) \{[^}]*-nt "\$\{stub_c_src\}"/s,
+  );
+});

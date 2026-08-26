@@ -13,6 +13,7 @@ result_file="${MORPHEUS_LIBAFL_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 tmp_root="${build_dir}/tmp"
 guest_target="aarch64-unknown-linux-gnu"
 stub_bin="${install_dir}/bin/libafl_nesting_stub"
+stub_fingerprint_file="${install_dir}/.libafl_nesting_stub.fingerprint"
 fuzzer_bin="${install_dir}/bin/qemu_nesting"
 bridge_dir="${build_dir}/qemu-libafl-bridge"
 bridge_storage_dir="${MORPHEUS_LIBAFL_BRIDGE_STORAGE_DIR:-${tmp_root}/qemu-libafl-bridge}"
@@ -70,9 +71,21 @@ fi
 
 mkdir -p "${install_dir}/bin" "${install_dir}/lib"
 
-stub_current() { [ -x "${stub_bin}" ] && [ "${stub_bin}" -nt "${stub_c_src}" ]; }
+stub_fingerprint() {
+  {
+    printf '%s\n' "${libvharness_commit}"
+    sha256sum "${stub_c_src}" | awk '{print $1}'
+  } | sha256sum | awk '{print $1}'
+}
+record_stub_fingerprint() { stub_fingerprint > "${stub_fingerprint_file}"; }
+stub_current() {
+  [ -x "${stub_bin}" ] \
+    && [ -f "${stub_fingerprint_file}" ] \
+    && [ "$(cat "${stub_fingerprint_file}")" = "$(stub_fingerprint)" ]
+}
 fuzzer_fingerprint() {
-  find "${fuzzer_src_dir}" -type f \( -name '*.rs' -o -name 'Cargo.toml' \) -print0 \
+  find "${fuzzer_src_dir}" "${crate_src_dir}" -type f \
+    \( -name '*.rs' -o -name 'Cargo.toml' \) -print0 \
     | sort -z \
     | xargs -0 sha256sum \
     | sha256sum \
@@ -222,6 +235,29 @@ fuzzer_cargo_args=(
   --features std,aarch64
 )
 
+# The overlay is copied from this repository with preserved timestamps. Cargo
+# can otherwise reuse an older libafl_nesting rmeta after the overlay content
+# changes, while recompiling qemu_nesting against that stale API. Clean only
+# the two overlay packages whenever this script has decided to rebuild them.
+build_bridge_crate() {
+  cargo clean \
+    --manifest-path "${source_dir}/Cargo.toml" \
+    --target-dir "${host_target_dir}" \
+    -p libafl_nesting
+  LIBAFL_QEMU_DIR="${bridge_storage_dir}" \
+    cargo build "${bridge_cargo_args[@]}" --lib "${cargo_args[@]}"
+}
+
+build_fuzzer() {
+  cargo clean \
+    --manifest-path "${source_dir}/fuzzers/full_system/qemu_nesting/Cargo.toml" \
+    --target-dir "${fuzzer_target_dir}" \
+    -p libafl_nesting \
+    -p qemu_nesting
+  LIBAFL_QEMU_DIR="${bridge_storage_dir}" \
+    cargo build "${fuzzer_cargo_args[@]}" "${cargo_args[@]}"
+}
+
 build_guest_stub() {
   local vharness_root="${host_target_dir}/debug/libvharness"
   local vharness_include="${vharness_root}/include"
@@ -271,13 +307,14 @@ if [ "${reuse_build_dir}" = "true" ] && bridge_current && [ -d "${bridge_storage
   stub_rebuilt=false
   if ! fuzzer_current; then
     prepare_bridge_source
-    LIBAFL_QEMU_DIR="${bridge_storage_dir}" cargo build "${fuzzer_cargo_args[@]}" "${cargo_args[@]}"
+    build_fuzzer
     cp "${fuzzer_target_dir}/debug/qemu_nesting" "${fuzzer_bin}"
     record_fuzzer_fingerprint
     fuzzer_rebuilt=true
   fi
   if ! stub_current; then
     build_guest_stub
+    record_stub_fingerprint
     stub_rebuilt=true
   fi
   cat > "${result_file}" <<EOF
@@ -288,7 +325,7 @@ fi
 
 if [ "${reuse_build_dir}" = "true" ] && stub_current && bridge_current && [ -d "${bridge_storage_dir}" ]; then
   prepare_bridge_source
-  LIBAFL_QEMU_DIR="${bridge_storage_dir}" cargo build "${fuzzer_cargo_args[@]}" "${cargo_args[@]}"
+  build_fuzzer
   cp "${fuzzer_target_dir}/debug/qemu_nesting" "${fuzzer_bin}"
   record_fuzzer_fingerprint
   cat > "${result_file}" <<EOF
@@ -300,11 +337,12 @@ fi
 if [ "${reuse_build_dir}" = "true" ] && [ -x "${stub_bin}" ]; then
   rm -rf "${bridge_build_dir}"
   prepare_bridge_source
-  LIBAFL_QEMU_DIR="${bridge_storage_dir}" cargo build "${bridge_cargo_args[@]}" --lib "${cargo_args[@]}"
+  build_bridge_crate
   rm -rf "${bridge_dir}"
   ln -s "${bridge_storage_dir}" "${bridge_dir}"
-  LIBAFL_QEMU_DIR="${bridge_storage_dir}" cargo build "${fuzzer_cargo_args[@]}" "${cargo_args[@]}"
+  build_fuzzer
   build_guest_stub
+  record_stub_fingerprint
   cp "${fuzzer_target_dir}/debug/qemu_nesting" "${fuzzer_bin}"
   record_fuzzer_fingerprint
   install_bridge
@@ -316,11 +354,12 @@ fi
 
 rm -rf "${bridge_build_dir}"
 prepare_bridge_source
-LIBAFL_QEMU_DIR="${bridge_storage_dir}" cargo build "${bridge_cargo_args[@]}" --lib "${cargo_args[@]}"
+build_bridge_crate
 rm -rf "${bridge_dir}"
 ln -s "${bridge_storage_dir}" "${bridge_dir}"
-LIBAFL_QEMU_DIR="${bridge_storage_dir}" cargo build "${fuzzer_cargo_args[@]}" "${cargo_args[@]}"
+build_fuzzer
 build_guest_stub
+record_stub_fingerprint
 cp "${fuzzer_target_dir}/debug/qemu_nesting" "${fuzzer_bin}"
 record_fuzzer_fingerprint
 install_bridge

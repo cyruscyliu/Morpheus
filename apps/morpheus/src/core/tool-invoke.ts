@@ -75,7 +75,20 @@ function parseToolArgs(argv, options = {}) {
       }
       continue;
     }
-    if (!booleanFlags.has(key) && next && !next.startsWith("--")) {
+    if (booleanFlags.has(key)) {
+      // Boolean tool fields may be rendered from workflow/config values as
+      // an explicit `--flag true|false`.  Consume that value here instead of
+      // leaving it as a positional argument, while retaining bare `--flag`
+      // as the usual true form.
+      if (typeof next === "string" && (next === "true" || next === "false")) {
+        flags[key] = next === "true";
+        index += 1;
+      } else {
+        flags[key] = true;
+      }
+      continue;
+    }
+    if (next && !next.startsWith("--")) {
       flags[key] = next;
       index += 1;
     } else {

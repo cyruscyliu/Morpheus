@@ -69,6 +69,16 @@ generates and mutates a scenario, and prints the readable actions without
 starting QEMU. The `--devilang-grammar` and `--enable-devilang-grammar` names
 remain accepted as compatibility aliases.
 
+For debugging, LibAFL exec hides the outer L1 and nested L2 console streams by
+default while retaining the complete raw stream in `launcher.stdout.log` for
+runtime extraction. Pass `--show-console` (or set
+`MORPHEUS_LIBAFL_SHOW_CONSOLE=true`) to display those streams as they arrive.
+The LibAFL nesting workflow exposes the same boolean in its `libafl_exec` step;
+Set
+`workflows.nvirsh-qemu-arm64-cvm-libafl-nesting-fuzzing.metadata.console.show`
+(or the corresponding grammar-workflow value) to `true` when running that
+workflow interactively.
+
 ## Guest Stub Artifact
 
 The crate exposes a guest stub binary target:

@@ -62,6 +62,16 @@ elif [ "${MORPHEUS_LIBAFL_DEVILANG_GRAMMAR_MODE+x}" = "x" ]; then
 fi
 fuzz_virtio_ids=""
 fuzz_virtio_ids_set=false
+mutational_max_iterations="${MORPHEUS_LIBAFL_MUTATIONAL_MAX_ITERATIONS:-}"
+show_console="${MORPHEUS_LIBAFL_SHOW_CONSOLE:-false}"
+
+normalize_boolean() {
+  case "${1:-}" in
+    true|TRUE|True|1|yes|YES|on|ON) printf 'true\n' ;;
+    false|FALSE|False|0|no|NO|off|OFF|'') printf 'false\n' ;;
+    *) return 1 ;;
+  esac
+}
 
 # Morpheus scripted exec passes repeatable harness-arg via env/file, not argv.
 # Load those when the script is invoked with no positional args.
@@ -96,6 +106,16 @@ while [ "$#" -gt 0 ]; do
       shift
       fuzz_virtio_ids="${1:-}"
       fuzz_virtio_ids_set=true
+      ;;
+    --mutational-max-iterations) shift; mutational_max_iterations="${1:-}" ;;
+    --show-console)
+      case "${2:-}" in
+        true|TRUE|True|1|yes|YES|on|ON|false|FALSE|False|0|no|NO|off|OFF)
+          shift
+          show_console="${1:-}"
+          ;;
+        *) show_console="true" ;;
+      esac
       ;;
     --disable-nqc2-plugin) disable_nqc2_plugin="true" ;;
     --capture-runtime) capture_runtime="true" ;;
@@ -136,6 +156,17 @@ if [ "${fuzz_virtio_ids_set}" = "true" ]; then
   esac
 fi
 
+if [ -n "${mutational_max_iterations}" ] &&
+   ! [[ "${mutational_max_iterations}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "--mutational-max-iterations must be a positive integer" >&2
+  exit 1
+fi
+
+if ! show_console="$(normalize_boolean "${show_console}")"; then
+  echo "--show-console must be a boolean (true/false)" >&2
+  exit 1
+fi
+
 manifest_file="${run_dir}/manifest.json"
 l1_runtime_dir="${run_dir}/l1-runtime"
 corpus_dir="${run_dir}/corpus"
@@ -145,7 +176,6 @@ replay_state_file="${run_dir}/replay-state.json"
 seed_inputs_file="${run_dir}/seed-inputs.txt"
 devilang_states_file="${run_dir}/devilang-states.txt"
 devilang_grammar_file="${run_dir}/devilang-grammar.path"
-step_log_file="${run_dir%/}/../stdout.log"
 runner_log_file="${run_dir}/launcher.stdout.log"
 fuzzer_bin="${install_dir}/bin/qemu_nesting"
 stub_elf="${install_dir}/bin/libafl_nesting_stub"
@@ -1248,6 +1278,9 @@ unset MORPHEUS_LIBAFL_GRAMMAR MORPHEUS_LIBAFL_DEVILANG_GRAMMAR
 launch_env=("STUB=${stub_elf}" "MORPHEUS_LIBAFL_CORPUS_DIR=${corpus_dir}" "MORPHEUS_LIBAFL_OBJECTIVE_DIR=${objective_dir}")
 launch_env+=("MORPHEUS_LIBAFL_DEVILANG_GRAMMAR_MODE=${devilang_grammar_mode}")
 launch_env+=("MORPHEUS_LIBAFL_GRAMMAR_MODE=${devilang_grammar_mode}")
+if [ -n "${mutational_max_iterations}" ]; then
+  launch_env+=("MORPHEUS_LIBAFL_MUTATIONAL_MAX_ITERATIONS=${mutational_max_iterations}")
+fi
 if [ -n "${l2_run_window_ms}" ]; then
   launch_env+=("MORPHEUS_LIBAFL_L2_RUN_WINDOW_MS=${l2_run_window_ms}")
   # Default non-replay executor timeout is 12s, far below CVM L2 windows.
@@ -1286,15 +1319,27 @@ fi
 launch_cmd=(env "${launch_env[@]}" "${fuzzer_bin}" "${args[@]}")
 
 source_log_file() {
-  if [ -f "${step_log_file}" ] && [ -s "${step_log_file}" ]; then
-    printf '%s\n' "${step_log_file}"
-  else
-    printf '%s\n' "${runner_log_file}"
-  fi
+  # The workflow step log is the user-facing (possibly filtered) stream.
+  # Runtime extraction must always consume the unfiltered launcher log.
+  printf '%s\n' "${runner_log_file}"
 }
 
 spawn_launcher() {
-  setsid "${launch_cmd[@]}" > >(tee -a "${runner_log_file}") 2>&1 &
+  # Keep the raw stream in launcher.stdout.log while filtering only what is
+  # displayed.  The wrapper waits for tee/filter to drain and propagates the
+  # fuzzer's status, so extraction cannot race the raw log copy.
+  setsid env \
+    "MORPHEUS_LIBAFL_LAUNCHER_LOG_FILE=${runner_log_file}" \
+    "MORPHEUS_LIBAFL_CONSOLE_FILTER=${repo_root}/tools/libafl/scripts/console-filter.sh" \
+    "MORPHEUS_LIBAFL_SHOW_CONSOLE=${show_console}" \
+    bash -c '
+      set -o pipefail
+      "$@" 2>&1 \
+        | tee -a "$MORPHEUS_LIBAFL_LAUNCHER_LOG_FILE" \
+        | bash "$MORPHEUS_LIBAFL_CONSOLE_FILTER" "$MORPHEUS_LIBAFL_SHOW_CONSOLE"
+      launcher_status="${PIPESTATUS[0]}"
+      exit "${launcher_status}"
+    ' -- "${launch_cmd[@]}" &
   child_pid="$!"
 }
 

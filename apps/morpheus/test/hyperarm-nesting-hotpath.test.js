@@ -70,6 +70,13 @@ const harnessSource = fs.readFileSync(
   path.join(repoRoot, "tools", "libafl", "scripts", "exec.sh"),
   "utf8",
 );
+const consoleFilterPath = path.join(
+  repoRoot,
+  "tools",
+  "libafl",
+  "scripts",
+  "console-filter.sh",
+);
 const libaflTool = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tools", "libafl", "tool.json"), "utf8"),
 );
@@ -766,6 +773,67 @@ test("LibAFL exposes configurable grammar mode controls", () => {
       "disable-devilang-grammar",
     ),
   );
+  assert.equal(fields["show-console"].boolean, true);
+  assert.ok(
+    libaflTool.managed.local.commands.exec.scalarFlags.includes(
+      "show-console",
+    ),
+  );
+});
+
+test("LibAFL console display switch hides guest streams but keeps raw evidence", () => {
+  const fixture = [
+    "[libafl/qemu_nesting] starting outer QEMU",
+    "L1 console line",
+    "[libafl/qemu_nesting] outer QEMU reached guest stub",
+    "[libafl/qemu_nesting] host progress",
+    "LQPRINTF: stub: launched l2 pid=1",
+    "L2 console line",
+    "LQPRINTF: stub-outcome kind=complete detail=0",
+    "LQPRINTF: stub: qemu stdout: guest line",
+    "LQPRINTF: stub-runtime begin name=qemu.stdout.log size=6 dumped=6 truncated=0",
+    "LQPRINTF: stub-runtime data name=qemu.stdout.log offset=0 hex=67756573740a",
+    "LQPRINTF: stub-runtime end name=qemu.stdout.log",
+    "LQPRINTF: stub: dumped runtime files to log",
+  ].join("\n") + "\n";
+  const hidden = spawnSync("bash", [consoleFilterPath, "false"], {
+    input: fixture,
+    encoding: "utf8",
+  });
+  assert.equal(hidden.status, 0, hidden.stderr);
+  assert.doesNotMatch(hidden.stdout, /L1 console line/);
+  assert.doesNotMatch(hidden.stdout, /L2 console line/);
+  assert.doesNotMatch(hidden.stdout, /qemu stdout: guest line/);
+  assert.match(hidden.stdout, /\[libafl\/qemu_nesting\] host progress/);
+  assert.match(hidden.stdout, /stub-outcome kind=complete/);
+  assert.doesNotMatch(hidden.stdout, /\n\n/);
+
+  const shown = spawnSync("bash", [consoleFilterPath, "true"], {
+    input: fixture,
+    encoding: "utf8",
+  });
+  assert.equal(shown.status, 0, shown.stderr);
+  assert.match(shown.stdout, /L1 console line/);
+  assert.match(shown.stdout, /L2 console line/);
+  assert.match(shown.stdout, /qemu stdout: guest line/);
+
+  const normalized = spawnSync("bash", [consoleFilterPath, "true"], {
+    input: "guest line\r\r\n\r\n",
+    encoding: "utf8",
+  });
+  assert.equal(normalized.status, 0, normalized.stderr);
+  assert.equal(normalized.stdout, "guest line\n\n");
+
+  const failedBeforeStub = spawnSync("bash", [consoleFilterPath, "false"], {
+    input: [
+      "[libafl/qemu_nesting] starting outer QEMU",
+      "NOTICE: firmware line",
+      "[libafl/qemu_nesting] outer QEMU failed: status=1",
+    ].join("\n"),
+    encoding: "utf8",
+  });
+  assert.equal(failedBeforeStub.status, 0, failedBeforeStub.stderr);
+  assert.match(failedBeforeStub.stdout, /outer QEMU failed/);
 });
 
 test("LibAFL grammar mode fails closed and exposes a no-QEMU probe", () => {
@@ -971,6 +1039,7 @@ test("buildroot CVM launch preserves the handoff and requested L1 memory", () =>
       "printf '%s\\n' \"$@\" > \"$MORPHEUS_TEST_CAPTURE\"",
       "printf '%s\\n' \"${MORPHEUS_LIBAFL_DEVILANG_GRAMMAR_MODE:-}\" > \"$MORPHEUS_TEST_GRAMMAR_MODE_CAPTURE\"",
       "printf '%s\\n' \"${MORPHEUS_LIBAFL_DEVILANG_GRAMMAR:-}\" > \"$MORPHEUS_TEST_GRAMMAR_PATH_CAPTURE\"",
+      "if [ -n \"${MORPHEUS_TEST_CONSOLE_OUTPUT:-}\" ]; then printf '%s\\n' \"${MORPHEUS_TEST_CONSOLE_OUTPUT}\"; fi",
       "",
     ].join("\n"),
   );
@@ -1024,6 +1093,8 @@ test("buildroot CVM launch preserves the handoff and requested L1 memory", () =>
     targetCaptureFile,
     targetModeCaptureFile,
     targetGrammarPathCaptureFile,
+    targetQemuImgArgsFile = qemuImgArgsFile,
+    targetMkfsExt4ArgsFile = mkfsExt4ArgsFile,
     args = [],
     env = {},
   }) => spawnSync(
@@ -1045,8 +1116,8 @@ test("buildroot CVM launch preserves the handoff and requested L1 memory", () =>
         MORPHEUS_TEST_GRAMMAR_PATH_CAPTURE: targetGrammarPathCaptureFile,
         MORPHEUS_QEMU_IMG_BIN: fakeQemuImg,
         MORPHEUS_MKFS_EXT4_BIN: fakeMkfsExt4,
-        MORPHEUS_QEMU_IMG_ARGS: qemuImgArgsFile,
-        MORPHEUS_MKFS_EXT4_ARGS: mkfsExt4ArgsFile,
+        MORPHEUS_QEMU_IMG_ARGS: targetQemuImgArgsFile,
+        MORPHEUS_MKFS_EXT4_ARGS: targetMkfsExt4ArgsFile,
         MORPHEUS_REPO_ROOT: repoRoot,
         MORPHEUS_LIBAFL_QEMU_BRIDGE_SOURCE: qemuBridgeSourceDir,
         MORPHEUS_LIBAFL_QEMU_BRIDGE_DATA_DIR: qemuDataDir,
@@ -1068,6 +1139,105 @@ test("buildroot CVM launch preserves the handoff and requested L1 memory", () =>
     path.resolve(fs.readFileSync(grammarPathCaptureFile, "utf8").trim()),
     path.resolve(grammarPath),
   );
+
+  const consoleFixture = [
+    "[libafl/qemu_nesting] starting outer QEMU",
+    "synthetic L1 console",
+    "[libafl/qemu_nesting] outer QEMU reached guest stub",
+    "[libafl/qemu_nesting] host progress",
+    "LQPRINTF: stub: launched l2 pid=1",
+    "synthetic L2 console",
+    "LQPRINTF: stub-outcome kind=complete detail=0",
+    "LQPRINTF: stub-runtime begin name=qemu.stdout.log size=6 dumped=6 truncated=0",
+    "LQPRINTF: stub-runtime data name=qemu.stdout.log offset=0 hex=67756573740a",
+    "LQPRINTF: stub-runtime end name=qemu.stdout.log",
+    "LQPRINTF: stub: dumped runtime files to log",
+  ].join("\n");
+  const hiddenConsoleRunDir = path.join(tmpDir, "run-console-hidden");
+  const hiddenConsoleRun = runHarness({
+    targetRunDir: hiddenConsoleRunDir,
+    targetResultFile: path.join(tmpDir, "result-console-hidden.json"),
+    targetCaptureFile: path.join(tmpDir, "qemu-args-console-hidden.txt"),
+    targetModeCaptureFile: path.join(tmpDir, "grammar-mode-console-hidden.txt"),
+    targetGrammarPathCaptureFile: path.join(
+      tmpDir,
+      "grammar-path-console-hidden.txt",
+    ),
+    targetQemuImgArgsFile: path.join(tmpDir, "qemu-img-args-console-hidden.txt"),
+    targetMkfsExt4ArgsFile: path.join(tmpDir, "mkfs-ext4-args-console-hidden.txt"),
+    env: { MORPHEUS_TEST_CONSOLE_OUTPUT: consoleFixture },
+  });
+  assert.equal(
+    hiddenConsoleRun.status,
+    0,
+    `${hiddenConsoleRun.stderr}\n${hiddenConsoleRun.stdout}`,
+  );
+  const hiddenConsoleOutput = `${hiddenConsoleRun.stdout}\n${hiddenConsoleRun.stderr}`;
+  assert.doesNotMatch(hiddenConsoleOutput, /synthetic L1 console/);
+  assert.doesNotMatch(hiddenConsoleOutput, /synthetic L2 console/);
+  assert.match(hiddenConsoleOutput, /host progress/);
+  assert.match(hiddenConsoleOutput, /stub-outcome kind=complete/);
+  const hiddenRawLog = fs.readFileSync(
+    path.join(hiddenConsoleRunDir, "launcher.stdout.log"),
+    "utf8",
+  );
+  assert.match(hiddenRawLog, /synthetic L1 console/);
+  assert.match(hiddenRawLog, /synthetic L2 console/);
+  assert.equal(
+    fs.readFileSync(
+      path.join(hiddenConsoleRunDir, "l1-runtime", "qemu.stdout.log"),
+      "utf8",
+    ),
+    "guest\n",
+  );
+
+  const shownConsoleRun = runHarness({
+    targetRunDir: path.join(tmpDir, "run-console-shown"),
+    targetResultFile: path.join(tmpDir, "result-console-shown.json"),
+    targetCaptureFile: path.join(tmpDir, "qemu-args-console-shown.txt"),
+    targetModeCaptureFile: path.join(tmpDir, "grammar-mode-console-shown.txt"),
+    targetGrammarPathCaptureFile: path.join(
+      tmpDir,
+      "grammar-path-console-shown.txt",
+    ),
+    targetQemuImgArgsFile: path.join(tmpDir, "qemu-img-args-console-shown.txt"),
+    targetMkfsExt4ArgsFile: path.join(tmpDir, "mkfs-ext4-args-console-shown.txt"),
+    args: ["--show-console"],
+    env: { MORPHEUS_TEST_CONSOLE_OUTPUT: consoleFixture },
+  });
+  assert.equal(
+    shownConsoleRun.status,
+    0,
+    `${shownConsoleRun.stderr}\n${shownConsoleRun.stdout}`,
+  );
+  const shownConsoleOutput = `${shownConsoleRun.stdout}\n${shownConsoleRun.stderr}`;
+  assert.match(shownConsoleOutput, /synthetic L1 console/);
+  assert.match(shownConsoleOutput, /synthetic L2 console/);
+
+  const envShownConsoleRun = runHarness({
+    targetRunDir: path.join(tmpDir, "run-console-env-shown"),
+    targetResultFile: path.join(tmpDir, "result-console-env-shown.json"),
+    targetCaptureFile: path.join(tmpDir, "qemu-args-console-env-shown.txt"),
+    targetModeCaptureFile: path.join(tmpDir, "grammar-mode-console-env-shown.txt"),
+    targetGrammarPathCaptureFile: path.join(
+      tmpDir,
+      "grammar-path-console-env-shown.txt",
+    ),
+    targetQemuImgArgsFile: path.join(tmpDir, "qemu-img-args-console-env-shown.txt"),
+    targetMkfsExt4ArgsFile: path.join(tmpDir, "mkfs-ext4-args-console-env-shown.txt"),
+    env: {
+      MORPHEUS_LIBAFL_SHOW_CONSOLE: "true",
+      MORPHEUS_TEST_CONSOLE_OUTPUT: consoleFixture,
+    },
+  });
+  assert.equal(
+    envShownConsoleRun.status,
+    0,
+    `${envShownConsoleRun.stderr}\n${envShownConsoleRun.stdout}`,
+  );
+  const envShownConsoleOutput = `${envShownConsoleRun.stdout}\n${envShownConsoleRun.stderr}`;
+  assert.match(envShownConsoleOutput, /synthetic L1 console/);
+  assert.match(envShownConsoleOutput, /synthetic L2 console/);
 
   const stagingDir = path.join(runDir, "l1-share-staging");
   const shareImage = path.join(runDir, "l1-share.ext4");
@@ -1281,7 +1451,27 @@ test("nvirsh detached launch hands off pid management to stop", () => {
 test("nested fuzz loop avoids a duplicate L2 shadow execution", () => {
   assert.doesNotMatch(fuzzerSource, /ShadowTracingStage/);
   assert.doesNotMatch(fuzzerSource, /CmpLogObserver/);
-  assert.match(fuzzerSource, /StdMutationalStage::new\(\s*ScenarioMutator/);
+  assert.match(
+    fuzzerSource,
+    /StdMutationalStage::with_max_iterations\(\s*ScenarioMutator/,
+  );
+});
+
+test("slow nesting executions report broker progress between iterations", () => {
+  assert.match(fuzzerSource, /MORPHEUS_LIBAFL_MUTATIONAL_MAX_ITERATIONS/);
+  assert.match(fuzzerSource, /parse_mutational_max_iterations/);
+  assert.match(fuzzerSource, /fuzzer\s*\.\s*fuzz_loop_for\(/);
+  assert.match(fuzzerSource, /fuzz_loop_for\([\s\S]*?,\s*1,\s*\)/);
+  assert.match(fuzzerSource, /report_progress\(&mut \$mgr, &mut state\)/);
+  assert.equal(
+    libaflTool.config.fields["mutational-max-iterations"].aliases[0],
+    "mutational-max-iterations",
+  );
+  assert.ok(
+    libaflTool.managed.local.commands.exec.scalarFlags.includes(
+      "mutational-max-iterations",
+    ),
+  );
 });
 
 test("full runtime capture is opt-in for the fuzzing harness", () => {

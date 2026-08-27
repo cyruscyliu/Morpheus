@@ -22,6 +22,7 @@ const devilangAuditFixture = path.join(
   "dma.state"
 );
 const { applyConfigDefaults } = require("../dist/core/config.js");
+const { parseToolArgs } = require("../dist/core/tool-invoke.js");
 const { effectiveBuildDirKey, syncRemotePathToLocal } = require("../dist/transport/remote.js");
 const { resolveConfiguredStepArgs } = require("../dist/commands/workflow.js");
 const repoEnv = fs.readFileSync(path.join(repoRoot, ".env"), "utf8");
@@ -107,6 +108,47 @@ test("workflow metadata controls LibAFL grammar exec arguments", () => {
     "--harness-arg",
     "--grammar",
   ]);
+});
+
+test("workflow metadata controls LibAFL console visibility", () => {
+  const step = {
+    id: "libafl_exec",
+    tool: "libafl",
+    command: "exec",
+    args: [
+      "--show-console",
+      "{{workflow.metadata.console.show}}",
+    ],
+  };
+  const context = (metadata) => ({
+    workspaceRoot: process.cwd(),
+    stepResults: {},
+    workflowMetadata: metadata,
+  });
+
+  assert.deepEqual(
+    resolveConfiguredStepArgs(step, context({ console: { show: false } })).args,
+    ["--show-console", "false"],
+  );
+  assert.deepEqual(
+    resolveConfiguredStepArgs(step, context({ console: { show: true } })).args,
+    ["--show-console", "true"],
+  );
+});
+
+test("boolean tool flags consume explicit workflow values", () => {
+  assert.deepEqual(
+    parseToolArgs(["--show-console", "false"], {
+      booleanFlags: ["show-console"],
+    }),
+    { positionals: [], flags: { "show-console": false }, passthrough: [] },
+  );
+  assert.deepEqual(
+    parseToolArgs(["--show-console", "true"], {
+      booleanFlags: ["show-console"],
+    }),
+    { positionals: [], flags: { "show-console": true }, passthrough: [] },
+  );
 });
 
 function pidState(pid) {

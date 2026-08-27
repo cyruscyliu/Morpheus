@@ -1,6 +1,7 @@
 use core::time::Duration;
 use std::{
     env, fs,
+    num::NonZeroUsize,
     path::{Path, PathBuf},
     process,
 };
@@ -8,7 +9,7 @@ use std::{
 use libafl::{
     Error,
     corpus::{Corpus, OnDiskCorpus, Testcase},
-    events::{EventConfig, SimpleEventManager, launcher::Launcher},
+    events::{EventConfig, ProgressReporter, SimpleEventManager, launcher::Launcher},
     feedback_or, feedback_or_fast,
     feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
     fuzzer::{Evaluator, Fuzzer, StdFuzzer},
@@ -43,6 +44,35 @@ const MAX_INPUT_SIZE: usize = MAX_ENCODED_SCENARIO_BYTES;
 
 fn parse_env_u64(name: &str) -> Option<u64> {
     env::var(name).ok()?.parse::<u64>().ok()
+}
+
+const DEFAULT_MUTATIONAL_MAX_ITERATIONS: &str = "1";
+
+fn parse_mutational_max_iterations(value: Option<&str>) -> Result<NonZeroUsize, String> {
+    let value = value.unwrap_or(DEFAULT_MUTATIONAL_MAX_ITERATIONS);
+    value.parse::<NonZeroUsize>().map_err(|_| {
+        format!(
+            "MORPHEUS_LIBAFL_MUTATIONAL_MAX_ITERATIONS must be a positive integer, got {value:?}"
+        )
+    })
+}
+
+fn mutational_max_iterations() -> NonZeroUsize {
+    let configured = env::var("MORPHEUS_LIBAFL_MUTATIONAL_MAX_ITERATIONS").ok();
+    let iterations = parse_mutational_max_iterations(configured.as_deref())
+        .unwrap_or_else(|err| panic!("invalid mutational stage configuration: {err}"));
+    eprintln!(
+        "[libafl/qemu_nesting] mutational max iterations={}",
+        iterations
+    );
+    iterations
+}
+
+fn report_progress<EM, S>(manager: &mut EM, state: &mut S) -> Result<(), Error>
+where
+    EM: ProgressReporter<S>,
+{
+    manager.report_progress(state)
 }
 
 fn executor_timeout(replay_enabled: bool) -> Duration {
@@ -340,6 +370,13 @@ pub fn fuzz() {
                                 process::exit(1);
                             });
                     }
+                    // Replay runs bypass `fuzz_loop`, so publish the execution
+                    // count explicitly instead of leaving the broker with its
+                    // initial zero snapshot.
+                    report_progress(&mut $mgr, &mut state).unwrap_or_else(|err| {
+                        println!("failed replay progress report: {err:?}");
+                        process::exit(1);
+                    });
                 } else {
                     if initial_inputs.is_some() {
                         let corpus_ids = state.corpus().ids().collect::<Vec<_>>();
@@ -365,6 +402,13 @@ pub fn fuzz() {
                                     process::exit(1);
                                 });
                         }
+                        // Initial corpus evaluation also happens before the
+                        // regular fuzz loop.  Report it now so a slow first
+                        // mutation cannot hide completed executions.
+                        report_progress(&mut $mgr, &mut state).unwrap_or_else(|err| {
+                            println!("failed initial progress report: {err:?}");
+                            process::exit(1);
+                        });
                     }
 
                     // The shadow/CmpLog stage would boot a second nested L2 for
@@ -372,16 +416,31 @@ pub fn fuzz() {
                     // that cost for this systemmode target, so keep only the
                     // structured scenario mutation stage on the hot path.
                     let mut executor = executor;
-                    let mut stages = tuple_list!(StdMutationalStage::new(ScenarioMutator::new(
-                        scenario_generator.clone()
-                    )));
+                    let mut stages = tuple_list!(StdMutationalStage::with_max_iterations(
+                        ScenarioMutator::new(scenario_generator.clone()),
+                        mutational_max_iterations(),
+                    ));
 
-                    fuzzer
-                        .fuzz_loop(&mut stages, &mut executor, &mut state, &mut $mgr)
-                        .unwrap_or_else(|_| {
-                            println!("failed fuzz loop");
-                            process::exit(1);
-                        });
+                    // Run one complete fuzzer iteration at a time.  The
+                    // regular `fuzz_loop` only checks the reporting timer
+                    // before an iteration, while this target's executor can
+                    // take longer than the broker heartbeat interval.  The
+                    // bounded loop reports after every iteration and keeps
+                    // the broker's execution snapshot current.
+                    loop {
+                        fuzzer
+                            .fuzz_loop_for(
+                                &mut stages,
+                                &mut executor,
+                                &mut state,
+                                &mut $mgr,
+                                1,
+                            )
+                            .map_err(|err| {
+                                eprintln!("[libafl/qemu_nesting] fuzz loop stopped: {err:?}");
+                                err
+                            })?;
+                    }
                 }
                 Ok(())
             })()
@@ -413,5 +472,26 @@ pub fn fuzz() {
         Ok(()) => (),
         Err(Error::ShuttingDown) => println!("Fuzzing stopped by user. Good bye."),
         Err(err) => panic!("Failed to run launcher: {err:?}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_mutational_max_iterations;
+
+    #[test]
+    fn slow_target_defaults_to_one_mutation_per_iteration() {
+        assert_eq!(parse_mutational_max_iterations(None).unwrap().get(), 1);
+    }
+
+    #[test]
+    fn mutational_iteration_limit_accepts_positive_values() {
+        assert_eq!(parse_mutational_max_iterations(Some("7")).unwrap().get(), 7);
+    }
+
+    #[test]
+    fn mutational_iteration_limit_rejects_zero_and_non_numbers() {
+        assert!(parse_mutational_max_iterations(Some("0")).is_err());
+        assert!(parse_mutational_max_iterations(Some("many")).is_err());
     }
 }

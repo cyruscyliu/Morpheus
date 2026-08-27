@@ -173,6 +173,19 @@
         ],
         "boolean": true
       },
+      "show-console": {
+        "aliases": [
+          "show-console",
+          "showConsole"
+        ],
+        "boolean": true
+      },
+      "mutational-max-iterations": {
+        "aliases": [
+          "mutational-max-iterations",
+          "mutationalMaxIterations"
+        ]
+      },
       "detach": {
         "aliases": [
           "detach"
@@ -464,6 +477,8 @@
             "enable-devilang-grammar",
             "disable-grammar",
             "disable-devilang-grammar",
+            "show-console",
+            "mutational-max-iterations",
             "detach",
             "run-seconds",
             "build-version",

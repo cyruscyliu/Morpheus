@@ -101,7 +101,12 @@ if [ -n "${config_fragment_file}" ] && [ -s "${config_fragment_file}" ]; then
   cat "${config_fragment_file}" >> "${output_dir}/.config"
 fi
 
-make -C "${source_dir}" "O=${output_dir}" ARCH=arm64 olddefconfig
+# `olddefconfig` does not materialize every newly-visible choice in some
+# downstream kernels.  The subsequent build's `syncconfig` would then reopen
+# those choices interactively (and can block a workflow with stdin closed).
+# Run the line-oriented configurator with EOF so new symbols take their
+# documented defaults while existing fragment values are preserved.
+make -C "${source_dir}" "O=${output_dir}" ARCH=arm64 oldconfig </dev/null
 
 cat > "${build_inputs_state_file}" <<EOF
 {

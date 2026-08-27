@@ -1,0 +1,213 @@
+{
+  "name": "qemu-libafl-bridge",
+  "runtime": null,
+  "cli-contract": "fetch,patch,build,inspect",
+  "config": {
+    "fields": {
+      "mode": { "aliases": ["mode"] },
+      "source": { "aliases": ["source"], "path": true },
+      "seed-dir": { "aliases": ["seed-dir", "seedDir"], "path": true },
+      "build-version": { "aliases": ["build-version", "buildVersion"] },
+      "git-url": { "aliases": ["git-url", "gitUrl"] },
+      "git-ref": { "aliases": ["git-ref", "gitRef"] },
+      "fetch-submodules": {
+        "aliases": ["fetch-submodules", "fetchSubmodules"],
+        "boolean": true
+      },
+      "patch-dir": { "aliases": ["patch-dir", "patchDir"], "path": true },
+      "base-qemu-source": {
+        "aliases": ["base-qemu-source", "baseQemuSource"],
+        "path": true
+      },
+      "bridge-base-version": {
+        "aliases": ["bridge-base-version", "bridgeBaseVersion"]
+      },
+      "provider-base-ref": {
+        "aliases": ["provider-base-ref", "providerBaseRef"]
+      },
+      "provider-base-version": {
+        "aliases": ["provider-base-version", "providerBaseVersion"]
+      },
+      "reuse-build-dir": {
+        "aliases": ["reuse-build-dir", "reuseBuildDir"],
+        "boolean": true
+      },
+      "build-dir-key": { "aliases": ["build-dir-key", "buildDirKey"] },
+      "target-list": {
+        "aliases": ["target-list", "targetList"],
+        "repeatable": true
+      },
+      "configure-arg": {
+        "aliases": ["configure-arg", "configure-args", "configureArgs"],
+        "repeatable": true
+      },
+      "jobs": { "aliases": ["jobs"] },
+      "artifacts": { "aliases": ["artifacts"], "repeatable": true }
+    }
+  },
+  "managed": {
+    "schemaVersion": 1,
+    "modes": ["local"],
+    "local": {
+      "sourceTemplate": "tools/qemu-libafl-bridge/src/qemu-{buildVersion}",
+      "downloadsDir": "tools/qemu-libafl-bridge/downloads",
+      "buildDirTemplate": "tools/qemu-libafl-bridge/builds/{buildDirKey}/build",
+      "installDirTemplate": "tools/qemu-libafl-bridge/builds/{buildDirKey}/install",
+      "artifacts": {
+      "source-dir": {
+          "pathTemplate": "tools/qemu-libafl-bridge/src/qemu-{buildVersion}"
+        },
+        "rebased-source": {
+          "pathTemplate": "tools/qemu-libafl-bridge/builds/{buildDirKey}/rebased-source"
+        },
+        "build-dir": {
+          "pathTemplate": "tools/qemu-libafl-bridge/builds/{buildDirKey}/build"
+        },
+        "install-dir": {
+          "pathTemplate": "tools/qemu-libafl-bridge/builds/{buildDirKey}/install"
+        },
+        "qemu-bridge-lib": {
+          "pathTemplate": "tools/qemu-libafl-bridge/builds/{buildDirKey}/install/lib/libqemu-system-aarch64.so"
+        },
+        "qemu-bridge-data-dir": {
+          "pathTemplate": "tools/qemu-libafl-bridge/builds/{buildDirKey}/build/qemu-bundle/usr/local/share/qemu"
+        }
+      },
+      "commands": {
+        "fetch": {
+          "requiredFlags": ["source"],
+          "scalarFlags": [
+            "git-url",
+            "git-ref",
+            "seed-dir",
+            "build-version",
+            "fetch-submodules",
+            "bridge-base-version",
+            "provider-base-ref",
+            "provider-base-version"
+          ],
+          "repeatableFlags": [],
+          "script": { "path": "scripts/fetch.sh", "shell": "bash" },
+          "pathFlags": {
+            "source": "tools/qemu-libafl-bridge/src/qemu-{buildVersion}",
+            "downloads-dir": "tools/qemu-libafl-bridge/downloads"
+          },
+          "result": {
+            "successSummary": "fetched LibAFL bridge provider source",
+            "reusedSummary": "reused LibAFL bridge provider source",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{source}"
+            },
+            "details": {
+              "source": "{source}",
+              "git_url": { "fromFlag": "git-url" },
+              "git_ref": { "fromFlag": "git-ref" },
+              "build_version": { "fromFlag": "build-version" }
+            }
+          }
+        },
+        "patch": {
+          "requiredFlags": ["source", "base-qemu-source", "build-dir"],
+          "scalarFlags": [
+            "source",
+            "base-qemu-source",
+            "build-dir",
+            "bridge-base-version",
+            "provider-base-ref",
+            "provider-base-version",
+            "build-version",
+            "build-dir-key"
+          ],
+          "repeatableFlags": [],
+          "script": { "path": "scripts/patch.sh", "shell": "bash" },
+          "pathFlags": {
+            "source": "tools/qemu-libafl-bridge/src/qemu-{buildVersion}",
+            "base-qemu-source": "tools/qemu/src/qemu-{buildVersion}",
+            "build-dir": "tools/qemu-libafl-bridge/builds/{buildDirKey}/build"
+          },
+          "result": {
+            "successSummary": "rebased LibAFL bridge onto QEMU baseline",
+            "reusedSummary": "reused rebased LibAFL bridge source",
+            "artifact": {
+              "path": "rebased-source",
+              "locationTemplate": "tools/qemu-libafl-bridge/builds/{buildDirKey}/rebased-source"
+            },
+            "details": {
+              "source": "{source}",
+              "base_qemu_source": "{base-qemu-source}",
+              "rebased_source": "{build-dir}/rebased-source"
+            }
+          }
+        },
+        "build": {
+          "requiredFlags": ["source", "build-dir", "install-dir"],
+          "scalarFlags": [
+            "source",
+            "build-dir",
+            "install-dir",
+            "reuse-build-dir",
+            "build-version",
+            "build-dir-key",
+            "jobs"
+          ],
+          "repeatableFlags": ["target-list", "configure-arg"],
+          "script": {
+            "path": "scripts/build.sh",
+            "shell": "bash",
+            "cwdTemplate": "{build-dir}"
+          },
+          "pathFlags": {
+            "source": "tools/qemu-libafl-bridge/src/qemu-{buildVersion}",
+            "build-dir": "tools/qemu-libafl-bridge/builds/{buildDirKey}/build",
+            "install-dir": "tools/qemu-libafl-bridge/builds/{buildDirKey}/install"
+          },
+          "result": {
+            "successSummary": "built QEMU v11 LibAFL bridge",
+            "reusedSummary": "reused QEMU v11 LibAFL bridge build",
+            "errorSummary": "QEMU v11 LibAFL bridge build failed",
+            "manifestTemplate": "{build-dir}/manifest.json",
+            "artifact": {
+              "path": "qemu-bridge-lib",
+              "locationTemplate": "{install-dir}/lib/libqemu-system-aarch64.so"
+            },
+            "details": {
+              "source": "{source}",
+              "build_dir": "{build-dir}",
+              "install_dir": "{install-dir}",
+              "target_list": { "fromFlag": "target-list" },
+              "configure_args": { "fromFlag": "configure-arg" }
+            }
+          }
+        },
+        "inspect": {
+          "requiredFlags": ["source"],
+          "scalarFlags": ["source", "build-dir", "install-dir", "build-version"],
+          "repeatableFlags": [],
+          "script": { "path": "scripts/inspect.sh", "shell": "bash" },
+          "pathFlags": {
+            "source": "tools/qemu-libafl-bridge/src/qemu-{buildVersion}",
+            "build-dir": "tools/qemu-libafl-bridge/builds/{buildDirKey}/build",
+            "install-dir": "tools/qemu-libafl-bridge/builds/{buildDirKey}/install"
+          },
+          "result": {
+            "successSummary": "inspected QEMU LibAFL bridge build",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{source}"
+            }
+          }
+        }
+      }
+    }
+  },
+  "inputs": {
+    "patch": {
+      "dependencies": {
+        "qemu": {
+          "flag": "base-qemu-source"
+        }
+      }
+    }
+  }
+}

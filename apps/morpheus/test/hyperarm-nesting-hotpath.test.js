@@ -70,6 +70,9 @@ const harnessSource = fs.readFileSync(
   path.join(repoRoot, "tools", "libafl", "scripts", "exec.sh"),
   "utf8",
 );
+const libaflTool = JSON.parse(
+  fs.readFileSync(path.join(repoRoot, "tools", "libafl", "tool.json"), "utf8"),
+);
 const nvirshExecSource = fs.readFileSync(
   path.join(repoRoot, "tools", "nvirsh", "scripts", "exec.sh"),
   "utf8",
@@ -112,13 +115,22 @@ const libaflBuildSource = fs.readFileSync(
   path.join(repoRoot, "tools", "libafl", "scripts", "build.sh"),
   "utf8",
 );
+const libaflBridgeBuildSource = fs.readFileSync(
+  path.join(
+    repoRoot,
+    "tools",
+    "qemu-libafl-bridge",
+    "scripts",
+    "build.sh",
+  ),
+  "utf8",
+);
 const libaflBridgePatchSource = fs.readFileSync(
   path.join(
     repoRoot,
     "tools",
-    "libafl",
-    "patches",
     "qemu-libafl-bridge",
+    "patches",
     "0001-handle-bufferless-zero-writes-in-snapshot-cow.patch",
   ),
   "utf8",
@@ -211,6 +223,24 @@ test("nested L2 crash feedback requires a verified kernel panic", () => {
   assert.match(
     stubSource,
     /libafl_qemu_end\(outcome == L2_OUTCOME_KERNEL_PANIC\s*\? LIBAFL_QEMU_END_CRASH\s*:\s*LIBAFL_QEMU_END_OK\)/,
+  );
+});
+
+test("CVM evidence is only checked after nested QEMU starts", () => {
+  assert.match(stubSource, /static bool l2_qemu_exec_started\(void\)/);
+  assert.match(stubSource, /qemu-input\.status is written by the wrapper/);
+  assert.match(
+    stubSource,
+    /if \(l2_qemu_exec_started\(\)\) \{\s*log_cvm_evidence\(\);\s*\} else \{\s*lqprintf\("stub: cvm evidence not applicable:/s,
+  );
+  assert.match(
+    stubSource,
+    /stub: pre-qemu launcher failure: nested qemu was not started/,
+  );
+  assert.doesNotMatch(
+    stubSource,
+    /if \(resolve_l2_cvm_mode\(\)\) \{\s*log_cvm_evidence\(\);/s,
+    "CVM mode alone must not imply that nested QEMU was started",
   );
 });
 
@@ -466,9 +496,10 @@ test("generated CVM hoststack uses QEMU and keeps the runtime shared", () => {
   );
   assert.match(nvirshBuildSource, /qemu-system-aarch64/);
   assert.match(nvirshBuildSource, /\/host\/guest-qemu\/bin\/qemu-system-aarch64/);
-  assert.match(nvirshBuildSource, /\/host\/guest-qemu\/runtime-libs/);
-  assert.match(nvirshBuildSource, /guest_qemu_runtime_loader/);
-  assert.match(nvirshBuildSource, /--library-path/);
+  assert.doesNotMatch(nvirshBuildSource, /runtime-libs/);
+  assert.doesNotMatch(nvirshBuildSource, /guest_qemu_runtime_loader/);
+  assert.doesNotMatch(nvirshBuildSource, /--library-path/);
+  assert.doesNotMatch(nvirshBuildSource, /LD_LIBRARY_PATH|LD_PRELOAD/);
   assert.match(
     nvirshBuildSource,
     /-object rme-guest,id=rme0,measurement-algorithm=sha512/,
@@ -707,24 +738,88 @@ test("LibAFL CVM harness supports buildroot-based prepared state", () => {
   );
 });
 
+test("LibAFL exposes configurable grammar mode controls", () => {
+  const fields = libaflTool.config.fields;
+  assert.equal(fields.grammar.path, true);
+  assert.equal(fields["enable-grammar"].boolean, true);
+  assert.equal(fields["disable-grammar"].boolean, true);
+  assert.equal(fields["devilang-grammar"].path, true);
+  assert.equal(fields["enable-devilang-grammar"].boolean, true);
+  assert.equal(fields["disable-devilang-grammar"].boolean, true);
+  assert.ok(
+    libaflTool.managed.local.commands.exec.scalarFlags.includes(
+      "grammar",
+    ),
+  );
+  assert.ok(
+    libaflTool.managed.local.commands.exec.scalarFlags.includes(
+      "devilang-grammar",
+    ),
+  );
+  assert.ok(
+    libaflTool.managed.local.commands.exec.scalarFlags.includes(
+      "enable-devilang-grammar",
+    ),
+  );
+  assert.ok(
+    libaflTool.managed.local.commands.exec.scalarFlags.includes(
+      "disable-devilang-grammar",
+    ),
+  );
+});
+
+test("LibAFL grammar mode fails closed and exposes a no-QEMU probe", () => {
+  const genericProbeCommand = libaflTool.managed.local.commands[
+    "probe-grammar"
+  ];
+  assert.deepEqual(genericProbeCommand.requiredFlags, ["source", "grammar"]);
+  assert.equal(genericProbeCommand.script.path, "scripts/probe-devilang-grammar.sh");
+  const probeCommand = libaflTool.managed.local.commands[
+    "probe-devilang-grammar"
+  ];
+  const fuzzerSource = fs.readFileSync(
+    path.join(
+      repoRoot,
+      "tools",
+      "libafl",
+      "patches",
+      "overlay",
+      "fuzzers",
+      "full_system",
+      "qemu_nesting",
+      "src",
+      "fuzzer_breakpoint.rs",
+    ),
+    "utf8",
+  );
+  assert.match(
+    fuzzerSource,
+    /panic!\("failed to load grammar-backed scenario generator: \{err\}"\)/,
+  );
+  assert.match(fuzzerSource, /--check-devilang-grammar/);
+  assert.match(fuzzerSource, /--check-grammar/);
+  assert.match(fuzzerSource, /Devilang grammar probe succeeded/);
+  assert.ok(libaflTool["cli-contract"].split(",").includes("probe-devilang-grammar"));
+  assert.deepEqual(probeCommand.requiredFlags, ["source", "devilang-grammar"]);
+  assert.equal(probeCommand.script.path, "scripts/probe-devilang-grammar.sh");
+  assert.equal(probeCommand.script.shell, "bash");
+});
+
 test("LibAFL bridge keeps the 9p transport enabled across cached builds", () => {
   const dependencySource = fs.readFileSync(
     path.join(repoRoot, "tools", "libafl", "scripts", "install-dependencies.sh"),
     "utf8",
   );
-  assert.match(libaflBuildSource, /--enable-attr/);
-  assert.match(libaflBuildSource, /--enable-virtfs/);
+  assert.match(libaflBridgeBuildSource, /--enable-attr/);
+  assert.match(libaflBridgeBuildSource, /--enable-virtfs/);
   assert.match(libaflBuildSource, /bridge_config_fingerprint_file/);
   assert.match(libaflBuildSource, /bridge_current\(\)/);
   assert.match(libaflBuildSource, /install_bridge\(\)/);
-  assert.match(libaflBuildSource, /bridge_patch_file=/);
+  assert.doesNotMatch(libaflBuildSource, /bridge_patch_file=/);
   assert.match(libaflBuildSource, /prepare_bridge_source\(\)/);
   assert.match(libaflBuildSource, /LIBAFL_QEMU_DIR="\$\{bridge_storage_dir\}"/);
   assert.doesNotMatch(libaflBuildSource, /LIBAFL_QEMU_CLONE_DIR=/);
-  assert.match(
-    libaflBuildSource,
-    /QEMU bridge transport: virtfs\/9p enabled/,
-  );
+  assert.match(libaflBridgeBuildSource, /--as-shared-lib/);
   assert.match(libaflBridgePatchSource, /BDRV_REQ_ZERO_WRITE/);
   assert.match(libaflBridgePatchSource, /if \(!qiov\)/);
   assert.match(libaflBridgePatchSource, /write_zeroes_to_cache_layer/);
@@ -774,12 +869,12 @@ test("LibAFL systemmode nesting uses the COW snapshot manager", () => {
   assert.match(fuzzerSource, /FastSnapshotManager/);
   assert.match(
     fuzzerSource,
-    /\.snapshot_manager\(FastSnapshotManager::default\(\)\)/,
+    /\.snapshot_manager\(snapshot_manager_from_env\(\)\)/,
   );
-  assert.doesNotMatch(
+  assert.match(
     fuzzerSource,
-    /QemuSnapshotManager/,
-    "migration snapshots do not initialize the LibAFL block COW layer",
+    /unwrap_or_else\(\|_\| "fast"\.to_owned\(\)\)/,
+    "fast snapshots remain the default COW layer",
   );
 });
 
@@ -803,10 +898,18 @@ test("buildroot CVM launch preserves the handoff and requested L1 memory", () =>
     "share",
     "qemu",
   );
+  const qemuBridgeSourceDir = path.join(
+    tmpDir,
+    "build",
+    "qemu-libafl-bridge",
+  );
   const captureFile = path.join(tmpDir, "qemu-args.txt");
+  const grammarModeCaptureFile = path.join(tmpDir, "grammar-mode.txt");
+  const grammarPathCaptureFile = path.join(tmpDir, "grammar-path.txt");
   const qemuImgArgsFile = path.join(tmpDir, "qemu-img-args.txt");
   const mkfsExt4ArgsFile = path.join(tmpDir, "mkfs-ext4-args.txt");
   const resultFile = path.join(tmpDir, "result.json");
+  const grammarPath = path.join(workspaceDir, "virtio-net.state");
   const stateFile = path.join(nvirshInstallDir, "state.json");
   const firmwareA = path.join(tmpDir, "firmware-a.fd");
   const firmwareB = path.join(tmpDir, "firmware-b.fd");
@@ -820,6 +923,7 @@ test("buildroot CVM launch preserves the handoff and requested L1 memory", () =>
 
   fs.mkdirSync(sourceDir, { recursive: true });
   fs.mkdirSync(workspaceDir, { recursive: true });
+  fs.mkdirSync(qemuBridgeSourceDir, { recursive: true });
   fs.mkdirSync(path.dirname(fakeStub), { recursive: true });
   fs.mkdirSync(nvirshInstallDir, { recursive: true });
   fs.mkdirSync(qemuDataDir, { recursive: true });
@@ -833,6 +937,7 @@ test("buildroot CVM launch preserves the handoff and requested L1 memory", () =>
   fs.writeFileSync(firmwareA, "synthetic-firmware-a\n");
   fs.writeFileSync(firmwareB, "synthetic-firmware-b\n");
   fs.writeFileSync(fakeStub, "synthetic-stub\n");
+  fs.writeFileSync(grammarPath, "machine synthetic {}\n");
   writeExecutable(
     path.join(shareDir, "launch-l2-hoststack.sh"),
     "#!/bin/sh\nexit 0\n",
@@ -861,7 +966,13 @@ test("buildroot CVM launch preserves the handoff and requested L1 memory", () =>
   );
   writeExecutable(
     fakeFuzzer,
-    "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$MORPHEUS_TEST_CAPTURE\"\n",
+    [
+      "#!/bin/sh",
+      "printf '%s\\n' \"$@\" > \"$MORPHEUS_TEST_CAPTURE\"",
+      "printf '%s\\n' \"${MORPHEUS_LIBAFL_DEVILANG_GRAMMAR_MODE:-}\" > \"$MORPHEUS_TEST_GRAMMAR_MODE_CAPTURE\"",
+      "printf '%s\\n' \"${MORPHEUS_LIBAFL_DEVILANG_GRAMMAR:-}\" > \"$MORPHEUS_TEST_GRAMMAR_PATH_CAPTURE\"",
+      "",
+    ].join("\n"),
   );
 
   fs.writeFileSync(
@@ -895,42 +1006,68 @@ test("buildroot CVM launch preserves the handoff and requested L1 memory", () =>
     }, null, 2),
   );
 
-  const run = spawnSync(
+  const baseHarnessArgs = [
+    "--nvirsh-state",
+    stateFile,
+    "--l2-mode",
+    "cvm",
+    "--l2-accel",
+    "kvm",
+    "--l2-cpu",
+    "host",
+    "--l2-run-window-ms",
+    "1000",
+  ];
+  const runHarness = ({
+    targetRunDir,
+    targetResultFile,
+    targetCaptureFile,
+    targetModeCaptureFile,
+    targetGrammarPathCaptureFile,
+    args = [],
+    env = {},
+  }) => spawnSync(
     "bash",
-    [
-      harnessScript,
-      "--nvirsh-state",
-      stateFile,
-      "--l2-mode",
-      "cvm",
-      "--l2-accel",
-      "kvm",
-      "--l2-cpu",
-      "host",
-      "--l2-run-window-ms",
-      "1000",
-    ],
+    [harnessScript, ...baseHarnessArgs, ...args],
     {
       encoding: "utf8",
       env: {
         ...process.env,
         MORPHEUS_LIBAFL_SOURCE: sourceDir,
-        MORPHEUS_LIBAFL_RUN_DIR: runDir,
+        MORPHEUS_LIBAFL_RUN_DIR: targetRunDir,
         MORPHEUS_LIBAFL_INSTALL_DIR: installDir,
         MORPHEUS_LIBAFL_WORKSPACE: workspaceDir,
-        MORPHEUS_LIBAFL_RESULT_FILE: resultFile,
+        MORPHEUS_LIBAFL_RESULT_FILE: targetResultFile,
         MORPHEUS_LIBAFL_RUN_SECONDS: "0",
         MORPHEUS_NVIRSH_INSTALL_DIR: nvirshInstallDir,
-        MORPHEUS_TEST_CAPTURE: captureFile,
+        MORPHEUS_TEST_CAPTURE: targetCaptureFile,
+        MORPHEUS_TEST_GRAMMAR_MODE_CAPTURE: targetModeCaptureFile,
+        MORPHEUS_TEST_GRAMMAR_PATH_CAPTURE: targetGrammarPathCaptureFile,
         MORPHEUS_QEMU_IMG_BIN: fakeQemuImg,
         MORPHEUS_MKFS_EXT4_BIN: fakeMkfsExt4,
         MORPHEUS_QEMU_IMG_ARGS: qemuImgArgsFile,
         MORPHEUS_MKFS_EXT4_ARGS: mkfsExt4ArgsFile,
         MORPHEUS_REPO_ROOT: repoRoot,
+        MORPHEUS_LIBAFL_QEMU_BRIDGE_SOURCE: qemuBridgeSourceDir,
+        MORPHEUS_LIBAFL_QEMU_BRIDGE_DATA_DIR: qemuDataDir,
+        ...env,
       },
     },
   );
+  const run = runHarness({
+    targetRunDir: runDir,
+    targetResultFile: resultFile,
+    targetCaptureFile: captureFile,
+    targetModeCaptureFile: grammarModeCaptureFile,
+    targetGrammarPathCaptureFile: grammarPathCaptureFile,
+    args: ["--grammar", grammarPath],
+  });
   assert.equal(run.status, 0, `${run.stderr}\n${run.stdout}`);
+  assert.equal(fs.readFileSync(grammarModeCaptureFile, "utf8").trim(), "auto");
+  assert.equal(
+    path.resolve(fs.readFileSync(grammarPathCaptureFile, "utf8").trim()),
+    path.resolve(grammarPath),
+  );
 
   const stagingDir = path.join(runDir, "l1-share-staging");
   const shareImage = path.join(runDir, "l1-share.ext4");
@@ -1010,6 +1147,87 @@ test("buildroot CVM launch preserves the handoff and requested L1 memory", () =>
   const volumeOffset = partitionStart * 512;
   assert.equal(bootImage[volumeOffset + 510], 0x55);
   assert.equal(bootImage[volumeOffset + 511], 0xaa);
+
+  const enabledRunDir = path.join(tmpDir, "run-enabled");
+  const enabledModeCaptureFile = path.join(tmpDir, "grammar-mode-enabled.txt");
+  const enabledGrammarPathCaptureFile = path.join(tmpDir, "grammar-path-enabled.txt");
+  const enabledRun = runHarness({
+    targetRunDir: enabledRunDir,
+    targetResultFile: path.join(tmpDir, "result-enabled.json"),
+    targetCaptureFile: path.join(tmpDir, "qemu-args-enabled.txt"),
+    targetModeCaptureFile: enabledModeCaptureFile,
+    targetGrammarPathCaptureFile: enabledGrammarPathCaptureFile,
+    args: ["--enable-grammar", "--grammar", grammarPath],
+  });
+  assert.equal(enabledRun.status, 0, `${enabledRun.stderr}\n${enabledRun.stdout}`);
+  assert.equal(fs.readFileSync(enabledModeCaptureFile, "utf8").trim(), "on");
+  assert.equal(
+    path.resolve(fs.readFileSync(enabledGrammarPathCaptureFile, "utf8").trim()),
+    path.resolve(grammarPath),
+  );
+
+  const configuredRunDir = path.join(tmpDir, "run-configured");
+  const configuredModeCaptureFile = path.join(tmpDir, "grammar-mode-configured.txt");
+  const configuredGrammarPathCaptureFile = path.join(
+    tmpDir,
+    "grammar-path-configured.txt",
+  );
+  const configuredRun = runHarness({
+    targetRunDir: configuredRunDir,
+    targetResultFile: path.join(tmpDir, "result-configured.json"),
+    targetCaptureFile: path.join(tmpDir, "qemu-args-configured.txt"),
+    targetModeCaptureFile: configuredModeCaptureFile,
+    targetGrammarPathCaptureFile: configuredGrammarPathCaptureFile,
+    env: {
+      MORPHEUS_LIBAFL_ENABLE_GRAMMAR: "true",
+      MORPHEUS_LIBAFL_GRAMMAR: grammarPath,
+    },
+  });
+  assert.equal(
+    configuredRun.status,
+    0,
+    `${configuredRun.stderr}\n${configuredRun.stdout}`,
+  );
+  assert.equal(
+    fs.readFileSync(configuredModeCaptureFile, "utf8").trim(),
+    "on",
+  );
+  assert.equal(
+    path.resolve(
+      fs.readFileSync(configuredGrammarPathCaptureFile, "utf8").trim(),
+    ),
+    path.resolve(grammarPath),
+  );
+
+  const disabledModeCaptureFile = path.join(tmpDir, "grammar-mode-disabled.txt");
+  const disabledGrammarPathCaptureFile = path.join(tmpDir, "grammar-path-disabled.txt");
+  const disabledRun = runHarness({
+    targetRunDir: path.join(tmpDir, "run-disabled"),
+    targetResultFile: path.join(tmpDir, "result-disabled.json"),
+    targetCaptureFile: path.join(tmpDir, "qemu-args-disabled.txt"),
+    targetModeCaptureFile: disabledModeCaptureFile,
+    targetGrammarPathCaptureFile: disabledGrammarPathCaptureFile,
+    args: ["--disable-grammar"],
+    env: { MORPHEUS_LIBAFL_GRAMMAR: grammarPath },
+  });
+  assert.equal(disabledRun.status, 0, `${disabledRun.stderr}\n${disabledRun.stdout}`);
+  assert.equal(fs.readFileSync(disabledModeCaptureFile, "utf8").trim(), "off");
+  assert.equal(fs.readFileSync(disabledGrammarPathCaptureFile, "utf8").trim(), "");
+
+  const missingGrammarRun = runHarness({
+    targetRunDir: path.join(tmpDir, "run-missing-grammar"),
+    targetResultFile: path.join(tmpDir, "result-missing-grammar.json"),
+    targetCaptureFile: path.join(tmpDir, "qemu-args-missing-grammar.txt"),
+    targetModeCaptureFile: path.join(tmpDir, "grammar-mode-missing.txt"),
+    targetGrammarPathCaptureFile: path.join(tmpDir, "grammar-path-missing.txt"),
+    args: ["--enable-grammar"],
+    env: { MORPHEUS_LIBAFL_GRAMMAR: "" },
+  });
+  assert.notEqual(missingGrammarRun.status, 0);
+  assert.match(
+    missingGrammarRun.stderr,
+    /grammar mode on requires --grammar/,
+  );
 });
 
 test("CVM stub prefers the mounted /mnt hoststack and falls back to /host", () => {

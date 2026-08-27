@@ -852,6 +852,7 @@ static bool runtime_capture_enabled(void) {
 }
 
 static void log_cvm_evidence(void);
+static bool l2_qemu_exec_started(void);
 static bool resolve_l2_cvm_mode(void);
 
 static void dump_l2_diagnostics(void) {
@@ -881,7 +882,12 @@ static void dump_l2_diagnostics(void) {
 
   dump_runtime_snapshot();
   if (resolve_l2_cvm_mode()) {
-    log_cvm_evidence();
+    if (l2_qemu_exec_started()) {
+      log_cvm_evidence();
+    } else {
+      lqprintf("stub: cvm evidence not applicable: nested qemu was not "
+               "started\n");
+    }
   }
 }
 
@@ -1193,6 +1199,22 @@ static bool log_first_matching_line(const char *path, const char *needle,
   return false;
 }
 
+static bool l2_qemu_exec_started(void) {
+  static const char *needle = "qemu-exec-start";
+
+  /* qemu-input.status is written by the wrapper before it executes the
+   * generated launcher.  The launch marker is the authoritative boundary. */
+  return file_contains_any(LAUNCH_MARKER_PATH, &needle, 1);
+}
+
+static void log_l2_launcher_phase(void) {
+  if (l2_qemu_exec_started()) {
+    lqprintf("stub: l2 launcher phase=post-qemu\n");
+  } else {
+    lqprintf("stub: pre-qemu launcher failure: nested qemu was not started\n");
+  }
+}
+
 static void log_cvm_evidence(void) {
   static const char *needle = "Realm shared GPA mask:";
 
@@ -1355,6 +1377,29 @@ static void log_process_state(pid_t pid) {
   }
 }
 
+static void log_wait_status(pid_t pid, int status) {
+  int process_group = getpgid(pid);
+  int core_dumped = 0;
+#ifdef WCOREDUMP
+  core_dumped = WCOREDUMP(status) ? 1 : 0;
+#endif
+
+  if (process_group < 0) {
+    lqprintf("stub: l2 wait pid=%u pgid=unavailable errno=%d raw-status=%d\n",
+             (unsigned)pid, errno, status);
+  } else {
+    lqprintf("stub: l2 wait pid=%u pgid=%u raw-status=%d\n", (unsigned)pid,
+             (unsigned)process_group, status);
+  }
+  lqprintf("stub: l2 wait exited=%u exit-status=%d signaled=%u signal=%d "
+           "core-dumped=%u stopped=%u continued=%u\n",
+           (unsigned)WIFEXITED(status), WIFEXITED(status) ? WEXITSTATUS(status) : -1,
+           (unsigned)WIFSIGNALED(status),
+           WIFSIGNALED(status) ? WTERMSIG(status) : 0, (unsigned)core_dumped,
+           (unsigned)WIFSTOPPED(status), WIFSTOPPED(status) ? WSTOPSIG(status) : 0,
+           (unsigned)WIFCONTINUED(status));
+}
+
 static const char *resolve_l2_shell(void) {
   /* Buildroot commonly makes /bin/sh a symlink to bash. Keep the launcher
    * invocation consistent with the original /bin/bash contract and use sh
@@ -1482,12 +1527,16 @@ static bool launch_l2(const uint8_t *data, size_t len,
 
   injected_period_ms(data, period_ms, sizeof(period_ms));
 
-  /* Everything up to posix_spawn runs in the parent. The old fork child
-   * walked mounted files, changed libc's environment, and formatted marker
-   * logs before exec; that is unsafe after the harness has started threads. */
+  /* Keep process creation in posix_spawn. LibAFL/QEMU has worker threads, and
+   * a raw fork can inherit libc state that is unsafe for the child launcher. */
   if (!prepare_l2_launcher(&shell, &launch_script)) {
     return false;
   }
+
+  append_marker("launcher-shell-trace=%s\n",
+                getenv("MORPHEUS_L2_SHELL_TRACE")
+                    ? getenv("MORPHEUS_L2_SHELL_TRACE")
+                    : "0");
 
   if (snprintf(input_env, sizeof(input_env),
                "MORPHEUS_QEMU_INPUT_PATH=%s", INPUT_PATH) < 0 ||
@@ -1629,8 +1678,7 @@ static bool launch_l2(const uint8_t *data, size_t len,
     return false;
   }
 
-  /* The spawn attributes establish the group before the launcher runs. This
-   * parent-side call also covers libcs that report success before exec. */
+  /* The spawn attributes establish the group before the launcher runs. */
   if (setpgid(pid, pid) != 0 && errno != EACCES && errno != ESRCH) {
     lqprintf("stub: setpgid failed pid=%u errno=%d\n", (unsigned)pid, errno);
   }
@@ -1644,6 +1692,7 @@ static bool launch_l2(const uint8_t *data, size_t len,
   if (window_ms > evidence_wait_ms) {
     usleep((window_ms - evidence_wait_ms) * 1000U);
   }
+  append_marker("parent-before-wait\n");
   log_process_state(pid);
 
   int status = 0;
@@ -1668,13 +1717,18 @@ static bool launch_l2(const uint8_t *data, size_t len,
     return true;
   }
   if (wait_ret < 0) {
-    lqprintf("stub: waitpid failed\n");
+    lqprintf("stub: waitpid failed pid=%u errno=%d\n", (unsigned)pid, errno);
     return false;
   }
+  append_marker("parent-after-wait\n");
+  log_wait_status(pid, status);
   if (WIFEXITED(status)) {
     const int exit_status = WEXITSTATUS(status);
     const bool kernel_panic_logged = l2_kernel_panic_logged();
     lqprintf("stub: l2 exited status=%d\n", exit_status);
+    if (exit_status != 0) {
+      log_l2_launcher_phase();
+    }
     if (kernel_panic_logged) {
       lqprintf("stub: l2 kernel panic found\n");
       *outcome = L2_OUTCOME_KERNEL_PANIC;
@@ -1692,6 +1746,7 @@ static bool launch_l2(const uint8_t *data, size_t len,
     *outcome = L2_OUTCOME_LAUNCHER_SIGNAL;
     *outcome_detail = WTERMSIG(status);
     lqprintf("stub: l2 launcher killed by signal=%d\n", *outcome_detail);
+    log_l2_launcher_phase();
     log_l2_input_evidence();
     return true;
   }
@@ -1714,6 +1769,7 @@ spawn_setup_failed:
   free(fuzz_ids_env);
   append_marker("launcher-spawn-setup-failed errno=%d\n", setup_error);
   return false;
+
 }
 
 int main(void) {

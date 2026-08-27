@@ -48,6 +48,27 @@ mutation, and the guest stub artifact.
 The exact communication model can evolve independently on top of the same
 patched QEMU coverage backend.
 
+## Devilang Grammar Configuration
+
+Grammar-guided generation is device-agnostic at the configuration boundary.
+Pass a generated state-machine `.state` file, a directory of `.state` files,
+or a manifest listing root `.state` files to the LibAFL tool:
+
+```text
+--enable-grammar
+--grammar <grammar-path>
+```
+
+The active workflow uses the virtio-net analysis output, but another workflow
+can pass any grammar with the same format. A directory loads every top-level
+`.state` file as a root phase; use a manifest when the directory also contains
+import-only helper modules. Enabled mode is fail-closed: an unreadable, empty,
+or unsupported grammar aborts the fuzzing runner instead of silently falling
+back to random generation. The `probe-grammar` tool command loads the path,
+generates and mutates a scenario, and prints the readable actions without
+starting QEMU. The `--devilang-grammar` and `--enable-devilang-grammar` names
+remain accepted as compatibility aliases.
+
 ## Guest Stub Artifact
 
 The crate exposes a guest stub binary target:

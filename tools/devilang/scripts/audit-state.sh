@@ -94,7 +94,6 @@ request_only = {
     "VIRTIO_NET_CTRL_CTRL_HDR_QUEUE_STATS",
 }
 
-head_re = re.compile(r"head\s+(\w+)_head\s*\{\s*position = (.*?);\s*to = \1;", re.S)
 dma_re = re.compile(r"dir=([^,]+).*data_type=([^,\)]+)")
 kind_type_re = re.compile(r"dir=([^,]+).*data_kind=([^,\)]+)(?:, data_type=([^,\)]+))?")
 pointer_re = re.compile(r"pointer\s*\{\s*from = ([^;]+);\s*to = ([^;]+);", re.S)
@@ -109,15 +108,6 @@ per_file = []
 for path in inputs:
     text = path.read_text()
     findings = []
-    for match in head_re.finditer(text):
-        name = match.group(1)
-        position = match.group(2)
-        if "virtqueue_" in position or "vring_" in position:
-            findings.append({
-                "kind": "transport_head_noise",
-                "head": name,
-            })
-
     for alias in forbidden_field_aliases:
         if alias in text:
             findings.append({

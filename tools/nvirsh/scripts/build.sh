@@ -625,8 +625,7 @@ if [ "${reuse_build_dir}" = "true" ] \
      && { [ "${l2_cvm}" != "true" ] || [ -f "${build_l1_dir}/guest-images/Image" ]; } \
      && { [ "${l2_cvm}" != "true" ] || [ -f "${build_l1_dir}/guest-images/rootfs.cpio.gz" ]; } \
      && { [ "${l2_cvm}" != "true" ] || [ -f "${build_l1_dir}/cca-host-stack/out/host.ext4" ]; } \
-     && { [ -z "${guest_qemu_source}" ] || [ -x "${build_l1_dir}/guest-qemu/bin/qemu-system-aarch64" ]; } \
-     && { [ -z "${guest_qemu_source}" ] || [ -d "${build_l1_dir}/guest-qemu/runtime-libs" ]; }; then
+     && { [ -z "${guest_qemu_source}" ] || [ -x "${build_l1_dir}/guest-qemu/bin/qemu-system-aarch64" ]; }; then
     reuse_prepared_build="true"
   fi
 fi
@@ -791,39 +790,6 @@ copy_from_guest() {
   done
   echo "failed to copy guest:${src} to ${dst}" >&2
   return 1
-}
-
-copy_guest_runtime_libraries() {
-  local keyfile="$1"
-  local port="$2"
-  local guest_binary="$3"
-  local runtime_root="$4"
-  local guest_binary_q=""
-  local dep_path=""
-  local dep_paths=()
-
-  printf -v guest_binary_q '%q' "${guest_binary}"
-  mapfile -t dep_paths < <(
-    ssh_guest \
-      "${keyfile}" \
-      "${port}" \
-      "{ ldd ${guest_binary_q} 2>/dev/null | tr ' ' '\n' | grep '^/'; readelf -l ${guest_binary_q} 2>/dev/null | grep 'Requesting program interpreter' | cut -d: -f2 | tr -d ' []'; } | sort -u"
-  )
-
-  if [ "${#dep_paths[@]}" -eq 0 ]; then
-    echo "failed to resolve runtime libraries for guest binary: ${guest_binary}" >&2
-    return 1
-  fi
-
-  rm -rf "${runtime_root}"
-  for dep_path in "${dep_paths[@]}"; do
-    mkdir -p "${runtime_root}$(dirname "${dep_path}")"
-    copy_from_guest \
-      "${keyfile}" \
-      "${port}" \
-      "${dep_path}" \
-      "${runtime_root}${dep_path}"
-  done
 }
 
 copy_dir_to_guest() {
@@ -1049,7 +1015,6 @@ runtime_guest_images_dir="${build_l1_dir}/guest-images"
 runtime_guest_qemu_dir="${build_l1_dir}/guest-qemu"
 runtime_guest_qemu_src_dir="${build_l1_dir}/guest-qemu-src"
 runtime_guest_nqc2_dir="${build_l1_dir}/guest-nqc2"
-runtime_guest_qemu_runtime_lib_dir="${runtime_guest_qemu_dir}/runtime-libs"
 hoststack_launch_script="${build_l1_dir}/launch-l2-hoststack.sh"
 base_image_path="${build_l0_dir}/base-image.qcow2"
 overlay_image_path="${build_l0_dir}/overlay.qcow2"
@@ -1176,7 +1141,6 @@ for candidate in \
 done
 guest_qemu_data_dir="${guest_qemu_dir}/share/qemu"
 guest_qemu_data_args=()
-guest_qemu_runtime_lib_dir=""
 guest_nqc2_trace="\${runtime_dir}/morpheus-nqc2.trace"
 printf 'resolved-qemu=%s\n' "\${guest_qemu}" >> "\${launch_marker}"
 printf 'guest-image-dir=%s\n' "\${guest_image_dir}" >> "\${launch_marker}"
@@ -1187,14 +1151,6 @@ elif [ ! -d "\${guest_qemu_data_dir}" ] && [ -d "/host/guest-qemu/share/qemu" ];
 elif [ ! -d "\${guest_qemu_data_dir}" ] && [ -d "/usr/share/qemu" ]; then
   guest_qemu_data_dir="/usr/share/qemu"
 fi
-for candidate in \
-  "${guest_qemu_dir}/runtime-libs" \
-  "/host/guest-qemu/runtime-libs"; do
-  if [ -d "\${candidate}" ]; then
-    guest_qemu_runtime_lib_dir="\${candidate}"
-    break
-  fi
-done
 if [ ! -x "\${guest_qemu}" ]; then
   echo "missing qemu-system-aarch64 in l1" >&2
   exit 1
@@ -1275,35 +1231,6 @@ else
   )
 fi
 guest_qemu_exec_cmd=("\${guest_qemu_cmd[@]}")
-if [ -n "\${guest_qemu_runtime_lib_dir}" ]; then
-  guest_qemu_runtime_loader=""
-  for candidate in \
-    "\${guest_qemu_runtime_lib_dir}/lib/ld-linux-aarch64.so.1" \
-    "\${guest_qemu_runtime_lib_dir}/lib64/ld-linux-aarch64.so.1"; do
-    if [ -x "\${candidate}" ]; then
-      guest_qemu_runtime_loader="\${candidate}"
-      break
-    fi
-  done
-  guest_qemu_runtime_library_path="\${guest_qemu_runtime_lib_dir}/lib:\${guest_qemu_runtime_lib_dir}/lib/aarch64-linux-gnu"
-  if [ -n "\${LD_LIBRARY_PATH:-}" ]; then
-    guest_qemu_runtime_library_path="\${guest_qemu_runtime_library_path}:\${LD_LIBRARY_PATH}"
-  fi
-  if [ -n "\${guest_qemu_runtime_loader}" ]; then
-    guest_qemu_exec_cmd=(
-      "\${guest_qemu_runtime_loader}"
-      --library-path
-      "\${guest_qemu_runtime_library_path}"
-      "\${guest_qemu_cmd[@]}"
-    )
-  else
-    guest_qemu_exec_cmd=(
-      env
-      LD_LIBRARY_PATH="\${guest_qemu_runtime_library_path}"
-      "\${guest_qemu_cmd[@]}"
-    )
-  fi
-fi
 printf 'qemu-cmd=' >> "\${launch_marker}"
 printf '%q ' "\${guest_qemu_cmd[@]}" >> "\${launch_marker}"
 printf '\n' >> "\${launch_marker}"
@@ -1929,11 +1856,6 @@ if [ "${reuse_prepared_build}" != "true" ]; then
       "${l1_ssh_port}" \
       "/root/morpheus-qemu/bin/qemu-system-aarch64" \
       "${runtime_guest_qemu_dir}/bin/qemu-system-aarch64"
-    copy_guest_runtime_libraries \
-      "${build_l0_dir}/id_ed25519" \
-      "${l1_ssh_port}" \
-      "/root/morpheus-qemu/bin/qemu-system-aarch64" \
-      "${runtime_guest_qemu_runtime_lib_dir}"
   fi
 
   mkdir -p "${build_l1_host_boot_dir}"

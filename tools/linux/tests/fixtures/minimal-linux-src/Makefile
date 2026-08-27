@@ -1,6 +1,6 @@
 O ?= .
 
-.PHONY: qemu_virt_defconfig olddefconfig Image
+.PHONY: qemu_virt_defconfig olddefconfig oldconfig Image
 
 qemu_virt_defconfig:
 	@mkdir -p "$(O)"
@@ -9,6 +9,10 @@ qemu_virt_defconfig:
 olddefconfig:
 	@mkdir -p "$(O)"
 	@printf '%s\n' 'applied olddefconfig' >> "$(O)/defconfig.log"
+
+oldconfig:
+	@mkdir -p "$(O)"
+	@printf '%s\n' 'applied oldconfig' >> "$(O)/defconfig.log"
 
 Image:
 	@mkdir -p "$(O)/arch/arm64/boot"

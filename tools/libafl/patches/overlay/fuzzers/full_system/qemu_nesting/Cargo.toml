@@ -24,6 +24,7 @@ libafl_bolts = { path = "../../../crates/libafl_bolts" }
 libafl_targets = { path = "../../../crates/libafl_targets" }
 libafl_qemu = { path = "../../../crates/libafl_qemu", default-features = false, features = [
   "systemmode",
+  "shared",
 ] }
 libafl_nesting = { path = "../../../crates/libafl_nesting" }
 env_logger = "0.11.5"

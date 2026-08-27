@@ -219,8 +219,6 @@ function prepareBuildFixture(tmpDir, hostQemu, options = {}) {
   fs.mkdirSync(path.join(buildrootOutputDir, "build"), { recursive: true });
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "bin"), { recursive: true });
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "share", "qemu"), { recursive: true });
-  fs.mkdirSync(path.join(buildrootOutputDir, "target", "lib"), { recursive: true });
-  fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "lib"), { recursive: true });
   fs.writeFileSync(path.join(buildrootOutputDir, "images", "Image"), "l2-image\n");
   createCpioArchive(path.join(buildrootOutputDir, "images", "rootfs.cpio"), {
     "init": {
@@ -251,12 +249,7 @@ function prepareBuildFixture(tmpDir, hostQemu, options = {}) {
       "#!/bin/sh\nexit 0\n",
     );
   }
-  writeExecutable(
-    path.join(buildrootOutputDir, "target", "lib", "ld-linux-aarch64.so.1"),
-    "#!/bin/sh\nexit 0\n",
-  );
   fs.writeFileSync(path.join(buildrootOutputDir, "target", "usr", "share", "qemu", "edk2.bin"), "qemu-data\n");
-  fs.writeFileSync(path.join(buildrootOutputDir, "target", "usr", "lib", "libfdt.so.1"), "libfdt\n");
   fs.writeFileSync(
     path.join(buildrootOutputDir, ".morpheus-build-inputs.json"),
     JSON.stringify({ fingerprint: "buildroot-fixture-fingerprint" }, null, 2),

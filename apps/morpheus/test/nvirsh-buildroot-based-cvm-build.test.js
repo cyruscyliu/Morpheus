@@ -143,8 +143,6 @@ test("buildroot-based CVM build stages explicit linux, buildroot, and firmware-b
   fs.mkdirSync(path.join(buildrootOutputDir, "build"), { recursive: true });
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "bin"), { recursive: true });
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "share", "qemu"), { recursive: true });
-  fs.mkdirSync(path.join(buildrootOutputDir, "target", "lib"), { recursive: true });
-  fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "lib"), { recursive: true });
   fs.writeFileSync(path.join(buildrootOutputDir, "images", "Image"), "l2-image\n");
   createCpioArchive(path.join(buildrootOutputDir, "images", "rootfs.cpio"), {
     "init": {
@@ -159,12 +157,7 @@ test("buildroot-based CVM build stages explicit linux, buildroot, and firmware-b
     path.join(buildrootOutputDir, "target", "usr", "bin", "qemu-system-aarch64"),
     "#!/bin/sh\nexit 0\n",
   );
-  writeExecutable(
-    path.join(buildrootOutputDir, "target", "lib", "ld-linux-aarch64.so.1"),
-    "#!/bin/sh\nexit 0\n",
-  );
   fs.writeFileSync(path.join(buildrootOutputDir, "target", "usr", "share", "qemu", "edk2.bin"), "qemu-data\n");
-  fs.writeFileSync(path.join(buildrootOutputDir, "target", "usr", "lib", "libfdt.so.1"), "libfdt\n");
   fs.writeFileSync(
     path.join(buildrootOutputDir, ".morpheus-build-inputs.json"),
     JSON.stringify({ fingerprint: "buildroot-fixture-fingerprint" }, null, 2),
@@ -227,13 +220,9 @@ test("buildroot-based CVM build stages explicit linux, buildroot, and firmware-b
     fs.existsSync(path.join(buildDir, "l1", "guest-qemu", "share", "qemu", "edk2.bin")),
     true,
   );
-  assert.equal(
-    fs.existsSync(path.join(buildDir, "l1", "guest-qemu", "runtime-libs", "lib", "ld-linux-aarch64.so.1")),
-    true,
-  );
-  assert.equal(
-    fs.existsSync(path.join(buildDir, "l1", "guest-qemu", "runtime-libs", "lib", "libfdt.so.1")),
-    true,
+  assert.deepEqual(
+    fs.readdirSync(path.join(buildDir, "l1", "guest-qemu")).sort(),
+    ["bin", "share"],
   );
   assert.match(
     fs.readFileSync(path.join(buildDir, "l1", "launch-l2.sh"), "utf8"),
@@ -243,13 +232,20 @@ test("buildroot-based CVM build stages explicit linux, buildroot, and firmware-b
     fs.readFileSync(path.join(buildDir, "l1", "launch-l2.sh"), "utf8"),
     /runtime_dir="\$\{MORPHEUS_L2_RUNTIME_DIR:-\/mnt\/morpheus-l2-runtime\}"/,
   );
+  const launchScript = fs.readFileSync(
+    path.join(buildDir, "l1", "launch-l2.sh"),
+    "utf8",
+  );
+  assert.match(launchScript, /set -- "\$\{guest_qemu\}" "\$@"/);
+  assert.doesNotMatch(launchScript, /LD_LIBRARY_PATH|LD_PRELOAD/);
+  assert.doesNotMatch(launchScript, /--library-path|ld-linux-aarch64|runtime-libs/);
   assert.match(
     fs.readFileSync(path.join(buildDir, "l1", "launch-l2-hoststack.sh"), "utf8"),
     /^#!\/bin\/sh$/m,
   );
   assert.match(
     fs.readFileSync(path.join(buildDir, "l1", "launch-l2-hoststack.sh"), "utf8"),
-    /exec \/mnt\/launch-l2\.sh/,
+    /\/mnt\/launch-l2\.sh/,
   );
 
   const secondRun = spawnSync("bash", [buildScript], {
@@ -315,8 +311,6 @@ test("buildroot-based CVM build reuses the linux kernel when buildroot does not 
   fs.mkdirSync(path.join(buildrootOutputDir, "images"), { recursive: true });
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "bin"), { recursive: true });
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "share", "qemu"), { recursive: true });
-  fs.mkdirSync(path.join(buildrootOutputDir, "target", "lib"), { recursive: true });
-  fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "lib"), { recursive: true });
   createCpioArchive(path.join(buildrootOutputDir, "images", "rootfs.cpio"), {
     "init": {
       contents: "#!/bin/sh\nexec /sbin/init\n",
@@ -329,17 +323,9 @@ test("buildroot-based CVM build reuses the linux kernel when buildroot does not 
     path.join(buildrootOutputDir, "target", "usr", "bin", "qemu-system-aarch64"),
     "#!/bin/sh\nexit 0\n",
   );
-  writeExecutable(
-    path.join(buildrootOutputDir, "target", "lib", "ld-linux-aarch64.so.1"),
-    "#!/bin/sh\nexit 0\n",
-  );
   fs.writeFileSync(
     path.join(buildrootOutputDir, "target", "usr", "share", "qemu", "edk2.bin"),
     "qemu-data\n",
-  );
-  fs.writeFileSync(
-    path.join(buildrootOutputDir, "target", "usr", "lib", "libfdt.so.1"),
-    "libfdt\n",
   );
   fs.writeFileSync(
     path.join(buildrootOutputDir, ".morpheus-build-inputs.json"),
@@ -426,8 +412,6 @@ test("buildroot-based CVM build switches to the Linaro helper launch path when r
   fs.mkdirSync(path.join(buildrootOutputDir, "build"), { recursive: true });
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "bin"), { recursive: true });
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "share", "qemu"), { recursive: true });
-  fs.mkdirSync(path.join(buildrootOutputDir, "target", "lib"), { recursive: true });
-  fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "lib"), { recursive: true });
   fs.writeFileSync(path.join(buildrootOutputDir, "images", "Image"), "l2-image\n");
   createCpioArchive(path.join(buildrootOutputDir, "images", "rootfs.cpio"), {
     "init": {
@@ -456,17 +440,9 @@ test("buildroot-based CVM build switches to the Linaro helper launch path when r
     path.join(buildrootOutputDir, "target", "usr", "bin", "lkvm"),
     "#!/bin/sh\nexit 0\n",
   );
-  writeExecutable(
-    path.join(buildrootOutputDir, "target", "lib", "ld-linux-aarch64.so.1"),
-    "#!/bin/sh\nexit 0\n",
-  );
   fs.writeFileSync(
     path.join(buildrootOutputDir, "target", "usr", "share", "qemu", "edk2.bin"),
     "qemu-data\n",
-  );
-  fs.writeFileSync(
-    path.join(buildrootOutputDir, "target", "usr", "lib", "libfdt.so.1"),
-    "libfdt\n",
   );
   fs.writeFileSync(
     path.join(buildrootOutputDir, ".morpheus-build-inputs.json"),
@@ -608,8 +584,6 @@ test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", 
   fs.mkdirSync(path.join(buildrootOutputDir, "build"), { recursive: true });
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "bin"), { recursive: true });
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "share", "qemu"), { recursive: true });
-  fs.mkdirSync(path.join(buildrootOutputDir, "target", "lib"), { recursive: true });
-  fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "lib"), { recursive: true });
   fs.writeFileSync(path.join(buildrootOutputDir, "images", "Image"), "l2-image\n");
   createCpioArchive(path.join(buildrootOutputDir, "images", "rootfs.cpio"), {
     "init": {
@@ -624,17 +598,9 @@ test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", 
     path.join(buildrootOutputDir, "target", "usr", "bin", "qemu-system-aarch64"),
     "#!/bin/sh\nexit 0\n",
   );
-  writeExecutable(
-    path.join(buildrootOutputDir, "target", "lib", "ld-linux-aarch64.so.1"),
-    "#!/bin/sh\nexit 0\n",
-  );
   fs.writeFileSync(
     path.join(buildrootOutputDir, "target", "usr", "share", "qemu", "edk2.bin"),
     "qemu-data\n",
-  );
-  fs.writeFileSync(
-    path.join(buildrootOutputDir, "target", "usr", "lib", "libfdt.so.1"),
-    "libfdt\n",
   );
   fs.writeFileSync(
     path.join(buildrootOutputDir, ".morpheus-build-inputs.json"),
@@ -820,8 +786,6 @@ test("buildroot-based CVM build rejects MMIO transport in Linaro helper mode", (
   fs.mkdirSync(path.join(buildrootOutputDir, "build"), { recursive: true });
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "bin"), { recursive: true });
   fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "share", "qemu"), { recursive: true });
-  fs.mkdirSync(path.join(buildrootOutputDir, "target", "lib"), { recursive: true });
-  fs.mkdirSync(path.join(buildrootOutputDir, "target", "usr", "lib"), { recursive: true });
   fs.writeFileSync(path.join(buildrootOutputDir, "images", "Image"), "l2-image\n");
   createCpioArchive(path.join(buildrootOutputDir, "images", "rootfs.cpio"), {
     "init": {
@@ -850,17 +814,9 @@ test("buildroot-based CVM build rejects MMIO transport in Linaro helper mode", (
     path.join(buildrootOutputDir, "target", "usr", "bin", "lkvm"),
     "#!/bin/sh\nexit 0\n",
   );
-  writeExecutable(
-    path.join(buildrootOutputDir, "target", "lib", "ld-linux-aarch64.so.1"),
-    "#!/bin/sh\nexit 0\n",
-  );
   fs.writeFileSync(
     path.join(buildrootOutputDir, "target", "usr", "share", "qemu", "edk2.bin"),
     "qemu-data\n",
-  );
-  fs.writeFileSync(
-    path.join(buildrootOutputDir, "target", "usr", "lib", "libfdt.so.1"),
-    "libfdt\n",
   );
 
   const buildRun = spawnSync("bash", [buildScript], {

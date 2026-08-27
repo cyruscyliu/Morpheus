@@ -1,4 +1,4 @@
-use std::vec::Vec;
+use alloc::vec::Vec;
 
 use libafl::{
     Error,
@@ -28,6 +28,7 @@ impl ScenarioCodec {
     }
 }
 
+#[must_use]
 pub fn encode_scenario(input: &ScenarioInput) -> Vec<u8> {
     let mut bytes = Vec::new();
     for group in input.groups() {
@@ -46,7 +47,9 @@ pub fn decode_scenario(bytes: &[u8]) -> Result<ScenarioInput, Error> {
     while cursor < bytes.len() {
         let action_count = read_u32(bytes, &mut cursor)? as usize;
         if action_count == 0 {
-            return Err(Error::illegal_argument("group action count must be non-zero"));
+            return Err(Error::illegal_argument(
+                "group action count must be non-zero",
+            ));
         }
 
         let mut actions = Vec::with_capacity(action_count);
@@ -87,88 +90,88 @@ impl<S> FromTargetBytesConverter<ScenarioInput, S> for ScenarioCodec {
 fn encode_action(action: &Action, bytes: &mut Vec<u8>) {
     let (family, opcode, flags, arg0, arg1, arg2, arg3): (u8, u8, u16, u64, u64, u64, u64) =
         match action {
-        Action::Vm(VmAction::Stop) => (FAMILY_VM, 0, 0, 0, 0, 0, 0),
-        Action::Vm(VmAction::Continue) => (FAMILY_VM, 1, 0, 0, 0, 0, 0),
-        Action::Vm(VmAction::Reset) => (FAMILY_VM, 2, 0, 0, 0, 0, 0),
-        Action::Cpu(CpuAction::QueryCpus) => (FAMILY_CPU, 0, 0, 0, 0, 0, 0),
-        Action::Cpu(CpuAction::QueryHotpluggableCpus) => (FAMILY_CPU, 1, 0, 0, 0, 0, 0),
-        Action::Cpu(CpuAction::CpuDeviceAdd {
-            socket_id,
-            core_id,
-            thread_id,
-        }) => (
-            FAMILY_CPU,
-            2,
-            0,
-            u64::from(*socket_id),
-            u64::from(*core_id),
-            u64::from(*thread_id),
-            0,
-        ),
-        Action::Cpu(CpuAction::CpuDeviceDel) => (FAMILY_CPU, 3, 0, 0, 0, 0, 0),
-        Action::Hyper(HyperAction::MmioWrite { addr, width, value }) => {
-            (FAMILY_HYPER, 0, 0, *addr, u64::from(*width), *value, 0)
-        }
-        Action::Hyper(HyperAction::MmioRead { addr, width }) => {
-            (FAMILY_HYPER, 1, 0, *addr, u64::from(*width), 0, 0)
-        }
-        Action::Hyper(HyperAction::PioWrite { port, width, value }) => {
-            (FAMILY_HYPER, 2, 0, *port, u64::from(*width), *value, 0)
-        }
-        Action::Hyper(HyperAction::PioRead { port, width }) => {
-            (FAMILY_HYPER, 3, 0, *port, u64::from(*width), 0, 0)
-        }
-        Action::Hyper(HyperAction::IrqInject {
-            irq,
-            vcpu,
-            edge,
-            count,
-        }) => (
-            FAMILY_HYPER,
-            4,
-            u16::from(*edge),
-            u64::from(*irq),
-            u64::from(*vcpu),
-            u64::from(*count),
-            0,
-        ),
-        Action::Hyper(HyperAction::WaitIrqAck { irq, vcpu }) => {
-            (FAMILY_HYPER, 5, 0, u64::from(*irq), u64::from(*vcpu), 0, 0)
-        }
-        Action::Hyper(HyperAction::MemWrite { addr, width, value }) => {
-            (FAMILY_HYPER, 6, 0, *addr, u64::from(*width), *value, 0)
-        }
-        Action::Hyper(HyperAction::MemRead { addr, width }) => {
-            (FAMILY_HYPER, 7, 0, *addr, u64::from(*width), 0, 0)
-        }
-        Action::PageTable(PageTableAction::WalkGuestVa { va, root }) => {
-            (FAMILY_PAGE_TABLE, 0, 0, *va, *root, 0, 0)
-        }
-        Action::PageTable(PageTableAction::ReadPte { table_pa, index }) => {
-            (FAMILY_PAGE_TABLE, 1, 0, *table_pa, u64::from(*index), 0, 0)
-        }
-        Action::PageTable(PageTableAction::WritePte {
-            table_pa,
-            index,
-            value,
-        }) => (
-            FAMILY_PAGE_TABLE,
-            2,
-            0,
-            *table_pa,
-            u64::from(*index),
-            *value,
-            0,
-        ),
-        Action::PageTable(PageTableAction::InvalidateTlb { vcpu, va }) => (
-            FAMILY_PAGE_TABLE,
-            3,
-            if va.is_some() { 1 } else { 0 },
-            u64::from(*vcpu),
-            va.unwrap_or_default(),
-            0,
-            0,
-        ),
+            Action::Vm(VmAction::Stop) => (FAMILY_VM, 0, 0, 0, 0, 0, 0),
+            Action::Vm(VmAction::Continue) => (FAMILY_VM, 1, 0, 0, 0, 0, 0),
+            Action::Vm(VmAction::Reset) => (FAMILY_VM, 2, 0, 0, 0, 0, 0),
+            Action::Cpu(CpuAction::QueryCpus) => (FAMILY_CPU, 0, 0, 0, 0, 0, 0),
+            Action::Cpu(CpuAction::QueryHotpluggableCpus) => (FAMILY_CPU, 1, 0, 0, 0, 0, 0),
+            Action::Cpu(CpuAction::CpuDeviceAdd {
+                socket_id,
+                core_id,
+                thread_id,
+            }) => (
+                FAMILY_CPU,
+                2,
+                0,
+                u64::from(*socket_id),
+                u64::from(*core_id),
+                u64::from(*thread_id),
+                0,
+            ),
+            Action::Cpu(CpuAction::CpuDeviceDel) => (FAMILY_CPU, 3, 0, 0, 0, 0, 0),
+            Action::Hyper(HyperAction::MmioWrite { addr, width, value }) => {
+                (FAMILY_HYPER, 0, 0, *addr, u64::from(*width), *value, 0)
+            }
+            Action::Hyper(HyperAction::MmioRead { addr, width }) => {
+                (FAMILY_HYPER, 1, 0, *addr, u64::from(*width), 0, 0)
+            }
+            Action::Hyper(HyperAction::PioWrite { port, width, value }) => {
+                (FAMILY_HYPER, 2, 0, *port, u64::from(*width), *value, 0)
+            }
+            Action::Hyper(HyperAction::PioRead { port, width }) => {
+                (FAMILY_HYPER, 3, 0, *port, u64::from(*width), 0, 0)
+            }
+            Action::Hyper(HyperAction::IrqInject {
+                irq,
+                vcpu,
+                edge,
+                count,
+            }) => (
+                FAMILY_HYPER,
+                4,
+                u16::from(*edge),
+                u64::from(*irq),
+                u64::from(*vcpu),
+                u64::from(*count),
+                0,
+            ),
+            Action::Hyper(HyperAction::WaitIrqAck { irq, vcpu }) => {
+                (FAMILY_HYPER, 5, 0, u64::from(*irq), u64::from(*vcpu), 0, 0)
+            }
+            Action::Hyper(HyperAction::MemWrite { addr, width, value }) => {
+                (FAMILY_HYPER, 6, 0, *addr, u64::from(*width), *value, 0)
+            }
+            Action::Hyper(HyperAction::MemRead { addr, width }) => {
+                (FAMILY_HYPER, 7, 0, *addr, u64::from(*width), 0, 0)
+            }
+            Action::PageTable(PageTableAction::WalkGuestVa { va, root }) => {
+                (FAMILY_PAGE_TABLE, 0, 0, *va, *root, 0, 0)
+            }
+            Action::PageTable(PageTableAction::ReadPte { table_pa, index }) => {
+                (FAMILY_PAGE_TABLE, 1, 0, *table_pa, u64::from(*index), 0, 0)
+            }
+            Action::PageTable(PageTableAction::WritePte {
+                table_pa,
+                index,
+                value,
+            }) => (
+                FAMILY_PAGE_TABLE,
+                2,
+                0,
+                *table_pa,
+                u64::from(*index),
+                *value,
+                0,
+            ),
+            Action::PageTable(PageTableAction::InvalidateTlb { vcpu, va }) => (
+                FAMILY_PAGE_TABLE,
+                3,
+                u16::from(va.is_some()),
+                u64::from(*vcpu),
+                va.unwrap_or_default(),
+                0,
+                0,
+            ),
         };
 
     bytes.push(family);
@@ -235,19 +238,15 @@ fn decode_action(bytes: &[u8], cursor: &mut usize) -> Result<Action, Error> {
                 .map_err(|_| Error::illegal_argument("pio width out of range"))?,
         })),
         (FAMILY_HYPER, 4) => Ok(Action::Hyper(HyperAction::IrqInject {
-            irq: u32::try_from(arg0)
-                .map_err(|_| Error::illegal_argument("irq out of range"))?,
-            vcpu: u16::try_from(arg1)
-                .map_err(|_| Error::illegal_argument("vcpu out of range"))?,
+            irq: u32::try_from(arg0).map_err(|_| Error::illegal_argument("irq out of range"))?,
+            vcpu: u16::try_from(arg1).map_err(|_| Error::illegal_argument("vcpu out of range"))?,
             edge: (flags & 1) != 0,
             count: u32::try_from(arg2)
                 .map_err(|_| Error::illegal_argument("irq count out of range"))?,
         })),
         (FAMILY_HYPER, 5) => Ok(Action::Hyper(HyperAction::WaitIrqAck {
-            irq: u32::try_from(arg0)
-                .map_err(|_| Error::illegal_argument("irq out of range"))?,
-            vcpu: u16::try_from(arg1)
-                .map_err(|_| Error::illegal_argument("vcpu out of range"))?,
+            irq: u32::try_from(arg0).map_err(|_| Error::illegal_argument("irq out of range"))?,
+            vcpu: u16::try_from(arg1).map_err(|_| Error::illegal_argument("vcpu out of range"))?,
         })),
         (FAMILY_HYPER, 6) => Ok(Action::Hyper(HyperAction::MemWrite {
             addr: arg0,
@@ -276,8 +275,7 @@ fn decode_action(bytes: &[u8], cursor: &mut usize) -> Result<Action, Error> {
             value: arg2,
         })),
         (FAMILY_PAGE_TABLE, 3) => Ok(Action::PageTable(PageTableAction::InvalidateTlb {
-            vcpu: u16::try_from(arg0)
-                .map_err(|_| Error::illegal_argument("vcpu out of range"))?,
+            vcpu: u16::try_from(arg0).map_err(|_| Error::illegal_argument("vcpu out of range"))?,
             va: if (flags & 1) != 0 { Some(arg1) } else { None },
         })),
         _ => Err(Error::illegal_argument("unknown action record opcode")),

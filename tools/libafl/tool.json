@@ -1,7 +1,7 @@
 {
   "name": "libafl",
   "runtime": null,
-  "cli-contract": "fetch,patch,build,exec,inspect",
+  "cli-contract": "fetch,patch,build,probe-grammar,probe-devilang-grammar,exec,inspect",
   "config": {
     "fields": {
       "mode": {
@@ -12,6 +12,31 @@
       "source": {
         "aliases": [
           "source"
+        ],
+        "path": true
+      },
+      "qemu-bridge-source": {
+        "aliases": [
+          "qemu-bridge-source",
+          "qemuBridgeSource",
+          "qemu-bridge-dir",
+          "qemuBridgeDir",
+          "qemu-bridge",
+          "qemuBridge"
+        ],
+        "path": true
+      },
+      "qemu-bridge-library": {
+        "aliases": [
+          "qemu-bridge-library",
+          "qemuBridgeLibrary"
+        ],
+        "path": true
+      },
+      "qemu-bridge-data-dir": {
+        "aliases": [
+          "qemu-bridge-data-dir",
+          "qemuBridgeDataDir"
         ],
         "path": true
       },
@@ -107,6 +132,47 @@
         ],
         "repeatable": true
       },
+      "devilang-grammar": {
+        "aliases": [
+          "devilang-grammar",
+          "devilangGrammar"
+        ],
+        "path": true
+      },
+      "grammar": {
+        "aliases": [
+          "grammar"
+        ],
+        "path": true
+      },
+      "enable-devilang-grammar": {
+        "aliases": [
+          "enable-devilang-grammar",
+          "enableDevilangGrammar"
+        ],
+        "boolean": true
+      },
+      "enable-grammar": {
+        "aliases": [
+          "enable-grammar",
+          "enableGrammar"
+        ],
+        "boolean": true
+      },
+      "disable-devilang-grammar": {
+        "aliases": [
+          "disable-devilang-grammar",
+          "disableDevilangGrammar"
+        ],
+        "boolean": true
+      },
+      "disable-grammar": {
+        "aliases": [
+          "disable-grammar",
+          "disableGrammar"
+        ],
+        "boolean": true
+      },
       "detach": {
         "aliases": [
           "detach"
@@ -124,6 +190,34 @@
           "artifacts"
         ],
         "repeatable": true
+      }
+    }
+  },
+  "inputs": {
+    "build": {
+      "dependencies": {
+        "qemu-bridge": {
+          "flag": "qemu-bridge-source"
+        },
+        "qemu-bridge-library": {
+          "flag": "qemu-bridge-library"
+        },
+        "qemu-bridge-data-dir": {
+          "flag": "qemu-bridge-data-dir"
+        }
+      }
+    },
+    "exec": {
+      "dependencies": {
+        "qemu-bridge": {
+          "flag": "qemu-bridge-source"
+        },
+        "qemu-bridge-library": {
+          "flag": "qemu-bridge-library"
+        },
+        "qemu-bridge-data-dir": {
+          "flag": "qemu-bridge-data-dir"
+        }
       }
     }
   },
@@ -221,6 +315,9 @@
             "source",
             "build-dir",
             "install-dir",
+            "qemu-bridge-source",
+            "qemu-bridge-library",
+            "qemu-bridge-data-dir",
             "patch-dir",
             "build-script",
             "reuse-build-dir",
@@ -285,6 +382,68 @@
             }
           }
         },
+        "probe-devilang-grammar": {
+          "requiredFlags": [
+            "source",
+            "devilang-grammar"
+          ],
+          "scalarFlags": [
+            "source",
+            "devilang-grammar",
+            "build-version",
+            "build-dir-key"
+          ],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/probe-devilang-grammar.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "source": "tools/libafl/builds/{buildDirKey}/source"
+          },
+          "result": {
+            "successSummary": "generated and mutated a Devilang grammar scenario",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{source}"
+            },
+            "details": {
+              "source": "{source}",
+              "grammar": "{devilang-grammar}"
+            }
+          }
+        },
+        "probe-grammar": {
+          "requiredFlags": [
+            "source",
+            "grammar"
+          ],
+          "scalarFlags": [
+            "source",
+            "grammar",
+            "build-version",
+            "build-dir-key"
+          ],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/probe-devilang-grammar.sh",
+            "shell": "bash"
+          },
+          "pathFlags": {
+            "source": "tools/libafl/builds/{buildDirKey}/source"
+          },
+          "result": {
+            "successSummary": "generated and mutated a grammar scenario",
+            "artifact": {
+              "path": "source-dir",
+              "locationTemplate": "{source}"
+            },
+            "details": {
+              "source": "{source}",
+              "grammar": "{grammar}"
+            }
+          }
+        },
         "exec": {
           "requiredFlags": [
             "source",
@@ -295,7 +454,16 @@
             "source",
             "run-dir",
             "install-dir",
+            "qemu-bridge-source",
+            "qemu-bridge-library",
+            "qemu-bridge-data-dir",
             "harness-script",
+            "grammar",
+            "devilang-grammar",
+            "enable-grammar",
+            "enable-devilang-grammar",
+            "disable-grammar",
+            "disable-devilang-grammar",
             "detach",
             "run-seconds",
             "build-version",

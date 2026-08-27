@@ -23,6 +23,7 @@ const devilangAuditFixture = path.join(
 );
 const { applyConfigDefaults } = require("../dist/core/config.js");
 const { effectiveBuildDirKey, syncRemotePathToLocal } = require("../dist/transport/remote.js");
+const { resolveConfiguredStepArgs } = require("../dist/commands/workflow.js");
 const repoEnv = fs.readFileSync(path.join(repoRoot, ".env"), "utf8");
 const sharedDataRootMatch = repoEnv.match(/^MORPHEUS_DATA_ROOT=(.+)$/m);
 const sharedDataRoot = process.env.MORPHEUS_DATA_ROOT || (sharedDataRootMatch ? sharedDataRootMatch[1].trim() : null);
@@ -60,6 +61,53 @@ function ciWorkspaceRoot(dataRoot) {
 function ciCacheRoot(dataRoot) {
   return path.join(dataRoot, "cache", "ci");
 }
+
+test("workflow metadata controls LibAFL grammar exec arguments", () => {
+  const commonStep = {
+    id: "libafl_exec",
+    tool: "libafl",
+    command: "exec",
+    args: [
+      "--enable-grammar",
+      "--grammar",
+      "{{workflow.metadata.grammar.path}}",
+      "--harness-arg",
+      "--grammar",
+    ],
+  };
+  const context = (metadata) => ({
+    workspaceRoot: process.cwd(),
+    stepResults: {},
+    workflowMetadata: metadata,
+  });
+
+  const enabled = resolveConfiguredStepArgs(commonStep, context({
+    grammar: { enabled: true, path: "/tmp/virtio.state" },
+  }));
+  assert.deepEqual(enabled.args, [
+    "--enable-grammar",
+    "--grammar",
+    "/tmp/virtio.state",
+    "--harness-arg",
+    "--grammar",
+  ]);
+
+  const disabled = resolveConfiguredStepArgs(commonStep, context({
+    grammar: { enabled: false, path: "/tmp/virtio.state" },
+  }));
+  assert.deepEqual(disabled.args, ["--harness-arg", "--grammar", "--disable-grammar"]);
+
+  const unspecified = resolveConfiguredStepArgs(commonStep, context({
+    grammar: { path: "/tmp/virtio.state" },
+  }));
+  assert.deepEqual(unspecified.args, [
+    "--enable-grammar",
+    "--grammar",
+    "/tmp/virtio.state",
+    "--harness-arg",
+    "--grammar",
+  ]);
+});
 
 function pidState(pid) {
   const result = spawnSync("ps", ["-o", "stat=", "-p", String(pid)], {
@@ -322,7 +370,7 @@ test("tool list discovers repo-local tools", () => {
   assert.equal(Object.prototype.hasOwnProperty.call(payload, "tools"), false);
   assert.deepEqual(
     payload.details.tools.map((tool) => tool.name),
-    ["buildroot", "devilang", "driver-callgraph", "libafl", "libvmm", "linux", "llbase", "llbic", "llcg", "microkit-sdk", "nqc2", "nvirsh", "nvirsh-buildroot-based-cvm", "pkvm-aarch64", "qemu", "sel4"]
+    ["buildroot", "devilang", "driver-callgraph", "libafl", "libvmm", "linux", "llbase", "llbic", "llcg", "microkit-sdk", "nqc2", "nvirsh", "nvirsh-buildroot-based-cvm", "pkvm-aarch64", "qemu", "qemu-libafl-bridge", "sel4"]
   );
 });
 
@@ -3126,6 +3174,9 @@ test("workflow run --from-step resolves templated prior-step args for reuse vali
       "workflows:",
       "  inspect-template-pair:",
       "    category: build",
+      "    metadata:",
+      "      grammar:",
+      "        path: \"{{steps.fetch_a.artifacts.source-dir.location}}\"",
       "    steps:",
       "      - id: fetch_a",
       "        tool: qemu",
@@ -3140,7 +3191,7 @@ test("workflow run --from-step resolves templated prior-step args for reuse vali
       "        command: patch",
       "        args:",
       "          - --source",
-      "          - \"{{steps.fetch_a.artifacts.source-dir.location}}\"",
+      "          - \"{{workflow.metadata.grammar.path}}\"",
       "          - --patch-dir",
       `          - ${patchDir}`,
       ""
@@ -3156,6 +3207,14 @@ test("workflow run --from-step resolves templated prior-step args for reuse vali
   const runId = firstPayload.details.id;
   const runDir = path.join(workspaceRoot, "workflows", runId);
   const stepAPath = path.join(runDir, "stages", "fetch_a", "stage.json");
+  const workflowRecord = JSON.parse(fs.readFileSync(
+    path.join(runDir, "workflow.json"),
+    "utf8",
+  ));
+  assert.equal(
+    workflowRecord.metadata.grammar.path,
+    "{{steps.fetch_a.artifacts.source-dir.location}}",
+  );
   const eventsPath = path.join(runDir, "events.jsonl");
   const relations = fs.readFileSync(eventsPath, "utf8")
     .split(/\r?\n/)

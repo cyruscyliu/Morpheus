@@ -984,6 +984,14 @@ function resolveWorkflowStringTemplate(value, context) {
     if (expr === "workspace.root") {
       return String(context.workspaceRoot);
     }
+    if (expr.startsWith("workflow.metadata.")) {
+      const metadataPath = expr.slice("workflow.metadata.".length);
+      const resolved = getByPath(context.workflowMetadata, metadataPath);
+      if (resolved == null) {
+        throw new Error(`workflow template resolved empty value: ${expr}`);
+      }
+      return resolveWorkflowStringTemplate(resolved, context);
+    }
     if (!expr.startsWith("steps.")) {
       throw new Error(`unsupported workflow template: ${expr}`);
     }
@@ -1038,7 +1046,10 @@ function relationRecordFromTemplateExpr(context, currentStepId, expr) {
   };
 }
 
-function resolveWorkflowStringTemplateWithTrace(value, context, currentStepId) {
+function resolveWorkflowStringTemplateWithTrace(value, context, currentStepId, depth = 0) {
+  if (depth > 8) {
+    throw new Error("workflow template nesting exceeds 8 levels");
+  }
   const relations = [];
   const resolved = String(value).replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_match, expression) => {
     const expr = String(expression || "").trim();
@@ -1048,6 +1059,21 @@ function resolveWorkflowStringTemplateWithTrace(value, context, currentStepId) {
     }
     if (expr === "workspace.root") {
       return String(context.workspaceRoot);
+    }
+    if (expr.startsWith("workflow.metadata.")) {
+      const metadataPath = expr.slice("workflow.metadata.".length);
+      const metadataValue = getByPath(context.workflowMetadata, metadataPath);
+      if (metadataValue == null) {
+        throw new Error(`workflow template resolved empty value: ${expr}`);
+      }
+      const nested = resolveWorkflowStringTemplateWithTrace(
+        metadataValue,
+        context,
+        currentStepId,
+        depth + 1,
+      );
+      relations.push(...nested.relations);
+      return nested.value;
     }
     if (!expr.startsWith("steps.")) {
       throw new Error(`unsupported workflow template: ${expr}`);
@@ -1068,10 +1094,90 @@ function resolveWorkflowStringTemplateWithTrace(value, context, currentStepId) {
   return { value: resolved, relations };
 }
 
+const LIBAFL_GRAMMAR_PATH_FLAGS = new Set(["--grammar", "--devilang-grammar"]);
+const LIBAFL_GRAMMAR_ENABLE_FLAGS = new Set(["--enable-grammar", "--enable-devilang-grammar"]);
+const LIBAFL_GRAMMAR_DISABLE_FLAGS = new Set(["--disable-grammar", "--disable-devilang-grammar"]);
+
+function configuredLibaflGrammarEnabled(context) {
+  const metadata = context && context.workflowMetadata;
+  const grammar = metadata && typeof metadata === "object" ? metadata.grammar : null;
+  if (!grammar || typeof grammar !== "object" || !Object.prototype.hasOwnProperty.call(grammar, "enabled")) {
+    return null;
+  }
+  if (typeof grammar.enabled !== "boolean") {
+    throw new Error("workflow metadata grammar.enabled must be a boolean");
+  }
+  return grammar.enabled;
+}
+
+function applyConfiguredLibaflGrammarMode(step, items, context) {
+  if (
+    !step
+    || String(step.tool || "") !== "libafl"
+    || String(step.toolCommand || step.command || "") !== "exec"
+  ) {
+    return items;
+  }
+
+  const enabled = configuredLibaflGrammarEnabled(context);
+  if (enabled == null) {
+    return items;
+  }
+
+  const filtered = [];
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    const token = String(item);
+
+    // --harness-arg values belong to qemu_nesting, not to this outer
+    // invocation. Do not rewrite a nested grammar-looking value.
+    if (token === "--harness-arg") {
+      filtered.push(item);
+      if (index + 1 < items.length) {
+        filtered.push(items[index + 1]);
+        index += 1;
+      }
+      continue;
+    }
+
+    if (!enabled) {
+      if (LIBAFL_GRAMMAR_PATH_FLAGS.has(token)) {
+        if (index + 1 < items.length) {
+          index += 1;
+        }
+        continue;
+      }
+      if (
+        LIBAFL_GRAMMAR_ENABLE_FLAGS.has(token)
+        || LIBAFL_GRAMMAR_DISABLE_FLAGS.has(token)
+      ) {
+        continue;
+      }
+      filtered.push(item);
+      continue;
+    }
+
+    // An enabled metadata block is authoritative if a workflow fragment was
+    // copied from a disabled grammar workflow.
+    if (LIBAFL_GRAMMAR_DISABLE_FLAGS.has(token)) {
+      continue;
+    }
+    filtered.push(item);
+  }
+
+  if (!enabled) {
+    // exec.sh also honors MORPHEUS_LIBAFL_GRAMMAR_MODE and inherited grammar
+    // environment variables; make an explicit workflow disable win over both.
+    filtered.push("--disable-grammar");
+  }
+  return filtered;
+}
+
 function resolveConfiguredStepArgs(step, context) {
-  const items = Array.isArray(step.args)
+  const configuredItems = Array.isArray(step.args)
     ? step.args
     : (Array.isArray(step.toolArgv) ? step.toolArgv : []);
+  const items = applyConfiguredLibaflGrammarMode(step, configuredItems, context);
   const relations = [];
   const currentStepId = step && step.id ? String(step.id) : null;
   const provisionalArgs = items.map((item) => typeof item === "string" ? item : String(item));
@@ -2347,6 +2453,11 @@ async function runToolWorkflow({
   }, async () => {
   updateWorkflowRun(workflow.runDir, (current) => ({
     ...current,
+    // A resumed run may have been created before the workflow gained
+    // metadata (for example, when switching grammar sources).  Keep the
+    // persisted record aligned with the configuration used for this run so
+    // inspect/resume can show the selected grammar path as well.
+    metadata: metadata == null ? current.metadata : metadata,
     runnerPid: process.pid,
     currentChildPid: null,
     currentStepId: null,
@@ -2498,7 +2609,13 @@ async function runToolWorkflow({
 
     const spec = stepSpecs.find((candidate) => candidate.id === step.id) || null;
     const resolvedStep = spec
-      ? resolveConfiguredStepArgs(spec, { workspaceRoot, stepResults, runDir: workflow.runDir, configPath })
+      ? resolveConfiguredStepArgs(spec, {
+        workspaceRoot,
+        stepResults,
+        runDir: workflow.runDir,
+        configPath,
+        workflowMetadata: metadata,
+      })
       : { args: [], relations: [] };
     const toolArgv = resolvedStep.args;
     const toolCommand = spec ? spec.toolCommand : "build";
@@ -2948,6 +3065,7 @@ function collectResumePlan(workspaceRoot, workflowRecord, configured, fromStep) 
       stepResults,
       runDir: workflowRecord.runDir,
       configPath: configured.configPath || workflowRecord.configPath || null,
+      workflowMetadata: configured.metadata,
     });
     const toolArgv = resolvedStep.args;
     if (fromStep && !seenFromStep) {
@@ -3423,6 +3541,7 @@ module.exports = {
   handleWorkflowCommand,
   runSingleToolWorkflow,
   runToolBuildWorkflow,
+  resolveConfiguredStepArgs,
   stopWorkflowRun,
   removeWorkflowRun
 };

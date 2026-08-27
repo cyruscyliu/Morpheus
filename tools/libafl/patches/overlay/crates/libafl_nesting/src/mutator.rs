@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use alloc::borrow::Cow;
 use core::num::NonZeroUsize;
 
 use libafl::{
@@ -52,20 +52,20 @@ impl ScenarioMutator {
                 };
                 true
             }
-            Action::Cpu(cpu) => match cpu {
-                crate::input::CpuAction::CpuDeviceAdd {
+            Action::Cpu(cpu) => {
+                if let crate::input::CpuAction::CpuDeviceAdd {
                     socket_id,
                     core_id,
                     thread_id,
-                } => {
+                } = cpu
+                {
                     match rand.below(nonzero!(3)) {
                         0 => *socket_id ^= 1 + rand.below(nonzero!(7)) as u32,
                         1 => *core_id ^= 1 + rand.below(nonzero!(7)) as u32,
                         _ => *thread_id ^= 1 + rand.below(nonzero!(7)) as u32,
                     }
                     true
-                }
-                _ => {
+                } else {
                     *cpu = match rand.below(nonzero!(4)) {
                         0 => crate::input::CpuAction::QueryCpus,
                         1 => crate::input::CpuAction::QueryHotpluggableCpus,
@@ -78,7 +78,7 @@ impl ScenarioMutator {
                     };
                     true
                 }
-            },
+            }
             Action::Hyper(hyper) => match hyper {
                 crate::input::HyperAction::MmioWrite { addr, width, value }
                 | crate::input::HyperAction::MemWrite { addr, width, value }
@@ -199,7 +199,22 @@ impl<S> Mutator<ScenarioInput, S> for ScenarioMutator
 where
     S: libafl::state::HasRand,
 {
-    fn mutate(&mut self, state: &mut S, input: &mut ScenarioInput) -> Result<MutationResult, Error> {
+    fn mutate(
+        &mut self,
+        state: &mut S,
+        input: &mut ScenarioInput,
+    ) -> Result<MutationResult, Error> {
+        if let Some(grammar) = self.generator.devilang_grammar() {
+            let replacement = grammar
+                .generate_scenario(state.rand_mut(), self.generator.max_groups())
+                .map_err(Error::illegal_argument)?;
+            if replacement == *input {
+                return Ok(MutationResult::Skipped);
+            }
+            *input = replacement;
+            return Ok(MutationResult::Mutated);
+        }
+
         if input.groups().is_empty() {
             input.groups_mut().push(ActionGroup::new(vec![Action::Vm(
                 crate::input::VmAction::Stop,
@@ -219,7 +234,10 @@ where
                     if let Some(action_idx) =
                         Self::random_action_index(state.rand_mut(), group.len())
                     {
-                        mutated = Self::mutate_field(state.rand_mut(), &mut group.actions_mut()[action_idx]);
+                        mutated = Self::mutate_field(
+                            state.rand_mut(),
+                            &mut group.actions_mut()[action_idx],
+                        );
                     }
                 }
             }
@@ -242,12 +260,12 @@ where
                     Self::random_group_index(state.rand_mut(), input.groups().len())
                 {
                     let group = &mut input.groups_mut()[group_idx];
-                    let insert_at = if group.len() == 0 {
+                    let insert_at = if group.is_empty() {
                         0
                     } else {
-                        state.rand_mut().below(unsafe {
-                            NonZeroUsize::new_unchecked(group.len() + 1)
-                        })
+                        state
+                            .rand_mut()
+                            .below(unsafe { NonZeroUsize::new_unchecked(group.len() + 1) })
                     };
                     group
                         .actions_mut()
@@ -261,9 +279,9 @@ where
                 {
                     let group = &mut input.groups_mut()[group_idx];
                     if group.len() > 1 {
-                        let remove_at = state.rand_mut().below(unsafe {
-                            NonZeroUsize::new_unchecked(group.len() - 1)
-                        });
+                        let remove_at = state
+                            .rand_mut()
+                            .below(unsafe { NonZeroUsize::new_unchecked(group.len() - 1) });
                         group.actions_mut().remove(remove_at);
                         mutated = true;
                     }
@@ -289,9 +307,9 @@ where
                 {
                     let group = &mut input.groups_mut()[group_idx];
                     if group.len() > 1 {
-                        let new_len = 1 + state.rand_mut().below(unsafe {
-                            NonZeroUsize::new_unchecked(group.len())
-                        });
+                        let new_len = 1 + state
+                            .rand_mut()
+                            .below(unsafe { NonZeroUsize::new_unchecked(group.len()) });
                         group.actions_mut().truncate(new_len);
                         mutated = true;
                     }
@@ -302,7 +320,7 @@ where
                     Self::random_group_index(state.rand_mut(), input.groups().len())
                 {
                     let group = &mut input.groups_mut()[group_idx];
-                    let insert_at = if group.len() == 0 {
+                    let insert_at = if group.is_empty() {
                         0
                     } else {
                         group.len().saturating_sub(1)
@@ -319,9 +337,9 @@ where
             }
             8 => {
                 if input.groups().len() > 1 {
-                    let remove_at = state.rand_mut().below(unsafe {
-                        NonZeroUsize::new_unchecked(input.groups().len() - 1)
-                    });
+                    let remove_at = state
+                        .rand_mut()
+                        .below(unsafe { NonZeroUsize::new_unchecked(input.groups().len() - 1) });
                     input.groups_mut().remove(remove_at);
                     mutated = true;
                 }
@@ -337,12 +355,12 @@ where
             }
             10 => {
                 if input.groups().len() > 1 {
-                    let a = state.rand_mut().below(unsafe {
-                        NonZeroUsize::new_unchecked(input.groups().len())
-                    });
-                    let mut b = state.rand_mut().below(unsafe {
-                        NonZeroUsize::new_unchecked(input.groups().len())
-                    });
+                    let a = state
+                        .rand_mut()
+                        .below(unsafe { NonZeroUsize::new_unchecked(input.groups().len()) });
+                    let mut b = state
+                        .rand_mut()
+                        .below(unsafe { NonZeroUsize::new_unchecked(input.groups().len()) });
                     if a == b {
                         b = (b + 1) % input.groups().len();
                     }
@@ -369,12 +387,12 @@ where
                 {
                     let clone = input.groups()[group_idx].clone();
                     let target = &mut input.groups_mut()[group_idx];
-                    let insert_at = if target.len() == 0 {
+                    let insert_at = if target.is_empty() {
                         0
                     } else {
-                        state.rand_mut().below(unsafe {
-                            NonZeroUsize::new_unchecked(target.len())
-                        })
+                        state
+                            .rand_mut()
+                            .below(unsafe { NonZeroUsize::new_unchecked(target.len()) })
                     };
                     for action in clone.actions() {
                         target.actions_mut().insert(insert_at, action.clone());

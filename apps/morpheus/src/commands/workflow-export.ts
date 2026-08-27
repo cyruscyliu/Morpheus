@@ -3,7 +3,12 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 const { loadConfig, configDir, resolveLocalPath } = require("../core/config");
-const { repoRoot } = require("../core/paths");
+// Resolve the path provider at call time. Tests and embedded callers may
+// replace the module export for an isolated repository after this module has
+// already been loaded.
+function currentRepoRoot() {
+  return require("../core/paths").repoRoot();
+}
 
 function isWithinDir(parentDir, candidatePath) {
   if (!parentDir || !candidatePath) {
@@ -167,7 +172,7 @@ function mirrorTree(sourceRoot, destinationRoot, options = {}) {
 
 function runWorkflow(configPath, workflowName) {
   const result = spawnSync(
-    path.join(repoRoot(), "bin", "morpheus"),
+    path.join(currentRepoRoot(), "bin", "morpheus"),
     ["--config", configPath, "workflow", "run", "--name", workflowName],
     { encoding: "utf8" }
   );
@@ -210,7 +215,7 @@ function exportWorkflowBundle(options) {
     : path.join(dataRoot, "artifacts", "workflow-bundles", workflowName, stamp);
   const sourceConfigRoot = isWithinDir(loaded.workspaceRoot, loaded.configPath)
     ? loaded.workspaceRoot
-    : (isWithinDir(repoRoot(), loaded.configPath) ? repoRoot() : null);
+    : (isWithinDir(currentRepoRoot(), loaded.configPath) ? currentRepoRoot() : null);
   if (!sourceConfigRoot) {
     throw new Error("--config must resolve inside the repo root or workspace root");
   }
@@ -220,7 +225,7 @@ function exportWorkflowBundle(options) {
     : path.posix.join("repo", sourceConfigRel);
   const workflowCategory = String(loaded.workflow.category || "run");
 
-  validateSafeOutputDir(outputDir, [repoRoot(), loaded.workspaceRoot]);
+  validateSafeOutputDir(outputDir, [currentRepoRoot(), loaded.workspaceRoot]);
   ensureMissingOrDelete(outputDir, Boolean(options.force));
   if (options.prepare) {
     runWorkflow(loaded.configPath, workflowName);
@@ -229,7 +234,7 @@ function exportWorkflowBundle(options) {
   fs.mkdirSync(outputDir, { recursive: true });
   const bundleRepoRoot = path.join(outputDir, "repo");
   const bundleWorkspaceRoot = path.join(outputDir, "data", "workspaces", workspaceName);
-  mirrorTree(repoRoot(), bundleRepoRoot, {
+  mirrorTree(currentRepoRoot(), bundleRepoRoot, {
     linkMode,
     excludeNames: [".git", ".morpheus-sync", "artifacts"]
   });

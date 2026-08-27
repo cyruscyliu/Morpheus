@@ -3,10 +3,10 @@ use core::num::NonZeroUsize;
 use libafl::{Error, generators::Generator};
 use libafl_bolts::{nonzero, rands::Rand};
 
+use crate::devilang_grammar::DevilangGrammar;
 use crate::input::{
     Action, ActionGroup, CpuAction, HyperAction, PageTableAction, ScenarioInput, VmAction,
 };
-use crate::devilang_grammar::DevilangGrammar;
 use crate::model::{DevilangModel, MmioDirection};
 
 #[derive(Debug, Clone)]
@@ -50,6 +50,13 @@ impl ScenarioGenerator {
         self
     }
 
+    /// Enable the configured grammar format without coupling callers to the
+    /// historical Devilang name.
+    #[must_use]
+    pub fn with_grammar(self, grammar: DevilangGrammar) -> Self {
+        self.with_devilang_grammar(grammar)
+    }
+
     /// Toggle grammar-guided generation without changing the parsed grammar.
     /// This is useful for callers that keep one generator configuration and
     /// switch between baseline and grammar-guided corpus stages.
@@ -60,18 +67,73 @@ impl ScenarioGenerator {
     }
 
     #[must_use]
+    pub fn with_grammar_enabled(self, enabled: bool) -> Self {
+        self.with_devilang_grammar_enabled(enabled)
+    }
+
+    #[must_use]
     pub fn devilang_grammar_enabled(&self) -> bool {
         self.devilang_grammar_enabled && self.devilang_grammar.is_some()
+    }
+
+    #[must_use]
+    pub fn grammar_enabled(&self) -> bool {
+        self.devilang_grammar_enabled()
+    }
+
+    #[must_use]
+    pub fn devilang_grammar(&self) -> Option<&DevilangGrammar> {
+        self.devilang_grammar_enabled()
+            .then_some(self.devilang_grammar.as_ref())
+            .flatten()
+    }
+
+    #[must_use]
+    pub fn grammar(&self) -> Option<&DevilangGrammar> {
+        self.devilang_grammar()
+    }
+
+    pub(crate) fn max_groups(&self) -> usize {
+        self.max_groups.get()
     }
 
     #[cfg(feature = "std")]
     pub fn from_env() -> Result<Self, String> {
         let mut generator = Self::default();
-        if let Ok(grammar_path) = std::env::var("MORPHEUS_LIBAFL_DEVILANG_GRAMMAR") {
-            let grammar = DevilangGrammar::from_path(grammar_path)?;
-            generator.devilang_grammar = Some(grammar);
-            generator.devilang_grammar_enabled = true;
-        } else if let Some(devilang_model) = DevilangModel::from_env()? {
+        // The generic names are the public interface.  Keep the old Devilang
+        // names as fallbacks so cached harnesses and older workflows continue
+        // to work while callers switch to another grammar with the same wire
+        // format.
+        let grammar_mode = std::env::var("MORPHEUS_LIBAFL_GRAMMAR_MODE")
+            .or_else(|_| std::env::var("MORPHEUS_LIBAFL_DEVILANG_GRAMMAR_MODE"))
+            .unwrap_or_else(|_| "auto".to_string());
+        let grammar_path = std::env::var("MORPHEUS_LIBAFL_GRAMMAR")
+            .or_else(|_| std::env::var("MORPHEUS_LIBAFL_DEVILANG_GRAMMAR"))
+            .ok();
+        match grammar_mode.as_str() {
+            "off" => {}
+            "auto" => {
+                if let Some(grammar_path) = grammar_path {
+                    generator.devilang_grammar = Some(DevilangGrammar::from_path(grammar_path)?);
+                    generator.devilang_grammar_enabled = true;
+                }
+            }
+            "on" => {
+                let grammar_path = grammar_path.ok_or_else(|| {
+                    "MORPHEUS_LIBAFL_GRAMMAR_MODE=on requires MORPHEUS_LIBAFL_GRAMMAR".to_string()
+                })?;
+                generator.devilang_grammar = Some(DevilangGrammar::from_path(grammar_path)?);
+                generator.devilang_grammar_enabled = true;
+            }
+            other => {
+                return Err(format!(
+                    "invalid MORPHEUS_LIBAFL_GRAMMAR_MODE {other}; expected auto, on, or off"
+                ));
+            }
+        }
+        if !generator.devilang_grammar_enabled
+            && let Some(devilang_model) = DevilangModel::from_env()?
+        {
             // Keep the legacy flat model available for existing workflows, but
             // never parse a machine grammar through that obsolete adapter.
             generator.devilang_model = Some(devilang_model);
@@ -95,9 +157,7 @@ impl ScenarioGenerator {
             return None;
         }
 
-        let op = &mmio_ops[rand.below(unsafe {
-            NonZeroUsize::new_unchecked(mmio_ops.len())
-        })];
+        let op = &mmio_ops[rand.below(unsafe { NonZeroUsize::new_unchecked(mmio_ops.len()) })];
         match op.direction() {
             MmioDirection::Read => Some(Action::Hyper(HyperAction::MmioRead {
                 addr: op.address(),
@@ -114,17 +174,10 @@ impl ScenarioGenerator {
     }
 
     pub(crate) fn random_action<R: Rand>(&self, rand: &mut R) -> Action {
-        if self.devilang_grammar_enabled {
-            if let Some(grammar) = self.devilang_grammar.as_ref() {
-                if let Some(action) = grammar.random_action(rand) {
-                    return action;
-                }
-            }
-        }
-        if rand.below(nonzero!(3)) == 0 {
-            if let Some(action) = self.model_mmio_action(rand) {
-                return action;
-            }
+        if rand.below(nonzero!(3)) == 0
+            && let Some(action) = self.model_mmio_action(rand)
+        {
+            return action;
         }
 
         match rand.below(nonzero!(4)) {
@@ -214,19 +267,10 @@ where
     S: libafl::state::HasRand,
 {
     fn generate(&mut self, state: &mut S) -> Result<ScenarioInput, Error> {
-        if self.devilang_grammar_enabled {
-            if let Some(grammar) = self.devilang_grammar.as_ref() {
-                let groups = grammar.generate_groups(
-                    state.rand_mut(),
-                    self.max_groups.get(),
-                    self.max_actions_per_group.get(),
-                );
-                if !groups.is_empty() {
-                    let mut scenario = ScenarioInput::new(groups);
-                    scenario.ensure_terminal_stop();
-                    return Ok(scenario);
-                }
-            }
+        if let Some(grammar) = self.devilang_grammar() {
+            return grammar
+                .generate_scenario(state.rand_mut(), self.max_groups.get())
+                .map_err(Error::illegal_argument);
         }
         let group_count = 1 + state.rand_mut().below(self.max_groups);
         let mut groups = Vec::with_capacity(group_count);
@@ -236,9 +280,9 @@ where
             } else {
                 self.max_actions_per_group.get().max(2) - 1
             };
-            let action_count = 1 + state.rand_mut().below(unsafe {
-                NonZeroUsize::new_unchecked(action_limit)
-            });
+            let action_count = 1 + state
+                .rand_mut()
+                .below(unsafe { NonZeroUsize::new_unchecked(action_limit) });
 
             let mut actions = Vec::with_capacity(action_count);
             for _ in 0..action_count {
@@ -292,7 +336,9 @@ mod tests {
     fn generator_produces_valid_input() {
         let mut state = TestState::default();
         let mut generator = ScenarioGenerator::default();
-        let input = generator.generate(&mut state).expect("generator should work");
+        let input = generator
+            .generate(&mut state)
+            .expect("generator should work");
 
         assert!(input.is_valid());
         assert!(matches!(
@@ -370,7 +416,10 @@ machine virtio_net {
 
         assert!(input.is_valid());
         assert!(matches!(
-            input.groups().last().and_then(|group| group.actions().last()),
+            input
+                .groups()
+                .last()
+                .and_then(|group| group.actions().last()),
             Some(Action::Vm(crate::input::VmAction::Stop))
         ));
         assert!(before.contains("hyper.mmio"));

@@ -40,7 +40,26 @@ capture_runtime="false"
 replay_inputs=()
 seed_inputs=()
 devilang_states=()
-devilang_grammar=""
+devilang_grammar="${MORPHEUS_LIBAFL_DEVILANG_GRAMMAR:-}"
+enable_devilang_grammar="${MORPHEUS_LIBAFL_ENABLE_DEVILANG_GRAMMAR:-false}"
+disable_devilang_grammar="${MORPHEUS_LIBAFL_DISABLE_DEVILANG_GRAMMAR:-false}"
+devilang_grammar_mode="auto"
+# Generic grammar names are preferred.  The Devilang names above remain
+# compatibility aliases for existing workflow runs and cached harnesses.
+if [ "${MORPHEUS_LIBAFL_GRAMMAR+x}" = "x" ]; then
+  devilang_grammar="${MORPHEUS_LIBAFL_GRAMMAR}"
+fi
+if [ "${MORPHEUS_LIBAFL_ENABLE_GRAMMAR+x}" = "x" ]; then
+  enable_devilang_grammar="${MORPHEUS_LIBAFL_ENABLE_GRAMMAR}"
+fi
+if [ "${MORPHEUS_LIBAFL_DISABLE_GRAMMAR+x}" = "x" ]; then
+  disable_devilang_grammar="${MORPHEUS_LIBAFL_DISABLE_GRAMMAR}"
+fi
+if [ "${MORPHEUS_LIBAFL_GRAMMAR_MODE+x}" = "x" ]; then
+  devilang_grammar_mode="${MORPHEUS_LIBAFL_GRAMMAR_MODE}"
+elif [ "${MORPHEUS_LIBAFL_DEVILANG_GRAMMAR_MODE+x}" = "x" ]; then
+  devilang_grammar_mode="${MORPHEUS_LIBAFL_DEVILANG_GRAMMAR_MODE}"
+fi
 fuzz_virtio_ids=""
 fuzz_virtio_ids_set=false
 
@@ -67,7 +86,12 @@ while [ "$#" -gt 0 ]; do
     --replay-input) shift; replay_inputs+=("${1:-}") ;;
     --seed-input) shift; seed_inputs+=("${1:-}") ;;
     --devilang-state) shift; devilang_states+=("${1:-}") ;;
+    --grammar) shift; devilang_grammar="${1:-}" ;;
     --devilang-grammar) shift; devilang_grammar="${1:-}" ;;
+    --enable-grammar) enable_devilang_grammar="true" ;;
+    --enable-devilang-grammar) enable_devilang_grammar="true" ;;
+    --disable-grammar) disable_devilang_grammar="true" ;;
+    --disable-devilang-grammar) disable_devilang_grammar="true" ;;
     --fuzz-virtio-ids)
       shift
       fuzz_virtio_ids="${1:-}"
@@ -79,6 +103,23 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
+
+if [ "${enable_devilang_grammar}" = "true" ] &&
+   [ "${disable_devilang_grammar}" = "true" ]; then
+  echo "--enable-devilang-grammar and --disable-devilang-grammar are mutually exclusive" >&2
+  exit 1
+fi
+
+if [ "${enable_devilang_grammar}" = "true" ]; then
+  devilang_grammar_mode="on"
+elif [ "${disable_devilang_grammar}" = "true" ]; then
+  devilang_grammar_mode="off"
+fi
+
+if [ "${devilang_grammar_mode}" = "on" ] && [ -z "${devilang_grammar}" ]; then
+  echo "grammar mode on requires --grammar (or --devilang-grammar)" >&2
+  exit 1
+fi
 
 if [ "${fuzz_virtio_ids_set}" = "false" ] &&
    [ "${MORPHEUS_QEMU_FUZZ_VIRTIO_IDS+x}" = "x" ]; then
@@ -108,8 +149,11 @@ step_log_file="${run_dir%/}/../stdout.log"
 runner_log_file="${run_dir}/launcher.stdout.log"
 fuzzer_bin="${install_dir}/bin/qemu_nesting"
 stub_elf="${install_dir}/bin/libafl_nesting_stub"
-bridge_dir="${install_dir}/../build/qemu-libafl-bridge"
-qemu_bundle_dir="${bridge_dir}/build/qemu-bundle/usr/local/share/qemu"
+bridge_source="${MORPHEUS_LIBAFL_QEMU_BRIDGE_SOURCE:-${MORPHEUS_LIBAFL_QEMU_BRIDGE_DIR:-}}"
+if [ -z "${bridge_source}" ]; then
+  echo "missing external LibAFL QEMU bridge source; pass --qemu-bridge-source" >&2
+  exit 1
+fi
 workspace_root="${MORPHEUS_LIBAFL_WORKSPACE:-${MORPHEUS_SCRIPT_WORKSPACE:-}}"
 if [ -z "${workspace_root}" ]; then
   echo "missing Morpheus workspace root for qemu_nesting harness" >&2
@@ -121,6 +165,19 @@ if [ -z "${repo_root}" ]; then
   repo_root="$(cd "${workspace_root}/../.." && pwd)"
 fi
 repo_root="$(cd "${repo_root}" && pwd)"
+if [[ "${bridge_source}" != /* ]]; then
+  bridge_source="${repo_root}/${bridge_source#./}"
+fi
+bridge_source="$(cd "${bridge_source}" && pwd)"
+qemu_bridge_data_dir="${MORPHEUS_LIBAFL_QEMU_BRIDGE_DATA_DIR:-}"
+if [ -n "${qemu_bridge_data_dir}" ] && [[ "${qemu_bridge_data_dir}" != /* ]]; then
+  qemu_bridge_data_dir="${repo_root}/${qemu_bridge_data_dir#./}"
+fi
+qemu_bundle_dir="${qemu_bridge_data_dir:-${bridge_source}/build/qemu-bundle/usr/local/share/qemu}"
+[ -d "${qemu_bundle_dir}" ] || {
+  echo "missing configured QEMU bridge data bundle: ${qemu_bundle_dir}" >&2
+  exit 1
+}
 
 mkdir -p "${run_dir}" "${l1_runtime_dir}" "${corpus_dir}" "${objective_dir}" "$(dirname "${result_file}")"
 find "${l1_runtime_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
@@ -293,7 +350,7 @@ fs.writeFileSync(outputFile, `${unique.join("\n")}\n`);
 NODE
 fi
 
-if [ -n "${devilang_grammar}" ]; then
+if [ "${devilang_grammar_mode}" != "off" ] && [ -n "${devilang_grammar}" ]; then
   node - "${devilang_grammar_file}" "${workspace_root}" "${repo_root}" "${devilang_grammar}" <<'NODE'
 const fs = require("fs");
 const path = require("path");
@@ -668,6 +725,11 @@ l1_share_staging_dir="${run_dir}/l1-share-staging"
 l1_share_image="${run_dir}/l1-share.ext4"
 direct_l1_share_stub_path="/mnt/libafl_nesting_stub"
 direct_l1_stub_env="MORPHEUS_L2_MODE=${l2_mode}"
+if [ "${MORPHEUS_L2_SHELL_TRACE:-0}" = "1" ]; then
+  # The launcher runs inside the L1 guest, so an observation-only trace flag
+  # from the host must be carried through the init command explicitly.
+  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_SHELL_TRACE=1"
+fi
 if [ "${fuzz_virtio_ids_set}" = "true" ]; then
   direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_QEMU_FUZZ_VIRTIO_IDS=${fuzz_virtio_ids}"
 fi
@@ -733,30 +795,76 @@ stage_buildroot_cvm_share() {
   cp -a "${source_share}/guest-images" "${staging_dir}/"
   cp -a "${source_share}/guest-qemu" "${staging_dir}/"
 
+  # Inspect the guest QEMU on the host while staging the share.  Do not run a
+  # dynamically-linked grep inside L1: after the LibAFL breakpoint that class
+  # of child process is not a reliable way to probe the binary.  A marker is
+  # enough for the guest shell to select the optional trace events.
+  mmio_patch_marker="${staging_dir}/guest-qemu/.morpheus-mmio-patched"
+  mmio_root_marker="${staging_dir}/.morpheus-mmio-patched"
+  rm -f "${mmio_patch_marker}" "${mmio_root_marker}"
+  if LC_ALL=C grep -a -q 'virtio_mmio_fuzz_read' \
+       "${source_share}/guest-qemu/bin/qemu-system-aarch64" 2>/dev/null &&
+     LC_ALL=C grep -a -q 'virtio_mmio_dma_fuzz' \
+       "${source_share}/guest-qemu/bin/qemu-system-aarch64" 2>/dev/null; then
+    : > "${mmio_patch_marker}"
+    : > "${mmio_root_marker}"
+  fi
+
+  # Older prepared nvirsh shares contain the pre-fix launcher.  Rewrite only
+  # its guest-side capability condition while copying the script so cached
+  # states receive the same no-dynamic-ELF behavior as newly built states.
+  perl -0pi -e 's{if LC_ALL=C grep -a -q '\''virtio_mmio_fuzz_read'\''.*?; then}{if [ -f /mnt/guest-qemu/.morpheus-mmio-patched ]; then}ms' \
+    "${staging_dir}/launch-l2-inner.sh"
+
   # The buildroot launcher predates LibAFL's input-status contract. Keep the
   # generated launcher intact and add the contract in this per-run wrapper.
-  cat > "${staging_dir}/launch-l2.sh" <<'EOF'
+cat > "${staging_dir}/launch-l2.sh" <<'EOF'
 #!/bin/sh
 set -eu
+
+if [ "${MORPHEUS_L2_SHELL_TRACE:-0}" = "1" ]; then
+  # The wrapper is the first command entered after the host-stack exec.  Keep
+  # its line-level trace in the captured stderr stream without changing the
+  # launch result or stop behavior.
+  PS4='+ ${0}:${LINENO}: '
+  if [ -n "${BASH_VERSION:-}" ]; then
+    set -E
+    trap 'morpheus_status=$?; printf "shell-error file=%s line=%s status=%s command=%s\n" "${BASH_SOURCE[0]:-$0}" "${LINENO:-?}" "$morpheus_status" "${BASH_COMMAND:-?}" >&2' ERR
+    trap 'morpheus_status=$?; printf "shell-exit file=%s status=%s\n" "${BASH_SOURCE[0]:-$0}" "$morpheus_status" >&2' EXIT
+  else
+    trap 'morpheus_status=$?; printf "shell-exit file=%s status=%s\n" "$0" "$morpheus_status" >&2' 0
+  fi
+  set -x
+fi
 
 runtime_dir="${MORPHEUS_L2_RUNTIME_DIR:-/run/morpheus-libafl}"
 status_path="${MORPHEUS_QEMU_INPUT_STATUS_PATH:-${runtime_dir}/qemu-input.status}"
 input_path="${MORPHEUS_QEMU_INPUT_PATH:-}"
+launch_marker="${runtime_dir}/launch-l2.marker"
+
+# Keep this wrapper's hand-off observable independently of the generated L2
+# launcher.  A crash before qemu-exec-start is a launcher/runtime failure, not
+# evidence about the nested CVM or its MMIO path.
+printf 'wrapper-start\n' >> "${launch_marker}"
 
 if [ ! -d "${runtime_dir}" ]; then
   mkdir -p "${runtime_dir}"
 fi
+printf 'wrapper-after-mkdir\n' >> "${launch_marker}"
 : > "${status_path}"
+printf 'wrapper-after-status-open\n' >> "${launch_marker}"
 input_size="missing"
 if [ -n "${input_path}" ]; then
   input_size="$(stat -c %s "${input_path}" 2>/dev/null || printf missing)"
 fi
+printf 'wrapper-after-input-stat\n' >> "${launch_marker}"
 printf 'input-status-path=%s\n' "${status_path}" >> "${status_path}"
 printf 'input-path=%s\n' "${input_path:-unset}" >> "${status_path}"
 printf 'input-size=%s\n' "${input_size}" >> "${status_path}"
 printf 'qemu-exec-start\n' >> "${status_path}"
+printf 'wrapper-before-inner-exec\n' >> "${launch_marker}"
 export MORPHEUS_QEMU_INPUT_STATUS_PATH="${status_path}"
-exec /mnt/launch-l2-inner.sh
+/mnt/launch-l2-inner.sh
 EOF
   chmod 0755 "${staging_dir}/launch-l2.sh"
 
@@ -1136,7 +1244,10 @@ else
   fi
 fi
 
+unset MORPHEUS_LIBAFL_GRAMMAR MORPHEUS_LIBAFL_DEVILANG_GRAMMAR
 launch_env=("STUB=${stub_elf}" "MORPHEUS_LIBAFL_CORPUS_DIR=${corpus_dir}" "MORPHEUS_LIBAFL_OBJECTIVE_DIR=${objective_dir}")
+launch_env+=("MORPHEUS_LIBAFL_DEVILANG_GRAMMAR_MODE=${devilang_grammar_mode}")
+launch_env+=("MORPHEUS_LIBAFL_GRAMMAR_MODE=${devilang_grammar_mode}")
 if [ -n "${l2_run_window_ms}" ]; then
   launch_env+=("MORPHEUS_LIBAFL_L2_RUN_WINDOW_MS=${l2_run_window_ms}")
   # Default non-replay executor timeout is 12s, far below CVM L2 windows.
@@ -1165,8 +1276,10 @@ fi
 if [ -f "${devilang_states_file}" ] && [ -s "${devilang_states_file}" ]; then
   launch_env+=("MORPHEUS_LIBAFL_DEVILANG_STATES=${devilang_states_file}")
 fi
-if [ -f "${devilang_grammar_file}" ] && [ -s "${devilang_grammar_file}" ]; then
+if [ "${devilang_grammar_mode}" != "off" ] &&
+   [ -f "${devilang_grammar_file}" ] && [ -s "${devilang_grammar_file}" ]; then
   devilang_grammar_path="$(sed -n '1p' "${devilang_grammar_file}")"
+  launch_env+=("MORPHEUS_LIBAFL_GRAMMAR=${devilang_grammar_path}")
   launch_env+=("MORPHEUS_LIBAFL_DEVILANG_GRAMMAR=${devilang_grammar_path}")
 fi
 

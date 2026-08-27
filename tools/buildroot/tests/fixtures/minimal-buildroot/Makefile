@@ -29,8 +29,6 @@ $(O)/images/$(TARGET_NAME).tar: $(O)/.config
 		$(O)/images \
 		$(O)/target/usr/bin \
 		$(O)/target/usr/share/qemu \
-		$(O)/target/lib \
-		$(O)/target/usr/lib \
 		$(O)/build/linux-6.18.16
 	@printf '%s\n' 'hello from minimal buildroot smoke target' > $(O)/target/hello.txt
 	@tar -cf $@ -C $(O)/target hello.txt
@@ -41,9 +39,6 @@ $(O)/images/$(TARGET_NAME).tar: $(O)/.config
 	@printf '%s\n' '#!/bin/sh' 'exit 0' > $(O)/target/usr/bin/qemu-system-aarch64
 	@chmod +x $(O)/target/usr/bin/qemu-system-aarch64
 	@printf '%s\n' 'fake qemu rom data' > $(O)/target/usr/share/qemu/edk2.bin
-	@printf '%s\n' '#!/bin/sh' 'exit 0' > $(O)/target/lib/ld-linux-aarch64.so.1
-	@chmod +x $(O)/target/lib/ld-linux-aarch64.so.1
-	@printf '%s\n' 'fake libfdt' > $(O)/target/usr/lib/libfdt.so.1
 	@printf '%s\n' 'fake vmlinux elf' > $(O)/build/linux-6.18.16/vmlinux
 	@printf '%s\n' 'built $(TARGET_NAME).tar' > $(O)/build.log
 

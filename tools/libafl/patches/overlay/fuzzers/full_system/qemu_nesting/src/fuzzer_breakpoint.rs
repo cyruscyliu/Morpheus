@@ -6,6 +6,7 @@ use std::{
 };
 
 use libafl::{
+    Error,
     corpus::{Corpus, OnDiskCorpus, Testcase},
     events::{EventConfig, SimpleEventManager, launcher::Launcher},
     feedback_or, feedback_or_fast,
@@ -16,9 +17,8 @@ use libafl::{
     monitors::MultiMonitor,
     observers::{CanTrack, HitcountsMapObserver, TimeObserver, VariableMapObserver},
     schedulers::{IndexesLenTimeMinimizerScheduler, QueueScheduler},
-    stages::{StdMutationalStage},
+    stages::StdMutationalStage,
     state::{HasCorpus, StdState},
-    Error,
 };
 use libafl_bolts::{
     core_affinity::Cores,
@@ -28,14 +28,18 @@ use libafl_bolts::{
     shmem::{ShMemProvider, StdShMemProvider},
     tuples::tuple_list,
 };
-use libafl_nesting::{ScenarioGenerator, ScenarioInput, ScenarioMutator, decode_scenario};
+use libafl_nesting::{
+    MAX_ENCODED_SCENARIO_BYTES, ScenarioGenerator, ScenarioInput, ScenarioMutator, decode_scenario,
+    encode_scenario,
+};
 use libafl_qemu::{
-    FastSnapshotManager, emu::Emulator, executor::QemuExecutor,
+    FastSnapshotManager, QemuSnapshotManager, SnapshotManager, emu::Emulator,
+    executor::QemuExecutor,
     modules::edges::StdEdgeCoverageModule,
 };
 use libafl_targets::{EDGES_MAP_DEFAULT_SIZE, MAX_EDGES_FOUND, edges_map_mut_ptr};
 
-pub static mut MAX_INPUT_SIZE: usize = 4096;
+const MAX_INPUT_SIZE: usize = MAX_ENCODED_SCENARIO_BYTES;
 
 fn parse_env_u64(name: &str) -> Option<u64> {
     env::var(name).ok()?.parse::<u64>().ok()
@@ -55,6 +59,26 @@ fn executor_timeout(replay_enabled: bool) -> Duration {
     Duration::from_secs(12)
 }
 
+fn snapshot_manager_from_env() -> SnapshotManager {
+    match env::var("MORPHEUS_LIBAFL_SNAPSHOT_MANAGER")
+        .unwrap_or_else(|_| "fast".to_owned())
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "qemu" => {
+            eprintln!("[libafl/qemu_nesting] snapshot manager=qemu");
+            SnapshotManager::Qemu(QemuSnapshotManager::default())
+        }
+        "fast" => {
+            eprintln!("[libafl/qemu_nesting] snapshot manager=fast");
+            SnapshotManager::Fast(FastSnapshotManager::default())
+        }
+        value => panic!(
+            "unsupported MORPHEUS_LIBAFL_SNAPSHOT_MANAGER={value:?}; use fast or qemu"
+        ),
+    }
+}
+
 fn replay_input_paths() -> Option<Vec<PathBuf>> {
     let manifest = env::var("MORPHEUS_LIBAFL_REPLAY_INPUTS").ok()?;
     input_paths_from_manifest(&manifest, "replay")
@@ -62,17 +86,37 @@ fn replay_input_paths() -> Option<Vec<PathBuf>> {
 
 fn initial_input_paths() -> Option<Vec<PathBuf>> {
     let manifest = env::var("MORPHEUS_LIBAFL_INITIAL_INPUTS").ok()?;
-    input_paths_from_manifest(&manifest, "initial")
+    let paths = input_paths_from_manifest(&manifest, "initial");
+    if let Some(paths) = paths.as_ref() {
+        eprintln!(
+            "[libafl/qemu_nesting] initial input manifest={} entries={}",
+            manifest,
+            paths.len()
+        );
+    }
+    paths
 }
 
 fn scenario_generator_from_env() -> ScenarioGenerator {
-    match ScenarioGenerator::from_env() {
-        Ok(generator) => generator,
-        Err(err) => {
-            eprintln!("failed to load Devilang-backed scenario generator: {err}");
-            ScenarioGenerator::default()
-        }
+    let generator = ScenarioGenerator::from_env()
+        .unwrap_or_else(|err| panic!("failed to load grammar-backed scenario generator: {err}"));
+    if let Some(grammar) = generator.grammar() {
+        eprintln!(
+            "[libafl/qemu_nesting] grammar loaded: phases={} machines={} transitions={} traces={} dma-events={}",
+            grammar.phase_machines().len(),
+            grammar.machines().len(),
+            grammar.transition_count(),
+            grammar.trace_count(),
+            grammar.dma_event_count(),
+        );
     }
+    generator
+}
+
+fn grammar_probe_requested() -> bool {
+    env::args()
+        .skip(1)
+        .any(|argument| argument == "--check-grammar" || argument == "--check-devilang-grammar")
 }
 
 fn input_paths_from_manifest(manifest: &str, kind: &str) -> Option<Vec<PathBuf>> {
@@ -87,27 +131,40 @@ fn input_paths_from_manifest(manifest: &str, kind: &str) -> Option<Vec<PathBuf>>
     Some(paths)
 }
 
+fn validate_input_size(input: ScenarioInput, path: &Path) -> Result<ScenarioInput, Error> {
+    let encoded_len = encode_scenario(&input).len();
+    if encoded_len > MAX_INPUT_SIZE {
+        return Err(Error::illegal_argument(format!(
+            "input {} encodes to {encoded_len} bytes, over the {MAX_INPUT_SIZE}-byte limit",
+            path.display()
+        )));
+    }
+    Ok(input)
+}
+
 fn load_replay_input(path: &Path) -> Result<ScenarioInput, Error> {
     if path.extension().is_some_and(|ext| ext == "raw") {
         let bytes = fs::read(path)?;
-        return decode_scenario(&bytes).map_err(|decode_err| {
+        let input = decode_scenario(&bytes).map_err(|decode_err| {
             Error::illegal_argument(format!(
                 "failed to load replay input {} as raw scenario bytes ({decode_err})",
                 path.display()
             ))
-        });
+        })?;
+        return validate_input_size(input, path);
     }
 
     match <ScenarioInput as Input>::from_file(path) {
-        Ok(input) => Ok(input),
+        Ok(input) => validate_input_size(input, path),
         Err(postcard_err) => {
             let bytes = fs::read(path)?;
-            decode_scenario(&bytes).map_err(|decode_err| {
+            let input = decode_scenario(&bytes).map_err(|decode_err| {
                 Error::illegal_argument(format!(
                     "failed to load replay input {} as ScenarioInput ({postcard_err}) or raw scenario bytes ({decode_err})",
                     path.display()
                 ))
-            })
+            })?;
+            validate_input_size(input, path)
         }
     }
 }
@@ -129,6 +186,14 @@ pub fn fuzz() {
     let objective_dir = env::var("MORPHEUS_LIBAFL_OBJECTIVE_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("./crashes"));
+    let scenario_generator = scenario_generator_from_env();
+    if grammar_probe_requested() {
+        if !scenario_generator.grammar_enabled() {
+            panic!("--check-devilang-grammar requires an enabled grammar");
+        }
+        println!("[libafl/qemu_nesting] Devilang grammar probe succeeded");
+        return;
+    }
 
     macro_rules! run_client_body {
         ($state:expr, $mgr:ident) => {{
@@ -138,7 +203,14 @@ pub fn fuzz() {
                 let mut harness = |emulator: &mut Emulator<_, _, _, _, _, _, _>,
                                    _state: &mut _,
                                    input: &ScenarioInput| unsafe {
-                    emulator.run(input).unwrap().try_into().unwrap()
+                    eprintln!(
+                        "[libafl/qemu_nesting] execution start actions={} encoded-bytes={}",
+                        input.total_actions(),
+                        encode_scenario(input).len(),
+                    );
+                    let exit_kind = emulator.run(input).unwrap().try_into().unwrap();
+                    eprintln!("[libafl/qemu_nesting] execution complete exit={exit_kind:?}");
+                    exit_kind
                 };
 
                 let mut edges_observer = unsafe {
@@ -163,14 +235,17 @@ pub fn fuzz() {
                 let mut emu = Emulator::builder()
                     .qemu_parameters(args)
                     .modules(modules)
-                    // The fast systemmode manager creates the LibAFL COW
-                    // layer used by the patched block backend.
-                    .snapshot_manager(FastSnapshotManager::default())
+                    // Select the snapshot implementation explicitly so a
+                    // launcher failure can be compared without changing the
+                    // guest input or its MMIO path.
+                    .snapshot_manager(snapshot_manager_from_env())
                     .build()?;
 
                 unsafe {
-                    emu.start().unwrap();
+                    eprintln!("[libafl/qemu_nesting] starting outer QEMU");
+                    emu.start().expect("failed to start outer QEMU");
                 }
+                eprintln!("[libafl/qemu_nesting] outer QEMU reached guest stub");
 
                 let mut feedback = feedback_or!(
                     MaxMapFeedback::new(&edges_observer),
@@ -179,7 +254,7 @@ pub fn fuzz() {
                 let mut objective = feedback_or_fast!(CrashFeedback::new(), TimeoutFeedback::new());
 
                 let mut state = $state.unwrap_or_else(|| {
-                    let mut scenario_generator = scenario_generator_from_env();
+                    let mut initial_scenario_generator = scenario_generator.clone();
                     let mut state = StdState::new(
                         StdRand::with_seed(current_nanos()),
                         OnDiskCorpus::new(corpus_dir.clone()).unwrap(),
@@ -190,6 +265,7 @@ pub fn fuzz() {
                     .unwrap();
                     if let Some(paths) = replay_inputs.as_ref() {
                         for path in paths {
+                            eprintln!("[libafl/qemu_nesting] loading replay input {}", path.display());
                             let input = load_replay_input(path).unwrap();
                             let mut testcase = Testcase::from(input);
                             *testcase.filename_mut() =
@@ -199,6 +275,7 @@ pub fn fuzz() {
                     } else if let Some(paths) = initial_inputs.as_ref() {
                         let mut loaded = 0usize;
                         for path in paths {
+                            eprintln!("[libafl/qemu_nesting] loading initial input {}", path.display());
                             let input = match load_replay_input(path) {
                                 Ok(input) => input,
                                 Err(err) => {
@@ -220,10 +297,14 @@ pub fn fuzz() {
                         }
                     } else {
                         for _ in 0..4 {
-                            let input = scenario_generator.generate(&mut state).unwrap();
+                            let input = initial_scenario_generator.generate(&mut state).unwrap();
                             state.corpus_mut().add(input.into()).unwrap();
                         }
                     }
+                    eprintln!(
+                        "[libafl/qemu_nesting] initial corpus entries={}",
+                        state.corpus().count()
+                    );
                     state
                 });
 
@@ -241,6 +322,7 @@ pub fn fuzz() {
                     timeout,
                 )
                 .expect("Failed to create QemuExecutor");
+                eprintln!("[libafl/qemu_nesting] executor ready");
 
                 executor.break_on_timeout();
 
@@ -262,10 +344,19 @@ pub fn fuzz() {
                     if initial_inputs.is_some() {
                         let corpus_ids = state.corpus().ids().collect::<Vec<_>>();
                         for corpus_id in corpus_ids {
+                            eprintln!(
+                                "[libafl/qemu_nesting] evaluating initial corpus id={corpus_id:?}"
+                            );
                             let input = {
-                                let mut testcase =
-                                    state.corpus().get(corpus_id)?.borrow_mut();
-                                testcase.load_input(state.corpus())?.clone()
+                                let mut testcase = state.corpus().get(corpus_id)?.borrow_mut();
+                                testcase
+                                    .load_input(state.corpus())
+                                    .map_err(|err| {
+                                        Error::illegal_state(format!(
+                                            "failed to reload initial corpus input {corpus_id:?}: {err:?}"
+                                        ))
+                                    })?
+                                    .clone()
                             };
                             fuzzer
                                 .evaluate_input(&mut state, &mut executor, &mut $mgr, &input)
@@ -281,10 +372,9 @@ pub fn fuzz() {
                     // that cost for this systemmode target, so keep only the
                     // structured scenario mutation stage on the hot path.
                     let mut executor = executor;
-                    let scenario_generator = scenario_generator_from_env();
-                    let mut stages = tuple_list!(StdMutationalStage::new(
-                        ScenarioMutator::new(scenario_generator)
-                    ));
+                    let mut stages = tuple_list!(StdMutationalStage::new(ScenarioMutator::new(
+                        scenario_generator.clone()
+                    )));
 
                     fuzzer
                         .fuzz_loop(&mut stages, &mut executor, &mut state, &mut $mgr)
@@ -301,14 +391,12 @@ pub fn fuzz() {
     let monitor = MultiMonitor::new(|s| println!("{s}"));
     if replay_inputs.is_some() {
         let mut mgr = SimpleEventManager::new(monitor);
-        run_client_body!(None, mgr)
-            .unwrap_or_else(|err| panic!("Failed to run replay: {err:?}"));
+        run_client_body!(None, mgr).unwrap_or_else(|err| panic!("Failed to run replay: {err:?}"));
         return;
     }
 
-    let mut run_client = |state: Option<_>, mut mgr, _client_description| {
-        run_client_body!(state, mgr)
-    };
+    let mut run_client =
+        |state: Option<_>, mut mgr, _client_description| run_client_body!(state, mgr);
 
     let shmem_provider = StdShMemProvider::new().expect("Failed to init shared memory");
 

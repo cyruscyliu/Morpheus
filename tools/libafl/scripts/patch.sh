@@ -19,7 +19,7 @@ mkdir -p "$(dirname "${result_file}")"
 [ -d "${patch_dir}/fuzzers/full_system/qemu_nesting" ] || { echo "missing qemu_nesting patch tree under ${patch_dir}" >&2; exit 1; }
 
 fingerprint_files="$(find "${patch_dir}/crates/libafl_nesting" "${patch_dir}/fuzzers/full_system/qemu_nesting" -type f | sort)"
-fingerprint="$(printf '%s\n' "${fingerprint_files}" | morpheus_hash_files_from_stdin)"
+fingerprint="$(printf 'external-qemu-build-adapter-v2\n%s\n' "${fingerprint_files}" | morpheus_hash_files_from_stdin)"
 
 if morpheus_patch_state_matches "${state_file}" "${fingerprint}"; then
   cat > "${result_file}" <<EOF
@@ -50,6 +50,68 @@ if (!text.includes('libafl_nesting = { path = "./crates/libafl_nesting"')) {
   );
 }
 fs.writeFileSync(path, text);
+NODE
+
+# The LibAFL QEMU build helper predates externally prebuilt bridge trees. Keep
+# its normal configure/build behavior intact, but add an explicit external
+# build mode that consumes the already-configured QEMU tree. These edits are
+# deliberately idempotent because the managed source is reused between runs.
+node - "${source_dir}" <<'NODE'
+const fs = require("fs");
+const path = require("path");
+const source = process.argv[2];
+
+function edit(file, replacements) {
+  const full = path.join(source, file);
+  let text = fs.readFileSync(full, "utf8");
+  for (const [from, to] of replacements) {
+    if (text.includes(to)) continue;
+    if (!text.includes(from)) {
+      throw new Error(`cannot adapt ${file}: missing expected text`);
+    }
+    text = text.replace(from, to);
+  }
+  fs.writeFileSync(full, text);
+}
+
+edit("crates/libafl_qemu/libafl_qemu_build/src/build.rs", [
+  [
+    '    let libafl_qemu_no_build = env::var("LIBAFL_QEMU_NO_BUILD").is_ok();\n',
+    '    let libafl_qemu_no_build = env::var("LIBAFL_QEMU_NO_BUILD").is_ok();\n' +
+      '    let libafl_qemu_external_build = env::var("LIBAFL_QEMU_EXTERNAL_BUILD").is_ok();\n',
+  ],
+  [
+    '    println!("cargo:rerun-if-env-changed=LIBAFL_QEMU_NO_BUILD");\n',
+    '    println!("cargo:rerun-if-env-changed=LIBAFL_QEMU_NO_BUILD");\n' +
+      '    println!("cargo:rerun-if-env-changed=LIBAFL_QEMU_EXTERNAL_BUILD");\n',
+  ],
+  [
+    '    let must_reconfigure = if libafl_qemu_force_configure {\n',
+    '    let must_reconfigure = if libafl_qemu_external_build {\n' +
+      '        false\n' +
+      '    } else if libafl_qemu_force_configure {\n',
+  ],
+  [
+    '    if !libafl_qemu_no_build {\n',
+    '    if !libafl_qemu_no_build && !libafl_qemu_external_build {\n',
+  ],
+]);
+
+edit("crates/libafl_qemu/libafl_qemu_build/src/lib.rs", [
+  [
+    ') -> Vec<String> {\n    if env::var("LLVM_CONFIG_PATH").is_err() {\n',
+    ') -> Vec<String> {\n    let build_dir = fs::canonicalize(build_dir)\n' +
+      '        .expect("failed to resolve QEMU build directory");\n' +
+      '    if env::var("LLVM_CONFIG_PATH").is_err() {\n',
+  ],
+  ['include_path(build_dir, incpath)', 'include_path(&build_dir, incpath)'],
+  ['include_path(build_dir, &arg)', 'include_path(&build_dir, &arg)'],
+]);
+
+edit("crates/libafl_qemu/libafl_qemu_build/src/bindings.rs", [
+  ['#include "hw/qdev-core.h"', '#include "hw/core/qdev.h"'],
+  ['#include "hw/qdev-properties.h"', '#include "hw/core/qdev-properties.h"'],
+]);
 NODE
 
 morpheus_write_patch_state "${state_file}" "${patch_dir}" "${fingerprint}"

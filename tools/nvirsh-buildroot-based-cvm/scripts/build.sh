@@ -78,8 +78,6 @@ buildroot_realm_measurements="${buildroot_target_dir}/usr/bin/realm-measurements
 buildroot_lkvm="${buildroot_target_dir}/usr/bin/lkvm"
 buildroot_guest_qemu="${buildroot_target_dir}/usr/bin/qemu-system-aarch64"
 buildroot_guest_qemu_data_dir="${buildroot_target_dir}/usr/share/qemu"
-buildroot_target_lib_dir="${buildroot_target_dir}/lib"
-buildroot_target_usr_lib_dir="${buildroot_target_dir}/usr/lib"
 buildroot_inputs_state_file="${buildroot_output_dir}/.morpheus-build-inputs.json"
 buildroot_vmlinux="${buildroot_output_dir}/build/vmlinux"
 
@@ -100,7 +98,6 @@ host_firmware_dir="${l1_dir}/host-firmware"
 host_rootfs_dir="${l1_dir}/host-rootfs"
 guest_images_dir="${l1_dir}/guest-images"
 guest_qemu_dir="${l1_dir}/guest-qemu"
-guest_qemu_runtime_lib_dir="${guest_qemu_dir}/runtime-libs"
 launch_script="${l1_dir}/launch-l2.sh"
 hoststack_launch_script="${l1_dir}/launch-l2-hoststack.sh"
 l2_shared_image="${l1_dir}/Image"
@@ -314,7 +311,6 @@ mkdir -p \
   "${guest_images_dir}" \
   "${guest_qemu_dir}/bin" \
   "${guest_qemu_dir}/share" \
-  "${guest_qemu_runtime_lib_dir}/lib" \
   "${install_dir}"
 if [ "${use_linaro_helper}" = "true" ]; then
   mkdir -p \
@@ -332,17 +328,20 @@ cp -f "${buildroot_initrd}" "${guest_images_dir}/rootfs.cpio.gz"
 cp -f "${guest_qemu_source}" "${guest_qemu_dir}/bin/qemu-system-aarch64"
 chmod +x "${guest_qemu_dir}/bin/qemu-system-aarch64"
 
+# Compute optional MMIO tracing capability while building on the host.  The
+# L1 launcher must not execute its dynamically-linked grep to inspect this
+# binary: that child-process path is unreliable after the LibAFL breakpoint.
+guest_qemu_mmio_marker="${guest_qemu_dir}/.morpheus-mmio-patched"
+rm -f "${guest_qemu_mmio_marker}" "${l1_dir}/.morpheus-mmio-patched"
+if LC_ALL=C grep -a -q 'virtio_mmio_fuzz_read' "${guest_qemu_source}" 2>/dev/null &&
+   LC_ALL=C grep -a -q 'virtio_mmio_dma_fuzz' "${guest_qemu_source}" 2>/dev/null; then
+  : > "${guest_qemu_mmio_marker}"
+  : > "${l1_dir}/.morpheus-mmio-patched"
+fi
+
 if [ -d "${buildroot_guest_qemu_data_dir}" ]; then
   cp -a "${buildroot_guest_qemu_data_dir}" "${guest_qemu_dir}/share/"
 fi
-if [ -d "${buildroot_target_lib_dir}" ]; then
-  cp -a "${buildroot_target_lib_dir}/." "${guest_qemu_runtime_lib_dir}/lib/"
-fi
-if [ -d "${buildroot_target_usr_lib_dir}" ]; then
-  cp -a "${buildroot_target_usr_lib_dir}/." "${guest_qemu_runtime_lib_dir}/lib/"
-fi
-ln -sfn lib "${guest_qemu_runtime_lib_dir}/lib64"
-
 if [ "${use_linaro_helper}" = "true" ]; then
   cp -f "${guest_kernel_image_source}" "${l2_shared_image}"
   cp -f "${buildroot_initrd_plain}" "${l2_shared_initrd}"
@@ -368,6 +367,20 @@ if [ "${use_linaro_helper}" = "true" ]; then
   cat > "${launch_script}" <<'EOF'
 #!/bin/sh
 set -eu
+
+if [ "${MORPHEUS_L2_SHELL_TRACE:-0}" = "1" ]; then
+  # Keep the command and source line visible in launch-l2.stderr.log.  The
+  # parent stub already captures this stream, so tracing remains observational.
+  PS4='+ ${0}:${LINENO}: '
+  if [ -n "${BASH_VERSION:-}" ]; then
+    set -E
+    trap 'morpheus_status=$?; printf "shell-error file=%s line=%s status=%s command=%s\n" "${BASH_SOURCE[0]:-$0}" "${LINENO:-?}" "$morpheus_status" "${BASH_COMMAND:-?}" >&2' ERR
+    trap 'morpheus_status=$?; printf "shell-exit file=%s status=%s\n" "${BASH_SOURCE[0]:-$0}" "$morpheus_status" >&2' EXIT
+  else
+    trap 'morpheus_status=$?; printf "shell-exit file=%s status=%s\n" "$0" "$morpheus_status" >&2' 0
+  fi
+  set -x
+fi
 
 runtime_dir="${MORPHEUS_L2_RUNTIME_DIR:-/mnt/morpheus-l2-runtime}"
 helper_cfg="${MORPHEUS_L2_GEN_RUN_VMM_CFG:-/mnt/gen-run-vmm.cfg}"
@@ -409,7 +422,7 @@ if [ ! -d /sys/class/net/macvtap0 ]; then
   exit 1
 fi
 
-if LC_ALL=C grep -a -q 'virtio_mmio_fuzz_read' /usr/bin/qemu-system-aarch64 2>/dev/null; then
+if [ -f /mnt/.morpheus-mmio-patched ]; then
   printf 'qemu-patch-symbols=present\n' >> "${launch_marker}"
 else
   printf 'qemu-patch-symbols=missing\n' >> "${launch_marker}"
@@ -430,11 +443,25 @@ else
 #!/bin/sh
 set -eu
 
+if [ "${MORPHEUS_L2_SHELL_TRACE:-0}" = "1" ]; then
+  # Keep the command and source line visible in launch-l2.stderr.log.  The
+  # parent stub already captures this stream, so tracing remains observational.
+  PS4='+ ${0}:${LINENO}: '
+  if [ -n "${BASH_VERSION:-}" ]; then
+    set -E
+    trap 'morpheus_status=$?; printf "shell-error file=%s line=%s status=%s command=%s\n" "${BASH_SOURCE[0]:-$0}" "${LINENO:-?}" "$morpheus_status" "${BASH_COMMAND:-?}" >&2' ERR
+    trap 'morpheus_status=$?; printf "shell-exit file=%s status=%s\n" "${BASH_SOURCE[0]:-$0}" "$morpheus_status" >&2' EXIT
+  else
+    trap 'morpheus_status=$?; printf "shell-exit file=%s status=%s\n" "$0" "$morpheus_status" >&2' 0
+  fi
+  set -x
+fi
+
 runtime_dir="${MORPHEUS_L2_RUNTIME_DIR:-/mnt/morpheus-l2-runtime}"
 guest_image_dir="${MORPHEUS_L2_GUEST_IMAGE_DIR:-/mnt/guest-images}"
+printf 'inner-start\n' >> "${runtime_dir}/launch-l2.marker"
 guest_qemu="/mnt/guest-qemu/bin/qemu-system-aarch64"
 guest_qemu_data_dir="/mnt/guest-qemu/share/qemu"
-guest_qemu_runtime_lib_dir="/mnt/guest-qemu/runtime-libs"
 guest_realm_measurements="/usr/bin/realm-measurements"
 guest_realm_configs_dir="/usr/share/cca-realm-measurements/configs"
 guest_virtio_transport="__MORPHEUS_L2_VIRTIO_TRANSPORT__"
@@ -446,7 +473,6 @@ guest_qemu_trace_events="${runtime_dir}/morpheus-qemu-trace-events.txt"
 guest_qemu_dtb="${runtime_dir}/qemu-gen.dtb"
 guest_qemu_stdout="${runtime_dir}/qemu.stdout.log"
 guest_qemu_stderr="${runtime_dir}/qemu.stderr.log"
-guest_qemu_ld_library_path=""
 guest_qemu_has_morpheus_mmio_patch="false"
 
 if [ "${guest_virtio_transport}" = "mmio" ]; then
@@ -457,9 +483,11 @@ fi
 if [ ! -d "${runtime_dir}" ]; then
   mkdir -p "${runtime_dir}"
 fi
+printf 'inner-after-mkdir\n' >> "${launch_marker}"
 : > "${guest_qemu_stdout}"
 : > "${guest_qemu_stderr}"
-printf 'script-start\n' > "${launch_marker}"
+printf 'inner-after-log-open\n' >> "${launch_marker}"
+printf 'script-start\n' >> "${launch_marker}"
 printf 'launch-mode=direct-qemu\n' >> "${launch_marker}"
 
 if [ ! -x "${guest_qemu}" ]; then
@@ -487,8 +515,7 @@ for path in \
   fi
 done
 
-if LC_ALL=C grep -a -q 'virtio_mmio_fuzz_read' "${guest_qemu}" 2>/dev/null &&
-  LC_ALL=C grep -a -q 'virtio_mmio_dma_fuzz' "${guest_qemu}" 2>/dev/null; then
+if [ -f "${guest_qemu%/bin/qemu-system-aarch64}/.morpheus-mmio-patched" ]; then
   guest_qemu_has_morpheus_mmio_patch="true"
   printf 'virtio_mmio_fuzz_read\n' > "${guest_qemu_trace_events}"
   printf 'virtio_mmio_dma_fuzz\n' >> "${guest_qemu_trace_events}"
@@ -562,30 +589,7 @@ if [ ! -s "${guest_qemu_dtb}" ]; then
 fi
 printf 'dtb-generated=%s\n' "${guest_qemu_dtb}" >> "${launch_marker}"
 
-if [ -d "${guest_qemu_runtime_lib_dir}" ]; then
-  guest_qemu_runtime_loader=""
-  for candidate in \
-    "${guest_qemu_runtime_lib_dir}/lib/ld-linux-aarch64.so.1" \
-    "${guest_qemu_runtime_lib_dir}/lib64/ld-linux-aarch64.so.1"; do
-    if [ -x "${candidate}" ]; then
-      guest_qemu_runtime_loader="${candidate}"
-      break
-    fi
-  done
-  guest_qemu_runtime_library_path="${guest_qemu_runtime_lib_dir}/lib"
-  set -- "${guest_qemu}" "$@"
-  if [ -n "${guest_qemu_runtime_loader}" ]; then
-    set -- \
-      "${guest_qemu_runtime_loader}" \
-      --library-path \
-      "${guest_qemu_runtime_library_path}" \
-      "$@"
-  else
-    guest_qemu_ld_library_path="${guest_qemu_runtime_library_path}"
-  fi
-else
-  set -- "${guest_qemu}" "$@"
-fi
+set -- "${guest_qemu}" "$@"
 
 printf 'qemu-cmd=' >> "${launch_marker}"
 printf '%s ' "$@" >> "${launch_marker}"
@@ -597,11 +601,7 @@ else
 fi
 printf 'qemu-exec-start\n' >> "${launch_marker}"
 set +e
-if [ -n "${guest_qemu_ld_library_path}" ]; then
-  env LD_LIBRARY_PATH="${guest_qemu_ld_library_path}" "$@" >> "${guest_qemu_stdout}" 2>> "${guest_qemu_stderr}"
-else
-  "$@" >> "${guest_qemu_stdout}" 2>> "${guest_qemu_stderr}"
-fi
+"$@" >> "${guest_qemu_stdout}" 2>> "${guest_qemu_stderr}"
 qemu_status="$?"
 set -e
 printf 'qemu-exit-status=%s\n' "${qemu_status}" >> "${launch_marker}"
@@ -615,6 +615,20 @@ if [ "${use_linaro_helper}" = "true" ]; then
   cat > "${hoststack_launch_script}" <<'EOF'
 #!/bin/sh
 set -eu
+
+if [ "${MORPHEUS_L2_SHELL_TRACE:-0}" = "1" ]; then
+  # Trace the host-stack prelude and the exact exec that enters the inner
+  # launcher.  This is deliberately log-only and does not affect control flow.
+  PS4='+ ${0}:${LINENO}: '
+  if [ -n "${BASH_VERSION:-}" ]; then
+    set -E
+    trap 'morpheus_status=$?; printf "shell-error file=%s line=%s status=%s command=%s\n" "${BASH_SOURCE[0]:-$0}" "${LINENO:-?}" "$morpheus_status" "${BASH_COMMAND:-?}" >&2' ERR
+    trap 'morpheus_status=$?; printf "shell-exit file=%s status=%s\n" "${BASH_SOURCE[0]:-$0}" "$morpheus_status" >&2' EXIT
+  else
+    trap 'morpheus_status=$?; printf "shell-exit file=%s status=%s\n" "$0" "$morpheus_status" >&2' 0
+  fi
+  set -x
+fi
 PATH="/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:${PATH}}"
 runtime_dir="${MORPHEUS_L2_RUNTIME_DIR:-/mnt/morpheus-l2-runtime}"
 mount -o remount,rw / 2>/dev/null || true
@@ -640,19 +654,35 @@ if [ ! -d "${runtime_dir}" ]; then
 fi
 export MORPHEUS_L2_RUNTIME_DIR="${runtime_dir}"
 export MORPHEUS_L2_GEN_RUN_VMM_CFG="${MORPHEUS_L2_GEN_RUN_VMM_CFG:-/mnt/gen-run-vmm.cfg}"
-exec /mnt/launch-l2.sh
+/mnt/launch-l2.sh
 EOF
 else
   cat > "${hoststack_launch_script}" <<'EOF'
 #!/bin/sh
 set -eu
+
+if [ "${MORPHEUS_L2_SHELL_TRACE:-0}" = "1" ]; then
+  # Trace the host-stack prelude and the exact exec that enters the inner
+  # launcher.  This is deliberately log-only and does not affect control flow.
+  PS4='+ ${0}:${LINENO}: '
+  if [ -n "${BASH_VERSION:-}" ]; then
+    set -E
+    trap 'morpheus_status=$?; printf "shell-error file=%s line=%s status=%s command=%s\n" "${BASH_SOURCE[0]:-$0}" "${LINENO:-?}" "$morpheus_status" "${BASH_COMMAND:-?}" >&2' ERR
+    trap 'morpheus_status=$?; printf "shell-exit file=%s status=%s\n" "${BASH_SOURCE[0]:-$0}" "$morpheus_status" >&2' EXIT
+  else
+    trap 'morpheus_status=$?; printf "shell-exit file=%s status=%s\n" "$0" "$morpheus_status" >&2' 0
+  fi
+  set -x
+fi
 runtime_dir="${MORPHEUS_L2_RUNTIME_DIR:-/mnt/morpheus-l2-runtime}"
 if [ ! -d "${runtime_dir}" ]; then
   mkdir -p "${runtime_dir}"
 fi
+printf 'hoststack-start\n' > "${runtime_dir}/launch-l2.marker"
+printf 'hoststack-before-inner-exec\n' >> "${runtime_dir}/launch-l2.marker"
 export MORPHEUS_L2_RUNTIME_DIR="${runtime_dir}"
 export MORPHEUS_L2_GUEST_IMAGE_DIR="${MORPHEUS_L2_GUEST_IMAGE_DIR:-/mnt/guest-images}"
-exec /mnt/launch-l2.sh
+/mnt/launch-l2.sh
 EOF
 fi
 chmod +x "${hoststack_launch_script}"
@@ -673,7 +703,7 @@ try {
   )"
 fi
 
-node - "${state_file}" "${build_dir_key}" "${build_dir}" "${install_dir}" "${current_fingerprint}" "${qemu}" "${host_firmware_a_path}" "${host_firmware_b_path}" "${host_boot_dir}/Image" "${host_rootfs_path}" "${l1_dir}" "${launch_script}" "${hoststack_launch_script}" "${guest_images_dir}/Image" "${guest_images_dir}/rootfs.cpio" "${buildroot_vmlinux}" "${guest_qemu_dir}/bin/qemu-system-aarch64" "${guest_qemu_runtime_lib_dir}" "${buildroot_inputs_fingerprint}" "${profile_sha256}" "${l1_machine}" "${l1_cpu}" "${l1_cmdline}" "${l1_memory}" "${l1_cpus}" "${use_linaro_helper}" "${l2_shared_cfg}" "${l2_shared_image}" "${l2_shared_initrd}" "${l2_shared_guest_disk}" "${l2_shared_qemu_efi}" "${l2_shared_kvmtool_efi}" "${l2_virtio_transport}" <<'NODE'
+node - "${state_file}" "${build_dir_key}" "${build_dir}" "${install_dir}" "${current_fingerprint}" "${qemu}" "${host_firmware_a_path}" "${host_firmware_b_path}" "${host_boot_dir}/Image" "${host_rootfs_path}" "${l1_dir}" "${launch_script}" "${hoststack_launch_script}" "${guest_images_dir}/Image" "${guest_images_dir}/rootfs.cpio" "${buildroot_vmlinux}" "${guest_qemu_dir}/bin/qemu-system-aarch64" "${buildroot_inputs_fingerprint}" "${profile_sha256}" "${l1_machine}" "${l1_cpu}" "${l1_cmdline}" "${l1_memory}" "${l1_cpus}" "${use_linaro_helper}" "${l2_shared_cfg}" "${l2_shared_image}" "${l2_shared_initrd}" "${l2_shared_guest_disk}" "${l2_shared_qemu_efi}" "${l2_shared_kvmtool_efi}" "${l2_virtio_transport}" <<'NODE'
 const fs = require("fs");
 const path = require("path");
 const [
@@ -694,7 +724,6 @@ const [
   l2Initrd,
   l2Vmlinux,
   l2Qemu,
-  l2QemuRuntimeLibDir,
   buildrootInputsFingerprint,
   profileSha256,
   l1Machine,
@@ -755,7 +784,6 @@ const state = {
         initrd: l2Initrd,
         vmlinux: fs.existsSync(l2Vmlinux) ? l2Vmlinux : null,
         qemu: l2Qemu,
-        runtimeLibDir: l2QemuRuntimeLibDir,
         helperCfg: fs.existsSync(l2HelperCfg) ? l2HelperCfg : null,
         shareImage: fs.existsSync(l2ShareImage) ? l2ShareImage : null,
         shareInitrd: fs.existsSync(l2ShareInitrd) ? l2ShareInitrd : null,

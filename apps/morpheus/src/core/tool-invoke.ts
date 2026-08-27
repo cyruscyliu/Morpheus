@@ -1607,7 +1607,14 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
     args.push("--archive-url", archiveUrl);
   }
   if (command === "patch") {
-    args.push("--patch-dir", requireFlag(resolved, "patch-dir", "patch requires --patch-dir DIR"));
+    const acceptsPatchDir = (spec && (
+      (Array.isArray(spec.requiredFlags) && spec.requiredFlags.includes("patch-dir"))
+      || (Array.isArray(spec.scalarFlags) && spec.scalarFlags.includes("patch-dir"))
+      || (spec.pathFlags && Object.prototype.hasOwnProperty.call(spec.pathFlags, "patch-dir"))
+    ));
+    if (acceptsPatchDir || resolved["patch-dir"]) {
+      args.push("--patch-dir", requireFlag(resolved, "patch-dir", "patch requires --patch-dir DIR"));
+    }
   }
   for (const [genericFlag, value] of Object.entries(effectivePaths)) {
     if (["source", "build-version"].includes(genericFlag) || !value) {

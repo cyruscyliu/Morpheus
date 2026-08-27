@@ -2,6 +2,18 @@ struct virtio_net_ctrl_status {
     value: u8;
 }
 
+// LLVM-derived virtio-net grammars may contain transport helper heads that
+// cover both virtio_ring setup and the net-driver call site.
+struct control_buf {
+    cvq: u8 random;
+    index: u16 random;
+}
+
+head control_buf_head {
+    position = [file = virtio_ring.c; caller = virtqueue_add; callee = virtqueue_add_packed; call_depth = 0; argument_index = 0] | [file = virtio_net.c; caller = try_fill_recv; callee = add_recvbuf_mergeable; call_depth = 3; argument_index = 0];
+    to = control_buf;
+}
+
 head virtio_net_ctrl_status_head {
     position = [file = virtio_net.c; caller = virtnet_send_command; callee = this_is_a_stub_for_virtio_net_ctrl; call_depth = 3; argument_index = 2];
     to = virtio_net_ctrl_status;

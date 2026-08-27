@@ -41,6 +41,10 @@ test("linux build reuses an existing output tree when the inputs are unchanged",
 
   const buildLog = path.join(outputDir, "build.log");
   const buildLogMtime = fs.statSync(buildLog).mtimeMs;
+  assert.deepEqual(
+    fs.readFileSync(path.join(outputDir, "defconfig.log"), "utf8").trim().split("\n"),
+    ["configured qemu_virt_defconfig", "applied olddefconfig"],
+  );
   assert.equal(fs.existsSync(path.join(outputDir, "arch", "arm64", "boot", "Image")), true);
   assert.equal(fs.existsSync(path.join(outputDir, "vmlinux")), true);
 
@@ -59,4 +63,38 @@ test("linux build reuses an existing output tree when the inputs are unchanged",
   const secondResult = JSON.parse(fs.readFileSync(resultFile, "utf8"));
   assert.equal(secondResult.details.reused, true);
   assert.equal(fs.statSync(buildLog).mtimeMs, buildLogMtime);
+});
+
+test("linux build replaces duplicate config symbols from a fragment", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-linux-config-"));
+  const sourceDir = path.join(tmpDir, "source");
+  const outputDir = path.join(tmpDir, "output");
+  const resultFile = path.join(tmpDir, "result.json");
+  const fragmentFile = path.join(tmpDir, "fragment.config");
+
+  fs.cpSync(fixtureSource, sourceDir, { recursive: true });
+  fs.writeFileSync(
+    fragmentFile,
+    "# CONFIG_OVERRIDE is not set\nCONFIG_OVERRIDE=y\n# CONFIG_BASE is not set\nCONFIG_NEW=y\n",
+    "utf8",
+  );
+
+  const result = spawnSync("bash", [buildScript], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      MORPHEUS_LINUX_SOURCE: sourceDir,
+      MORPHEUS_LINUX_OUTPUT: outputDir,
+      MORPHEUS_LINUX_DEFCONFIG: "qemu_virt_defconfig",
+      MORPHEUS_LINUX_CONFIG_FRAGMENT_FILE: fragmentFile,
+      MORPHEUS_LINUX_RESULT_FILE: resultFile,
+    },
+  });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+
+  const config = fs.readFileSync(path.join(outputDir, ".config"), "utf8");
+  assert.match(config, /^# CONFIG_BASE is not set$/m);
+  assert.match(config, /^CONFIG_OVERRIDE=y$/m);
+  assert.match(config, /^CONFIG_NEW=y$/m);
+  assert.doesNotMatch(config, /^# CONFIG_OVERRIDE is not set$/m);
 });

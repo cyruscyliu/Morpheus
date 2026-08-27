@@ -54,6 +54,7 @@ const allowedFileExtensions = new Set([
   ".css",
   ".devilang",
   ".dot",
+  ".fd",
   ".fragment",
   ".g4",
   ".h",

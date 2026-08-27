@@ -5,6 +5,7 @@ O ?= .
 qemu_virt_defconfig:
 	@mkdir -p "$(O)"
 	@printf '%s\n' 'configured qemu_virt_defconfig' >> "$(O)/defconfig.log"
+	@printf '%s\n' 'CONFIG_BASE=y' 'CONFIG_OVERRIDE=y' > "$(O)/.config"
 
 olddefconfig:
 	@mkdir -p "$(O)"

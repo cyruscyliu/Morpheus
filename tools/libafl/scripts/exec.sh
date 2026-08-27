@@ -509,7 +509,16 @@ l1_hoststack_launch="${state_fields[13]:-}"
 l1_host_kernel="${state_fields[14]:-}"
 l1_accel="${state_fields[15]:-}"
 l1_enable_kvm="${state_fields[16]:-false}"
-libafl_l1_smp_requested="${MORPHEUS_LIBAFL_L1_SMP:-${l1_smp:-}}"
+if [ -n "${MORPHEUS_LIBAFL_L1_SMP:-}" ]; then
+  libafl_l1_smp_requested="${MORPHEUS_LIBAFL_L1_SMP}"
+elif [ "${l2_mode}" = "cvm" ] &&
+      [ "${nvirsh_state_tool}" = "nvirsh-buildroot-based-cvm" ]; then
+  # The buildroot CVM L1 is TCG-emulated on the host. One vCPU avoids
+  # scheduling eight emulated CPUs while the L1 launches its nested QEMU.
+  libafl_l1_smp_requested="1"
+else
+  libafl_l1_smp_requested="${l1_smp:-}"
+fi
 l1_memory_requested="${MORPHEUS_LIBAFL_L1_MEMORY:-${l1_memory:-}}"
 libafl_l1_smp="$(morpheus_resolve_l1_qemu_cpus "${libafl_l1_smp_requested}")"
 l1_memory="$(morpheus_resolve_l1_qemu_memory_mb "${l1_memory_requested}")"
@@ -755,6 +764,12 @@ l1_share_staging_dir="${run_dir}/l1-share-staging"
 l1_share_image="${run_dir}/l1-share.ext4"
 direct_l1_share_stub_path="/mnt/libafl_nesting_stub"
 direct_l1_stub_env="MORPHEUS_L2_MODE=${l2_mode}"
+if [ "${l2_accel}" != "auto" ]; then
+  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_ACCEL=${l2_accel}"
+fi
+if [ -n "${l2_cpu}" ]; then
+  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_CPU=${l2_cpu}"
+fi
 if [ "${MORPHEUS_L2_SHELL_TRACE:-0}" = "1" ]; then
   # The launcher runs inside the L1 guest, so an observation-only trace flag
   # from the host must be carried through the init command explicitly.

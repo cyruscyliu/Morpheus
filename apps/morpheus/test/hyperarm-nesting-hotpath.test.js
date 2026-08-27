@@ -418,6 +418,10 @@ test("generated CVM hoststack uses QEMU and keeps the runtime shared", () => {
   );
   assert.match(
     harnessSource,
+    /elif \[ "\$\{l2_mode\}" = "cvm" \] &&[\s\S]*nvirsh-buildroot-based-cvm[\s\S]*libafl_l1_smp_requested="1"/,
+  );
+  assert.match(
+    harnessSource,
     /l1_memory="\$\(morpheus_resolve_l1_qemu_memory_mb "\$\{l1_memory_requested\}"\)"/,
   );
   assert.match(
@@ -651,6 +655,14 @@ test("LibAFL CVM harness supports buildroot-based prepared state", () => {
   assert.match(
     harnessSource,
     /direct_l1_stub_env="MORPHEUS_L2_MODE=\$\{l2_mode\}"/,
+  );
+  assert.match(
+    harnessSource,
+    /direct_l1_stub_env="\$\{direct_l1_stub_env\} MORPHEUS_L2_ACCEL=\$\{l2_accel\}"/,
+  );
+  assert.match(
+    harnessSource,
+    /direct_l1_stub_env="\$\{direct_l1_stub_env\} MORPHEUS_L2_CPU=\$\{l2_cpu\}"/,
   );
   assert.match(harnessSource, /--fuzz-virtio-ids\)/);
   assert.match(
@@ -1297,7 +1309,7 @@ test("buildroot CVM launch preserves the handoff and requested L1 memory", () =>
   assert.match(startup, /^fs0:\\Image /m);
   assert.match(
     startup,
-    /init=\/bin\/sh -- -c "mkdir -p \/mnt && mount [^\n]* && MORPHEUS_L2_MODE=cvm(?: MORPHEUS_L2_RUN_WINDOW_MS=1000)? exec \/mnt\/libafl_nesting_stub"/,
+    /init=\/bin\/sh -- -c "mkdir -p \/mnt && mount [^\n]* && MORPHEUS_L2_MODE=cvm(?: MORPHEUS_L2_ACCEL=kvm)?(?: MORPHEUS_L2_CPU=host)?(?: MORPHEUS_L2_RUN_WINDOW_MS=1000)? exec \/mnt\/libafl_nesting_stub"/,
   );
   assert.match(startup, /MORPHEUS_L2_MODE=cvm/);
   assert.match(startup, /MORPHEUS_L2_RUN_WINDOW_MS=1000/);

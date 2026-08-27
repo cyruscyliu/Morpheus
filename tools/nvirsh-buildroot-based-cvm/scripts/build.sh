@@ -465,6 +465,9 @@ guest_qemu_data_dir="/mnt/guest-qemu/share/qemu"
 guest_realm_measurements="/usr/bin/realm-measurements"
 guest_realm_configs_dir="/usr/share/cca-realm-measurements/configs"
 guest_virtio_transport="__MORPHEUS_L2_VIRTIO_TRANSPORT__"
+guest_l2_accel="${MORPHEUS_L2_ACCEL:-auto}"
+guest_l2_cpu="${MORPHEUS_L2_CPU:-}"
+guest_l2_smp="${MORPHEUS_L2_SMP:-1}"
 guest_virtio_serial_device="virtio-serial-pci"
 guest_virtio_net_device="virtio-net-pci,netdev=net0,romfile=''"
 guest_bootargs="console=hvc0 oops=panic panic_on_warn=1 panic=-1 kasan.fault=panic"
@@ -490,6 +493,45 @@ printf 'inner-after-log-open\n' >> "${launch_marker}"
 printf 'script-start\n' >> "${launch_marker}"
 printf 'launch-mode=direct-qemu\n' >> "${launch_marker}"
 
+if [ "${guest_l2_accel}" = "auto" ]; then
+  if [ -e /dev/kvm ]; then
+    guest_l2_accel="kvm"
+  else
+    guest_l2_accel="tcg"
+  fi
+fi
+case "${guest_l2_accel}" in
+  kvm)
+    guest_l2_cpu="${guest_l2_cpu:-host}"
+    ;;
+  tcg)
+    guest_l2_cpu="${guest_l2_cpu:-cortex-a57}"
+    if [ "${guest_l2_cpu}" = "host" ]; then
+      guest_l2_cpu="cortex-a57"
+    fi
+    ;;
+  *)
+    echo "unsupported L2 accelerator: ${guest_l2_accel}" >&2
+    exit 1
+    ;;
+esac
+case "${guest_l2_cpu}" in
+  host|max|cortex-a57) ;;
+  *)
+    echo "unsupported L2 CPU: ${guest_l2_cpu}" >&2
+    exit 1
+    ;;
+esac
+case "${guest_l2_smp}" in
+  ''|*[!0-9]*|0)
+    echo "MORPHEUS_L2_SMP must be a positive integer" >&2
+    exit 1
+    ;;
+esac
+printf 'l2-accel=%s\n' "${guest_l2_accel}" >> "${launch_marker}"
+printf 'l2-cpu=%s\n' "${guest_l2_cpu}" >> "${launch_marker}"
+printf 'l2-smp=%s\n' "${guest_l2_smp}" >> "${launch_marker}"
+
 if [ ! -x "${guest_qemu}" ]; then
   echo "missing qemu-system-aarch64 in host share: ${guest_qemu}" >&2
   exit 1
@@ -498,7 +540,7 @@ if [ ! -f "${guest_image_dir}/rootfs.cpio" ]; then
   echo "missing plain initrd in host share: ${guest_image_dir}/rootfs.cpio" >&2
   exit 1
 fi
-if [ ! -e /dev/kvm ]; then
+if [ "${guest_l2_accel}" = "kvm" ] && [ ! -e /dev/kvm ]; then
   echo "missing /dev/kvm for l2 cvm launch" >&2
   exit 1
 fi
@@ -541,11 +583,10 @@ fi
 set -- "$@" \
   -M "confidential-guest-support=rme0" \
   -object "rme-guest,id=rme0" \
-  -cpu host \
+  -cpu "${guest_l2_cpu}" \
   -M virt \
-  -enable-kvm \
   -M "gic-version=3,its=on" \
-  -smp 2 \
+  -smp "${guest_l2_smp}" \
   -m 1024M \
   -nographic \
   -nodefaults \
@@ -558,6 +599,12 @@ set -- "$@" \
   -netdev "user,id=net0" \
   -device "${guest_virtio_net_device}" \
   -append "${guest_bootargs}"
+
+if [ "${guest_l2_accel}" = "kvm" ]; then
+  set -- "$@" -enable-kvm
+else
+  set -- "$@" -accel tcg
+fi
 
 if [ "${guest_virtio_transport}" != "mmio" ]; then
   set -- "$@" \

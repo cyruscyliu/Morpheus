@@ -680,11 +680,7 @@ test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", 
   );
   assert.match(
     launchScript,
-    /if LC_ALL=C grep -a -q 'virtio_mmio_fuzz_read' "\$\{guest_qemu\}" 2>\/dev\/null &&/,
-  );
-  assert.match(
-    launchScript,
-    /LC_ALL=C grep -a -q 'virtio_mmio_dma_fuzz' "\$\{guest_qemu\}" 2>\/dev\/null; then/,
+    /if \[ -f "\$\{guest_qemu%\/bin\/qemu-system-aarch64\}\/\.morpheus-mmio-patched" \]; then/,
   );
   assert.match(
     launchScript,
@@ -712,7 +708,23 @@ test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", 
   );
   assert.match(
     launchScript,
-    /-M virt \\\s+-enable-kvm \\\s+-M "gic-version=3,its=on" \\\s+-smp 2/,
+    /guest_l2_accel="\$\{MORPHEUS_L2_ACCEL:-auto\}"/,
+  );
+  assert.match(
+    launchScript,
+    /guest_l2_cpu="\$\{MORPHEUS_L2_CPU:-\}"/,
+  );
+  assert.match(
+    launchScript,
+    /guest_l2_smp="\$\{MORPHEUS_L2_SMP:-1\}"/,
+  );
+  assert.match(
+    launchScript,
+    /-M virt \\\s+-M "gic-version=3,its=on" \\\s+-smp "\$\{guest_l2_smp\}"/,
+  );
+  assert.match(
+    launchScript,
+    /if \[ "\$\{guest_l2_accel\}" = "kvm" \]; then\s+set -- "\$@" -enable-kvm\s+else\s+set -- "\$@" -accel tcg/,
   );
   const mmioCommandSection = launchScript.slice(
     0,

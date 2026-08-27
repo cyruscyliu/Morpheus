@@ -97,16 +97,76 @@ if [ -n "${defconfig}" ]; then
   make -C "${source_dir}" "O=${output_dir}" ARCH=arm64 "${defconfig}"
 fi
 
+merge_config_fragment() {
+  local config_path="${output_dir}/.config"
+  local merged_config
+
+  # A plain append leaves duplicate CONFIG_* entries in .config. Normalize
+  # each symbol to one line, using the fragment's last value consistently.
+  if [ ! -f "${config_path}" ]; then
+    : > "${config_path}"
+  fi
+  merged_config="$(mktemp "${output_dir}/.config.merged.XXXXXX")"
+  if ! awk -v fragment_file="${config_fragment_file}" '
+    function symbol(line) {
+      if (match(line, /^CONFIG_[A-Za-z0-9_]+/)) {
+        return substr(line, RSTART, RLENGTH)
+      }
+      if (match(line, /^# CONFIG_[A-Za-z0-9_]+ is not set$/)) {
+        sub(/^# /, "", line)
+        sub(/ is not set$/, "", line)
+        return line
+      }
+      return ""
+    }
+
+    FILENAME == fragment_file {
+      current = symbol($0)
+      if (current != "") {
+        if (!(current in fragment_order)) {
+          fragment_symbols[++fragment_count] = current
+          fragment_order[current] = 1
+        }
+        fragment_values[current] = $0
+      }
+      next
+    }
+
+    {
+      current = symbol($0)
+      if (current == "" || !(current in fragment_values)) {
+        print $0
+        next
+      }
+      if (!(current in emitted)) {
+        print fragment_values[current]
+        emitted[current] = 1
+      }
+    }
+
+    END {
+      for (i = 1; i <= fragment_count; i++) {
+        current = fragment_symbols[i]
+        if (!(current in emitted)) {
+          print fragment_values[current]
+        }
+      }
+    }
+  ' "${config_fragment_file}" "${config_path}" > "${merged_config}"; then
+    rm -f "${merged_config}"
+    return 1
+  fi
+  mv "${merged_config}" "${config_path}"
+}
+
 if [ -n "${config_fragment_file}" ] && [ -s "${config_fragment_file}" ]; then
-  cat "${config_fragment_file}" >> "${output_dir}/.config"
+  merge_config_fragment
 fi
 
-# `olddefconfig` does not materialize every newly-visible choice in some
-# downstream kernels.  The subsequent build's `syncconfig` would then reopen
-# those choices interactively (and can block a workflow with stdin closed).
-# Run the line-oriented configurator with EOF so new symbols take their
-# documented defaults while existing fragment values are preserved.
-make -C "${source_dir}" "O=${output_dir}" ARCH=arm64 oldconfig </dev/null
+# Materialize newly visible symbols without opening an interactive prompt.
+# This preserves explicit fragment values and lets Kconfig select dependent
+# symbols consistently before the build's syncconfig phase.
+make -C "${source_dir}" "O=${output_dir}" ARCH=arm64 olddefconfig
 
 cat > "${build_inputs_state_file}" <<EOF
 {

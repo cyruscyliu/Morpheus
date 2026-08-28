@@ -21,8 +21,10 @@ test("linux build reuses an existing output tree when the inputs are unchanged",
   const sourceDir = path.join(tmpDir, "source");
   const outputDir = path.join(tmpDir, "output");
   const resultFile = path.join(tmpDir, "result.json");
+  const makeArgFile = path.join(tmpDir, "make-args.txt");
 
   fs.cpSync(fixtureSource, sourceDir, { recursive: true });
+  fs.writeFileSync(makeArgFile, "CROSS_COMPILE=synthetic-cross-\n", "utf8");
 
   const firstRun = spawnSync("bash", [buildScript], {
     encoding: "utf8",
@@ -31,6 +33,7 @@ test("linux build reuses an existing output tree when the inputs are unchanged",
       MORPHEUS_LINUX_SOURCE: sourceDir,
       MORPHEUS_LINUX_OUTPUT: outputDir,
       MORPHEUS_LINUX_DEFCONFIG: "qemu_virt_defconfig",
+      MORPHEUS_LINUX_MAKE_ARG_FILE: makeArgFile,
       MORPHEUS_LINUX_RESULT_FILE: resultFile,
       MORPHEUS_LINUX_REUSE_BUILD_DIR: "true",
     },
@@ -45,6 +48,14 @@ test("linux build reuses an existing output tree when the inputs are unchanged",
     fs.readFileSync(path.join(outputDir, "defconfig.log"), "utf8").trim().split("\n"),
     ["configured qemu_virt_defconfig", "applied olddefconfig"],
   );
+  assert.deepEqual(
+    fs.readFileSync(path.join(outputDir, "make-args.log"), "utf8").trim().split("\n"),
+    [
+      "defconfig-cross=synthetic-cross-",
+      "olddefconfig-cross=synthetic-cross-",
+      "image-cross=synthetic-cross-",
+    ],
+  );
   assert.equal(fs.existsSync(path.join(outputDir, "arch", "arm64", "boot", "Image")), true);
   assert.equal(fs.existsSync(path.join(outputDir, "vmlinux")), true);
 
@@ -55,6 +66,7 @@ test("linux build reuses an existing output tree when the inputs are unchanged",
       MORPHEUS_LINUX_SOURCE: sourceDir,
       MORPHEUS_LINUX_OUTPUT: outputDir,
       MORPHEUS_LINUX_DEFCONFIG: "qemu_virt_defconfig",
+      MORPHEUS_LINUX_MAKE_ARG_FILE: makeArgFile,
       MORPHEUS_LINUX_RESULT_FILE: resultFile,
       MORPHEUS_LINUX_REUSE_BUILD_DIR: "true",
     },

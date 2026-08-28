@@ -52,6 +52,7 @@
 #define L2_CPU_TCG "cortex-a57"
 #define L2_CPU_KVM "host"
 #define L2_MEMORY_MB "1024"
+#define L2_READY_POLL_MS 250U
 #define RUNTIME_DUMP_MAX_BYTES (256U * 1024U)
 #define RUNTIME_DUMP_CHUNK_BYTES 128U
 #define L2_DISABLE_NQC2_FW_CFG \
@@ -1207,6 +1208,20 @@ static bool l2_qemu_exec_started(void) {
   return file_contains_any(LAUNCH_MARKER_PATH, &needle, 1);
 }
 
+static bool l2_boot_ready_logged(void) {
+  static const char *needles[] = {
+      "buildroot login:",
+      "Welcome to Buildroot",
+  };
+  const size_t needle_count = sizeof(needles) / sizeof(needles[0]);
+
+  /* The direct buildroot launcher writes L2 serial output here.  This is a
+   * guest readiness signal, not a fuzz result, so it only shortens the
+   * normal boot path; panic and launcher-failure paths still classify below. */
+  return file_contains_any(QEMU_STDOUT_PATH, needles, needle_count) ||
+         file_contains_any(L2_CONSOLE_PATH, needles, needle_count);
+}
+
 static void log_l2_launcher_phase(void) {
   if (l2_qemu_exec_started()) {
     lqprintf("stub: l2 launcher phase=post-qemu\n");
@@ -1687,10 +1702,23 @@ static bool launch_l2(const uint8_t *data, size_t len,
   lqprintf("stub: entering l2 run window pid=%u\n", (unsigned)pid);
   unsigned window_ms = run_window_ms(data);
   unsigned evidence_wait_ms = window_ms < 5000U ? window_ms : 5000U;
+  bool boot_ready = false;
+  unsigned elapsed_ms = evidence_wait_ms;
   lqprintf("stub: l2 run window ms=%u\n", window_ms);
   usleep(evidence_wait_ms * 1000U);
-  if (window_ms > evidence_wait_ms) {
-    usleep((window_ms - evidence_wait_ms) * 1000U);
+  boot_ready = l2_boot_ready_logged();
+  while (!boot_ready && elapsed_ms < window_ms) {
+    unsigned sleep_ms = window_ms - elapsed_ms;
+    if (sleep_ms > L2_READY_POLL_MS) {
+      sleep_ms = L2_READY_POLL_MS;
+    }
+    usleep(sleep_ms * 1000U);
+    elapsed_ms += sleep_ms;
+    boot_ready = l2_boot_ready_logged();
+  }
+  if (boot_ready) {
+    append_marker("parent-boot-ready\n");
+    lqprintf("stub: l2 boot ready; ending run window\n");
   }
   append_marker("parent-before-wait\n");
   log_process_state(pid);
@@ -1713,7 +1741,11 @@ static bool launch_l2(const uint8_t *data, size_t len,
       return *outcome == L2_OUTCOME_KERNEL_PANIC;
     }
     log_l2_input_evidence();
-    lqprintf("stub: l2 timed out and was terminated\n");
+    if (boot_ready) {
+      lqprintf("stub: l2 boot-ready window ended and was terminated\n");
+    } else {
+      lqprintf("stub: l2 timed out and was terminated\n");
+    }
     return true;
   }
   if (wait_ret < 0) {

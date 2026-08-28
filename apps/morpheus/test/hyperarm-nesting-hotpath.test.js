@@ -347,6 +347,17 @@ test("nested L2 launcher prepares libc state before spawning", () => {
   assert.match(launchSource, /posix_spawn\(&pid, shell/);
 });
 
+test("nested L2 stops the normal wait after guest boot readiness", () => {
+  assert.match(stubSource, /#define L2_READY_POLL_MS 250U/);
+  assert.match(stubSource, /static bool l2_boot_ready_logged\(void\)/);
+  assert.match(stubSource, /"buildroot login:"/);
+  assert.match(stubSource, /"Welcome to Buildroot"/);
+  assert.match(stubSource, /parent-boot-ready/);
+  assert.match(stubSource, /stub: l2 boot ready; ending run window/);
+  assert.match(stubSource, /l2 boot-ready window ended and was terminated/);
+  assert.match(stubSource, /while \(!boot_ready && elapsed_ms < window_ms\)/);
+});
+
 test("nested fuzzing has no synthetic L2 oracle trigger", () => {
   assert.doesNotMatch(stubSource, /MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG/);
   assert.doesNotMatch(stubSource, /oracle test bug/i);

@@ -52,6 +52,17 @@ fi
 
 mkdir -p "${output_dir}"
 
+make_args=()
+if [ -n "${make_arg_file}" ] && [ -s "${make_arg_file}" ]; then
+  mapfile -t make_args < "${make_arg_file}"
+  nproc_value="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 1)"
+  for i in "${!make_args[@]}"; do
+    make_args[$i]="${make_args[$i]//\$(nproc)/${nproc_value}}"
+  done
+else
+  make_args=(-j"$(morpheus_default_jobs)")
+fi
+
 build_inputs_fingerprint="$(compute_build_inputs_fingerprint true)"
 legacy_build_inputs_fingerprint="$(compute_build_inputs_fingerprint false)"
 previous_build_inputs_fingerprint=""
@@ -94,7 +105,7 @@ EOF
 fi
 
 if [ -n "${defconfig}" ]; then
-  make -C "${source_dir}" "O=${output_dir}" ARCH=arm64 "${defconfig}"
+  make -C "${source_dir}" "O=${output_dir}" ARCH=arm64 "${make_args[@]}" "${defconfig}"
 fi
 
 merge_config_fragment() {
@@ -166,24 +177,13 @@ fi
 # Materialize newly visible symbols without opening an interactive prompt.
 # This preserves explicit fragment values and lets Kconfig select dependent
 # symbols consistently before the build's syncconfig phase.
-make -C "${source_dir}" "O=${output_dir}" ARCH=arm64 olddefconfig
+make -C "${source_dir}" "O=${output_dir}" ARCH=arm64 "${make_args[@]}" olddefconfig
 
 cat > "${build_inputs_state_file}" <<EOF
 {
   "fingerprint": "${build_inputs_fingerprint}"
 }
 EOF
-
-make_args=()
-if [ -n "${make_arg_file}" ] && [ -s "${make_arg_file}" ]; then
-  mapfile -t make_args < "${make_arg_file}"
-  nproc_value="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 1)"
-  for i in "${!make_args[@]}"; do
-    make_args[$i]="${make_args[$i]//\$(nproc)/${nproc_value}}"
-  done
-else
-  make_args=(-j"$(morpheus_default_jobs)")
-fi
 
 make -C "${source_dir}" "O=${output_dir}" ARCH=arm64 "${make_args[@]}" Image
 

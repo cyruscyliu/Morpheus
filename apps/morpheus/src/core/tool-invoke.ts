@@ -350,6 +350,20 @@ function scriptLogPath(cwd) {
   return path.join(cwd, "stdout.log");
 }
 
+function readOptionalText(filePath) {
+  if (!filePath) {
+    return "";
+  }
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      return "";
+    }
+    throw error;
+  }
+}
+
 function defaultScriptedCommandCwd(workspace, tool, command) {
   if (!workspace) {
     return process.cwd();
@@ -879,11 +893,18 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
             command,
             status: "error",
             exit_code: exitCode,
-            summary: (resultSpec && resultSpec.errorSummary) || stderrText || stdoutText || fs.readFileSync(logFile, "utf8") || `failed ${command}`,
+            summary: (resultSpec && resultSpec.errorSummary)
+              || stderrText
+              || stdoutText
+              || readOptionalText(logFile)
+              || `failed ${command}`,
             details,
             error: {
               code: `${command}_failed`,
-              message: stderrText || stdoutText || fs.readFileSync(logFile, "utf8") || `failed ${command}`,
+              message: stderrText
+                || stdoutText
+                || readOptionalText(logFile)
+                || `failed ${command}`,
             },
           };
       if (resultSpec.manifestTemplate) {
@@ -1864,6 +1885,7 @@ module.exports = {
   executeRemoteTopLevelToolCommand,
   parseToolPayload,
   parseToolArgs,
+  readOptionalText,
   printJson,
   requireFlag,
   resolveInvocation,

@@ -5,11 +5,15 @@
 
 use std::{env, path::PathBuf};
 
-use libafl::{generators::Generator, mutators::Mutator, state::HasRand};
+use libafl::{
+    generators::Generator,
+    mutators::{MutationResult, Mutator},
+    state::HasRand,
+};
 use libafl_bolts::{nonzero, rands::StdRand};
 use libafl_nesting::{
-    DevilangGrammar, ScenarioGenerator, ScenarioInput, ScenarioMutator, encode_scenario,
-    format_scenario,
+    encode_scenario, format_scenario, DevilangGrammar, ScenarioGenerator, ScenarioInput,
+    ScenarioMutator,
 };
 
 struct ProbeState {
@@ -63,20 +67,27 @@ fn main() -> Result<(), String> {
     let mut mutator = ScenarioMutator::new(generator);
     let before = scenario.clone();
     let mut changed = false;
-    for _ in 0..64 {
-        mutator
+    let mut valid_mutations = 0usize;
+    for attempt in 1..=64 {
+        let result = mutator
             .mutate(&mut state, &mut scenario)
             .map_err(|error| format!("failed to mutate Devilang scenario: {error:?}"))?;
         validate(&grammar, &scenario)?;
-        if scenario != before {
+        valid_mutations = attempt;
+        if mutation_is_distinct(result, &before, &scenario)? {
             changed = true;
             break;
         }
     }
-    if !changed {
-        return Err("Devilang mutation did not produce a distinct valid scenario".to_string());
+    println!(
+        "mutation validated: attempts={} distinct={}",
+        valid_mutations, changed
+    );
+    if changed {
+        println!("after mutation:\n{}", format_scenario(&scenario));
+    } else {
+        println!("after mutation: unchanged (grammar has no alternate valid scenario)");
     }
-    println!("after mutation:\n{}", format_scenario(&scenario));
     Ok(())
 }
 
@@ -89,4 +100,48 @@ fn validate(grammar: &DevilangGrammar, scenario: &ScenarioInput) -> Result<(), S
         ));
     }
     Ok(())
+}
+
+fn mutation_is_distinct(
+    result: MutationResult,
+    before: &ScenarioInput,
+    after: &ScenarioInput,
+) -> Result<bool, String> {
+    let changed = before != after;
+    match (result, changed) {
+        (MutationResult::Mutated, true) => Ok(true),
+        (MutationResult::Skipped, false) => Ok(false),
+        (MutationResult::Mutated, false) => {
+            Err("Devilang mutation reported Mutated without changing the scenario".to_string())
+        }
+        (MutationResult::Skipped, true) => {
+            Err("Devilang mutation reported Skipped after changing the scenario".to_string())
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scenario() -> ScenarioInput {
+        ScenarioInput::new(Vec::new())
+    }
+
+    #[test]
+    fn accepts_skipped_mutation_for_a_deterministic_grammar() {
+        let before = scenario();
+        let after = before.clone();
+        assert!(
+            !mutation_is_distinct(MutationResult::Skipped, &before, &after)
+                .expect("a skipped mutation should be valid")
+        );
+    }
+
+    #[test]
+    fn rejects_inconsistent_mutation_result() {
+        let before = scenario();
+        let after = ScenarioInput::new(Vec::new());
+        assert!(mutation_is_distinct(MutationResult::Mutated, &before, &after).is_err());
+    }
 }

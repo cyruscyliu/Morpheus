@@ -22,7 +22,7 @@ const devilangAuditFixture = path.join(
   "dma.state"
 );
 const { applyConfigDefaults } = require("../dist/core/config.js");
-const { parseToolArgs } = require("../dist/core/tool-invoke.js");
+const { parseToolArgs, readOptionalText } = require("../dist/core/tool-invoke.js");
 const { effectiveBuildDirKey, syncRemotePathToLocal } = require("../dist/transport/remote.js");
 const { resolveConfiguredStepArgs } = require("../dist/commands/workflow.js");
 const repoEnv = fs.readFileSync(path.join(repoRoot, ".env"), "utf8");
@@ -821,6 +821,11 @@ test("scripted passthrough tool commands do not leave helper files in repo root"
       `unexpected repo-root helper file: ${path.basename(junkPath)}`
     );
   }
+});
+
+test("scripted tool failures tolerate an ephemeral log that was not created", () => {
+  const missingLog = path.join(os.tmpdir(), `morpheus-missing-log-${process.pid}`);
+  assert.equal(readOptionalText(missingLog), "");
 });
 
 test("workflow list discovers configured workflows in json", () => {

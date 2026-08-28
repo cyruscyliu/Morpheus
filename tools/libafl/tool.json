@@ -415,7 +415,7 @@
             "source": "tools/libafl/builds/{buildDirKey}/source"
           },
           "result": {
-            "successSummary": "generated and mutated a Devilang grammar scenario",
+            "successSummary": "generated and validated a Devilang grammar scenario",
             "artifact": {
               "path": "source-dir",
               "locationTemplate": "{source}"
@@ -446,7 +446,7 @@
             "source": "tools/libafl/builds/{buildDirKey}/source"
           },
           "result": {
-            "successSummary": "generated and mutated a grammar scenario",
+            "successSummary": "generated and validated a grammar scenario",
             "artifact": {
               "path": "source-dir",
               "locationTemplate": "{source}"

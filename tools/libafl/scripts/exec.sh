@@ -35,6 +35,7 @@ l2_run_window_ms=""
 l2_mode="vm"
 l2_accel="auto"
 l2_cpu=""
+l2_memory_mb="${MORPHEUS_L2_MEMORY_MB:-}"
 disable_nqc2_plugin="false"
 capture_runtime="false"
 replay_inputs=()
@@ -93,6 +94,7 @@ while [ "$#" -gt 0 ]; do
     --l2-mode) shift; l2_mode="${1:-}" ;;
     --l2-accel) shift; l2_accel="${1:-}" ;;
     --l2-cpu) shift; l2_cpu="${1:-}" ;;
+    --l2-memory-mb) shift; l2_memory_mb="${1:-}" ;;
     --replay-input) shift; replay_inputs+=("${1:-}") ;;
     --seed-input) shift; seed_inputs+=("${1:-}") ;;
     --devilang-state) shift; devilang_states+=("${1:-}") ;;
@@ -416,9 +418,24 @@ case "${l2_accel}" in auto|kvm|tcg) ;; *) echo "l2-accel must be one of: auto, k
 if [ -n "${l2_cpu}" ]; then
   case "${l2_cpu}" in host|max|cortex-a57) ;; *) echo "l2-cpu must be one of: host, max, cortex-a57" >&2; exit 1 ;; esac
 fi
+if [ -n "${l2_memory_mb}" ]; then
+  case "${l2_memory_mb}" in
+    ''|*[!0-9]*|0)
+      echo "l2-memory-mb must be an integer" >&2
+      exit 1
+      ;;
+  esac
+  if [ "${l2_memory_mb}" -lt 256 ] || [ "${l2_memory_mb}" -gt 65536 ]; then
+    echo "l2-memory-mb must be between 256 and 65536 MB" >&2
+    exit 1
+  fi
+fi
 
 printf '[libafl/qemu_nesting] l2 controls: mode=%s accel=%s cpu=%s window_ms=%s\n' \
   "${l2_mode}" "${l2_accel}" "${l2_cpu:-default}" "${l2_run_window_ms:-default}" >&2
+if [ -n "${l2_memory_mb}" ]; then
+  printf '[libafl/qemu_nesting] l2 memory: %s MB\n' "${l2_memory_mb}" >&2
+fi
 
 MORPHEUS_NVIRSH_INSTALL_DIR="$(dirname "${nvirsh_state}")" \
 MORPHEUS_NVIRSH_RESULT_FILE="${run_dir}/nvirsh-stop.json" \
@@ -769,6 +786,9 @@ if [ "${l2_accel}" != "auto" ]; then
 fi
 if [ -n "${l2_cpu}" ]; then
   direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_CPU=${l2_cpu}"
+fi
+if [ -n "${l2_memory_mb}" ]; then
+  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_MEMORY_MB=${l2_memory_mb}"
 fi
 if [ "${MORPHEUS_L2_SHELL_TRACE:-0}" = "1" ]; then
   # The launcher runs inside the L1 guest, so an observation-only trace flag
@@ -1293,6 +1313,9 @@ unset MORPHEUS_LIBAFL_GRAMMAR MORPHEUS_LIBAFL_DEVILANG_GRAMMAR
 launch_env=("STUB=${stub_elf}" "MORPHEUS_LIBAFL_CORPUS_DIR=${corpus_dir}" "MORPHEUS_LIBAFL_OBJECTIVE_DIR=${objective_dir}")
 launch_env+=("MORPHEUS_LIBAFL_DEVILANG_GRAMMAR_MODE=${devilang_grammar_mode}")
 launch_env+=("MORPHEUS_LIBAFL_GRAMMAR_MODE=${devilang_grammar_mode}")
+if [ -n "${l2_memory_mb}" ]; then
+  launch_env+=("MORPHEUS_L2_MEMORY_MB=${l2_memory_mb}")
+fi
 if [ -n "${mutational_max_iterations}" ]; then
   launch_env+=("MORPHEUS_LIBAFL_MUTATIONAL_MAX_ITERATIONS=${mutational_max_iterations}")
 fi

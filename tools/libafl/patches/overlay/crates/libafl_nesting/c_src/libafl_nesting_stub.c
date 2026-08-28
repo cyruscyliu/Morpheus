@@ -51,7 +51,6 @@
 #define HOSTSTACK_LOCAL_LAUNCH_PATH "/root/launch-l2-hoststack.sh"
 #define L2_CPU_TCG "cortex-a57"
 #define L2_CPU_KVM "host"
-#define L2_MEMORY_MB "1024"
 #define L2_READY_POLL_MS 250U
 #define RUNTIME_DUMP_MAX_BYTES (256U * 1024U)
 #define RUNTIME_DUMP_CHUNK_BYTES 128U

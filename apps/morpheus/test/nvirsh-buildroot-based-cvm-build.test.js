@@ -237,6 +237,11 @@ test("buildroot-based CVM build stages explicit linux, buildroot, and firmware-b
     "utf8",
   );
   assert.match(launchScript, /set -- "\$\{guest_qemu\}" "\$@"/);
+  assert.match(
+    launchScript,
+    /guest_l2_memory_mb="\$\{MORPHEUS_L2_MEMORY_MB:-1024\}"/,
+  );
+  assert.match(launchScript, /-m "\$\{guest_l2_memory_mb\}M"/);
   assert.doesNotMatch(launchScript, /LD_LIBRARY_PATH|LD_PRELOAD/);
   assert.doesNotMatch(launchScript, /--library-path|ld-linux-aarch64|runtime-libs/);
   assert.match(

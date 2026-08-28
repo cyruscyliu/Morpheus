@@ -468,6 +468,7 @@ guest_virtio_transport="__MORPHEUS_L2_VIRTIO_TRANSPORT__"
 guest_l2_accel="${MORPHEUS_L2_ACCEL:-auto}"
 guest_l2_cpu="${MORPHEUS_L2_CPU:-}"
 guest_l2_smp="${MORPHEUS_L2_SMP:-1}"
+guest_l2_memory_mb="${MORPHEUS_L2_MEMORY_MB:-1024}"
 guest_virtio_serial_device="virtio-serial-pci"
 guest_virtio_net_device="virtio-net-pci,netdev=net0,romfile=''"
 guest_bootargs="console=hvc0 oops=panic panic_on_warn=1 panic=-1 kasan.fault=panic"
@@ -528,9 +529,20 @@ case "${guest_l2_smp}" in
     exit 1
     ;;
 esac
+case "${guest_l2_memory_mb}" in
+  ''|*[!0-9]*|0)
+    echo "MORPHEUS_L2_MEMORY_MB must be an integer" >&2
+    exit 1
+    ;;
+esac
+if [ "${guest_l2_memory_mb}" -lt 256 ] || [ "${guest_l2_memory_mb}" -gt 65536 ]; then
+  echo "MORPHEUS_L2_MEMORY_MB must be between 256 and 65536 MB" >&2
+  exit 1
+fi
 printf 'l2-accel=%s\n' "${guest_l2_accel}" >> "${launch_marker}"
 printf 'l2-cpu=%s\n' "${guest_l2_cpu}" >> "${launch_marker}"
 printf 'l2-smp=%s\n' "${guest_l2_smp}" >> "${launch_marker}"
+printf 'l2-memory-mb=%s\n' "${guest_l2_memory_mb}" >> "${launch_marker}"
 
 if [ ! -x "${guest_qemu}" ]; then
   echo "missing qemu-system-aarch64 in host share: ${guest_qemu}" >&2
@@ -587,7 +599,7 @@ set -- "$@" \
   -M virt \
   -M "gic-version=3,its=on" \
   -smp "${guest_l2_smp}" \
-  -m 1024M \
+  -m "${guest_l2_memory_mb}M" \
   -nographic \
   -nodefaults \
   -chardev "stdio,mux=on,id=chr0,signal=off" \

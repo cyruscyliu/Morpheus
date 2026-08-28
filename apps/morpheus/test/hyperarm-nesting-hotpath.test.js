@@ -452,6 +452,20 @@ test("generated CVM hoststack uses QEMU and keeps the runtime shared", () => {
     /l1_memory="\$\(morpheus_default_cvm_l1_qemu_memory_mb\)"/,
   );
   assert.match(
+    nvirshBuildrootBasedCvmBuildSource,
+    /guest_l2_memory_mb="\$\{MORPHEUS_L2_MEMORY_MB:-1024\}"/,
+  );
+  assert.match(
+    nvirshBuildrootBasedCvmBuildSource,
+    /-m "\$\{guest_l2_memory_mb\}M"/,
+  );
+  assert.match(harnessSource, /--l2-memory-mb\) shift; l2_memory_mb=/);
+  assert.match(harnessSource, /MORPHEUS_L2_MEMORY_MB=\$\{l2_memory_mb\}/);
+  assert.match(
+    harnessSource,
+    /launch_env\+=\("MORPHEUS_L2_MEMORY_MB=\$\{l2_memory_mb\}"\)/,
+  );
+  assert.match(
     nvirshBuildrootBasedCvmL1LaunchSource,
     /l1_cpus="\$\(morpheus_default_cvm_l1_qemu_cpus\)"/,
   );
@@ -1109,6 +1123,8 @@ test("buildroot CVM launch preserves the handoff and requested L1 memory", () =>
     "host",
     "--l2-run-window-ms",
     "1000",
+    "--l2-memory-mb",
+    "512",
   ];
   const runHarness = ({
     targetRunDir,
@@ -1320,9 +1336,10 @@ test("buildroot CVM launch preserves the handoff and requested L1 memory", () =>
   assert.match(startup, /^fs0:\\Image /m);
   assert.match(
     startup,
-    /init=\/bin\/sh -- -c "mkdir -p \/mnt && mount [^\n]* && MORPHEUS_L2_MODE=cvm(?: MORPHEUS_L2_ACCEL=kvm)?(?: MORPHEUS_L2_CPU=host)?(?: MORPHEUS_L2_RUN_WINDOW_MS=1000)? exec \/mnt\/libafl_nesting_stub"/,
+    /init=\/bin\/sh -- -c "mkdir -p \/mnt && mount [^\n]* && MORPHEUS_L2_MODE=cvm(?: MORPHEUS_L2_ACCEL=kvm)?(?: MORPHEUS_L2_CPU=host)?(?: MORPHEUS_L2_MEMORY_MB=512)?(?: MORPHEUS_L2_RUN_WINDOW_MS=1000)? exec \/mnt\/libafl_nesting_stub"/,
   );
   assert.match(startup, /MORPHEUS_L2_MODE=cvm/);
+  assert.match(startup, /MORPHEUS_L2_MEMORY_MB=512/);
   assert.match(startup, /MORPHEUS_L2_RUN_WINDOW_MS=1000/);
   assert.doesNotMatch(startup, /init=\/root\/libafl_nesting_stub/);
   assert.equal((startup.match(/init=/g) || []).length, 1);

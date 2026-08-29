@@ -57,6 +57,21 @@ test("nesting fuzz patch wires the guest QEMU read/write hotpath", () => {
   );
 });
 
+test("nesting fuzz patch preserves the virtio queue-size transport read", () => {
+  assert.match(
+    nestingPatch,
+    /static uint64_t morpheus_virtio_mmio_preserve_read\(VirtIODevice \*vdev,/,
+  );
+  assert.match(
+    nestingPatch,
+    /morpheus_virtio_mmio_preserve_read\(\s*\n\+\s*vdev, offset/,
+  );
+  assert.match(
+    nestingPatch,
+    /Consume the input byte\(s\) to keep later fuzz reads deterministic\./,
+  );
+});
+
 test("qemu patch treats the nesting fuzz patch as already present when the guest tree already carries the same hooks", () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-qemu-patch-"));
   const seedDir = path.join(tmpDir, "seed");

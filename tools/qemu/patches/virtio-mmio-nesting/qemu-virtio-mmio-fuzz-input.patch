@@ -22,7 +22,7 @@ index 55ceaeef5f..e9fb0324d8 100644
  #include "hw/core/irq.h"
  #include "hw/core/qdev-properties.h"
  #include "hw/core/sysbus.h"
-@@ -33,9 +34,298 @@
+@@ -33,9 +34,314 @@
  #include "hw/virtio/virtio-mmio.h"
  #include "qemu/error-report.h"
  #include "qemu/log.h"
@@ -318,6 +318,22 @@ index 55ceaeef5f..e9fb0324d8 100644
 +    return morpheus_virtio_mmio_fuzz_mix(offset, value, size, keep_nonzero);
 +}
 +
++/* Queue sizing is part of virtio transport setup, not device input. */
++static uint64_t morpheus_virtio_mmio_preserve_read(VirtIODevice *vdev,
++                                                    hwaddr offset,
++                                                    uint64_t value,
++                                                    unsigned size)
++{
++    if (!morpheus_virtio_mmio_should_fuzz(vdev)) {
++        return value;
++    }
++    /* Consume the input byte(s) to keep later fuzz reads deterministic. */
++    (void)morpheus_virtio_mmio_next(size);
++    trace_virtio_mmio_fuzz_read(offset, value, value, size,
++                                morpheus_virtio_mmio_fuzz.cursor);
++    return value;
++}
++
  static bool virtio_mmio_ioeventfd_enabled(DeviceState *d)
  {
      VirtIOMMIOProxy *proxy = VIRTIO_MMIO(d);
@@ -397,9 +413,9 @@ index 55ceaeef5f..e9fb0324d8 100644
 +                                                     true);
      case VIRTIO_MMIO_QUEUE_NUM_MAX:
 -        return virtio_queue_get_max_num(vdev, vdev->queue_sel);
-+        return morpheus_virtio_mmio_maybe_fuzz_read(
++        return morpheus_virtio_mmio_preserve_read(
 +            vdev, offset, virtio_queue_get_max_num(vdev, vdev->queue_sel),
-+            size, true);
++            size);
      case VIRTIO_MMIO_QUEUE_PFN:
          if (!proxy->legacy) {
              qemu_log_mask(LOG_GUEST_ERROR,

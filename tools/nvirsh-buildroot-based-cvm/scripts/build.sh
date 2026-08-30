@@ -157,6 +157,43 @@ require_file() {
   fi
 }
 
+validate_guest_qemu_profile_free() {
+  local patch_list
+  local qemu_patch_lists=()
+
+  while IFS= read -r patch_list; do
+    [ -n "${patch_list}" ] || continue
+    qemu_patch_lists+=("${patch_list}")
+  done < <(
+    find "${buildroot_output_dir}/build" -mindepth 2 -maxdepth 2 \
+      -type f -path '*/qemu-*/.applied_patches_list' -print | sort
+  )
+
+  for patch_list in "${qemu_patch_lists[@]}"; do
+    if grep -Eiq \
+        '(^|/)(profiles|qemu-patches)/|CVE-[0-9]+|virtio-net-profile|hyperarm-virtio-mmio-(fuzz|observation)' \
+        "${patch_list}"; then
+      echo "guest QEMU contains a profile-specific patch: ${patch_list}" >&2
+      grep -Ei \
+        '(^|/)(profiles|qemu-patches)/|CVE-[0-9]+|virtio-net-profile|hyperarm-virtio-mmio-(fuzz|observation)' \
+        "${patch_list}" >&2
+      exit 1
+    fi
+  done
+
+  # The nested guest QEMU is an input to the test, not part of the test
+  # oracle.  Reject both the old CVE profiles and the former seed-injection
+  # hooks so a stale package tree cannot pass merely because its provenance
+  # file was lost.  Device input is supplied by the external vhost-user
+  # backend; MMIO is observed through QEMU's stock trace events.
+  if LC_ALL=C grep -aEq \
+      'virtio-net profile:|synthetic_rx_done|MORPHEUS_QEMU_INPUT_PATH_ENV|morpheus_virtio_mmio_fuzz|virtio_mmio_(observe|fuzz)' \
+      "${guest_qemu_source}" 2>/dev/null; then
+    echo "guest QEMU is not stock: ${guest_qemu_source}" >&2
+    exit 1
+  fi
+}
+
 inject_morpheus_rsi_evidence_into_initrd() {
   local initrd_path="$1"
   local temp_dir=""
@@ -212,6 +249,7 @@ try {
 
   {
     printf 'tool=%s\n' "nvirsh-buildroot-based-cvm"
+    printf 'launcher-device-backend-v2\n'
     printf 'build_dir_key=%s\n' "${build_dir_key}"
     printf 'buildroot_inputs_fingerprint=%s\n' "${buildroot_inputs_fingerprint}"
     printf 'qemu=%s\n' "${qemu}"
@@ -284,6 +322,7 @@ require_file "${buildroot_initrd}" "buildroot initramfs"
 require_file "${buildroot_rootfs}" "buildroot l1 rootfs image"
 require_file "${guest_kernel_image_source}" "l2 kernel image"
 require_file "${guest_qemu_source}" "l2 guest qemu"
+validate_guest_qemu_profile_free
 if [ "${use_linaro_helper}" = "true" ]; then
   require_file "${buildroot_initrd_plain}" "buildroot plain initramfs"
   require_file "${buildroot_gen_run_vmm}" "buildroot gen-run-vmm.sh"
@@ -327,17 +366,6 @@ cp -f "${buildroot_initrd_plain}" "${guest_images_dir}/rootfs.cpio"
 cp -f "${buildroot_initrd}" "${guest_images_dir}/rootfs.cpio.gz"
 cp -f "${guest_qemu_source}" "${guest_qemu_dir}/bin/qemu-system-aarch64"
 chmod +x "${guest_qemu_dir}/bin/qemu-system-aarch64"
-
-# Compute optional MMIO tracing capability while building on the host.  The
-# L1 launcher must not execute its dynamically-linked grep to inspect this
-# binary: that child-process path is unreliable after the LibAFL breakpoint.
-guest_qemu_mmio_marker="${guest_qemu_dir}/.morpheus-mmio-patched"
-rm -f "${guest_qemu_mmio_marker}" "${l1_dir}/.morpheus-mmio-patched"
-if LC_ALL=C grep -a -q 'virtio_mmio_fuzz_read' "${guest_qemu_source}" 2>/dev/null &&
-   LC_ALL=C grep -a -q 'virtio_mmio_dma_fuzz' "${guest_qemu_source}" 2>/dev/null; then
-  : > "${guest_qemu_mmio_marker}"
-  : > "${l1_dir}/.morpheus-mmio-patched"
-fi
 
 if [ -d "${buildroot_guest_qemu_data_dir}" ]; then
   cp -a "${buildroot_guest_qemu_data_dir}" "${guest_qemu_dir}/share/"
@@ -422,11 +450,8 @@ if [ ! -d /sys/class/net/macvtap0 ]; then
   exit 1
 fi
 
-if [ -f /mnt/.morpheus-mmio-patched ]; then
-  printf 'qemu-patch-symbols=present\n' >> "${launch_marker}"
-else
-  printf 'qemu-patch-symbols=missing\n' >> "${launch_marker}"
-fi
+printf 'qemu-patch-symbols=absent\n' >> "${launch_marker}"
+printf 'qemu-mmio-trace=stock\n' >> "${launch_marker}"
 printf 'qemu-exec-start\n' >> "${launch_marker}"
 set +e
 (
@@ -474,10 +499,15 @@ guest_virtio_net_device="virtio-net-pci,netdev=net0,romfile=''"
 guest_bootargs="console=hvc0 oops=panic panic_on_warn=1 panic=-1 kasan.fault=panic"
 launch_marker="${runtime_dir}/launch-l2.marker"
 guest_qemu_trace_events="${runtime_dir}/morpheus-qemu-trace-events.txt"
+guest_qemu_trace_log="${runtime_dir}/morpheus-qemu-trace.log"
 guest_qemu_dtb="${runtime_dir}/qemu-gen.dtb"
 guest_qemu_stdout="${runtime_dir}/qemu.stdout.log"
 guest_qemu_stderr="${runtime_dir}/qemu.stderr.log"
-guest_qemu_has_morpheus_mmio_patch="false"
+guest_qemu_trace_enabled="true"
+guest_device_backend="${MORPHEUS_VIRTIO_DEVICE_BACKEND:-stock}"
+guest_device_backend_path="${MORPHEUS_VIRTIO_DEVICE_BACKEND_PATH:-/mnt/libafl_device_backend}"
+guest_device_backend_pid=""
+guest_device_backend_socket="${runtime_dir}/virtio-seed-backend.sock"
 
 if [ "${guest_virtio_transport}" = "mmio" ]; then
   guest_virtio_net_device="virtio-net-device,netdev=net0"
@@ -569,10 +599,109 @@ for path in \
   fi
 done
 
-if [ -f "${guest_qemu%/bin/qemu-system-aarch64}/.morpheus-mmio-patched" ]; then
-  guest_qemu_has_morpheus_mmio_patch="true"
-  printf 'virtio_mmio_fuzz_read\n' > "${guest_qemu_trace_events}"
-  printf 'virtio_mmio_dma_fuzz\n' >> "${guest_qemu_trace_events}"
+# Stock CCA QEMU already exposes the generic virtio-mmio trace events.  Keep
+# tracing enabled for every run so the report contains the complete transport
+# stream even when no QEMU patch is present.
+: > "${guest_qemu_trace_events}"
+printf 'virtio_mmio_read\n' >> "${guest_qemu_trace_events}"
+printf 'virtio_mmio_write_offset\n' >> "${guest_qemu_trace_events}"
+
+case "${guest_device_backend}" in
+  stock|vhost-user) ;;
+  *)
+    echo "unsupported MORPHEUS_VIRTIO_DEVICE_BACKEND: ${guest_device_backend}" >&2
+    exit 1
+    ;;
+esac
+
+guest_seed_device=""
+probe_vhost_user_capabilities() {
+  local device_help
+  local object_help
+
+  if ! device_help="$("${guest_qemu}" -device help 2>&1)"; then
+    echo "failed to query QEMU device capabilities" >&2
+    exit 1
+  fi
+  case "${device_help}" in
+    *"name \"${guest_seed_device}\""*) ;;
+    *)
+      echo "QEMU lacks required device: ${guest_seed_device}" >&2
+      exit 1
+      ;;
+  esac
+
+  if ! object_help="$("${guest_qemu}" -object help 2>&1)"; then
+    echo "failed to query QEMU object capabilities" >&2
+    exit 1
+  fi
+  case "${object_help}" in
+    *"memory-backend-memfd"*) ;;
+    *)
+      echo "QEMU lacks shared memory-backend-memfd support" >&2
+      exit 1
+      ;;
+  esac
+  printf 'device-capability-probe=passed device=%s memory=memfd-support\n' \
+    "${guest_seed_device}" >> "${launch_marker}"
+}
+
+stop_guest_device_backend() {
+  if [ -n "${guest_device_backend_pid}" ]; then
+    kill "${guest_device_backend_pid}" 2>/dev/null || true
+    wait "${guest_device_backend_pid}" 2>/dev/null || true
+    guest_device_backend_pid=""
+  fi
+}
+
+start_guest_device_backend() {
+  if [ ! -x "${guest_device_backend_path}" ]; then
+    echo "missing seed device backend: ${guest_device_backend_path}" >&2
+    exit 1
+  fi
+  if [ -z "${MORPHEUS_QEMU_INPUT_PATH:-}" ]; then
+    echo "vhost-user device backend requires MORPHEUS_QEMU_INPUT_PATH" >&2
+    exit 1
+  fi
+  if [ -e "${guest_device_backend_socket}" ]; then
+    rm -f "${guest_device_backend_socket}"
+  fi
+  "${guest_device_backend_path}" \
+    --socket "${guest_device_backend_socket}" \
+    --input "${MORPHEUS_QEMU_INPUT_PATH}" \
+    --trace "${guest_qemu_trace_log}" \
+    --log "${runtime_dir}/virtio-seed-backend.log" \
+    >>"${guest_qemu_stdout}" 2>>"${guest_qemu_stderr}" &
+  guest_device_backend_pid="$!"
+  trap stop_guest_device_backend EXIT
+  for _ in $(seq 1 100); do
+    if [ -S "${guest_device_backend_socket}" ]; then
+      break
+    fi
+    if ! kill -0 "${guest_device_backend_pid}" 2>/dev/null; then
+      echo "seed device backend exited before opening its socket" >&2
+      exit 1
+    fi
+    sleep 0.01
+  done
+  if [ ! -S "${guest_device_backend_socket}" ]; then
+    echo "timed out waiting for seed device backend socket" >&2
+    exit 1
+  fi
+  printf 'device-backend=vhost-user path=%s socket=%s\n' \
+    "${guest_device_backend_path}" "${guest_device_backend_socket}" >> "${launch_marker}"
+}
+
+if [ "${guest_device_backend}" = "vhost-user" ]; then
+  if [ "${guest_virtio_transport}" = "mmio" ]; then
+    guest_seed_device="vhost-user-test-device"
+  else
+    guest_seed_device="vhost-user-test-device-pci"
+  fi
+  probe_vhost_user_capabilities
+  start_guest_device_backend
+else
+  guest_seed_device=""
 fi
 
 set -- \
@@ -587,7 +716,7 @@ if [ "${guest_virtio_transport}" = "mmio" ]; then
     -global "virtio-mmio.ioeventfd=off"
 fi
 
-if [ "${guest_qemu_has_morpheus_mmio_patch}" = "true" ]; then
+if [ "${guest_qemu_trace_enabled}" = "true" ]; then
   set -- "$@" \
     -trace "events=${guest_qemu_trace_events},file=${runtime_dir}/morpheus-qemu-trace.log"
 fi
@@ -599,7 +728,6 @@ set -- "$@" \
   -M virt \
   -M "gic-version=3,its=on" \
   -smp "${guest_l2_smp}" \
-  -m "${guest_l2_memory_mb}M" \
   -nographic \
   -nodefaults \
   -chardev "stdio,mux=on,id=chr0,signal=off" \
@@ -608,9 +736,21 @@ set -- "$@" \
   -dtb "${guest_qemu_dtb}" \
   -kernel "${guest_image_dir}/Image" \
   -initrd "${guest_image_dir}/rootfs.cpio" \
-  -netdev "user,id=net0" \
-  -device "${guest_virtio_net_device}" \
   -append "${guest_bootargs}"
+
+if [ "${guest_device_backend}" = "vhost-user" ]; then
+  set -- "$@" \
+    -m "${guest_l2_memory_mb}M" \
+    -object "memory-backend-memfd,id=seed-mem,size=${guest_l2_memory_mb}M,share=on" \
+    -numa "node,memdev=seed-mem" \
+    -chardev "socket,id=seed-backend,path=${guest_device_backend_socket},server=off" \
+    -device "${guest_seed_device},chardev=seed-backend,virtio-id=1,num_vqs=3,vq_size=256,config_size=24"
+else
+  set -- "$@" \
+    -m "${guest_l2_memory_mb}M" \
+    -netdev "user,id=net0" \
+    -device "${guest_virtio_net_device}"
+fi
 
 if [ "${guest_l2_accel}" = "kvm" ]; then
   set -- "$@" -enable-kvm
@@ -648,22 +788,81 @@ if [ ! -s "${guest_qemu_dtb}" ]; then
 fi
 printf 'dtb-generated=%s\n' "${guest_qemu_dtb}" >> "${launch_marker}"
 
+# realm-measurements may instantiate the vhost-user device while generating
+# the DTB. Recreate the backend connection for the real L2 QEMU launch.
+if [ "${guest_device_backend}" = "vhost-user" ]; then
+  stop_guest_device_backend
+  start_guest_device_backend
+fi
+
 set -- "${guest_qemu}" "$@"
 
 printf 'qemu-cmd=' >> "${launch_marker}"
 printf '%s ' "$@" >> "${launch_marker}"
 printf '\n' >> "${launch_marker}"
-if [ "${guest_qemu_has_morpheus_mmio_patch}" = "true" ]; then
-  printf 'qemu-patch-symbols=present\n' >> "${launch_marker}"
-else
-  printf 'qemu-patch-symbols=missing\n' >> "${launch_marker}"
-fi
+printf 'qemu-patch-symbols=absent\n' >> "${launch_marker}"
+printf 'qemu-mmio-trace=stock\n' >> "${launch_marker}"
 printf 'qemu-exec-start\n' >> "${launch_marker}"
 set +e
 "$@" >> "${guest_qemu_stdout}" 2>> "${guest_qemu_stderr}"
 qemu_status="$?"
 set -e
 printf 'qemu-exit-status=%s\n' "${qemu_status}" >> "${launch_marker}"
+if [ "${guest_device_backend}" = "vhost-user" ]; then
+  backend_log="${runtime_dir}/virtio-seed-backend.log"
+  backend_rx_actions="$(
+    sed -n 's/^backend-ready rx-actions=\([0-9][0-9]*\) .*/\1/p' \
+      "${backend_log}" 2>/dev/null | head -n 1
+  )"
+  if grep -q '^memory-probe=passed ' "${backend_log}" 2>/dev/null; then
+    printf 'device-memory-probe=passed memory=guest-addressable\n' \
+      >> "${launch_marker}"
+  elif grep -q '^memory-probe=failed ' "${backend_log}" 2>/dev/null; then
+    printf 'device-memory-probe=failed memory=unavailable\n' \
+      >> "${launch_marker}"
+    qemu_status=1
+  elif grep -q '^memory-table=received ' "${backend_log}" 2>/dev/null; then
+    printf 'device-memory-probe=incomplete memory=unknown\n' \
+      >> "${launch_marker}"
+    qemu_status=1
+  else
+    case "${backend_rx_actions}" in
+      0)
+        # A config-only replay can terminate before vhost-user starts its
+        # virtqueues. Do not turn that valid path into a false memory failure.
+        printf 'device-memory-probe=not-required memory=not-probed\n' \
+          >> "${launch_marker}"
+        ;;
+      '')
+        printf 'device-memory-probe=unknown memory=unavailable\n' \
+          >> "${launch_marker}"
+        qemu_status=1
+        ;;
+      *)
+        # RX actions require the backend to access the descriptor and payload
+        # buffers. If QEMU never sends a memory table, fail closed.
+        printf 'device-memory-probe=required-but-not-probed memory=unavailable\n' \
+          >> "${launch_marker}"
+        qemu_status=1
+        ;;
+    esac
+  fi
+  if grep -q '^queue-processing-failed ' "${backend_log}" 2>/dev/null; then
+    printf 'device-queue=failed reason=backend-processing\n' \
+      >> "${launch_marker}"
+    qemu_status=1
+  elif grep -q '^rx-complete ' "${backend_log}" 2>/dev/null; then
+    printf 'device-queue=completed\n' >> "${launch_marker}"
+  elif [ -n "${backend_rx_actions}" ] && [ "${backend_rx_actions}" -gt 0 ]; then
+    printf 'device-queue=required-but-not-completed\n' \
+      >> "${launch_marker}"
+    qemu_status=1
+  else
+    printf 'device-queue=not-observed\n' >> "${launch_marker}"
+  fi
+fi
+stop_guest_device_backend
+trap - EXIT
 exit "${qemu_status}"
 EOF
   perl -0pi -e 's/__MORPHEUS_L2_VIRTIO_TRANSPORT__/'"${l2_virtio_transport}"'/g' "${launch_script}"

@@ -613,6 +613,7 @@ static bool write_input_snapshot(const uint8_t *data, size_t len) {
       QEMU_TRACE_EVENTS_PATH,
       QEMU_TRACE_LOG_PATH,
       NQC2_TRACE_PATH,
+      RUNTIME_DIR "/virtio-seed-backend.log",
   };
   if (!ensure_runtime_dir()) {
     lqprintf("stub: runtime directory unavailable errno=%d\n", errno);
@@ -743,6 +744,7 @@ static void dump_runtime_snapshot(void) {
       "morpheus-qemu-trace-events.txt",
       "morpheus-qemu-trace.log",
       "morpheus-nqc2.trace",
+      "virtio-seed-backend.log",
   };
   char path[256];
 
@@ -1518,11 +1520,11 @@ static bool launch_l2(const uint8_t *data, size_t len,
   char period_env[128];
   char nqc2_env[128];
   char vintid_env[128];
-  char *fuzz_ids_env = NULL;
-  const char *fuzz_ids = getenv("MORPHEUS_QEMU_FUZZ_VIRTIO_IDS");
+  char device_backend_env[128];
+  const char *device_backend = getenv("MORPHEUS_VIRTIO_DEVICE_BACKEND");
   const char *shell = NULL;
   const char *launch_script = NULL;
-  struct launch_env_override overrides[6];
+  struct launch_env_override overrides[8];
   size_t override_count = 0;
   char **launch_environment = NULL;
   int launch_stdout_fd = -1;
@@ -1590,14 +1592,14 @@ static bool launch_l2(const uint8_t *data, size_t len,
         "MORPHEUS_QEMU_INJECT_VIRQ", NULL};
   }
 
-  if (fuzz_ids) {
-    if (asprintf(&fuzz_ids_env, "MORPHEUS_QEMU_FUZZ_VIRTIO_IDS=%s",
-                 fuzz_ids) < 0) {
+  if (device_backend) {
+    if (snprintf(device_backend_env, sizeof(device_backend_env),
+                 "MORPHEUS_VIRTIO_DEVICE_BACKEND=%s", device_backend) < 0) {
       append_marker("launcher-environment-format-failed\n");
       return false;
     }
     overrides[override_count++] = (struct launch_env_override){
-        "MORPHEUS_QEMU_FUZZ_VIRTIO_IDS", fuzz_ids_env};
+        "MORPHEUS_VIRTIO_DEVICE_BACKEND", device_backend_env};
   }
 
   launch_stdout_fd = open_launch_log(LAUNCH_STDOUT_PATH);
@@ -1618,7 +1620,6 @@ static bool launch_l2(const uint8_t *data, size_t len,
       build_launch_environment(overrides, override_count);
   if (!launch_environment) {
     append_marker("launcher-environment-alloc-failed\n");
-    free(fuzz_ids_env);
     close(launch_stdout_fd);
     close(launch_stderr_fd);
     return false;
@@ -1683,8 +1684,6 @@ static bool launch_l2(const uint8_t *data, size_t len,
   close(launch_stderr_fd);
   free(launch_environment);
   launch_environment = NULL;
-  free(fuzz_ids_env);
-  fuzz_ids_env = NULL;
   if (spawn_error != 0) {
     append_marker("launcher-spawn-failed errno=%d\n", spawn_error);
     lqprintf("stub: launcher spawn failed shell=%s script=%s errno=%d\n",
@@ -1797,7 +1796,6 @@ spawn_setup_failed:
     close(launch_stderr_fd);
   }
   free(launch_environment);
-  free(fuzz_ids_env);
   append_marker("launcher-spawn-setup-failed errno=%d\n", setup_error);
   return false;
 

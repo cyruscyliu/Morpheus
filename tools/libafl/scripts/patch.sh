@@ -21,7 +21,7 @@ mkdir -p "$(dirname "${result_file}")"
 fingerprint_files="$(find "${patch_dir}/crates/libafl_nesting" "${patch_dir}/fuzzers/full_system/qemu_nesting" -type f | sort)"
 fingerprint="$(printf 'external-qemu-build-adapter-v2\n%s\n' "${fingerprint_files}" | morpheus_hash_files_from_stdin)"
 
-if morpheus_patch_state_matches "${state_file}" "${fingerprint}"; then
+if morpheus_patch_state_matches "${state_file}" "${fingerprint}" "${patch_dir}"; then
   cat > "${result_file}" <<EOF
 {"details":{"reused":true,"applied":true,"fingerprint":"${fingerprint}","crate_dir":"${crate_dir}","example_dir":"${example_dir}"}}
 EOF

@@ -284,3 +284,44 @@ test("buildroot build applies make args to defconfig and fingerprints them for r
     ],
   );
 });
+
+test("buildroot build clears a stale qemu package tree when global patches change", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-buildroot-qemu-clean-"));
+  const sourceDir = path.join(tmpDir, "source");
+  const outputDir = path.join(tmpDir, "output");
+  const resultFile = path.join(tmpDir, "result.json");
+  const patchRoot = path.join(tmpDir, "patches");
+  const configFragment = path.join(tmpDir, "config.fragment");
+
+  fs.cpSync(fixtureSource, sourceDir, { recursive: true });
+  fs.mkdirSync(patchRoot, { recursive: true });
+  fs.writeFileSync(path.join(patchRoot, "0001-generic.patch"), "patch-v1\n", "utf8");
+  fs.writeFileSync(
+    configFragment,
+    `BR2_GLOBAL_PATCH_DIR="${patchRoot}"\n`,
+    "utf8",
+  );
+
+  const env = {
+    ...process.env,
+    MORPHEUS_BUILDROOT_SOURCE: sourceDir,
+    MORPHEUS_BUILDROOT_OUTPUT: outputDir,
+    MORPHEUS_BUILDROOT_DEFCONFIG: "qemu_aarch64_virt_defconfig",
+    MORPHEUS_BUILDROOT_CONFIG_FRAGMENT_FILE: configFragment,
+    MORPHEUS_BUILDROOT_RESULT_FILE: resultFile,
+    MORPHEUS_BUILDROOT_REUSE_BUILD_DIR: "true",
+  };
+  let result = spawnSync("bash", [buildScript], { encoding: "utf8", env });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+
+  const qemuDir = path.join(outputDir, "build", "qemu-cca-stale");
+  const staleMarker = path.join(qemuDir, "profile-patch-marker");
+  fs.mkdirSync(qemuDir, { recursive: true });
+  fs.writeFileSync(staleMarker, "must be removed\n", "utf8");
+
+  fs.writeFileSync(path.join(patchRoot, "0001-generic.patch"), "patch-v2\n", "utf8");
+  result = spawnSync("bash", [buildScript], { encoding: "utf8", env });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  assert.equal(fs.existsSync(staleMarker), false);
+  assert.match(result.stdout, /target=qemu-cca-dirclean/);
+});

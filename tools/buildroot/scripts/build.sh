@@ -45,6 +45,9 @@ stale_host_fakeroot() {
 compute_build_inputs_fingerprint() {
   local include_defconfig="${1:-true}"
   local patch_state_file="${source_dir}/.morpheus-patches.json"
+  local global_patch_tree=""
+
+  global_patch_tree="$(global_patch_tree_fingerprint)"
 
   {
     if [ "${include_defconfig}" = "true" ]; then
@@ -58,6 +61,9 @@ compute_build_inputs_fingerprint() {
       printf '%s\n' "${patch_state_file}"
       sha256sum "${patch_state_file}"
     fi
+    if [ -n "${global_patch_tree}" ]; then
+      printf 'global_patch_tree=%s\n' "${global_patch_tree}"
+    fi
     if [ -n "${config_fragment_file}" ] && [ -f "${config_fragment_file}" ]; then
       printf '%s\n' "${config_fragment_file}"
       sha256sum "${config_fragment_file}"
@@ -65,10 +71,87 @@ compute_build_inputs_fingerprint() {
   } | sha256sum | awk '{print $1}'
 }
 
+global_patch_tree_fingerprint() {
+  local configured_roots=""
+  local fragment_roots=""
+  local patch_root=""
+  local patch_file=""
+
+  if [ -f "${output_dir}/.config" ]; then
+    configured_roots="$(
+      sed -n 's/^BR2_GLOBAL_PATCH_DIR="\(.*\)"$/\1/p' \
+      "${output_dir}/.config"
+    )"
+  fi
+  if [ -n "${config_fragment_file}" ] && [ -f "${config_fragment_file}" ]; then
+    fragment_roots="$(
+      sed -n 's/^BR2_GLOBAL_PATCH_DIR="\(.*\)"$/\1/p' \
+        "${config_fragment_file}"
+    )"
+    if [ -n "${fragment_roots}" ]; then
+      configured_roots="${fragment_roots}"
+    fi
+  fi
+  [ -n "${configured_roots}" ] || return 0
+
+  {
+    for patch_root in ${configured_roots}; do
+      case "${patch_root}" in
+        /*) ;;
+        *) continue ;;
+      esac
+      [ -d "${patch_root}" ] || continue
+      while IFS= read -r patch_file; do
+        [ -n "${patch_file}" ] || continue
+        printf '%s\n' "${patch_file}"
+        if [ -L "${patch_file}" ]; then
+          printf 'link=%s\n' "$(readlink "${patch_file}")"
+        else
+          sha256sum "${patch_file}"
+        fi
+      done < <(
+        find "${patch_root}" \( -type f -o -type l \) -print \
+          | LC_ALL=C sort
+      )
+    done
+  } | sha256sum | awk '{print $1}'
+}
+
 linux_build_dir_present() {
   [ -d "${output_dir}/build" ] || return 1
   find "${output_dir}/build" -mindepth 1 -maxdepth 1 \
     -type d -name 'linux-[0-9]*' -print -quit | grep -q .
+}
+
+qemu_build_dir_present() {
+  [ -d "${output_dir}/build" ] || return 1
+  find "${output_dir}/build" -mindepth 1 -maxdepth 1 \
+    \( -type d -name 'qemu-*' -o -type d -name 'host-qemu-*' \) \
+    -print -quit | grep -q .
+}
+
+qemu_dirclean_targets() {
+  local package_dir
+  local target
+  local -A seen_targets=()
+
+  while IFS= read -r package_dir; do
+    case "${package_dir}" in
+      host-qemu-cca-*) target="host-qemu-cca-dirclean" ;;
+      host-qemu-*) target="host-qemu-dirclean" ;;
+      qemu-cca-*) target="qemu-cca-dirclean" ;;
+      qemu-*) target="qemu-dirclean" ;;
+      *) continue ;;
+    esac
+    if [ -z "${seen_targets[${target}]+x}" ]; then
+      printf '%s\n' "${target}"
+      seen_targets[${target}]=1
+    fi
+  done < <(
+    find "${output_dir}/build" -mindepth 1 -maxdepth 1 \
+      \( -type d -name 'qemu-*' -o -type d -name 'host-qemu-*' \) \
+      -printf '%f\n' | LC_ALL=C sort
+  )
 }
 
 linux_config_path() {
@@ -190,6 +273,19 @@ if [ "${reuse_build_dir}" = "true" ] \
   && linux_build_dir_present; then
   printf '[buildroot] prepared build inputs changed; cleaning reused linux build tree\n'
   make -C "${source_dir}" "O=${output_dir}" "${make_args[@]}" linux-dirclean
+fi
+if [ "${reuse_build_dir}" = "true" ] \
+  && [ "${build_inputs_compatible}" != "true" ] \
+  && qemu_build_dir_present; then
+  mapfile -t qemu_clean_targets < <(qemu_dirclean_targets)
+  # Buildroot applies BR2_GLOBAL_PATCH_DIR at package patch time. Reusing a
+  # previously patched qemu package would therefore retain removed profile
+  # patches even after the effective patch set changed.
+  for qemu_clean_target in "${qemu_clean_targets[@]}"; do
+    printf '[buildroot] prepared build inputs changed; cleaning reused qemu build tree target=%s\n' \
+      "${qemu_clean_target}"
+    make -C "${source_dir}" "O=${output_dir}" "${make_args[@]}" "${qemu_clean_target}"
+  done
 fi
 
 cat > "${build_inputs_state_file}" <<EOF

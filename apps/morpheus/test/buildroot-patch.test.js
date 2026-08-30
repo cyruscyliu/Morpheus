@@ -28,6 +28,12 @@ test("buildroot patch fingerprints nested package patch directories", () => {
   const resultFile = path.join(tmpDir, "result.json");
   const stateFile = path.join(sourceDir, ".morpheus-patches.json");
   const qemuPatch = path.join(patchDir, "qemu", "0001-guest-fuzz.patch");
+  const alternatePatchDir = path.join(tmpDir, "workspace-alt", "tools", "buildroot", "patches");
+  const alternateQemuPatch = path.join(
+    alternatePatchDir,
+    "qemu",
+    "0001-guest-fuzz.patch",
+  );
 
   fs.mkdirSync(sourceDir, { recursive: true });
   fs.mkdirSync(path.dirname(qemuPatch), { recursive: true });
@@ -70,5 +76,24 @@ test("buildroot patch fingerprints nested package patch directories", () => {
   assert.equal(
     JSON.parse(fs.readFileSync(stateFile, "utf8")).fingerprint,
     secondFingerprint,
+  );
+
+  fs.mkdirSync(path.dirname(alternateQemuPatch), { recursive: true });
+  fs.copyFileSync(qemuPatch, alternateQemuPatch);
+  result = spawnSync("bash", [patchScript], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      MORPHEUS_BUILDROOT_SOURCE: sourceDir,
+      MORPHEUS_BUILDROOT_PATCH_DIR: alternatePatchDir,
+      MORPHEUS_BUILDROOT_RESULT_FILE: resultFile,
+    },
+  });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  const alternateResult = JSON.parse(fs.readFileSync(resultFile, "utf8"));
+  assert.equal(alternateResult.details.reused, undefined);
+  assert.equal(
+    JSON.parse(fs.readFileSync(stateFile, "utf8")).dir,
+    alternatePatchDir,
   );
 });

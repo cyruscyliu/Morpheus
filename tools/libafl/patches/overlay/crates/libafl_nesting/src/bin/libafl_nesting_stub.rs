@@ -19,6 +19,7 @@ const QEMU_STDOUT_PATH: &str = "/run/morpheus-libafl/qemu.stdout.log";
 const QEMU_STDERR_PATH: &str = "/run/morpheus-libafl/qemu.stderr.log";
 const L2_CONSOLE_PATH: &str = "/run/morpheus-libafl/l2-console.log";
 const L2_CONSOLE_PTY_PATH: &str = "/run/morpheus-libafl/l2-console.pty";
+const DEVICE_BACKEND_LOG_PATH: &str = "/run/morpheus-libafl/virtio-seed-backend.log";
 
 #[unsafe(no_mangle)]
 pub static mut FUZZ_INPUT: [u8; INPUT_LEN] = [0; INPUT_LEN];
@@ -99,6 +100,11 @@ fn log_runtime_snapshot() {
     log_runtime_file(QEMU_STDERR_PATH, "qemu.stderr.log", "stub: qemu stderr: ");
     log_runtime_file(L2_CONSOLE_PATH, "l2-console.log", "stub: l2 console: ");
     log_runtime_file(L2_CONSOLE_PTY_PATH, "l2-console.pty", "stub: l2 console pty: ");
+    log_runtime_file(
+        DEVICE_BACKEND_LOG_PATH,
+        "virtio-seed-backend.log",
+        "stub: device backend: ",
+    );
 }
 
 fn probe_inner_qemu_binary() {
@@ -138,8 +144,8 @@ fn launch_l2(data: &[u8]) -> std::io::Result<Child> {
     command.env("MORPHEUS_QEMU_INPUT_PATH", INPUT_PATH);
     command.env("MORPHEUS_L2_RUNTIME_DIR", RUNTIME_DIR);
     command.env("MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS", injected_period_ms(data));
-    if let Ok(ids) = std::env::var("MORPHEUS_QEMU_FUZZ_VIRTIO_IDS") {
-        command.env("MORPHEUS_QEMU_FUZZ_VIRTIO_IDS", ids);
+    if let Ok(backend) = std::env::var("MORPHEUS_VIRTIO_DEVICE_BACKEND") {
+        command.env("MORPHEUS_VIRTIO_DEVICE_BACKEND", backend);
     }
     if let Some(vintid) = injected_vintid(data) {
         command.env("MORPHEUS_QEMU_INJECT_VIRQ", vintid);

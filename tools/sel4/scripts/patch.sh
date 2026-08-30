@@ -20,7 +20,7 @@ fi
 patch_files="$(find "${patch_dir}" -type f \( -name '*.patch' -o -name '*.diff' \) | sort)"
 fingerprint="$(printf '%s\n' "${patch_files}" | morpheus_hash_files_from_stdin)"
 
-if morpheus_patch_state_matches "${state_file}" "${fingerprint}"; then
+if morpheus_patch_state_matches "${state_file}" "${fingerprint}" "${patch_dir}"; then
   printf '[sel4] reuse patch state %s fingerprint=%s\n' "${patch_dir}" "${fingerprint}"
   cat > "${result_file}" <<EOF
 {"details":{"reused":true,"applied":true,"fingerprint":"${fingerprint}","version":"$(tr -d '\n' < "${source_dir}/VERSION")"}}

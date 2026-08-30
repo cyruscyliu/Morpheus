@@ -7,7 +7,7 @@ use std::{env, fs, path::PathBuf};
 
 use libafl::{generators::Generator, inputs::Input, state::HasRand};
 use libafl_bolts::{nonzero, rands::StdRand};
-use libafl_nesting::{encode_scenario, format_scenario, DevilangGrammar, ScenarioGenerator};
+use libafl_nesting::{DevilangGrammar, ScenarioGenerator, encode_scenario, format_scenario};
 
 struct SeedState {
     rand: StdRand,

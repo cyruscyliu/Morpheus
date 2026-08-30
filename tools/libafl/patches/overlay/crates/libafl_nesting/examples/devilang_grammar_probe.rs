@@ -12,8 +12,8 @@ use libafl::{
 };
 use libafl_bolts::{nonzero, rands::StdRand};
 use libafl_nesting::{
-    encode_scenario, format_scenario, DevilangGrammar, ScenarioGenerator, ScenarioInput,
-    ScenarioMutator,
+    DevilangGrammar, ScenarioGenerator, ScenarioInput, ScenarioMutator, encode_scenario,
+    format_scenario,
 };
 
 struct ProbeState {

@@ -2238,7 +2238,7 @@ test("workflow run builds microkit-sdk through scripted fetch patch build steps"
   assert.equal(payload.details.steps.length, 5);
 
   const generated = path.join(
-    path.join(dataRoot, "cache", "root"),
+    ciCacheRoot(dataRoot),
     "tools",
     "microkit-sdk",
     "builds",

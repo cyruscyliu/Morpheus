@@ -1,7 +1,7 @@
 O ?= .output
 TARGET_NAME ?= smoke-rootfs
 
-.PHONY: all qemu_x86_64_defconfig qemu_aarch64_virt_defconfig olddefconfig linux-dirclean clean showvars
+.PHONY: all qemu_x86_64_defconfig qemu_aarch64_virt_defconfig olddefconfig linux-dirclean qemu-dirclean clean showvars
 
 all: $(O)/images/$(TARGET_NAME).tar
 
@@ -23,6 +23,12 @@ olddefconfig:
 
 linux-dirclean:
 	@rm -rf $(O)/build/linux-*
+
+qemu-dirclean:
+	@rm -rf $(O)/build/qemu-*
+
+qemu-cca-dirclean:
+	@rm -rf $(O)/build/qemu-cca-*
 
 $(O)/images/$(TARGET_NAME).tar: $(O)/.config
 	@mkdir -p \

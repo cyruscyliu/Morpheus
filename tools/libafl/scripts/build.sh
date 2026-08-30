@@ -14,6 +14,9 @@ tmp_root="${build_dir}/tmp"
 guest_target="aarch64-unknown-linux-gnu"
 stub_bin="${install_dir}/bin/libafl_nesting_stub"
 stub_fingerprint_file="${install_dir}/.libafl_nesting_stub.fingerprint"
+device_backend_src="${source_dir}/crates/libafl_nesting/c_src/libafl_device_backend.c"
+device_backend_bin="${install_dir}/bin/libafl_device_backend"
+device_backend_fingerprint_file="${install_dir}/.libafl_device_backend.fingerprint"
 fuzzer_bin="${install_dir}/bin/qemu_nesting"
 bridge_dir="${build_dir}/qemu-libafl-bridge"
 bridge_source_override="${MORPHEUS_LIBAFL_QEMU_BRIDGE_SOURCE:-${MORPHEUS_LIBAFL_QEMU_BRIDGE_DIR:-${MORPHEUS_LIBAFL_QEMU_BRIDGE:-}}}"
@@ -91,6 +94,7 @@ link_bridge_dir
 [ -d "${crate_src_dir}" ] || { echo "missing libafl_nesting crate: ${crate_src_dir}" >&2; exit 1; }
 [ -f "${source_dir}/fuzzers/full_system/qemu_nesting/Cargo.toml" ] || { echo "missing qemu_nesting example: ${source_dir}/fuzzers/full_system/qemu_nesting/Cargo.toml" >&2; exit 1; }
 [ -f "${stub_c_src}" ] || { echo "missing guest stub source: ${stub_c_src}" >&2; exit 1; }
+[ -f "${device_backend_src}" ] || { echo "missing seed device backend source: ${device_backend_src}" >&2; exit 1; }
 validate_external_bridge() {
   [ -x "${bridge_storage_dir}/configure" ] || {
     echo "external LibAFL QEMU bridge is missing configure: ${bridge_storage_dir}" >&2
@@ -270,6 +274,28 @@ if ! command -v llvm-config >/dev/null 2>&1; then
   fi
 fi
 
+device_backend_fingerprint() {
+  {
+    printf '%s\n' "seed-device-backend-v1"
+    sha256sum "${device_backend_src}" | awk '{print $1}'
+  } | sha256sum | awk '{print $1}'
+}
+device_backend_current() {
+  [ -x "${device_backend_bin}" ] \
+    && [ -f "${device_backend_fingerprint_file}" ] \
+    && [ "$(cat "${device_backend_fingerprint_file}")" = "$(device_backend_fingerprint)" ]
+}
+build_device_backend() {
+  aarch64-linux-gnu-gcc \
+    -O2 -static -no-pie \
+    "${device_backend_src}" \
+    -o "${device_backend_bin}"
+  device_backend_fingerprint > "${device_backend_fingerprint_file}"
+}
+if ! device_backend_current; then
+  build_device_backend
+fi
+
 bridge_config_fingerprint="$({
   printf '%s\n' "${bridge_config_version}"
   printf 'external=true\n'
@@ -374,7 +400,7 @@ build_guest_stub() {
 if [ "${reuse_build_dir}" = "true" ] && stub_current && fuzzer_current && bridge_current; then
   validate_fuzzer_binary
   cat > "${result_file}" <<EOF
-{"details":{"built":true,"reused":true,"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}"},"artifacts":[{"path":"guest-stub-binary","location":"${stub_bin}"},{"path":"qemu-nesting-fuzzer","location":"${fuzzer_bin}"},{"path":"qemu-bridge-dir","location":"${bridge_dir}"},{"path":"qemu-bridge-lib","location":"${installed_bridge_lib}"}]}
+{"details":{"built":true,"reused":true,"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}"},"artifacts":[{"path":"guest-stub-binary","location":"${stub_bin}"},{"path":"device-backend","location":"${device_backend_bin}"},{"path":"qemu-nesting-fuzzer","location":"${fuzzer_bin}"},{"path":"qemu-bridge-dir","location":"${bridge_dir}"},{"path":"qemu-bridge-lib","location":"${installed_bridge_lib}"}]}
 EOF
   exit 0
 fi
@@ -396,7 +422,7 @@ if [ "${reuse_build_dir}" = "true" ] && bridge_current && [ -d "${bridge_storage
     stub_rebuilt=true
   fi
   cat > "${result_file}" <<EOF
-{"details":{"built":true,"reused":true,"fuzzer_rebuilt":${fuzzer_rebuilt},"stub_rebuilt":${stub_rebuilt},"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}"},"artifacts":[{"path":"guest-stub-binary","location":"${stub_bin}"},{"path":"qemu-nesting-fuzzer","location":"${fuzzer_bin}"},{"path":"qemu-bridge-dir","location":"${bridge_dir}"},{"path":"qemu-bridge-lib","location":"${installed_bridge_lib}"}]}
+{"details":{"built":true,"reused":true,"fuzzer_rebuilt":${fuzzer_rebuilt},"stub_rebuilt":${stub_rebuilt},"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}"},"artifacts":[{"path":"guest-stub-binary","location":"${stub_bin}"},{"path":"device-backend","location":"${device_backend_bin}"},{"path":"qemu-nesting-fuzzer","location":"${fuzzer_bin}"},{"path":"qemu-bridge-dir","location":"${bridge_dir}"},{"path":"qemu-bridge-lib","location":"${installed_bridge_lib}"}]}
 EOF
   exit 0
 fi
@@ -408,7 +434,7 @@ if [ "${reuse_build_dir}" = "true" ] && stub_current && bridge_current && [ -d "
   validate_fuzzer_binary
   record_fuzzer_fingerprint
   cat > "${result_file}" <<EOF
-{"details":{"built":true,"reused":true,"fuzzer_rebuilt":true,"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}"},"artifacts":[{"path":"guest-stub-binary","location":"${stub_bin}"},{"path":"qemu-nesting-fuzzer","location":"${fuzzer_bin}"},{"path":"qemu-bridge-dir","location":"${bridge_dir}"},{"path":"qemu-bridge-lib","location":"${installed_bridge_lib}"}]}
+{"details":{"built":true,"reused":true,"fuzzer_rebuilt":true,"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}"},"artifacts":[{"path":"guest-stub-binary","location":"${stub_bin}"},{"path":"device-backend","location":"${device_backend_bin}"},{"path":"qemu-nesting-fuzzer","location":"${fuzzer_bin}"},{"path":"qemu-bridge-dir","location":"${bridge_dir}"},{"path":"qemu-bridge-lib","location":"${installed_bridge_lib}"}]}
 EOF
   exit 0
 fi
@@ -425,7 +451,7 @@ if [ "${reuse_build_dir}" = "true" ] && [ -x "${stub_bin}" ]; then
   record_fuzzer_fingerprint
   install_bridge
   cat > "${result_file}" <<EOF
-{"details":{"built":true,"reused":true,"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}"},"artifacts":[{"path":"guest-stub-binary","location":"${stub_bin}"},{"path":"qemu-nesting-fuzzer","location":"${fuzzer_bin}"},{"path":"qemu-bridge-dir","location":"${bridge_dir}"},{"path":"qemu-bridge-lib","location":"${installed_bridge_lib}"}]}
+{"details":{"built":true,"reused":true,"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}"},"artifacts":[{"path":"guest-stub-binary","location":"${stub_bin}"},{"path":"device-backend","location":"${device_backend_bin}"},{"path":"qemu-nesting-fuzzer","location":"${fuzzer_bin}"},{"path":"qemu-bridge-dir","location":"${bridge_dir}"},{"path":"qemu-bridge-lib","location":"${installed_bridge_lib}"}]}
 EOF
   exit 0
 fi
@@ -442,5 +468,5 @@ record_fuzzer_fingerprint
 install_bridge
 
 cat > "${result_file}" <<EOF
-{"details":{"built":true,"reused":false,"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}","stub":"${stub_bin}","fuzzer":"${fuzzer_bin}","qemu_bridge_dir":"${bridge_dir}","qemu_bridge_lib":"${installed_bridge_lib}"},"artifacts":[{"path":"guest-stub-binary","location":"${stub_bin}"},{"path":"qemu-nesting-fuzzer","location":"${fuzzer_bin}"},{"path":"qemu-bridge-dir","location":"${bridge_dir}"},{"path":"qemu-bridge-lib","location":"${installed_bridge_lib}"}]}
+{"details":{"built":true,"reused":false,"source":"${source_dir}","build_dir":"${build_dir}","install_dir":"${install_dir}","stub":"${stub_bin}","device_backend":"${device_backend_bin}","fuzzer":"${fuzzer_bin}","qemu_bridge_dir":"${bridge_dir}","qemu_bridge_lib":"${installed_bridge_lib}"},"artifacts":[{"path":"guest-stub-binary","location":"${stub_bin}"},{"path":"device-backend","location":"${device_backend_bin}"},{"path":"qemu-nesting-fuzzer","location":"${fuzzer_bin}"},{"path":"qemu-bridge-dir","location":"${bridge_dir}"},{"path":"qemu-bridge-lib","location":"${installed_bridge_lib}"}]}
 EOF

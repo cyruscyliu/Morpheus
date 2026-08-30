@@ -110,7 +110,7 @@ fingerprint="$(printf '%s\n' "${fingerprint_files}" | morpheus_hash_files_from_s
 stage_hash_overlays
 ensure_cache_patch_bridge
 
-if morpheus_patch_state_matches "${state_file}" "${fingerprint}"; then
+if morpheus_patch_state_matches "${state_file}" "${fingerprint}" "${patch_dir}"; then
   printf '[buildroot] reuse patch state %s fingerprint=%s\n' "${patch_dir}" "${fingerprint}"
   cat > "${result_file}" <<EOF
 {"details":{"reused":true,"applied":true,"fingerprint":"${fingerprint}"}}

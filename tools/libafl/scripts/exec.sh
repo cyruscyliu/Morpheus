@@ -36,6 +36,7 @@ l2_mode="vm"
 l2_accel="auto"
 l2_cpu=""
 l2_memory_mb="${MORPHEUS_L2_MEMORY_MB:-}"
+device_backend="${MORPHEUS_LIBAFL_DEVICE_BACKEND:-stock}"
 disable_nqc2_plugin="false"
 capture_runtime="false"
 replay_inputs=()
@@ -61,8 +62,6 @@ if [ "${MORPHEUS_LIBAFL_GRAMMAR_MODE+x}" = "x" ]; then
 elif [ "${MORPHEUS_LIBAFL_DEVILANG_GRAMMAR_MODE+x}" = "x" ]; then
   devilang_grammar_mode="${MORPHEUS_LIBAFL_DEVILANG_GRAMMAR_MODE}"
 fi
-fuzz_virtio_ids=""
-fuzz_virtio_ids_set=false
 mutational_max_iterations="${MORPHEUS_LIBAFL_MUTATIONAL_MAX_ITERATIONS:-}"
 show_console="${MORPHEUS_LIBAFL_SHOW_CONSOLE:-false}"
 
@@ -95,6 +94,7 @@ while [ "$#" -gt 0 ]; do
     --l2-accel) shift; l2_accel="${1:-}" ;;
     --l2-cpu) shift; l2_cpu="${1:-}" ;;
     --l2-memory-mb) shift; l2_memory_mb="${1:-}" ;;
+    --device-backend) shift; device_backend="${1:-}" ;;
     --replay-input) shift; replay_inputs+=("${1:-}") ;;
     --seed-input) shift; seed_inputs+=("${1:-}") ;;
     --devilang-state) shift; devilang_states+=("${1:-}") ;;
@@ -104,11 +104,6 @@ while [ "$#" -gt 0 ]; do
     --enable-devilang-grammar) enable_devilang_grammar="true" ;;
     --disable-grammar) disable_devilang_grammar="true" ;;
     --disable-devilang-grammar) disable_devilang_grammar="true" ;;
-    --fuzz-virtio-ids)
-      shift
-      fuzz_virtio_ids="${1:-}"
-      fuzz_virtio_ids_set=true
-      ;;
     --mutational-max-iterations) shift; mutational_max_iterations="${1:-}" ;;
     --show-console)
       case "${2:-}" in
@@ -143,21 +138,6 @@ if [ "${devilang_grammar_mode}" = "on" ] && [ -z "${devilang_grammar}" ]; then
   exit 1
 fi
 
-if [ "${fuzz_virtio_ids_set}" = "false" ] &&
-   [ "${MORPHEUS_QEMU_FUZZ_VIRTIO_IDS+x}" = "x" ]; then
-  fuzz_virtio_ids="${MORPHEUS_QEMU_FUZZ_VIRTIO_IDS}"
-  fuzz_virtio_ids_set=true
-fi
-
-if [ "${fuzz_virtio_ids_set}" = "true" ]; then
-  case "${fuzz_virtio_ids}" in
-    *[!0-9A-Fa-fxX,]*)
-      echo "--fuzz-virtio-ids accepts comma-separated decimal or hexadecimal IDs" >&2
-      exit 1
-      ;;
-  esac
-fi
-
 if [ -n "${mutational_max_iterations}" ] &&
    ! [[ "${mutational_max_iterations}" =~ ^[1-9][0-9]*$ ]]; then
   echo "--mutational-max-iterations must be a positive integer" >&2
@@ -181,6 +161,7 @@ devilang_grammar_file="${run_dir}/devilang-grammar.path"
 runner_log_file="${run_dir}/launcher.stdout.log"
 fuzzer_bin="${install_dir}/bin/qemu_nesting"
 stub_elf="${install_dir}/bin/libafl_nesting_stub"
+device_backend_bin="${install_dir}/bin/libafl_device_backend"
 bridge_source="${MORPHEUS_LIBAFL_QEMU_BRIDGE_SOURCE:-${MORPHEUS_LIBAFL_QEMU_BRIDGE_DIR:-}}"
 if [ -z "${bridge_source}" ]; then
   echo "missing external LibAFL QEMU bridge source; pass --qemu-bridge-source" >&2
@@ -240,12 +221,18 @@ kill_run "${manifest_pid}"
 [ -f "${nvirsh_state}" ] || { echo "missing prepared nvirsh state: ${nvirsh_state}" >&2; exit 1; }
 [ -x "${fuzzer_bin}" ] || { echo "missing qemu_nesting fuzzer binary: ${fuzzer_bin}" >&2; exit 1; }
 [ -f "${stub_elf}" ] || { echo "missing guest stub ELF: ${stub_elf}" >&2; exit 1; }
+if [ "${device_backend}" = "vhost-user" ]; then
+  [ -x "${device_backend_bin}" ] || {
+    echo "missing seed device backend: ${device_backend_bin}" >&2
+    exit 1
+  }
+fi
 
 replay_enabled=false
 if [ "${#replay_inputs[@]}" -gt 0 ]; then
   node - "${replay_inputs_file}" "${replay_state_file}" "${workspace_root}" "${repo_root}" "${replay_inputs[@]}" <<'NODE'
-const crypto = require("crypto");
 const fs = require("fs");
+const crypto = require("crypto");
 const path = require("path");
 const outputFile = process.argv[2];
 const stateFile = process.argv[3];
@@ -415,6 +402,10 @@ if [ -n "${l2_run_window_ms}" ]; then
 fi
 case "${l2_mode}" in vm|cvm) ;; *) echo "l2-mode must be one of: vm, cvm" >&2; exit 1 ;; esac
 case "${l2_accel}" in auto|kvm|tcg) ;; *) echo "l2-accel must be one of: auto, kvm, tcg" >&2; exit 1 ;; esac
+case "${device_backend}" in
+  stock|vhost-user) ;;
+  *) echo "device-backend must be one of: stock, vhost-user" >&2; exit 1 ;;
+esac
 if [ -n "${l2_cpu}" ]; then
   case "${l2_cpu}" in host|max|cortex-a57) ;; *) echo "l2-cpu must be one of: host, max, cortex-a57" >&2; exit 1 ;; esac
 fi
@@ -573,8 +564,9 @@ extract_l1_runtime_from_log() {
   local replay_mode="${3:-false}"
   local replay_state="${4:-}"
   [ -f "${log_file}" ] || return 0
-  node - "${log_file}" "${output_dir}" "${replay_mode}" "${replay_state}" <<'NODE'
+node - "${log_file}" "${output_dir}" "${replay_mode}" "${replay_state}" <<'NODE'
 const fs = require("fs");
+const crypto = require("crypto");
 const path = require("path");
 const logFile = process.argv[2];
 const outputDir = process.argv[3];
@@ -597,9 +589,415 @@ function recordFor(name) {
 }
 function writeRecordToDir(dir, name, record) {
   if (!record || !record.complete) return;
-  const chunks = [...record.chunks.entries()].sort((a, b) => a[0] - b[0]).map((entry) => entry[1]);
+  const chunks = recordBuffer(record);
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, name), Buffer.concat(chunks));
+  fs.writeFileSync(path.join(dir, name), chunks);
+}
+function recordBuffer(record) {
+  if (!record || !record.complete) return null;
+  const chunks = [...record.chunks.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map((entry) => entry[1]);
+  return Buffer.concat(chunks);
+}
+function parseBigIntToken(token) {
+  try {
+    return BigInt(token);
+  } catch {
+    return null;
+  }
+}
+function hexValue(value) {
+  return value == null ? null : `0x${value.toString(16)}`;
+}
+function dmaOperationName(opcode) {
+  return [
+    "unknown",
+    "alloc",
+    "alloc_fail",
+    "free",
+    "map",
+    "map_fail",
+    "unmap",
+    "sync_for_cpu",
+    "sync_for_device",
+    "vq_poll_hit",
+    "vq_poll_miss",
+    "vq_get_buf",
+    "vq_get_buf_empty",
+  ][opcode] || "unknown";
+}
+function dmaDirectionName(direction) {
+  return ["none", "to_device", "from_device", "bidirectional"][direction] || "unknown";
+}
+function normalizeDmaOffset(offset) {
+  if (offset >= 0xc0n && offset <= 0xccn) return offset;
+  if (offset >= 0x100n + 0xc0n && offset <= 0x100n + 0xccn) {
+    return offset - 0x100n;
+  }
+  return null;
+}
+function parseKeyValueFields(line) {
+  const fields = {};
+  for (const match of line.matchAll(/([A-Za-z][A-Za-z0-9_-]*)=([^\s]+)/g)) {
+    const value = match[2];
+    const number = /^\d+$/.test(value) ? Number(value) : parseBigIntToken(value);
+    fields[match[1]] = typeof number === "bigint" ? hexValue(number) : number ?? value;
+  }
+  return fields;
+}
+function readU64LE(buffer, offset) {
+  if (offset < 0 || offset + 8 > buffer.length) return null;
+  let value = 0n;
+  for (let index = 0; index < 8; index += 1) {
+    value |= BigInt(buffer[offset + index]) << BigInt(index * 8);
+  }
+  return value;
+}
+function decodeSeedActions(input) {
+  if (!input) return [];
+  const events = [];
+  const recordSize = 40;
+  let cursor = 0;
+  let group = 0;
+  while (cursor < input.length) {
+    if (cursor + 4 > input.length) {
+      events.push({
+        schemaVersion: 1,
+        source: "seed",
+        kind: "seed-decode-error",
+        detail: "truncated-group-header",
+      });
+      break;
+    }
+    const actionCount = input.readUInt32LE(cursor);
+    cursor += 4;
+    if (actionCount === 0 || cursor + actionCount * recordSize > input.length) {
+      events.push({
+        schemaVersion: 1,
+        source: "seed",
+        kind: "seed-decode-error",
+        group,
+        action_count: actionCount,
+        detail: "invalid-action-count",
+      });
+      break;
+    }
+    for (let actionIndex = 0; actionIndex < actionCount; actionIndex += 1) {
+      const record = cursor;
+      const family = input[record];
+      const opcode = input[record + 1];
+      const flags = input.readUInt16LE(record + 2);
+      const arg0 = readU64LE(input, record + 8);
+      const arg1 = readU64LE(input, record + 16);
+      const arg2 = readU64LE(input, record + 24);
+      const arg3 = readU64LE(input, record + 32);
+      const event = {
+        schemaVersion: 1,
+        source: "seed",
+        kind: "seed-action",
+        group,
+        action_index: actionIndex,
+        family,
+        opcode,
+        flags,
+      };
+      if (family === 2 && arg0 !== null && arg1 !== null && arg2 !== null) {
+        if (opcode === 0) {
+          event.kind = "seed-mmio-write";
+          event.address = hexValue(arg0);
+          event.width = Number(arg1);
+          event.value = hexValue(arg2);
+        } else if (opcode === 1) {
+          event.kind = flags & 1 ? "seed-mmio-read-override" : "seed-mmio-read";
+          event.address = hexValue(arg0);
+          event.width = Number(arg1);
+          if (flags & 1) event.value = hexValue(arg2);
+        } else if (opcode === 8) {
+          event.kind = "seed-virtio-net-rx";
+          event.queue = Number(arg0);
+          event.payload_length = Number(arg1);
+          event.used_length = Number(arg2);
+        } else if (opcode === 9) {
+          event.kind = "seed-virtio-features";
+          event.value = hexValue(arg0);
+        } else if (opcode === 10) {
+          event.kind = "seed-virtio-config";
+          event.offset = Number(arg0);
+          event.width = Number(arg1);
+          event.value = hexValue(arg2);
+        } else if (opcode === 11 && arg3 !== null) {
+          const operation = Number(arg2 & 0xffn);
+          const direction = Number((arg2 >> 8n) & 0xffn);
+          const path = Number((arg2 >> 16n) & 0xffn);
+          event.kind = "seed-dma-event";
+          event.address = hexValue(arg0);
+          event.length = Number(arg1);
+          event.event = hexValue(arg2);
+          event.opcode = operation;
+          event.operation = dmaOperationName(operation);
+          event.direction = direction;
+          event.direction_name = dmaDirectionName(direction);
+          event.path = path;
+          event.sequence = Number(arg3);
+        }
+      }
+      events.push(event);
+      cursor += recordSize;
+    }
+    group += 1;
+  }
+  return events;
+}
+function buildTraceReport(records) {
+  const parsed = [];
+  const dmaStates = new Map();
+  let hasObservationEvents = false;
+  let hasMmioEvents = false;
+  const profileMarkers = [];
+  const add = (event, fallback = false) => {
+    parsed.push({ ...event, _fallback: fallback });
+  };
+  const stateFor = (deviceId) => {
+    if (!dmaStates.has(deviceId)) {
+      dmaStates.set(deviceId, { addrLo: 0n, addrHi: 0n, length: 0n });
+    }
+    return dmaStates.get(deviceId);
+  };
+  const addDmaEvent = (deviceId, offset, value, raw, fallback) => {
+    const dmaOffset = normalizeDmaOffset(offset);
+    if (dmaOffset === null) return;
+    const state = stateFor(deviceId);
+    if (dmaOffset === 0xc4n) {
+      state.addrLo = value & 0xffff_ffffn;
+      return;
+    }
+    if (dmaOffset === 0xc8n) {
+      state.addrHi = value & 0xffff_ffffn;
+      return;
+    }
+    if (dmaOffset === 0xccn) {
+      state.length = value & 0xffff_ffffn;
+      return;
+    }
+    if (dmaOffset !== 0xc0n) return;
+    const opcode = Number(value & 0xffn);
+    const direction = Number((value >> 8n) & 0x3n);
+    const event = {
+      schemaVersion: 1,
+      source: "qemu-mmio",
+      kind: "dma",
+      device_id: deviceId,
+      address: hexValue((state.addrHi << 32n) | state.addrLo),
+      length: Number(state.length),
+      event: hexValue(value),
+      opcode,
+      operation: dmaOperationName(opcode),
+      direction,
+      direction_name: dmaDirectionName(direction),
+      path: Number((value >> 10n) & 0x3n),
+      sequence: Number((value >> 16n) & 0xffffn),
+      raw,
+    };
+    add(event, fallback);
+  };
+  const qemuRecord = records.get("morpheus-qemu-trace.log");
+  const qemuBuffer = recordBuffer(qemuRecord);
+  if (qemuBuffer) {
+    for (const line of qemuBuffer.toString("utf8").split(/\r?\n/)) {
+      const raw = line.trim();
+      if (!raw) continue;
+      let match = raw.match(/virtio_mmio_observe_read device (\d+) offset (0x[0-9a-fA-F]+) size (\d+)/);
+      if (match) {
+        hasObservationEvents = true;
+        hasMmioEvents = true;
+        add({
+          schemaVersion: 1,
+          source: "qemu-mmio",
+          kind: "mmio-read",
+          device_id: Number(match[1]),
+          offset: match[2].toLowerCase(),
+          width: Number(match[3]),
+          raw,
+        });
+        continue;
+      }
+      match = raw.match(/virtio_mmio_observe_write device (\d+) offset (0x[0-9a-fA-F]+) value (0x[0-9a-fA-F]+) size (\d+)/);
+      if (match) {
+        hasObservationEvents = true;
+        hasMmioEvents = true;
+        const deviceId = Number(match[1]);
+        const offset = parseBigIntToken(match[2]);
+        const value = parseBigIntToken(match[3]);
+        if (offset !== null && value !== null) addDmaEvent(deviceId, offset, value, raw, false);
+        add({
+          schemaVersion: 1,
+          source: "qemu-mmio",
+          kind: "mmio-write",
+          device_id: deviceId,
+          offset: match[2].toLowerCase(),
+          value: match[3].toLowerCase(),
+          width: Number(match[4]),
+          raw,
+        });
+        continue;
+      }
+      match = raw.match(/virtio_mmio_fuzz_read offset (0x[0-9a-fA-F]+) base (0x[0-9a-fA-F]+) fuzzed (0x[0-9a-fA-F]+) size (\d+) cursor (\d+)/);
+      if (match) {
+        hasMmioEvents = true;
+        add({
+          schemaVersion: 1,
+          source: "qemu-mmio",
+          kind: "mmio-read-fuzz",
+          offset: match[1].toLowerCase(),
+          base: match[2].toLowerCase(),
+          value: match[3].toLowerCase(),
+          width: Number(match[4]),
+          cursor: Number(match[5]),
+          raw,
+        });
+        continue;
+      }
+      match = raw.match(/virtio_mmio_dma_fuzz addr (0x[0-9a-fA-F]+) len (\d+) event (0x[0-9a-fA-F]+) opcode (0x[0-9a-fA-F]+) direction (0x[0-9a-fA-F]+) cursor (\d+) status (-?\d+)/);
+      if (match) {
+        const opcode = Number.parseInt(match[4], 16);
+        const direction = Number.parseInt(match[5], 16);
+        add({
+          schemaVersion: 1,
+          source: "qemu-mmio",
+          kind: "dma-injection",
+          address: match[1].toLowerCase(),
+          length: Number(match[2]),
+          event: match[3].toLowerCase(),
+          opcode,
+          operation: dmaOperationName(opcode),
+          direction,
+          direction_name: dmaDirectionName(direction),
+          cursor: Number(match[6]),
+          status: Number(match[7]),
+          raw,
+        });
+        continue;
+      }
+      match = raw.match(/virtio_mmio_read(?:\s+virtio_mmio_read)?\s+offset (0x[0-9a-fA-F]+)/);
+      if (match) {
+        hasMmioEvents = true;
+        add({
+          schemaVersion: 1,
+          source: "qemu-mmio",
+          kind: "mmio-read",
+          offset: match[1].toLowerCase(),
+          width: null,
+          raw,
+        }, true);
+        continue;
+      }
+      match = raw.match(/virtio_mmio_write_offset(?:\s+virtio_mmio_write)?\s+offset (0x[0-9a-fA-F]+) value (0x[0-9a-fA-F]+)/);
+      if (match) {
+        hasMmioEvents = true;
+        const offset = parseBigIntToken(match[1]);
+        const value = parseBigIntToken(match[2]);
+        if (offset !== null && value !== null) addDmaEvent(0, offset, value, raw, true);
+        add({
+          schemaVersion: 1,
+          source: "qemu-mmio",
+          kind: "mmio-write",
+          offset: match[1].toLowerCase(),
+          value: match[2].toLowerCase(),
+          width: null,
+          raw,
+        }, true);
+      }
+    }
+  }
+  const selected = hasObservationEvents
+    ? parsed.filter((event) => !event._fallback)
+    : parsed;
+  for (const event of selected) delete event._fallback;
+
+  const backendRecord = records.get("virtio-seed-backend.log");
+  const backendBuffer = recordBuffer(backendRecord);
+  if (backendBuffer) {
+    for (const line of backendBuffer.toString("utf8").split(/\r?\n/)) {
+      const raw = line.trim();
+      if (!raw) continue;
+      let kind = "backend-event";
+      if (raw.startsWith("rx-complete ")) kind = "dma-completion";
+      else if (raw.startsWith("memory-") || raw.startsWith("memory-region")) kind = "dma-memory";
+      else if (raw.startsWith("dma-read ")) kind = "dma-read";
+      else if (raw.startsWith("dma-write ")) kind = "dma-write";
+      else if (raw.startsWith("rx-") || raw.startsWith("output-")) kind = "dma-error";
+      selected.push({
+        schemaVersion: 1,
+        source: "vhost-user-backend",
+        kind,
+        fields: parseKeyValueFields(raw),
+        raw,
+      });
+    }
+  }
+  for (const outputName of ["qemu.stdout.log", "l2-console.log"]) {
+    const guestOutputRecord = records.get(outputName);
+    const guestOutputBuffer = recordBuffer(guestOutputRecord);
+    if (!guestOutputBuffer) continue;
+    for (const line of guestOutputBuffer.toString("utf8").split(/\r?\n/)) {
+      const raw = line.trim();
+      if (!raw) continue;
+      if (raw.includes("virtio-net profile:")) profileMarkers.push(raw);
+      const marker = raw.indexOf("virtio_telemetry ");
+      if (marker >= 0) {
+        const telemetry = raw.slice(marker + "virtio_telemetry ".length);
+        selected.push({
+          schemaVersion: 1,
+          source: "linux-virtio-telemetry",
+          kind: "dma-telemetry",
+          fields: parseKeyValueFields(telemetry),
+          raw,
+        });
+      }
+    }
+  }
+  const guestErrorRecord = records.get("qemu.stderr.log");
+  const guestErrorBuffer = recordBuffer(guestErrorRecord);
+  if (guestErrorBuffer) {
+    for (const line of guestErrorBuffer.toString("utf8").split(/\r?\n/)) {
+      const raw = line.trim();
+      if (raw.includes("virtio-net profile:")) profileMarkers.push(raw);
+    }
+  }
+  return {
+    hasObservationEvents,
+    hasMmioEvents,
+    profileMarkers,
+    events: selected.map((event, index) => ({ event_index: index, ...event })),
+  };
+}
+function writeTraceReport(dir, records) {
+  const trace = buildTraceReport(records);
+  const input = recordBuffer(records.get("morpheus-qemu-input.bin"));
+  const seedEvents = decodeSeedActions(input);
+  const header = {
+    schemaVersion: 1,
+    source: "libafl-nesting",
+    kind: "trace-meta",
+    mmio_observation_events: trace.hasObservationEvents,
+    mmio_trace_events: trace.hasMmioEvents,
+    mmio_trace_mode: trace.hasObservationEvents ? "instrumented" :
+      trace.hasMmioEvents ? "stock" : "none",
+    seed_action_events: seedEvents.length,
+    profile_markers: trace.profileMarkers,
+    input_size: input ? input.length : null,
+    input_sha256: input ? crypto.createHash("sha256").update(input).digest("hex") : null,
+  };
+  const lines = [
+    JSON.stringify(header),
+    ...seedEvents.map((event) => JSON.stringify(event)),
+    ...trace.events.map((event) => JSON.stringify(event)),
+  ];
+  const reportPath = path.join(dir, "seed.trace.jsonl");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(reportPath, lines.join("\n") + "\n");
+  return { path: reportPath, eventCount: trace.events.length + seedEvents.length };
 }
 function flushRuntimeGroup() {
   if (records.size === 0) {
@@ -611,6 +1009,7 @@ function flushRuntimeGroup() {
   if (pendingOutcome) {
     const groupName = `${String(outcomeIndex).padStart(6, "0")}-${pendingOutcome.kind}`;
     const groupDir = path.join(outputDir, "outcomes", groupName);
+    const trace = writeTraceReport(groupDir, records);
     for (const [name, record] of records.entries()) {
       if (record.complete) {
         writeRecordToDir(groupDir, name, record);
@@ -622,12 +1021,13 @@ function flushRuntimeGroup() {
         path.join(groupDir, "outcome.json"),
         JSON.stringify(pendingOutcome, null, 2),
       );
-      outcomes.push({ index: outcomeIndex, ...pendingOutcome, dir: groupDir });
+      outcomes.push({ index: outcomeIndex, ...pendingOutcome, dir: groupDir, trace: trace.path, traceEvents: trace.eventCount });
       outcomeIndex += 1;
     }
   } else if (replayMode) {
     const groupName = `replay-${String(replayIndex).padStart(6, "0")}`;
     const groupDir = path.join(outputDir, groupName);
+    const trace = writeTraceReport(groupDir, records);
     for (const [name, record] of records.entries()) {
       if (record.complete) {
         writeRecordToDir(groupDir, name, record);
@@ -636,7 +1036,8 @@ function flushRuntimeGroup() {
       }
     }
     if (wrote) {
-      runtimeGroups.push({ index: replayIndex, dir: groupDir });
+      const rootTrace = writeTraceReport(outputDir, records);
+      runtimeGroups.push({ index: replayIndex, dir: groupDir, trace: trace.path, traceEvents: rootTrace.eventCount });
       replayIndex += 1;
     }
   }
@@ -688,12 +1089,12 @@ NODE
 
 write_result() {
   if [ "${replay_enabled}" = "true" ]; then
-    cat > "${result_file}" <<EOF
-{"details":{"pid":null,"detached":false,"run_dir":"${run_dir}","manifest":"${manifest_file}","l1_runtime_dir":"${l1_runtime_dir}","corpus_dir":"${corpus_dir}","objective_dir":"${objective_dir}","replay_state":"${replay_state_file}","replay_inputs":"${replay_inputs_file}"},"artifacts":[{"path":"l1-runtime-dir","location":"${l1_runtime_dir}"},{"path":"corpus-dir","location":"${corpus_dir}"},{"path":"objective-dir","location":"${objective_dir}"},{"path":"replay-state","location":"${replay_state_file}"},{"path":"replay-inputs","location":"${replay_inputs_file}"}]}
+      cat > "${result_file}" <<EOF
+{"details":{"pid":null,"detached":false,"run_dir":"${run_dir}","manifest":"${manifest_file}","device_backend":"${device_backend}","l1_runtime_dir":"${l1_runtime_dir}","corpus_dir":"${corpus_dir}","objective_dir":"${objective_dir}","replay_state":"${replay_state_file}","replay_inputs":"${replay_inputs_file}"},"artifacts":[{"path":"l1-runtime-dir","location":"${l1_runtime_dir}"},{"path":"corpus-dir","location":"${corpus_dir}"},{"path":"objective-dir","location":"${objective_dir}"},{"path":"replay-state","location":"${replay_state_file}"},{"path":"replay-inputs","location":"${replay_inputs_file}"}]}
 EOF
   else
-    cat > "${result_file}" <<EOF
-{"details":{"pid":null,"detached":false,"run_dir":"${run_dir}","manifest":"${manifest_file}","l1_runtime_dir":"${l1_runtime_dir}","corpus_dir":"${corpus_dir}","objective_dir":"${objective_dir}"},"artifacts":[{"path":"l1-runtime-dir","location":"${l1_runtime_dir}"},{"path":"corpus-dir","location":"${corpus_dir}"},{"path":"objective-dir","location":"${objective_dir}"}]}
+      cat > "${result_file}" <<EOF
+{"details":{"pid":null,"detached":false,"run_dir":"${run_dir}","manifest":"${manifest_file}","device_backend":"${device_backend}","l1_runtime_dir":"${l1_runtime_dir}","corpus_dir":"${corpus_dir}","objective_dir":"${objective_dir}"},"artifacts":[{"path":"l1-runtime-dir","location":"${l1_runtime_dir}"},{"path":"corpus-dir","location":"${corpus_dir}"},{"path":"objective-dir","location":"${objective_dir}"}]}
 EOF
   fi
 }
@@ -790,13 +1191,14 @@ fi
 if [ -n "${l2_memory_mb}" ]; then
   direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_MEMORY_MB=${l2_memory_mb}"
 fi
+if [ "${device_backend}" = "vhost-user" ]; then
+  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_VIRTIO_DEVICE_BACKEND=vhost-user"
+  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_VIRTIO_DEVICE_BACKEND_PATH=/mnt/libafl_device_backend"
+fi
 if [ "${MORPHEUS_L2_SHELL_TRACE:-0}" = "1" ]; then
   # The launcher runs inside the L1 guest, so an observation-only trace flag
   # from the host must be carried through the init command explicitly.
   direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_SHELL_TRACE=1"
-fi
-if [ "${fuzz_virtio_ids_set}" = "true" ]; then
-  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_QEMU_FUZZ_VIRTIO_IDS=${fuzz_virtio_ids}"
 fi
 if [ -n "${l2_run_window_ms}" ]; then
   direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_RUN_WINDOW_MS=${l2_run_window_ms}"
@@ -819,6 +1221,7 @@ stage_buildroot_cvm_share() {
   local source_share="$3"
   local launch_source="${4:-${source_share}/launch-l2-hoststack.sh}"
   local inner_launch_source="${source_share}/launch-l2.sh"
+  local device_backend_source="${5:-}"
   local qemu_img_bin="${MORPHEUS_QEMU_IMG_BIN:-${MORPHEUS_QEMU_IMG:-}}"
   local mkfs_ext4_bin="${MORPHEUS_MKFS_EXT4_BIN:-${MORPHEUS_MKFS_EXT4:-}}"
   local staging_bytes
@@ -857,29 +1260,23 @@ stage_buildroot_cvm_share() {
   chmod 0755 "${staging_dir}/launch-l2-hoststack.sh"
   cp -f "${inner_launch_source}" "${staging_dir}/launch-l2-inner.sh"
   chmod 0755 "${staging_dir}/launch-l2-inner.sh"
+  if [ -n "${device_backend_source}" ]; then
+    if LC_ALL=C grep -Fq 'gen-run-vmm.sh' "${inner_launch_source}"; then
+      echo "vhost-user seed backend is unsupported by the gen-run-vmm L2 launcher" >&2
+      exit 1
+    fi
+    [ -x "${device_backend_source}" ] || {
+      echo "missing seed device backend: ${device_backend_source}" >&2
+      exit 1
+    }
+    cp -f "${device_backend_source}" "${staging_dir}/libafl_device_backend"
+    chmod 0755 "${staging_dir}/libafl_device_backend"
+  fi
   cp -a "${source_share}/guest-images" "${staging_dir}/"
   cp -a "${source_share}/guest-qemu" "${staging_dir}/"
 
-  # Inspect the guest QEMU on the host while staging the share.  Do not run a
-  # dynamically-linked grep inside L1: after the LibAFL breakpoint that class
-  # of child process is not a reliable way to probe the binary.  A marker is
-  # enough for the guest shell to select the optional trace events.
-  mmio_patch_marker="${staging_dir}/guest-qemu/.morpheus-mmio-patched"
-  mmio_root_marker="${staging_dir}/.morpheus-mmio-patched"
-  rm -f "${mmio_patch_marker}" "${mmio_root_marker}"
-  if LC_ALL=C grep -a -q 'virtio_mmio_fuzz_read' \
-       "${source_share}/guest-qemu/bin/qemu-system-aarch64" 2>/dev/null &&
-     LC_ALL=C grep -a -q 'virtio_mmio_dma_fuzz' \
-       "${source_share}/guest-qemu/bin/qemu-system-aarch64" 2>/dev/null; then
-    : > "${mmio_patch_marker}"
-    : > "${mmio_root_marker}"
-  fi
-
-  # Older prepared nvirsh shares contain the pre-fix launcher.  Rewrite only
-  # its guest-side capability condition while copying the script so cached
-  # states receive the same no-dynamic-ELF behavior as newly built states.
-  perl -0pi -e 's{if LC_ALL=C grep -a -q '\''virtio_mmio_fuzz_read'\''.*?; then}{if [ -f /mnt/guest-qemu/.morpheus-mmio-patched ]; then}ms' \
-    "${staging_dir}/launch-l2-inner.sh"
+  # The prepared nvirsh state is fingerprinted with the launcher source, so
+  # an old conditional launcher cannot be reused after this contract changes.
 
   # The buildroot launcher predates LibAFL's input-status contract. Keep the
   # generated launcher intact and add the contract in this per-run wrapper.
@@ -1213,11 +1610,20 @@ if [ "${l2_mode}" = "cvm" ]; then
       exit 1
     fi
 
-    stage_buildroot_cvm_share \
-      "${l1_share_staging_dir}" \
-      "${l1_share_image}" \
-      "${l1_hoststack_share_dir}" \
-      "${l1_hoststack_launch:-${l1_hoststack_share_dir}/launch-l2-hoststack.sh}"
+    if [ "${device_backend}" = "vhost-user" ]; then
+      stage_buildroot_cvm_share \
+        "${l1_share_staging_dir}" \
+        "${l1_share_image}" \
+        "${l1_hoststack_share_dir}" \
+        "${l1_hoststack_launch:-${l1_hoststack_share_dir}/launch-l2-hoststack.sh}" \
+        "${device_backend_bin}"
+    else
+      stage_buildroot_cvm_share \
+        "${l1_share_staging_dir}" \
+        "${l1_share_image}" \
+        "${l1_hoststack_share_dir}" \
+        "${l1_hoststack_launch:-${l1_hoststack_share_dir}/launch-l2-hoststack.sh}"
+    fi
     cat > "${l1_boot_startup}" <<EOF
 mode 100 31
 pci
@@ -1387,7 +1793,7 @@ cleanup() {
   if [ -n "${child_pid}" ]; then kill_run "${child_pid}"; fi
   extract_l1_runtime_from_log "${l1_runtime_dir}" "$(source_log_file)" "${replay_enabled}" "${replay_state_file}"
   cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"libafl","status":"${status}","runDir":"${run_dir}","manifest":"${manifest_file}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","l1RuntimeDir":"${l1_runtime_dir}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
+{"schemaVersion":1,"tool":"libafl","status":"${status}","runDir":"${run_dir}","manifest":"${manifest_file}","deviceBackend":"${device_backend}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","l1RuntimeDir":"${l1_runtime_dir}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
 EOF
 }
 
@@ -1395,7 +1801,7 @@ if [ "${detach}" = "true" ]; then
   spawn_launcher
   pid="${child_pid}"
   cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","pid":${pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
+{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","deviceBackend":"${device_backend}","pid":${pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
 EOF
   if [ "${replay_enabled}" = "true" ]; then
     cat > "${result_file}" <<EOF
@@ -1416,7 +1822,7 @@ if [ "${run_seconds}" != "0" ] && [ "${replay_enabled}" != "true" ]; then
   while [ "${SECONDS}" -lt "${end_time}" ]; do
     spawn_launcher
     cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","pid":${child_pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","attempt":${attempt},"corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
+{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","deviceBackend":"${device_backend}","pid":${child_pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","attempt":${attempt},"corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
 EOF
     while [ "${SECONDS}" -lt "${end_time}" ] && kill -0 "${child_pid}" 2>/dev/null; do
       if ps -o stat= --ppid "${child_pid}" | grep -q 'Z'; then
@@ -1440,14 +1846,14 @@ EOF
 else
   spawn_launcher
   cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","pid":${child_pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
+{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","deviceBackend":"${device_backend}","pid":${child_pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
 EOF
   wait "${child_pid}"
   child_pid=""
 fi
 
 cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"libafl","status":"success","runDir":"${run_dir}","manifest":"${manifest_file}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","l1RuntimeDir":"${l1_runtime_dir}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
+{"schemaVersion":1,"tool":"libafl","status":"success","runDir":"${run_dir}","manifest":"${manifest_file}","deviceBackend":"${device_backend}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","l1RuntimeDir":"${l1_runtime_dir}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
 EOF
 extract_l1_runtime_from_log "${l1_runtime_dir}" "$(source_log_file)" "${replay_enabled}" "${replay_state_file}"
 write_result

@@ -44,7 +44,7 @@ apply_overlay() {
   fi
 }
 
-if morpheus_patch_state_matches "${state_file}" "${fingerprint}"; then
+if morpheus_patch_state_matches "${state_file}" "${fingerprint}" "${patch_dir}"; then
   apply_overlay
   cat > "${result_file}" <<EOF
 {"details":{"reused":true,"applied":true,"fingerprint":"${fingerprint}","source":"${source_dir}","patch_dir":"${patch_dir}"}}

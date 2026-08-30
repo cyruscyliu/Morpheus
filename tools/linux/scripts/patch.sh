@@ -99,7 +99,7 @@ try {
 patch_files="$(find "${patch_dir}" -type f \( -name '*.patch' -o -name '*.diff' \) -print | LC_ALL=C sort)"
 fingerprint="$(printf '%s\n' "${patch_files}" | morpheus_hash_files_from_stdin)"
 
-if morpheus_patch_state_matches "${state_file}" "${fingerprint}"; then
+if morpheus_patch_state_matches "${state_file}" "${fingerprint}" "${patch_dir}"; then
   cat > "${result_file}" <<EOF
 {"details":{"reused":true,"applied":true,"fingerprint":"${fingerprint}"}}
 EOF

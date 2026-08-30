@@ -69,6 +69,42 @@ generates and mutates a scenario, and prints the readable actions without
 starting QEMU. The `--devilang-grammar` and `--enable-devilang-grammar` names
 remain accepted as compatibility aliases.
 
+## Seed-driven virtio device input
+
+The optional `vhost-user` device backend keeps the L2 QEMU binary unchanged.
+Enable it with `--device-backend vhost-user`; the backend consumes device
+directives from the same encoded `ScenarioInput` that the guest stub hands to
+the L2 launcher. The supported Devilang directives are:
+
+```text
+call device.mmio_read_override(ADDRESS, WIDTH, VALUE);
+call device.virtio_features(FEATURES);
+call device.virtio_config(OFFSET, WIDTH, VALUE);
+call device.virtio_net_rx(QUEUE, PAYLOAD_LENGTH, USED_LENGTH);
+dma_event(op=OP, dir=DIRECTION, path=PATH, sequence=SEQ, addr=ADDRESS, len=LENGTH);
+```
+
+The backend is only staged for `vhost-user` runs. Before launching the L2 it
+checks for the generic QEMU test device and shared memfd support. RX actions
+also require a vhost memory table whose mapped pages can be touched by the
+backend; inaccessible descriptor or payload buffers fail closed. Config-only
+actions may complete before queue setup and therefore do not require a memory
+probe. The default `stock` path does not use this backend and retains the
+existing QEMU-profile batches.
+
+The runtime marker distinguishes `memory=guest-addressable` from
+`memory=not-probed` and `memory=unavailable`. The former is a probe of the
+memory table sent to vhost-user, not a claim that every Realm-private page is
+host-accessible.
+
+Every replay outcome also contains `seed.trace.jsonl`. It is an observation
+record, not an additional device input. It includes the decoded seed actions,
+all generic virtio-MMIO reads and writes, DMA-aperture records reconstructed
+from those writes, Linux virtio DMA telemetry when available, and vhost-user
+backend events. Teardown and queue-progress events remain visible in the
+report without being reinterpreted as new device actions. CVE-specific QEMU
+profile patches are not needed by this path.
+
 For debugging, LibAFL exec hides the outer L1 and nested L2 console streams by
 default while retaining the complete raw stream in `launcher.stdout.log` for
 runtime extraction. Pass `--show-console` (or set

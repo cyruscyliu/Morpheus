@@ -115,6 +115,59 @@ fn encode_action(action: &Action, bytes: &mut Vec<u8>) {
             Action::Hyper(HyperAction::MmioRead { addr, width }) => {
                 (FAMILY_HYPER, 1, 0, *addr, u64::from(*width), 0, 0)
             }
+            Action::Hyper(HyperAction::MmioReadOverride { addr, width, value }) => {
+                // Bit zero marks arg2 as an explicit device-side read result.
+                // The seed record is kept separate from the legacy MMIO read
+                // record so old target-byte inputs remain decodable.
+                (FAMILY_HYPER, 1, 1, *addr, u64::from(*width), *value, 0)
+            }
+            Action::Hyper(HyperAction::VirtioNetRx {
+                queue,
+                payload_len,
+                used_len,
+            }) => (
+                FAMILY_HYPER,
+                8,
+                0,
+                u64::from(*queue),
+                u64::from(*payload_len),
+                u64::from(*used_len),
+                0,
+            ),
+            Action::Hyper(HyperAction::VirtioFeatures { value }) => {
+                (FAMILY_HYPER, 9, 0, *value, 0, 0, 0)
+            }
+            Action::Hyper(HyperAction::VirtioConfig {
+                offset,
+                width,
+                value,
+            }) => (
+                FAMILY_HYPER,
+                10,
+                0,
+                u64::from(*offset),
+                u64::from(*width),
+                *value,
+                0,
+            ),
+            Action::Hyper(HyperAction::DmaEvent {
+                operation,
+                direction,
+                path,
+                sequence,
+                addr,
+                len,
+            }) => (
+                FAMILY_HYPER,
+                11,
+                0,
+                *addr,
+                u64::from(*len),
+                u64::from(*operation)
+                    | (u64::from(*direction) << 8)
+                    | (u64::from(*path) << 16),
+                u64::from(*sequence),
+            ),
             Action::Hyper(HyperAction::PioWrite { port, width, value }) => {
                 (FAMILY_HYPER, 2, 0, *port, u64::from(*width), *value, 0)
             }
@@ -198,7 +251,7 @@ fn decode_action(bytes: &[u8], cursor: &mut usize) -> Result<Action, Error> {
     let arg0 = read_u64(bytes, cursor)?;
     let arg1 = read_u64(bytes, cursor)?;
     let arg2 = read_u64(bytes, cursor)?;
-    let _arg3 = read_u64(bytes, cursor)?;
+    let arg3 = read_u64(bytes, cursor)?;
 
     match (family, opcode) {
         (FAMILY_VM, 0) => Ok(Action::Vm(VmAction::Stop)),
@@ -221,10 +274,47 @@ fn decode_action(bytes: &[u8], cursor: &mut usize) -> Result<Action, Error> {
                 .map_err(|_| Error::illegal_argument("mmio width out of range"))?,
             value: arg2,
         })),
-        (FAMILY_HYPER, 1) => Ok(Action::Hyper(HyperAction::MmioRead {
-            addr: arg0,
+        (FAMILY_HYPER, 1) => {
+            let width = u8::try_from(arg1)
+                .map_err(|_| Error::illegal_argument("mmio width out of range"))?;
+            if flags & 1 != 0 {
+                Ok(Action::Hyper(HyperAction::MmioReadOverride {
+                    addr: arg0,
+                    width,
+                    value: arg2,
+                }))
+            } else {
+                Ok(Action::Hyper(HyperAction::MmioRead { addr: arg0, width }))
+            }
+        }
+        (FAMILY_HYPER, 8) => Ok(Action::Hyper(HyperAction::VirtioNetRx {
+            queue: u16::try_from(arg0)
+                .map_err(|_| Error::illegal_argument("virtio-net queue out of range"))?,
+            payload_len: u32::try_from(arg1)
+                .map_err(|_| Error::illegal_argument("virtio-net payload length out of range"))?,
+            used_len: u32::try_from(arg2)
+                .map_err(|_| Error::illegal_argument("virtio-net used length out of range"))?,
+        })),
+        (FAMILY_HYPER, 9) => Ok(Action::Hyper(HyperAction::VirtioFeatures { value: arg0 })),
+        (FAMILY_HYPER, 10) => Ok(Action::Hyper(HyperAction::VirtioConfig {
+            offset: u16::try_from(arg0)
+                .map_err(|_| Error::illegal_argument("virtio config offset out of range"))?,
             width: u8::try_from(arg1)
-                .map_err(|_| Error::illegal_argument("mmio width out of range"))?,
+                .map_err(|_| Error::illegal_argument("virtio config width out of range"))?,
+            value: arg2,
+        })),
+        (FAMILY_HYPER, 11) => Ok(Action::Hyper(HyperAction::DmaEvent {
+            operation: u8::try_from(arg2 & 0xff)
+                .map_err(|_| Error::illegal_argument("DMA operation out of range"))?,
+            direction: u8::try_from((arg2 >> 8) & 0xff)
+                .map_err(|_| Error::illegal_argument("DMA direction out of range"))?,
+            path: u8::try_from((arg2 >> 16) & 0xff)
+                .map_err(|_| Error::illegal_argument("DMA path out of range"))?,
+            sequence: u16::try_from(arg3)
+                .map_err(|_| Error::illegal_argument("DMA sequence out of range"))?,
+            addr: arg0,
+            len: u32::try_from(arg1)
+                .map_err(|_| Error::illegal_argument("DMA length out of range"))?,
         })),
         (FAMILY_HYPER, 2) => Ok(Action::Hyper(HyperAction::PioWrite {
             port: arg0,
@@ -313,6 +403,7 @@ mod tests {
     use crate::input::{
         Action, ActionGroup, CpuAction, HyperAction, PageTableAction, ScenarioInput, VmAction,
     };
+    use crate::{ACTION_RECORD_SIZE, GROUP_HEADER_SIZE};
 
     use super::{ScenarioCodec, decode_scenario, encode_scenario};
 
@@ -344,5 +435,54 @@ mod tests {
         let mut codec = ScenarioCodec::new();
         let bytes2 = codec.convert_to_target_bytes(&mut (), &input);
         assert_eq!(bytes.as_slice(), bytes2.as_ref());
+    }
+
+    #[test]
+    fn device_seed_records_round_trip_without_changing_legacy_records() {
+        let input = ScenarioInput::new(vec![ActionGroup::new(vec![
+            Action::Hyper(HyperAction::MmioReadOverride {
+                addr: 0x111,
+                width: 1,
+                value: 0xff,
+            }),
+            Action::Hyper(HyperAction::VirtioNetRx {
+                queue: 0,
+                payload_len: 60,
+                used_len: 4156,
+            }),
+            Action::Hyper(HyperAction::VirtioFeatures {
+                value: 0x0200_0001_0003_0020,
+            }),
+            Action::Hyper(HyperAction::VirtioConfig {
+                offset: 17,
+                width: 1,
+                value: 255,
+            }),
+        ])]);
+
+        let bytes = encode_scenario(&input);
+        assert_eq!(bytes.len(), GROUP_HEADER_SIZE + 4 * ACTION_RECORD_SIZE);
+        assert_eq!(
+            decode_scenario(&bytes).expect("decode should succeed"),
+            input
+        );
+    }
+
+    #[test]
+    fn dma_observation_records_preserve_full_event_fields() {
+        let input = ScenarioInput::new(vec![ActionGroup::new(vec![
+            Action::Hyper(HyperAction::DmaEvent {
+                operation: 6,
+                direction: 2,
+                path: 1,
+                sequence: 0x1234,
+                addr: 0x1_0000_2000,
+                len: 4156,
+            }),
+        ])]);
+
+        let bytes = encode_scenario(&input);
+        assert_eq!(bytes.len(), GROUP_HEADER_SIZE + ACTION_RECORD_SIZE);
+        assert_eq!(decode_scenario(&bytes).expect("decode should succeed"), input);
     }
 }

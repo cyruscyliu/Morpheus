@@ -111,6 +111,47 @@ pub enum HyperAction {
         addr: u64,
         width: u8,
     },
+    /// Provide an explicit value for a device-side MMIO read in a seed.
+    ///
+    /// These seed directives are appended after the original variants so
+    /// postcard indexes for existing inputs remain stable.
+    MmioReadOverride {
+        addr: u64,
+        width: u8,
+        value: u64,
+    },
+    /// Describe one device-side virtio-net RX completion in a seed.
+    ///
+    /// This is a generic device-input description. It does not select a
+    /// vulnerability or change an L2 QEMU binary.
+    VirtioNetRx {
+        queue: u16,
+        payload_len: u32,
+        used_len: u32,
+    },
+    /// Advertise the virtio feature bitmap supplied by a seed-driven device.
+    VirtioFeatures {
+        value: u64,
+    },
+    /// Override a little-endian field in the virtio device configuration.
+    VirtioConfig {
+        offset: u16,
+        width: u8,
+        value: u64,
+    },
+    /// Record one guest-side DMA telemetry event.
+    ///
+    /// This is provenance and replay metadata. The external device backend
+    /// still performs device-visible writes through its virtqueue contract;
+    /// it must not reinterpret teardown events as new DMA requests.
+    DmaEvent {
+        operation: u8,
+        direction: u8,
+        path: u8,
+        sequence: u16,
+        addr: u64,
+        len: u32,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -331,7 +372,10 @@ impl HasTargetBytes for ScenarioInput {
 mod tests {
     use super::{Action, ActionGroup, HyperAction, ScenarioInput, VmAction};
     use libafl::inputs::Input;
-    use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     #[test]
     fn postcard_file_round_trip_matches_ondisk_corpus() {

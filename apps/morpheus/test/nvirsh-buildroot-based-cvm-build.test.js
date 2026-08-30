@@ -681,15 +681,15 @@ test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", 
   );
   assert.match(
     launchScript,
-    /guest_qemu_has_morpheus_mmio_patch="false"/,
+    /guest_qemu_trace_enabled="true"/,
   );
   assert.match(
     launchScript,
-    /if \[ -f "\$\{guest_qemu%\/bin\/qemu-system-aarch64\}\/\.morpheus-mmio-patched" \]; then/,
+    /Stock CCA QEMU already exposes the generic virtio-mmio trace events/,
   );
   assert.match(
     launchScript,
-    /if \[ "\$\{guest_qemu_has_morpheus_mmio_patch\}" = "true" \]; then\s+set -- "\$@" \\\s+-trace "events=\$\{guest_qemu_trace_events\},file=\$\{runtime_dir\}\/morpheus-qemu-trace\.log"/,
+    /if \[ "\$\{guest_qemu_trace_enabled\}" = "true" \]; then\s+set -- "\$@" \\\s+-trace "events=\$\{guest_qemu_trace_events\},file=\$\{runtime_dir\}\/morpheus-qemu-trace\.log"/,
   );
   assert.match(
     launchScript,

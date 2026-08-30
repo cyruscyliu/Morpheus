@@ -122,6 +122,20 @@ const libaflBuildSource = fs.readFileSync(
   path.join(repoRoot, "tools", "libafl", "scripts", "build.sh"),
   "utf8",
 );
+const deviceBackendSource = fs.readFileSync(
+  path.join(
+    repoRoot,
+    "tools",
+    "libafl",
+    "patches",
+    "overlay",
+    "crates",
+    "libafl_nesting",
+    "c_src",
+    "libafl_device_backend.c",
+  ),
+  "utf8",
+);
 const libaflBridgeBuildSource = fs.readFileSync(
   path.join(
     repoRoot,
@@ -308,6 +322,13 @@ test("runtime extraction preserves an anomalous L2 outcome and its input", () =>
           kind: "launcher-exit",
           detail: 139,
           dir: path.join(outputDir, "outcomes", "000000-launcher-exit"),
+          trace: path.join(
+            outputDir,
+            "outcomes",
+            "000000-launcher-exit",
+            "seed.trace.jsonl",
+          ),
+          traceEvents: 1,
         },
       ],
     );
@@ -321,6 +342,237 @@ test("runtime extraction preserves an anomalous L2 outcome and its input", () =>
         ),
       ),
       Buffer.from([0x12, 0x34]),
+    );
+    const trace = fs.readFileSync(
+      path.join(
+        outputDir,
+        "outcomes",
+        "000000-launcher-exit",
+        "seed.trace.jsonl",
+      ),
+      "utf8",
+    );
+    assert.match(trace, /"kind":"trace-meta"/);
+    assert.match(trace, /"input_size":2/);
+    assert.match(trace, /"kind":"seed-decode-error"/);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("runtime extraction reports every observed MMIO and DMA event", () => {
+  const functionStart = harnessSource.indexOf("extract_l1_runtime_from_log() {");
+  const functionEnd = harnessSource.indexOf("\n}\n\nwrite_result()", functionStart);
+  assert.ok(functionStart >= 0 && functionEnd > functionStart);
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-trace-report-"));
+  try {
+    const outputDir = path.join(tempDir, "runtime");
+    const logPath = path.join(tempDir, "launcher.log");
+    const extractorPath = path.join(tempDir, "extract.sh");
+    const seedInput = Buffer.alloc(4 + 40);
+    seedInput.writeUInt32LE(1, 0);
+    seedInput[4] = 2;
+    seedInput[5] = 11;
+    seedInput.writeBigUInt64LE(0x100002000n, 12);
+    seedInput.writeBigUInt64LE(4156n, 20);
+    seedInput.writeBigUInt64LE(0x10206n, 28);
+    seedInput.writeBigUInt64LE(7n, 36);
+    const records = [
+      ["morpheus-qemu-input.bin", seedInput],
+      [
+        "morpheus-qemu-trace.log",
+        Buffer.from(
+          [
+            "virtio_mmio_observe_read device 1 offset 0x60 size 4",
+            "virtio_mmio_observe_write device 1 offset 0xc4 value 0x2000 size 4",
+            "virtio_mmio_observe_write device 1 offset 0xc8 value 0x1 size 4",
+            "virtio_mmio_observe_write device 1 offset 0xcc value 0x103c size 4",
+            "virtio_mmio_observe_write device 1 offset 0xc0 value 0x10606 size 4",
+          ].join("\n") + "\n",
+        ),
+      ],
+      [
+        "virtio-seed-backend.log",
+        Buffer.from(
+          "backend-ready rx-actions=1 config-size=24\n" +
+            "memory-probe=passed memory=guest-addressable\n" +
+            "dma-read queue=0 kind=descriptor space=vhost-qva " +
+              "address=0x100002000 length=16 status=ok\n" +
+            "dma-write queue=0 kind=payload space=guest-gpa " +
+              "address=0x100003000 length=60 status=ok\n" +
+            "rx-complete queue=0 payload=60 used=4156\n",
+        ),
+      ],
+      [
+        "qemu.stdout.log",
+        Buffer.from(
+          "virtio_telemetry op=map kind=payload dir=from_device " +
+            "size=4156 aux=0x12000 path=phys\n",
+        ),
+      ],
+    ];
+    const lines = ["LQPRINTF: stub-outcome kind=kernel-panic detail=0"];
+    for (const [name, data] of records) {
+      lines.push(
+        `LQPRINTF: stub-runtime begin name=${name} size=${data.length} dumped=${data.length} truncated=0`,
+        `LQPRINTF: stub-runtime data name=${name} offset=0 hex=${data.toString("hex")}`,
+        `LQPRINTF: stub-runtime end name=${name}`,
+      );
+    }
+    lines.push("LQPRINTF: stub: dumped runtime files to log");
+    fs.writeFileSync(logPath, lines.join("\n"));
+    writeExecutable(
+      extractorPath,
+      [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        harnessSource.slice(functionStart, functionEnd + 2),
+        'extract_l1_runtime_from_log "$1" "$2" false',
+      ].join("\n"),
+    );
+
+    const result = spawnSync("bash", [extractorPath, outputDir, logPath], {
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const outcome = JSON.parse(
+      fs.readFileSync(path.join(outputDir, "outcomes", "000000-kernel-panic", "outcome.json"), "utf8"),
+    );
+    assert.deepEqual(outcome, { kind: "kernel-panic", detail: 0 });
+
+    const tracePath = path.join(
+      outputDir,
+      "outcomes",
+      "000000-kernel-panic",
+      "seed.trace.jsonl",
+    );
+    const trace = fs
+      .readFileSync(tracePath, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.equal(trace[0].mmio_observation_events, true);
+    assert.equal(trace[0].seed_action_events, 1);
+    assert.ok(
+      trace.some(
+        (event) =>
+          event.kind === "seed-dma-event" &&
+          event.operation === "unmap" &&
+          event.direction_name === "from_device" &&
+          event.path === 1 &&
+          event.sequence === 7,
+      ),
+    );
+    assert.ok(trace.some((event) => event.kind === "mmio-read"));
+    assert.ok(trace.some((event) => event.kind === "mmio-write"));
+    assert.ok(
+      trace.some(
+        (event) =>
+          event.kind === "dma" &&
+          event.operation === "unmap" &&
+          event.direction_name === "from_device" &&
+          event.address === "0x100002000" &&
+          event.length === 4156,
+      ),
+    );
+    assert.ok(trace.some((event) => event.kind === "dma-memory"));
+    assert.ok(
+      trace.some(
+        (event) =>
+          event.kind === "dma-read" &&
+          event.fields.kind === "descriptor" &&
+          event.fields.address === "0x100002000" &&
+          event.fields.length === 16,
+      ),
+    );
+    assert.ok(
+      trace.some(
+        (event) =>
+          event.kind === "dma-write" &&
+          event.fields.kind === "payload" &&
+          event.fields.address === "0x100003000" &&
+          event.fields.length === 60,
+      ),
+    );
+    assert.ok(trace.some((event) => event.kind === "dma-completion"));
+    assert.ok(trace.some((event) => event.kind === "dma-telemetry"));
+    assert.doesNotMatch(fs.readFileSync(tracePath, "utf8"), /virtio-net profile:/);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("runtime extraction parses stock QEMU MMIO traces", () => {
+  const functionStart = harnessSource.indexOf("extract_l1_runtime_from_log() {");
+  const functionEnd = harnessSource.indexOf("\n}\n\nwrite_result()", functionStart);
+  assert.ok(functionStart >= 0 && functionEnd > functionStart);
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-stock-trace-"));
+  try {
+    const outputDir = path.join(tempDir, "runtime");
+    const logPath = path.join(tempDir, "launcher.log");
+    const extractorPath = path.join(tempDir, "extract.sh");
+    const records = [
+      ["morpheus-qemu-input.bin", Buffer.from([0x01])],
+      [
+        "morpheus-qemu-trace.log",
+        Buffer.from(
+          [
+            "virtio_mmio_read virtio_mmio_read offset 0x0",
+            "virtio_mmio_write_offset virtio_mmio_write offset 0x1c4 value 0x2000",
+            "virtio_mmio_write_offset virtio_mmio_write offset 0x1c8 value 0x1",
+            "virtio_mmio_write_offset virtio_mmio_write offset 0x1cc value 0x103c",
+            "virtio_mmio_write_offset virtio_mmio_write offset 0x1c0 value 0x10606",
+          ].join("\n") + "\n",
+        ),
+      ],
+    ];
+    const lines = ["LQPRINTF: stub-outcome kind=kernel-panic detail=0"];
+    for (const [name, data] of records) {
+      lines.push(
+        `LQPRINTF: stub-runtime begin name=${name} size=${data.length} dumped=${data.length} truncated=0`,
+        `LQPRINTF: stub-runtime data name=${name} offset=0 hex=${data.toString("hex")}`,
+        `LQPRINTF: stub-runtime end name=${name}`,
+      );
+    }
+    lines.push("LQPRINTF: stub: dumped runtime files to log");
+    fs.writeFileSync(logPath, lines.join("\n"));
+    writeExecutable(
+      extractorPath,
+      [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        harnessSource.slice(functionStart, functionEnd + 2),
+        'extract_l1_runtime_from_log "$1" "$2" false',
+      ].join("\n"),
+    );
+
+    const result = spawnSync("bash", [extractorPath, outputDir, logPath], {
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const trace = fs
+      .readFileSync(
+        path.join(outputDir, "outcomes", "000000-kernel-panic", "seed.trace.jsonl"),
+        "utf8",
+      )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.equal(trace[0].mmio_observation_events, false);
+    assert.equal(trace[0].mmio_trace_events, true);
+    assert.equal(trace[0].mmio_trace_mode, "stock");
+    assert.ok(trace.some((event) => event.kind === "mmio-read"));
+    assert.ok(trace.some((event) => event.kind === "mmio-write"));
+    assert.ok(
+      trace.some(
+        (event) =>
+          event.kind === "dma" &&
+          event.operation === "unmap" &&
+          event.address === "0x100002000" &&
+          event.length === 4156,
+      ),
     );
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
@@ -689,11 +941,8 @@ test("LibAFL CVM harness supports buildroot-based prepared state", () => {
     harnessSource,
     /direct_l1_stub_env="\$\{direct_l1_stub_env\} MORPHEUS_L2_CPU=\$\{l2_cpu\}"/,
   );
-  assert.match(harnessSource, /--fuzz-virtio-ids\)/);
-  assert.match(
-    harnessSource,
-    /MORPHEUS_QEMU_FUZZ_VIRTIO_IDS=\$\{fuzz_virtio_ids\}/,
-  );
+  assert.doesNotMatch(harnessSource, /--fuzz-virtio-ids\)/);
+  assert.doesNotMatch(harnessSource, /MORPHEUS_QEMU_FUZZ_VIRTIO_IDS/);
   assert.match(
     harnessSource,
     /direct_l1_stub_launch_cmd="mkdir -p \/mnt && mount -t ext4 -o ro \/dev\/vdb \/mnt && \$\{direct_l1_stub_env\} exec \$\{direct_l1_share_stub_path\}"/,
@@ -1525,8 +1774,8 @@ test("full runtime capture is opt-in for the fuzzing harness", () => {
   assert.match(stubSource, /env_l2_mode\(/);
   assert.match(stubSource, /MORPHEUS_L2_RUN_WINDOW_MS/);
   assert.match(stubSource, /MORPHEUS_CAPTURE_RUNTIME/);
-  assert.match(stubSource, /MORPHEUS_QEMU_FUZZ_VIRTIO_IDS/);
-  assert.match(rustStubSource, /MORPHEUS_QEMU_FUZZ_VIRTIO_IDS/);
+  assert.doesNotMatch(stubSource, /MORPHEUS_QEMU_FUZZ_VIRTIO_IDS/);
+  assert.doesNotMatch(rustStubSource, /MORPHEUS_QEMU_FUZZ_VIRTIO_IDS/);
   assert.match(stubSource, /qemu\.stdout\.log/);
 });
 
@@ -1556,6 +1805,86 @@ test("LibAFL build installs the C guest stub used by nesting fuzzing", () => {
   assert.match(libaflBuildSource, /build_guest_stub\(\)/);
   assert.match(libaflBuildSource, /aarch64-linux-gnu-gcc/);
   assert.match(libaflBuildSource, /"\$\{stub_c_src\}"/);
+});
+
+test("seed-driven vhost input stays outside the L2 QEMU binary", () => {
+  assert.equal(
+    libaflTool.config.fields["device-backend"].aliases[0],
+    "device-backend",
+  );
+  assert.ok(
+    libaflTool.managed.local.commands.exec.scalarFlags.includes(
+      "device-backend",
+    ),
+  );
+  assert.match(libaflBuildSource, /device_backend_src=/);
+  assert.match(
+    libaflBuildSource,
+    /aarch64-linux-gnu-gcc[\s\S]*"\$\{device_backend_src\}"/,
+  );
+  assert.match(
+    harnessSource,
+    /device_backend="\$\{MORPHEUS_LIBAFL_DEVICE_BACKEND:-stock\}"/,
+  );
+  assert.match(harnessSource, /--device-backend\)/);
+  assert.doesNotMatch(harnessSource, /MORPHEUS_QEMU_FUZZ_VIRTIO_IDS/);
+  assert.match(
+    nvirshBuildrootBasedCvmBuildSource,
+    /probe_vhost_user_capabilities\(\)/,
+  );
+  assert.match(
+    nvirshBuildrootBasedCvmBuildSource,
+    /validate_guest_qemu_profile_free\(\)/,
+  );
+  assert.match(
+    nvirshBuildrootBasedCvmBuildSource,
+    /\(profiles\|qemu-patches\)/,
+  );
+  assert.match(
+    nvirshBuildrootBasedCvmBuildSource,
+    /virtio-net profile:\|synthetic_rx_done/,
+  );
+  assert.match(nvirshBuildrootBasedCvmBuildSource, /memory-backend-memfd/);
+  assert.match(
+    nvirshBuildrootBasedCvmBuildSource,
+    /device-memory-probe=not-required memory=not-probed/,
+  );
+  assert.match(
+    nvirshBuildrootBasedCvmBuildSource,
+    /device-memory-probe=required-but-not-probed memory=unavailable/,
+  );
+  assert.match(
+    nvirshBuildrootBasedCvmBuildSource,
+    /device-queue=completed/,
+  );
+  assert.match(
+    nvirshBuildrootBasedCvmBuildSource,
+    /backend_rx_actions=/,
+  );
+  assert.match(
+    nvirshBuildrootBasedCvmBuildSource,
+    /socket,id=seed-backend,path=\$\{guest_device_backend_socket\},server=off/,
+  );
+  assert.doesNotMatch(
+    nvirshBuildrootBasedCvmBuildSource,
+    /socket,id=seed-backend,path=\$\{guest_device_backend_socket\},server=off,wait=on/,
+  );
+  assert.match(deviceBackendSource, /VHOST_USER_PROTOCOL_F_MQ/);
+  assert.match(deviceBackendSource, /VHOST_USER_PROTOCOL_F_GPA_ADDRESSES/);
+  assert.match(deviceBackendSource, /rme_alias_pointer/);
+  assert.match(deviceBackendSource, /static uint8_t \*qemu_pointer/);
+  assert.match(deviceBackendSource, /memory-probe=passed/);
+  assert.match(deviceBackendSource, /memory-probe=failed reason=touch/);
+  assert.match(deviceBackendSource, /rx-payload-buffer-unavailable/);
+  assert.match(deviceBackendSource, /rx-used-ring-unavailable/);
+  assert.match(deviceBackendSource, /dma-%s queue=%zu kind=%s/);
+  assert.match(deviceBackendSource, /write \? "write" : "read"/);
+  assert.match(deviceBackendSource, /static int complete_output/);
+  assert.doesNotMatch(
+    deviceBackendSource,
+    /state->features[\s\S]*VIRTIO_NET_F_HASH_REPORT/,
+    "the neutral backend default must not advertise HASH_REPORT",
+  );
 });
 
 test("LibAFL rebuild invalidates stale overlay Cargo packages", () => {

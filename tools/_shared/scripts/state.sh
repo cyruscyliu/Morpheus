@@ -60,7 +60,13 @@ morpheus_state_matches() {
 morpheus_patch_state_matches() {
   local state_file="$1"
   local fingerprint="$2"
-  morpheus_state_matches "${state_file}" "fingerprint" "${fingerprint}"
+  local patch_dir="${3:-}"
+
+  morpheus_state_matches "${state_file}" "fingerprint" "${fingerprint}" \
+    || return 1
+  if [ -n "${patch_dir}" ]; then
+    morpheus_state_matches "${state_file}" "dir" "${patch_dir}"
+  fi
 }
 
 morpheus_write_state_json() {

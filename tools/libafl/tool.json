@@ -186,12 +186,6 @@
           "mutationalMaxIterations"
         ]
       },
-      "device-backend": {
-        "aliases": [
-          "device-backend",
-          "deviceBackend"
-        ]
-      },
       "detach": {
         "aliases": [
           "detach"
@@ -253,9 +247,6 @@
       "artifacts": {
         "source-dir": {
           "pathTemplate": "tools/libafl/builds/{buildDirKey}/source"
-        },
-        "device-backend": {
-          "pathTemplate": "tools/libafl/builds/{buildDirKey}/install/bin/libafl_device_backend"
         },
         "run-manifest": {
           "pathTemplate": "tools/libafl/runs/{buildDirKey}/manifest.json"
@@ -488,7 +479,6 @@
             "disable-devilang-grammar",
             "show-console",
             "mutational-max-iterations",
-            "device-backend",
             "detach",
             "run-seconds",
             "build-version",

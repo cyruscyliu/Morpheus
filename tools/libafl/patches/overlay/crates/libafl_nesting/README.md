@@ -71,10 +71,10 @@ remain accepted as compatibility aliases.
 
 ## Seed-driven virtio device input
 
-The optional `vhost-user` device backend keeps the L2 QEMU binary unchanged.
-Enable it with `--device-backend vhost-user`; the backend consumes device
-directives from the same encoded `ScenarioInput` that the guest stub hands to
-the L2 launcher. The supported Devilang directives are:
+The L2 QEMU seed consumer is compiled into the version-scoped qemu-cca patch
+used by the workflow. It consumes the same encoded `ScenarioInput` that the
+guest stub hands to the L2 launcher; no QMP, vhost-user process, or separate
+device backend is involved. The supported Devilang directives are:
 
 ```text
 call device.mmio_read_override(ADDRESS, WIDTH, VALUE);
@@ -84,24 +84,19 @@ call device.virtio_net_rx(QUEUE, PAYLOAD_LENGTH, USED_LENGTH);
 dma_event(op=OP, dir=DIRECTION, path=PATH, sequence=SEQ, addr=ADDRESS, len=LENGTH);
 ```
 
-The backend is only staged for `vhost-user` runs. Before launching the L2 it
-checks for the generic QEMU test device and shared memfd support. RX actions
-also require a vhost memory table whose mapped pages can be touched by the
-backend; inaccessible descriptor or payload buffers fail closed. Config-only
-actions may complete before queue setup and therefore do not require a memory
-probe. The default `stock` path does not use this backend and retains the
-existing QEMU-profile batches.
-
-The runtime marker distinguishes `memory=guest-addressable` from
-`memory=not-probed` and `memory=unavailable`. The former is a probe of the
-memory table sent to vhost-user, not a claim that every Realm-private page is
-host-accessible.
+`virtio_net_rx` is injected through QEMU's native virtio-net receive path.
+Descriptor traversal, used-ring updates, interrupts, and DMA continue through
+the normal virtio implementation. `virtio_features` and `virtio_config`
+provide seed-controlled device results without selecting a vulnerability.
+`dma_event` records the Linux DMA telemetry expected in the trace; the actual
+DMA write is triggered by the guest's MMIO aperture transaction and uses the
+device's configured `dma_as`.
 
 Every replay outcome also contains `seed.trace.jsonl`. It is an observation
 record, not an additional device input. It includes the decoded seed actions,
 all generic virtio-MMIO reads and writes, DMA-aperture records reconstructed
-from those writes, Linux virtio DMA telemetry when available, and vhost-user
-backend events. Teardown and queue-progress events remain visible in the
+from those writes, Linux virtio DMA telemetry when available, and native seed
+device events. Teardown and queue-progress events remain visible in the
 report without being reinterpreted as new device actions. CVE-specific QEMU
 profile patches are not needed by this path.
 

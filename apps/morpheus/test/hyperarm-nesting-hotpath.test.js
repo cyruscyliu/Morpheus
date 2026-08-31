@@ -122,17 +122,15 @@ const libaflBuildSource = fs.readFileSync(
   path.join(repoRoot, "tools", "libafl", "scripts", "build.sh"),
   "utf8",
 );
-const deviceBackendSource = fs.readFileSync(
+const qemuSeedPatchSource = fs.readFileSync(
   path.join(
     repoRoot,
     "tools",
-    "libafl",
-    "patches",
-    "overlay",
-    "crates",
-    "libafl_nesting",
-    "c_src",
-    "libafl_device_backend.c",
+    "buildroot",
+    "patches-cvm",
+    "qemu-cca",
+    "upstream-v2",
+    "0002-libafl-virtio-seed-consumer.patch",
   ),
   "utf8",
 );
@@ -389,19 +387,10 @@ test("runtime extraction reports every observed MMIO and DMA event", () => {
             "virtio_mmio_observe_write device 1 offset 0xc8 value 0x1 size 4",
             "virtio_mmio_observe_write device 1 offset 0xcc value 0x103c size 4",
             "virtio_mmio_observe_write device 1 offset 0xc0 value 0x10606 size 4",
+            "virtio_mmio_seed_read offset 0x60 base 0x1 value 0x1 size 4 cursor 4",
+            "virtio_mmio_seed_dma addr 0x100002000 len 4156 event 0x10606 opcode 0x4 direction 0x2 cursor 4160 status 0",
+            "virtio_net_seed_rx seed rx queue 0 payload 60 used 4156",
           ].join("\n") + "\n",
-        ),
-      ],
-      [
-        "virtio-seed-backend.log",
-        Buffer.from(
-          "backend-ready rx-actions=1 config-size=24\n" +
-            "memory-probe=passed memory=guest-addressable\n" +
-            "dma-read queue=0 kind=descriptor space=vhost-qva " +
-              "address=0x100002000 length=16 status=ok\n" +
-            "dma-write queue=0 kind=payload space=guest-gpa " +
-              "address=0x100003000 length=60 status=ok\n" +
-            "rx-complete queue=0 payload=60 used=4156\n",
         ),
       ],
       [
@@ -476,27 +465,10 @@ test("runtime extraction reports every observed MMIO and DMA event", () => {
           event.length === 4156,
       ),
     );
-    assert.ok(trace.some((event) => event.kind === "dma-memory"));
-    assert.ok(
-      trace.some(
-        (event) =>
-          event.kind === "dma-read" &&
-          event.fields.kind === "descriptor" &&
-          event.fields.address === "0x100002000" &&
-          event.fields.length === 16,
-      ),
-    );
-    assert.ok(
-      trace.some(
-        (event) =>
-          event.kind === "dma-write" &&
-          event.fields.kind === "payload" &&
-          event.fields.address === "0x100003000" &&
-          event.fields.length === 60,
-      ),
-    );
-    assert.ok(trace.some((event) => event.kind === "dma-completion"));
     assert.ok(trace.some((event) => event.kind === "dma-telemetry"));
+    assert.ok(trace.some((event) => event.kind === "dma-injection"));
+    assert.ok(trace.some((event) => event.kind === "virtio-net-seed-rx"));
+    assert.ok(trace.every((event) => event.source !== "vhost-user-backend"));
     assert.doesNotMatch(fs.readFileSync(tracePath, "utf8"), /virtio-net profile:/);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
@@ -1807,83 +1779,39 @@ test("LibAFL build installs the C guest stub used by nesting fuzzing", () => {
   assert.match(libaflBuildSource, /"\$\{stub_c_src\}"/);
 });
 
-test("seed-driven vhost input stays outside the L2 QEMU binary", () => {
-  assert.equal(
-    libaflTool.config.fields["device-backend"].aliases[0],
-    "device-backend",
-  );
+test("seed-driven native MMIO and DMA input stays in versioned QEMU code", () => {
+  assert.equal(libaflTool.config.fields["device-backend"], undefined);
   assert.ok(
-    libaflTool.managed.local.commands.exec.scalarFlags.includes(
+    !libaflTool.managed.local.commands.exec.scalarFlags.includes(
       "device-backend",
     ),
   );
-  assert.match(libaflBuildSource, /device_backend_src=/);
-  assert.match(
-    libaflBuildSource,
-    /aarch64-linux-gnu-gcc[\s\S]*"\$\{device_backend_src\}"/,
-  );
-  assert.match(
+  assert.doesNotMatch(libaflBuildSource, /device_backend|libafl_device_backend/);
+  assert.doesNotMatch(
     harnessSource,
-    /device_backend="\$\{MORPHEUS_LIBAFL_DEVICE_BACKEND:-stock\}"/,
-  );
-  assert.match(harnessSource, /--device-backend\)/);
-  assert.doesNotMatch(harnessSource, /MORPHEUS_QEMU_FUZZ_VIRTIO_IDS/);
-  assert.match(
-    nvirshBuildrootBasedCvmBuildSource,
-    /probe_vhost_user_capabilities\(\)/,
-  );
-  assert.match(
-    nvirshBuildrootBasedCvmBuildSource,
-    /validate_guest_qemu_profile_free\(\)/,
-  );
-  assert.match(
-    nvirshBuildrootBasedCvmBuildSource,
-    /\(profiles\|qemu-patches\)/,
-  );
-  assert.match(
-    nvirshBuildrootBasedCvmBuildSource,
-    /virtio-net profile:\|synthetic_rx_done/,
-  );
-  assert.match(nvirshBuildrootBasedCvmBuildSource, /memory-backend-memfd/);
-  assert.match(
-    nvirshBuildrootBasedCvmBuildSource,
-    /device-memory-probe=not-required memory=not-probed/,
-  );
-  assert.match(
-    nvirshBuildrootBasedCvmBuildSource,
-    /device-memory-probe=required-but-not-probed memory=unavailable/,
-  );
-  assert.match(
-    nvirshBuildrootBasedCvmBuildSource,
-    /device-queue=completed/,
-  );
-  assert.match(
-    nvirshBuildrootBasedCvmBuildSource,
-    /backend_rx_actions=/,
-  );
-  assert.match(
-    nvirshBuildrootBasedCvmBuildSource,
-    /socket,id=seed-backend,path=\$\{guest_device_backend_socket\},server=off/,
+    /device_backend|libafl_device_backend|vhost-user/,
   );
   assert.doesNotMatch(
     nvirshBuildrootBasedCvmBuildSource,
-    /socket,id=seed-backend,path=\$\{guest_device_backend_socket\},server=off,wait=on/,
+    /device_backend|libafl_device_backend|vhost-user/,
   );
-  assert.match(deviceBackendSource, /VHOST_USER_PROTOCOL_F_MQ/);
-  assert.match(deviceBackendSource, /VHOST_USER_PROTOCOL_F_GPA_ADDRESSES/);
-  assert.match(deviceBackendSource, /rme_alias_pointer/);
-  assert.match(deviceBackendSource, /static uint8_t \*qemu_pointer/);
-  assert.match(deviceBackendSource, /memory-probe=passed/);
-  assert.match(deviceBackendSource, /memory-probe=failed reason=touch/);
-  assert.match(deviceBackendSource, /rx-payload-buffer-unavailable/);
-  assert.match(deviceBackendSource, /rx-used-ring-unavailable/);
-  assert.match(deviceBackendSource, /dma-%s queue=%zu kind=%s/);
-  assert.match(deviceBackendSource, /write \? "write" : "read"/);
-  assert.match(deviceBackendSource, /static int complete_output/);
+  assert.match(
+    nvirshBuildrootBasedCvmBuildSource,
+    /validate_guest_qemu_seed_consumer\(\)/,
+  );
+  assert.match(nvirshBuildrootBasedCvmBuildSource, /MORPHEUS_QEMU_INPUT_PATH/);
+  assert.match(
+    nvirshBuildrootBasedCvmBuildSource,
+    /qemu-seed-consumer=present/,
+  );
+  assert.match(nvirshBuildrootBasedCvmBuildSource, /virtio_mmio_seed_read/);
+  assert.match(qemuSeedPatchSource, /morpheus_virtio_seed_read_config/);
+  assert.match(qemuSeedPatchSource, /morpheus_virtio_seed_dma_write/);
+  assert.match(qemuSeedPatchSource, /morpheus_virtio_seed_take_rx/);
+  assert.match(qemuSeedPatchSource, /virtio_net_seed_rx/);
   assert.doesNotMatch(
-    deviceBackendSource,
-    /state->features[\s\S]*VIRTIO_NET_F_HASH_REPORT/,
-    "the neutral backend default must not advertise HASH_REPORT",
+    qemuSeedPatchSource,
+    /CVE-[0-9]+|virtio-net profile:|synthetic_rx_done/,
   );
 });
 

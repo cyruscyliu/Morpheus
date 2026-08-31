@@ -141,9 +141,9 @@ pub enum HyperAction {
     },
     /// Record one guest-side DMA telemetry event.
     ///
-    /// This is provenance and replay metadata. The external device backend
-    /// still performs device-visible writes through its virtqueue contract;
-    /// it must not reinterpret teardown events as new DMA requests.
+    /// This is provenance and replay metadata. The native L2 QEMU consumer
+    /// reports the corresponding guest DMA aperture transaction; it must not
+    /// reinterpret teardown events as new DMA requests.
     DmaEvent {
         operation: u8,
         direction: u8,

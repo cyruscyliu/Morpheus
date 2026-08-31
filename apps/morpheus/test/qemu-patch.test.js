@@ -13,6 +13,32 @@ const nestingPatch = fs.readFileSync(
   path.join(nestingPatchDir, "qemu-virtio-mmio-fuzz-input.patch"),
   "utf8",
 );
+const seedPatch = fs.readFileSync(
+  path.join(
+    repoRoot,
+    "tools",
+    "buildroot",
+    "patches-cvm",
+    "qemu-cca",
+    "upstream-v2",
+    "0002-libafl-virtio-seed-consumer.patch",
+  ),
+  "utf8",
+);
+
+test("versioned qemu-cca patch consumes native MMIO and DMA seed actions", () => {
+  assert.match(seedPatch, /MORPHEUS_SEED_ENV/);
+  assert.match(seedPatch, /morpheus_virtio_seed_read_features/);
+  assert.match(seedPatch, /morpheus_virtio_seed_read_config/);
+  assert.match(seedPatch, /morpheus_virtio_seed_dma_write/);
+  assert.match(seedPatch, /morpheus_virtio_seed_take_rx/);
+  assert.match(seedPatch, /address_space_write\(vdev->dma_as/);
+  assert.match(seedPatch, /virtio_net_seed_rx/);
+  assert.doesNotMatch(
+    seedPatch,
+    /CVE-[0-9]+|virtio-net profile:|synthetic_rx_done|vhost-user-test-device/,
+  );
+});
 
 test("nesting fuzz patch follows the L2 DMA telemetry protocol", () => {
   assert.match(nestingPatch, /MORPHEUS_HP_DMA_EVENT_OFFSET 0x0c0u/);

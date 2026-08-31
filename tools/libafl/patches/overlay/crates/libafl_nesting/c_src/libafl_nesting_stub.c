@@ -613,7 +613,6 @@ static bool write_input_snapshot(const uint8_t *data, size_t len) {
       QEMU_TRACE_EVENTS_PATH,
       QEMU_TRACE_LOG_PATH,
       NQC2_TRACE_PATH,
-      RUNTIME_DIR "/virtio-seed-backend.log",
   };
   if (!ensure_runtime_dir()) {
     lqprintf("stub: runtime directory unavailable errno=%d\n", errno);
@@ -744,7 +743,6 @@ static void dump_runtime_snapshot(void) {
       "morpheus-qemu-trace-events.txt",
       "morpheus-qemu-trace.log",
       "morpheus-nqc2.trace",
-      "virtio-seed-backend.log",
   };
   char path[256];
 
@@ -1520,11 +1518,9 @@ static bool launch_l2(const uint8_t *data, size_t len,
   char period_env[128];
   char nqc2_env[128];
   char vintid_env[128];
-  char device_backend_env[128];
-  const char *device_backend = getenv("MORPHEUS_VIRTIO_DEVICE_BACKEND");
   const char *shell = NULL;
   const char *launch_script = NULL;
-  struct launch_env_override overrides[8];
+  struct launch_env_override overrides[6];
   size_t override_count = 0;
   char **launch_environment = NULL;
   int launch_stdout_fd = -1;
@@ -1590,16 +1586,6 @@ static bool launch_l2(const uint8_t *data, size_t len,
   } else {
     overrides[override_count++] = (struct launch_env_override){
         "MORPHEUS_QEMU_INJECT_VIRQ", NULL};
-  }
-
-  if (device_backend) {
-    if (snprintf(device_backend_env, sizeof(device_backend_env),
-                 "MORPHEUS_VIRTIO_DEVICE_BACKEND=%s", device_backend) < 0) {
-      append_marker("launcher-environment-format-failed\n");
-      return false;
-    }
-    overrides[override_count++] = (struct launch_env_override){
-        "MORPHEUS_VIRTIO_DEVICE_BACKEND", device_backend_env};
   }
 
   launch_stdout_fd = open_launch_log(LAUNCH_STDOUT_PATH);

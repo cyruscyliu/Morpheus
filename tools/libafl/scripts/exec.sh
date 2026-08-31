@@ -36,7 +36,6 @@ l2_mode="vm"
 l2_accel="auto"
 l2_cpu=""
 l2_memory_mb="${MORPHEUS_L2_MEMORY_MB:-}"
-device_backend="${MORPHEUS_LIBAFL_DEVICE_BACKEND:-stock}"
 disable_nqc2_plugin="false"
 capture_runtime="false"
 replay_inputs=()
@@ -94,7 +93,6 @@ while [ "$#" -gt 0 ]; do
     --l2-accel) shift; l2_accel="${1:-}" ;;
     --l2-cpu) shift; l2_cpu="${1:-}" ;;
     --l2-memory-mb) shift; l2_memory_mb="${1:-}" ;;
-    --device-backend) shift; device_backend="${1:-}" ;;
     --replay-input) shift; replay_inputs+=("${1:-}") ;;
     --seed-input) shift; seed_inputs+=("${1:-}") ;;
     --devilang-state) shift; devilang_states+=("${1:-}") ;;
@@ -161,7 +159,6 @@ devilang_grammar_file="${run_dir}/devilang-grammar.path"
 runner_log_file="${run_dir}/launcher.stdout.log"
 fuzzer_bin="${install_dir}/bin/qemu_nesting"
 stub_elf="${install_dir}/bin/libafl_nesting_stub"
-device_backend_bin="${install_dir}/bin/libafl_device_backend"
 bridge_source="${MORPHEUS_LIBAFL_QEMU_BRIDGE_SOURCE:-${MORPHEUS_LIBAFL_QEMU_BRIDGE_DIR:-}}"
 if [ -z "${bridge_source}" ]; then
   echo "missing external LibAFL QEMU bridge source; pass --qemu-bridge-source" >&2
@@ -221,12 +218,6 @@ kill_run "${manifest_pid}"
 [ -f "${nvirsh_state}" ] || { echo "missing prepared nvirsh state: ${nvirsh_state}" >&2; exit 1; }
 [ -x "${fuzzer_bin}" ] || { echo "missing qemu_nesting fuzzer binary: ${fuzzer_bin}" >&2; exit 1; }
 [ -f "${stub_elf}" ] || { echo "missing guest stub ELF: ${stub_elf}" >&2; exit 1; }
-if [ "${device_backend}" = "vhost-user" ]; then
-  [ -x "${device_backend_bin}" ] || {
-    echo "missing seed device backend: ${device_backend_bin}" >&2
-    exit 1
-  }
-fi
 
 replay_enabled=false
 if [ "${#replay_inputs[@]}" -gt 0 ]; then
@@ -402,10 +393,6 @@ if [ -n "${l2_run_window_ms}" ]; then
 fi
 case "${l2_mode}" in vm|cvm) ;; *) echo "l2-mode must be one of: vm, cvm" >&2; exit 1 ;; esac
 case "${l2_accel}" in auto|kvm|tcg) ;; *) echo "l2-accel must be one of: auto, kvm, tcg" >&2; exit 1 ;; esac
-case "${device_backend}" in
-  stock|vhost-user) ;;
-  *) echo "device-backend must be one of: stock, vhost-user" >&2; exit 1 ;;
-esac
 if [ -n "${l2_cpu}" ]; then
   case "${l2_cpu}" in host|max|cortex-a57) ;; *) echo "l2-cpu must be one of: host, max, cortex-a57" >&2; exit 1 ;; esac
 fi
@@ -842,13 +829,13 @@ function buildTraceReport(records) {
         });
         continue;
       }
-      match = raw.match(/virtio_mmio_fuzz_read offset (0x[0-9a-fA-F]+) base (0x[0-9a-fA-F]+) fuzzed (0x[0-9a-fA-F]+) size (\d+) cursor (\d+)/);
+      match = raw.match(/virtio_mmio_seed_read offset (0x[0-9a-fA-F]+) base (0x[0-9a-fA-F]+) value (0x[0-9a-fA-F]+) size (\d+) cursor (\d+)/);
       if (match) {
         hasMmioEvents = true;
         add({
           schemaVersion: 1,
           source: "qemu-mmio",
-          kind: "mmio-read-fuzz",
+          kind: "mmio-read-seed",
           offset: match[1].toLowerCase(),
           base: match[2].toLowerCase(),
           value: match[3].toLowerCase(),
@@ -858,7 +845,7 @@ function buildTraceReport(records) {
         });
         continue;
       }
-      match = raw.match(/virtio_mmio_dma_fuzz addr (0x[0-9a-fA-F]+) len (\d+) event (0x[0-9a-fA-F]+) opcode (0x[0-9a-fA-F]+) direction (0x[0-9a-fA-F]+) cursor (\d+) status (-?\d+)/);
+      match = raw.match(/virtio_mmio_seed_dma addr (0x[0-9a-fA-F]+) len (\d+) event (0x[0-9a-fA-F]+) opcode (0x[0-9a-fA-F]+) direction (0x[0-9a-fA-F]+) cursor (\d+) status (-?\d+)/);
       if (match) {
         const opcode = Number.parseInt(match[4], 16);
         const direction = Number.parseInt(match[5], 16);
@@ -875,6 +862,19 @@ function buildTraceReport(records) {
           direction_name: dmaDirectionName(direction),
           cursor: Number(match[6]),
           status: Number(match[7]),
+          raw,
+        });
+        continue;
+      }
+      match = raw.match(/virtio_net_seed_rx seed rx queue (\d+) payload (\d+) used (\d+)/);
+      if (match) {
+        add({
+          schemaVersion: 1,
+          source: "qemu-device",
+          kind: "virtio-net-seed-rx",
+          queue: Number(match[1]),
+          payload_length: Number(match[2]),
+          used_length: Number(match[3]),
           raw,
         });
         continue;
@@ -915,27 +915,6 @@ function buildTraceReport(records) {
     : parsed;
   for (const event of selected) delete event._fallback;
 
-  const backendRecord = records.get("virtio-seed-backend.log");
-  const backendBuffer = recordBuffer(backendRecord);
-  if (backendBuffer) {
-    for (const line of backendBuffer.toString("utf8").split(/\r?\n/)) {
-      const raw = line.trim();
-      if (!raw) continue;
-      let kind = "backend-event";
-      if (raw.startsWith("rx-complete ")) kind = "dma-completion";
-      else if (raw.startsWith("memory-") || raw.startsWith("memory-region")) kind = "dma-memory";
-      else if (raw.startsWith("dma-read ")) kind = "dma-read";
-      else if (raw.startsWith("dma-write ")) kind = "dma-write";
-      else if (raw.startsWith("rx-") || raw.startsWith("output-")) kind = "dma-error";
-      selected.push({
-        schemaVersion: 1,
-        source: "vhost-user-backend",
-        kind,
-        fields: parseKeyValueFields(raw),
-        raw,
-      });
-    }
-  }
   for (const outputName of ["qemu.stdout.log", "l2-console.log"]) {
     const guestOutputRecord = records.get(outputName);
     const guestOutputBuffer = recordBuffer(guestOutputRecord);
@@ -1090,11 +1069,11 @@ NODE
 write_result() {
   if [ "${replay_enabled}" = "true" ]; then
       cat > "${result_file}" <<EOF
-{"details":{"pid":null,"detached":false,"run_dir":"${run_dir}","manifest":"${manifest_file}","device_backend":"${device_backend}","l1_runtime_dir":"${l1_runtime_dir}","corpus_dir":"${corpus_dir}","objective_dir":"${objective_dir}","replay_state":"${replay_state_file}","replay_inputs":"${replay_inputs_file}"},"artifacts":[{"path":"l1-runtime-dir","location":"${l1_runtime_dir}"},{"path":"corpus-dir","location":"${corpus_dir}"},{"path":"objective-dir","location":"${objective_dir}"},{"path":"replay-state","location":"${replay_state_file}"},{"path":"replay-inputs","location":"${replay_inputs_file}"}]}
+{"details":{"pid":null,"detached":false,"run_dir":"${run_dir}","manifest":"${manifest_file}","l1_runtime_dir":"${l1_runtime_dir}","corpus_dir":"${corpus_dir}","objective_dir":"${objective_dir}","replay_state":"${replay_state_file}","replay_inputs":"${replay_inputs_file}"},"artifacts":[{"path":"l1-runtime-dir","location":"${l1_runtime_dir}"},{"path":"corpus-dir","location":"${corpus_dir}"},{"path":"objective-dir","location":"${objective_dir}"},{"path":"replay-state","location":"${replay_state_file}"},{"path":"replay-inputs","location":"${replay_inputs_file}"}]}
 EOF
   else
       cat > "${result_file}" <<EOF
-{"details":{"pid":null,"detached":false,"run_dir":"${run_dir}","manifest":"${manifest_file}","device_backend":"${device_backend}","l1_runtime_dir":"${l1_runtime_dir}","corpus_dir":"${corpus_dir}","objective_dir":"${objective_dir}"},"artifacts":[{"path":"l1-runtime-dir","location":"${l1_runtime_dir}"},{"path":"corpus-dir","location":"${corpus_dir}"},{"path":"objective-dir","location":"${objective_dir}"}]}
+{"details":{"pid":null,"detached":false,"run_dir":"${run_dir}","manifest":"${manifest_file}","l1_runtime_dir":"${l1_runtime_dir}","corpus_dir":"${corpus_dir}","objective_dir":"${objective_dir}"},"artifacts":[{"path":"l1-runtime-dir","location":"${l1_runtime_dir}"},{"path":"corpus-dir","location":"${corpus_dir}"},{"path":"objective-dir","location":"${objective_dir}"}]}
 EOF
   fi
 }
@@ -1191,10 +1170,6 @@ fi
 if [ -n "${l2_memory_mb}" ]; then
   direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_MEMORY_MB=${l2_memory_mb}"
 fi
-if [ "${device_backend}" = "vhost-user" ]; then
-  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_VIRTIO_DEVICE_BACKEND=vhost-user"
-  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_VIRTIO_DEVICE_BACKEND_PATH=/mnt/libafl_device_backend"
-fi
 if [ "${MORPHEUS_L2_SHELL_TRACE:-0}" = "1" ]; then
   # The launcher runs inside the L1 guest, so an observation-only trace flag
   # from the host must be carried through the init command explicitly.
@@ -1221,7 +1196,6 @@ stage_buildroot_cvm_share() {
   local source_share="$3"
   local launch_source="${4:-${source_share}/launch-l2-hoststack.sh}"
   local inner_launch_source="${source_share}/launch-l2.sh"
-  local device_backend_source="${5:-}"
   local qemu_img_bin="${MORPHEUS_QEMU_IMG_BIN:-${MORPHEUS_QEMU_IMG:-}}"
   local mkfs_ext4_bin="${MORPHEUS_MKFS_EXT4_BIN:-${MORPHEUS_MKFS_EXT4:-}}"
   local staging_bytes
@@ -1260,18 +1234,6 @@ stage_buildroot_cvm_share() {
   chmod 0755 "${staging_dir}/launch-l2-hoststack.sh"
   cp -f "${inner_launch_source}" "${staging_dir}/launch-l2-inner.sh"
   chmod 0755 "${staging_dir}/launch-l2-inner.sh"
-  if [ -n "${device_backend_source}" ]; then
-    if LC_ALL=C grep -Fq 'gen-run-vmm.sh' "${inner_launch_source}"; then
-      echo "vhost-user seed backend is unsupported by the gen-run-vmm L2 launcher" >&2
-      exit 1
-    fi
-    [ -x "${device_backend_source}" ] || {
-      echo "missing seed device backend: ${device_backend_source}" >&2
-      exit 1
-    }
-    cp -f "${device_backend_source}" "${staging_dir}/libafl_device_backend"
-    chmod 0755 "${staging_dir}/libafl_device_backend"
-  fi
   cp -a "${source_share}/guest-images" "${staging_dir}/"
   cp -a "${source_share}/guest-qemu" "${staging_dir}/"
 
@@ -1610,20 +1572,11 @@ if [ "${l2_mode}" = "cvm" ]; then
       exit 1
     fi
 
-    if [ "${device_backend}" = "vhost-user" ]; then
-      stage_buildroot_cvm_share \
-        "${l1_share_staging_dir}" \
-        "${l1_share_image}" \
-        "${l1_hoststack_share_dir}" \
-        "${l1_hoststack_launch:-${l1_hoststack_share_dir}/launch-l2-hoststack.sh}" \
-        "${device_backend_bin}"
-    else
-      stage_buildroot_cvm_share \
-        "${l1_share_staging_dir}" \
-        "${l1_share_image}" \
-        "${l1_hoststack_share_dir}" \
-        "${l1_hoststack_launch:-${l1_hoststack_share_dir}/launch-l2-hoststack.sh}"
-    fi
+    stage_buildroot_cvm_share \
+      "${l1_share_staging_dir}" \
+      "${l1_share_image}" \
+      "${l1_hoststack_share_dir}" \
+      "${l1_hoststack_launch:-${l1_hoststack_share_dir}/launch-l2-hoststack.sh}"
     cat > "${l1_boot_startup}" <<EOF
 mode 100 31
 pci
@@ -1793,7 +1746,7 @@ cleanup() {
   if [ -n "${child_pid}" ]; then kill_run "${child_pid}"; fi
   extract_l1_runtime_from_log "${l1_runtime_dir}" "$(source_log_file)" "${replay_enabled}" "${replay_state_file}"
   cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"libafl","status":"${status}","runDir":"${run_dir}","manifest":"${manifest_file}","deviceBackend":"${device_backend}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","l1RuntimeDir":"${l1_runtime_dir}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
+{"schemaVersion":1,"tool":"libafl","status":"${status}","runDir":"${run_dir}","manifest":"${manifest_file}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","l1RuntimeDir":"${l1_runtime_dir}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
 EOF
 }
 
@@ -1801,7 +1754,7 @@ if [ "${detach}" = "true" ]; then
   spawn_launcher
   pid="${child_pid}"
   cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","deviceBackend":"${device_backend}","pid":${pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
+{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","pid":${pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
 EOF
   if [ "${replay_enabled}" = "true" ]; then
     cat > "${result_file}" <<EOF
@@ -1822,7 +1775,7 @@ if [ "${run_seconds}" != "0" ] && [ "${replay_enabled}" != "true" ]; then
   while [ "${SECONDS}" -lt "${end_time}" ]; do
     spawn_launcher
     cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","deviceBackend":"${device_backend}","pid":${child_pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","attempt":${attempt},"corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
+{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","pid":${child_pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","attempt":${attempt},"corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
 EOF
     while [ "${SECONDS}" -lt "${end_time}" ] && kill -0 "${child_pid}" 2>/dev/null; do
       if ps -o stat= --ppid "${child_pid}" | grep -q 'Z'; then
@@ -1846,14 +1799,14 @@ EOF
 else
   spawn_launcher
   cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","deviceBackend":"${device_backend}","pid":${child_pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
+{"schemaVersion":1,"tool":"libafl","status":"running","runDir":"${run_dir}","manifest":"${manifest_file}","pid":${child_pid},"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
 EOF
   wait "${child_pid}"
   child_pid=""
 fi
 
 cat > "${manifest_file}" <<EOF
-{"schemaVersion":1,"tool":"libafl","status":"success","runDir":"${run_dir}","manifest":"${manifest_file}","deviceBackend":"${device_backend}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","l1RuntimeDir":"${l1_runtime_dir}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
+{"schemaVersion":1,"tool":"libafl","status":"success","runDir":"${run_dir}","manifest":"${manifest_file}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","l1RuntimeDir":"${l1_runtime_dir}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
 EOF
 extract_l1_runtime_from_log "${l1_runtime_dir}" "$(source_log_file)" "${replay_enabled}" "${replay_state_file}"
 write_result

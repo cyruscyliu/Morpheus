@@ -1877,8 +1877,8 @@ fn parse_dma_actions(line: &str) -> Vec<(usize, Action)> {
             }
         }
         // Keep every telemetry event in the structured seed. These records
-        // describe the observed DMA protocol; only device.* actions are
-        // consumed as device input by the vhost-user backend.
+        // describe the observed DMA protocol; the native L2 QEMU consumer
+        // uses the guest's MMIO transaction for the actual DMA operation.
         if let (Some(operation), Some(direction), Some(address), Some(length)) =
             (operation, direction, address, length)
             && let (Ok(operation), Ok(direction), Ok(path), Ok(sequence), Ok(length)) = (

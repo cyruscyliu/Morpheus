@@ -346,7 +346,7 @@ const cvmEvidenceLines = l2LaunchMarkerLines.filter((line) => (
   line.startsWith("launch-mode=")
   || line.startsWith("helper-cmd=")
   || line.startsWith("qemu-cmd=")
-  || line.startsWith("qemu-patch-symbols=")
+  || line.startsWith("qemu-seed-consumer=")
   || line.startsWith("qemu-mmio-trace=")
   || line.startsWith("dtb-generator=")
   || line.startsWith("dtb-generated=")

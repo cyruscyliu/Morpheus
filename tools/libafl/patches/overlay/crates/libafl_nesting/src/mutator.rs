@@ -111,37 +111,29 @@ impl ScenarioMutator {
                     }
                     true
                 }
-                crate::input::HyperAction::VirtioNetRx {
+                crate::input::HyperAction::QueueDmaWrite {
+                    operation,
+                    direction,
+                    path,
+                    sequence,
                     queue,
                     payload_len,
                     used_len,
-                } => match rand.below(nonzero!(3)) {
-                    0 => {
-                        *queue ^= 1 + rand.below(nonzero!(3)) as u16;
-                        true
-                    }
-                    1 => {
-                        *payload_len ^= 1 + rand.below(nonzero!(64)) as u32;
-                        true
-                    }
-                    _ => {
-                        *used_len ^= 1 + rand.below(nonzero!(128)) as u32;
-                        true
-                    }
-                },
-                crate::input::HyperAction::VirtioFeatures { value } => {
-                    *value ^= 1 + rand.below(nonzero!(63)) as u64;
-                    true
-                }
-                crate::input::HyperAction::VirtioConfig {
-                    offset,
-                    width,
-                    value,
                 } => {
                     match rand.below(nonzero!(3)) {
-                        0 => *offset ^= 1 + rand.below(nonzero!(31)) as u16,
-                        1 => *width = 1 + rand.below(nonzero!(8)) as u8,
-                        _ => *value ^= 1 + rand.below(nonzero!(63)) as u64,
+                        0 => {
+                            *payload_len ^= 1 + rand.below(nonzero!(4096)) as u32;
+                            *used_len ^= 1 + rand.below(nonzero!(4096)) as u32;
+                        }
+                        1 => {
+                            *queue ^= 1 + rand.below(nonzero!(3)) as u16;
+                            *sequence ^= 1 + rand.below(nonzero!(31)) as u16;
+                        }
+                        _ => {
+                            *operation = rand.below(nonzero!(13)) as u8;
+                            *direction = rand.below(nonzero!(4)) as u8;
+                            *path = rand.below(nonzero!(2)) as u8;
+                        }
                     }
                     true
                 }

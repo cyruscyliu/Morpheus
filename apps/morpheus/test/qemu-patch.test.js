@@ -26,17 +26,21 @@ const seedPatch = fs.readFileSync(
   "utf8",
 );
 
-test("versioned qemu-cca patch consumes native MMIO and DMA seed actions", () => {
+test("versioned qemu-cca patch consumes low-level MMIO and queue-DMA seed actions", () => {
   assert.match(seedPatch, /MORPHEUS_SEED_ENV/);
+  assert.match(seedPatch, /morpheus_virtio_seed_read_mmio/);
   assert.match(seedPatch, /morpheus_virtio_seed_read_features/);
   assert.match(seedPatch, /morpheus_virtio_seed_read_config/);
-  assert.match(seedPatch, /morpheus_virtio_seed_dma_write/);
-  assert.match(seedPatch, /morpheus_virtio_seed_take_rx/);
-  assert.match(seedPatch, /address_space_write\(vdev->dma_as/);
-  assert.match(seedPatch, /virtio_net_seed_rx/);
+  assert.match(seedPatch, /morpheus_virtio_seed_queue_dma_complete/);
+  assert.match(seedPatch, /dma_memory_write\(vdev->dma_as/);
+  assert.match(seedPatch, /virtqueue_pop/);
+  assert.match(seedPatch, /virtqueue_fill/);
+  assert.match(seedPatch, /virtqueue_flush/);
+  assert.match(seedPatch, /virtio_notify/);
+  assert.match(seedPatch, /\(event >> 8\) & 0x3/);
   assert.doesNotMatch(
     seedPatch,
-    /CVE-[0-9]+|virtio-net profile:|synthetic_rx_done|vhost-user-test-device/,
+    /CVE-[0-9]+|virtio-net profile:|synthetic_rx_done|virtio_net_seed_rx|vhost-user-test-device/,
   );
 });
 

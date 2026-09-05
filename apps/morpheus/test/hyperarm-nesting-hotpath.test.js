@@ -371,25 +371,21 @@ test("runtime extraction reports every observed MMIO and DMA event", () => {
     const seedInput = Buffer.alloc(4 + 40);
     seedInput.writeUInt32LE(1, 0);
     seedInput[4] = 2;
-    seedInput[5] = 11;
-    seedInput.writeBigUInt64LE(0x100002000n, 12);
-    seedInput.writeBigUInt64LE(4156n, 20);
-    seedInput.writeBigUInt64LE(0x10206n, 28);
-    seedInput.writeBigUInt64LE(7n, 36);
+    seedInput[5] = 12;
+    seedInput.writeBigUInt64LE(0n, 12);
+    seedInput.writeBigUInt64LE(70n, 20);
+    seedInput.writeBigUInt64LE(4156n, 28);
+    seedInput.writeBigUInt64LE(0x07010204n, 36);
     const records = [
       ["morpheus-qemu-input.bin", seedInput],
       [
         "morpheus-qemu-trace.log",
         Buffer.from(
           [
-            "virtio_mmio_observe_read device 1 offset 0x60 size 4",
-            "virtio_mmio_observe_write device 1 offset 0xc4 value 0x2000 size 4",
-            "virtio_mmio_observe_write device 1 offset 0xc8 value 0x1 size 4",
-            "virtio_mmio_observe_write device 1 offset 0xcc value 0x103c size 4",
-            "virtio_mmio_observe_write device 1 offset 0xc0 value 0x10606 size 4",
-            "virtio_mmio_seed_read offset 0x60 base 0x1 value 0x1 size 4 cursor 4",
-            "virtio_mmio_seed_dma addr 0x100002000 len 4156 event 0x10606 opcode 0x4 direction 0x2 cursor 4160 status 0",
-            "virtio_net_seed_rx seed rx queue 0 payload 60 used 4156",
+            "virtio_mmio_read virtio_mmio_read offset 0x60",
+            "virtio_mmio_write_offset virtio_mmio_write offset 0x50 value 0x0",
+            "virtio_mmio_seed_dma addr 0x100002000 len 70 event 0x70604 opcode 0x4 direction 0x2 cursor 70 status 0",
+            "virtio_mmio_seed_dma addr 0x100003000 len 4156 event 0x70604 opcode 0x4 direction 0x2 cursor 70 status 0",
           ].join("\n") + "\n",
         ),
       ],
@@ -441,13 +437,13 @@ test("runtime extraction reports every observed MMIO and DMA event", () => {
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
-    assert.equal(trace[0].mmio_observation_events, true);
+    assert.equal(trace[0].mmio_observation_events, false);
     assert.equal(trace[0].seed_action_events, 1);
     assert.ok(
       trace.some(
         (event) =>
-          event.kind === "seed-dma-event" &&
-          event.operation === "unmap" &&
+          event.kind === "seed-queue-dma-write" &&
+          event.operation === "map" &&
           event.direction_name === "from_device" &&
           event.path === 1 &&
           event.sequence === 7,
@@ -455,19 +451,10 @@ test("runtime extraction reports every observed MMIO and DMA event", () => {
     );
     assert.ok(trace.some((event) => event.kind === "mmio-read"));
     assert.ok(trace.some((event) => event.kind === "mmio-write"));
-    assert.ok(
-      trace.some(
-        (event) =>
-          event.kind === "dma" &&
-          event.operation === "unmap" &&
-          event.direction_name === "from_device" &&
-          event.address === "0x100002000" &&
-          event.length === 4156,
-      ),
-    );
     assert.ok(trace.some((event) => event.kind === "dma-telemetry"));
-    assert.ok(trace.some((event) => event.kind === "dma-injection"));
-    assert.ok(trace.some((event) => event.kind === "virtio-net-seed-rx"));
+    assert.ok(trace.some((event) => event.kind === "dma-seed"));
+    assert.equal(trace.some((event) => event.kind === "virtio-net-seed-rx"), false);
+    assert.equal(trace.some((event) => event.kind === "seed-dma-event"), false);
     assert.ok(trace.every((event) => event.source !== "vhost-user-backend"));
     assert.doesNotMatch(fs.readFileSync(tracePath, "utf8"), /virtio-net profile:/);
   } finally {
@@ -1792,6 +1779,11 @@ test("seed-driven native MMIO and DMA input stays in versioned QEMU code", () =>
     /device_backend|libafl_device_backend|vhost-user/,
   );
   assert.doesNotMatch(
+    harnessSource,
+    /MORPHEUS_QEMU_INJECT_VIRQ|injected_vintid|injected_period_ms/,
+  );
+  assert.doesNotMatch(harnessSource, /run_window_ms\(data\)/);
+  assert.doesNotMatch(
     nvirshBuildrootBasedCvmBuildSource,
     /device_backend|libafl_device_backend|vhost-user/,
   );
@@ -1802,16 +1794,18 @@ test("seed-driven native MMIO and DMA input stays in versioned QEMU code", () =>
   assert.match(nvirshBuildrootBasedCvmBuildSource, /MORPHEUS_QEMU_INPUT_PATH/);
   assert.match(
     nvirshBuildrootBasedCvmBuildSource,
-    /qemu-seed-consumer=present/,
+    /qemu-seed-consumer=mmio-queue-dma/,
   );
   assert.match(nvirshBuildrootBasedCvmBuildSource, /virtio_mmio_seed_read/);
   assert.match(qemuSeedPatchSource, /morpheus_virtio_seed_read_config/);
-  assert.match(qemuSeedPatchSource, /morpheus_virtio_seed_dma_write/);
-  assert.match(qemuSeedPatchSource, /morpheus_virtio_seed_take_rx/);
-  assert.match(qemuSeedPatchSource, /virtio_net_seed_rx/);
+  assert.match(qemuSeedPatchSource, /morpheus_virtio_seed_queue_dma_complete/);
+  assert.match(qemuSeedPatchSource, /dma_memory_write\(vdev->dma_as/);
+  assert.match(qemuSeedPatchSource, /virtqueue_pop/);
+  assert.match(qemuSeedPatchSource, /virtqueue_fill/);
+  assert.match(qemuSeedPatchSource, /virtqueue_flush/);
   assert.doesNotMatch(
     qemuSeedPatchSource,
-    /CVE-[0-9]+|virtio-net profile:|synthetic_rx_done/,
+    /CVE-[0-9]+|virtio-net profile:|synthetic_rx_done|virtio_net_seed_rx|morpheus_virtio_seed_take_rx|morpheus_virtio_seed_dma_write/,
   );
 });
 

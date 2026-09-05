@@ -700,19 +700,6 @@ function decodeSeedActions(input) {
           event.address = hexValue(arg0);
           event.width = Number(arg1);
           if (flags & 1) event.value = hexValue(arg2);
-        } else if (opcode === 8) {
-          event.kind = "seed-virtio-net-rx";
-          event.queue = Number(arg0);
-          event.payload_length = Number(arg1);
-          event.used_length = Number(arg2);
-        } else if (opcode === 9) {
-          event.kind = "seed-virtio-features";
-          event.value = hexValue(arg0);
-        } else if (opcode === 10) {
-          event.kind = "seed-virtio-config";
-          event.offset = Number(arg0);
-          event.width = Number(arg1);
-          event.value = hexValue(arg2);
         } else if (opcode === 11 && arg3 !== null) {
           const operation = Number(arg2 & 0xffn);
           const direction = Number((arg2 >> 8n) & 0xffn);
@@ -727,6 +714,22 @@ function decodeSeedActions(input) {
           event.direction_name = dmaDirectionName(direction);
           event.path = path;
           event.sequence = Number(arg3);
+        } else if (opcode === 12 && arg3 !== null) {
+          const operation = Number(arg3 & 0xffn);
+          const direction = Number((arg3 >> 8n) & 0xffn);
+          const path = Number((arg3 >> 16n) & 0xffn);
+          const sequence = Number((arg3 >> 24n) & 0xffffn);
+          event.kind = "seed-queue-dma-write";
+          event.queue = Number(arg0);
+          event.payload_length = Number(arg1);
+          event.used_length = Number(arg2);
+          event.event = hexValue(arg3);
+          event.operation_code = operation;
+          event.operation = dmaOperationName(operation);
+          event.direction = direction;
+          event.direction_name = dmaDirectionName(direction);
+          event.path = path;
+          event.sequence = sequence;
         }
       }
       events.push(event);
@@ -847,12 +850,13 @@ function buildTraceReport(records) {
       }
       match = raw.match(/virtio_mmio_seed_dma addr (0x[0-9a-fA-F]+) len (\d+) event (0x[0-9a-fA-F]+) opcode (0x[0-9a-fA-F]+) direction (0x[0-9a-fA-F]+) cursor (\d+) status (-?\d+)/);
       if (match) {
+        hasMmioEvents = true;
         const opcode = Number.parseInt(match[4], 16);
         const direction = Number.parseInt(match[5], 16);
         add({
           schemaVersion: 1,
           source: "qemu-mmio",
-          kind: "dma-injection",
+          kind: "dma-seed",
           address: match[1].toLowerCase(),
           length: Number(match[2]),
           event: match[3].toLowerCase(),
@@ -862,19 +866,6 @@ function buildTraceReport(records) {
           direction_name: dmaDirectionName(direction),
           cursor: Number(match[6]),
           status: Number(match[7]),
-          raw,
-        });
-        continue;
-      }
-      match = raw.match(/virtio_net_seed_rx seed rx queue (\d+) payload (\d+) used (\d+)/);
-      if (match) {
-        add({
-          schemaVersion: 1,
-          source: "qemu-device",
-          kind: "virtio-net-seed-rx",
-          queue: Number(match[1]),
-          payload_length: Number(match[2]),
-          used_length: Number(match[3]),
           raw,
         });
         continue;

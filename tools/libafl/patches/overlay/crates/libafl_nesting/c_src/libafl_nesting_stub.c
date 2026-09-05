@@ -138,23 +138,6 @@ static bool proc_cmdline_has_token(const char *token) {
   return found;
 }
 
-static void injected_period_ms(const uint8_t *data, char *out, size_t out_len) {
-  uint16_t lo = data[1];
-  uint16_t hi = data[2];
-  uint32_t raw = ((uint32_t)hi << 8) | lo;
-  uint32_t bounded = 10 + (raw % 5000);
-  snprintf(out, out_len, "%u", bounded);
-}
-
-static bool injected_vintid(const uint8_t *data, char *out, size_t out_len) {
-  uint8_t raw = data[0];
-  if (raw == 0) {
-    return false;
-  }
-  snprintf(out, out_len, "%u", ((unsigned)raw % 64U) + 1U);
-  return true;
-}
-
 static bool parse_run_window_ms(const char *value, unsigned *out) {
   char *end = NULL;
   unsigned long parsed = strtoul(value, &end, 10);
@@ -486,7 +469,7 @@ static bool dmi_run_window_ms(unsigned *out) {
   return false;
 }
 
-static unsigned run_window_ms(const uint8_t *data) {
+static unsigned run_window_ms(void) {
   static bool configured_checked = false;
   static unsigned configured_window = 0;
 
@@ -501,10 +484,7 @@ static unsigned run_window_ms(const uint8_t *data) {
     return configured_window;
   }
 
-  uint16_t lo = data[3];
-  uint16_t hi = data[4];
-  uint32_t raw = ((uint32_t)hi << 8) | lo;
-  return 5000U + (raw % 5000U);
+  return 5000U;
 }
 
 static bool l2_disable_nqc2_plugin_enabled(void) {
@@ -1509,18 +1489,13 @@ static bool reap_l2_process(pid_t pid, int *status) {
   return true;
 }
 
-static bool launch_l2(const uint8_t *data, size_t len,
-                      enum l2_outcome *outcome, int *outcome_detail) {
-  char period_ms[32];
-  char vintid[32];
+static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
   char input_env[128];
   char runtime_env[128];
-  char period_env[128];
   char nqc2_env[128];
-  char vintid_env[128];
   const char *shell = NULL;
   const char *launch_script = NULL;
-  struct launch_env_override overrides[6];
+  struct launch_env_override overrides[3];
   size_t override_count = 0;
   char **launch_environment = NULL;
   int launch_stdout_fd = -1;
@@ -1533,11 +1508,8 @@ static bool launch_l2(const uint8_t *data, size_t len,
   int spawn_error;
   pid_t pid;
   char *argv[3];
-  bool have_vintid = injected_vintid(data, vintid, sizeof(vintid));
   *outcome = L2_OUTCOME_HARNESS_ERROR;
   *outcome_detail = 0;
-
-  injected_period_ms(data, period_ms, sizeof(period_ms));
 
   /* Keep process creation in posix_spawn. LibAFL/QEMU has worker threads, and
    * a raw fork can inherit libc state that is unsafe for the child launcher. */
@@ -1553,9 +1525,7 @@ static bool launch_l2(const uint8_t *data, size_t len,
   if (snprintf(input_env, sizeof(input_env),
                "MORPHEUS_QEMU_INPUT_PATH=%s", INPUT_PATH) < 0 ||
       snprintf(runtime_env, sizeof(runtime_env),
-               "MORPHEUS_L2_RUNTIME_DIR=%s", RUNTIME_DIR) < 0 ||
-      snprintf(period_env, sizeof(period_env),
-               "MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS=%s", period_ms) < 0) {
+               "MORPHEUS_L2_RUNTIME_DIR=%s", RUNTIME_DIR) < 0) {
     append_marker("launcher-environment-format-failed\n");
     return false;
   }
@@ -1564,8 +1534,6 @@ static bool launch_l2(const uint8_t *data, size_t len,
       "MORPHEUS_QEMU_INPUT_PATH", input_env};
   overrides[override_count++] = (struct launch_env_override){
       "MORPHEUS_L2_RUNTIME_DIR", runtime_env};
-  overrides[override_count++] = (struct launch_env_override){
-      "MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS", period_env};
 
   if (l2_disable_nqc2_plugin_enabled() ||
       getenv("MORPHEUS_L2_DISABLE_NQC2_PLUGIN")) {
@@ -1573,19 +1541,6 @@ static bool launch_l2(const uint8_t *data, size_t len,
              "MORPHEUS_L2_DISABLE_NQC2_PLUGIN=1");
     overrides[override_count++] = (struct launch_env_override){
         "MORPHEUS_L2_DISABLE_NQC2_PLUGIN", nqc2_env};
-  }
-
-  if (have_vintid) {
-    if (snprintf(vintid_env, sizeof(vintid_env),
-                 "MORPHEUS_QEMU_INJECT_VIRQ=%s", vintid) < 0) {
-      append_marker("launcher-environment-format-failed\n");
-      return false;
-    }
-    overrides[override_count++] = (struct launch_env_override){
-        "MORPHEUS_QEMU_INJECT_VIRQ", vintid_env};
-  } else {
-    overrides[override_count++] = (struct launch_env_override){
-        "MORPHEUS_QEMU_INJECT_VIRQ", NULL};
   }
 
   launch_stdout_fd = open_launch_log(LAUNCH_STDOUT_PATH);
@@ -1684,7 +1639,7 @@ static bool launch_l2(const uint8_t *data, size_t len,
 
   lqprintf("stub: launched l2 pid=%u\n", (unsigned)pid);
   lqprintf("stub: entering l2 run window pid=%u\n", (unsigned)pid);
-  unsigned window_ms = run_window_ms(data);
+  unsigned window_ms = run_window_ms();
   unsigned evidence_wait_ms = window_ms < 5000U ? window_ms : 5000U;
   bool boot_ready = false;
   unsigned elapsed_ms = evidence_wait_ms;
@@ -1799,7 +1754,7 @@ int main(void) {
     enum l2_outcome outcome = L2_OUTCOME_HARNESS_ERROR;
     int outcome_detail = 0;
     bool launched = write_input_snapshot(FUZZ_INPUT, len) &&
-                    launch_l2(FUZZ_INPUT, len, &outcome, &outcome_detail);
+                    launch_l2(&outcome, &outcome_detail);
 
     if (!launched && outcome == L2_OUTCOME_HARNESS_ERROR) {
       lqprintf("stub: l2 harness operation failed\n");

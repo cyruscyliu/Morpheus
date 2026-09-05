@@ -74,31 +74,28 @@ remain accepted as compatibility aliases.
 The L2 QEMU seed consumer is compiled into the version-scoped qemu-cca patch
 used by the workflow. It consumes the same encoded `ScenarioInput` that the
 guest stub hands to the L2 launcher; no QMP, vhost-user process, or separate
-device backend is involved. The supported Devilang directives are:
+device backend is involved. The supported Devilang seed directives are:
 
 ```text
-call device.mmio_read_override(ADDRESS, WIDTH, VALUE);
-call device.virtio_features(FEATURES);
-call device.virtio_config(OFFSET, WIDTH, VALUE);
-call device.virtio_net_rx(QUEUE, PAYLOAD_LENGTH, USED_LENGTH);
-dma_event(op=OP, dir=DIRECTION, path=PATH, sequence=SEQ, addr=ADDRESS, len=LENGTH);
+mmio_read_override(ADDRESS, WIDTH, VALUE);
+queue_dma_write(op=OP, dir=DIRECTION, path=PATH, sequence=SEQ,
+                queue=QUEUE, payload_len=PAYLOAD_LENGTH,
+                used_len=USED_LENGTH);
 ```
 
-`virtio_net_rx` is injected through QEMU's native virtio-net receive path.
-Descriptor traversal, used-ring updates, interrupts, and DMA continue through
-the normal virtio implementation. `virtio_features` and `virtio_config`
-provide seed-controlled device results without selecting a vulnerability.
-`dma_event` records the Linux DMA telemetry expected in the trace; the actual
-DMA write is triggered by the guest's MMIO aperture transaction and uses the
-device's configured `dma_as`.
+`mmio_read_override` supplies an exact device-side MMIO result. A
+`queue_dma_write` is armed by the seed and is consumed after the guest's
+native virtqueue-notify MMIO. QEMU performs the descriptor walk, writes the
+payload through the device DMA address space, publishes the supplied used
+length, and raises the normal virtqueue notification. No virtio-net helper,
+MMIO aperture, vhost-user process, or QMP command is involved.
 
 Every replay outcome also contains `seed.trace.jsonl`. It is an observation
 record, not an additional device input. It includes the decoded seed actions,
-all generic virtio-MMIO reads and writes, DMA-aperture records reconstructed
-from those writes, Linux virtio DMA telemetry when available, and native seed
-device events. Teardown and queue-progress events remain visible in the
-report without being reinterpreted as new device actions. CVE-specific QEMU
-profile patches are not needed by this path.
+all generic virtio-MMIO reads and writes, native seed MMIO/DMA events, and
+Linux virtio DMA telemetry when available. Teardown and queue-progress events
+remain visible in the report without being reinterpreted as new device
+actions. CVE-specific QEMU profile patches are not needed by this path.
 
 For debugging, LibAFL exec hides the outer L1 and nested L2 console streams by
 default while retaining the complete raw stream in `launcher.stdout.log` for

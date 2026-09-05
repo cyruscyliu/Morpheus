@@ -23,28 +23,8 @@ const L2_CONSOLE_PTY_PATH: &str = "/run/morpheus-libafl/l2-console.pty";
 #[unsafe(no_mangle)]
 pub static mut FUZZ_INPUT: [u8; INPUT_LEN] = [0; INPUT_LEN];
 
-fn injected_vintid(data: &[u8]) -> Option<String> {
-    let raw = data[0];
-    if raw == 0 {
-        None
-    } else {
-        Some(((u32::from(raw) % 64) + 1).to_string())
-    }
-}
-
-fn injected_period_ms(data: &[u8]) -> String {
-    let lo = data[1] as u16;
-    let hi = data[2] as u16;
-    let raw = u32::from((hi << 8) | lo);
-    let bounded = 10 + (raw % 5_000);
-    bounded.to_string()
-}
-
-fn run_window_ms(data: &[u8]) -> u64 {
-    let lo = data[3] as u16;
-    let hi = data[4] as u16;
-    let raw = u32::from((hi << 8) | lo);
-    u64::from(250 + (raw % 1_750))
+fn run_window_ms() -> u64 {
+    5_000
 }
 
 fn prepare_runtime() {
@@ -129,7 +109,7 @@ fn write_input_snapshot(data: &[u8]) -> std::io::Result<()> {
     fs::write(INPUT_PATH, data)
 }
 
-fn launch_l2(data: &[u8]) -> std::io::Result<Child> {
+fn launch_l2() -> std::io::Result<Child> {
     unsafe {
         lqprintf(c"stub: launch_l2 entering\n".as_ptr());
     }
@@ -137,10 +117,6 @@ fn launch_l2(data: &[u8]) -> std::io::Result<Child> {
     command.arg("/root/launch-l2.sh");
     command.env("MORPHEUS_QEMU_INPUT_PATH", INPUT_PATH);
     command.env("MORPHEUS_L2_RUNTIME_DIR", RUNTIME_DIR);
-    command.env("MORPHEUS_QEMU_INJECT_VIRQ_PERIOD_MS", injected_period_ms(data));
-    if let Some(vintid) = injected_vintid(data) {
-        command.env("MORPHEUS_QEMU_INJECT_VIRQ", vintid);
-    }
     command.spawn()
 }
 
@@ -178,7 +154,7 @@ fn run_iteration(data: &[u8]) -> bool {
         return false;
     }
 
-    let mut child = match launch_l2(data) {
+    let mut child = match launch_l2() {
         Ok(child) => child,
         Err(_) => return false,
     };
@@ -190,7 +166,7 @@ fn run_iteration(data: &[u8]) -> bool {
         lqprintf(bytes.as_ptr().cast());
     }
 
-    thread::sleep(Duration::from_millis(run_window_ms(data)));
+    thread::sleep(Duration::from_millis(run_window_ms()));
 
     match child.try_wait() {
         Ok(Some(status)) => {

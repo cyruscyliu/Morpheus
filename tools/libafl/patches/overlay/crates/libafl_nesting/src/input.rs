@@ -120,30 +120,11 @@ pub enum HyperAction {
         width: u8,
         value: u64,
     },
-    /// Describe one device-side virtio-net RX completion in a seed.
-    ///
-    /// This is a generic device-input description. It does not select a
-    /// vulnerability or change an L2 QEMU binary.
-    VirtioNetRx {
-        queue: u16,
-        payload_len: u32,
-        used_len: u32,
-    },
-    /// Advertise the virtio feature bitmap supplied by a seed-driven device.
-    VirtioFeatures {
-        value: u64,
-    },
-    /// Override a little-endian field in the virtio device configuration.
-    VirtioConfig {
-        offset: u16,
-        width: u8,
-        value: u64,
-    },
     /// Record one guest-side DMA telemetry event.
     ///
-    /// This is provenance and replay metadata. The native L2 QEMU consumer
-    /// reports the corresponding guest DMA aperture transaction; it must not
-    /// reinterpret teardown events as new DMA requests.
+    /// The native L2 QEMU consumer reports the corresponding guest DMA
+    /// aperture transaction. It must not reinterpret teardown events as new
+    /// DMA requests.
     DmaEvent {
         operation: u8,
         direction: u8,
@@ -151,6 +132,21 @@ pub enum HyperAction {
         sequence: u16,
         addr: u64,
         len: u32,
+    },
+    /// Describe a generic device-to-guest completion on a virtqueue.
+    ///
+    /// QEMU resolves the descriptor address from the queue programmed by the
+    /// guest and performs the write through the device DMA address space.
+    /// `used_len` is the length published in the used ring; it is deliberately
+    /// separate from the number of payload bytes copied into guest memory.
+    QueueDmaWrite {
+        operation: u8,
+        direction: u8,
+        path: u8,
+        sequence: u16,
+        queue: u16,
+        payload_len: u32,
+        used_len: u32,
     },
 }
 

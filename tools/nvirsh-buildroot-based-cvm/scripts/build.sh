@@ -193,7 +193,7 @@ validate_guest_qemu_seed_consumer() {
   # hooks so a stale package tree cannot pass merely because its provenance
   # file was lost.  The active generic seed consumer is required instead.
   if LC_ALL=C grep -aEq \
-      'virtio-net profile:|synthetic_rx_done|morpheus_virtio_mmio_fuzz|virtio_mmio_(observe|fuzz)' \
+      'virtio-net profile:|synthetic_rx_done|virtio_net_seed_rx|morpheus_virtio_seed_(take_rx|dma_write)|morpheus_virtio_mmio_fuzz|virtio_mmio_(observe|fuzz)' \
       "${guest_qemu_source}" 2>/dev/null; then
     echo "guest QEMU is not stock: ${guest_qemu_source}" >&2
     exit 1
@@ -608,13 +608,12 @@ done
 
 # Stock CCA QEMU already exposes the generic virtio-mmio trace events. Keep
 # tracing enabled for every run so the report contains the complete transport
-# stream and the seed consumer's device-side events.
+# stream and the generic seed consumer's device-side events.
 : > "${guest_qemu_trace_events}"
 printf 'virtio_mmio_read\n' >> "${guest_qemu_trace_events}"
 printf 'virtio_mmio_write_offset\n' >> "${guest_qemu_trace_events}"
 printf 'virtio_mmio_seed_read\n' >> "${guest_qemu_trace_events}"
 printf 'virtio_mmio_seed_dma\n' >> "${guest_qemu_trace_events}"
-printf 'virtio_net_seed_rx\n' >> "${guest_qemu_trace_events}"
 
 set -- \
   -L "${guest_qemu_data_dir}"
@@ -696,7 +695,7 @@ set -- "${guest_qemu}" "$@"
 printf 'qemu-cmd=' >> "${launch_marker}"
 printf '%s ' "$@" >> "${launch_marker}"
 printf '\n' >> "${launch_marker}"
-printf 'qemu-seed-consumer=present\n' >> "${launch_marker}"
+printf 'qemu-seed-consumer=mmio-queue-dma\n' >> "${launch_marker}"
 printf 'qemu-mmio-trace=seed\n' >> "${launch_marker}"
 printf 'qemu-exec-start\n' >> "${launch_marker}"
 set +e

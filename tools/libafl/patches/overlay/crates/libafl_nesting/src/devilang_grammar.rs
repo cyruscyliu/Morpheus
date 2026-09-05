@@ -1723,6 +1723,7 @@ fn count_occurrences(haystack: &str, needle: &str) -> usize {
 
 fn parse_actions(line: &str) -> Vec<Action> {
     let mut found = parse_dma_actions(line);
+    found.extend(parse_queue_dma_actions(line));
     for width in [1u8, 2, 4, 8] {
         let suffix = (u16::from(width) * 8).to_string();
         let read = format!("read{suffix}");
@@ -1780,7 +1781,7 @@ fn parse_actions(line: &str) -> Vec<Action> {
     // These are explicit device-input directives. They use `call` syntax so
     // they remain valid Devilang trace instructions, while their arguments
     // are preserved as seed data instead of being hidden in a QEMU patch.
-    collect_calls(line, "device.mmio_read_override", |position, args| {
+    collect_calls(line, "mmio_read_override", |position, args| {
         if args.len() >= 3 {
             let width = expression_value(args[1], 0x5245_5744);
             if let (Ok(width), value) =
@@ -1797,53 +1798,75 @@ fn parse_actions(line: &str) -> Vec<Action> {
             }
         }
     });
-    collect_calls(line, "device.virtio_net_rx", |position, args| {
-        if args.len() >= 3 {
-            if let (Ok(queue), Ok(payload_len), Ok(used_len)) = (
-                u16::try_from(expression_value(args[0], 0x5652_5851)),
-                u32::try_from(expression_value(args[1], 0x5652_5850)),
-                u32::try_from(expression_value(args[2], 0x5652_5855)),
-            ) {
-                found.push((
-                    position,
-                    Action::Hyper(HyperAction::VirtioNetRx {
-                        queue,
-                        payload_len,
-                        used_len,
-                    }),
-                ));
+    found.sort_by_key(|(position, _)| *position);
+    found.into_iter().map(|(_, action)| action).collect()
+}
+
+fn parse_queue_dma_actions(line: &str) -> Vec<(usize, Action)> {
+    let mut result = Vec::new();
+    let needle = "queue_dma_write(";
+    let mut search_from = 0usize;
+    while let Some(relative) = line[search_from..].find(needle) {
+        let start = search_from + relative;
+        let open = start + needle.len() - 1;
+        let Some(close) = matching_paren(line, open) else {
+            break;
+        };
+        let mut operation = None;
+        let mut direction = None;
+        let mut path = None;
+        let mut sequence = None;
+        let mut queue = None;
+        let mut payload_len = None;
+        let mut used_len = None;
+        for item in split_args(&line[open + 1..close]) {
+            let Some((key, value)) = item.split_once('=') else {
+                continue;
+            };
+            match key.trim() {
+                "op" => operation = dma_operation_value(value),
+                "dir" => direction = dma_direction_value(value),
+                "path" => path = dma_path_value(value),
+                "sequence" | "seq" => sequence = parse_integer(value),
+                "queue" => queue = Some(expression_value(value, 0x51554555)),
+                "payload" | "payload_len" | "write_len" => {
+                    payload_len = Some(expression_value(value, 0x5041594c))
+                }
+                "used" | "used_len" | "completion_len" => {
+                    used_len = Some(expression_value(value, 0x55534544))
+                }
+                _ => {}
             }
         }
-    });
-    collect_calls(line, "device.virtio_features", |position, args| {
-        if let Some(value) = args.first() {
-            found.push((
-                position,
-                Action::Hyper(HyperAction::VirtioFeatures {
-                    value: expression_value(value, 0x5645_4154),
+        if let (Some(operation), Some(direction), Some(payload_len), Some(used_len)) =
+            (operation, direction, payload_len, used_len)
+            && let (Ok(operation), Ok(direction), Ok(path), Ok(sequence), Ok(queue),
+                Ok(payload_len), Ok(used_len)) = (
+                u8::try_from(operation),
+                u8::try_from(direction),
+                u8::try_from(path.unwrap_or(0)),
+                u16::try_from(sequence.unwrap_or(0)),
+                u16::try_from(queue.unwrap_or(0)),
+                u32::try_from(payload_len),
+                u32::try_from(used_len),
+            )
+        {
+            result.push((
+                start,
+                Action::Hyper(HyperAction::QueueDmaWrite {
+                    operation,
+                    direction,
+                    path,
+                    sequence,
+                    queue,
+                    payload_len,
+                    used_len,
                 }),
             ));
         }
-    });
-    collect_calls(line, "device.virtio_config", |position, args| {
-        if args.len() >= 3 {
-            if let (Ok(offset), Ok(width)) = (
-                u16::try_from(expression_value(args[0], 0x434f_4646)),
-                u8::try_from(expression_value(args[1], 0x434f_5744)),
-            ) {
-                found.push((
-                    position,
-                    Action::Hyper(HyperAction::VirtioConfig {
-                        offset,
-                        width,
-                        value: expression_value(args[2], 0x434f_564c),
-                    }),
-                ));
-            }
-        }
-    });
-    found.sort_by_key(|(position, _)| *position);
-    found.into_iter().map(|(_, action)| action).collect()
+        search_from = close.saturating_add(1);
+    }
+    result
 }
 
 fn parse_dma_actions(line: &str) -> Vec<(usize, Action)> {
@@ -2174,21 +2197,6 @@ fn format_action(action: &Action) -> String {
         Action::Hyper(HyperAction::MmioReadOverride { addr, width, value }) => {
             format!("hyper.mmio_read_override addr=0x{addr:x} width={width} value=0x{value:x}")
         }
-        Action::Hyper(HyperAction::VirtioNetRx {
-            queue,
-            payload_len,
-            used_len,
-        }) => format!(
-            "hyper.virtio_net_rx queue={queue} payload_len={payload_len} used_len={used_len}"
-        ),
-        Action::Hyper(HyperAction::VirtioFeatures { value }) => {
-            format!("hyper.virtio_features value=0x{value:x}")
-        }
-        Action::Hyper(HyperAction::VirtioConfig {
-            offset,
-            width,
-            value,
-        }) => format!("hyper.virtio_config offset={offset} width={width} value=0x{value:x}"),
         Action::Hyper(HyperAction::DmaEvent {
             operation,
             direction,
@@ -2198,6 +2206,17 @@ fn format_action(action: &Action) -> String {
             len,
         }) => format!(
             "hyper.dma_event op={operation} dir={direction} path={path} sequence={sequence} addr=0x{addr:x} len={len}"
+        ),
+        Action::Hyper(HyperAction::QueueDmaWrite {
+            operation,
+            direction,
+            path,
+            sequence,
+            queue,
+            payload_len,
+            used_len,
+        }) => format!(
+            "hyper.queue_dma_write op={operation} dir={direction} path={path} sequence={sequence} queue={queue} payload_len={payload_len} used_len={used_len}"
         ),
         Action::Hyper(HyperAction::MmioWrite { addr, width, value }) => {
             format!("hyper.mmio_write addr=0x{addr:x} width={width} value=0x{value:x}")
@@ -2517,57 +2536,56 @@ machine custom_device {
     }
 
     #[test]
-    fn device_seed_directives_preserve_device_results_and_order() {
+    fn low_level_seed_directives_preserve_mmio_and_dma_order() {
         let grammar = DevilangGrammar::parse(
             r#"
-machine device_seed {
+machine low_level_seed {
     initial state_0
     state state_0
-    state done
-    transition state_0 -> done on device_input
+    transition state_0 -> state_0 on device_input
     trace device_input {
         sequence {
-            call device.mmio_read_override(VIRTIO_MMIO_CONFIG + 17, 1, 0xff);
-            call device.virtio_net_rx(0, 60, 4156);
-            call device.virtio_features(0x0200000100030020);
-            call device.virtio_config(17, 1, 0xff);
+            mmio_read_override(0x14, 4, 0x02000001);
+            mmio_read_override(VIRTIO_MMIO_CONFIG + 17, 1, 0xff);
+            queue_dma_write(op=map, dir=from_device, path=phys, sequence=0, queue=0, payload_len=70, used_len=4156);
         }
     }
 }
 "#,
         )
-        .expect("device seed grammar should parse");
+        .expect("low-level seed grammar should parse");
         let mut rand = StdRand::with_seed(23);
         let scenario = grammar
             .generate_scenario(&mut rand, 1)
-            .expect("device seed grammar should generate");
+            .expect("low-level seed grammar should generate");
 
         assert!(matches!(
             scenario.groups()[0].actions(),
             [
                 Action::Hyper(HyperAction::MmioReadOverride {
+                    addr: 20,
+                    width: 4,
+                    value: 0x02000001,
+                }),
+                Action::Hyper(HyperAction::MmioReadOverride {
                     addr: 273,
                     width: 1,
                     value: 255,
                 }),
-                Action::Hyper(HyperAction::VirtioNetRx {
+                Action::Hyper(HyperAction::QueueDmaWrite {
+                    operation: 4,
+                    direction: 2,
+                    path: 1,
+                    sequence: 0,
                     queue: 0,
-                    payload_len: 60,
+                    payload_len: 70,
                     used_len: 4156,
-                }),
-                Action::Hyper(HyperAction::VirtioFeatures {
-                    value: 0x0200000100030020,
-                }),
-                Action::Hyper(HyperAction::VirtioConfig {
-                    offset: 17,
-                    width: 1,
-                    value: 255,
                 }),
             ]
         ));
         grammar
             .validate_scenario(&scenario)
-            .expect("device seed scenario should validate");
+            .expect("low-level seed scenario should validate");
     }
 
     #[test]

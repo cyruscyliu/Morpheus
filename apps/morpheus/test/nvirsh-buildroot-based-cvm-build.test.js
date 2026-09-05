@@ -673,6 +673,10 @@ test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", 
   );
   assert.match(
     launchScript,
+    /-netdev "user,id=net0"/,
+  );
+  assert.match(
+    launchScript,
     /guest_bootargs="console=ttyAMA0 oops=panic panic_on_warn=1 panic=-1 kasan\.fault=panic"/,
   );
   assert.match(

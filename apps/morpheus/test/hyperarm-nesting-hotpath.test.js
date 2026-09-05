@@ -358,6 +358,59 @@ test("runtime extraction preserves an anomalous L2 outcome and its input", () =>
   }
 });
 
+test("runtime extraction rejects device seeds with non-zero reserved bits", () => {
+  const functionStart = harnessSource.indexOf("extract_l1_runtime_from_log() {");
+  const functionEnd = harnessSource.indexOf("\n}\n\nwrite_result()", functionStart);
+  assert.ok(functionStart >= 0 && functionEnd > functionStart);
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-seed-validation-"));
+  try {
+    const outputDir = path.join(tempDir, "runtime");
+    const logPath = path.join(tempDir, "launcher.log");
+    const extractorPath = path.join(tempDir, "extract.sh");
+    const seedInput = Buffer.alloc(4 + 40);
+    seedInput.writeUInt32LE(1, 0);
+    seedInput[4] = 2;
+    seedInput[5] = 1;
+    seedInput.writeUInt16LE(1, 6);
+    seedInput.writeUInt32LE(1, 8);
+    seedInput.writeBigUInt64LE(0x14n, 12);
+    seedInput.writeBigUInt64LE(4n, 20);
+    seedInput.writeBigUInt64LE(0x103n, 28);
+    const lines = [
+      "LQPRINTF: stub-outcome kind=launcher-exit detail=1",
+      `LQPRINTF: stub-runtime begin name=morpheus-qemu-input.bin size=${seedInput.length} dumped=${seedInput.length} truncated=0`,
+      `LQPRINTF: stub-runtime data name=morpheus-qemu-input.bin offset=0 hex=${seedInput.toString("hex")}`,
+      "LQPRINTF: stub-runtime end name=morpheus-qemu-input.bin",
+      "LQPRINTF: stub: dumped runtime files to log",
+    ];
+    fs.writeFileSync(logPath, lines.join("\n"));
+    writeExecutable(
+      extractorPath,
+      [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        harnessSource.slice(functionStart, functionEnd + 2),
+        'extract_l1_runtime_from_log "$1" "$2" false',
+      ].join("\n"),
+    );
+
+    const result = spawnSync("bash", [extractorPath, outputDir, logPath], {
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const trace = fs.readFileSync(
+      path.join(outputDir, "outcomes", "000000-launcher-exit", "seed.trace.jsonl"),
+      "utf8",
+    );
+    assert.match(trace, /"kind":"seed-decode-error"/);
+    assert.match(trace, /"detail":"non-zero-reserved-bits"/);
+    assert.doesNotMatch(trace, /"kind":"seed-mmio-read-override"/);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("runtime extraction reports every observed MMIO and DMA event", () => {
   const functionStart = harnessSource.indexOf("extract_l1_runtime_from_log() {");
   const functionEnd = harnessSource.indexOf("\n}\n\nwrite_result()", functionStart);
@@ -438,11 +491,11 @@ test("runtime extraction reports every observed MMIO and DMA event", () => {
       .split("\n")
       .map((line) => JSON.parse(line));
     assert.equal(trace[0].mmio_observation_events, false);
-    assert.equal(trace[0].seed_action_events, 1);
+    assert.equal(trace[0].seed_override_events, 1);
     assert.ok(
       trace.some(
         (event) =>
-          event.kind === "seed-queue-dma-write" &&
+          event.kind === "seed-queue-dma" &&
           event.operation === "map" &&
           event.direction_name === "from_device" &&
           event.path === 1 &&

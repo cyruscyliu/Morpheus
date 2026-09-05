@@ -1,5 +1,5 @@
 diff --git a/hw/virtio/meson.build b/hw/virtio/meson.build
-index 0e023235164ba38742081e0297bb72c659c1bf7d..061be58904cba8835244e0bcb57990011baa3a4d 100644
+index 0e02323516..061be58904 100644
 --- a/hw/virtio/meson.build
 +++ b/hw/virtio/meson.build
 @@ -4,6 +4,7 @@ system_virtio_ss.add(files('iothread-vq-mapping.c'))
@@ -12,10 +12,10 @@ index 0e023235164ba38742081e0297bb72c659c1bf7d..061be58904cba8835244e0bcb5799001
  system_virtio_ss.add(when: 'CONFIG_VIRTIO_IOMMU', if_true: files('virtio-iommu.c'))
 diff --git a/hw/virtio/morpheus-seed.c b/hw/virtio/morpheus-seed.c
 new file mode 100644
-index 0000000000000000000000000000000000000000..e58149c3620627a9f8d2747f9f50cdeaa6dfa904
+index 0000000000..c26e1111b7
 --- /dev/null
 +++ b/hw/virtio/morpheus-seed.c
-@@ -0,0 +1,343 @@
+@@ -0,0 +1,373 @@
 +/*
 + * Generic LibAFL seed consumer for the native QEMU virtio path.
 + *
@@ -51,6 +51,7 @@ index 0000000000000000000000000000000000000000..e58149c3620627a9f8d2747f9f50cdea
 +    uint8_t family;
 +    uint8_t opcode;
 +    uint16_t flags;
++    uint32_t reserved;
 +    uint64_t arg0;
 +    uint64_t arg1;
 +    uint64_t arg2;
@@ -110,15 +111,41 @@ index 0000000000000000000000000000000000000000..e58149c3620627a9f8d2747f9f50cdea
 +                .family = record[0],
 +                .opcode = record[1],
 +                .flags = seed_load_u16(record + 2),
++                .reserved = seed_load_u32(record + 4),
 +                .arg0 = seed_load_u64(record + 8),
 +                .arg1 = seed_load_u64(record + 16),
 +                .arg2 = seed_load_u64(record + 24),
 +                .arg3 = seed_load_u64(record + 32),
 +            };
 +
-+            if (action.family == MORPHEUS_SEED_FAMILY_HYPER) {
-+                g_array_append_val(morpheus_seed.actions, action);
++            bool valid_record = action.family == MORPHEUS_SEED_FAMILY_HYPER &&
++                                action.reserved == 0;
++            if (valid_record && action.opcode == MORPHEUS_SEED_OP_MMIO_READ) {
++                valid_record = action.flags == MORPHEUS_SEED_MMIO_OVERRIDE &&
++                               action.arg1 >= 1 && action.arg1 <= 8;
++            } else if (valid_record &&
++                       action.opcode == MORPHEUS_SEED_OP_QUEUE_DMA_WRITE) {
++                uint8_t operation = action.arg3 & 0xff;
++                uint8_t direction = (action.arg3 >> 8) & 0xff;
++                uint8_t path = (action.arg3 >> 16) & 0xff;
++
++                valid_record = action.flags == 0 &&
++                               action.arg0 < VIRTIO_QUEUE_MAX &&
++                               action.arg1 > 0 &&
++                               action.arg1 <= MORPHEUS_DMA_MAX_LENGTH &&
++                               action.arg2 <= UINT32_MAX &&
++                               operation == MORPHEUS_DMA_OP_MAP &&
++                               (direction == MORPHEUS_DMA_DIR_FROM_DEVICE ||
++                                direction == MORPHEUS_DMA_DIR_BIDIRECTIONAL) &&
++                               path <= 1;
++            } else {
++                valid_record = false;
 +            }
++            if (!valid_record) {
++                morpheus_seed.enabled = false;
++                return;
++            }
++            g_array_append_val(morpheus_seed.actions, action);
 +            cursor += MORPHEUS_SEED_RECORD_SIZE;
 +        }
 +    }
@@ -147,6 +174,9 @@ index 0000000000000000000000000000000000000000..e58149c3620627a9f8d2747f9f50cdea
 +    morpheus_seed.length = length;
 +    morpheus_seed.enabled = true;
 +    seed_parse_actions();
++    if (morpheus_seed.actions->len == 0) {
++        morpheus_seed.enabled = false;
++    }
 +}
 +
 +static uint64_t seed_next_byte(void)
@@ -177,7 +207,7 @@ index 0000000000000000000000000000000000000000..e58149c3620627a9f8d2747f9f50cdea
 +            &g_array_index(morpheus_seed.actions, MorpheusSeedAction, index);
 +
 +        if (action->opcode == MORPHEUS_SEED_OP_MMIO_READ &&
-+            (action->flags & MORPHEUS_SEED_MMIO_OVERRIDE) &&
++            action->flags == MORPHEUS_SEED_MMIO_OVERRIDE &&
 +            action->arg1 == size && action->arg0 == offset) {
 +            return action;
 +        }
@@ -360,7 +390,7 @@ index 0000000000000000000000000000000000000000..e58149c3620627a9f8d2747f9f50cdea
 +    return true;
 +}
 diff --git a/hw/virtio/trace-events b/hw/virtio/trace-events
-index 2a57edc21e33889734d13026d6f3f92c0044a4b3..072f67813fa1b30ec135abb949673e84777f98f8 100644
+index 2a57edc21e..072f67813f 100644
 --- a/hw/virtio/trace-events
 +++ b/hw/virtio/trace-events
 @@ -105,6 +105,8 @@ virtio_balloon_to_target(uint64_t target, uint32_t num_pages) "balloon target: 0
@@ -373,7 +403,7 @@ index 2a57edc21e33889734d13026d6f3f92c0044a4b3..072f67813fa1b30ec135abb949673e84
  virtio_mmio_queue_write(uint64_t value, int max_size) "mmio_queue write 0x%" PRIx64 " max %d"
  virtio_mmio_setting_irq(int level) "virtio_mmio setting IRQ %d"
 diff --git a/hw/virtio/virtio-mmio.c b/hw/virtio/virtio-mmio.c
-index ee73b8af61c48ae745cf67e7aec7cd33e726cd75..7ebea83b83f6c8e157ddf1d9b7fb82075991f5d7 100644
+index ee73b8af61..ac0de7d86b 100644
 --- a/hw/virtio/virtio-mmio.c
 +++ b/hw/virtio/virtio-mmio.c
 @@ -36,6 +36,7 @@
@@ -440,7 +470,28 @@ index ee73b8af61c48ae745cf67e7aec7cd33e726cd75..7ebea83b83f6c8e157ddf1d9b7fb8207
      }
      if (size != 4) {
          qemu_log_mask(LOG_GUEST_ERROR,
-@@ -179,15 +191,17 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
+@@ -165,31 +177,36 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
+     }
+     switch (offset) {
+     case VIRTIO_MMIO_MAGIC_VALUE:
+-        return VIRT_MAGIC;
++        return morpheus_virtio_seed_read_mmio(vdev, offset, VIRT_MAGIC, size);
+     case VIRTIO_MMIO_VERSION:
+         if (proxy->legacy) {
+-            return VIRT_VERSION_LEGACY;
++            value = VIRT_VERSION_LEGACY;
+         } else {
+-            return VIRT_VERSION;
++            value = VIRT_VERSION;
+         }
++        return morpheus_virtio_seed_read_mmio(vdev, offset, value, size);
+     case VIRTIO_MMIO_DEVICE_ID:
+-        return vdev->device_id;
++        return morpheus_virtio_seed_read_mmio(vdev, offset, vdev->device_id,
++                                              size);
+     case VIRTIO_MMIO_VENDOR_ID:
+-        return VIRT_VENDOR;
++        return morpheus_virtio_seed_read_mmio(vdev, offset, VIRT_VENDOR, size);
      case VIRTIO_MMIO_DEVICE_FEATURES:
          if (proxy->legacy) {
              if (proxy->host_features_sel) {
@@ -459,19 +510,72 @@ index ee73b8af61c48ae745cf67e7aec7cd33e726cd75..7ebea83b83f6c8e157ddf1d9b7fb8207
 +        return morpheus_virtio_seed_read_features(vdev, value,
 +                                                  proxy->host_features_sel);
      case VIRTIO_MMIO_QUEUE_NUM_MAX:
-         return virtio_queue_get_max_num(vdev, vdev->queue_sel);
+-        return virtio_queue_get_max_num(vdev, vdev->queue_sel);
++        value = virtio_queue_get_max_num(vdev, vdev->queue_sel);
++        return morpheus_virtio_seed_read_mmio(vdev, offset, value, size);
      case VIRTIO_MMIO_QUEUE_PFN:
-@@ -431,6 +445,7 @@ static void virtio_mmio_write(void *opaque, hwaddr offset, uint64_t value,
+         if (!proxy->legacy) {
+             qemu_log_mask(LOG_GUEST_ERROR,
+@@ -198,8 +215,9 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
+                           __func__, offset);
+             return 0;
+         }
+-        return virtio_queue_get_addr(vdev, vdev->queue_sel)
++        value = virtio_queue_get_addr(vdev, vdev->queue_sel)
+             >> proxy->guest_page_shift;
++        return morpheus_virtio_seed_read_mmio(vdev, offset, value, size);
+     case VIRTIO_MMIO_QUEUE_READY:
+         if (proxy->legacy) {
+             qemu_log_mask(LOG_GUEST_ERROR,
+@@ -208,11 +226,13 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
+                           __func__, offset);
+             return 0;
+         }
+-        return proxy->vqs[vdev->queue_sel].enabled;
++        value = proxy->vqs[vdev->queue_sel].enabled;
++        return morpheus_virtio_seed_read_mmio(vdev, offset, value, size);
+     case VIRTIO_MMIO_INTERRUPT_STATUS:
+-        return qatomic_read(&vdev->isr);
++        value = qatomic_read(&vdev->isr);
++        return morpheus_virtio_seed_read_mmio(vdev, offset, value, size);
+     case VIRTIO_MMIO_STATUS:
+-        return vdev->status;
++        return morpheus_virtio_seed_read_mmio(vdev, offset, vdev->status, size);
+     case VIRTIO_MMIO_CONFIG_GENERATION:
+         if (proxy->legacy) {
+             qemu_log_mask(LOG_GUEST_ERROR,
+@@ -221,7 +241,8 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
+                           __func__, offset);
+             return 0;
+         }
+-        return vdev->generation;
++        return morpheus_virtio_seed_read_mmio(vdev, offset, vdev->generation,
++                                              size);
+    case VIRTIO_MMIO_SHM_LEN_LOW:
+    case VIRTIO_MMIO_SHM_LEN_HIGH:
+         /*
+@@ -229,7 +250,7 @@ static uint64_t virtio_mmio_read(void *opaque, hwaddr offset, unsigned size)
+          * according to the linux driver, if region length is -1
+          * the shared memory doesn't exist
+          */
+-        return -1;
++        return morpheus_virtio_seed_read_mmio(vdev, offset, UINT64_MAX, size);
+     case VIRTIO_MMIO_DEVICE_FEATURES_SEL:
+     case VIRTIO_MMIO_DRIVER_FEATURES:
+     case VIRTIO_MMIO_DRIVER_FEATURES_SEL:
+@@ -431,6 +452,8 @@ static void virtio_mmio_write(void *opaque, hwaddr offset, uint64_t value,
                  virtio_queue_set_shadow_avail_idx(vq, (value >> 16) & 0xFFFF);
              }
-             virtio_queue_notify(vdev, vq_idx);
-+            morpheus_virtio_seed_queue_dma_complete(vdev, vq_idx);
+-            virtio_queue_notify(vdev, vq_idx);
++            if (!morpheus_virtio_seed_queue_dma_complete(vdev, vq_idx)) {
++                virtio_queue_notify(vdev, vq_idx);
++            }
          }
          break;
      case VIRTIO_MMIO_INTERRUPT_ACK:
 diff --git a/include/hw/virtio/morpheus-seed.h b/include/hw/virtio/morpheus-seed.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..a85003436c68b8943d1a8c8a3b9eceea9ffd1700
+index 0000000000..a85003436c
 --- /dev/null
 +++ b/include/hw/virtio/morpheus-seed.h
 @@ -0,0 +1,32 @@

@@ -2,10 +2,9 @@
 set -euo pipefail
 
 # Exercise the real LibAFL grammar path without constructing a QEMU command.
-# The probe loads the generated phase files, generates one ScenarioInput,
-# mutates it, validates both paths, checks the encoded size, and prints the
-# readable actions before and after mutation. A grammar with only one valid
-# path may legitimately report a skipped mutation.
+# The probe loads generated state files, generates one device override seed,
+# mutates it, validates its sites, checks the encoded size, and prints the
+# readable overrides before and after mutation.
 source_dir="${MORPHEUS_LIBAFL_SOURCE:?}"
 grammar_path="${MORPHEUS_LIBAFL_GRAMMAR:-${MORPHEUS_LIBAFL_DEVILANG_GRAMMAR:-}}"
 result_file="${MORPHEUS_LIBAFL_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"

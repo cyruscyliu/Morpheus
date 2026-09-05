@@ -38,6 +38,16 @@ test("versioned qemu-cca patch consumes low-level MMIO and queue-DMA seed action
   assert.match(seedPatch, /virtqueue_flush/);
   assert.match(seedPatch, /virtio_notify/);
   assert.match(seedPatch, /\(event >> 8\) & 0x3/);
+  const notifyHunk = seedPatch.slice(seedPatch.lastIndexOf("@@ -431,"));
+  assert.match(
+    notifyHunk,
+    /\+            if \(!morpheus_virtio_seed_queue_dma_complete\(vdev, vq_idx\)\)/,
+  );
+  assert.ok(
+    notifyHunk.indexOf("+            if (!morpheus_virtio_seed_queue_dma_complete") <
+      notifyHunk.indexOf("+                virtio_queue_notify(vdev, vq_idx);"),
+    "the seed completion must run before the native queue handler",
+  );
   assert.doesNotMatch(
     seedPatch,
     /CVE-[0-9]+|virtio-net profile:|synthetic_rx_done|virtio_net_seed_rx|vhost-user-test-device/,

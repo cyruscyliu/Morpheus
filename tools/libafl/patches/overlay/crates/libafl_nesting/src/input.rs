@@ -1,145 +1,28 @@
-use core::fmt::Debug;
-
 use libafl::inputs::{HasTargetBytes, Input};
 use libafl_bolts::{HasLen, ownedref::OwnedSlice};
 use serde::{Deserialize, Serialize};
 
 use crate::encoding::encode_scenario;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ScenarioInput {
-    groups: Vec<ActionGroup>,
-    // Keep the optional provenance field in postcard's sequence.  Postcard
-    // does not support omitting a trailing field and then applying serde's
-    // default during deserialization; doing so makes a freshly written
-    // testcase fail to load from `OnDiskCorpus` with
-    // `DeserializeUnexpectedEnd`.
-    #[serde(default)]
-    devilang_path: Option<DevilangPath>,
-}
+const MAX_VIRTIO_QUEUE: u16 = 1024;
+const MAX_QUEUE_DMA_PAYLOAD: u32 = 1 << 20;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct DevilangPath {
-    steps: Vec<DevilangPathStep>,
-}
-
+/// One device-side override supplied to the native L2 virtio path.
+///
+/// This is deliberately not a VM execution instruction. The guest driver
+/// still performs the normal MMIO and virtqueue operations; QEMU consults
+/// these records only when the corresponding native operation occurs.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct DevilangPathStep {
-    machine: String,
-    from: String,
-    to: String,
-    trace: String,
-    decisions: Vec<DevilangTraceDecision>,
-    #[serde(default = "default_devilang_path_step_emits_group")]
-    emits_group: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum DevilangTraceDecision {
-    Branch { taken: bool },
-    Repeat { iterations: u8 },
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ActionGroup {
-    actions: Vec<Action>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Action {
-    Vm(VmAction),
-    Cpu(CpuAction),
-    Hyper(HyperAction),
-    PageTable(PageTableAction),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum VmAction {
-    Stop,
-    Continue,
-    Reset,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum CpuAction {
-    QueryCpus,
-    QueryHotpluggableCpus,
-    CpuDeviceAdd {
-        socket_id: u32,
-        core_id: u32,
-        thread_id: u32,
-    },
-    CpuDeviceDel,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum HyperAction {
-    MmioWrite {
-        addr: u64,
-        width: u8,
-        value: u64,
-    },
-    MmioRead {
-        addr: u64,
-        width: u8,
-    },
-    PioWrite {
-        port: u64,
-        width: u8,
-        value: u64,
-    },
-    PioRead {
-        port: u64,
-        width: u8,
-    },
-    IrqInject {
-        irq: u32,
-        vcpu: u16,
-        edge: bool,
-        count: u32,
-    },
-    WaitIrqAck {
-        irq: u32,
-        vcpu: u16,
-    },
-    MemWrite {
-        addr: u64,
-        width: u8,
-        value: u64,
-    },
-    MemRead {
-        addr: u64,
-        width: u8,
-    },
-    /// Provide an explicit value for a device-side MMIO read in a seed.
+pub enum DeviceOverride {
+    /// Return `value` for a matching virtio-MMIO read.
+    MmioRead { address: u64, width: u8, value: u64 },
+    /// Complete one native device-to-guest virtqueue operation.
     ///
-    /// These seed directives are appended after the original variants so
-    /// postcard indexes for existing inputs remain stable.
-    MmioReadOverride {
-        addr: u64,
-        width: u8,
-        value: u64,
-    },
-    /// Record one guest-side DMA telemetry event.
-    ///
-    /// The native L2 QEMU consumer reports the corresponding guest DMA
-    /// aperture transaction. It must not reinterpret teardown events as new
-    /// DMA requests.
-    DmaEvent {
-        operation: u8,
-        direction: u8,
-        path: u8,
-        sequence: u16,
-        addr: u64,
-        len: u32,
-    },
-    /// Describe a generic device-to-guest completion on a virtqueue.
-    ///
-    /// QEMU resolves the descriptor address from the queue programmed by the
-    /// guest and performs the write through the device DMA address space.
-    /// `used_len` is the length published in the used ring; it is deliberately
-    /// separate from the number of payload bytes copied into guest memory.
-    QueueDmaWrite {
+    /// The queue, operation, direction, path, and sequence identify the
+    /// operation. `payload_len` and `used_len` are the mutable values used by
+    /// the device completion. Descriptor traversal, DMA address translation,
+    /// used-ring publication, and interrupt delivery remain native QEMU.
+    QueueDma {
         operation: u8,
         direction: u8,
         path: u8,
@@ -150,203 +33,58 @@ pub enum HyperAction {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum PageTableAction {
-    WalkGuestVa {
-        va: u64,
-        root: u64,
-    },
-    ReadPte {
-        table_pa: u64,
-        index: u16,
-    },
-    WritePte {
-        table_pa: u64,
-        index: u16,
-        value: u64,
-    },
-    InvalidateTlb {
-        vcpu: u16,
-        va: Option<u64>,
-    },
+/// A LibAFL corpus item containing only device override records.
+///
+/// The guest still performs the complete native protocol. A seed is only a
+/// small set of values attached to grammar-approved device override sites.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ScenarioInput {
+    overrides: Vec<DeviceOverride>,
 }
 
 impl ScenarioInput {
     #[must_use]
-    pub fn new(groups: Vec<ActionGroup>) -> Self {
-        Self {
-            groups,
-            devilang_path: None,
-        }
+    pub fn new(overrides: Vec<DeviceOverride>) -> Self {
+        Self { overrides }
     }
 
     #[must_use]
-    pub fn with_devilang_path(groups: Vec<ActionGroup>, devilang_path: DevilangPath) -> Self {
-        Self {
-            groups,
-            devilang_path: Some(devilang_path),
-        }
+    pub fn overrides(&self) -> &[DeviceOverride] {
+        &self.overrides
     }
 
     #[must_use]
-    pub fn groups(&self) -> &[ActionGroup] {
-        &self.groups
+    pub fn overrides_mut(&mut self) -> &mut Vec<DeviceOverride> {
+        &mut self.overrides
     }
 
     #[must_use]
-    pub fn groups_mut(&mut self) -> &mut Vec<ActionGroup> {
-        self.devilang_path = None;
-        &mut self.groups
-    }
-
-    #[must_use]
-    pub fn devilang_path(&self) -> Option<&DevilangPath> {
-        self.devilang_path.as_ref()
-    }
-
-    pub fn clear_devilang_path(&mut self) {
-        self.devilang_path = None;
+    pub fn total_overrides(&self) -> usize {
+        self.overrides.len()
     }
 
     #[must_use]
     pub fn is_valid(&self) -> bool {
-        !self.groups.is_empty() && self.groups.iter().all(ActionGroup::is_valid)
-    }
-
-    #[must_use]
-    pub fn total_actions(&self) -> usize {
-        self.groups.iter().map(ActionGroup::len).sum()
-    }
-
-    pub fn ensure_terminal_stop(&mut self) {
-        if self.groups.is_empty() {
-            self.groups
-                .push(ActionGroup::new(vec![Action::Vm(VmAction::Stop)]));
-            return;
-        }
-
-        let last_group = self
-            .groups
-            .last_mut()
-            .expect("groups checked to be non-empty");
-        if last_group.actions.is_empty() {
-            last_group.actions.push(Action::Vm(VmAction::Stop));
-            return;
-        }
-
-        if !matches!(last_group.actions.last(), Some(Action::Vm(VmAction::Stop))) {
-            last_group.actions.push(Action::Vm(VmAction::Stop));
-        }
-    }
-}
-
-impl DevilangPath {
-    #[must_use]
-    pub fn new(steps: Vec<DevilangPathStep>) -> Self {
-        Self { steps }
-    }
-
-    #[must_use]
-    pub fn steps(&self) -> &[DevilangPathStep] {
-        &self.steps
-    }
-}
-
-impl DevilangPathStep {
-    #[must_use]
-    pub fn new(
-        machine: String,
-        from: String,
-        to: String,
-        trace: String,
-        decisions: Vec<DevilangTraceDecision>,
-    ) -> Self {
-        Self::with_group(machine, from, to, trace, decisions, true)
-    }
-
-    #[must_use]
-    pub fn with_group(
-        machine: String,
-        from: String,
-        to: String,
-        trace: String,
-        decisions: Vec<DevilangTraceDecision>,
-        emits_group: bool,
-    ) -> Self {
-        Self {
-            machine,
-            from,
-            to,
-            trace,
-            decisions,
-            emits_group,
-        }
-    }
-
-    #[must_use]
-    pub fn machine(&self) -> &str {
-        &self.machine
-    }
-
-    #[must_use]
-    pub fn from(&self) -> &str {
-        &self.from
-    }
-
-    #[must_use]
-    pub fn to(&self) -> &str {
-        &self.to
-    }
-
-    #[must_use]
-    pub fn trace(&self) -> &str {
-        &self.trace
-    }
-
-    #[must_use]
-    pub fn decisions(&self) -> &[DevilangTraceDecision] {
-        &self.decisions
-    }
-
-    #[must_use]
-    pub fn emits_group(&self) -> bool {
-        self.emits_group
-    }
-}
-
-const fn default_devilang_path_step_emits_group() -> bool {
-    true
-}
-
-impl ActionGroup {
-    #[must_use]
-    pub fn new(actions: Vec<Action>) -> Self {
-        Self { actions }
-    }
-
-    #[must_use]
-    pub fn actions(&self) -> &[Action] {
-        &self.actions
-    }
-
-    #[must_use]
-    pub fn actions_mut(&mut self) -> &mut Vec<Action> {
-        &mut self.actions
-    }
-
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.actions.len()
-    }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.actions.is_empty()
-    }
-
-    #[must_use]
-    pub fn is_valid(&self) -> bool {
-        !self.actions.is_empty()
+        self.overrides
+            .iter()
+            .all(|override_record| match override_record {
+                DeviceOverride::MmioRead { width, .. } => (1..=8).contains(width),
+                DeviceOverride::QueueDma {
+                    operation,
+                    direction,
+                    path,
+                    queue,
+                    payload_len,
+                    ..
+                } => {
+                    *operation == 4
+                        && (*direction == 2 || *direction == 3)
+                        && *path <= 1
+                        && *queue < MAX_VIRTIO_QUEUE
+                        && *payload_len > 0
+                        && *payload_len <= MAX_QUEUE_DMA_PAYLOAD
+                }
+            })
     }
 }
 
@@ -354,7 +92,7 @@ impl Input for ScenarioInput {}
 
 impl HasLen for ScenarioInput {
     fn len(&self) -> usize {
-        self.total_actions()
+        self.total_overrides()
     }
 }
 
@@ -366,36 +104,64 @@ impl HasTargetBytes for ScenarioInput {
 
 #[cfg(all(test, feature = "std"))]
 mod tests {
-    use super::{Action, ActionGroup, HyperAction, ScenarioInput, VmAction};
+    use super::{DeviceOverride, ScenarioInput};
     use libafl::inputs::Input;
-    use std::{
-        fs,
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use std::path::PathBuf;
 
     #[test]
-    fn postcard_file_round_trip_matches_ondisk_corpus() {
-        let input = ScenarioInput::new(vec![ActionGroup::new(vec![
-            Action::Hyper(HyperAction::MmioWrite {
-                addr: 0,
-                width: 2,
-                value: 0,
-            }),
-            Action::Vm(VmAction::Stop),
-        ])]);
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock should be valid")
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "libafl-nesting-input-roundtrip-{}-{nonce}",
-            std::process::id()
-        ));
-        input.to_file(&path).expect("input should serialize");
-        let bytes = fs::read(&path).expect("serialized input should be readable");
-        let decoded = ScenarioInput::from_file(&path).expect("input should deserialize");
-        fs::remove_file(&path).expect("temporary input should be removed");
-        assert_eq!(bytes.len(), 10);
+    fn seed_contains_only_device_overrides() {
+        let input = ScenarioInput::new(vec![DeviceOverride::MmioRead {
+            address: 0x111,
+            width: 1,
+            value: 0xff,
+        }]);
+
+        assert!(input.is_valid());
+        assert_eq!(input.total_overrides(), 1);
+        assert_eq!(input.overrides().len(), 1);
+    }
+
+    #[test]
+    fn seed_postcard_round_trip_preserves_override_values() {
+        let input = ScenarioInput::new(vec![DeviceOverride::QueueDma {
+            operation: 4,
+            direction: 2,
+            path: 1,
+            sequence: 7,
+            queue: 0,
+            payload_len: 70,
+            used_len: 4156,
+        }]);
+        let path = PathBuf::from(std::env::temp_dir())
+            .join(format!("libafl-nesting-device-seed-{}", std::process::id()));
+
+        input.to_file(&path).expect("seed should serialize");
+        let decoded = ScenarioInput::from_file(&path).expect("seed should deserialize");
+        std::fs::remove_file(&path).expect("temporary seed should be removed");
+
         assert_eq!(decoded, input);
+    }
+
+    #[test]
+    fn invalid_queue_seed_is_rejected_by_model_validation() {
+        let input = ScenarioInput::new(vec![DeviceOverride::QueueDma {
+            operation: 6,
+            direction: 2,
+            path: 1,
+            sequence: 0,
+            queue: 0,
+            payload_len: 70,
+            used_len: 4156,
+        }]);
+
+        assert!(!input.is_valid());
+    }
+
+    #[test]
+    fn empty_seed_is_a_valid_native_noop() {
+        let input = ScenarioInput::new(Vec::new());
+
+        assert!(input.is_valid());
+        assert_eq!(input.total_overrides(), 0);
     }
 }

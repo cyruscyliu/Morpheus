@@ -35,8 +35,7 @@ use libafl_nesting::{
 };
 use libafl_qemu::{
     FastSnapshotManager, QemuSnapshotManager, SnapshotManager, emu::Emulator,
-    executor::QemuExecutor,
-    modules::edges::StdEdgeCoverageModule,
+    executor::QemuExecutor, modules::edges::StdEdgeCoverageModule,
 };
 use libafl_targets::{EDGES_MAP_DEFAULT_SIZE, MAX_EDGES_FOUND, edges_map_mut_ptr};
 
@@ -103,9 +102,7 @@ fn snapshot_manager_from_env() -> SnapshotManager {
             eprintln!("[libafl/qemu_nesting] snapshot manager=fast");
             SnapshotManager::Fast(FastSnapshotManager::default())
         }
-        value => panic!(
-            "unsupported MORPHEUS_LIBAFL_SNAPSHOT_MANAGER={value:?}; use fast or qemu"
-        ),
+        value => panic!("unsupported MORPHEUS_LIBAFL_SNAPSHOT_MANAGER={value:?}; use fast or qemu"),
     }
 }
 
@@ -132,12 +129,9 @@ fn scenario_generator_from_env() -> ScenarioGenerator {
         .unwrap_or_else(|err| panic!("failed to load grammar-backed scenario generator: {err}"));
     if let Some(grammar) = generator.grammar() {
         eprintln!(
-            "[libafl/qemu_nesting] grammar loaded: phases={} machines={} transitions={} traces={} dma-events={}",
-            grammar.phase_machines().len(),
-            grammar.machines().len(),
-            grammar.transition_count(),
-            grammar.trace_count(),
-            grammar.dma_event_count(),
+            "[libafl/qemu_nesting] device override grammar loaded: mmio-sites={} queue-dma-sites={}",
+            grammar.mmio_read_sites().len(),
+            grammar.queue_dma_sites().len(),
         );
     }
     generator
@@ -162,12 +156,34 @@ fn input_paths_from_manifest(manifest: &str, kind: &str) -> Option<Vec<PathBuf>>
 }
 
 fn validate_input_size(input: ScenarioInput, path: &Path) -> Result<ScenarioInput, Error> {
+    if !input.is_valid() {
+        return Err(Error::illegal_argument(format!(
+            "input {} is not a valid device override seed",
+            path.display()
+        )));
+    }
     let encoded_len = encode_scenario(&input).len();
     if encoded_len > MAX_INPUT_SIZE {
         return Err(Error::illegal_argument(format!(
             "input {} encodes to {encoded_len} bytes, over the {MAX_INPUT_SIZE}-byte limit",
             path.display()
         )));
+    }
+    Ok(input)
+}
+
+fn validate_seed_against_grammar(
+    input: ScenarioInput,
+    path: &Path,
+    generator: &ScenarioGenerator,
+) -> Result<ScenarioInput, Error> {
+    if let Some(grammar) = generator.grammar() {
+        grammar.validate_seed(&input).map_err(|error| {
+            Error::illegal_argument(format!(
+                "seed {} is not compatible with the configured grammar: {error}",
+                path.display()
+            ))
+        })?;
     }
     Ok(input)
 }
@@ -234,8 +250,8 @@ pub fn fuzz() {
                                    _state: &mut _,
                                    input: &ScenarioInput| unsafe {
                     eprintln!(
-                        "[libafl/qemu_nesting] execution start actions={} encoded-bytes={}",
-                        input.total_actions(),
+                        "[libafl/qemu_nesting] execution start overrides={} encoded-bytes={}",
+                        input.total_overrides(),
                         encode_scenario(input).len(),
                     );
                     let exit_kind = emulator.run(input).unwrap().try_into().unwrap();
@@ -296,7 +312,12 @@ pub fn fuzz() {
                     if let Some(paths) = replay_inputs.as_ref() {
                         for path in paths {
                             eprintln!("[libafl/qemu_nesting] loading replay input {}", path.display());
-                            let input = load_replay_input(path).unwrap();
+                            let input = validate_seed_against_grammar(
+                                load_replay_input(path).unwrap(),
+                                path,
+                                &scenario_generator,
+                            )
+                            .unwrap();
                             let mut testcase = Testcase::from(input);
                             *testcase.filename_mut() =
                                 Some(path.file_name().unwrap().to_string_lossy().to_string());
@@ -306,7 +327,9 @@ pub fn fuzz() {
                         let mut loaded = 0usize;
                         for path in paths {
                             eprintln!("[libafl/qemu_nesting] loading initial input {}", path.display());
-                            let input = match load_replay_input(path) {
+                            let input = match load_replay_input(path).and_then(|input| {
+                                validate_seed_against_grammar(input, path, &scenario_generator)
+                            }) {
                                 Ok(input) => input,
                                 Err(err) => {
                                     eprintln!(

@@ -11,17 +11,13 @@ pub mod mutator;
 pub mod stub;
 
 pub use devilang_grammar::{
-    DevilangGrammar, DevilangGrammarState, DevilangMachine, MAX_ENCODED_SCENARIO_BYTES,
-    format_scenario,
+    DevilangGrammar, MAX_ENCODED_SCENARIO_BYTES, MmioReadSite, QueueDmaSite, format_seed,
 };
 pub use encoding::{
     ACTION_RECORD_SIZE, GROUP_HEADER_SIZE, ScenarioCodec, decode_scenario, encode_scenario,
 };
 pub use generator::ScenarioGenerator;
-pub use input::{
-    Action, ActionGroup, CpuAction, DevilangPath, DevilangPathStep, DevilangTraceDecision,
-    HyperAction, PageTableAction, ScenarioInput, VmAction,
-};
+pub use input::{DeviceOverride, ScenarioInput};
 pub use model::{DevilangMmioOp, DevilangModel, MmioDirection};
 pub use mutator::ScenarioMutator;
 pub use stub::{GUEST_STUB_BINARY, guest_stub_build_hint};

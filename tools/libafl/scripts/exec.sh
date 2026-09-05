@@ -641,7 +641,7 @@ function readU64LE(buffer, offset) {
   }
   return value;
 }
-function decodeSeedActions(input) {
+function decodeDeviceOverrideSeed(input) {
   if (!input) return [];
   const events = [];
   const recordSize = 40;
@@ -675,6 +675,7 @@ function decodeSeedActions(input) {
       const family = input[record];
       const opcode = input[record + 1];
       const flags = input.readUInt16LE(record + 2);
+      const reserved = input.readUInt32LE(record + 4);
       const arg0 = readU64LE(input, record + 8);
       const arg1 = readU64LE(input, record + 16);
       const arg2 = readU64LE(input, record + 24);
@@ -682,54 +683,59 @@ function decodeSeedActions(input) {
       const event = {
         schemaVersion: 1,
         source: "seed",
-        kind: "seed-action",
+        kind: "seed-override",
         group,
         action_index: actionIndex,
         family,
         opcode,
         flags,
+        reserved,
       };
-      if (family === 2 && arg0 !== null && arg1 !== null && arg2 !== null) {
-        if (opcode === 0) {
-          event.kind = "seed-mmio-write";
+      if (family !== 2) {
+        event.kind = "seed-decode-error";
+        event.detail = "non-device-family";
+      } else if (reserved !== 0) {
+        event.kind = "seed-decode-error";
+        event.detail = "non-zero-reserved-bits";
+      } else if (arg0 === null || arg1 === null || arg2 === null || arg3 === null) {
+        event.kind = "seed-decode-error";
+        event.detail = "truncated-record";
+      } else if (opcode === 1 && flags === 1 &&
+                 arg1 >= 1n && arg1 <= 8n) {
+          event.kind = "seed-mmio-read-override";
           event.address = hexValue(arg0);
           event.width = Number(arg1);
           event.value = hexValue(arg2);
-        } else if (opcode === 1) {
-          event.kind = flags & 1 ? "seed-mmio-read-override" : "seed-mmio-read";
-          event.address = hexValue(arg0);
-          event.width = Number(arg1);
-          if (flags & 1) event.value = hexValue(arg2);
-        } else if (opcode === 11 && arg3 !== null) {
-          const operation = Number(arg2 & 0xffn);
-          const direction = Number((arg2 >> 8n) & 0xffn);
-          const path = Number((arg2 >> 16n) & 0xffn);
-          event.kind = "seed-dma-event";
-          event.address = hexValue(arg0);
-          event.length = Number(arg1);
-          event.event = hexValue(arg2);
-          event.opcode = operation;
-          event.operation = dmaOperationName(operation);
-          event.direction = direction;
-          event.direction_name = dmaDirectionName(direction);
-          event.path = path;
-          event.sequence = Number(arg3);
-        } else if (opcode === 12 && arg3 !== null) {
+      } else if (opcode === 12 && flags === 0) {
           const operation = Number(arg3 & 0xffn);
           const direction = Number((arg3 >> 8n) & 0xffn);
           const path = Number((arg3 >> 16n) & 0xffn);
-          const sequence = Number((arg3 >> 24n) & 0xffffn);
-          event.kind = "seed-queue-dma-write";
-          event.queue = Number(arg0);
-          event.payload_length = Number(arg1);
-          event.used_length = Number(arg2);
-          event.event = hexValue(arg3);
-          event.operation_code = operation;
-          event.operation = dmaOperationName(operation);
-          event.direction = direction;
-          event.direction_name = dmaDirectionName(direction);
-          event.path = path;
-          event.sequence = sequence;
+          if (operation === 4 && (direction === 2 || direction === 3) &&
+              path <= 1 && arg0 < 1024n && arg1 > 0n &&
+              arg1 <= 0x100000n && arg2 <= 0xffffffffn) {
+            event.kind = "seed-queue-dma";
+            event.queue = Number(arg0);
+            event.payload_length = Number(arg1);
+            event.used_length = Number(arg2);
+            event.event = hexValue(arg3);
+            event.operation_code = operation;
+            event.operation = dmaOperationName(operation);
+            event.direction = direction;
+            event.direction_name = dmaDirectionName(direction);
+            event.path = path;
+            event.sequence = Number((arg3 >> 24n) & 0xffffn);
+          } else {
+            event.kind = "seed-decode-error";
+            event.detail = "invalid-queue-dma-values";
+          }
+      } else {
+        event.kind = "seed-decode-error";
+        if (opcode === 12) {
+          event.detail = "queue-dma-flags-not-zero";
+        } else if (opcode === 1) {
+          event.detail = "mmio-override-flags-or-width-invalid";
+        } else {
+          event.detail = "unsupported-device-action";
         }
       }
       events.push(event);
@@ -945,7 +951,7 @@ function buildTraceReport(records) {
 function writeTraceReport(dir, records) {
   const trace = buildTraceReport(records);
   const input = recordBuffer(records.get("morpheus-qemu-input.bin"));
-  const seedEvents = decodeSeedActions(input);
+  const seedEvents = decodeDeviceOverrideSeed(input);
   const header = {
     schemaVersion: 1,
     source: "libafl-nesting",
@@ -954,7 +960,9 @@ function writeTraceReport(dir, records) {
     mmio_trace_events: trace.hasMmioEvents,
     mmio_trace_mode: trace.hasObservationEvents ? "instrumented" :
       trace.hasMmioEvents ? "stock" : "none",
-    seed_action_events: seedEvents.length,
+    seed_override_events: seedEvents.filter((event) =>
+      event.kind === "seed-mmio-read-override" || event.kind === "seed-queue-dma"
+    ).length,
     profile_markers: trace.profileMarkers,
     input_size: input ? input.length : null,
     input_sha256: input ? crypto.createHash("sha256").update(input).digest("hex") : null,

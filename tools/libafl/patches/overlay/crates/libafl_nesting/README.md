@@ -4,10 +4,9 @@
 
 It owns:
 
-- `ScenarioInput`
-- grouped action modeling
-- scenario encoding and decoding
-- generator and mutator support
+- `ScenarioInput`, which contains device override records only
+- fixed-width override-seed encoding and decoding
+- grammar-guided override generation and value mutation
 - the guest stub artifact contract
 
 ## QEMU Bridge Build Support
@@ -25,7 +24,7 @@ LibAFL runner and the guest stub:
    - The host sets a breakpoint at a known guest location such as the stub's
      `main()`.
    - When execution stops there, the host snapshots the VM and writes the
-     serialized scenario input into guest-visible memory.
+     serialized device override seed into guest-visible memory.
    - The host later detects iteration completion using another breakpoint,
      crash, or timeout.
 
@@ -43,8 +42,9 @@ LibAFL runner and the guest stub:
    In this model, the guest stub explicitly talks to the host through the
    `libafl_qemu` command path.
 
-The `libafl_nesting` crate stays focused on structured nested inputs, encoding,
-mutation, and the guest stub artifact.
+The `libafl_nesting` crate stays focused on device override seeds, encoding,
+mutation, and the guest stub artifact. The guest and L2 QEMU perform the normal
+virtio protocol; the seed never describes that protocol as a trace.
 The exact communication model can evolve independently on top of the same
 patched QEMU coverage backend.
 
@@ -65,7 +65,7 @@ can pass any grammar with the same format. A directory loads every top-level
 import-only helper modules. Enabled mode is fail-closed: an unreadable, empty,
 or unsupported grammar aborts the fuzzing runner instead of silently falling
 back to random generation. The `probe-grammar` tool command loads the path,
-generates and mutates a scenario, and prints the readable actions without
+generates and mutates a device seed, and prints the readable overrides without
 starting QEMU. The `--devilang-grammar` and `--enable-devilang-grammar` names
 remain accepted as compatibility aliases.
 
@@ -91,7 +91,7 @@ length, and raises the normal virtqueue notification. No virtio-net helper,
 MMIO aperture, vhost-user process, or QMP command is involved.
 
 Every replay outcome also contains `seed.trace.jsonl`. It is an observation
-record, not an additional device input. It includes the decoded seed actions,
+record, not an additional device input. It includes the decoded seed overrides,
 all generic virtio-MMIO reads and writes, native seed MMIO/DMA events, and
 Linux virtio DMA telemetry when available. Teardown and queue-progress events
 remain visible in the report without being reinterpreted as new device

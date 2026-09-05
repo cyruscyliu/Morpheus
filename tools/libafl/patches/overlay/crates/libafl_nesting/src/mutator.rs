@@ -3,16 +3,16 @@ use core::num::NonZeroUsize;
 
 use libafl::{
     Error,
-    generators::Generator,
     mutators::{MutationResult, Mutator},
 };
 use libafl_bolts::{Named, nonzero, rands::Rand};
 
 use crate::{
     generator::ScenarioGenerator,
-    input::{Action, ActionGroup, ScenarioInput},
+    input::{DeviceOverride, ScenarioInput},
 };
 
+/// Mutates device override values without changing the native guest flow.
 #[derive(Debug, Clone)]
 pub struct ScenarioMutator {
     generator: ScenarioGenerator,
@@ -30,219 +30,92 @@ impl ScenarioMutator {
         Self { generator }
     }
 
-    fn random_group_index<R: Rand>(rand: &mut R, len: usize) -> Option<usize> {
-        if len == 0 {
-            None
+    fn mutate_value<R: Rand>(rand: &mut R, value: &mut u64, width: u8) {
+        let byte = rand.below(nonzero!(8)) as usize;
+        if byte < usize::from(width.min(8)) {
+            *value ^= 1u64 << (byte * 8 + rand.below(nonzero!(8)) as usize);
         } else {
-            Some(rand.below(unsafe { NonZeroUsize::new_unchecked(len) }))
+            *value = rand.next() & value_mask(width);
         }
     }
 
-    fn random_action_index<R: Rand>(rand: &mut R, len: usize) -> Option<usize> {
-        Self::random_group_index(rand, len)
-    }
-
-    fn mutate_field<R: Rand>(rand: &mut R, action: &mut Action) -> bool {
-        match action {
-            Action::Vm(vm) => {
-                *vm = match rand.below(nonzero!(3)) {
-                    0 => crate::input::VmAction::Stop,
-                    1 => crate::input::VmAction::Continue,
-                    _ => crate::input::VmAction::Reset,
-                };
-                true
+    fn mutate_override<R: Rand>(rand: &mut R, override_record: &mut DeviceOverride) {
+        match override_record {
+            DeviceOverride::MmioRead { width, value, .. } => {
+                Self::mutate_value(rand, value, *width);
             }
-            Action::Cpu(cpu) => {
-                if let crate::input::CpuAction::CpuDeviceAdd {
-                    socket_id,
-                    core_id,
-                    thread_id,
-                } = cpu
-                {
-                    match rand.below(nonzero!(3)) {
-                        0 => *socket_id ^= 1 + rand.below(nonzero!(7)) as u32,
-                        1 => *core_id ^= 1 + rand.below(nonzero!(7)) as u32,
-                        _ => *thread_id ^= 1 + rand.below(nonzero!(7)) as u32,
-                    }
-                    true
+            DeviceOverride::QueueDma {
+                payload_len,
+                used_len,
+                ..
+            } => {
+                if rand.below(nonzero!(2)) == 0 {
+                    *payload_len = 1 + rand.below(nonzero!(4096)) as u32;
                 } else {
-                    *cpu = match rand.below(nonzero!(4)) {
-                        0 => crate::input::CpuAction::QueryCpus,
-                        1 => crate::input::CpuAction::QueryHotpluggableCpus,
-                        2 => crate::input::CpuAction::CpuDeviceAdd {
-                            socket_id: rand.below(nonzero!(8)) as u32,
-                            core_id: rand.below(nonzero!(8)) as u32,
-                            thread_id: rand.below(nonzero!(8)) as u32,
-                        },
-                        _ => crate::input::CpuAction::CpuDeviceDel,
-                    };
-                    true
+                    *used_len = rand.below(nonzero!(8192)) as u32;
                 }
             }
-            Action::Hyper(hyper) => match hyper {
-                crate::input::HyperAction::MmioWrite { addr, width, value }
-                | crate::input::HyperAction::MemWrite { addr, width, value }
-                | crate::input::HyperAction::PioWrite {
-                    port: addr,
-                    width,
-                    value,
-                } => {
-                    match rand.below(nonzero!(3)) {
-                        0 => *addr ^= 1 + rand.below(nonzero!(31)) as u64,
-                        1 => *width = 1 + rand.below(nonzero!(8)) as u8,
-                        _ => *value ^= 1 + rand.below(nonzero!(63)) as u64,
-                    }
-                    true
-                }
-                crate::input::HyperAction::MmioRead { addr, width }
-                | crate::input::HyperAction::MemRead { addr, width }
-                | crate::input::HyperAction::PioRead { port: addr, width } => {
-                    match rand.below(nonzero!(2)) {
-                        0 => *addr ^= 1 + rand.below(nonzero!(31)) as u64,
-                        _ => *width = 1 + rand.below(nonzero!(8)) as u8,
-                    }
-                    true
-                }
-                crate::input::HyperAction::MmioReadOverride { addr, width, value } => {
-                    match rand.below(nonzero!(3)) {
-                        0 => *addr ^= 1 + rand.below(nonzero!(31)) as u64,
-                        1 => *width = 1 + rand.below(nonzero!(8)) as u8,
-                        _ => *value ^= 1 + rand.below(nonzero!(63)) as u64,
-                    }
-                    true
-                }
-                crate::input::HyperAction::QueueDmaWrite {
-                    operation,
-                    direction,
-                    path,
-                    sequence,
-                    queue,
-                    payload_len,
-                    used_len,
-                } => {
-                    match rand.below(nonzero!(3)) {
-                        0 => {
-                            *payload_len ^= 1 + rand.below(nonzero!(4096)) as u32;
-                            *used_len ^= 1 + rand.below(nonzero!(4096)) as u32;
-                        }
-                        1 => {
-                            *queue ^= 1 + rand.below(nonzero!(3)) as u16;
-                            *sequence ^= 1 + rand.below(nonzero!(31)) as u16;
-                        }
-                        _ => {
-                            *operation = rand.below(nonzero!(13)) as u8;
-                            *direction = rand.below(nonzero!(4)) as u8;
-                            *path = rand.below(nonzero!(2)) as u8;
-                        }
-                    }
-                    true
-                }
-                crate::input::HyperAction::DmaEvent {
-                    operation,
-                    direction,
-                    path,
-                    sequence,
-                    addr,
-                    len,
-                } => {
-                    match rand.below(nonzero!(6)) {
-                        0 => *operation = rand.below(nonzero!(13)) as u8,
-                        1 => *direction = rand.below(nonzero!(4)) as u8,
-                        2 => *path = rand.below(nonzero!(2)) as u8,
-                        3 => *sequence ^= 1 + rand.below(nonzero!(31)) as u16,
-                        4 => *addr ^= 1 + rand.below(nonzero!(31)) as u64,
-                        _ => *len ^= 1 + rand.below(nonzero!(4096)) as u32,
-                    }
-                    true
-                }
-                crate::input::HyperAction::IrqInject {
-                    irq,
-                    vcpu,
-                    edge,
-                    count,
-                } => {
-                    match rand.below(nonzero!(4)) {
-                        0 => *irq ^= 1 + rand.below(nonzero!(31)) as u32,
-                        1 => *vcpu ^= 1 + rand.below(nonzero!(7)) as u16,
-                        2 => *edge = !*edge,
-                        _ => *count ^= 1 + rand.below(nonzero!(7)) as u32,
-                    }
-                    true
-                }
-                crate::input::HyperAction::WaitIrqAck { irq, vcpu } => {
-                    if rand.below(nonzero!(2)) == 0 {
-                        *irq ^= 1 + rand.below(nonzero!(31)) as u32;
-                    } else {
-                        *vcpu ^= 1 + rand.below(nonzero!(7)) as u16;
-                    }
-                    true
-                }
-            },
-            Action::PageTable(page) => match page {
-                crate::input::PageTableAction::WalkGuestVa { va, root } => {
-                    if rand.below(nonzero!(2)) == 0 {
-                        *va ^= 1 + rand.below(nonzero!(31)) as u64;
-                    } else {
-                        *root ^= 1 + rand.below(nonzero!(31)) as u64;
-                    }
-                    true
-                }
-                crate::input::PageTableAction::ReadPte { table_pa, index } => {
-                    if rand.below(nonzero!(2)) == 0 {
-                        *table_pa ^= 1 + rand.below(nonzero!(31)) as u64;
-                    } else {
-                        *index ^= 1 + rand.below(nonzero!(15)) as u16;
-                    }
-                    true
-                }
-                crate::input::PageTableAction::WritePte {
-                    table_pa,
-                    index,
-                    value,
-                } => match rand.below(nonzero!(3)) {
-                    0 => {
-                        *table_pa ^= 1 + rand.below(nonzero!(31)) as u64;
-                        true
-                    }
-                    1 => {
-                        *index ^= 1 + rand.below(nonzero!(15)) as u16;
-                        true
-                    }
-                    _ => {
-                        *value ^= 1 + rand.below(nonzero!(63)) as u64;
-                        true
-                    }
-                },
-                crate::input::PageTableAction::InvalidateTlb { vcpu, va } => {
-                    if rand.below(nonzero!(2)) == 0 {
-                        *vcpu ^= 1 + rand.below(nonzero!(7)) as u16;
-                    } else if let Some(inner) = va {
-                        *inner ^= 1 + rand.below(nonzero!(31)) as u64;
-                    } else {
-                        *va = Some(rand.below(nonzero!(1_024)) as u64);
-                    }
-                    true
-                }
-            },
         }
     }
 
-    fn ensure_terminal_stop(input: &mut ScenarioInput) {
-        input.ensure_terminal_stop();
+    fn random_override_index<R: Rand>(rand: &mut R, length: usize) -> Option<usize> {
+        (length > 0).then(|| rand.below(NonZeroUsize::new(length).unwrap()))
     }
 
-    fn generated_group<S>(&mut self, state: &mut S) -> Result<ActionGroup, Error>
-    where
-        S: libafl::state::HasRand,
-    {
-        let mut generated = self.generator.generate(state)?;
-        Ok(generated.groups_mut().remove(0))
+    fn same_override_site(left: &DeviceOverride, right: &DeviceOverride) -> bool {
+        match (left, right) {
+            (
+                DeviceOverride::MmioRead {
+                    address: left_address,
+                    width: left_width,
+                    ..
+                },
+                DeviceOverride::MmioRead {
+                    address: right_address,
+                    width: right_width,
+                    ..
+                },
+            ) => left_address == right_address && left_width == right_width,
+            (
+                DeviceOverride::QueueDma {
+                    operation: left_operation,
+                    direction: left_direction,
+                    path: left_path,
+                    sequence: left_sequence,
+                    queue: left_queue,
+                    ..
+                },
+                DeviceOverride::QueueDma {
+                    operation: right_operation,
+                    direction: right_direction,
+                    path: right_path,
+                    sequence: right_sequence,
+                    queue: right_queue,
+                    ..
+                },
+            ) => {
+                left_operation == right_operation
+                    && left_direction == right_direction
+                    && left_path == right_path
+                    && left_sequence == right_sequence
+                    && left_queue == right_queue
+            }
+            _ => false,
+        }
+    }
+}
+
+fn value_mask(width: u8) -> u64 {
+    if width >= 8 {
+        u64::MAX
+    } else {
+        (1u64 << (width * 8)) - 1
     }
 }
 
 impl Named for ScenarioMutator {
     fn name(&self) -> &Cow<'static, str> {
-        static NAME: Cow<'static, str> = Cow::Borrowed("ScenarioMutator");
+        static NAME: Cow<'static, str> = Cow::Borrowed("DeviceOverrideMutator");
         &NAME
     }
 }
@@ -256,219 +129,54 @@ where
         state: &mut S,
         input: &mut ScenarioInput,
     ) -> Result<MutationResult, Error> {
-        if let Some(grammar) = self.generator.devilang_grammar() {
-            let replacement = grammar
-                .generate_scenario(state.rand_mut(), self.generator.max_groups())
-                .map_err(Error::illegal_argument)?;
-            if replacement == *input {
+        if input.overrides().is_empty() {
+            let Some(grammar) = self.generator.grammar() else {
                 return Ok(MutationResult::Skipped);
-            }
+            };
+            let replacement = grammar
+                .generate_seed(state.rand_mut(), self.generator.max_overrides())
+                .map_err(Error::illegal_argument)?;
             *input = replacement;
             return Ok(MutationResult::Mutated);
         }
 
-        if input.groups().is_empty() {
-            input.groups_mut().push(ActionGroup::new(vec![Action::Vm(
-                crate::input::VmAction::Stop,
-            )]));
-            return Ok(MutationResult::Mutated);
-        }
-
-        let op = state.rand_mut().below(nonzero!(14));
-        let mut mutated = false;
-
-        match op {
+        match state.rand_mut().below(nonzero!(4)) {
             0 => {
-                if let Some(group_idx) =
-                    Self::random_group_index(state.rand_mut(), input.groups().len())
-                {
-                    let group = &mut input.groups_mut()[group_idx];
-                    if let Some(action_idx) =
-                        Self::random_action_index(state.rand_mut(), group.len())
+                let index = Self::random_override_index(state.rand_mut(), input.overrides().len())
+                    .expect("non-empty seed has an override");
+                Self::mutate_override(state.rand_mut(), &mut input.overrides_mut()[index]);
+                Ok(MutationResult::Mutated)
+            }
+            1 if input.overrides().len() < self.generator.max_overrides() => {
+                let Some(grammar) = self.generator.grammar() else {
+                    return Ok(MutationResult::Skipped);
+                };
+                let generated = grammar
+                    .generate_seed(state.rand_mut(), 1)
+                    .map_err(Error::illegal_argument)?;
+                if let Some(override_record) = generated.overrides().first() {
+                    if input
+                        .overrides()
+                        .iter()
+                        .any(|current| Self::same_override_site(current, override_record))
                     {
-                        mutated = Self::mutate_field(
-                            state.rand_mut(),
-                            &mut group.actions_mut()[action_idx],
-                        );
-                    }
-                }
-            }
-            1 => {
-                if let Some(group_idx) =
-                    Self::random_group_index(state.rand_mut(), input.groups().len())
-                {
-                    let group = &mut input.groups_mut()[group_idx];
-                    if let Some(action_idx) =
-                        Self::random_action_index(state.rand_mut(), group.len())
-                    {
-                        group.actions_mut()[action_idx] =
-                            self.generator.random_action(state.rand_mut());
-                        mutated = true;
-                    }
-                }
-            }
-            2 => {
-                if let Some(group_idx) =
-                    Self::random_group_index(state.rand_mut(), input.groups().len())
-                {
-                    let group = &mut input.groups_mut()[group_idx];
-                    let insert_at = if group.is_empty() {
-                        0
+                        Ok(MutationResult::Skipped)
                     } else {
-                        state
-                            .rand_mut()
-                            .below(unsafe { NonZeroUsize::new_unchecked(group.len() + 1) })
-                    };
-                    group
-                        .actions_mut()
-                        .insert(insert_at, self.generator.random_action(state.rand_mut()));
-                    mutated = true;
-                }
-            }
-            3 => {
-                if let Some(group_idx) =
-                    Self::random_group_index(state.rand_mut(), input.groups().len())
-                {
-                    let group = &mut input.groups_mut()[group_idx];
-                    if group.len() > 1 {
-                        let remove_at = state
-                            .rand_mut()
-                            .below(unsafe { NonZeroUsize::new_unchecked(group.len() - 1) });
-                        group.actions_mut().remove(remove_at);
-                        mutated = true;
+                        input.overrides_mut().push(override_record.clone());
+                        Ok(MutationResult::Mutated)
                     }
+                } else {
+                    Ok(MutationResult::Skipped)
                 }
             }
-            4 => {
-                if let Some(group_idx) =
-                    Self::random_group_index(state.rand_mut(), input.groups().len())
-                {
-                    let group = &mut input.groups_mut()[group_idx];
-                    if let Some(action_idx) =
-                        Self::random_action_index(state.rand_mut(), group.len())
-                    {
-                        let action = group.actions()[action_idx].clone();
-                        group.actions_mut().insert(action_idx, action);
-                        mutated = true;
-                    }
-                }
+            2 if input.overrides().len() > 1 => {
+                let index = Self::random_override_index(state.rand_mut(), input.overrides().len())
+                    .expect("non-empty seed has an override");
+                input.overrides_mut().remove(index);
+                Ok(MutationResult::Mutated)
             }
-            5 => {
-                if let Some(group_idx) =
-                    Self::random_group_index(state.rand_mut(), input.groups().len())
-                {
-                    let group = &mut input.groups_mut()[group_idx];
-                    if group.len() > 1 {
-                        let new_len = 1 + state
-                            .rand_mut()
-                            .below(unsafe { NonZeroUsize::new_unchecked(group.len()) });
-                        group.actions_mut().truncate(new_len);
-                        mutated = true;
-                    }
-                }
-            }
-            6 => {
-                if let Some(group_idx) =
-                    Self::random_group_index(state.rand_mut(), input.groups().len())
-                {
-                    let group = &mut input.groups_mut()[group_idx];
-                    let insert_at = if group.is_empty() {
-                        0
-                    } else {
-                        group.len().saturating_sub(1)
-                    };
-                    group
-                        .actions_mut()
-                        .insert(insert_at, self.generator.random_action(state.rand_mut()));
-                    mutated = true;
-                }
-            }
-            7 => {
-                input.groups_mut().push(self.generated_group(state)?);
-                mutated = true;
-            }
-            8 => {
-                if input.groups().len() > 1 {
-                    let remove_at = state
-                        .rand_mut()
-                        .below(unsafe { NonZeroUsize::new_unchecked(input.groups().len() - 1) });
-                    input.groups_mut().remove(remove_at);
-                    mutated = true;
-                }
-            }
-            9 => {
-                if let Some(group_idx) =
-                    Self::random_group_index(state.rand_mut(), input.groups().len())
-                {
-                    let cloned = input.groups()[group_idx].clone();
-                    input.groups_mut().insert(group_idx, cloned);
-                    mutated = true;
-                }
-            }
-            10 => {
-                if input.groups().len() > 1 {
-                    let a = state
-                        .rand_mut()
-                        .below(unsafe { NonZeroUsize::new_unchecked(input.groups().len()) });
-                    let mut b = state
-                        .rand_mut()
-                        .below(unsafe { NonZeroUsize::new_unchecked(input.groups().len()) });
-                    if a == b {
-                        b = (b + 1) % input.groups().len();
-                    }
-                    input.groups_mut().swap(a, b);
-                    mutated = true;
-                }
-            }
-            11 => {
-                if let Some(group_idx) =
-                    Self::random_group_index(state.rand_mut(), input.groups().len())
-                {
-                    let group = input.groups()[group_idx].clone();
-                    let other =
-                        ActionGroup::new(vec![self.generator.random_action(state.rand_mut())]);
-                    input.groups_mut().insert(group_idx, other);
-                    input.groups_mut().remove(group_idx + 1);
-                    input.groups_mut().insert(group_idx, group);
-                    mutated = true;
-                }
-            }
-            12 => {
-                if let Some(group_idx) =
-                    Self::random_group_index(state.rand_mut(), input.groups().len())
-                {
-                    let clone = input.groups()[group_idx].clone();
-                    let target = &mut input.groups_mut()[group_idx];
-                    let insert_at = if target.is_empty() {
-                        0
-                    } else {
-                        state
-                            .rand_mut()
-                            .below(unsafe { NonZeroUsize::new_unchecked(target.len()) })
-                    };
-                    for action in clone.actions() {
-                        target.actions_mut().insert(insert_at, action.clone());
-                    }
-                    mutated = true;
-                }
-            }
-            _ => {
-                if let Some(group_idx) =
-                    Self::random_group_index(state.rand_mut(), input.groups().len())
-                {
-                    input.groups_mut()[group_idx] = self.generated_group(state)?;
-                    mutated = true;
-                }
-            }
+            _ => Ok(MutationResult::Skipped),
         }
-
-        Self::ensure_terminal_stop(input);
-
-        Ok(if mutated {
-            MutationResult::Mutated
-        } else {
-            MutationResult::Skipped
-        })
     }
 
     fn post_exec(
@@ -482,12 +190,14 @@ where
 
 #[cfg(test)]
 mod tests {
+    use libafl::mutators::Mutator;
     use libafl::state::HasRand;
-    use libafl_bolts::rands::StdRand;
+    use libafl_bolts::{nonzero, rands::StdRand};
 
     use super::*;
+    use crate::devilang_grammar::DevilangGrammar;
 
-    #[derive(Clone, Debug)]
+    #[derive(Debug)]
     struct TestState {
         rand: StdRand,
     }
@@ -504,30 +214,48 @@ mod tests {
         }
     }
 
-    impl Default for TestState {
-        fn default() -> Self {
-            Self {
-                rand: StdRand::with_seed(0),
-            }
-        }
+    fn grammar() -> DevilangGrammar {
+        DevilangGrammar::parse(
+            r#"
+op read_status {
+    mmio read_status {
+        direction = r;
+        address = 112;
+        size = 4;
+    }
+}
+machine m {
+    initial state_0
+    state state_0
+    transition state_0 -> state_0 on loop
+}
+"#,
+        )
+        .expect("grammar should parse")
     }
 
     #[test]
-    fn mutator_preserves_terminal_stop() {
-        let mut state = TestState::default();
-        let mut input = ScenarioInput::new(vec![ActionGroup::new(vec![
-            Action::Vm(crate::input::VmAction::Continue),
-            Action::Vm(crate::input::VmAction::Stop),
-        ])]);
+    fn mutation_keeps_seed_as_override_only() {
+        let generator = ScenarioGenerator::new(nonzero!(2)).with_grammar(grammar());
+        let mut mutator = ScenarioMutator::new(generator);
+        let mut state = TestState {
+            rand: StdRand::with_seed(3),
+        };
+        let mut input = ScenarioInput::new(vec![DeviceOverride::MmioRead {
+            address: 112,
+            width: 4,
+            value: 1,
+        }]);
 
-        let mut mutator = ScenarioMutator::default();
-        let _ = mutator
-            .mutate(&mut state, &mut input)
-            .expect("mutation should succeed");
-
-        assert!(matches!(
-            input.groups().last().and_then(|g| g.actions().last()),
-            Some(Action::Vm(crate::input::VmAction::Stop))
-        ));
+        for _ in 0..32 {
+            let _ = mutator
+                .mutate(&mut state, &mut input)
+                .expect("mutation should work");
+            assert!(input.is_valid());
+            assert!(input.overrides().iter().all(|record| matches!(
+                record,
+                DeviceOverride::MmioRead { .. } | DeviceOverride::QueueDma { .. }
+            )));
+        }
     }
 }

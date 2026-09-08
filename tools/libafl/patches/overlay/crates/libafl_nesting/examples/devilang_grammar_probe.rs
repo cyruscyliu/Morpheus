@@ -1,15 +1,20 @@
 //! Validate a generated Devilang grammar without starting QEMU.
 //!
 //! Usage:
-//! `cargo run -p libafl_nesting --example devilang_grammar_probe -- PATH`
+//! `cargo run -p libafl_nesting --example devilang_grammar_probe -- GRAMMAR`
+//! `cargo run -p libafl_nesting --example devilang_grammar_probe -- \
+//!     --validate-seed SEED GRAMMAR`
 
-use std::{env, path::PathBuf};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 
-use libafl::{generators::Generator, mutators::Mutator, state::HasRand};
+use libafl::{generators::Generator, inputs::Input, mutators::Mutator, state::HasRand};
 use libafl_bolts::{nonzero, rands::StdRand};
 use libafl_nesting::{
-    DevilangGrammar, ScenarioGenerator, ScenarioInput, ScenarioMutator, encode_scenario,
-    format_seed,
+    DevilangGrammar, ScenarioGenerator, ScenarioInput, ScenarioMutator, decode_scenario,
+    encode_scenario, format_seed,
 };
 
 struct ProbeState {
@@ -29,16 +34,44 @@ impl HasRand for ProbeState {
 }
 
 fn main() -> Result<(), String> {
-    let path = env::args_os()
-        .nth(1)
-        .map(PathBuf::from)
-        .ok_or_else(|| "usage: devilang_grammar_probe PATH".to_string())?;
+    let mut args = env::args_os().skip(1);
+    let first = args.next().map(PathBuf::from).ok_or_else(|| {
+        "usage: devilang_grammar_probe [--validate-seed SEED] GRAMMAR".to_string()
+    })?;
+    let (seed_path, path) = if first.as_os_str() == std::ffi::OsStr::new("--validate-seed") {
+        let seed_path = args.next().map(PathBuf::from).ok_or_else(|| {
+            "usage: devilang_grammar_probe [--validate-seed SEED] GRAMMAR".to_string()
+        })?;
+        let grammar_path = args.next().map(PathBuf::from).ok_or_else(|| {
+            "usage: devilang_grammar_probe [--validate-seed SEED] GRAMMAR".to_string()
+        })?;
+        (Some(seed_path), grammar_path)
+    } else {
+        (None, first)
+    };
+    if args.next().is_some() {
+        return Err("usage: devilang_grammar_probe [--validate-seed SEED] GRAMMAR".to_string());
+    }
+
     let grammar = DevilangGrammar::from_path(&path)?;
     println!(
-        "device override grammar loaded: mmio-sites={} queue-dma-sites={}",
+        "device override grammar loaded: mmio-sites={} mmio-write-sites={} queue-dma-sites={} dma-sites={} dma-events={}",
         grammar.mmio_read_sites().len(),
-        grammar.queue_dma_sites().len()
+        grammar.mmio_write_sites().len(),
+        grammar.queue_dma_sites().len(),
+        grammar.dma_sites().len(),
+        grammar.dma_event_count()
     );
+
+    if let Some(seed_path) = seed_path {
+        let seed = load_seed(&seed_path)?;
+        grammar.validate_seed(&seed)?;
+        println!(
+            "seed validated: path={} overrides={}",
+            seed_path.display(),
+            seed.total_overrides()
+        );
+    }
 
     let generator = ScenarioGenerator::new(nonzero!(4)).with_grammar(grammar.clone());
     let mut state = ProbeState {
@@ -66,6 +99,29 @@ fn main() -> Result<(), String> {
     );
     println!("after mutation:\n{}", format_seed(&seed));
     Ok(())
+}
+
+fn load_seed(path: &Path) -> Result<ScenarioInput, String> {
+    if path.extension().is_some_and(|ext| ext == "raw") {
+        return decode_scenario(&fs::read(path).map_err(|error| error.to_string())?)
+            .map_err(|error| format!("failed to decode raw seed {}: {error}", path.display()));
+    }
+
+    match <ScenarioInput as Input>::from_file(path) {
+        Ok(seed) => Ok(seed),
+        Err(postcard_error) => decode_scenario(&fs::read(path).map_err(|error| {
+            format!(
+                "failed to read seed {} after postcard error {postcard_error:?}: {error}",
+                path.display()
+            )
+        })?)
+        .map_err(|raw_error| {
+            format!(
+                "failed to decode seed {} as postcard ({postcard_error:?}) or raw ({raw_error})",
+                path.display()
+            )
+        }),
+    }
 }
 
 fn validate(grammar: &DevilangGrammar, seed: &ScenarioInput) -> Result<(), String> {

@@ -8,6 +8,12 @@ run_dir="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RUN_DIR:?}"
 phase="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_PHASE:?}"
 detach="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_DETACH:-false}"
 build_dir_key="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR_KEY:-default}"
+l2_smp="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_SMP:-}"
+l2_memory_mb="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_MEMORY_MB:-}"
+l2_runtime_subdir="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RUNTIME_SUBDIR:-morpheus-l2-runtime}"
+l1_smp_override="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_SMP:-}"
+measure_l2_startup="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_MEASURE_L2_STARTUP:-false}"
+stop_on_ready="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_STOP_ON_READY:-false}"
 result_file="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 state_file="${install_dir}/state.json"
 manifest_file="${run_dir}/manifest.json"
@@ -28,6 +34,9 @@ l2_marker_stream_pid=""
 l2_cvm_evidence_reported="false"
 l2_ready_reported="false"
 l2_rsi_status_reported="false"
+l2_qemu_exec_start_ns=""
+l2_buildroot_ready_ns=""
+l2_timing_file="${run_dir}/l2-startup-timing.json"
 failure_message=""
 
 if [ "${phase}" != "launch" ]; then
@@ -38,12 +47,51 @@ if [ "${detach}" = "true" ]; then
   echo "detached buildroot-based CVM exec is not implemented" >&2
   exit 1
 fi
+if [ -n "${l2_smp}" ] && ! [[ "${l2_smp}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "l2-smp must be a positive integer" >&2
+  exit 1
+fi
+if [ -n "${l1_smp_override}" ] && ! [[ "${l1_smp_override}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "l1-smp must be a positive integer" >&2
+  exit 1
+fi
+if [ -n "${l2_memory_mb}" ] && ! [[ "${l2_memory_mb}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "l2-memory-mb must be a positive integer" >&2
+  exit 1
+fi
+if [ -n "${l2_memory_mb}" ] &&
+   { [ "${l2_memory_mb}" -lt 256 ] || [ "${l2_memory_mb}" -gt 65536 ]; }; then
+  echo "l2-memory-mb must be between 256 and 65536 MB" >&2
+  exit 1
+fi
+if ! [[ "${l2_runtime_subdir}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "runtime-subdir must contain only letters, digits, dot, underscore, or dash" >&2
+  exit 1
+fi
+case "${measure_l2_startup}" in
+  true|false) ;;
+  *)
+    echo "measure-l2-startup must be true or false" >&2
+    exit 1
+    ;;
+esac
+case "${stop_on_ready}" in
+  true|false) ;;
+  *)
+    echo "stop-on-ready must be true or false" >&2
+    exit 1
+    ;;
+esac
+if [ "${stop_on_ready}" = "true" ]; then
+  measure_l2_startup="true"
+fi
 if [ ! -f "${state_file}" ]; then
   echo "missing prepared state: ${state_file}" >&2
   exit 1
 fi
 
 mkdir -p "${run_dir}"
+rm -f "${l2_timing_file}"
 
 mapfile -d '' -t runtime_fields < <(
   node - "${state_file}" <<'NODE'
@@ -68,7 +116,7 @@ NODE
 
 hoststack_share_dir="${runtime_fields[0]:-}"
 hoststack_launch_script_local="${runtime_fields[1]:-}"
-l2_runtime_share_dir="${runtime_fields[2]:-}"
+l2_runtime_share_dir="${hoststack_share_dir%/}/${l2_runtime_subdir}"
 l2_launch_mode="${runtime_fields[3]:-direct-qemu}"
 l2_rsi_evidence_marker="MORPHEUS_RSI_EVIDENCE:"
 l2_rsi_evidence_missing_marker="MORPHEUS_RSI_EVIDENCE_MISSING"
@@ -103,6 +151,50 @@ normalize_console_log() {
   if [ -n "${normalized_logfile}" ] && [ -f "${normalized_logfile}" ]; then
     perl -0pi -e 's/\r\r\n/\n/g; s/\r\n/\n/g; s/\r/\n/g;' "${normalized_logfile}"
   fi
+}
+
+host_time_ns() {
+  local value=""
+  if command -v perl >/dev/null 2>&1; then
+    value="$(perl -MTime::HiRes=clock_gettime,CLOCK_MONOTONIC \
+      -e 'printf "%.0f\n", clock_gettime(CLOCK_MONOTONIC) * 1e9' 2>/dev/null || true)"
+  fi
+  if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
+    value="$(date +%s%N 2>/dev/null || true)"
+  fi
+  if [[ "${value}" =~ ^[0-9]+$ ]]; then
+    printf '%s\n' "${value}"
+  else
+    printf '%s000000000\n' "$(date +%s)"
+  fi
+}
+
+write_l2_startup_timing() {
+  [ "${measure_l2_startup}" = "true" ] || return 0
+  node - "${l2_timing_file}" "${l2_qemu_exec_start_ns}" \
+    "${l2_buildroot_ready_ns}" "${l2_smp}" <<'NODE'
+const fs = require("fs");
+const [outputFile, startRaw, readyRaw, smpRaw] = process.argv.slice(2);
+const isInteger = (value) => /^\d+$/.test(value || "");
+const hasStart = isInteger(startRaw);
+const hasReady = isInteger(readyRaw);
+let durationMs = null;
+if (hasStart && hasReady) {
+  const durationNs = BigInt(readyRaw) - BigInt(startRaw);
+  if (durationNs >= 0n) durationMs = Number(durationNs) / 1e6;
+}
+const result = {
+  schemaVersion: 1,
+  metric: "l2-qemu-exec-to-buildroot-ready",
+  source: "nvirsh-buildroot-based-cvm-host-observer",
+  l2_smp: isInteger(smpRaw) ? Number(smpRaw) : null,
+  qemu_exec_start_ns: hasStart ? startRaw : null,
+  buildroot_ready_ns: hasReady ? readyRaw : null,
+  duration_ms: durationMs,
+  status: durationMs === null ? "incomplete" : "complete",
+};
+fs.writeFileSync(outputFile, `${JSON.stringify(result, null, 2)}\n`);
+NODE
 }
 
 follow_runtime_log() {
@@ -283,7 +375,7 @@ write_manifest() {
   local error_message="$3"
   local l1_pid="${4:-}"
   local l1_process_group_id="${5:-}"
-  node - "${state_file}" "${manifest_file}" "${run_dir}" "${status}" "${exit_code}" "${error_message}" "${l1_pid}" "${l1_process_group_id}" "${stdout_log}" "${stderr_log}" "${l1_console_log}" "${l2_console_log}" "${l2_launcher_stdout_log}" "${l2_launcher_stderr_log}" "${l2_launch_marker_log}" "${l2_runtime_share_dir}" <<'NODE'
+  node - "${state_file}" "${manifest_file}" "${run_dir}" "${status}" "${exit_code}" "${error_message}" "${l1_pid}" "${l1_process_group_id}" "${stdout_log}" "${stderr_log}" "${l1_console_log}" "${l2_console_log}" "${l2_launcher_stdout_log}" "${l2_launcher_stderr_log}" "${l2_launch_marker_log}" "${l2_runtime_share_dir}" "${l2_timing_file}" <<'NODE'
 const fs = require("fs");
 const [
   stateFile,
@@ -302,6 +394,7 @@ const [
   l2LauncherStderrLog,
   l2LaunchMarkerLog,
   l2RuntimeShareDir,
+  l2TimingFile,
 ] = process.argv.slice(2);
 const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
 const now = new Date().toISOString();
@@ -365,6 +458,12 @@ const previousL2 = previousManifest
   && typeof previousManifest.runtime.l2 === "object"
   ? previousManifest.runtime.l2
   : {};
+let l2StartupTiming = null;
+if (fs.existsSync(l2TimingFile)) {
+  try {
+    l2StartupTiming = JSON.parse(fs.readFileSync(l2TimingFile, "utf8"));
+  } catch {}
+}
 const manifest = {
   schemaVersion: 1,
   tool: "nvirsh-buildroot-based-cvm",
@@ -400,6 +499,7 @@ const manifest = {
         stderr: l2LauncherStderrLog,
       },
       launchMarker: l2LaunchMarkerLog,
+      startupTiming: l2StartupTiming,
     },
   },
   logs: {
@@ -452,7 +552,7 @@ write_result() {
   node - "${result_file}" "${run_dir}" "${manifest_file}" "${phase}" "${build_dir_key}" \
     "${l1_console_log}" "${l2_console_log}" "${l2_launcher_stdout_log}" \
     "${l2_launcher_stderr_log}" "${l2_launch_marker_log}" "${result_status}" \
-    "${exit_code}" "${message}" <<'NODE'
+    "${exit_code}" "${message}" "${l2_timing_file}" <<'NODE'
 const fs = require("fs");
 const path = require("path");
 const [
@@ -469,6 +569,7 @@ const [
   resultStatus,
   exitCodeRaw,
   message,
+  l2TimingFile,
 ] = process.argv.slice(2);
 const details = {
   run_dir: runDir,
@@ -481,6 +582,7 @@ const details = {
   l2_launcher_stdout_log: l2LauncherStdoutLog,
   l2_launcher_stderr_log: l2LauncherStderrLog,
   l2_launch_marker: l2LaunchMarkerLog,
+  l2_boot_timing: l2TimingFile,
 };
 if (resultStatus === "stopped") {
   details.stopped = true;
@@ -491,6 +593,15 @@ if (resultStatus === "stopped") {
 const payload = {
   details,
 };
+payload.artifacts = [
+  { path: "run-manifest", location: manifestFile },
+];
+if (fs.existsSync(l2TimingFile)) {
+  try {
+    payload.l2_boot_timing = JSON.parse(fs.readFileSync(l2TimingFile, "utf8"));
+    payload.artifacts.push({ path: "l2-startup-timing", location: l2TimingFile });
+  } catch {}
+}
 const exitCode = Number(exitCodeRaw);
 if (Number.isInteger(exitCode)) {
   payload.exit_code = exitCode;
@@ -511,6 +622,13 @@ observe_l2_runtime() {
   local qemu_cmd_line=""
   local helper_cmd_line=""
   local rsi_line=""
+
+  if [ "${measure_l2_startup}" = "true" ] \
+    && [ -z "${l2_qemu_exec_start_ns}" ] \
+    && [ -f "${l2_launch_marker_log}" ] \
+    && LC_ALL=C grep -a -q -- 'qemu-exec-start' "${l2_launch_marker_log}" 2>/dev/null; then
+    l2_qemu_exec_start_ns="$(host_time_ns)"
+  fi
 
   if [ "${l2_cvm_evidence_reported}" != "true" ] \
     && [ -f "${l2_launch_marker_log}" ] \
@@ -554,6 +672,9 @@ observe_l2_runtime() {
   if [ "${l2_ready_reported}" != "true" ] \
     && [ -f "${l2_console_log}" ] \
     && LC_ALL=C grep -a -q -- 'buildroot login:' "${l2_console_log}" 2>/dev/null; then
+    if [ "${measure_l2_startup}" = "true" ] && [ -z "${l2_buildroot_ready_ns}" ]; then
+      l2_buildroot_ready_ns="$(host_time_ns)"
+    fi
     append_runtime_notice "[nvirsh-buildroot-based-cvm] observed L2 buildroot login prompt; continuing until stop"
     l2_ready_reported="true"
     manifest_changed="true"
@@ -564,6 +685,21 @@ observe_l2_runtime() {
       append_runtime_notice "[nvirsh-buildroot-based-cvm] warning: could not update the running manifest"
     fi
   fi
+}
+
+finish_ready() {
+  terminate_l1_process "${l1_pid}" "${l1_process_group_id}"
+  stop_l2_console_stream
+  rm -f "${l1_pid_file}"
+  normalize_console_log "${stdout_log}"
+  normalize_console_log "${stderr_log}"
+  normalize_console_log "${l1_console_log}"
+  normalize_console_log "${l2_launcher_stdout_log}"
+  normalize_console_log "${l2_launcher_stderr_log}"
+  normalize_console_log "${l2_console_log}"
+  write_l2_startup_timing
+  write_manifest "success" "0" "" "" ""
+  write_result "success" "0" ""
 }
 
 finish_stopped() {
@@ -577,6 +713,7 @@ finish_stopped() {
   normalize_console_log "${l2_launcher_stdout_log}"
   normalize_console_log "${l2_launcher_stderr_log}"
   normalize_console_log "${l2_console_log}"
+  write_l2_startup_timing
   write_manifest "stopped" "130" "${reason}" "" ""
   write_result "stopped" "130" "${reason}"
 }
@@ -630,12 +767,28 @@ if command -v perl >/dev/null 2>&1; then
   l2_marker_stream_pid="$!"
 fi
 
-l1_launch_cmd="mount -t 9p -o trans=virtio,version=9p2000.L host /mnt && exec /mnt/launch-l2-hoststack.sh"
+l1_launch_cmd="mount -t 9p -o trans=virtio,version=9p2000.L host /mnt"
+if [ -n "${l2_smp}" ]; then
+  l1_launch_cmd="${l1_launch_cmd} && export MORPHEUS_L2_SMP=${l2_smp}"
+fi
+if [ -n "${l2_memory_mb}" ]; then
+  l1_launch_cmd="${l1_launch_cmd} && export MORPHEUS_L2_MEMORY_MB=${l2_memory_mb}"
+fi
+if [ "${l2_runtime_subdir}" != "morpheus-l2-runtime" ]; then
+  l1_launch_cmd="${l1_launch_cmd} && export MORPHEUS_L2_RUNTIME_DIR=/mnt/${l2_runtime_subdir}"
+fi
+l1_launch_cmd="${l1_launch_cmd} && exec /mnt/launch-l2-hoststack.sh"
 l1_args_file="$(mktemp "${run_dir}/l1-qemu-args.XXXXXX")"
+l1_launch_args=(
+  --state "${state_file}"
+  --run-dir "${run_dir}"
+  --boot-command "${l1_launch_cmd}"
+)
+if [ -n "${l1_smp_override}" ]; then
+  l1_launch_args+=(--l1-cpus "${l1_smp_override}")
+fi
 bash "${script_dir}/l1-launch.sh" \
-  --state "${state_file}" \
-  --run-dir "${run_dir}" \
-  --boot-command "${l1_launch_cmd}" > "${l1_args_file}"
+  "${l1_launch_args[@]}" > "${l1_args_file}"
 mapfile -d '' -t l1_qemu_cmd < "${l1_args_file}"
 rm -f "${l1_args_file}"
 
@@ -654,8 +807,17 @@ write_manifest "running" "" "" "${l1_pid}" "${l1_process_group_id}"
 launch_started_at="${SECONDS}"
 next_progress_at="${SECONDS}"
 launch_timeout_seconds="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_LAUNCH_TIMEOUT_SECONDS:-2100}"
+poll_interval_seconds="1"
+if [ "${measure_l2_startup}" = "true" ]; then
+  poll_interval_seconds="0.02"
+fi
 while :; do
   observe_l2_runtime
+
+  if [ "${stop_on_ready}" = "true" ] && [ "${l2_ready_reported}" = "true" ]; then
+    finish_ready
+    exit 0
+  fi
 
   if [ -f "${stop_request_file}" ]; then
     finish_stopped "stop requested"
@@ -684,7 +846,7 @@ while :; do
     terminate_l1_process "${l1_pid}" "${l1_process_group_id}"
     break
   fi
-  sleep 1
+  sleep "${poll_interval_seconds}"
 done
 
 if [ -f "${stop_request_file}" ]; then
@@ -708,6 +870,7 @@ fi
 if [ -z "${failure_message}" ]; then
   failure_message="L1 host stack exited before the CVM workflow was stopped"
 fi
+write_l2_startup_timing
 case "${l1_exit_status:-1}" in
   0|137|143)
     l1_exit_status=1

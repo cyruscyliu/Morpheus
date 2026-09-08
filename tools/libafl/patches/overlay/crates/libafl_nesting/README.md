@@ -107,6 +107,49 @@ Set
 (or the corresponding grammar-workflow value) to `true` when running that
 workflow interactively.
 
+## SMP startup calibration
+
+The workspace provides two small calibration workflows for selecting L1/L2
+SMP.  Their default screening matrix is `L1={1,2,4} × L2={1,2}`, with three
+repetitions per valid combination.  The nested-resource constraint
+`L1 >= L2` is applied before launching a case, so `1/2` is never run.  Values
+above the host's effective L1 capacity are recorded as unsupported rather
+than silently clamped:
+
+- the nvirsh workflow measures the direct nested-CVM launch path;
+- the LibAFL workflow measures the same boundary through replay.
+
+Both workflows run the configured SMP combinations and write a `benchmark.json`
+report. The measured interval is:
+
+```text
+L2 qemu-exec-start -> Buildroot login:
+```
+
+The configured L2 run window is only a readiness timeout. It is never used as
+the startup duration. Each case stops as soon as the Buildroot login prompt is
+observed, and the report includes the host CPU model and the effective L1 SMP
+cap.
+
+For a different host, use the 1/1 median as the calibration point. If the
+reference host's 1/1 median is `T_reference` and the new host measures
+`T_new`, use:
+
+```text
+host_time_coefficient = T_new / T_reference
+estimated_new_host_time = reference_combination_time * host_time_coefficient
+```
+
+The benchmark command accepts `--reference-baseline-ms` when the reference
+1/1 value is known.  It also accepts `--reference-report` to load the
+reference combination medians from an earlier `benchmark.json`.  In that
+case the report writes the coefficient and an estimated duration for every
+combination, so the new host need only run the small matrix.
+
+The LibAFL calibration is the relevant choice for fuzzing throughput because
+it includes the actual outer LibAFL nesting path. The direct nvirsh result is a
+useful cross-check and isolates L2 boot behavior.
+
 ## Guest Stub Artifact
 
 The crate exposes a guest stub binary target:

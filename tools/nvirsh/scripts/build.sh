@@ -1177,9 +1177,9 @@ else
 fi
 printf 'plugin-args=%s\n' "\${guest_qemu_plugin_args[*]:-none}" >> "\${launch_marker}"
 if [ "${l2_cvm}" = "true" ]; then
-  l2_append="console=hvc0 oops=panic panic_on_warn=1 panic=-1 kasan.fault=panic"
+  l2_append="console=hvc0 oops=panic panic=-1 kasan.fault=panic"
 else
-  l2_append="console=ttyAMA0 oops=panic panic_on_warn=1 panic=-1 kasan.fault=panic"
+  l2_append="console=ttyAMA0 oops=panic panic=-1 kasan.fault=panic"
 fi
 printf 'l2-cvm=%s\n' "${l2_cvm}" >> "\${launch_marker}"
 printf 'launch-mode=%s\n' "${l2_launch_mode}" >> "\${launch_marker}"

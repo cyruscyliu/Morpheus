@@ -17,6 +17,12 @@ The first cut is intentionally simple:
 - a userspace-like guest stub symbol contract
 - a simulated crash objective
 
+When grammar-guided fuzzing is enabled, an explicit `--seed-input` remains the
+pinned starting seed.  The fuzzer adds eight distinct grammar-generated inputs
+to that initial corpus before entering the mutation loop.  Set
+`MORPHEUS_LIBAFL_INITIAL_GENERATED_SEEDS` to another value from 0 through 1024
+to tune this population.  Replay inputs do not use this generation path.
+
 ## Prerequisite
 
 You need a runnable AArch64 `virt` guest image whose boot-time userspace launches

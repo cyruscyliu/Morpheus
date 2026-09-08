@@ -104,6 +104,20 @@ const nvirshBuildrootBasedCvmExecSource = fs.readFileSync(
   ),
   "utf8",
 );
+const nvirshStartupBenchmarkSource = fs.readFileSync(
+  path.join(
+    repoRoot,
+    "tools",
+    "nvirsh-buildroot-based-cvm",
+    "scripts",
+    "benchmark.sh",
+  ),
+  "utf8",
+);
+const libaflStartupBenchmarkSource = fs.readFileSync(
+  path.join(repoRoot, "tools", "libafl", "scripts", "benchmark.sh"),
+  "utf8",
+);
 const nvirshBuildrootBasedCvmL1LaunchSource = fs.readFileSync(
   path.join(
     repoRoot,
@@ -120,6 +134,10 @@ const nvirshStopSource = fs.readFileSync(
 );
 const libaflBuildSource = fs.readFileSync(
   path.join(repoRoot, "tools", "libafl", "scripts", "build.sh"),
+  "utf8",
+);
+const libaflPatchSource = fs.readFileSync(
+  path.join(repoRoot, "tools", "libafl", "scripts", "patch.sh"),
   "utf8",
 );
 const qemuSeedPatchSource = fs.readFileSync(
@@ -620,6 +638,16 @@ test("nested L2 stops the normal wait after guest boot readiness", () => {
   assert.match(stubSource, /stub: l2 boot ready; ending run window/);
   assert.match(stubSource, /l2 boot-ready window ended and was terminated/);
   assert.match(stubSource, /while \(!boot_ready && elapsed_ms < window_ms\)/);
+});
+
+test("SMP startup calibration skips combinations with L1 below L2", () => {
+  for (const source of [nvirshStartupBenchmarkSource, libaflStartupBenchmarkSource]) {
+    assert.match(
+      source,
+      /if \[ "\$\{l1_smp\}" -lt "\$\{l2_smp\}" \]; then\s+continue\s+fi/,
+    );
+    assert.match(source, /constraint: "l1_smp >= l2_smp"/);
+  }
 });
 
 test("nested fuzzing has no synthetic L2 oracle trigger", () => {
@@ -1241,6 +1269,18 @@ test("LibAFL systemmode nesting uses the COW snapshot manager", () => {
     fuzzerSource,
     /unwrap_or_else\(\|_\| "fast"\.to_owned\(\)\)/,
     "fast snapshots remain the default COW layer",
+  );
+});
+
+test("LibAFL restores the fuzzing snapshot after an executor timeout", () => {
+  assert.match(libaflPatchSource, /v3-timeout-restore/);
+  assert.match(
+    libaflPatchSource,
+    /EmulatorExitResult::Timeout => \{[\s\S]*?emulator\.snapshot_manager\.restore\(qemu, snapshot_id\)\?;[\s\S]*?ExitKind::Timeout/s,
+  );
+  assert.match(
+    libaflPatchSource,
+    /crates\/libafl_qemu\/src\/emu\/drivers\/mod\.rs/,
   );
 });
 
@@ -1872,6 +1912,14 @@ test("LibAFL rebuild invalidates stale overlay Cargo packages", () => {
   assert.doesNotMatch(
     libaflBuildSource,
     /LIBAFL_QEMU_DIR="\$\{bridge_storage_dir\}" cargo build/,
+  );
+  assert.match(
+    libaflBuildSource,
+    /qemu_driver_src="\$\{source_dir\}\/crates\/libafl_qemu\/src\/emu\/drivers\/mod\.rs"/,
+  );
+  assert.match(
+    libaflBuildSource,
+    /find "\$\{fuzzer_src_dir\}" "\$\{crate_src_dir\}" "\$\{qemu_driver_src\}"/,
   );
 });
 

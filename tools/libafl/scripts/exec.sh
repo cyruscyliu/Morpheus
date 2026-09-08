@@ -36,6 +36,8 @@ l2_mode="vm"
 l2_accel="auto"
 l2_cpu=""
 l2_memory_mb="${MORPHEUS_L2_MEMORY_MB:-}"
+l2_smp="${MORPHEUS_LIBAFL_L2_SMP:-}"
+measure_l2_startup="${MORPHEUS_LIBAFL_MEASURE_L2_STARTUP:-false}"
 disable_nqc2_plugin="false"
 capture_runtime="false"
 replay_inputs=()
@@ -92,6 +94,7 @@ while [ "$#" -gt 0 ]; do
     --l2-mode) shift; l2_mode="${1:-}" ;;
     --l2-accel) shift; l2_accel="${1:-}" ;;
     --l2-cpu) shift; l2_cpu="${1:-}" ;;
+    --l2-smp) shift; l2_smp="${1:-}" ;;
     --l2-memory-mb) shift; l2_memory_mb="${1:-}" ;;
     --replay-input) shift; replay_inputs+=("${1:-}") ;;
     --seed-input) shift; seed_inputs+=("${1:-}") ;;
@@ -114,6 +117,7 @@ while [ "$#" -gt 0 ]; do
       ;;
     --disable-nqc2-plugin) disable_nqc2_plugin="true" ;;
     --capture-runtime) capture_runtime="true" ;;
+    --measure-l2-startup) measure_l2_startup="true" ;;
     *) echo "unknown qemu_nesting harness argument: $1" >&2; exit 1 ;;
   esac
   shift
@@ -142,6 +146,15 @@ if [ -n "${mutational_max_iterations}" ] &&
   exit 1
 fi
 
+if [ -n "${l2_smp}" ] && ! [[ "${l2_smp}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "l2-smp must be a positive integer" >&2
+  exit 1
+fi
+if ! measure_l2_startup="$(normalize_boolean "${measure_l2_startup}")"; then
+  echo "--measure-l2-startup must be a boolean (true/false)" >&2
+  exit 1
+fi
+
 if ! show_console="$(normalize_boolean "${show_console}")"; then
   echo "--show-console must be a boolean (true/false)" >&2
   exit 1
@@ -151,6 +164,7 @@ manifest_file="${run_dir}/manifest.json"
 l1_runtime_dir="${run_dir}/l1-runtime"
 corpus_dir="${run_dir}/corpus"
 objective_dir="${run_dir}/objectives"
+l2_timing_file="${run_dir}/l2-startup-timing.json"
 replay_inputs_file="${run_dir}/replay-inputs.txt"
 replay_state_file="${run_dir}/replay-state.json"
 seed_inputs_file="${run_dir}/seed-inputs.txt"
@@ -197,6 +211,7 @@ rm -f "${replay_inputs_file}" "${replay_state_file}"
 rm -f "${seed_inputs_file}"
 rm -f "${devilang_states_file}"
 rm -f "${devilang_grammar_file}"
+rm -f "${l2_timing_file}"
 : > "${runner_log_file}"
 
 manifest_pid=""
@@ -411,6 +426,8 @@ fi
 
 printf '[libafl/qemu_nesting] l2 controls: mode=%s accel=%s cpu=%s window_ms=%s\n' \
   "${l2_mode}" "${l2_accel}" "${l2_cpu:-default}" "${l2_run_window_ms:-default}" >&2
+printf '[libafl/qemu_nesting] l2 smp=%s startup_measurement=%s\n' \
+  "${l2_smp:-launcher-default}" "${measure_l2_startup}" >&2
 if [ -n "${l2_memory_mb}" ]; then
   printf '[libafl/qemu_nesting] l2 memory: %s MB\n' "${l2_memory_mb}" >&2
 fi
@@ -1065,14 +1082,56 @@ if (replayMode && replayStateFile && fs.existsSync(replayStateFile)) {
 NODE
 }
 
+extract_l2_startup_timing_from_log() {
+  [ "${measure_l2_startup}" = "true" ] || return 0
+  node - "${runner_log_file}" "${l2_timing_file}" "${l2_smp}" <<'NODE'
+const fs = require("fs");
+const [logFile, outputFile, smpRaw] = process.argv.slice(2);
+const content = fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8") : "";
+const samples = [];
+const complete = /stub-l2-startup-timing start_ns=(\d+) ready_ns=(\d+) duration_ns=(\d+)/g;
+for (const match of content.matchAll(complete)) {
+  const startNs = BigInt(match[1]);
+  const readyNs = BigInt(match[2]);
+  const durationNs = BigInt(match[3]);
+  samples.push({
+    qemu_exec_start_ns: startNs.toString(),
+    buildroot_ready_ns: readyNs.toString(),
+    duration_ms: Number(durationNs) / 1e6,
+  });
+}
+const incomplete = [...content.matchAll(/stub-l2-startup-timing-incomplete start_seen=(\d+) ready_seen=(\d+)/g)]
+  .map((match) => ({
+    start_seen: match[1] === "1",
+    ready_seen: match[2] === "1",
+  }));
+const smp = /^\d+$/.test(smpRaw || "") ? Number(smpRaw) : null;
+fs.writeFileSync(outputFile, `${JSON.stringify({
+  schemaVersion: 1,
+  metric: "l2-qemu-exec-to-buildroot-ready",
+  source: "libafl-nesting-stub-monotonic-clock",
+  l2_smp: smp,
+  sample_count: samples.length,
+  samples,
+  incomplete,
+}, null, 2)}\n`);
+NODE
+}
+
 write_result() {
+  local timing_detail=""
+  local timing_artifact=""
+  if [ "${measure_l2_startup}" = "true" ]; then
+    timing_detail=",\"l2_startup_timing\":\"${l2_timing_file}\""
+    timing_artifact=",{\"path\":\"l2-startup-timing\",\"location\":\"${l2_timing_file}\"}"
+  fi
   if [ "${replay_enabled}" = "true" ]; then
       cat > "${result_file}" <<EOF
-{"details":{"pid":null,"detached":false,"run_dir":"${run_dir}","manifest":"${manifest_file}","l1_runtime_dir":"${l1_runtime_dir}","corpus_dir":"${corpus_dir}","objective_dir":"${objective_dir}","replay_state":"${replay_state_file}","replay_inputs":"${replay_inputs_file}"},"artifacts":[{"path":"l1-runtime-dir","location":"${l1_runtime_dir}"},{"path":"corpus-dir","location":"${corpus_dir}"},{"path":"objective-dir","location":"${objective_dir}"},{"path":"replay-state","location":"${replay_state_file}"},{"path":"replay-inputs","location":"${replay_inputs_file}"}]}
+{"details":{"pid":null,"detached":false,"run_dir":"${run_dir}","manifest":"${manifest_file}","l1_runtime_dir":"${l1_runtime_dir}","corpus_dir":"${corpus_dir}","objective_dir":"${objective_dir}","replay_state":"${replay_state_file}","replay_inputs":"${replay_inputs_file}"${timing_detail}},"artifacts":[{"path":"l1-runtime-dir","location":"${l1_runtime_dir}"},{"path":"corpus-dir","location":"${corpus_dir}"},{"path":"objective-dir","location":"${objective_dir}"},{"path":"replay-state","location":"${replay_state_file}"},{"path":"replay-inputs","location":"${replay_inputs_file}"}${timing_artifact}]}
 EOF
   else
       cat > "${result_file}" <<EOF
-{"details":{"pid":null,"detached":false,"run_dir":"${run_dir}","manifest":"${manifest_file}","l1_runtime_dir":"${l1_runtime_dir}","corpus_dir":"${corpus_dir}","objective_dir":"${objective_dir}"},"artifacts":[{"path":"l1-runtime-dir","location":"${l1_runtime_dir}"},{"path":"corpus-dir","location":"${corpus_dir}"},{"path":"objective-dir","location":"${objective_dir}"}]}
+{"details":{"pid":null,"detached":false,"run_dir":"${run_dir}","manifest":"${manifest_file}","l1_runtime_dir":"${l1_runtime_dir}","corpus_dir":"${corpus_dir}","objective_dir":"${objective_dir}"${timing_detail}},"artifacts":[{"path":"l1-runtime-dir","location":"${l1_runtime_dir}"},{"path":"corpus-dir","location":"${corpus_dir}"},{"path":"objective-dir","location":"${objective_dir}"}${timing_artifact}]}
 EOF
   fi
 }
@@ -1166,6 +1225,9 @@ fi
 if [ -n "${l2_cpu}" ]; then
   direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_CPU=${l2_cpu}"
 fi
+if [ -n "${l2_smp}" ]; then
+  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_SMP=${l2_smp}"
+fi
 if [ -n "${l2_memory_mb}" ]; then
   direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_MEMORY_MB=${l2_memory_mb}"
 fi
@@ -1179,6 +1241,9 @@ if [ -n "${l2_run_window_ms}" ]; then
 fi
 if [ "${capture_runtime}" = "true" ]; then
   direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_CAPTURE_RUNTIME=1"
+fi
+if [ "${measure_l2_startup}" = "true" ]; then
+  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_MEASURE_STARTUP=1"
 fi
 direct_l1_stub_launch_cmd="mkdir -p /mnt && mount -t ext4 -o ro /dev/vdb /mnt && ${direct_l1_stub_env} exec ${direct_l1_share_stub_path}"
 direct_l1_share_prefix="${direct_l1_append%% init=/root/libafl_nesting_stub *}"
@@ -1744,6 +1809,7 @@ cleanup() {
   local status="$1"
   if [ -n "${child_pid}" ]; then kill_run "${child_pid}"; fi
   extract_l1_runtime_from_log "${l1_runtime_dir}" "$(source_log_file)" "${replay_enabled}" "${replay_state_file}"
+  extract_l2_startup_timing_from_log
   cat > "${manifest_file}" <<EOF
 {"schemaVersion":1,"tool":"libafl","status":"${status}","runDir":"${run_dir}","manifest":"${manifest_file}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","l1RuntimeDir":"${l1_runtime_dir}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
 EOF
@@ -1808,4 +1874,5 @@ cat > "${manifest_file}" <<EOF
 {"schemaVersion":1,"tool":"libafl","status":"success","runDir":"${run_dir}","manifest":"${manifest_file}","pid":null,"stubElf":"${stub_elf}","nvirshState":"${nvirsh_state}","l1RuntimeDir":"${l1_runtime_dir}","corpusDir":"${corpus_dir}","objectiveDir":"${objective_dir}","replayState":"${replay_state_file}","replayInputs":"${replay_inputs_file}"}
 EOF
 extract_l1_runtime_from_log "${l1_runtime_dir}" "$(source_log_file)" "${replay_enabled}" "${replay_state_file}"
+extract_l2_startup_timing_from_log
 write_result

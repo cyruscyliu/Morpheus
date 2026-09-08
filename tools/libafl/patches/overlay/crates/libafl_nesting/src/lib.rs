@@ -11,7 +11,8 @@ pub mod mutator;
 pub mod stub;
 
 pub use devilang_grammar::{
-    DevilangGrammar, MAX_ENCODED_SCENARIO_BYTES, MmioReadSite, QueueDmaSite, format_seed,
+    DmaSite, DevilangGrammar, MAX_ENCODED_SCENARIO_BYTES, MmioReadSite, MmioWriteSite,
+    QueueDmaSite, format_seed,
 };
 pub use encoding::{
     ACTION_RECORD_SIZE, GROUP_HEADER_SIZE, ScenarioCodec, decode_scenario, encode_scenario,

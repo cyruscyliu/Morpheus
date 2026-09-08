@@ -41,6 +41,7 @@ bridge_config_version="virtfs-9p-cow-v2"
 stub_c_src="${source_dir}/crates/libafl_nesting/c_src/libafl_nesting_stub.c"
 crate_src_dir="${source_dir}/crates/libafl_nesting"
 fuzzer_src_dir="${source_dir}/fuzzers/full_system/qemu_nesting"
+qemu_driver_src="${source_dir}/crates/libafl_qemu/src/emu/drivers/mod.rs"
 fuzzer_fingerprint_file="${install_dir}/.qemu_nesting.sources.fingerprint"
 host_target_dir="${MORPHEUS_LIBAFL_HOST_TARGET_DIR:-${tmp_root}/target-host}"
 fuzzer_target_dir="${MORPHEUS_LIBAFL_FUZZER_TARGET_DIR:-${tmp_root}/target-fuzzer}"
@@ -147,7 +148,7 @@ stub_current() {
 fuzzer_fingerprint() {
   {
     printf 'qemu-bridge-config=%s\n' "${bridge_config_fingerprint}"
-    find "${fuzzer_src_dir}" "${crate_src_dir}" -type f \
+    find "${fuzzer_src_dir}" "${crate_src_dir}" "${qemu_driver_src}" -type f \
       \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'build.rs' \) -print0 \
       | sort -z \
       | xargs -0 sha256sum

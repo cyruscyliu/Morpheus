@@ -19,7 +19,7 @@ mkdir -p "$(dirname "${result_file}")"
 [ -d "${patch_dir}/fuzzers/full_system/qemu_nesting" ] || { echo "missing qemu_nesting patch tree under ${patch_dir}" >&2; exit 1; }
 
 fingerprint_files="$(find "${patch_dir}/crates/libafl_nesting" "${patch_dir}/fuzzers/full_system/qemu_nesting" -type f | sort)"
-fingerprint="$(printf 'external-qemu-build-adapter-v2\n%s\n' "${fingerprint_files}" | morpheus_hash_files_from_stdin)"
+fingerprint="$(printf 'external-qemu-build-adapter-v3-timeout-restore\n%s\n' "${fingerprint_files}" | morpheus_hash_files_from_stdin)"
 
 if morpheus_patch_state_matches "${state_file}" "${fingerprint}" "${patch_dir}"; then
   cat > "${result_file}" <<EOF
@@ -111,6 +111,25 @@ edit("crates/libafl_qemu/libafl_qemu_build/src/lib.rs", [
 edit("crates/libafl_qemu/libafl_qemu_build/src/bindings.rs", [
   ['#include "hw/qdev-core.h"', '#include "hw/core/qdev.h"'],
   ['#include "hw/qdev-properties.h"', '#include "hw/core/qdev-properties.h"'],
+]);
+
+edit("crates/libafl_qemu/src/emu/drivers/mod.rs", [
+  [
+    '            EmulatorExitResult::Timeout => {\n' +
+      '                return Ok(Some(EmulatorDriverResult::EndOfRun(ExitKind::Timeout)));\n' +
+      '            }',
+    '            EmulatorExitResult::Timeout => {\n' +
+      '                // A timeout exits QEMU before the guest can issue END.\n' +
+      '                // Restore the fuzzing boundary before the next input so\n' +
+      '                // an interrupted RMI cannot leak state into the next run.\n' +
+      '                if emulator.started {\n' +
+      '                    if let Some(snapshot_id) = emulator.driver.snapshot_id.get() {\n' +
+      '                        emulator.snapshot_manager.restore(qemu, snapshot_id)?;\n' +
+      '                    }\n' +
+      '                }\n' +
+      '                return Ok(Some(EmulatorDriverResult::EndOfRun(ExitKind::Timeout)));\n' +
+      '            }',
+  ],
 ]);
 NODE
 

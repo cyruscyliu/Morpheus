@@ -508,7 +508,7 @@ guest_l2_smp="${MORPHEUS_L2_SMP:-1}"
 guest_l2_memory_mb="${MORPHEUS_L2_MEMORY_MB:-1024}"
 guest_virtio_serial_device="virtio-serial-pci"
 guest_virtio_net_device="virtio-net-pci,netdev=net0,romfile=''"
-guest_bootargs="console=hvc0 oops=panic panic_on_warn=1 panic=-1 kasan.fault=panic"
+guest_bootargs="console=hvc0 oops=panic panic=-1 kasan.fault=panic"
 launch_marker="${runtime_dir}/launch-l2.marker"
 guest_qemu_trace_events="${runtime_dir}/morpheus-qemu-trace-events.txt"
 guest_qemu_dtb="${runtime_dir}/qemu-gen.dtb"
@@ -518,7 +518,7 @@ guest_qemu_trace_enabled="true"
 
 if [ "${guest_virtio_transport}" = "mmio" ]; then
   guest_virtio_net_device="virtio-net-device,netdev=net0"
-  guest_bootargs="console=ttyAMA0 oops=panic panic_on_warn=1 panic=-1 kasan.fault=panic"
+  guest_bootargs="console=ttyAMA0 oops=panic panic=-1 kasan.fault=panic"
 fi
 
 if [ ! -d "${runtime_dir}" ]; then

@@ -14,6 +14,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <spawn.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "lqemu.h"
@@ -83,6 +84,8 @@
 #define RUNTIME_CAPTURE_ENV "MORPHEUS_CAPTURE_RUNTIME"
 #define L2_MODE_ENV "MORPHEUS_L2_MODE"
 #define L2_RUN_WINDOW_ENV "MORPHEUS_L2_RUN_WINDOW_MS"
+#define L2_MEASURE_STARTUP_ENV "MORPHEUS_L2_MEASURE_STARTUP"
+#define L2_STARTUP_TIMING_POLL_MS 25U
 
 static uint8_t FUZZ_INPUT[INPUT_LEN];
 static const char *selected_hoststack_launch_path = NULL;
@@ -485,6 +488,40 @@ static unsigned run_window_ms(void) {
   }
 
   return 5000U;
+}
+
+static bool l2_startup_measurement_enabled(void) {
+  const char *value = getenv(L2_MEASURE_STARTUP_ENV);
+  return value && (value[0] == '1' || strcasecmp(value, "true") == 0 ||
+                   strcasecmp(value, "yes") == 0);
+}
+
+static uint64_t monotonic_time_ns(void) {
+  struct timespec now;
+  if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+    return 0;
+  }
+  return ((uint64_t)now.tv_sec * 1000000000ULL) + (uint64_t)now.tv_nsec;
+}
+
+static void log_l2_startup_timing(uint64_t qemu_exec_start_ns,
+                                  uint64_t buildroot_ready_ns) {
+  uint64_t duration_ns;
+
+  if (qemu_exec_start_ns == 0 || buildroot_ready_ns == 0 ||
+      buildroot_ready_ns < qemu_exec_start_ns) {
+    lqprintf("stub-l2-startup-timing-incomplete start_seen=%u ready_seen=%u\n",
+             (unsigned)(qemu_exec_start_ns != 0),
+             (unsigned)(buildroot_ready_ns != 0));
+    return;
+  }
+
+  duration_ns = buildroot_ready_ns - qemu_exec_start_ns;
+  lqprintf("stub-l2-startup-timing start_ns=%llu ready_ns=%llu "
+           "duration_ns=%llu\n",
+           (unsigned long long)qemu_exec_start_ns,
+           (unsigned long long)buildroot_ready_ns,
+           (unsigned long long)duration_ns);
 }
 
 static bool l2_disable_nqc2_plugin_enabled(void) {
@@ -1201,6 +1238,16 @@ static bool l2_boot_ready_logged(void) {
          file_contains_any(L2_CONSOLE_PATH, needles, needle_count);
 }
 
+static bool l2_buildroot_login_logged(void) {
+  static const char *needles[] = {"buildroot login:"};
+
+  /* Startup calibration uses the same login-prompt boundary as the nvirsh
+   * observer.  The earlier welcome banner is useful for normal readiness
+   * diagnostics, but it is not the endpoint of this measurement. */
+  return file_contains_any(QEMU_STDOUT_PATH, needles, 1) ||
+         file_contains_any(L2_CONSOLE_PATH, needles, 1);
+}
+
 static void log_l2_launcher_phase(void) {
   if (l2_qemu_exec_started()) {
     lqprintf("stub: l2 launcher phase=post-qemu\n");
@@ -1508,6 +1555,9 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
   int spawn_error;
   pid_t pid;
   char *argv[3];
+  bool measure_startup;
+  uint64_t qemu_exec_start_ns = 0;
+  uint64_t buildroot_ready_ns = 0;
   *outcome = L2_OUTCOME_HARNESS_ERROR;
   *outcome_detail = 0;
 
@@ -1639,21 +1689,44 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
 
   lqprintf("stub: launched l2 pid=%u\n", (unsigned)pid);
   lqprintf("stub: entering l2 run window pid=%u\n", (unsigned)pid);
+  measure_startup = l2_startup_measurement_enabled();
   unsigned window_ms = run_window_ms();
   unsigned evidence_wait_ms = window_ms < 5000U ? window_ms : 5000U;
   bool boot_ready = false;
   unsigned elapsed_ms = evidence_wait_ms;
   lqprintf("stub: l2 run window ms=%u\n", window_ms);
-  usleep(evidence_wait_ms * 1000U);
-  boot_ready = l2_boot_ready_logged();
-  while (!boot_ready && elapsed_ms < window_ms) {
-    unsigned sleep_ms = window_ms - elapsed_ms;
-    if (sleep_ms > L2_READY_POLL_MS) {
-      sleep_ms = L2_READY_POLL_MS;
+  if (measure_startup) {
+    append_marker("l2-startup-measurement=enabled\n");
+    elapsed_ms = 0;
+    while (!boot_ready && elapsed_ms < window_ms) {
+      if (qemu_exec_start_ns == 0 && l2_qemu_exec_started()) {
+        qemu_exec_start_ns = monotonic_time_ns();
+        append_marker("l2-qemu-exec-start-monotonic-ns=%llu\n",
+                      (unsigned long long)qemu_exec_start_ns);
+      }
+      if (qemu_exec_start_ns != 0 && l2_buildroot_login_logged()) {
+        buildroot_ready_ns = monotonic_time_ns();
+        append_marker("l2-buildroot-ready-monotonic-ns=%llu\n",
+                      (unsigned long long)buildroot_ready_ns);
+        boot_ready = true;
+        break;
+      }
+      usleep(L2_STARTUP_TIMING_POLL_MS * 1000U);
+      elapsed_ms += L2_STARTUP_TIMING_POLL_MS;
     }
-    usleep(sleep_ms * 1000U);
-    elapsed_ms += sleep_ms;
+    log_l2_startup_timing(qemu_exec_start_ns, buildroot_ready_ns);
+  } else {
+    usleep(evidence_wait_ms * 1000U);
     boot_ready = l2_boot_ready_logged();
+    while (!boot_ready && elapsed_ms < window_ms) {
+      unsigned sleep_ms = window_ms - elapsed_ms;
+      if (sleep_ms > L2_READY_POLL_MS) {
+        sleep_ms = L2_READY_POLL_MS;
+      }
+      usleep(sleep_ms * 1000U);
+      elapsed_ms += sleep_ms;
+      boot_ready = l2_boot_ready_logged();
+    }
   }
   if (boot_ready) {
     append_marker("parent-boot-ready\n");

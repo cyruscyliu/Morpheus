@@ -665,7 +665,7 @@ test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", 
   );
   assert.match(
     launchScript,
-    /guest_bootargs="console=hvc0 oops=panic panic_on_warn=1 panic=-1 kasan\.fault=panic"/,
+    /guest_bootargs="console=hvc0 oops=panic panic=-1 kasan\.fault=panic"/,
   );
   assert.match(
     launchScript,
@@ -677,8 +677,9 @@ test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", 
   );
   assert.match(
     launchScript,
-    /guest_bootargs="console=ttyAMA0 oops=panic panic_on_warn=1 panic=-1 kasan\.fault=panic"/,
+    /guest_bootargs="console=ttyAMA0 oops=panic panic=-1 kasan\.fault=panic"/,
   );
+  assert.equal(launchScript.includes("panic_on_warn=1"), false);
   assert.match(
     launchScript,
     /if \[ "\$\{guest_virtio_transport\}" = "mmio" \]; then\s+# Nested KVM cannot reliably route virtio-mmio ioeventfds through the\s+# Realm boundary\. Keep queue notifications in QEMU and use the modern\s+# transport interface expected by the MMIO-only L2 kernel\.\s+set -- "\$@" \\\s+-global "virtio-mmio\.force-legacy=off" \\\s+-global "virtio-mmio\.ioeventfd=off"\s+fi/,

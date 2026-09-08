@@ -37,6 +37,41 @@ impl MmioReadSite {
     }
 }
 
+/// One MMIO write observed in the global Devilang protocol model.
+///
+/// Writes are retained as grammar inventory and execution context.  The
+/// native seed ABI does not replace guest MMIO writes, so they are not
+/// selectable `DeviceOverride::MmioRead` records.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct MmioWriteSite {
+    name: String,
+    address: u64,
+    width: u8,
+    value: Option<u64>,
+}
+
+impl MmioWriteSite {
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    #[must_use]
+    pub fn address(&self) -> u64 {
+        self.address
+    }
+
+    #[must_use]
+    pub fn width(&self) -> u8 {
+        self.width
+    }
+
+    #[must_use]
+    pub fn value(&self) -> Option<u64> {
+        self.value
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct QueueDmaSite {
     name: String,
@@ -91,11 +126,61 @@ impl QueueDmaSite {
     }
 }
 
+/// One DMA event in the global Devilang protocol model.
+///
+/// This is an inventory record, not an executable seed action.  Devilang
+/// records both guest-to-device mappings and device-to-guest mappings, while
+/// the native queue-DMA seed ABI can only arm a device completion on a
+/// guest-notified queue.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct DmaSite {
+    name: String,
+    operation: u8,
+    direction: u8,
+    path: u8,
+    length: Option<u32>,
+    data_kind: Option<String>,
+}
+
+impl DmaSite {
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    #[must_use]
+    pub fn operation(&self) -> u8 {
+        self.operation
+    }
+
+    #[must_use]
+    pub fn direction(&self) -> u8 {
+        self.direction
+    }
+
+    #[must_use]
+    pub fn path(&self) -> u8 {
+        self.path
+    }
+
+    #[must_use]
+    pub fn length(&self) -> Option<u32> {
+        self.length
+    }
+
+    #[must_use]
+    pub fn data_kind(&self) -> Option<&str> {
+        self.data_kind.as_deref()
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DevilangGrammar {
     mmio_read_sites: Vec<MmioReadSite>,
+    mmio_write_sites: Vec<MmioWriteSite>,
     queue_dma_sites: Vec<QueueDmaSite>,
-    explicit_overrides: Vec<DeviceOverride>,
+    dma_sites: Vec<DmaSite>,
+    dma_event_count: usize,
 }
 
 impl DevilangGrammar {
@@ -114,13 +199,31 @@ impl DevilangGrammar {
     }
 
     #[must_use]
+    pub fn mmio_write_sites(&self) -> &[MmioWriteSite] {
+        &self.mmio_write_sites
+    }
+
+    #[must_use]
     pub fn queue_dma_sites(&self) -> &[QueueDmaSite] {
         &self.queue_dma_sites
     }
 
     #[must_use]
+    pub fn dma_sites(&self) -> &[DmaSite] {
+        &self.dma_sites
+    }
+
+    #[must_use]
+    pub fn dma_event_count(&self) -> usize {
+        self.dma_event_count
+    }
+
+    #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.mmio_read_sites.is_empty() && self.queue_dma_sites.is_empty()
+        self.mmio_read_sites.is_empty()
+            && self.mmio_write_sites.is_empty()
+            && self.queue_dma_sites.is_empty()
+            && self.dma_sites.is_empty()
     }
 
     /// Merge sites from another state file, removing duplicate locations.
@@ -133,12 +236,22 @@ impl DevilangGrammar {
                 site.width,
             );
         }
+        for site in other.mmio_write_sites {
+            push_unique_mmio_write_site(
+                &mut self.mmio_write_sites,
+                site.name,
+                site.address,
+                site.width,
+                site.value,
+            );
+        }
         for site in other.queue_dma_sites {
             push_unique_queue_site(&mut self.queue_dma_sites, site);
         }
-        for override_record in other.explicit_overrides {
-            push_unique_override(&mut self.explicit_overrides, override_record);
+        for site in other.dma_sites {
+            push_unique_dma_site(&mut self.dma_sites, site);
         }
+        self.dma_event_count += other.dma_event_count;
     }
 
     /// Generate a small seed containing values for grammar-approved sites.
@@ -147,10 +260,6 @@ impl DevilangGrammar {
         rand: &mut R,
         max_overrides: usize,
     ) -> Result<ScenarioInput, String> {
-        if !self.explicit_overrides.is_empty() {
-            return Ok(ScenarioInput::new(self.explicit_overrides.clone()));
-        }
-
         let total_sites = self.mmio_read_sites.len() + self.queue_dma_sites.len();
         if total_sites == 0 {
             return Err("Devilang grammar contains no device override site".to_string());
@@ -315,9 +424,8 @@ struct ParsedMmioSite {
 fn parse_sites(text: &str) -> Result<DevilangGrammar, String> {
     let mut grammar = DevilangGrammar::default();
 
-    // Explicit seed directives are authoritative. They can coexist with the
-    // normal transport declarations in the same state file, but must not be
-    // hidden by a neutral inferred queue site.
+    // Explicit seed directives define additional legal sites. Their values
+    // describe one replay input and must not become fixed generator output.
     for site in parse_explicit_mmio_sites(text)? {
         push_unique_mmio_site(
             &mut grammar.mmio_read_sites,
@@ -325,61 +433,81 @@ fn parse_sites(text: &str) -> Result<DevilangGrammar, String> {
             site.address,
             site.width,
         );
-        if let Some(value) = site.value {
-            push_unique_override(
-                &mut grammar.explicit_overrides,
-                DeviceOverride::MmioRead {
-                    address: site.address,
-                    width: site.width,
-                    value,
-                },
-            );
-        }
     }
     for site in parse_explicit_queue_sites(text)? {
-        push_unique_override(
-            &mut grammar.explicit_overrides,
-            DeviceOverride::QueueDma {
-                operation: site.operation,
-                direction: site.direction,
-                path: site.path,
-                sequence: site.sequence,
-                queue: site.queue,
-                payload_len: site.payload_len,
-                used_len: site.used_len,
-            },
-        );
         push_unique_queue_site(&mut grammar.queue_dma_sites, site);
     }
 
     for site in parse_mmio_sites(text)? {
-        if site.direction == MmioDirection::Read {
-            push_unique_mmio_site(
+        match site.direction {
+            MmioDirection::Read => push_unique_mmio_site(
                 &mut grammar.mmio_read_sites,
                 site.name,
                 site.address,
                 site.width,
-            );
-        } else if grammar.queue_dma_sites.is_empty() && site.address == 80 && site.width == 4 {
-            // A native virtio queue completion is armed by the guest's normal
-            // queue-notify write. The generated grammar does not encode the
-            // queue value in the transport operation, so queue zero is the
-            // neutral site used by the generic MMIO harness.
-            push_unique_queue_site(
-                &mut grammar.queue_dma_sites,
-                QueueDmaSite {
-                    name: site.name,
-                    operation: 4,
-                    direction: 2,
-                    path: 1,
-                    sequence: 0,
-                    queue: 0,
-                    payload_len: 64,
-                    used_len: 64,
-                },
-            );
+            ),
+            MmioDirection::Write => {
+                push_unique_mmio_write_site(
+                    &mut grammar.mmio_write_sites,
+                    site.name.clone(),
+                    site.address,
+                    site.width,
+                    site.value,
+                );
+                if grammar.queue_dma_sites.is_empty() && site.address == 80 && site.width == 4 {
+                    // A native virtio queue completion is armed by the
+                    // guest's normal queue-notify write. The generated
+                    // grammar does not encode the queue value in the
+                    // transport operation, so queue zero is the neutral site
+                    // used by the generic MMIO harness.
+                    push_unique_queue_site(
+                        &mut grammar.queue_dma_sites,
+                        QueueDmaSite {
+                            name: site.name,
+                            operation: 4,
+                            direction: 2,
+                            path: 1,
+                            sequence: 0,
+                            queue: 0,
+                            payload_len: 64,
+                            used_len: 64,
+                        },
+                    );
+                }
+            }
         }
     }
+
+    for site in parse_trace_mmio_sites(text)? {
+        match site.direction {
+            MmioDirection::Read => push_unique_mmio_site(
+                &mut grammar.mmio_read_sites,
+                site.name,
+                site.address,
+                site.width,
+            ),
+            MmioDirection::Write => push_unique_mmio_write_site(
+                &mut grammar.mmio_write_sites,
+                site.name,
+                site.address,
+                site.width,
+                site.value,
+            ),
+        }
+    }
+
+    let dma_sites = parse_dma_sites(text)?;
+    grammar.dma_event_count = dma_sites.len();
+    for site in dma_sites {
+        push_unique_dma_site(&mut grammar.dma_sites, site);
+    }
+
+    // The generated Linux state can contain the generic virtio feature
+    // protocol without materializing the selector-dependent read as an
+    // `mmio` declaration.  The native QEMU seed ABI addresses the selected
+    // feature words as 0x10 and 0x14, so include both transport results in the
+    // global catalog when a virtio-MMIO state is present.
+    infer_virtio_feature_sites(&mut grammar, text);
 
     Ok(grammar)
 }
@@ -391,15 +519,16 @@ fn parse_mmio_sites(text: &str) -> Result<Vec<ParsedMmioSite>, String> {
             let mut direction = None;
             let mut address = None;
             let mut width = None;
+            let mut value = None;
 
             for raw_line in mmio_body.lines() {
                 let line = raw_line.trim();
-                let Some((key, value)) = parse_assignment(line) else {
+                let Some((key, assignment_value)) = parse_assignment(line) else {
                     continue;
                 };
                 match key {
                     "direction" => {
-                        direction = match value {
+                        direction = match assignment_value {
                             "r" => Some(MmioDirection::Read),
                             "w" => Some(MmioDirection::Write),
                             other => {
@@ -410,17 +539,20 @@ fn parse_mmio_sites(text: &str) -> Result<Vec<ParsedMmioSite>, String> {
                         };
                     }
                     "address" => {
-                        address = Some(parse_expression(value).ok_or_else(|| {
-                            format!("invalid MMIO address {value:?} in {mmio_name}")
+                        address = Some(parse_expression(assignment_value).ok_or_else(|| {
+                            format!("invalid MMIO address {assignment_value:?} in {mmio_name}")
                         })?);
                     }
                     "size" => {
-                        let parsed = parse_expression(value).ok_or_else(|| {
-                            format!("invalid MMIO width {value:?} in {mmio_name}")
+                        let parsed = parse_expression(assignment_value).ok_or_else(|| {
+                            format!("invalid MMIO width {assignment_value:?} in {mmio_name}")
                         })?;
                         width = Some(u8::try_from(parsed).map_err(|_| {
                             format!("MMIO width out of range in {mmio_name}: {parsed}")
                         })?);
+                    }
+                    "data" => {
+                        value = parse_expression(assignment_value);
                     }
                     _ => {}
                 }
@@ -444,11 +576,103 @@ fn parse_mmio_sites(text: &str) -> Result<Vec<ParsedMmioSite>, String> {
                 direction,
                 address,
                 width,
-                value: None,
+                value,
             });
         }
     }
     Ok(result)
+}
+
+fn parse_trace_mmio_sites(text: &str) -> Result<Vec<ParsedMmioSite>, String> {
+    let mut result = Vec::new();
+    for (name, direction, width) in [
+        ("read8", MmioDirection::Read, 1),
+        ("read16", MmioDirection::Read, 2),
+        ("read32", MmioDirection::Read, 4),
+        ("read64", MmioDirection::Read, 8),
+        ("write8", MmioDirection::Write, 1),
+        ("write16", MmioDirection::Write, 2),
+        ("write32", MmioDirection::Write, 4),
+        ("write64", MmioDirection::Write, 8),
+    ] {
+        for (position, args) in collect_calls(text, name) {
+            let required_args = match direction {
+                MmioDirection::Read => 1,
+                MmioDirection::Write => 2,
+            };
+            if args.len() < required_args {
+                return Err(format!(
+                    "{name} at byte {position} needs {} argument{}",
+                    required_args,
+                    if required_args == 1 { "" } else { "s" }
+                ));
+            }
+
+            let address_expression = args[args.len() - 1];
+            for address in parse_expression_candidates(address_expression) {
+                result.push(ParsedMmioSite {
+                    name: format!("{name}@0x{address:x}"),
+                    direction,
+                    address,
+                    width,
+                    value: if direction == MmioDirection::Write {
+                        parse_expression(args[0])
+                    } else {
+                        None
+                    },
+                });
+            }
+        }
+    }
+    Ok(result)
+}
+
+fn parse_dma_sites(text: &str) -> Result<Vec<DmaSite>, String> {
+    let mut result = Vec::new();
+    for (position, args) in collect_calls(text, "dma_event") {
+        let fields = named_arguments(&args);
+        let operation = parse_required_named_u8(&fields, "op", position)?;
+        let direction = parse_required_named_u8(&fields, "dir", position)?;
+        let path = parse_required_named_u8(&fields, "path", position)?;
+        let length = fields
+            .iter()
+            .find(|(key, _)| *key == "len")
+            .and_then(|(_, value)| parse_expression(value))
+            .and_then(|value| u32::try_from(value).ok());
+        let data_kind = fields
+            .iter()
+            .find(|(key, _)| *key == "data_kind")
+            .map(|(_, value)| (*value).to_string());
+
+        result.push(DmaSite {
+            name: format!("dma_event@0x{position:x}"),
+            operation,
+            direction,
+            path,
+            length,
+            data_kind,
+        });
+    }
+    Ok(result)
+}
+
+fn infer_virtio_feature_sites(grammar: &mut DevilangGrammar, text: &str) {
+    if !text.contains("virtio_mmio") && !text.contains("VIRTIO_MMIO_") {
+        return;
+    }
+
+    push_unique_mmio_site(
+        &mut grammar.mmio_read_sites,
+        "virtio_mmio_device_features_low".to_string(),
+        0x10,
+        4,
+    );
+    push_unique_mmio_site(
+        &mut grammar.mmio_read_sites,
+        "virtio_mmio_device_features_high".to_string(),
+        0x14,
+        4,
+    );
 }
 
 fn parse_explicit_mmio_sites(text: &str) -> Result<Vec<ParsedMmioSite>, String> {
@@ -530,6 +754,21 @@ fn parse_named_u8(fields: &[(&str, &str)], name: &str, default: u8) -> Result<u8
         .and_then(|value| u8::try_from(value).map_err(|_| format!("{name} is out of range")))
 }
 
+fn parse_required_named_u8(
+    fields: &[(&str, &str)],
+    name: &str,
+    position: usize,
+) -> Result<u8, String> {
+    let value = fields
+        .iter()
+        .find(|(key, _)| *key == name)
+        .map(|(_, value)| *value)
+        .ok_or_else(|| format!("dma_event at byte {position} needs {name}"))?;
+    parse_expression(value)
+        .and_then(|value| u8::try_from(value).ok())
+        .ok_or_else(|| format!("invalid dma_event {name} value {value:?} at byte {position}"))
+}
+
 fn parse_named_u16(fields: &[(&str, &str)], name: &str, default: u16) -> Result<u16, String> {
     parse_named(fields, name, u64::from(default))
         .and_then(|value| u16::try_from(value).map_err(|_| format!("{name} is out of range")))
@@ -574,46 +813,35 @@ fn push_unique_queue_site(sites: &mut Vec<QueueDmaSite>, site: QueueDmaSite) {
     }
 }
 
-fn push_unique_override(overrides: &mut Vec<DeviceOverride>, override_record: DeviceOverride) {
-    let duplicate = overrides
+fn push_unique_mmio_write_site(
+    sites: &mut Vec<MmioWriteSite>,
+    name: String,
+    address: u64,
+    width: u8,
+    value: Option<u64>,
+) {
+    if !sites
         .iter()
-        .any(|current| match (current, &override_record) {
-            (
-                DeviceOverride::MmioRead {
-                    address: current_address,
-                    width: current_width,
-                    ..
-                },
-                DeviceOverride::MmioRead { address, width, .. },
-            ) => current_address == address && current_width == width,
-            (
-                DeviceOverride::QueueDma {
-                    operation: current_operation,
-                    direction: current_direction,
-                    path: current_path,
-                    sequence: current_sequence,
-                    queue: current_queue,
-                    ..
-                },
-                DeviceOverride::QueueDma {
-                    operation,
-                    direction,
-                    path,
-                    sequence,
-                    queue,
-                    ..
-                },
-            ) => {
-                current_operation == operation
-                    && current_direction == direction
-                    && current_path == path
-                    && current_sequence == sequence
-                    && current_queue == queue
-            }
-            _ => false,
+        .any(|site| site.address == address && site.width == width)
+    {
+        sites.push(MmioWriteSite {
+            name,
+            address,
+            width,
+            value,
         });
-    if !duplicate {
-        overrides.push(override_record);
+    }
+}
+
+fn push_unique_dma_site(sites: &mut Vec<DmaSite>, site: DmaSite) {
+    if !sites.iter().any(|current| {
+        current.operation == site.operation
+            && current.direction == site.direction
+            && current.path == site.path
+            && current.length == site.length
+            && current.data_kind == site.data_kind
+    }) {
+        sites.push(site);
     }
 }
 
@@ -646,6 +874,12 @@ fn named_blocks<'a>(text: &'a str, keyword: &str) -> Result<Vec<(String, &'a str
         };
         let open = skip_whitespace(text, name_end);
         if text.as_bytes().get(open) != Some(&b'{') {
+            if keyword == "op" && matches!(text.as_bytes().get(open), Some(&b'=') | Some(&b'(')) {
+                // A generated trace can contain an argument such as
+                // `dma_event(op=map, ...)`. It is not a block declaration.
+                index = name_end;
+                continue;
+            }
             return Err(format!("{keyword} {name} has no body"));
         }
         let close = matching_brace(text, open)
@@ -657,21 +891,14 @@ fn named_blocks<'a>(text: &'a str, keyword: &str) -> Result<Vec<(String, &'a str
 }
 
 fn collect_calls<'a>(text: &'a str, name: &str) -> Vec<(usize, Vec<&'a str>)> {
-    let needle = format!("{name}(");
     let mut result = Vec::new();
     let mut search_from = 0;
-    while let Some(relative) = text[search_from..].find(&needle) {
-        let start = search_from + relative;
-        if start > 0
-            && text[..start]
-                .chars()
-                .next_back()
-                .is_some_and(|character| character == '_' || character.is_ascii_alphanumeric())
-        {
-            search_from = start + needle.len();
+    while let Some(start) = find_word(text, name, search_from) {
+        let open = skip_whitespace(text, start + name.len());
+        if text.as_bytes().get(open) != Some(&b'(') {
+            search_from = start + name.len();
             continue;
         }
-        let open = start + needle.len() - 1;
         let Some(close) = matching_paren(text, open) else {
             break;
         };
@@ -688,24 +915,104 @@ fn parse_assignment(line: &str) -> Option<(&str, &str)> {
 }
 
 fn parse_expression(expression: &str) -> Option<u64> {
-    let expression = expression.trim().trim_end_matches(';');
-    if let Some(value) = parse_integer(expression) {
-        return Some(value);
+    parse_expression_candidates(expression).into_iter().next()
+}
+
+fn parse_expression_candidates(expression: &str) -> Vec<u64> {
+    let expression = expression.trim().trim_end_matches(';').trim();
+    if let Some(value) = parse_integer(expression).or_else(|| known_constant(expression)) {
+        return vec![value];
     }
-    let mut total = 0u64;
-    let mut found = false;
+
+    let mut candidates = vec![0u64];
+    let mut term_start = 0usize;
+    let mut depth = 0usize;
+    let mut subtract = false;
+    for (index, character) in expression.char_indices() {
+        match character {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            '+' | '-' if depth == 0 => {
+                let Some(values) = parse_term_candidates(&expression[term_start..index]) else {
+                    return Vec::new();
+                };
+                candidates = combine_candidates(&candidates, &values, subtract);
+                term_start = index + character.len_utf8();
+                subtract = character == '-';
+            }
+            _ => {}
+        }
+    }
+    let Some(values) = parse_term_candidates(&expression[term_start..]) else {
+        return Vec::new();
+    };
+    candidates = combine_candidates(&candidates, &values, subtract);
+    candidates.sort_unstable();
+    candidates.dedup();
+    candidates
+}
+
+fn parse_term_candidates(term: &str) -> Option<Vec<u64>> {
+    let term = term.trim();
+    if term.is_empty() {
+        return None;
+    }
+    if let Some(value) = parse_integer(term).or_else(|| known_constant(term)) {
+        return Some(vec![value]);
+    }
+    if matches!(term, "mmio_base" | "vm_dev.base" | "vdev.base") {
+        return Some(vec![0]);
+    }
+
+    for function_name in ["select", "phi"] {
+        let Some(start) = term.find(function_name) else {
+            continue;
+        };
+        let open = skip_whitespace(term, start + function_name.len());
+        if term.as_bytes().get(open) != Some(&b'(') {
+            continue;
+        }
+        let close = matching_paren(term, open)?;
+        let args = split_args(&term[open + 1..close]);
+        if args.len() < 2 {
+            return None;
+        }
+        let mut values = Vec::new();
+        for argument in &args[1..] {
+            values.extend(parse_expression_candidates(argument));
+        }
+        if values.is_empty() {
+            return None;
+        }
+        values.sort_unstable();
+        values.dedup();
+        return Some(values);
+    }
+
+    let mut values = Vec::new();
     for token in
-        expression.split(|character: char| !character.is_ascii_alphanumeric() && character != '_')
+        term.split(|character: char| !character.is_ascii_alphanumeric() && character != '_')
     {
         if token.is_empty() {
             continue;
         }
-        if let Some(value) = parse_integer(token).or_else(|| known_constant(token)) {
-            total = total.wrapping_add(value);
-            found = true;
+        values.push(parse_integer(token).or_else(|| known_constant(token))?);
+    }
+    (!values.is_empty()).then_some(values)
+}
+
+fn combine_candidates(left: &[u64], right: &[u64], subtract: bool) -> Vec<u64> {
+    let mut result = Vec::with_capacity(left.len() * right.len());
+    for left in left {
+        for right in right {
+            result.push(if subtract {
+                left.wrapping_sub(*right)
+            } else {
+                left.wrapping_add(*right)
+            });
         }
     }
-    found.then_some(total)
+    result
 }
 
 fn parse_integer(value: &str) -> Option<u64> {
@@ -725,10 +1032,53 @@ fn parse_integer(value: &str) -> Option<u64> {
 
 fn known_constant(value: &str) -> Option<u64> {
     match value {
+        "PAGE_SIZE" => Some(0x1000),
+        "VIRTIO_MMIO_MAGIC_VALUE" => Some(0),
+        "VIRTIO_MMIO_VERSION" => Some(4),
+        "VIRTIO_MMIO_DEVICE_ID" => Some(8),
+        "VIRTIO_MMIO_VENDOR_ID" => Some(12),
         "VIRTIO_MMIO_DEVICE_FEATURES" => Some(16),
+        "VIRTIO_MMIO_DEVICE_FEATURES_SEL" => Some(20),
+        "VIRTIO_MMIO_DRIVER_FEATURES" => Some(32),
+        "VIRTIO_MMIO_DRIVER_FEATURES_SEL" => Some(36),
+        "VIRTIO_MMIO_GUEST_PAGE_SIZE" => Some(40),
+        "VIRTIO_MMIO_QUEUE_SEL" => Some(48),
+        "VIRTIO_MMIO_QUEUE_NUM_MAX" => Some(52),
+        "VIRTIO_MMIO_QUEUE_NUM" => Some(56),
+        "VIRTIO_MMIO_QUEUE_ALIGN" => Some(60),
+        "VIRTIO_MMIO_QUEUE_PFN" => Some(64),
+        "VIRTIO_MMIO_QUEUE_READY" => Some(68),
+        "VIRTIO_MMIO_INTERRUPT_STATUS" => Some(96),
         "VIRTIO_MMIO_QUEUE_NOTIFY" => Some(80),
+        "VIRTIO_MMIO_INTERRUPT_ACK" => Some(100),
+        "VIRTIO_MMIO_STATUS" => Some(112),
+        "VIRTIO_MMIO_QUEUE_DESC_LOW" => Some(128),
+        "VIRTIO_MMIO_QUEUE_DESC_HIGH" => Some(132),
+        "VIRTIO_MMIO_QUEUE_AVAIL_LOW" => Some(144),
+        "VIRTIO_MMIO_QUEUE_AVAIL_HIGH" => Some(148),
+        "VIRTIO_MMIO_QUEUE_USED_LOW" => Some(160),
+        "VIRTIO_MMIO_QUEUE_USED_HIGH" => Some(164),
+        "VIRTIO_MMIO_SHM_SEL" => Some(172),
+        "VIRTIO_MMIO_SHM_LEN_LOW" => Some(176),
+        "VIRTIO_MMIO_SHM_LEN_HIGH" => Some(180),
+        "VIRTIO_MMIO_SHM_BASE_LOW" => Some(184),
+        "VIRTIO_MMIO_SHM_BASE_HIGH" => Some(188),
+        "VIRTIO_MMIO_CONFIG_GENERATION" => Some(252),
         "VIRTIO_MMIO_CONFIG" => Some(256),
+        "alloc" | "HP_DMA_EVENT_OP_ALLOC" => Some(1),
+        "alloc_fail" | "HP_DMA_EVENT_OP_ALLOC_FAIL" => Some(2),
+        "free" | "HP_DMA_EVENT_OP_FREE" => Some(3),
         "map" | "HP_DMA_EVENT_OP_MAP" => Some(4),
+        "map_fail" | "HP_DMA_EVENT_OP_MAP_FAIL" => Some(5),
+        "unmap" | "HP_DMA_EVENT_OP_UNMAP" => Some(6),
+        "sync_for_cpu" | "HP_DMA_EVENT_OP_SYNC_FOR_CPU" => Some(7),
+        "sync_for_device" | "HP_DMA_EVENT_OP_SYNC_FOR_DEVICE" => Some(8),
+        "vq_poll_hit" | "HP_DMA_EVENT_OP_VQ_POLL_HIT" => Some(9),
+        "vq_poll_miss" | "HP_DMA_EVENT_OP_VQ_POLL_MISS" => Some(10),
+        "vq_get_buf" | "HP_DMA_EVENT_OP_VQ_GET_BUF" => Some(11),
+        "vq_get_buf_empty" | "HP_DMA_EVENT_OP_VQ_GET_BUF_EMPTY" => Some(12),
+        "none" | "DMA_NONE" | "HP_DMA_EVENT_DIR_NONE" => Some(0),
+        "to_device" | "DMA_TO_DEVICE" | "HP_DMA_EVENT_DIR_TO_DEVICE" => Some(1),
         "from_device" | "DMA_FROM_DEVICE" | "HP_DMA_EVENT_DIR_FROM_DEVICE" => Some(2),
         "bidirectional" | "DMA_BIDIRECTIONAL" | "HP_DMA_EVENT_DIR_BIDIRECTIONAL" => Some(3),
         "phys" | "HP_DMA_EVENT_PATH_PHYS" => Some(1),
@@ -1000,9 +1350,15 @@ op queue_notify_write {
     fn grammar_exposes_device_sites_without_trace_metadata() {
         let grammar = DevilangGrammar::parse(GRAMMAR).expect("grammar should parse");
 
-        assert_eq!(grammar.mmio_read_sites().len(), 1);
-        assert_eq!(grammar.mmio_read_sites()[0].address(), 20);
+        assert_eq!(grammar.mmio_read_sites().len(), 2);
+        assert!(
+            grammar
+                .mmio_read_sites()
+                .iter()
+                .any(|site| site.address() == 0x14 && site.width() == 4)
+        );
         assert_eq!(grammar.queue_dma_sites().len(), 1);
+        assert_eq!(grammar.mmio_write_sites().len(), 1);
     }
 
     #[test]
@@ -1047,23 +1403,79 @@ machine seed {
         let seed = grammar
             .generate_seed(&mut rand, 1)
             .expect("explicit seed should generate");
-        assert_eq!(seed.total_overrides(), 2);
-        assert!(matches!(
-            seed.overrides()[0],
+        assert_eq!(seed.total_overrides(), 1);
+        grammar
+            .validate_seed(&seed)
+            .expect("generated seed should be grammar-valid");
+        assert!(!seed.overrides().iter().any(|record| matches!(
+            record,
             DeviceOverride::MmioRead {
                 address: 273,
                 width: 1,
                 value: 255
-            }
-        ));
-        assert!(matches!(
-            seed.overrides()[1],
-            DeviceOverride::QueueDma {
+            } | DeviceOverride::QueueDma {
                 payload_len: 70,
                 used_len: 4156,
                 ..
             }
-        ));
+        )));
+    }
+
+    #[test]
+    fn trace_mmio_and_dma_events_are_inventoried() {
+        let grammar = DevilangGrammar::parse(
+            r#"
+machine synthetic {
+    initial state_0
+    state state_0
+    trace trace_0 {
+        sequence {
+            value = read32(mmio_base + 0x14);
+            write16(0x55, mmio_base + 0x20);
+            dma_event(op=unmap, dir=from_device, path=dma_api,
+                      addr=buffer, len=0x600, data_kind=ethernet_frame);
+            dma_event(op=map, dir=to_device, path=phys,
+                      addr=buffer, len=len, data_kind=virtio_net_hdr);
+            dma_event(op=map, dir=to_device, path=phys,
+                      addr=another_buffer, len=len, data_kind=virtio_net_hdr);
+        }
+    }
+}
+"#,
+        )
+        .expect("synthetic grammar should parse");
+
+        assert!(
+            grammar
+                .mmio_read_sites()
+                .iter()
+                .any(|site| site.address() == 0x14 && site.width() == 4)
+        );
+        assert!(
+            grammar
+                .mmio_write_sites()
+                .iter()
+                .any(|site| site.address() == 0x20 && site.width() == 2)
+        );
+        assert_eq!(grammar.dma_sites().len(), 2);
+        assert_eq!(grammar.dma_event_count(), 3);
+        assert!(grammar.dma_sites().iter().any(|site| site.operation() == 6
+            && site.direction() == 2
+            && site.path() == 0
+            && site.length() == Some(0x600)));
+        assert!(grammar.dma_sites().iter().any(|site| site.operation() == 4
+            && site.direction() == 1
+            && site.path() == 1
+            && site.length().is_none()));
+    }
+
+    #[test]
+    fn dynamic_mmio_addresses_are_not_reduced_to_partial_constants() {
+        assert_eq!(
+            parse_expression("mmio_base + select(version, 64, 68)"),
+            Some(64)
+        );
+        assert!(parse_expression_candidates("base + offset + 4").is_empty());
     }
 
     #[test]

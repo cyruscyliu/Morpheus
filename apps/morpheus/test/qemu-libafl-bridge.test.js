@@ -20,6 +20,13 @@ const buildScript = path.join(
   "scripts",
   "build.sh",
 );
+const edgeMapPatch = path.join(
+  repoRoot,
+  "tools",
+  "qemu-libafl-bridge",
+  "patches",
+  "0003-share-edge-map-with-libafl-fuzzer.patch",
+);
 const buildSource = fs.readFileSync(buildScript, "utf8");
 
 function writeExecutable(file, contents) {
@@ -195,6 +202,53 @@ test("qemu LibAFL bridge applies configured local patches after provider changes
   const payload = JSON.parse(fs.readFileSync(path.join(output, "result.json"), "utf8"));
   assert.equal(payload.details.local_patch_dir, patchDir);
   assert.match(payload.details.local_patch_fingerprint, /^[0-9a-f]{64}$/);
+});
+
+test("qemu LibAFL bridge patch keeps the edge map executable-owned", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-qemu-bridge-"));
+  const source = path.join(tmpDir, "qemu");
+  const jitSource = path.join(source, "libafl", "jit.c");
+  fs.mkdirSync(path.dirname(jitSource), { recursive: true });
+  fs.writeFileSync(
+    jitSource,
+    [
+      "/* synthetic bridge fixture",
+      " *",
+      "*/",
+      "",
+      "// from libafl_targets coverage.rs",
+      "// correct size doesn't matter here",
+      "uint8_t __afl_area_ptr_local[65536] __attribute__((weak));",
+      "size_t __afl_map_size __attribute__((weak));",
+      "",
+      "size_t libafl_jit_trace_edge_hitcount(uint64_t data, uint64_t id)",
+      "{",
+      "    return data + id;",
+      "}",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  git(source, "init", "--initial-branch=main");
+  git(source, "add", ".");
+  git(source, "commit", "-m", "synthetic bridge fixture");
+
+  const check = spawnSync("git", ["apply", "--check", edgeMapPatch], {
+    cwd: source,
+    encoding: "utf8",
+  });
+  assert.equal(check.status, 0, check.stderr || check.stdout);
+  const applied = spawnSync("git", ["apply", edgeMapPatch], {
+    cwd: source,
+    encoding: "utf8",
+  });
+  assert.equal(applied.status, 0, applied.stderr || applied.stdout);
+
+  const patched = fs.readFileSync(jitSource, "utf8");
+  assert.match(patched, /extern uint8_t __afl_area_ptr_local\[\]/);
+  assert.match(patched, /extern size_t __afl_map_size/);
+  assert.doesNotMatch(patched, /^uint8_t __afl_area_ptr_local\[65536\]/m);
+  assert.doesNotMatch(patched, /^size_t __afl_map_size __attribute__/m);
 });
 
 test("qemu LibAFL bridge build signature includes source provenance", () => {

@@ -10,11 +10,13 @@ omit_qemu="false"
 with_network="true"
 kernel_append=()
 extra_qemu_args=()
+l1_cpus_override=""
 
 usage() {
   cat >&2 <<'EOF'
 usage: l1-launch.sh --state <state.json> --run-dir <dir> \
   --boot-command <command> [--omit-qemu] [--without-network] \
+  [--l1-cpus <count>] \
   [--kernel-append <arg>]... [--qemu-arg <arg>]...
 EOF
 }
@@ -48,6 +50,10 @@ while [ "$#" -gt 0 ]; do
     --without-network)
       with_network="false"
       shift
+      ;;
+    --l1-cpus)
+      l1_cpus_override="${2:?missing value for --l1-cpus}"
+      shift 2
       ;;
     --help)
       usage
@@ -114,6 +120,13 @@ if [ -z "${l1_cpus}" ]; then
 fi
 if [ -z "${l1_memory}" ]; then
   l1_memory="$(morpheus_default_cvm_l1_qemu_memory_mb)"
+fi
+if [ -n "${l1_cpus_override}" ]; then
+  if ! [[ "${l1_cpus_override}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "--l1-cpus must be a positive integer" >&2
+    exit 1
+  fi
+  l1_cpus="$(morpheus_resolve_l1_qemu_cpus "${l1_cpus_override}")"
 fi
 l1_accel="${state_fields[8]:-}"
 l1_enable_kvm="${state_fields[9]:-false}"

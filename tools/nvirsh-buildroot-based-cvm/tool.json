@@ -1,7 +1,7 @@
 {
   "name": "nvirsh-buildroot-based-cvm",
   "runtime": null,
-  "cli-contract": "build,exec,inspect,stop",
+  "cli-contract": "build,exec,benchmark,inspect,stop",
   "config": {
     "fields": {
       "qemu": {
@@ -109,6 +109,54 @@
           "l1Cpus"
         ]
       },
+      "l1-smp": {
+        "aliases": [
+          "l1-smp",
+          "l1Smp"
+        ]
+      },
+      "l2-smp": {
+        "aliases": [
+          "l2-smp",
+          "l2Smp"
+        ]
+      },
+      "l2-memory-mb": {
+        "aliases": [
+          "l2-memory-mb",
+          "l2MemoryMb"
+        ]
+      },
+      "runtime-subdir": {
+        "aliases": [
+          "runtime-subdir",
+          "runtimeSubdir"
+        ]
+      },
+      "repetitions": {
+        "aliases": [
+          "repetitions"
+        ]
+      },
+      "startup-timeout-seconds": {
+        "aliases": [
+          "startup-timeout-seconds",
+          "startupTimeoutSeconds"
+        ]
+      },
+      "reference-baseline-ms": {
+        "aliases": [
+          "reference-baseline-ms",
+          "referenceBaselineMs"
+        ]
+      },
+      "reference-report": {
+        "aliases": [
+          "reference-report",
+          "referenceReport"
+        ],
+        "path": true
+      },
       "reuse-build-dir": {
         "aliases": [
           "reuse-build-dir",
@@ -139,6 +187,20 @@
           "detach"
         ],
         "boolean": true
+      },
+      "measure-l2-startup": {
+        "aliases": [
+          "measure-l2-startup",
+          "measureL2Startup"
+        ],
+        "boolean": true
+      },
+      "stop-on-ready": {
+        "aliases": [
+          "stop-on-ready",
+          "stopOnReady"
+        ],
+        "boolean": true
       }
     }
   },
@@ -163,6 +225,7 @@
       "local"
     ],
     "local": {
+      "sourceTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/source",
       "buildDirTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/build",
       "installDirTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/install",
       "execDirTemplate": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}",
@@ -175,6 +238,12 @@
         },
         "run-manifest": {
           "pathTemplate": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}/manifest.json"
+        },
+        "benchmark-report": {
+          "pathTemplate": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}/benchmark.json"
+        },
+        "l2-startup-timing": {
+          "pathTemplate": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}/l2-startup-timing.json"
         }
       },
       "commands": {
@@ -243,7 +312,13 @@
             "run-dir",
             "phase",
             "detach",
-            "build-dir-key"
+            "build-dir-key",
+            "l1-smp",
+            "l2-smp",
+            "l2-memory-mb",
+            "runtime-subdir",
+            "measure-l2-startup",
+            "stop-on-ready"
           ],
           "repeatableFlags": [],
           "pathFlags": {
@@ -261,6 +336,43 @@
             "artifact": {
               "path": "run-manifest",
               "locationTemplate": "{run-dir}/manifest.json"
+            }
+          }
+        },
+        "benchmark": {
+          "requiredFlags": [
+            "install-dir",
+            "run-dir"
+          ],
+          "scalarFlags": [
+            "install-dir",
+            "run-dir",
+            "build-dir-key",
+            "l2-memory-mb",
+            "repetitions",
+            "startup-timeout-seconds",
+            "reference-baseline-ms",
+            "reference-report"
+          ],
+          "repeatableFlags": [
+            "l1-smp",
+            "l2-smp"
+          ],
+          "pathFlags": {
+            "install-dir": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/install",
+            "run-dir": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}"
+          },
+          "script": {
+            "path": "scripts/benchmark.sh",
+            "shell": "bash",
+            "cwdTemplate": "{run-dir}"
+          },
+          "result": {
+            "successSummary": "measured nvirsh L2 startup combinations",
+            "errorSummary": "nvirsh L2 startup benchmark failed",
+            "artifact": {
+              "path": "benchmark-report",
+              "locationTemplate": "{run-dir}/benchmark.json"
             }
           }
         },

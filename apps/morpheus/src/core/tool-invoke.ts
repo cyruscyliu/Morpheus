@@ -1789,13 +1789,13 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   );
   const toolCommand = command;
   const effective = resolveToolDependencies(resolved, toolCommand);
-  const workflowStepCwd = command === "exec" && (
+  const workflowStepCwd = ["exec", "benchmark"].includes(command) && (
     fs.existsSync(path.join(process.cwd(), "step.json"))
     || fs.existsSync(path.join(process.cwd(), "stage.json"))
   )
     ? process.cwd()
     : null;
-  if (command === "exec" && workflowStepCwd) {
+  if (["exec", "benchmark"].includes(command) && workflowStepCwd) {
     effective["run-dir"] = workflowStepCwd;
   }
   if (command === "exec") {
@@ -1833,10 +1833,10 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   }
   args.push(...passthrough);
   const workspaceForExec = effective.localWorkspace || effective.workspace;
-  const legacyExecRunDir = command === "exec" && workspaceForExec
+  const legacyExecRunDir = ["exec", "benchmark"].includes(command) && workspaceForExec
     ? path.join(workspaceForExec, "tmp", tool, "exec")
     : null;
-  const managedRunDir = command === "exec" && workspaceForExec
+  const managedRunDir = ["exec", "benchmark"].includes(command) && workspaceForExec
     ? (
       defaultExecRunDir(workspaceForExec, tool, descriptor, {
         toolchainVersion: effective["toolchain-version"] || null,
@@ -1855,7 +1855,7 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
     fs.rmSync(path.dirname(legacyExecRunDir), { recursive: true, force: true });
   }
   const childCwd = workflowStepCwd || managedRunDir || process.cwd();
-  if (command === "exec" && childCwd) {
+  if (["exec", "benchmark"].includes(command) && childCwd) {
     fs.mkdirSync(childCwd, { recursive: true });
   }
 

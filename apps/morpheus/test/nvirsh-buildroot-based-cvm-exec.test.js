@@ -459,6 +459,41 @@ test("buildroot-based CVM exec streams L2 CVM evidence and stays running until s
   );
 });
 
+test("buildroot-based CVM startup measurement stops at readiness", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-buildroot-cvm-timing-"));
+  const hostQemu = path.join(tmpDir, "host-qemu", "bin", "qemu-system-aarch64");
+  const resultFile = path.join(tmpDir, "exec-result.json");
+  const runDir = path.join(tmpDir, "run");
+  writeBlockingHostQemu(hostQemu, path.join(tmpDir, "fake-child.pid"));
+
+  const { installDir } = prepareBuildFixture(tmpDir, hostQemu);
+  const execChild = spawn("bash", [execScript], {
+    env: {
+      ...execEnvironment(installDir, runDir, resultFile),
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_SMP: "1",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_SMP: "2",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_MEMORY_MB: "512",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_MEASURE_L2_STARTUP: "true",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_STOP_ON_READY: "true",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const resultPromise = collectChildResult(execChild);
+  const timing = await waitFor(() => readJsonIfExists(path.join(runDir, "l2-startup-timing.json")), "L2 startup timing");
+  const execRun = await resultPromise;
+
+  assert.equal(execRun.code, 0, execRun.stderr + execRun.stdout);
+  assert.equal(timing.metric, "l2-qemu-exec-to-buildroot-ready");
+  assert.equal(timing.l2_smp, 2);
+  assert.equal(timing.status, "complete");
+  assert.ok(timing.duration_ms >= 0);
+  const result = JSON.parse(fs.readFileSync(resultFile, "utf8"));
+  assert.equal(result.l2_boot_timing.status, "complete");
+  const manifest = JSON.parse(fs.readFileSync(path.join(runDir, "manifest.json"), "utf8"));
+  assert.equal(manifest.status, "success");
+  assert.equal(manifest.runtime.l2.startupTiming.status, "complete");
+});
+
 test("buildroot-based CVM exec writes an error manifest when the L1 host launch exits early", () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-buildroot-cvm-exec-fail-"));
   const hostQemu = path.join(tmpDir, "host-qemu", "bin", "qemu-system-aarch64");

@@ -1,5 +1,6 @@
 use core::time::Duration;
 use std::{
+    collections::HashSet,
     env, fs,
     num::NonZeroUsize,
     path::{Path, PathBuf},
@@ -46,6 +47,28 @@ fn parse_env_u64(name: &str) -> Option<u64> {
 }
 
 const DEFAULT_MUTATIONAL_MAX_ITERATIONS: &str = "1";
+const DEFAULT_INITIAL_GENERATED_SEEDS: &str = "8";
+
+fn parse_initial_generated_seed_count(value: Option<&str>) -> Result<usize, String> {
+    let value = value.unwrap_or(DEFAULT_INITIAL_GENERATED_SEEDS);
+    let count = value.parse::<usize>().map_err(|_| {
+        format!(
+            "MORPHEUS_LIBAFL_INITIAL_GENERATED_SEEDS must be a non-negative integer, got {value:?}"
+        )
+    })?;
+    if count > 1024 {
+        return Err(format!(
+            "MORPHEUS_LIBAFL_INITIAL_GENERATED_SEEDS must be at most 1024, got {count}"
+        ));
+    }
+    Ok(count)
+}
+
+fn initial_generated_seed_count() -> usize {
+    let configured = env::var("MORPHEUS_LIBAFL_INITIAL_GENERATED_SEEDS").ok();
+    parse_initial_generated_seed_count(configured.as_deref())
+        .unwrap_or_else(|err| panic!("invalid grammar-generated corpus configuration: {err}"))
+}
 
 fn parse_mutational_max_iterations(value: Option<&str>) -> Result<NonZeroUsize, String> {
     let value = value.unwrap_or(DEFAULT_MUTATIONAL_MAX_ITERATIONS);
@@ -129,9 +152,12 @@ fn scenario_generator_from_env() -> ScenarioGenerator {
         .unwrap_or_else(|err| panic!("failed to load grammar-backed scenario generator: {err}"));
     if let Some(grammar) = generator.grammar() {
         eprintln!(
-            "[libafl/qemu_nesting] device override grammar loaded: mmio-sites={} queue-dma-sites={}",
+            "[libafl/qemu_nesting] device override grammar loaded: mmio-sites={} mmio-write-sites={} queue-dma-sites={} dma-sites={} dma-events={}",
             grammar.mmio_read_sites().len(),
+            grammar.mmio_write_sites().len(),
             grammar.queue_dma_sites().len(),
+            grammar.dma_sites().len(),
+            grammar.dma_event_count(),
         );
     }
     generator
@@ -309,6 +335,7 @@ pub fn fuzz() {
                         &mut objective,
                     )
                     .unwrap();
+                    let mut initial_corpus_inputs = HashSet::new();
                     if let Some(paths) = replay_inputs.as_ref() {
                         for path in paths {
                             eprintln!("[libafl/qemu_nesting] loading replay input {}", path.display());
@@ -342,13 +369,34 @@ pub fn fuzz() {
                             let mut testcase = Testcase::from(input);
                             *testcase.filename_mut() =
                                 Some(path.file_name().unwrap().to_string_lossy().to_string());
+                            initial_corpus_inputs.insert(testcase.input().clone().unwrap());
                             state.corpus_mut().add(testcase).unwrap();
                             loaded += 1;
                         }
                         if loaded == 0 {
                             panic!("no valid initial fuzz inputs loaded");
                         }
-                    } else {
+                    }
+
+                    if replay_inputs.is_none() && scenario_generator.grammar_enabled() {
+                        let requested = initial_generated_seed_count();
+                        let mut generated = 0usize;
+                        let mut attempts = 0usize;
+                        let max_attempts = requested.saturating_mul(16).max(requested);
+                        while generated < requested && attempts < max_attempts {
+                            attempts += 1;
+                            let input = initial_scenario_generator.generate(&mut state).unwrap();
+                            if !initial_corpus_inputs.insert(input.clone()) {
+                                continue;
+                            }
+                            state.corpus_mut().add(input.into()).unwrap();
+                            generated += 1;
+                        }
+                        eprintln!(
+                            "[libafl/qemu_nesting] grammar-generated initial corpus entries={} requested={} attempts={}",
+                            generated, requested, attempts
+                        );
+                    } else if replay_inputs.is_none() && initial_inputs.is_none() {
                         for _ in 0..4 {
                             let input = initial_scenario_generator.generate(&mut state).unwrap();
                             state.corpus_mut().add(input.into()).unwrap();
@@ -500,7 +548,25 @@ pub fn fuzz() {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_mutational_max_iterations;
+    use super::{
+        DEFAULT_INITIAL_GENERATED_SEEDS, parse_initial_generated_seed_count,
+        parse_mutational_max_iterations,
+    };
+
+    #[test]
+    fn grammar_generated_corpus_has_a_bounded_default() {
+        assert_eq!(
+            parse_initial_generated_seed_count(None).unwrap(),
+            DEFAULT_INITIAL_GENERATED_SEEDS.parse::<usize>().unwrap()
+        );
+        assert_eq!(parse_initial_generated_seed_count(Some("0")).unwrap(), 0);
+        assert!(parse_initial_generated_seed_count(Some("1025")).is_err());
+    }
+
+    #[test]
+    fn grammar_generated_corpus_rejects_invalid_configuration() {
+        assert!(parse_initial_generated_seed_count(Some("many")).is_err());
+    }
 
     #[test]
     fn slow_target_defaults_to_one_mutation_per_iteration() {

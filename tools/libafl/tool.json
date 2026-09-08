@@ -1,7 +1,7 @@
 {
   "name": "libafl",
   "runtime": null,
-  "cli-contract": "fetch,patch,build,probe-grammar,probe-devilang-grammar,exec,inspect",
+  "cli-contract": "fetch,patch,build,probe-grammar,probe-devilang-grammar,exec,benchmark,inspect",
   "config": {
     "fields": {
       "mode": {
@@ -186,6 +186,87 @@
           "mutationalMaxIterations"
         ]
       },
+      "l1-smp": {
+        "aliases": [
+          "l1-smp",
+          "l1Smp"
+        ]
+      },
+      "l2-smp": {
+        "aliases": [
+          "l2-smp",
+          "l2Smp"
+        ]
+      },
+      "l2-memory-mb": {
+        "aliases": [
+          "l2-memory-mb",
+          "l2MemoryMb"
+        ]
+      },
+      "l2-run-window-ms": {
+        "aliases": [
+          "l2-run-window-ms",
+          "l2RunWindowMs"
+        ]
+      },
+      "measure-l2-startup": {
+        "aliases": [
+          "measure-l2-startup",
+          "measureL2Startup"
+        ],
+        "boolean": true
+      },
+      "repetitions": {
+        "aliases": [
+          "repetitions"
+        ]
+      },
+      "startup-timeout-seconds": {
+        "aliases": [
+          "startup-timeout-seconds",
+          "startupTimeoutSeconds"
+        ]
+      },
+      "reference-baseline-ms": {
+        "aliases": [
+          "reference-baseline-ms",
+          "referenceBaselineMs"
+        ]
+      },
+      "reference-report": {
+        "aliases": [
+          "reference-report",
+          "referenceReport"
+        ],
+        "path": true
+      },
+      "nvirsh-state": {
+        "aliases": [
+          "nvirsh-state",
+          "nvirshState"
+        ],
+        "path": true
+      },
+      "qemu-bridge-build-dir-key": {
+        "aliases": [
+          "qemu-bridge-build-dir-key",
+          "qemuBridgeBuildDirKey"
+        ]
+      },
+      "nvirsh-build-dir-key": {
+        "aliases": [
+          "nvirsh-build-dir-key",
+          "nvirshBuildDirKey"
+        ]
+      },
+      "seed-input": {
+        "aliases": [
+          "seed-input",
+          "seedInput"
+        ],
+        "path": true
+      },
       "detach": {
         "aliases": [
           "detach"
@@ -250,6 +331,12 @@
         },
         "run-manifest": {
           "pathTemplate": "tools/libafl/runs/{buildDirKey}/manifest.json"
+        },
+        "l2-startup-timing": {
+          "pathTemplate": "tools/libafl/runs/{buildDirKey}/l2-startup-timing.json"
+        },
+        "benchmark-report": {
+          "pathTemplate": "tools/libafl/runs/{buildDirKey}/benchmark.json"
         }
       },
       "commands": {
@@ -479,6 +566,8 @@
             "disable-devilang-grammar",
             "show-console",
             "mutational-max-iterations",
+            "l2-smp",
+            "measure-l2-startup",
             "detach",
             "run-seconds",
             "build-version",
@@ -508,6 +597,60 @@
             "details": {
               "run_dir": "{run-dir}",
               "manifest": "{run-dir}/manifest.json"
+            }
+          }
+        },
+        "benchmark": {
+          "requiredFlags": [
+            "source",
+            "run-dir",
+            "install-dir",
+            "qemu-bridge-build-dir-key",
+            "nvirsh-build-dir-key",
+            "seed-input"
+          ],
+          "scalarFlags": [
+            "source",
+            "run-dir",
+            "install-dir",
+            "qemu-bridge-source",
+            "qemu-bridge-library",
+            "qemu-bridge-data-dir",
+            "nvirsh-state",
+            "seed-input",
+            "qemu-bridge-build-dir-key",
+            "nvirsh-build-dir-key",
+            "l2-memory-mb",
+            "l2-run-window-ms",
+            "measure-l2-startup",
+            "repetitions",
+            "startup-timeout-seconds",
+            "reference-baseline-ms",
+            "reference-report",
+            "build-version",
+            "build-dir-key"
+          ],
+          "repeatableFlags": [
+            "l1-smp",
+            "l2-smp"
+          ],
+          "pathFlags": {
+            "source": "tools/libafl/builds/{buildDirKey}/source",
+            "install-dir": "tools/libafl/builds/{buildDirKey}/install",
+            "run-dir": "tools/libafl/runs/{buildDirKey}",
+            "seed-input": "tools/libafl/seeds/qemu_nesting/oracle-neutral.raw"
+          },
+          "script": {
+            "path": "scripts/benchmark.sh",
+            "shell": "bash",
+            "cwdTemplate": "{run-dir}"
+          },
+          "result": {
+            "successSummary": "measured LibAFL L2 startup combinations",
+            "errorSummary": "LibAFL L2 startup benchmark failed",
+            "artifact": {
+              "path": "benchmark-report",
+              "locationTemplate": "{run-dir}/benchmark.json"
             }
           }
         }

@@ -1,0 +1,157 @@
+/*
+ * VIA-inspired passthrough interception model.
+ *
+ * This model describes harness and driver execution phases, not a virtual
+ * device state machine. Passthrough forwards mutated device-to-driver values,
+ * ignores driver-to-device writes, and injects interrupts from the harness.
+ * Addresses, buffers, and values are synthetic.
+ */
+
+extern observe_map_sync;
+extern unmap_passthrough_dma_buffers;
+extern initialize_driver;
+extern observe_interrupt_injection;
+extern unload_driver;
+extern return_input_stream_value;
+
+/*
+ * observe_map_sync operation codes:
+ * 1 = map, 2 = sync_for_cpu, 3 = unmap.
+ */
+machine via_passthrough_mmio_dma {
+    initial driver_uninitialized
+
+    scratch {
+        mmio_value;
+        pio_value;
+        write_value;
+        irq_status;
+        mmio_base;
+        dma_addr;
+        dma_len;
+        interrupt_marker;
+    }
+
+    state driver_uninitialized
+    state driver_initialized
+    state interaction_active
+    final state stopped
+
+    /*
+     * Driver initialization is a harness/syscall operation. The driver's
+     * MMIO/PIO accesses occur after this operation.
+     */
+    entry trace initialize_driver {
+        sequence {
+            extern initialize_driver;
+        }
+    }
+
+    entry trace intercept_mmio_read {
+        sequence {
+            mmio_value = read32(unknown);
+            extern return_input_stream_value(mmio_value, 4);
+        }
+    }
+
+    entry trace intercept_mmio_write {
+        sequence {
+            write32(write_value, unknown);
+            call ignore_driver_mmio_write(write_value);
+        }
+    }
+
+    entry trace intercept_pio_read {
+        sequence {
+            pio_value = read32(unknown);
+            extern return_input_stream_value(pio_value, 4);
+        }
+    }
+
+    entry trace intercept_pio_write {
+        sequence {
+            write32(write_value, unknown);
+            call ignore_driver_pio_write(write_value);
+        }
+    }
+
+    entry trace intercept_driver_to_device_dma {
+        sequence {
+            dma_addr = 0x4000;
+            dma_len = 0x80;
+            extern observe_map_sync(1, dma_addr, dma_len);
+            dma_event(op=map, dir=to_device, path=dma_api, addr=dma_addr, len=dma_len, data_kind=any);
+            call ignore_driver_to_device_dma(dma_addr, dma_len);
+        }
+    }
+
+    entry trace intercept_device_to_driver_dma {
+        sequence {
+            dma_addr = 0x8000;
+            dma_len = 0x800;
+            extern observe_map_sync(1, dma_addr, dma_len);
+            dma_event(op=map, dir=from_device, path=dma_api, addr=dma_addr, len=dma_len, data_kind=any);
+            extern observe_map_sync(2, dma_addr, dma_len);
+            dma_event(op=sync_for_cpu, dir=from_device, path=dma_api, addr=dma_addr, len=dma_len, data_kind=any);
+            call fill_mutated_dma_payload(dma_addr, dma_len);
+        }
+    }
+
+    entry trace external_dma_unmapped {
+        sequence {
+            dma_addr = 0x8000;
+            dma_len = 0x800;
+            dma_event(op=unmap, dir=from_device, path=dma_api, addr=dma_addr, len=dma_len, data_kind=any);
+            extern observe_map_sync(3, dma_addr, dma_len);
+            extern unmap_passthrough_dma_buffers(dma_addr, dma_len);
+        }
+    }
+
+    entry trace external_interrupt_injected {
+        sequence {
+            interrupt_marker = 1;
+            extern observe_interrupt_injection(interrupt_marker);
+            interrupt_event(vector=interrupt_marker);
+            call inject_interrupt(interrupt_marker);
+        }
+    }
+
+    /*
+     * The interrupt status register is deterministic for a given
+     * driver/device pair. VIA does not specify this offset; 0x60 is
+     * an analysis-derived synthetic offset that must be recovered
+     * from the target driver's interrupt path.
+     */
+    entry trace handle_interrupt {
+        sequence {
+            mmio_base = 0x1000;
+            irq_status = read32(mmio_base + 0x60);
+            extern return_input_stream_value(irq_status, 4);
+            write32(irq_status, mmio_base + 0x64);
+            call ignore_driver_mmio_write(irq_status);
+        }
+    }
+
+    entry trace external_driver_unloaded {
+        sequence {
+            extern unload_driver;
+        }
+    }
+
+    transition driver_uninitialized -> driver_initialized on initialize_driver
+    transition driver_initialized -> interaction_active on intercept_mmio_read
+    transition driver_initialized -> interaction_active on intercept_mmio_write
+    transition driver_initialized -> interaction_active on intercept_pio_read
+    transition driver_initialized -> interaction_active on intercept_pio_write
+    transition driver_initialized -> interaction_active on intercept_driver_to_device_dma
+    transition driver_initialized -> interaction_active on intercept_device_to_driver_dma
+    transition interaction_active -> interaction_active on intercept_mmio_read
+    transition interaction_active -> interaction_active on intercept_mmio_write
+    transition interaction_active -> interaction_active on intercept_pio_read
+    transition interaction_active -> interaction_active on intercept_pio_write
+    transition interaction_active -> interaction_active on intercept_driver_to_device_dma
+    transition interaction_active -> interaction_active on intercept_device_to_driver_dma
+    transition interaction_active -> interaction_active on handle_interrupt
+    transition driver_initialized -> stopped on external_driver_unloaded
+    transition interaction_active -> stopped on external_driver_unloaded
+}

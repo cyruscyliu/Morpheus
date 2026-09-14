@@ -31,14 +31,14 @@ Install JavaScript dependencies:
 pnpm install
 ```
 
-Build the workspace and install the repo-local CLI wrapper:
+Build the workspace:
 
 ```bash
 pnpm setup
 ```
 
-This builds the workspace and installs the repo-local `morpheus` wrapper under
-`bin/`.
+This builds the workspace. Run the CLI with `node apps/morpheus/dist/cli.js`
+or use an independently installed `morpheus` command.
 
 Validate a project config:
 
@@ -59,12 +59,6 @@ Inspect a prior run:
 ./bin/morpheus --config <workspace-root>/morpheus.yaml workflow logs --id <workflow-run-id>
 ```
 
-Enable and migrate global cache for a config:
-
-```bash
-pnpm cache:enable -- --config <workspace-root>/morpheus.yaml
-```
-
 ## Maintenance
 
 Common maintenance tasks:
@@ -73,18 +67,6 @@ Common maintenance tasks:
 
 ```bash
 pnpm --filter @morpheus/app build
-```
-
-- install or refresh the repo-local wrapper:
-
-```bash
-pnpm run install:bin
-```
-
-- enable cache for a project config at the beginning or in the middle of development:
-
-```bash
-pnpm cache:enable -- --config <workspace-root>/morpheus.yaml
 ```
 
 Set `cache.root` in the project `morpheus.yaml`. That is the only cache source.

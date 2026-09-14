@@ -468,7 +468,6 @@ function stageLocalMorpheusRuntime() {
     "package.json",
     "pnpm-lock.yaml",
     "pnpm-workspace.yaml",
-    "scripts/install-bin.mjs",
     "tsconfig.base.json",
   ];
 
@@ -571,7 +570,6 @@ function prepareRemoteMorpheusRuntime(workspace, ssh) {
     "  exit 1",
     "fi",
     "./node_modules/.bin/tsc -p apps/morpheus/tsconfig.json",
-    "node scripts/install-bin.mjs",
   ].join("\n");
   runRequiredSsh(ssh, script, "failed to prepare remote morpheus runtime");
   emitRemoteEvent("runtime.prepare.completed", {

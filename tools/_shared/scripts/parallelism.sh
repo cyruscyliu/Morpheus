@@ -18,6 +18,18 @@ morpheus_default_jobs() {
   printf '%s\n' "$(( cpus / 2 > 0 ? cpus / 2 : 1 ))"
 }
 
+morpheus_has_jobs_arg() {
+  local arg
+  for arg in "$@"; do
+    case "${arg}" in
+      -j|-j[0-9]*|--jobs|--jobs=*)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
 morpheus_default_l1_qemu_cpus() {
   morpheus_default_jobs
 }

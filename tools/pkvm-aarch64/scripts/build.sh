@@ -60,6 +60,9 @@ fi
 make_args=()
 if [ -n "${make_arg_file}" ] && [ -s "${make_arg_file}" ]; then
   mapfile -t make_args < "${make_arg_file}"
+  if ! morpheus_has_jobs_arg "${make_args[@]}"; then
+    make_args+=("-j$(morpheus_default_jobs)")
+  fi
 else
   make_args=(-j"$(morpheus_default_jobs)")
 fi

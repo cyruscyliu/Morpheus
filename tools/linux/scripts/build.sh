@@ -59,6 +59,9 @@ if [ -n "${make_arg_file}" ] && [ -s "${make_arg_file}" ]; then
   for i in "${!make_args[@]}"; do
     make_args[$i]="${make_args[$i]//\$(nproc)/${nproc_value}}"
   done
+  if ! morpheus_has_jobs_arg "${make_args[@]}"; then
+    make_args+=("-j$(morpheus_default_jobs)")
+  fi
 else
   make_args=(-j"$(morpheus_default_jobs)")
 fi

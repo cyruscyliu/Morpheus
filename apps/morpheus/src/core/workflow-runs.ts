@@ -32,7 +32,7 @@ function sanitizeStepName(value) {
 }
 
 function workflowInstancesRoot(workspaceRoot) {
-  return path.join(path.resolve(process.cwd(), workspaceRoot), "workflows");
+  return path.join(path.resolve(process.cwd(), workspaceRoot), "runs");
 }
 
 function workflowRunsRoot(workspaceRoot) {
@@ -40,7 +40,7 @@ function workflowRunsRoot(workspaceRoot) {
 }
 
 function legacyWorkflowRunsRoot(workspaceRoot) {
-  return path.join(path.resolve(process.cwd(), workspaceRoot), "runs");
+  return path.join(path.resolve(process.cwd(), workspaceRoot), "workflows");
 }
 
 function workflowRunDir(workspaceRoot, workflowRunId) {
@@ -414,8 +414,9 @@ function finalizeMigratedWorkflowRecord(targetDir, workflowId) {
 }
 
 function migrateLegacyWorkflowRunToInstance(workspaceRoot, workflowId) {
-  const sourceDir = findLatestLegacyWorkflowRunDir(workspaceRoot, workflowId);
-  if (!sourceDir) {
+  const sourceDir = findLatestLegacyWorkflowRunDir(workspaceRoot, workflowId)
+    || path.join(legacyWorkflowRunsRoot(workspaceRoot), workflowId);
+  if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
     return null;
   }
   const targetDir = workflowRunDir(workspaceRoot, workflowId);

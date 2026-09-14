@@ -139,7 +139,7 @@
       "sourceTemplate": "tools/nvirsh/builds/{buildDirKey}/source",
       "buildDirTemplate": "tools/nvirsh/builds/{buildDirKey}/build",
       "installDirTemplate": "tools/nvirsh/builds/{buildDirKey}/install",
-      "execDirTemplate": "tools/nvirsh/runs/{buildDirKey}",
+      "execDirTemplate": "runs/nvirsh/{buildDirKey}",
       "artifacts": {
         "profile-source": {
           "pathTemplate": "tools/nvirsh/builds/{buildDirKey}/source"
@@ -148,7 +148,7 @@
           "pathTemplate": "tools/nvirsh/builds/{buildDirKey}/install/state.json"
         },
         "run-manifest": {
-          "pathTemplate": "tools/nvirsh/runs/{buildDirKey}/manifest.json"
+          "pathTemplate": "runs/nvirsh/{buildDirKey}/manifest.json"
         },
         "guest-nqc2-trace": {
           "pathTemplate": "tools/nvirsh/builds/{buildDirKey}/install/guest-nqc2.trace"

@@ -228,7 +228,7 @@
       "sourceTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/source",
       "buildDirTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/build",
       "installDirTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/install",
-      "execDirTemplate": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}",
+      "execDirTemplate": "runs/nvirsh-buildroot-based-cvm/{buildDirKey}",
       "artifacts": {
         "prepared-state": {
           "pathTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/install/state.json"
@@ -237,13 +237,13 @@
           "pathTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/build/l1"
         },
         "run-manifest": {
-          "pathTemplate": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}/manifest.json"
+          "pathTemplate": "runs/nvirsh-buildroot-based-cvm/{buildDirKey}/manifest.json"
         },
         "benchmark-report": {
-          "pathTemplate": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}/benchmark.json"
+          "pathTemplate": "runs/nvirsh-buildroot-based-cvm/{buildDirKey}/benchmark.json"
         },
         "l2-startup-timing": {
-          "pathTemplate": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}/l2-startup-timing.json"
+          "pathTemplate": "runs/nvirsh-buildroot-based-cvm/{buildDirKey}/l2-startup-timing.json"
         }
       },
       "commands": {
@@ -323,7 +323,7 @@
           "repeatableFlags": [],
           "pathFlags": {
             "install-dir": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/install",
-            "run-dir": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}"
+            "run-dir": "runs/nvirsh-buildroot-based-cvm/{buildDirKey}"
           },
           "script": {
             "path": "scripts/exec.sh",
@@ -360,7 +360,7 @@
           ],
           "pathFlags": {
             "install-dir": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/install",
-            "run-dir": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}"
+            "run-dir": "runs/nvirsh-buildroot-based-cvm/{buildDirKey}"
           },
           "script": {
             "path": "scripts/benchmark.sh",
@@ -386,7 +386,7 @@
           "repeatableFlags": [],
           "pathFlags": {
             "install-dir": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/install",
-            "run-dir": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}"
+            "run-dir": "runs/nvirsh-buildroot-based-cvm/{buildDirKey}"
           },
           "script": {
             "path": "scripts/inspect.sh",
@@ -404,7 +404,7 @@
           ],
           "repeatableFlags": [],
           "pathFlags": {
-            "run-dir": "tools/nvirsh-buildroot-based-cvm/runs/{buildDirKey}"
+            "run-dir": "runs/nvirsh-buildroot-based-cvm/{buildDirKey}"
           },
           "script": {
             "path": "scripts/stop.sh",

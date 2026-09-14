@@ -748,7 +748,7 @@ function listConfiguredWorkflows(explicitConfigPath = null) {
         label: configDisplayLabel(configPath, path.join(itemBaseDir, ".."), null),
         configPath,
         workspaceRoot,
-        runRoot: path.join(workspaceRoot, "workflows"),
+        runRoot: path.join(workspaceRoot, "runs"),
       });
     }
 
@@ -779,7 +779,7 @@ function listConfiguredWorkflows(explicitConfigPath = null) {
           label: configDisplayLabel(configPath, item.root, item.branch),
           configPath,
           workspaceRoot,
-          runRoot: path.join(workspaceRoot, "workflows"),
+          runRoot: path.join(workspaceRoot, "runs"),
         });
       }
     }

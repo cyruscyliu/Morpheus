@@ -331,19 +331,19 @@
       "sourceTemplate": "tools/libafl/builds/{buildDirKey}/source",
       "buildDirTemplate": "tools/libafl/builds/{buildDirKey}/build",
       "installDirTemplate": "tools/libafl/builds/{buildDirKey}/install",
-      "execDirTemplate": "tools/libafl/runs/{buildDirKey}",
+      "execDirTemplate": "runs/libafl/{buildDirKey}",
       "artifacts": {
         "source-dir": {
           "pathTemplate": "tools/libafl/builds/{buildDirKey}/source"
         },
         "run-manifest": {
-          "pathTemplate": "tools/libafl/runs/{buildDirKey}/manifest.json"
+          "pathTemplate": "runs/libafl/{buildDirKey}/manifest.json"
         },
         "l2-startup-timing": {
-          "pathTemplate": "tools/libafl/runs/{buildDirKey}/l2-startup-timing.json"
+          "pathTemplate": "runs/libafl/{buildDirKey}/l2-startup-timing.json"
         },
         "benchmark-report": {
-          "pathTemplate": "tools/libafl/runs/{buildDirKey}/benchmark.json"
+          "pathTemplate": "runs/libafl/{buildDirKey}/benchmark.json"
         }
       },
       "commands": {
@@ -588,7 +588,7 @@
           "pathFlags": {
             "source": "tools/libafl/builds/{buildDirKey}/source",
             "install-dir": "tools/libafl/builds/{buildDirKey}/install",
-            "run-dir": "tools/libafl/runs/{buildDirKey}"
+            "run-dir": "runs/libafl/{buildDirKey}"
           },
           "script": {
             "path": "scripts/exec.sh",
@@ -646,7 +646,7 @@
           "pathFlags": {
             "source": "tools/libafl/builds/{buildDirKey}/source",
             "install-dir": "tools/libafl/builds/{buildDirKey}/install",
-            "run-dir": "tools/libafl/runs/{buildDirKey}",
+            "run-dir": "runs/libafl/{buildDirKey}",
             "seed-input": "tools/libafl/seeds/qemu_nesting/oracle-neutral.raw"
           },
           "script": {

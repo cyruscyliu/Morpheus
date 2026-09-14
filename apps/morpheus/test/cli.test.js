@@ -61,7 +61,7 @@ function isolatedEnv(extra = {}) {
 }
 
 function resetCiWorkspace() {
-  fs.rmSync(path.join(ciWorkspaceRoot, "workflows"), { recursive: true, force: true });
+  fs.rmSync(path.join(ciWorkspaceRoot, "runs"), { recursive: true, force: true });
 }
 
 function withWorkspaceCwd(fn) {
@@ -542,7 +542,7 @@ test("config show defaults the workspace to the current directory", () => {
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.status, "success");
   assert.equal(payload.details.workspace_root, projectRoot);
-  assert.equal(payload.details.workflow_root, path.join(projectRoot, "workflows"));
+  assert.equal(payload.details.workflow_root, path.join(projectRoot, "runs"));
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
@@ -963,7 +963,7 @@ test("workflow run missing configured workflow suggests workflow list", () => {
 test("workflow stop marks a running workflow as stopped", () => {
   const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stop-")));
   const runId = "wf-stop-test";
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   const stepDir = path.join(runDir, "stages", "01-build");
   fs.mkdirSync(stepDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
@@ -1005,7 +1005,7 @@ test("workflow stop marks a running workflow as stopped", () => {
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim());
   assert.equal(payload.status, "success");
-  assert.equal(payload.details.run_dir, path.join("workflows", runId));
+  assert.equal(payload.details.run_dir, path.join("runs", runId));
   const workflow = JSON.parse(fs.readFileSync(path.join(runDir, "workflow.json"), "utf8"));
   const step = JSON.parse(fs.readFileSync(path.join(stepDir, "stage.json"), "utf8"));
   assert.equal(workflow.status, "stopped");
@@ -1016,7 +1016,7 @@ test("workflow stop marks a running workflow as stopped", () => {
 test("workflow stop prints a human-readable summary in text mode", () => {
   const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stop-text-")));
   const runId = "wf-stop-text";
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   const stepDir = path.join(runDir, "stages", "01-build");
   fs.mkdirSync(stepDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
@@ -1066,7 +1066,7 @@ test("workflow stop prints a human-readable summary in text mode", () => {
 test("workflow inspect reconciles stale running workflows with dead pids", () => {
   const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stale-")));
   const runId = "wf-stale-test";
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   const stepDir = path.join(runDir, "stages", "01-build");
   fs.mkdirSync(stepDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
@@ -1113,7 +1113,7 @@ test("workflow inspect reconciles stale running workflows with dead pids", () =>
   assert.equal(payload.command, "workflow inspect");
   assert.equal(payload.details.id, runId);
   assert.equal(payload.details.status, "error");
-  assert.equal(payload.details.runDir, path.join("workflows", runId));
+  assert.equal(payload.details.runDir, path.join("runs", runId));
   assert.equal(payload.details.workflowName, "tool-buildroot");
   assert.equal(payload.details.graph.nodes.length, 1);
   assert.equal(payload.details.steps[0].status, "error");
@@ -1131,7 +1131,7 @@ test("workflow inspect reconciles stale running workflows with dead pids", () =>
 test("workflow inspect repairs an empty workflow manifest from legacy run state", () => {
   const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-repair-")));
   const runId = "wf-repair-test";
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   const stepDir = path.join(runDir, "steps", "01-build");
   fs.mkdirSync(stepDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
@@ -1184,7 +1184,7 @@ test("workflow inspect repairs an empty workflow manifest from legacy run state"
 test("workflow runs lists managed workflow runs in json", () => {
   const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-runs-json-")));
   const runId = "wf-runs-json";
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   const stepDir = path.join(runDir, "steps", "01-build");
   fs.mkdirSync(stepDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "ok\n", "utf8");
@@ -1237,7 +1237,7 @@ test("workflow runs lists managed workflow runs in json", () => {
 test("workflow events returns canonical event records in json", () => {
   const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-events-json-")));
   const runId = "wf-events-json";
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   fs.mkdirSync(runDir, { recursive: true });
   fs.writeFileSync(path.join(runDir, "workflow.json"), `${JSON.stringify({
     id: runId,
@@ -1300,7 +1300,7 @@ test("workflow inspect missing run suggests valid follow-up commands", () => {
 test("workflow logs json reports log paths relative to cwd", () => {
   const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-json-")));
   const runId = "wf-logs-json";
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   const stepDir = path.join(runDir, "stages", "01-fetch");
   fs.mkdirSync(stepDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "fetch log\n", "utf8");
@@ -1342,9 +1342,9 @@ test("workflow logs json reports log paths relative to cwd", () => {
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.command, "workflow logs");
-  assert.equal(payload.details.log_file, path.join("workflows", runId, "stages", "01-fetch", "stdout.log"));
+  assert.equal(payload.details.log_file, path.join("runs", runId, "stages", "01-fetch", "stdout.log"));
   assert.deepEqual(payload.details.log_files, [
-    path.join("workflows", runId, "stages", "01-fetch", "stdout.log"),
+    path.join("runs", runId, "stages", "01-fetch", "stdout.log"),
   ]);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
@@ -1352,7 +1352,7 @@ test("workflow logs json reports log paths relative to cwd", () => {
 test("workflow logs json keeps stage and step distinct for stage selection", () => {
   const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-stage-json-")));
   const runId = "wf-logs-stage-json";
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   const fetchDir = path.join(runDir, "stages", "01-fetch");
   const buildDir = path.join(runDir, "stages", "02-build");
   fs.mkdirSync(fetchDir, { recursive: true });
@@ -1415,8 +1415,8 @@ test("workflow logs json keeps stage and step distinct for stage selection", () 
   assert.equal(payload.details.stage, "build");
   assert.equal(payload.details.step, "01-fetch");
   assert.deepEqual(payload.details.log_files, [
-    path.join("workflows", runId, "stages", "01-fetch", "stdout.log"),
-    path.join("workflows", runId, "stages", "02-build", "stdout.log"),
+    path.join("runs", runId, "stages", "01-fetch", "stdout.log"),
+    path.join("runs", runId, "stages", "02-build", "stdout.log"),
   ]);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
@@ -1424,7 +1424,7 @@ test("workflow logs json keeps stage and step distinct for stage selection", () 
 test("workflow inspect prints a human-readable summary in text mode", () => {
   const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-inspect-text-")));
   const runId = "wf-inspect-text";
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   const stepDir = path.join(runDir, "stages", "01-build");
   fs.mkdirSync(stepDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
@@ -1486,7 +1486,7 @@ test("workflow inspect does not warn when config is discovered implicitly", () =
   );
   const workspaceRoot = projectRoot;
   const runId = "wf-inspect-implicit";
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   const stepDir = path.join(runDir, "stages", "01-build");
   fs.mkdirSync(stepDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
@@ -1534,7 +1534,7 @@ test("workflow inspect does not warn when config is discovered implicitly", () =
 test("workflow logs announces the selected default stage in text mode", () => {
   const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-text-")));
   const runId = "wf-logs-text";
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   const stepDirA = path.join(runDir, "stages", "01-fetch");
   const stepDirB = path.join(runDir, "stages", "02-build");
   fs.mkdirSync(stepDirA, { recursive: true });
@@ -1596,7 +1596,7 @@ test("workflow logs announces the selected default stage in text mode", () => {
 test("workflow logs defaults to the first grouped stage in text mode", () => {
   const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-grouped-text-")));
   const runId = "wf-logs-grouped-text";
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   const stepDirA = path.join(runDir, "stages", "prepare_a");
   const stepDirB = path.join(runDir, "stages", "verify_a");
   fs.mkdirSync(stepDirA, { recursive: true });
@@ -1663,7 +1663,7 @@ test("workflow logs defaults to the first grouped stage in text mode", () => {
 test("workflow logs defaults to the current stage for a running grouped workflow", () => {
   const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-current-stage-")));
   const runId = "wf-logs-current-stage";
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   const stepDirA = path.join(runDir, "stages", "prepare_a");
   const stepDirB = path.join(runDir, "stages", "verify_a");
   fs.mkdirSync(stepDirA, { recursive: true });
@@ -1739,7 +1739,7 @@ test("workflow logs does not warn when config is discovered implicitly", () => {
   );
   const workspaceRoot = projectRoot;
   const runId = "wf-logs-implicit";
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   const stepDir = path.join(runDir, "steps", "01-fetch");
   fs.mkdirSync(stepDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "fetch log\n", "utf8");
@@ -1787,7 +1787,7 @@ test("workflow logs does not warn when config is discovered implicitly", () => {
 test("workflow remove requires a prior stop and removes stopped workflow state", () => {
   const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-remove-")));
   const runId = "wf-remove-test";
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   const stepDir = path.join(runDir, "steps", "01-run");
   fs.mkdirSync(stepDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
@@ -1837,7 +1837,7 @@ test("workflow remove requires a prior stop and removes stopped workflow state",
   });
   assert.equal(removed.status, 0, removed.stderr || removed.stdout);
   const removedPayload = JSON.parse(removed.stdout.trim());
-  assert.equal(removedPayload.details.run_dir, path.join("workflows", runId));
+  assert.equal(removedPayload.details.run_dir, path.join("runs", runId));
   assert.equal(fs.existsSync(runDir), false);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
@@ -1845,7 +1845,7 @@ test("workflow remove requires a prior stop and removes stopped workflow state",
 test("workflow remove prints a human-readable summary in text mode", () => {
   const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-remove-text-")));
   const runId = "wf-remove-text";
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   const stepDir = path.join(runDir, "steps", "01-run");
   fs.mkdirSync(stepDir, { recursive: true });
   fs.writeFileSync(path.join(stepDir, "stdout.log"), "", "utf8");
@@ -2340,7 +2340,7 @@ test("workflow run writes failure events to canonical event log", () => {
   assert.equal(payload.details.failed_stage.id, "stage-1");
   assert.deepEqual(payload.details.failed_stage.log_files, [
     path.join(
-      "workflows",
+      "runs",
       payload.details.id,
       "stages",
       "patch_missing",
@@ -2350,7 +2350,7 @@ test("workflow run writes failure events to canonical event log", () => {
   assert.equal(payload.details.failed_step.id, "patch_missing");
   assert.deepEqual(payload.details.failed_step.log_files, [
     path.join(
-      "workflows",
+      "runs",
       payload.details.id,
       "stages",
       "patch_missing",
@@ -2571,7 +2571,7 @@ test("workflow run --tool forwards passthrough args after -- to the tool step", 
 test("exec inside a workflow stage keeps libafl run-dir in the stage data", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stage-run-dir-"));
   const workspaceRoot = projectRoot;
-  const stageDir = path.join(workspaceRoot, "workflows", "wf-stage-run-dir", "stages", "libafl_exec");
+  const stageDir = path.join(workspaceRoot, "runs", "wf-stage-run-dir", "stages", "libafl_exec");
   const sourceDir = path.join(workspaceRoot, "tools", "libafl", "builds", "default", "source");
   const installDir = path.join(workspaceRoot, "tools", "libafl", "builds", "default", "install");
   const harnessDir = path.join(projectRoot, "scripts");
@@ -2755,7 +2755,7 @@ test("workflow resume reuses successful prefix in place", () => {
   assert.equal(first.status, 0, first.stderr || first.stdout);
   const firstPayload = JSON.parse(first.stdout.trim());
   const runId = firstPayload.details.id;
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   const stepAPath = path.join(runDir, "stages", "inspect_a", "stage.json");
   const stepBPath = path.join(runDir, "stages", "inspect_b", "stage.json");
   const workflowPath = path.join(runDir, "workflow.json");
@@ -2820,7 +2820,7 @@ test("workflow run --from-step reuses earlier validated steps from latest run", 
   assert.equal(first.status, 0, first.stderr || first.stdout);
   const firstPayload = JSON.parse(first.stdout.trim());
   const runId = firstPayload.details.id;
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   const stepAPath = path.join(runDir, "stages", "inspect_a", "stage.json");
 
   const rerun = run(["--json", "workflow", "run", "--name", "inspect-pair", "--from-step", "inspect_b"], {
@@ -2888,7 +2888,7 @@ test("workflow run and inspect keep grouped stage directories anchored to the fi
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim());
-  const runDir = path.join(workspaceRoot, "workflows", payload.details.id);
+  const runDir = path.join(workspaceRoot, "runs", payload.details.id);
   const prepareStage = payload.details.stages.find((stage) => stage.id === "prepare");
   assert.ok(prepareStage, "missing prepare stage in run payload");
   assert.equal(
@@ -2910,11 +2910,11 @@ test("workflow run and inspect keep grouped stage directories anchored to the fi
   assert.ok(inspectedPrepare, "missing prepare stage in inspect payload");
   assert.equal(
     inspectedPrepare.stageDir,
-    path.join("workflows", payload.details.id, "stages", "inspect_a"),
+    path.join("runs", payload.details.id, "stages", "inspect_a"),
   );
   assert.equal(
     inspectedPrepare.stepDir,
-    path.join("workflows", payload.details.id, "stages", "inspect_a"),
+    path.join("runs", payload.details.id, "stages", "inspect_a"),
   );
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
@@ -2961,7 +2961,7 @@ test("workflow run --from-stage rewrites legacy single-stage metadata from curre
   });
   assert.equal(first.status, 0, first.stderr || first.stdout);
   const firstPayload = JSON.parse(first.stdout.trim());
-  const runDir = path.join(workspaceRoot, "workflows", firstPayload.details.id);
+  const runDir = path.join(workspaceRoot, "runs", firstPayload.details.id);
   const workflowPath = path.join(runDir, "workflow.json");
   const stepAPath = path.join(runDir, "stages", "inspect_a", "stage.json");
   const stepBPath = path.join(runDir, "stages", "inspect_b", "stage.json");
@@ -3068,7 +3068,7 @@ test("workflow run --from-step resets the rerun step log before execution", () =
   });
   assert.equal(first.status, 0, first.stderr || first.stdout);
   const firstPayload = JSON.parse(first.stdout.trim());
-  const runDir = path.join(workspaceRoot, "workflows", firstPayload.details.id);
+  const runDir = path.join(workspaceRoot, "runs", firstPayload.details.id);
   const stepBLog = path.join(runDir, "stages", "inspect_b", "stdout.log");
 
   fs.writeFileSync(stepBLog, "stale rerun log\n", "utf8");
@@ -3130,7 +3130,7 @@ test("workflow run --only-step executes just the requested step", () => {
   });
   assert.equal(first.status, 0, first.stderr || first.stdout);
   const firstPayload = JSON.parse(first.stdout.trim());
-  const runDir = path.join(workspaceRoot, "workflows", firstPayload.details.id);
+  const runDir = path.join(workspaceRoot, "runs", firstPayload.details.id);
   const stepAPath = path.join(runDir, "stages", "inspect_a", "stage.json");
   const stepBPath = path.join(runDir, "stages", "inspect_b", "stage.json");
   const stepCLog = path.join(runDir, "stages", "inspect_c", "stdout.log");
@@ -3246,7 +3246,7 @@ test("workflow run --from-step resolves templated prior-step args for reuse vali
   assert.equal(first.status, 0, first.stderr || first.stdout);
   const firstPayload = JSON.parse(first.stdout.trim());
   const runId = firstPayload.details.id;
-  const runDir = path.join(workspaceRoot, "workflows", runId);
+  const runDir = path.join(workspaceRoot, "runs", runId);
   const stepAPath = path.join(runDir, "stages", "fetch_a", "stage.json");
   const workflowRecord = JSON.parse(fs.readFileSync(
     path.join(runDir, "workflow.json"),

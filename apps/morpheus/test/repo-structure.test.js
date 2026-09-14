@@ -153,7 +153,7 @@ function shouldSkipStructureSubtree(relativeDir) {
     /^tests\/cache(?:\/|$)/.test(normalized) ||
     /^tests\/tmp(?:\/|$)/.test(normalized) ||
     /^tests\/tools(?:\/|$)/.test(normalized) ||
-    /^tests\/workflows(?:\/|$)/.test(normalized) ||
+    /^tests\/runs(?:\/|$)/.test(normalized) ||
     /^projects\/[^/]+\/workspace(?:\/|$)/.test(normalized) ||
     /^projects\/[^/]+\/artifacts\/out(?:\/|$)/.test(normalized)
   ) {

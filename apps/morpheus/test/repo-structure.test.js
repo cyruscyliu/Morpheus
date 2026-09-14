@@ -6,7 +6,6 @@ const path = require("node:path");
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
 const allowedRootEntries = new Set([
   ".env",
-  ".env.example",
   ".git",
   ".github",
   ".gitignore",
@@ -78,6 +77,7 @@ const allowedFileExtensions = new Set([
   ".py",
   ".raw",
   ".rs",
+  ".S",
   ".sh",
   ".state",
   ".tex",
@@ -138,7 +138,8 @@ function shouldSkipStructureSubtree(relativeDir) {
   if (
     normalized === ".git" ||
     normalized === ".tmp" ||
-    normalized.startsWith(".tmp/")
+    normalized.startsWith(".tmp/") ||
+    /(^|\/)\.morpheus(?:\/|$)/.test(normalized)
   ) {
     return true;
   }
@@ -149,6 +150,10 @@ function shouldSkipStructureSubtree(relativeDir) {
     /^apps\/docs\/out(?:\/|$)/.test(normalized) ||
     /^apps\/morpheus\/dist(?:\/|$)/.test(normalized) ||
     /(?:^|\/)tests\/fixtures(?:\/|$)/.test(normalized) ||
+    /^tests\/cache(?:\/|$)/.test(normalized) ||
+    /^tests\/tmp(?:\/|$)/.test(normalized) ||
+    /^tests\/tools(?:\/|$)/.test(normalized) ||
+    /^tests\/workflows(?:\/|$)/.test(normalized) ||
     /^projects\/[^/]+\/workspace(?:\/|$)/.test(normalized) ||
     /^projects\/[^/]+\/artifacts\/out(?:\/|$)/.test(normalized)
   ) {

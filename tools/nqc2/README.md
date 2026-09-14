@@ -29,6 +29,7 @@ sudo apt-get install -y \
   binutils-dev \
   dwarfdump \
   libglib2.0-dev \
+  zlib1g-dev \
   libiberty-dev
 ```
 
@@ -79,11 +80,19 @@ PLUGIN="$MORPHEUS_NQC2_INSTALL_DIR/lib/nqc2/nqc2-plugin.so"
 
 qemu-system-aarch64 \
   ... \
-  -plugin "${PLUGIN},trace=${TRACE}"
+  -plugin "file=${PLUGIN},trace=${TRACE}"
 ```
 
 This produces an NQC2 trace file in the `etrace`-compatible packet format used
-by the backend.
+by the backend. Trace output is gzip-compressed by default while preserving the
+same record order and counts after decompression. To write the raw packet
+stream for debugging, pass `compress=0`:
+
+```bash
+qemu-system-aarch64 \
+  ... \
+  -plugin "file=${PLUGIN},trace=${TRACE},compress=0"
+```
 
 ## Generate LCOV
 
@@ -91,7 +100,7 @@ The current backend is `qemu-etrace`.
 
 The repo postprocess script does three important things:
 
-1. copies the trace
+1. decompresses gzip traces when needed and copies raw traces as-is
 2. clears the TB-chaining info flag in the copied trace
 3. runs `qemu-etrace` and normalizes the LCOV output
 
@@ -159,3 +168,29 @@ trace copy, the info-flag patch, and the LCOV normalization.
 - The plugin is the NQC2-specific part.
 - The LCOV backend is `qemu-etrace`.
 - The normalized LCOV output is the current authoritative coverage result.
+
+### Exception-level selection
+
+For an AArch64 target, pass `el=el1` in the QEMU plugin argument to record
+EL1t and EL1h only. Valid choices are `all`, `el0`, `el1`, `el2`, and `el3`
+(the numeric aliases `0` through `3` are also accepted). The default is
+`all`. Explicit filtering requires plugin API v6 or newer and a readable
+`cpsr` register. Missing register support does not fall back to full tracing.
+
+With `libafl exec`, use `--qemu-plugin-el el1` alongside `--qemu-plugin`.
+The equivalent environment variable is `MORPHEUS_LIBAFL_QEMU_PLUGIN_EL`.
+This option filters execution before records enter the writer buffers.
+It does not identify a nested VM or its address space: both L1 and L2
+kernels can execute at EL1. Symbolization still requires matching ELF files
+and runtime address mappings.
+
+To verify filtering with actual AArch64 execution at all four exception
+levels, run:
+
+```sh
+python3 tools/nqc2/tests/verify-el-filter.py \
+  --qemu "$QEMU_BINARY" --header "$QEMU_PLUGIN_HEADER"
+```
+
+The test uses public plugin APIs and synthetic guest code; it needs GCC,
+GLib development headers, and the AArch64 GNU assembler and linker.

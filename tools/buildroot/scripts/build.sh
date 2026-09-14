@@ -154,6 +154,38 @@ qemu_dirclean_targets() {
   )
 }
 
+guest_toolchain_artifacts_json() {
+  local guest_plugin_header=""
+  if [ -d "${output_dir}/build" ]; then
+    guest_plugin_header="$({
+      find "${output_dir}/build" -type f \
+        -path '*/include/plugins/qemu-plugin.h' -print -quit
+    } 2>/dev/null || true)"
+  fi
+  node - "${output_dir}" "${guest_plugin_header}" <<'NODE'
+const fs = require("fs");
+const path = require("path");
+
+const outputDir = process.argv[2];
+const discoveredPluginHeader = process.argv[3];
+const candidates = [
+  ["guest-qemu-plugin-header", discoveredPluginHeader],
+  ["guest-cross-compile", path.join(outputDir, "host", "bin", "aarch64-buildroot-linux-gnu-gcc")],
+  ["guest-sysroot", path.join(outputDir, "host", "aarch64-buildroot-linux-gnu", "sysroot")],
+];
+const seen = new Set();
+const artifacts = [];
+for (const [artifactPath, location] of candidates) {
+  if (seen.has(artifactPath) || !fs.existsSync(location)) {
+    continue;
+  }
+  seen.add(artifactPath);
+  artifacts.push({ path: artifactPath, location });
+}
+process.stdout.write(JSON.stringify(artifacts));
+NODE
+}
+
 linux_config_path() {
   [ -d "${output_dir}/build" ] || return 0
   find "${output_dir}/build" -mindepth 2 -maxdepth 2 \
@@ -237,6 +269,12 @@ add("images/rootfs.cpio.gz", process.argv[5]);
 add("build/vmlinux", process.argv[6]);
 add("target/usr/bin/qemu-system-aarch64", process.argv[7]);
 add("target/usr/share/qemu", process.argv[8]);
+const toolchainArtifacts = JSON.parse(process.argv[9]);
+for (const artifact of toolchainArtifacts) {
+  if (artifact && artifact.path && artifact.location && fs.existsSync(artifact.location)) {
+    artifacts.push(artifact);
+  }
+}
 process.stdout.write(JSON.stringify(artifacts));
 ' \
     "${output_dir}" \
@@ -246,7 +284,8 @@ process.stdout.write(JSON.stringify(artifacts));
     "${initrd_image}" \
     "${vmlinux_path}" \
     "${output_dir}/target/usr/bin/qemu-system-aarch64" \
-    "${output_dir}/target/usr/share/qemu"
+    "${output_dir}/target/usr/share/qemu" \
+    "$(guest_toolchain_artifacts_json)"
   )"
   cat > "${build_inputs_state_file}" <<EOF
 {
@@ -308,7 +347,7 @@ done
 kernel_image="${output_dir}/images/Image"
 initrd_image="${output_dir}/images/rootfs.cpio.gz"
 
-artifacts_json="$(
+  artifacts_json="$(
   node -e '
 const fs = require("fs");
 const artifacts = [];
@@ -325,6 +364,12 @@ add("images/rootfs.cpio.gz", process.argv[5]);
 add("build/vmlinux", process.argv[6]);
 add("target/usr/bin/qemu-system-aarch64", process.argv[7]);
 add("target/usr/share/qemu", process.argv[8]);
+const toolchainArtifacts = JSON.parse(process.argv[9]);
+for (const artifact of toolchainArtifacts) {
+  if (artifact && artifact.path && artifact.location && fs.existsSync(artifact.location)) {
+    artifacts.push(artifact);
+  }
+}
 process.stdout.write(JSON.stringify(artifacts));
 ' \
   "${output_dir}" \
@@ -334,7 +379,8 @@ process.stdout.write(JSON.stringify(artifacts));
   "${initrd_image}" \
   "${vmlinux_path}" \
   "${output_dir}/target/usr/bin/qemu-system-aarch64" \
-  "${output_dir}/target/usr/share/qemu"
+  "${output_dir}/target/usr/share/qemu" \
+  "$(guest_toolchain_artifacts_json)"
 )"
 
 cat > "${result_file}" <<EOF

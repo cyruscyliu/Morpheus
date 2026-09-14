@@ -9,6 +9,7 @@ program
 decl
     : structDecl
     | topologyDecl
+    | externDecl
     | actionDecl
     | opDecl
     | topBbDecl
@@ -45,6 +46,7 @@ ident
     | 'import' | 'transition' | 'on' | 'sequence'
     | 'read8' | 'read16' | 'read32' | 'read64'
     | 'write8' | 'write16' | 'write32' | 'write64'
+    | 'interrupt_event' | 'vector'
     | 'BUG' | 'BUG_ON' | 'WARN_ON' | 'neqj' | 'goto'
     ;
 
@@ -253,6 +255,14 @@ headAtom
 
 // ----- actions (stub) -----
 
+externDecl
+    : 'extern' qualifiedName ('(' externTypes? ')')? ';'
+    ;
+
+externTypes
+    : type_ (',' type_)*
+    ;
+
 actionDecl
     : 'action' ident '{' '}'
     ;
@@ -376,7 +386,9 @@ traceInstr
     | traceAssign
     | traceWrite
     | traceCall
+    | traceExternCall
     | traceDmaEvent
+    | traceInterruptEvent
     | traceNeqj
     | traceGoto
     | traceBug
@@ -400,8 +412,17 @@ traceCall
     | 'call' qualifiedName ';'
     ;
 
+traceExternCall
+    : 'extern' qualifiedName '(' traceArgs? ')' ';'
+    | 'extern' qualifiedName ';'
+    ;
+
 traceDmaEvent
     : 'dma_event' '(' dmaEventArg (',' dmaEventArg)* ')' ';'
+    ;
+
+traceInterruptEvent
+    : 'interrupt_event' '(' 'vector' '=' traceExpr ')' ';'
     ;
 
 dmaEventArg

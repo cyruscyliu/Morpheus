@@ -263,7 +263,7 @@ pub fn fuzz() {
         if !scenario_generator.grammar_enabled() {
             panic!("--check-devilang-grammar requires an enabled grammar");
         }
-        println!("[libafl/qemu_nesting] Devilang grammar probe succeeded");
+        eprintln!("[libafl/qemu_nesting] Devilang grammar probe succeeded");
         return;
     }
 
@@ -337,18 +337,29 @@ pub fn fuzz() {
                     .unwrap();
                     let mut initial_corpus_inputs = HashSet::new();
                     if let Some(paths) = replay_inputs.as_ref() {
+                        let mut loaded = 0usize;
                         for path in paths {
                             eprintln!("[libafl/qemu_nesting] loading replay input {}", path.display());
-                            let input = validate_seed_against_grammar(
-                                load_replay_input(path).unwrap(),
-                                path,
-                                &scenario_generator,
-                            )
-                            .unwrap();
+                            let input = match load_replay_input(path).and_then(|input| {
+                                validate_seed_against_grammar(input, path, &scenario_generator)
+                            }) {
+                                Ok(input) => input,
+                                Err(err) => {
+                                    eprintln!(
+                                        "skipping invalid replay input {}: {err:?}",
+                                        path.display()
+                                    );
+                                    continue;
+                                }
+                            };
                             let mut testcase = Testcase::from(input);
                             *testcase.filename_mut() =
                                 Some(path.file_name().unwrap().to_string_lossy().to_string());
                             state.corpus_mut().add(testcase).unwrap();
+                            loaded += 1;
+                        }
+                        if loaded == 0 {
+                            panic!("no valid replay inputs resolved");
                         }
                     } else if let Some(paths) = initial_inputs.as_ref() {
                         let mut loaded = 0usize;
@@ -437,7 +448,7 @@ pub fn fuzz() {
                         fuzzer
                             .evaluate_input(&mut state, &mut executor, &mut $mgr, &input)
                             .unwrap_or_else(|err| {
-                                println!("failed replay: {err:?}");
+                                eprintln!("failed replay: {err:?}");
                                 process::exit(1);
                             });
                     }
@@ -445,7 +456,7 @@ pub fn fuzz() {
                     // count explicitly instead of leaving the broker with its
                     // initial zero snapshot.
                     report_progress(&mut $mgr, &mut state).unwrap_or_else(|err| {
-                        println!("failed replay progress report: {err:?}");
+                        eprintln!("failed replay progress report: {err:?}");
                         process::exit(1);
                     });
                 } else {
@@ -469,7 +480,7 @@ pub fn fuzz() {
                             fuzzer
                                 .evaluate_input(&mut state, &mut executor, &mut $mgr, &input)
                                 .unwrap_or_else(|err| {
-                                    println!("failed initial input: {err:?}");
+                                    eprintln!("failed initial input: {err:?}");
                                     process::exit(1);
                                 });
                         }
@@ -477,7 +488,7 @@ pub fn fuzz() {
                         // regular fuzz loop.  Report it now so a slow first
                         // mutation cannot hide completed executions.
                         report_progress(&mut $mgr, &mut state).unwrap_or_else(|err| {
-                            println!("failed initial progress report: {err:?}");
+                            eprintln!("failed initial progress report: {err:?}");
                             process::exit(1);
                         });
                     }
@@ -518,7 +529,7 @@ pub fn fuzz() {
         }};
     }
 
-    let monitor = MultiMonitor::new(|s| println!("{s}"));
+    let monitor = MultiMonitor::new(|s| eprintln!("{s}"));
     if replay_inputs.is_some() {
         let mut mgr = SimpleEventManager::new(monitor);
         run_client_body!(None, mgr).unwrap_or_else(|err| panic!("Failed to run replay: {err:?}"));
@@ -541,7 +552,7 @@ pub fn fuzz() {
         .launch()
     {
         Ok(()) => (),
-        Err(Error::ShuttingDown) => println!("Fuzzing stopped by user. Good bye."),
+        Err(Error::ShuttingDown) => eprintln!("Fuzzing stopped by user. Good bye."),
         Err(err) => panic!("Failed to run launcher: {err:?}"),
     }
 }

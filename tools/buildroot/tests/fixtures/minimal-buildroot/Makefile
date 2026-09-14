@@ -35,6 +35,9 @@ $(O)/images/$(TARGET_NAME).tar: $(O)/.config
 		$(O)/images \
 		$(O)/target/usr/bin \
 		$(O)/target/usr/share/qemu \
+		$(O)/build/qemu-cca-upstream-v2/include/plugins \
+		$(O)/host/bin \
+		$(O)/host/aarch64-buildroot-linux-gnu/sysroot \
 		$(O)/build/linux-6.18.16
 	@printf '%s\n' 'hello from minimal buildroot smoke target' > $(O)/target/hello.txt
 	@tar -cf $@ -C $(O)/target hello.txt
@@ -46,6 +49,9 @@ $(O)/images/$(TARGET_NAME).tar: $(O)/.config
 	@chmod +x $(O)/target/usr/bin/qemu-system-aarch64
 	@printf '%s\n' 'fake qemu rom data' > $(O)/target/usr/share/qemu/edk2.bin
 	@printf '%s\n' 'fake vmlinux elf' > $(O)/build/linux-6.18.16/vmlinux
+	@printf '%s\n' 'synthetic qemu plugin header' > $(O)/build/qemu-cca-upstream-v2/include/plugins/qemu-plugin.h
+	@printf '%s\n' '#!/bin/sh' 'exit 0' > $(O)/host/bin/aarch64-buildroot-linux-gnu-gcc
+	@chmod +x $(O)/host/bin/aarch64-buildroot-linux-gnu-gcc
 	@printf '%s\n' 'built $(TARGET_NAME).tar' > $(O)/build.log
 
 clean:

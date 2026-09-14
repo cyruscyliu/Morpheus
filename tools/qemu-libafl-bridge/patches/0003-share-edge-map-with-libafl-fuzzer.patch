@@ -1,7 +1,9 @@
 diff --git a/libafl/jit.c b/libafl/jit.c
 --- a/libafl/jit.c
 +++ b/libafl/jit.c
-@@ -5,5 +5,7 @@
+@@ -3,9 +3,11 @@
+ */
+
  // from libafl_targets coverage.rs
 -// correct size doesn't matter here
 -uint8_t __afl_area_ptr_local[65536] __attribute__((weak));
@@ -11,3 +13,8 @@ diff --git a/libafl/jit.c b/libafl/jit.c
 +// observer instead of writing to a bridge-local fallback bitmap.
 +extern uint8_t __afl_area_ptr_local[] __attribute__((weak));
 +extern size_t __afl_map_size __attribute__((weak));
+
+ size_t libafl_jit_trace_edge_hitcount(uint64_t data, uint64_t id)
+ {
+     return data + id;
+ }

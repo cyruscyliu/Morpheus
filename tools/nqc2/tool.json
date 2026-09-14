@@ -52,6 +52,33 @@
         ],
         "path": true
       },
+      "guest-qemu": {
+        "aliases": [
+          "guest-qemu",
+          "guestQemu"
+        ],
+        "path": true
+      },
+      "guest-qemu-plugin-header": {
+        "aliases": [
+          "guest-qemu-plugin-header",
+          "guestQemuPluginHeader"
+        ],
+        "path": true
+      },
+      "guest-cross-compile": {
+        "aliases": [
+          "guest-cross-compile",
+          "guestCrossCompile"
+        ]
+      },
+      "guest-sysroot": {
+        "aliases": [
+          "guest-sysroot",
+          "guestSysroot"
+        ],
+        "path": true
+      },
       "install-dir": {
         "aliases": [
           "install-dir",
@@ -210,6 +237,11 @@
           "scalarFlags": [
             "source",
             "qemu",
+            "build-dir-key",
+            "guest-qemu",
+            "guest-qemu-plugin-header",
+            "guest-cross-compile",
+            "guest-sysroot",
             "build-dir",
             "install-dir",
             "trace-dir",

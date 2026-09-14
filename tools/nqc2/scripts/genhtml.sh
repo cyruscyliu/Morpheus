@@ -26,6 +26,8 @@ args+=("${coverage_output}")
 
 genhtml "${args[@]}"
 
+result_artifacts=",\"artifacts\":[{\"path\":\"html-report\",\"location\":\"${output_dir}\"},{\"path\":\"html-index\",\"location\":\"${output_dir}/index.html\"}]"
+
 cat > "${result_file}" <<EOF
-{"details":{"coverage_output":"${coverage_output}","output":"${output_dir}","title":"${title}"}}
+{"details":{"coverage_output":"${coverage_output}","output":"${output_dir}","title":"${title}"}${result_artifacts}}
 EOF

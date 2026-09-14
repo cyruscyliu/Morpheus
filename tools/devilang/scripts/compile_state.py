@@ -48,7 +48,16 @@ CALL_STMT_RE = re.compile(
     r"^call\s+(?P<name>[A-Za-z0-9_.]+)(?:\((?P<args>.*)\))?$"
 )
 CALL_EXPR_RE = re.compile(r"^(?P<name>[A-Za-z0-9_.]+)\((?P<args>.*)\)$")
+EXTERN_DECL_RE = re.compile(
+    r"^extern\s+(?P<name>[A-Za-z0-9_.]+)(?:\((?P<args>.*)\))?;$"
+)
+EXTERN_CALL_RE = re.compile(
+    r"^extern\s+(?P<name>[A-Za-z0-9_.]+)(?:\((?P<args>.*)\))?$"
+)
 DMA_EVENT_RE = re.compile(r"^dma_event\((?P<body>.*)\)$")
+INTERRUPT_EVENT_RE = re.compile(
+    r"^interrupt_event\(\s*vector\s*=\s*(?P<vector>.+)\s*\)$"
+)
 SG_TOKEN_RE = re.compile(r"\bsg[A-Za-z0-9_]*\b")
 BUG_RE = re.compile(r"^BUG\(\)$")
 BUG_ON_RE = re.compile(r"^BUG_ON\((?P<expr>.*)\)$")
@@ -161,6 +170,12 @@ class Trace:
     name: str
     entry: bool
     blocks: List[Block]
+
+
+@dataclasses.dataclass
+class ExternalDecl:
+    name: str
+    arg_types: Tuple[str, ...] = ()
 
 
 @dataclasses.dataclass
@@ -725,6 +740,7 @@ class StateCompiler:
         self.topologies: List[TopologyDecl] = []
         self.pointer_schemas: List[PointerSchema] = []
         self.mmio_ops: List[MmioOp] = []
+        self.external_decls: Dict[str, ExternalDecl] = {}
         self.trace_return_constant_overrides: Dict[str, int] = {
             "virtio_features_ok_trace": 0,
         }
@@ -760,6 +776,8 @@ class StateCompiler:
                 if READ_RE.match(line) or parse_write_call(line):
                     return True
                 if DMA_EVENT_RE.match(line):
+                    return True
+                if INTERRUPT_EVENT_RE.match(line):
                     return True
                 if SG_TOKEN_RE.search(line):
                     return True
@@ -922,6 +940,31 @@ class StateCompiler:
             line = raw.strip()
             if not line:
                 continue
+
+            if not stack and current_machine is None:
+                extern_match = EXTERN_DECL_RE.match(line)
+                if extern_match:
+                    name = extern_match.group("name")
+                    raw_args = extern_match.group("args")
+                    arg_types = (
+                        tuple(
+                            item.strip()
+                            for item in raw_args.split(",")
+                            if item.strip()
+                        )
+                        if raw_args is not None
+                        else ()
+                    )
+                    previous = self.external_decls.get(name)
+                    if previous is not None and previous.arg_types != arg_types:
+                        raise ParseError(
+                            f"{source_name}:{lineno}: conflicting extern declaration for {name}"
+                        )
+                    self.external_decls[name] = ExternalDecl(
+                        name=name,
+                        arg_types=arg_types,
+                    )
+                    continue
 
             if stack and stack[-1] in {
                 "struct",
@@ -1492,6 +1535,7 @@ class StateCompiler:
                 neqj_match = NEQJ_RE.match(line)
                 goto_match = GOTO_RE.match(line)
                 dma_match = DMA_EVENT_RE.match(line)
+                interrupt_match = INTERRUPT_EVENT_RE.match(line)
                 write_match = parse_write_call(line)
                 if neqj_match:
                     target = neqj_match.group("label")
@@ -1509,7 +1553,18 @@ class StateCompiler:
                     continue
                 if READ_RE.match(line) or write_match or ASSIGN_RE.match(line):
                     continue
+                if interrupt_match:
+                    continue
                 if CALL_STMT_RE.match(line):
+                    continue
+                extern_match = EXTERN_CALL_RE.match(line)
+                if extern_match:
+                    name = extern_match.group("name")
+                    if name not in self.external_decls:
+                        issues.append(
+                            f"machine {machine.name} trace {trace.name}: "
+                            f"extern operation `{name}` has no declaration"
+                        )
                     continue
                 if dma_match:
                     issues.extend(
@@ -1788,6 +1843,8 @@ class StateCompiler:
             "write32",
             "write64",
             "dma_event",
+            "interrupt_event",
+            "vector",
             "op",
             "dir",
             "path",
@@ -1819,10 +1876,12 @@ class StateCompiler:
             "neqj",
             "unknown",
             "call",
+            "extern",
             "BUG",
             "BUG_ON",
             "WARN_ON",
         }
+        keywords.update(self.external_decls)
         assigned_locals = set()
         ordered: List[str] = []
         ordered_seen: set[str] = set()
@@ -1919,9 +1978,11 @@ class StateCompiler:
                     read_match = READ_RE.match(line)
                     write_call = parse_write_call(line)
                     dma_event_match = DMA_EVENT_RE.match(line)
+                    interrupt_event_match = INTERRUPT_EVENT_RE.match(line)
                     neqj_match = NEQJ_RE.match(line)
                     assign_match = ASSIGN_RE.match(line)
                     call_stmt_match = CALL_STMT_RE.match(line)
+                    extern_call_match = EXTERN_CALL_RE.match(line)
                     if read_match:
                         step.kind = "read"
                         step.width = int(read_match.group("width"))
@@ -2017,6 +2078,16 @@ class StateCompiler:
                         step.dma_data_kind = DMA_DATA_KIND_IDS[data_kind_name]
                         step.dma_data_type_name = data_type_name
                         step.dma_field_names = data_field_names
+                    elif interrupt_event_match:
+                        step.kind = "interrupt"
+                        step.value = intern_expr(
+                            self.parse_expr(
+                                interrupt_event_match.group("vector"),
+                                scratch_map,
+                                allow_symbol=False,
+                                forced_symbols=trace_param_names,
+                            )
+                        )
                     elif neqj_match:
                         lhs_text = neqj_match.group("lhs")
                         rhs_text = neqj_match.group("rhs")
@@ -2084,6 +2155,8 @@ class StateCompiler:
                             )
                         else:
                             step.kind = "eps"
+                    elif extern_call_match:
+                        step.kind = "eps"
                     elif assign_match and not write_call:
                         lhs = assign_match.group("lhs")
                         rhs = assign_match.group("rhs").strip()
@@ -2851,6 +2924,41 @@ int {self.symbol_prefix}_best_active(
         values.extend("-1" for _ in range(8 - len(values)))
         return ", ".join(values)
 
+    def external_call_arities(self, machines: Sequence[Machine]) -> Dict[str, int]:
+        arities: Dict[str, int] = {
+            name: len(decl.arg_types)
+            for name, decl in self.external_decls.items()
+        }
+        for machine in machines:
+            for trace in machine.traces:
+                for block in trace.blocks:
+                    for line in block.lines:
+                        match = EXTERN_CALL_RE.match(line)
+                        if not match:
+                            continue
+                        args = split_args(match.group("args") or "")
+                        arities[match.group("name")] = max(
+                            arities.get(match.group("name"), 0),
+                            len(args),
+                        )
+        return arities
+
+    def render_external_declarations(
+        self,
+        machines: Sequence[Machine],
+    ) -> List[str]:
+        declarations: List[str] = []
+        for name, arity in sorted(self.external_call_arities(machines).items()):
+            c_name = sanitize_call_name(name)
+            if arity == 0:
+                signature = "void"
+            else:
+                signature = ", ".join(
+                    "uint64_t" for _ in range(arity)
+                )
+            declarations.append(f"extern void {c_name}({signature});")
+        return declarations
+
     def render_c(
         self,
         machines: List[Machine],
@@ -2897,7 +3005,10 @@ int {self.symbol_prefix}_best_active(
         lines.append("#include <stdint.h>")
         lines.append("#include <string.h>")
         lines.append("")
-        lines.append("enum dl_step_kind { DL_STEP_EPS, DL_STEP_READ, DL_STEP_WRITE, DL_STEP_DMA, DL_STEP_BRANCH, DL_STEP_WILDCARD, DL_STEP_ASSIGN, DL_STEP_CALL, DL_STEP_END };")
+        lines.append("/* External signals are supplied by the integration harness. */")
+        lines.extend(self.render_external_declarations(machines))
+        lines.append("")
+        lines.append("enum dl_step_kind { DL_STEP_EPS, DL_STEP_READ, DL_STEP_WRITE, DL_STEP_DMA, DL_STEP_INTERRUPT, DL_STEP_BRANCH, DL_STEP_WILDCARD, DL_STEP_ASSIGN, DL_STEP_CALL, DL_STEP_END };")
         lines.append("enum dl_expr_kind { DL_EXPR_ANY, DL_EXPR_CONST, DL_EXPR_SCRATCH, DL_EXPR_SYMBOL, DL_EXPR_ADD, DL_EXPR_SUB, DL_EXPR_AND, DL_EXPR_OR, DL_EXPR_SHL, DL_EXPR_LSHR, DL_EXPR_EQ, DL_EXPR_NE, DL_EXPR_ULT, DL_EXPR_ULE, DL_EXPR_UGT, DL_EXPR_UGE, DL_EXPR_SLT, DL_EXPR_SLE, DL_EXPR_SGT, DL_EXPR_SGE };")
         lines.append("")
         lines.append("struct dl_expr { int kind; uint64_t value; int scratch; int symbol; int64_t offset; int lhs_idx; int rhs_idx; };")
@@ -3207,6 +3318,7 @@ int {self.symbol_prefix}_best_active(
                     "read": "DL_STEP_READ",
                     "write": "DL_STEP_WRITE",
                     "dma": "DL_STEP_DMA",
+                    "interrupt": "DL_STEP_INTERRUPT",
                     "branch": "DL_STEP_BRANCH",
                     "wildcard": "DL_STEP_WILDCARD",
                     "assign": "DL_STEP_ASSIGN",
@@ -4910,6 +5022,7 @@ static int dl_trace_has_pointer_hint_target(
             continue;
         }
         if (loop_step->kind == DL_STEP_EPS ||
+            loop_step->kind == DL_STEP_INTERRUPT ||
             loop_step->kind == DL_STEP_WILDCARD) {
             idx = loop_step->next_a;
             continue;
@@ -6990,6 +7103,7 @@ static int dl_try_pending_async_dma(
         return 0;
     }
     offset = event->addr - event->base;
+    (void)offset;
 %s
     return 0;
 }"""
@@ -7087,6 +7201,7 @@ static int dl_try_pending_async_dma(
 
         switch (step->kind) {
         case DL_STEP_EPS:
+        case DL_STEP_INTERRUPT:
         case DL_STEP_WILDCARD:
         case DL_STEP_ASSIGN:
             DL_ENQUEUE_STEP(step->next_a);
@@ -7648,7 +7763,8 @@ static int dl_try_pending_async_dma(
             index++;
             continue;
         }
-        if (step->kind == DL_STEP_EPS) {
+        if (step->kind == DL_STEP_EPS ||
+            step->kind == DL_STEP_INTERRUPT) {
             if (cursor.probe_mode && cursor.score == 0 && io[index].probe_budget > 0) {
                 io[index].probe_budget--;
             }
@@ -8434,6 +8550,7 @@ static int dl_try_pending_async_dma(
 
         switch (step->kind) {
         case DL_STEP_EPS:
+        case DL_STEP_INTERRUPT:
         case DL_STEP_WILDCARD:
         case DL_STEP_ASSIGN:
             if (step->next_a >= 0 && work_count < nr_steps) {

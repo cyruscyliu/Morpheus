@@ -102,11 +102,6 @@ fn main() -> Result<(), String> {
 }
 
 fn load_seed(path: &Path) -> Result<ScenarioInput, String> {
-    if path.extension().is_some_and(|ext| ext == "raw") {
-        return decode_scenario(&fs::read(path).map_err(|error| error.to_string())?)
-            .map_err(|error| format!("failed to decode raw seed {}: {error}", path.display()));
-    }
-
     match <ScenarioInput as Input>::from_file(path) {
         Ok(seed) => Ok(seed),
         Err(postcard_error) => decode_scenario(&fs::read(path).map_err(|error| {

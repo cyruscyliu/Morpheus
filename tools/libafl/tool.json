@@ -40,6 +40,13 @@
         ],
         "path": true
       },
+      "qemu-plugin": {
+        "aliases": [
+          "qemu-plugin",
+          "qemuPlugin"
+        ],
+        "path": true
+      },
       "seed-dir": {
         "aliases": [
           "seed-dir",
@@ -557,6 +564,8 @@
             "qemu-bridge-source",
             "qemu-bridge-library",
             "qemu-bridge-data-dir",
+            "qemu-plugin",
+            "qemu-plugin-el",
             "harness-script",
             "grammar",
             "devilang-grammar",

@@ -129,6 +129,15 @@
         },
         "target/usr/share/qemu": {
           "pathTemplate": "tools/buildroot/builds/{buildDirKey}/output/target/usr/share/qemu"
+        },
+        "guest-qemu-plugin-header": {
+          "pathTemplate": "tools/buildroot/builds/{buildDirKey}/output/build/qemu-cca-upstream-v2/include/plugins/qemu-plugin.h"
+        },
+        "guest-cross-compile": {
+          "pathTemplate": "tools/buildroot/builds/{buildDirKey}/output/host/bin/aarch64-buildroot-linux-gnu-gcc"
+        },
+        "guest-sysroot": {
+          "pathTemplate": "tools/buildroot/builds/{buildDirKey}/output/host/aarch64-buildroot-linux-gnu/sysroot"
         }
       },
       "fetchFlags": [

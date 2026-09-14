@@ -37,6 +37,8 @@ l2_accel="auto"
 l2_cpu=""
 l2_memory_mb="${MORPHEUS_L2_MEMORY_MB:-}"
 l2_smp="${MORPHEUS_LIBAFL_L2_SMP:-}"
+qemu_plugin="${MORPHEUS_LIBAFL_QEMU_PLUGIN:-}"
+qemu_plugin_el="${MORPHEUS_LIBAFL_QEMU_PLUGIN_EL:-all}"
 measure_l2_startup="${MORPHEUS_LIBAFL_MEASURE_L2_STARTUP:-false}"
 disable_nqc2_plugin="false"
 capture_runtime="false"
@@ -96,6 +98,8 @@ while [ "$#" -gt 0 ]; do
     --l2-cpu) shift; l2_cpu="${1:-}" ;;
     --l2-smp) shift; l2_smp="${1:-}" ;;
     --l2-memory-mb) shift; l2_memory_mb="${1:-}" ;;
+    --qemu-plugin) shift; qemu_plugin="${1:-}" ;;
+    --qemu-plugin-el) shift; qemu_plugin_el="${1:-}" ;;
     --replay-input) shift; replay_inputs+=("${1:-}") ;;
     --seed-input) shift; seed_inputs+=("${1:-}") ;;
     --devilang-state) shift; devilang_states+=("${1:-}") ;;
@@ -233,6 +237,16 @@ kill_run "${manifest_pid}"
 [ -f "${nvirsh_state}" ] || { echo "missing prepared nvirsh state: ${nvirsh_state}" >&2; exit 1; }
 [ -x "${fuzzer_bin}" ] || { echo "missing qemu_nesting fuzzer binary: ${fuzzer_bin}" >&2; exit 1; }
 [ -f "${stub_elf}" ] || { echo "missing guest stub ELF: ${stub_elf}" >&2; exit 1; }
+case "${qemu_plugin_el}" in
+  all|0|1|2|3|el0|el1|el2|el3) ;;
+  *) echo "invalid --qemu-plugin-el: ${qemu_plugin_el}" >&2; exit 1 ;;
+esac
+if [ -n "${qemu_plugin}" ]; then
+  [ -f "${qemu_plugin}" ] || {
+    echo "missing outer QEMU plugin: ${qemu_plugin}" >&2
+    exit 1
+  }
+fi
 
 replay_enabled=false
 if [ "${#replay_inputs[@]}" -gt 0 ]; then
@@ -1730,6 +1744,10 @@ else
   else
     args+=("-bios" "${firmware}")
   fi
+fi
+
+if [ -n "${qemu_plugin}" ]; then
+  args+=("-plugin" "file=${qemu_plugin},trace=${run_dir}/morpheus-l1-nqc2.trace,el=${qemu_plugin_el}")
 fi
 
 unset MORPHEUS_LIBAFL_GRAMMAR MORPHEUS_LIBAFL_DEVILANG_GRAMMAR

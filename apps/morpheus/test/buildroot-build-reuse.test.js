@@ -44,6 +44,18 @@ function assertManagedGuestArtifacts(result, outputDir) {
     artifacts.get("target/usr/share/qemu"),
     path.join(outputDir, "target", "usr", "share", "qemu"),
   );
+  assert.equal(
+    artifacts.get("guest-qemu-plugin-header"),
+    path.join(outputDir, "build", "qemu-cca-upstream-v2", "include", "plugins", "qemu-plugin.h"),
+  );
+  assert.equal(
+    artifacts.get("guest-cross-compile"),
+    path.join(outputDir, "host", "bin", "aarch64-buildroot-linux-gnu-gcc"),
+  );
+  assert.equal(
+    artifacts.get("guest-sysroot"),
+    path.join(outputDir, "host", "aarch64-buildroot-linux-gnu", "sysroot"),
+  );
 }
 
 test("buildroot build reuses an existing output tree before mutating .config", () => {

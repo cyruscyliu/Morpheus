@@ -6,6 +6,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
+const workspaceRoot = path.resolve(repoRoot, "..");
 const fetchScript = path.join(repoRoot, "tools", "qemu", "scripts", "fetch.sh");
 const patchScript = path.join(repoRoot, "tools", "qemu", "scripts", "patch.sh");
 const nestingPatchDir = path.join(repoRoot, "tools", "qemu", "patches", "virtio-mmio-nesting");
@@ -15,7 +16,7 @@ const nestingPatch = fs.readFileSync(
 );
 const seedPatch = fs.readFileSync(
   path.join(
-    repoRoot,
+    workspaceRoot,
     "tools",
     "buildroot",
     "patches-cvm",

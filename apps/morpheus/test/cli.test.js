@@ -436,6 +436,45 @@ test("tool list discovers repo-local tools", () => {
   );
 });
 
+test("workspace-local tools override bundled Morpheus tools", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-local-tool-"));
+  writeConfig(
+    projectRoot,
+    [
+      "cache:",
+      "  root: ./cache",
+      "  namespace: example",
+      ""
+    ].join("\n")
+  );
+  const qemuRoot = path.join(projectRoot, "tools", "qemu");
+  fs.mkdirSync(qemuRoot, { recursive: true });
+  fs.writeFileSync(
+    path.join(qemuRoot, "tool.json"),
+    JSON.stringify({
+      name: "qemu",
+      runtime: "node",
+      entry: "local-qemu.js",
+    }, null, 2),
+  );
+  fs.writeFileSync(path.join(qemuRoot, "local-qemu.js"), "process.exit(0);\n");
+
+  const result = run(["tool", "list", "--json"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = JSON.parse(result.stdout);
+  const qemu = payload.details.tools.find((tool) => tool.name === "qemu");
+  assert.ok(qemu, "expected qemu to be listed");
+  assert.equal(qemu.entry, "local-qemu.js");
+  assert.equal(qemu.descriptorPath, path.relative(repoRoot, path.join(qemuRoot, "tool.json")));
+  assert.equal(qemu.installRoot, path.relative(repoRoot, qemuRoot));
+  assert.equal(qemu.verification.status, "ready");
+
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
 test("tool list reports workflow-only tools without wrapper errors", () => {
   const result = run(["tool", "list", "--json"], {
     cwd: ciWorkspaceRoot,

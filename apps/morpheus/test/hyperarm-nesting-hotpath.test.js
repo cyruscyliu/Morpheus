@@ -6,6 +6,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
+const workspaceRoot = path.resolve(repoRoot, "..");
 const stubSource = fs.readFileSync(
   path.join(
     repoRoot,
@@ -142,7 +143,7 @@ const libaflPatchSource = fs.readFileSync(
 );
 const qemuSeedPatchSource = fs.readFileSync(
   path.join(
-    repoRoot,
+    workspaceRoot,
     "tools",
     "buildroot",
     "patches-cvm",

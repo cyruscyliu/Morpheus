@@ -1481,7 +1481,8 @@ function stopWorkflowStepTool(step) {
     });
   }
 
-  const entryPath = path.join(repoRoot(), descriptor.installRoot, descriptor.entry);
+  const installRoot = descriptor.installRootPath || path.join(repoRoot(), descriptor.installRoot);
+  const entryPath = path.join(installRoot, descriptor.entry);
   const args = descriptor.runtime === "node"
     ? [entryPath, "stop", "--run-dir", stepToolRunDir(step.stepDir), "--json"]
     : ["stop", "--run-dir", stepToolRunDir(step.stepDir), "--json"];

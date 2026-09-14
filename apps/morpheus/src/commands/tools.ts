@@ -23,7 +23,7 @@ function requireTool(name) {
 
 function verifyTool(name) {
   const definition = requireTool(name);
-  const installRoot = path.join(repoRoot(), definition.installRoot);
+  const installRoot = definition.installRootPath || path.join(repoRoot(), definition.installRoot);
   const entrypoint = definition.entry ? path.join(installRoot, definition.entry) : null;
   const issues = [];
 
@@ -48,7 +48,7 @@ function verifyTool(name) {
     status,
     runtime: definition.runtime || null,
     descriptorPath: definition.descriptorPath,
-    installRoot: path.relative(repoRoot(), installRoot),
+    installRoot: definition.installRoot,
     entrypoint: entrypoint ? path.relative(repoRoot(), entrypoint) : null,
     wrapper: null,
     issues

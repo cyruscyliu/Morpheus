@@ -28,15 +28,15 @@ test("enable-cache rejects the CI-only config", () => {
   assert.match(result.stderr, /CI-only/);
 });
 
-test("enable-cache migrates legacy .cache roots into MORPHEUS_DATA_ROOT/cache", () => {
+test("enable-cache migrates legacy .cache roots into an explicit cache.root", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-enable-cache-"));
   const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-enable-cache-data-"));
   const workspaceRoot = path.join(projectRoot, "workspace");
   const configPath = path.join(projectRoot, "morpheus.yaml");
+  const cacheRoot = path.join(dataRoot, "cache");
   const legacyBuildDir = path.join(workspaceRoot, "tools", "qemu", "builds", "demo");
   const migratedBuildDir = path.join(
-    dataRoot,
-    "cache",
+    cacheRoot,
     "hyperarm",
     "tools",
     "qemu",
@@ -64,22 +64,18 @@ test("enable-cache migrates legacy .cache roots into MORPHEUS_DATA_ROOT/cache", 
   );
 
   try {
-    const result = spawnSync(process.execPath, [scriptPath, "--config", configPath], {
+    const result = spawnSync(process.execPath, [scriptPath, "--config", configPath, "--root", cacheRoot], {
       cwd: repoRoot,
       encoding: "utf8",
-      env: {
-        ...process.env,
-        MORPHEUS_DATA_ROOT: dataRoot,
-      },
     });
 
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const payload = JSON.parse(result.stdout);
-    assert.equal(payload.cache_root, path.join(dataRoot, "cache"));
+    assert.equal(payload.cache_root, cacheRoot);
     assert.equal(fs.existsSync(path.join(migratedBuildDir, "marker.txt")), true);
 
     const rewrittenConfig = fs.readFileSync(configPath, "utf8");
-    assert.doesNotMatch(rewrittenConfig, /cache:\s*\n\s*root:/m);
+    assert.match(rewrittenConfig, /root:\s+/);
     assert.doesNotMatch(rewrittenConfig, /\.cache/);
   } finally {
     fs.rmSync(projectRoot, { recursive: true, force: true });

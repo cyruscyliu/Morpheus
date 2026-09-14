@@ -301,29 +301,14 @@ function resolveCachePolicy(configValue, configPath, baseDir) {
     return null;
   }
   const cache = isPlainObject(configValue.cache) ? configValue.cache : {};
-  const { defaultCacheRoot } = require("./paths");
-
-  let root = null;
-  if (cache.root) {
-    root = resolveLocalPath(baseDir, cache.root);
-  } else {
-    // Prefer env-composed path: ${MORPHEUS_DATA_ROOT}/cache
-    // Explicit cache.root remains supported for tests and overrides.
-    root = defaultCacheRoot();
-  }
-  if (!root) {
+  if (!cache.root) {
     return null;
   }
+  const root = resolveLocalPath(baseDir, cache.root);
 
   const namespace = inferCacheNamespace(configValue, baseDir);
   if (!namespace) {
-    // Explicit cache.root without a resolvable namespace is a config error.
-    // Auto-composed cache (from MORPHEUS_DATA_ROOT) also needs a namespace
-    // inferred from workspace.root; otherwise stay workspace-local.
-    if (cache.root) {
-      throw new Error("cache.namespace must be configured when cache.root is set");
-    }
-    return null;
+    throw new Error("cache.namespace must be configured when cache.root is set");
   }
 
   return {

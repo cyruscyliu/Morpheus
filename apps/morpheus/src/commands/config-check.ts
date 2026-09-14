@@ -123,8 +123,8 @@ function checkCacheConfig(value) {
   if (!cache || typeof cache !== "object") {
     return issues;
   }
-  // cache.root is optional: when omitted, Morpheus composes
-  // ${MORPHEUS_DATA_ROOT}/cache and infers namespace from workspace.root.
+  // cache.root in morpheus.yaml is the only cache source. When omitted,
+  // tool trees stay workspace-local.
   if (cache.root && !cache.namespace) {
     const workspaceRoot = value.workspace && value.workspace.root
       ? String(value.workspace.root)

@@ -29,6 +29,12 @@ function makeProject(dataRoot) {
     [
       "workspace:",
       `  root: ${workspaceRoot}`,
+      "cache:",
+      `  root: ${path.join(dataRoot, "cache")}`,
+      "  namespace: hyperarm",
+      "  downloads: global",
+      "  builds: global",
+      "  src: global",
       "tools:",
       "  nvirsh:",
       "    profile: qemu-debian-arm64",
@@ -57,7 +63,6 @@ test("nvirsh inspect and stop use the shared data-root cache", () => {
   const env = {
     ...process.env,
     MORPHEUS_DATA_ROOT: dataRoot,
-    MORPHEUS_CACHE_ROOT: "",
     MORPHEUS_WORKSPACES_ROOT: "",
   };
   const expectedState = path.join(

@@ -2087,7 +2087,6 @@ test("workflow run completes the CI buildroot-based CVM workflow end-to-end", ()
   const env = isolatedEnv({
     MORPHEUS_DATA_ROOT: dataRoot,
     MORPHEUS_WORKSPACES_ROOT: "",
-    MORPHEUS_CACHE_ROOT: "",
   });
 
   try {

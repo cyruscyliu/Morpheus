@@ -87,7 +87,7 @@ pnpm run install:bin
 pnpm cache:enable -- --config <workspace-root>/morpheus.yaml
 ```
 
-The shared cache root defaults to `${MORPHEUS_DATA_ROOT}/cache`.
+Set `cache.root` in the project `morpheus.yaml`. That is the only cache source.
 
 - check available scripts:
 

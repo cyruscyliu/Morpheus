@@ -223,8 +223,8 @@ test("resolveToolDependencies infers cache namespace from workspace.root when mi
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
-test("resolveToolDependencies auto-composes cache from MORPHEUS_DATA_ROOT when cache.root is omitted", () => {
-  const projectRoot = tempDir("morpheus-resolve-auto-cache-");
+test("resolveToolDependencies stays workspace-local when cache.root is omitted", () => {
+  const projectRoot = tempDir("morpheus-resolve-no-cache-root-");
   const dataRoot = path.join(projectRoot, "data");
   const workspaceRoot = path.join(dataRoot, "workspaces", "hyperarm");
   fs.mkdirSync(workspaceRoot, { recursive: true });
@@ -264,7 +264,7 @@ test("resolveToolDependencies auto-composes cache from MORPHEUS_DATA_ROOT when c
       );
       assert.equal(
         microkit.sel4,
-        path.join(dataRoot, "cache", "hyperarm", "tools", "sel4", "builds", "sel4-c0fc3245", "source"),
+        path.join(workspaceRoot, "tools", "sel4", "builds", "sel4-c0fc3245", "source"),
       );
     });
   } finally {

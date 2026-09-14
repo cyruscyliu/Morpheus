@@ -35,22 +35,14 @@ function dataRoot() {
   return null;
 }
 
-function defaultCacheRoot() {
-  if (process.env.MORPHEUS_CACHE_ROOT) {
-    return path.resolve(process.env.MORPHEUS_CACHE_ROOT);
-  }
-  const root = dataRoot();
-  if (!root) {
-    return null;
-  }
-  return path.join(root, "cache");
-}
-
 function workspacePaths() {
+  const { loadConfig, configDir, resolveCachePolicy } = require("./config");
   const root = workRoot();
-  const cacheRoot = defaultCacheRoot();
+  const config = loadConfig(process.cwd());
+  const policy = resolveCachePolicy(config.value || {}, config.path, configDir(config.path));
+  const cacheRoot = policy && policy.root ? policy.root : null;
   if (!cacheRoot) {
-    throw new Error("MORPHEUS_DATA_ROOT or MORPHEUS_CACHE_ROOT must be configured");
+    throw new Error("cache.root must be configured in morpheus.yaml");
   }
 
   return {
@@ -70,6 +62,5 @@ module.exports = {
   repoRoot,
   workRoot,
   dataRoot,
-  defaultCacheRoot,
   workspacePaths
 };

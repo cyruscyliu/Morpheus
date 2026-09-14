@@ -1,6 +1,6 @@
 // @ts-nocheck
 const path = require("path");
-const { loadConfig, configDir, resolveLocalPath } = require("../core/config");
+const { loadConfig, configDir, resolveConfiguredWorkspaceRoot } = require("../core/config");
 const { writeStdoutLine } = require("../core/io");
 
 const ALLOWED_TOOL_MODES = ["local", "remote"];
@@ -126,16 +126,11 @@ function checkCacheConfig(value) {
   // cache.root in morpheus.yaml is the only cache source. When omitted,
   // tool trees stay workspace-local.
   if (cache.root && !cache.namespace) {
-    const workspaceRoot = value.workspace && value.workspace.root
-      ? String(value.workspace.root)
-      : "";
-    if (!workspaceRoot) {
-      issues.push({
-        level: "error",
-        path: "cache.namespace",
-        message: "cache.namespace is required when cache.root is configured without workspace.root"
-      });
-    }
+    issues.push({
+      level: "error",
+      path: "cache.namespace",
+      message: "cache.namespace is required when cache.root is configured"
+    });
   }
   return issues;
 }
@@ -196,12 +191,7 @@ function runConfigShow() {
     throw new Error("could not find morpheus.yaml");
   }
   const baseDir = configDir(config.path);
-  const workspaceRoot = config.value && config.value.workspace && config.value.workspace.root
-    ? resolveLocalPath(baseDir, config.value.workspace.root)
-    : null;
-  if (!workspaceRoot) {
-    throw new Error("workspace.root must be configured in Morpheus config");
-  }
+  const workspaceRoot = resolveConfiguredWorkspaceRoot(config.value || {}, baseDir);
   const workflows = config.value && config.value.workflows && typeof config.value.workflows === "object"
     ? config.value.workflows
     : {};

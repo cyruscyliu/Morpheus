@@ -18,19 +18,17 @@ function run(args, options = {}) {
   });
 }
 
-function makeProject(dataRoot) {
+function makeProject() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-nvirsh-"));
-  const workspaceRoot = path.join(dataRoot, "workspaces", "hyperarm");
-  const sharedCacheRoot = path.join(dataRoot, "cache", "hyperarm");
+  fs.mkdirSync(path.join(root, ".morpheus"), { recursive: true });
+  const sharedCacheRoot = path.join(root, "cache", "hyperarm");
   const configPath = path.join(root, "morpheus.yaml");
 
   fs.writeFileSync(
     configPath,
     [
-      "workspace:",
-      `  root: ${workspaceRoot}`,
       "cache:",
-      `  root: ${path.join(dataRoot, "cache")}`,
+      `  root: ${path.join(root, "cache")}`,
       "  namespace: hyperarm",
       "  downloads: global",
       "  builds: global",
@@ -57,16 +55,13 @@ function makeProject(dataRoot) {
   return { root, configPath };
 }
 
-test("nvirsh inspect and stop use the shared data-root cache", () => {
-  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-nvirsh-data-"));
-  const { root: projectRoot, configPath } = makeProject(dataRoot);
+test("nvirsh inspect and stop use the workspace cache", () => {
+  const { root: projectRoot, configPath } = makeProject();
   const env = {
     ...process.env,
-    MORPHEUS_DATA_ROOT: dataRoot,
-    MORPHEUS_WORKSPACES_ROOT: "",
   };
   const expectedState = path.join(
-    dataRoot,
+    projectRoot,
     "cache",
     "hyperarm",
     "tools",
@@ -112,6 +107,5 @@ test("nvirsh inspect and stop use the shared data-root cache", () => {
     assert.equal(payload.details.manifest, expectedState);
   } finally {
     fs.rmSync(projectRoot, { recursive: true, force: true });
-    fs.rmSync(dataRoot, { recursive: true, force: true });
   }
 });

@@ -1795,7 +1795,7 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   )
     ? process.cwd()
     : null;
-  if (["exec", "benchmark"].includes(command) && workflowStepCwd) {
+  if (["exec", "benchmark"].includes(command) && !effective["run-dir"] && workflowStepCwd) {
     effective["run-dir"] = workflowStepCwd;
   }
   if (command === "exec") {
@@ -1854,7 +1854,7 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   ) {
     fs.rmSync(path.dirname(legacyExecRunDir), { recursive: true, force: true });
   }
-  const childCwd = workflowStepCwd || managedRunDir || process.cwd();
+  const childCwd = effective["run-dir"] || workflowStepCwd || managedRunDir || process.cwd();
   if (["exec", "benchmark"].includes(command) && childCwd) {
     fs.mkdirSync(childCwd, { recursive: true });
   }

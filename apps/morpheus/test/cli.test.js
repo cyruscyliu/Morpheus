@@ -9,7 +9,6 @@ const { spawnSync, spawn } = require("node:child_process");
 const appRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(appRoot, "..", "..");
 const bin = path.join(appRoot, "dist", "cli.js");
-const ciConfigPath = path.join(repoRoot, "tests", "morpheus.yaml");
 const buildrootFixture = path.join(repoRoot, "tools", "buildroot", "tests", "fixtures", "minimal-buildroot");
 const devilangAuditFixture = path.join(
   repoRoot,
@@ -25,9 +24,8 @@ const { applyConfigDefaults } = require("../dist/core/config.js");
 const { parseToolArgs, readOptionalText } = require("../dist/core/tool-invoke.js");
 const { effectiveBuildDirKey, syncRemotePathToLocal } = require("../dist/transport/remote.js");
 const { resolveConfiguredStepArgs } = require("../dist/commands/workflow.js");
-const repoEnv = fs.readFileSync(path.join(repoRoot, ".env"), "utf8");
-const sharedDataRootMatch = repoEnv.match(/^MORPHEUS_DATA_ROOT=(.+)$/m);
-const sharedDataRoot = process.env.MORPHEUS_DATA_ROOT || (sharedDataRootMatch ? sharedDataRootMatch[1].trim() : null);
+const ciWorkspaceRoot = path.join(repoRoot, "tests");
+const ciCacheRoot = path.join(repoRoot, "tests", "cache", "ci");
 
 function run(args, options = {}) {
   return spawnSync(process.execPath, [bin, ...args], {
@@ -37,103 +35,122 @@ function run(args, options = {}) {
   });
 }
 
+function ensureWorkspace(dir) {
+  fs.mkdirSync(path.join(dir, ".morpheus"), { recursive: true });
+  const configPath = path.join(dir, "morpheus.yaml");
+  if (!fs.existsSync(configPath)) {
+    fs.writeFileSync(configPath, "cache:\n  root: ./cache\n  namespace: example\n");
+  }
+  return dir;
+}
+
 function writeConfig(dir, content) {
+  ensureWorkspace(dir);
   fs.writeFileSync(path.join(dir, "morpheus.yaml"), content);
 }
 
 function isolatedEnv(extra = {}) {
   const env = {
     ...process.env,
-    MORPHEUS_WORK_ROOT: fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-test-work-")),
   };
   delete env.MORPHEUS_CONFIG;
-  delete env.MORPHEUS_DATA_ROOT;
-  delete env.MORPHEUS_WORKSPACES_ROOT;
   return {
     ...env,
     ...extra,
   };
 }
 
-function ciWorkspaceRoot(dataRoot) {
-  return path.join(dataRoot, "workspaces", "ci");
+function resetCiWorkspace() {
+  fs.rmSync(path.join(ciWorkspaceRoot, "workflows"), { recursive: true, force: true });
 }
 
-function ciCacheRoot(dataRoot) {
-  return path.join(dataRoot, "cache", "ci");
+function withWorkspaceCwd(fn) {
+  const previous = process.cwd();
+  const dir = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workspace-cwd-")));
+  process.chdir(dir);
+  try {
+    return fn(dir);
+  } finally {
+    process.chdir(previous);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 test("workflow metadata controls LibAFL grammar exec arguments", () => {
-  const commonStep = {
-    id: "libafl_exec",
-    tool: "libafl",
-    command: "exec",
-    args: [
+  withWorkspaceCwd(() => {
+    const commonStep = {
+      id: "libafl_exec",
+      tool: "libafl",
+      command: "exec",
+      args: [
+        "--enable-grammar",
+        "--grammar",
+        "{{workflow.metadata.grammar.path}}",
+        "--harness-arg",
+        "--grammar",
+      ],
+    };
+    const context = (metadata) => ({
+      workspaceRoot: process.cwd(),
+      stepResults: {},
+      workflowMetadata: metadata,
+    });
+
+    const enabled = resolveConfiguredStepArgs(commonStep, context({
+      grammar: { enabled: true, path: "/tmp/virtio.state" },
+    }));
+    assert.deepEqual(enabled.args, [
       "--enable-grammar",
       "--grammar",
-      "{{workflow.metadata.grammar.path}}",
+      "/tmp/virtio.state",
       "--harness-arg",
       "--grammar",
-    ],
-  };
-  const context = (metadata) => ({
-    workspaceRoot: process.cwd(),
-    stepResults: {},
-    workflowMetadata: metadata,
+    ]);
+
+    const disabled = resolveConfiguredStepArgs(commonStep, context({
+      grammar: { enabled: false, path: "/tmp/virtio.state" },
+    }));
+    assert.deepEqual(disabled.args, ["--harness-arg", "--grammar", "--disable-grammar"]);
+
+    const unspecified = resolveConfiguredStepArgs(commonStep, context({
+      grammar: { path: "/tmp/virtio.state" },
+    }));
+    assert.deepEqual(unspecified.args, [
+      "--enable-grammar",
+      "--grammar",
+      "/tmp/virtio.state",
+      "--harness-arg",
+      "--grammar",
+    ]);
   });
-
-  const enabled = resolveConfiguredStepArgs(commonStep, context({
-    grammar: { enabled: true, path: "/tmp/virtio.state" },
-  }));
-  assert.deepEqual(enabled.args, [
-    "--enable-grammar",
-    "--grammar",
-    "/tmp/virtio.state",
-    "--harness-arg",
-    "--grammar",
-  ]);
-
-  const disabled = resolveConfiguredStepArgs(commonStep, context({
-    grammar: { enabled: false, path: "/tmp/virtio.state" },
-  }));
-  assert.deepEqual(disabled.args, ["--harness-arg", "--grammar", "--disable-grammar"]);
-
-  const unspecified = resolveConfiguredStepArgs(commonStep, context({
-    grammar: { path: "/tmp/virtio.state" },
-  }));
-  assert.deepEqual(unspecified.args, [
-    "--enable-grammar",
-    "--grammar",
-    "/tmp/virtio.state",
-    "--harness-arg",
-    "--grammar",
-  ]);
 });
 
 test("workflow metadata controls LibAFL console visibility", () => {
-  const step = {
-    id: "libafl_exec",
-    tool: "libafl",
-    command: "exec",
-    args: [
-      "--show-console",
-      "{{workflow.metadata.console.show}}",
-    ],
-  };
-  const context = (metadata) => ({
-    workspaceRoot: process.cwd(),
-    stepResults: {},
-    workflowMetadata: metadata,
-  });
+  withWorkspaceCwd(() => {
+    const step = {
+      id: "libafl_exec",
+      tool: "libafl",
+      command: "exec",
+      args: [
+        "--show-console",
+        "{{workflow.metadata.console.show}}",
+      ],
+    };
+    const context = (metadata) => ({
+      workspaceRoot: process.cwd(),
+      stepResults: {},
+      workflowMetadata: metadata,
+    });
 
-  assert.deepEqual(
-    resolveConfiguredStepArgs(step, context({ console: { show: false } })).args,
-    ["--show-console", "false"],
-  );
-  assert.deepEqual(
-    resolveConfiguredStepArgs(step, context({ console: { show: true } })).args,
-    ["--show-console", "true"],
-  );
+    assert.deepEqual(
+      resolveConfiguredStepArgs(step, context({ console: { show: false } })).args,
+      ["--show-console", "false"],
+    );
+    assert.deepEqual(
+      resolveConfiguredStepArgs(step, context({ console: { show: true } })).args,
+      ["--show-console", "true"],
+    );
+  });
 });
 
 test("boolean tool flags consume explicit workflow values", () => {
@@ -403,7 +420,10 @@ test("config check prints human-readable issues on failure", () => {
 });
 
 test("tool list discovers repo-local tools", () => {
-  const result = run(["tool", "list", "--json"]);
+  const result = run(["tool", "list", "--json"], {
+    cwd: ciWorkspaceRoot,
+    env: isolatedEnv(),
+  });
   assert.equal(result.status, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.command, "tool list");
@@ -417,7 +437,10 @@ test("tool list discovers repo-local tools", () => {
 });
 
 test("tool list reports workflow-only tools without wrapper errors", () => {
-  const result = run(["tool", "list", "--json"]);
+  const result = run(["tool", "list", "--json"], {
+    cwd: ciWorkspaceRoot,
+    env: isolatedEnv(),
+  });
   assert.equal(result.status, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
   const buildroot = payload.details.tools.find((tool) => tool.name === "buildroot");
@@ -437,15 +460,16 @@ test("tool list reports workflow-only tools without wrapper errors", () => {
   assert.equal(nvirsh.verification.note, "run through 'morpheus workflow run'");
 });
 
-test("config check can use explicit --config outside the config directory", () => {
+test("explicit --config does not make a nested directory a workspace", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-explicit-"));
   const nestedRoot = path.join(projectRoot, "nested", "cwd");
   fs.mkdirSync(nestedRoot, { recursive: true });
   writeConfig(
     projectRoot,
     [
-      "workspace:",
-      "  root: ./workflow-workspace",
+      "cache:",
+      "  root: ./cache",
+      "  namespace: example",
       ""
     ].join("\n")
   );
@@ -454,48 +478,54 @@ test("config check can use explicit --config outside the config directory", () =
     cwd: nestedRoot,
     env: isolatedEnv()
   });
-  assert.equal(result.status, 0, result.stderr || result.stdout);
-  const payload = JSON.parse(result.stdout);
-  assert.equal(payload.status, "success");
+  assert.equal(result.status, 1, result.stderr || result.stdout);
+  assert.match(result.stderr || result.stdout, /could not find workspace/);
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
-test("config show loads .env from cwd and expands MORPHEUS_DATA_ROOT", () => {
-  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-env-"));
-  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-data-root-"));
-  fs.writeFileSync(
-    path.join(projectRoot, ".env"),
-    [
-      `MORPHEUS_DATA_ROOT=${dataRoot}`,
-      ""
-    ].join("\n")
-  );
+test("config show defaults the workspace to the current directory", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-default-workspace-"));
   writeConfig(
     projectRoot,
     [
-      "workspace:",
-      "  root: ${MORPHEUS_DATA_ROOT}/workspaces/hyperarm",
+      "cache:",
+      "  root: ./cache",
+      "  namespace: example",
       ""
     ].join("\n")
   );
 
-  const env = { ...process.env };
-  delete env.MORPHEUS_WORK_ROOT;
-  delete env.RESEARCH_RUNTIME_WORK_ROOT;
-  delete env.MORPHEUS_DATA_ROOT;
-  delete env.MORPHEUS_WORKSPACES_ROOT;
-
   const result = run(["config", "show", "--json"], {
     cwd: projectRoot,
-    env
+    env: isolatedEnv()
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.status, "success");
-  assert.equal(payload.details.workspace_root, path.join(dataRoot, "workspaces", "hyperarm"));
-  assert.equal(payload.details.workflow_root, path.join(dataRoot, "workspaces", "hyperarm", "workflows"));
+  assert.equal(payload.details.workspace_root, projectRoot);
+  assert.equal(payload.details.workflow_root, path.join(projectRoot, "workflows"));
   fs.rmSync(projectRoot, { recursive: true, force: true });
-  fs.rmSync(dataRoot, { recursive: true, force: true });
+});
+
+test("morpheus refuses to run unless the current directory is a workspace", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-no-workspace-"));
+  fs.writeFileSync(
+    path.join(projectRoot, "morpheus.yaml"),
+    [
+      "cache:",
+      "  root: ./cache",
+      "  namespace: example",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["config", "show", "--json"], {
+    cwd: projectRoot,
+    env: isolatedEnv()
+  });
+  assert.equal(result.status, 1, result.stderr || result.stdout);
+  assert.match(result.stderr || result.stdout, /could not find workspace/);
+  fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
 test("workflow imports resolve a parent morpheus.yaml relative to the selected config file", () => {
@@ -668,88 +698,11 @@ test("workflow commands are available through Morpheus", () => {
   assert.match(result.stdout, /^Commands:$/m);
   assert.match(result.stdout, /workflow list/);
   assert.match(result.stdout, /workflow runs/);
-  assert.match(result.stdout, /workflow export/);
   assert.match(result.stdout, /workflow run/);
   assert.match(result.stdout, /workflow inspect/);
   assert.match(result.stdout, /workflow events/);
   assert.match(result.stdout, /workflow stop/);
   assert.match(result.stdout, /workflow remove/);
-});
-
-test("workflow export bundles a runnable workflow view", () => {
-  const fakeRepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-export-repo-"));
-  const fakeWorkspaceRoot = path.join(fakeRepoRoot, "workspace");
-  const fakeBinDir = path.join(fakeRepoRoot, "bin");
-  const fakeConfigPath = path.join(fakeRepoRoot, "morpheus.yaml");
-  const outputParent = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-export-out-"));
-  const outputDir = path.join(outputParent, "bundle");
-
-  fs.mkdirSync(fakeWorkspaceRoot, { recursive: true });
-  fs.mkdirSync(fakeBinDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(fakeBinDir, "morpheus"),
-    [
-      "#!/usr/bin/env node",
-      "const args = process.argv.slice(2);",
-      "const trimmed = args[0] === '--config' ? args.slice(2) : args;",
-      "if (trimmed[0] === 'config' && trimmed[1] === 'show') {",
-      "  process.stdout.write(JSON.stringify({ command: 'config show', status: 'success', details: { ok: true } }) + '\\n');",
-      "  process.exit(0);",
-      "}",
-      "if (trimmed[0] === 'workflow' && trimmed[1] === 'list') {",
-      "  process.stdout.write(JSON.stringify({ command: 'workflow list', status: 'success', details: { workflows: [{ name: 'bundle-target', category: 'build', stages: 1, steps: 1 }] } }) + '\\n');",
-      "  process.exit(0);",
-      "}",
-      "process.stderr.write(`unexpected args: ${trimmed.join(' ')}\\n`);",
-      "process.exit(1);",
-      ""
-    ].join("\n"),
-    { mode: 0o755 }
-  );
-  fs.writeFileSync(
-    fakeConfigPath,
-    [
-      "workspace:",
-      "  root: ./workspace",
-      "workflows:",
-      "  bundle-target:",
-      "    category: build",
-      "    steps:",
-      "      - id: build",
-      "        tool: qemu",
-      "        command: build",
-      "        args:",
-      "          - --source",
-      "          - ./workspace/src",
-      "",
-    ].join("\n")
-  );
-  fs.mkdirSync(path.join(fakeWorkspaceRoot, "src"), { recursive: true });
-  fs.writeFileSync(path.join(fakeWorkspaceRoot, "src", "README.txt"), "bundle source\n", "utf8");
-
-  const { exportWorkflowBundle } = withRepoRoot(fakeRepoRoot, () => require("../dist/commands/workflow-export.js"));
-  const payload = withRepoRoot(fakeRepoRoot, () => exportWorkflowBundle({
-    workflowName: "bundle-target",
-    outputDir,
-    linkMode: "hardlink",
-    prepare: false,
-    force: false,
-    configPath: fakeConfigPath,
-  }));
-
-  assert.equal(payload.status, "success");
-  assert.equal(payload.details.workflow, "bundle-target");
-  assert.equal(fs.existsSync(path.join(outputDir, "morpheus.sh")), true);
-  assert.equal(fs.existsSync(path.join(outputDir, "run-workflow.sh")), true);
-  assert.equal(fs.existsSync(path.join(outputDir, "inspect-workflow.sh")), true);
-  const bundleList = spawnSync(path.join(outputDir, "morpheus.sh"), ["workflow", "list", "--json"], {
-    encoding: "utf8",
-  });
-  assert.equal(bundleList.status, 0, bundleList.stderr || bundleList.stdout);
-  assert.match(bundleList.stdout, /bundle-target/);
-
-  fs.rmSync(outputParent, { recursive: true, force: true });
-  fs.rmSync(fakeRepoRoot, { recursive: true, force: true });
 });
 
 test("top-level help groups commands for discovery", () => {
@@ -760,12 +713,11 @@ test("top-level help groups commands for discovery", () => {
   assert.match(result.stdout, /^  config check       Validate morpheus\.yaml\.$/m);
   assert.match(result.stdout, /^  tool list          List declared tools and their readiness\.$/m);
   assert.match(result.stdout, /^  workflow inspect   Inspect workflow state and stages\.$/m);
-  assert.match(result.stdout, /^  workflow export    Export a runnable workflow bundle\.$/m);
   assert.match(result.stdout, /^  workflow run       Start a configured workflow\.$/m);
   assert.match(result.stdout, /^  workflow logs      Print workflow stage logs\.$/m);
   assert.match(result.stdout, /^Examples:$/m);
-  assert.match(result.stdout, /^  \.\/bin\/morpheus --config <workspace-root>\/morpheus\.yaml workflow inspect --name <workflow> --json$/m);
-  assert.match(result.stdout, /^  \.\/bin\/morpheus --config <workspace-root>\/morpheus\.yaml workflow logs --name <workflow> --stage <stage-id>$/m);
+  assert.match(result.stdout, /^  morpheus --config <workspace-root>\/morpheus\.yaml workflow inspect --name <workflow> --json$/m);
+  assert.match(result.stdout, /^  morpheus --config <workspace-root>\/morpheus\.yaml workflow logs --name <workflow> --stage <stage-id>$/m);
 });
 
 test("config help includes purpose and examples", () => {
@@ -807,6 +759,7 @@ test("scripted passthrough tool commands do not leave helper files in repo root"
     "--input",
     devilangAuditFixture,
   ], {
+    cwd: ciWorkspaceRoot,
     env: isolatedEnv(),
   });
 
@@ -867,19 +820,16 @@ test("workflow list discovers configured workflows in json", () => {
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
-test("workflow list discovers workspace configs under MORPHEUS_DATA_ROOT/workspaces", () => {
-  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-list-workspace-"));
-  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-data-root-"));
-  const workspacesRoot = path.join(dataRoot, "workspaces");
-  const workspaceRoot = path.join(workspacesRoot, "hyperarm");
-  const staleWorkspacesRoot = path.join(dataRoot, "stale-workspaces");
-  fs.mkdirSync(path.join(workspaceRoot, "workspace"), { recursive: true });
-  fs.mkdirSync(staleWorkspacesRoot, { recursive: true });
+test("workflow list uses the local morpheus.yaml in the current workspace", () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workspace-"));
+  const siblingRoot = path.join(workspaceRoot, "other");
+  fs.mkdirSync(siblingRoot, { recursive: true });
   writeConfig(
-    projectRoot,
+    workspaceRoot,
     [
-      "workspace:",
-      "  root: ./workflow-workspace",
+      "cache:",
+      "  root: ./cache",
+      "  namespace: example",
       "workflows:",
       "  sample-build:",
       "    category: build",
@@ -890,12 +840,13 @@ test("workflow list discovers workspace configs under MORPHEUS_DATA_ROOT/workspa
     ].join("\n")
   );
   writeConfig(
-    workspaceRoot,
+    siblingRoot,
     [
-      "workspace:",
-      "  root: ./workspace",
+      "cache:",
+      "  root: ./cache",
+      "  namespace: sibling",
       "workflows:",
-      "  workspace-build:",
+      "  sibling-build:",
       "    category: build",
       "    steps:",
       "      - tool: qemu",
@@ -905,21 +856,21 @@ test("workflow list discovers workspace configs under MORPHEUS_DATA_ROOT/workspa
   );
 
   const result = run(["workflow", "list", "--json"], {
-    cwd: projectRoot,
-    env: isolatedEnv({
-      MORPHEUS_DATA_ROOT: dataRoot,
-      MORPHEUS_WORKSPACES_ROOT: staleWorkspacesRoot,
-    }),
+    cwd: workspaceRoot,
+    env: isolatedEnv(),
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.command, "workflow list");
-  assert.ok(
-    payload.details.configs.some((config) => config.configPath === path.join(workspaceRoot, "morpheus.yaml")),
-    "expected workspace config to be listed",
+  assert.deepEqual(
+    payload.details.workflows.map((workflow) => workflow.name),
+    ["sample-build"]
   );
-  fs.rmSync(projectRoot, { recursive: true, force: true });
-  fs.rmSync(dataRoot, { recursive: true, force: true });
+  assert.ok(
+    payload.details.configs.every((config) => config.configPath !== path.join(siblingRoot, "morpheus.yaml")),
+    "sibling workspace configs must not be discovered from the current directory",
+  );
+  fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 
 test("workflow list prints a text table for configured workflows", () => {
@@ -950,17 +901,28 @@ test("workflow list prints a text table for configured workflows", () => {
 });
 
 test("workflow run missing configured workflow suggests workflow list", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-missing-workflow-"));
+  writeConfig(
+    projectRoot,
+    [
+      "cache:",
+      "  root: ./cache",
+      "  namespace: example",
+      ""
+    ].join("\n")
+  );
   const result = run(["workflow", "run", "--name", "missing-workflow"], {
-    cwd: repoRoot,
+    cwd: projectRoot,
     env: isolatedEnv()
   });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /unknown configured workflow: missing-workflow/);
   assert.match(result.stderr, /morpheus workflow list/);
+  fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
 test("workflow stop marks a running workflow as stopped", () => {
-  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stop-"));
+  const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stop-")));
   const runId = "wf-stop-test";
   const runDir = path.join(workspaceRoot, "workflows", runId);
   const stepDir = path.join(runDir, "stages", "01-build");
@@ -998,7 +960,7 @@ test("workflow stop marks a running workflow as stopped", () => {
     summary: { workflow: "tool-buildroot", category: "build" },
   }, null, 2)}\n`);
 
-  const result = run(["--json", "workflow", "stop", "--id", runId, "--workspace", workspaceRoot], {
+  const result = run(["--json", "workflow", "stop", "--id", runId], {
     cwd: workspaceRoot,
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -1013,7 +975,7 @@ test("workflow stop marks a running workflow as stopped", () => {
 });
 
 test("workflow stop prints a human-readable summary in text mode", () => {
-  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stop-text-"));
+  const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stop-text-")));
   const runId = "wf-stop-text";
   const runDir = path.join(workspaceRoot, "workflows", runId);
   const stepDir = path.join(runDir, "stages", "01-build");
@@ -1051,7 +1013,7 @@ test("workflow stop prints a human-readable summary in text mode", () => {
     summary: { workflow: "qemu-build", category: "build" },
   }, null, 2)}\n`);
 
-  const result = run(["workflow", "stop", "--id", runId, "--workspace", workspaceRoot], {
+  const result = run(["workflow", "stop", "--id", runId], {
     cwd: workspaceRoot,
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -1063,7 +1025,7 @@ test("workflow stop prints a human-readable summary in text mode", () => {
 });
 
 test("workflow inspect reconciles stale running workflows with dead pids", () => {
-  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stale-"));
+  const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stale-")));
   const runId = "wf-stale-test";
   const runDir = path.join(workspaceRoot, "workflows", runId);
   const stepDir = path.join(runDir, "stages", "01-build");
@@ -1103,7 +1065,7 @@ test("workflow inspect reconciles stale running workflows with dead pids", () =>
   }, null, 2)}\n`);
   fs.writeFileSync(path.join(runDir, "events.jsonl"), "", "utf8");
 
-  const result = run(["--json", "workflow", "inspect", "--id", runId, "--workspace", workspaceRoot], {
+  const result = run(["--json", "workflow", "inspect", "--id", runId], {
     cwd: workspaceRoot,
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -1128,7 +1090,7 @@ test("workflow inspect reconciles stale running workflows with dead pids", () =>
 });
 
 test("workflow inspect repairs an empty workflow manifest from legacy run state", () => {
-  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-repair-"));
+  const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-repair-")));
   const runId = "wf-repair-test";
   const runDir = path.join(workspaceRoot, "workflows", runId);
   const stepDir = path.join(runDir, "steps", "01-build");
@@ -1155,7 +1117,7 @@ test("workflow inspect repairs an empty workflow manifest from legacy run state"
   }, null, 2)}\n`);
   fs.writeFileSync(path.join(runDir, "events.jsonl"), "", "utf8");
 
-  const inspect = run(["--json", "workflow", "inspect", "--id", runId, "--workspace", workspaceRoot], {
+  const inspect = run(["--json", "workflow", "inspect", "--id", runId], {
     cwd: workspaceRoot,
   });
   assert.equal(inspect.status, 0, inspect.stderr || inspect.stdout);
@@ -1172,7 +1134,7 @@ test("workflow inspect repairs an empty workflow manifest from legacy run state"
   assert.equal(repaired.steps.length, 1);
   assert.equal(repaired.steps[0].id, "01-build");
 
-  const removed = run(["--json", "workflow", "remove", "--id", runId, "--workspace", workspaceRoot], {
+  const removed = run(["--json", "workflow", "remove", "--id", runId], {
     cwd: workspaceRoot,
   });
   assert.equal(removed.status, 0, removed.stderr || removed.stdout);
@@ -1181,7 +1143,7 @@ test("workflow inspect repairs an empty workflow manifest from legacy run state"
 });
 
 test("workflow runs lists managed workflow runs in json", () => {
-  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-runs-json-"));
+  const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-runs-json-")));
   const runId = "wf-runs-json";
   const runDir = path.join(workspaceRoot, "workflows", runId);
   const stepDir = path.join(runDir, "steps", "01-build");
@@ -1219,7 +1181,7 @@ test("workflow runs lists managed workflow runs in json", () => {
     summary: { workflow: "qemu-build", category: "build" },
   }, null, 2)}\n`);
 
-  const result = run(["workflow", "runs", "--workspace", workspaceRoot, "--json"], {
+  const result = run(["workflow", "runs", "--json"], {
     cwd: workspaceRoot,
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -1234,7 +1196,7 @@ test("workflow runs lists managed workflow runs in json", () => {
 });
 
 test("workflow events returns canonical event records in json", () => {
-  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-events-json-"));
+  const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-events-json-")));
   const runId = "wf-events-json";
   const runDir = path.join(workspaceRoot, "workflows", runId);
   fs.mkdirSync(runDir, { recursive: true });
@@ -1272,7 +1234,7 @@ test("workflow events returns canonical event records in json", () => {
     }),
   ].join("\n") + "\n");
 
-  const result = run(["workflow", "events", "--id", runId, "--workspace", workspaceRoot, "--json"], {
+  const result = run(["workflow", "events", "--id", runId, "--json"], {
     cwd: workspaceRoot,
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -1285,8 +1247,8 @@ test("workflow events returns canonical event records in json", () => {
 });
 
 test("workflow inspect missing run suggests valid follow-up commands", () => {
-  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-missing-run-"));
-  const result = run(["workflow", "inspect", "--id", "missing-run", "--workspace", workspaceRoot], {
+  const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-missing-run-")));
+  const result = run(["workflow", "inspect", "--id", "missing-run"], {
     cwd: workspaceRoot,
   });
   assert.equal(result.status, 1);
@@ -1297,7 +1259,7 @@ test("workflow inspect missing run suggests valid follow-up commands", () => {
 });
 
 test("workflow logs json reports log paths relative to cwd", () => {
-  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-json-"));
+  const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-json-")));
   const runId = "wf-logs-json";
   const runDir = path.join(workspaceRoot, "workflows", runId);
   const stepDir = path.join(runDir, "stages", "01-fetch");
@@ -1335,7 +1297,7 @@ test("workflow logs json reports log paths relative to cwd", () => {
     summary: { workflow: "qemu-build", category: "build" },
   }, null, 2)}\n`);
 
-  const result = run(["workflow", "logs", "--id", runId, "--workspace", workspaceRoot, "--json"], {
+  const result = run(["workflow", "logs", "--id", runId, "--json"], {
     cwd: workspaceRoot,
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -1349,7 +1311,7 @@ test("workflow logs json reports log paths relative to cwd", () => {
 });
 
 test("workflow logs json keeps stage and step distinct for stage selection", () => {
-  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-stage-json-"));
+  const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-stage-json-")));
   const runId = "wf-logs-stage-json";
   const runDir = path.join(workspaceRoot, "workflows", runId);
   const fetchDir = path.join(runDir, "stages", "01-fetch");
@@ -1406,7 +1368,7 @@ test("workflow logs json keeps stage and step distinct for stage selection", () 
     summary: { workflow: "qemu-build", category: "build" },
   }, null, 2)}\n`);
 
-  const result = run(["workflow", "logs", "--id", runId, "--workspace", workspaceRoot, "--stage", "build", "--json"], {
+  const result = run(["workflow", "logs", "--id", runId, "--stage", "build", "--json"], {
     cwd: workspaceRoot,
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -1421,7 +1383,7 @@ test("workflow logs json keeps stage and step distinct for stage selection", () 
 });
 
 test("workflow inspect prints a human-readable summary in text mode", () => {
-  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-inspect-text-"));
+  const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-inspect-text-")));
   const runId = "wf-inspect-text";
   const runDir = path.join(workspaceRoot, "workflows", runId);
   const stepDir = path.join(runDir, "stages", "01-build");
@@ -1459,7 +1421,7 @@ test("workflow inspect prints a human-readable summary in text mode", () => {
     summary: { workflow: "qemu-build", category: "build" },
   }, null, 2)}\n`);
 
-  const result = run(["workflow", "inspect", "--id", runId, "--workspace", workspaceRoot], {
+  const result = run(["workflow", "inspect", "--id", runId], {
     cwd: workspaceRoot,
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -1483,7 +1445,7 @@ test("workflow inspect does not warn when config is discovered implicitly", () =
       ""
     ].join("\n")
   );
-  const workspaceRoot = path.join(projectRoot, "workflow-workspace");
+  const workspaceRoot = projectRoot;
   const runId = "wf-inspect-implicit";
   const runDir = path.join(workspaceRoot, "workflows", runId);
   const stepDir = path.join(runDir, "stages", "01-build");
@@ -1531,7 +1493,7 @@ test("workflow inspect does not warn when config is discovered implicitly", () =
 });
 
 test("workflow logs announces the selected default stage in text mode", () => {
-  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-text-"));
+  const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-text-")));
   const runId = "wf-logs-text";
   const runDir = path.join(workspaceRoot, "workflows", runId);
   const stepDirA = path.join(runDir, "stages", "01-fetch");
@@ -1583,7 +1545,7 @@ test("workflow logs announces the selected default stage in text mode", () => {
     summary: { workflow: "qemu-build", category: "build" },
   }, null, 2)}\n`);
 
-  const result = run(["workflow", "logs", "--id", runId, "--workspace", workspaceRoot], {
+  const result = run(["workflow", "logs", "--id", runId], {
     cwd: workspaceRoot,
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -1593,7 +1555,7 @@ test("workflow logs announces the selected default stage in text mode", () => {
 });
 
 test("workflow logs defaults to the first grouped stage in text mode", () => {
-  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-grouped-text-"));
+  const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-grouped-text-")));
   const runId = "wf-logs-grouped-text";
   const runDir = path.join(workspaceRoot, "workflows", runId);
   const stepDirA = path.join(runDir, "stages", "prepare_a");
@@ -1650,7 +1612,7 @@ test("workflow logs defaults to the first grouped stage in text mode", () => {
     summary: { workflow: "qemu-build", category: "build" },
   }, null, 2)}\n`);
 
-  const result = run(["workflow", "logs", "--id", runId, "--workspace", workspaceRoot], {
+  const result = run(["workflow", "logs", "--id", runId], {
     cwd: workspaceRoot,
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -1660,7 +1622,7 @@ test("workflow logs defaults to the first grouped stage in text mode", () => {
 });
 
 test("workflow logs defaults to the current stage for a running grouped workflow", () => {
-  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-current-stage-"));
+  const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-logs-current-stage-")));
   const runId = "wf-logs-current-stage";
   const runDir = path.join(workspaceRoot, "workflows", runId);
   const stepDirA = path.join(runDir, "stages", "prepare_a");
@@ -1717,7 +1679,7 @@ test("workflow logs defaults to the current stage for a running grouped workflow
     summary: { workflow: "qemu-build", category: "build" },
   }, null, 2)}\n`);
 
-  const result = run(["workflow", "logs", "--id", runId, "--workspace", workspaceRoot], {
+  const result = run(["workflow", "logs", "--id", runId], {
     cwd: workspaceRoot,
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -1736,7 +1698,7 @@ test("workflow logs does not warn when config is discovered implicitly", () => {
       ""
     ].join("\n")
   );
-  const workspaceRoot = path.join(projectRoot, "workflow-workspace");
+  const workspaceRoot = projectRoot;
   const runId = "wf-logs-implicit";
   const runDir = path.join(workspaceRoot, "workflows", runId);
   const stepDir = path.join(runDir, "steps", "01-fetch");
@@ -1784,7 +1746,7 @@ test("workflow logs does not warn when config is discovered implicitly", () => {
 
 
 test("workflow remove requires a prior stop and removes stopped workflow state", () => {
-  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-remove-"));
+  const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-remove-")));
   const runId = "wf-remove-test";
   const runDir = path.join(workspaceRoot, "workflows", runId);
   const stepDir = path.join(runDir, "steps", "01-run");
@@ -1821,17 +1783,17 @@ test("workflow remove requires a prior stop and removes stopped workflow state",
     summary: { workflow: "tool-qemu", category: "run" },
   }, null, 2)}\n`);
 
-  const rejected = run(["--json", "workflow", "remove", "--id", runId, "--workspace", workspaceRoot], {
+  const rejected = run(["--json", "workflow", "remove", "--id", runId], {
     cwd: workspaceRoot,
   });
   assert.equal(rejected.status, 1, rejected.stderr || rejected.stdout);
 
-  const stopped = run(["--json", "workflow", "stop", "--id", runId, "--workspace", workspaceRoot], {
+  const stopped = run(["--json", "workflow", "stop", "--id", runId], {
     cwd: workspaceRoot,
   });
   assert.equal(stopped.status, 0, stopped.stderr || stopped.stdout);
 
-  const removed = run(["--json", "workflow", "remove", "--id", runId, "--workspace", workspaceRoot], {
+  const removed = run(["--json", "workflow", "remove", "--id", runId], {
     cwd: workspaceRoot,
   });
   assert.equal(removed.status, 0, removed.stderr || removed.stdout);
@@ -1842,7 +1804,7 @@ test("workflow remove requires a prior stop and removes stopped workflow state",
 });
 
 test("workflow remove prints a human-readable summary in text mode", () => {
-  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-remove-text-"));
+  const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-remove-text-")));
   const runId = "wf-remove-text";
   const runDir = path.join(workspaceRoot, "workflows", runId);
   const stepDir = path.join(runDir, "steps", "01-run");
@@ -1879,7 +1841,7 @@ test("workflow remove prints a human-readable summary in text mode", () => {
     summary: { workflow: "qemu-build", category: "run" },
   }, null, 2)}\n`);
 
-  const result = run(["workflow", "remove", "--id", runId, "--workspace", workspaceRoot], {
+  const result = run(["workflow", "remove", "--id", runId], {
     cwd: workspaceRoot,
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -1894,7 +1856,7 @@ test("workflow remove prints a human-readable summary in text mode", () => {
 
 test("workflow run resolves prior step artifacts in configured workflows", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-configured-"));
-  const workspaceRoot = path.join(projectRoot, "workflow-workspace");
+  const workspaceRoot = projectRoot;
   const fixtureRoot = path.join(projectRoot, "fixtures", "linux-6.18.16-arm64-clang15");
   const sourceDir = path.join(projectRoot, "fixtures", "linux-6.18.16");
   const bitcodeListPath = path.join(fixtureRoot, "bitcode_files.txt");
@@ -1967,25 +1929,24 @@ test("workflow run resolves prior step artifacts in configured workflows", () =>
   assert.equal(events.some((entry) => entry.event === "workflow.completed"), true);
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
-  fs.rmSync(env.MORPHEUS_WORK_ROOT, { recursive: true, force: true });
 });
 
+test.describe("CI workspace workflows", { concurrency: 1 }, () => {
 test("workflow run builds qemu through scripted fetch patch build steps", () => {
-  const dataRoot = sharedDataRoot;
-  assert.ok(dataRoot);
-  const workspaceRoot = ciWorkspaceRoot(dataRoot);
-  const cacheRoot = ciCacheRoot(dataRoot);
-  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  const workspaceRoot = ciWorkspaceRoot;
+  const cacheRoot = ciCacheRoot;
+  resetCiWorkspace();
 
   const result = run([
     "--json",
-    "--config",
-    ciConfigPath,
     "workflow",
     "run",
     "--name",
     "qemu-build-ci",
-  ]);
+  ], {
+    cwd: ciWorkspaceRoot,
+    env: isolatedEnv(),
+  });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
   assert.equal(payload.status, "success");
@@ -1996,7 +1957,7 @@ test("workflow run builds qemu through scripted fetch patch build steps", () => 
   );
 
   const qemuBuildLog = path.resolve(
-    repoRoot,
+    ciWorkspaceRoot,
     payload.details.workflow_dir,
     "stages",
     "qemu_build",
@@ -2027,25 +1988,24 @@ test("workflow run builds qemu through scripted fetch patch build steps", () => 
   const built = spawnSync(executable, [], { encoding: "utf8" });
   assert.match(built.stdout, /trace=patched/);
 
-  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  resetCiWorkspace();
 });
 
 test("workflow run builds buildroot through scripted fetch patch build steps", () => {
-  const dataRoot = sharedDataRoot;
-  assert.ok(dataRoot);
-  const workspaceRoot = ciWorkspaceRoot(dataRoot);
-  const cacheRoot = ciCacheRoot(dataRoot);
-  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  const workspaceRoot = ciWorkspaceRoot;
+  const cacheRoot = ciCacheRoot;
+  resetCiWorkspace();
 
   const result = run([
     "--json",
-    "--config",
-    ciConfigPath,
     "workflow",
     "run",
     "--name",
     "buildroot-build-ci",
-  ]);
+  ], {
+    cwd: ciWorkspaceRoot,
+    env: isolatedEnv(),
+  });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
   assert.equal(payload.status, "success");
@@ -2079,26 +2039,24 @@ test("workflow run builds buildroot through scripted fetch patch build steps", (
   assert.equal(fs.existsSync(rootfs), true);
   assert.match(fs.readFileSync(image, "utf8"), /patched fake arm64 kernel image/);
 
-  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  resetCiWorkspace();
 });
 
 test("workflow run completes the CI buildroot-based CVM workflow end-to-end", () => {
-  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-cvm-workflow-"));
-  const env = isolatedEnv({
-    MORPHEUS_DATA_ROOT: dataRoot,
-    MORPHEUS_WORKSPACES_ROOT: "",
-  });
+  const workspaceRoot = ciWorkspaceRoot;
+  const cacheRoot = ciCacheRoot;
+  resetCiWorkspace();
+  const env = isolatedEnv();
 
   try {
     const result = run([
       "--json",
-      "--config",
-      ciConfigPath,
       "workflow",
       "run",
       "--name",
       "nvirsh-qemu-arm64-cvm-exec-ci",
     ], {
+      cwd: ciWorkspaceRoot,
       env,
     });
     assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -2130,7 +2088,6 @@ test("workflow run completes the CI buildroot-based CVM workflow end-to-end", ()
       ],
     );
 
-    const cacheRoot = ciCacheRoot(dataRoot);
     assert.equal(
       fs.existsSync(
         path.join(
@@ -2163,27 +2120,25 @@ test("workflow run completes the CI buildroot-based CVM workflow end-to-end", ()
       true,
     );
   } finally {
-    fs.rmSync(dataRoot, { recursive: true, force: true });
-    fs.rmSync(env.MORPHEUS_WORK_ROOT, { recursive: true, force: true });
-  }
+    resetCiWorkspace();
+    }
 });
 
 test("workflow run fetches and patches sel4 through scripted fetch patch steps", () => {
-  const dataRoot = sharedDataRoot;
-  assert.ok(dataRoot);
-  const workspaceRoot = ciWorkspaceRoot(dataRoot);
-  const cacheRoot = ciCacheRoot(dataRoot);
-  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  const workspaceRoot = ciWorkspaceRoot;
+  const cacheRoot = ciCacheRoot;
+  resetCiWorkspace();
 
   const result = run([
     "--json",
-    "--config",
-    ciConfigPath,
     "workflow",
     "run",
     "--name",
     "sel4-fetch-patch-ci",
-  ]);
+  ], {
+    cwd: ciWorkspaceRoot,
+    env: isolatedEnv(),
+  });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
   assert.equal(payload.status, "success");
@@ -2205,39 +2160,39 @@ test("workflow run fetches and patches sel4 through scripted fetch patch steps",
   assert.equal(fs.existsSync(versionFile), true);
   assert.match(fs.readFileSync(versionFile, "utf8"), /1\.0\.1-patched/);
 
-  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  resetCiWorkspace();
 });
 
 test("workflow run builds microkit-sdk through scripted fetch patch build steps", () => {
   const configView = run([
     "--json",
-    "--config",
-    ciConfigPath,
     "config",
     "show",
-  ]);
+  ], {
+    cwd: ciWorkspaceRoot,
+    env: isolatedEnv(),
+  });
   assert.equal(configView.status, 0, configView.stderr || configView.stdout);
   const workspaceRoot = JSON.parse(configView.stdout).details.workspace_root;
-  const dataRoot = sharedDataRoot;
-  assert.ok(dataRoot);
-  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  resetCiWorkspace();
 
   const result = run([
     "--json",
-    "--config",
-    ciConfigPath,
     "workflow",
     "run",
     "--name",
     "microkit-sdk-build-ci",
-  ]);
+  ], {
+    cwd: ciWorkspaceRoot,
+    env: isolatedEnv(),
+  });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
   assert.equal(payload.status, "success");
   assert.equal(payload.details.steps.length, 5);
 
   const generated = path.join(
-    ciCacheRoot(dataRoot),
+    ciCacheRoot,
     "tools",
     "microkit-sdk",
     "builds",
@@ -2262,31 +2217,30 @@ test("workflow run builds microkit-sdk through scripted fetch patch build steps"
   assert.equal(fs.existsSync(generated), true);
   assert.equal(fs.existsSync(toolchain), true);
 
-  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  resetCiWorkspace();
 });
 
 test("workflow run builds libvmm through scripted fetch patch build steps", () => {
-  const dataRoot = sharedDataRoot;
-  assert.ok(dataRoot);
-  const workspaceRoot = ciWorkspaceRoot(dataRoot);
-  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  const workspaceRoot = ciWorkspaceRoot;
+  resetCiWorkspace();
 
   const result = run([
     "--json",
-    "--config",
-    ciConfigPath,
     "workflow",
     "run",
     "--name",
     "libvmm-build-ci",
-  ]);
+  ], {
+    cwd: ciWorkspaceRoot,
+    env: isolatedEnv(),
+  });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
   assert.equal(payload.status, "success");
   assert.equal(payload.details.steps.length, 8);
 
   const contract = path.join(
-    ciCacheRoot(dataRoot),
+    ciCacheRoot,
     "tools",
     "libvmm",
     "builds",
@@ -2295,7 +2249,7 @@ test("workflow run builds libvmm through scripted fetch patch build steps", () =
     "runtime-contract.json",
   );
   const guest = path.join(
-    ciCacheRoot(dataRoot),
+    ciCacheRoot,
     "tools",
     "libvmm",
     "builds",
@@ -2309,7 +2263,8 @@ test("workflow run builds libvmm through scripted fetch patch build steps", () =
   assert.equal(fs.existsSync(contract), true);
   assert.equal(fs.existsSync(guest), true);
 
-  fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  resetCiWorkspace();
+});
 });
 
 
@@ -2346,7 +2301,6 @@ test("workflow run writes failure events to canonical event log", () => {
   assert.equal(payload.details.failed_stage.id, "stage-1");
   assert.deepEqual(payload.details.failed_stage.log_files, [
     path.join(
-      "workflow-workspace",
       "workflows",
       payload.details.id,
       "stages",
@@ -2357,7 +2311,6 @@ test("workflow run writes failure events to canonical event log", () => {
   assert.equal(payload.details.failed_step.id, "patch_missing");
   assert.deepEqual(payload.details.failed_step.log_files, [
     path.join(
-      "workflow-workspace",
       "workflows",
       payload.details.id,
       "stages",
@@ -2518,7 +2471,7 @@ test("workflow run captures tool phase events in canonical event log", () => {
 
 test("workflow run --tool forwards passthrough args after -- to the tool step", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-tool-passthrough-"));
-  const workspaceRoot = path.join(projectRoot, "workspace");
+  const workspaceRoot = projectRoot;
   const sourceDir = path.join(workspaceRoot, "tools", "libafl", "builds", "default", "source");
   const installDir = path.join(workspaceRoot, "tools", "libafl", "builds", "default", "install");
   const harnessDir = path.join(projectRoot, "scripts");
@@ -2578,7 +2531,7 @@ test("workflow run --tool forwards passthrough args after -- to the tool step", 
 
 test("exec inside a workflow stage keeps libafl run-dir in the stage data", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stage-run-dir-"));
-  const workspaceRoot = path.join(projectRoot, "workspace");
+  const workspaceRoot = projectRoot;
   const stageDir = path.join(workspaceRoot, "workflows", "wf-stage-run-dir", "stages", "libafl_exec");
   const sourceDir = path.join(workspaceRoot, "tools", "libafl", "builds", "default", "source");
   const installDir = path.join(workspaceRoot, "tools", "libafl", "builds", "default", "install");
@@ -2626,9 +2579,11 @@ test("exec inside a workflow stage keeps libafl run-dir in the stage data", () =
     installDir,
     "--harness-script",
     harnessScript,
+    "--run-dir",
+    stageDir,
   ], {
-    cwd: stageDir,
-    env: isolatedEnv({ MORPHEUS_WORK_ROOT: workspaceRoot }),
+    cwd: projectRoot,
+    env: isolatedEnv(),
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const payload = JSON.parse(result.stdout.trim());
@@ -2643,12 +2598,12 @@ test("exec inside a workflow stage keeps libafl run-dir in the stage data", () =
 
 test("workflow resume reuses workflow config path for nondefault workflow files", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-resume-nondefault-"));
-  const workspaceRoot = path.join(projectRoot, "workspace");
+  const workspaceRoot = projectRoot;
   const configPath = path.join(projectRoot, "morpheus.yaml");
   const llbicFixture = path.join(repoRoot, "tools", "llbic", "tests", "fixtures", "linux-6.18.16-arm64-clang15", "llbic.json");
 
-  fs.writeFileSync(
-    configPath,
+  writeConfig(
+    projectRoot,
     [
       "workspace:",
       "  root: ./workspace",
@@ -2667,15 +2622,15 @@ test("workflow resume reuses workflow config path for nondefault workflow files"
   );
 
   const first = run(["--config", configPath, "--json", "workflow", "run", "--name", "llbic-sample"], {
-    cwd: repoRoot,
+    cwd: projectRoot,
     env: isolatedEnv(),
   });
   assert.equal(first.status, 0, first.stderr || first.stdout);
   const firstPayload = JSON.parse(first.stdout.trim());
   const runId = firstPayload.details.id;
 
-  const resumed = run(["--json", "workflow", "resume", "--id", runId, "--workspace", workspaceRoot], {
-    cwd: repoRoot,
+  const resumed = run(["--json", "workflow", "resume", "--id", runId], {
+    cwd: projectRoot,
     env: isolatedEnv(),
   });
   assert.equal(resumed.status, 0, resumed.stderr || resumed.stdout);
@@ -2711,6 +2666,7 @@ test("managed remote run resolves ssh and workspace from morpheus.yaml", () => {
   }, { allowGlobalRemote: true, allowToolDefaults: true });
   process.chdir(previousCwd);
 
+  assert.equal(resolved.flags.localWorkspace, projectRoot);
   assert.equal(resolved.flags.workspace, "./remote-workflow-workspace");
   assert.equal(resolved.flags.ssh, "builder@example.com:2222");
   assert.equal(resolved.flags.remote, "remote");
@@ -2721,7 +2677,7 @@ test("managed remote run resolves ssh and workspace from morpheus.yaml", () => {
 
 test("workflow resume reuses successful prefix in place", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-resume-"));
-  const workspaceRoot = path.join(projectRoot, "workspace");
+  const workspaceRoot = projectRoot;
   const depsDir = path.join(projectRoot, "deps");
   fs.mkdirSync(depsDir, { recursive: true });
   const qemuA = path.join(depsDir, "qemu-a");
@@ -2772,7 +2728,7 @@ test("workflow resume reuses successful prefix in place", () => {
   fs.writeFileSync(workflowPath, `${JSON.stringify(workflow, null, 2)}\n`);
   fs.writeFileSync(stepBPath, `${JSON.stringify(stepB, null, 2)}\n`);
 
-  const resumed = run(["--json", "workflow", "resume", "--id", runId, "--workspace", workspaceRoot], {
+  const resumed = run(["--json", "workflow", "resume", "--id", runId], {
     cwd: projectRoot,
     env: isolatedEnv(),
   });
@@ -2786,7 +2742,7 @@ test("workflow resume reuses successful prefix in place", () => {
 
 test("workflow run --from-step reuses earlier validated steps from latest run", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-from-step-"));
-  const workspaceRoot = path.join(projectRoot, "workspace");
+  const workspaceRoot = projectRoot;
   const depsDir = path.join(projectRoot, "deps");
   fs.mkdirSync(depsDir, { recursive: true });
   const qemuA = path.join(depsDir, "qemu-a");
@@ -2840,7 +2796,7 @@ test("workflow run --from-step reuses earlier validated steps from latest run", 
 
 test("workflow run and inspect keep grouped stage directories anchored to the first step", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-grouped-stage-dir-"));
-  const workspaceRoot = path.join(projectRoot, "workspace");
+  const workspaceRoot = projectRoot;
   const depsDir = path.join(projectRoot, "deps");
   fs.mkdirSync(depsDir, { recursive: true });
   const qemuA = path.join(depsDir, "qemu-a");
@@ -2915,11 +2871,11 @@ test("workflow run and inspect keep grouped stage directories anchored to the fi
   assert.ok(inspectedPrepare, "missing prepare stage in inspect payload");
   assert.equal(
     inspectedPrepare.stageDir,
-    path.join("workspace", "workflows", payload.details.id, "stages", "inspect_a"),
+    path.join("workflows", payload.details.id, "stages", "inspect_a"),
   );
   assert.equal(
     inspectedPrepare.stepDir,
-    path.join("workspace", "workflows", payload.details.id, "stages", "inspect_a"),
+    path.join("workflows", payload.details.id, "stages", "inspect_a"),
   );
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
@@ -2927,7 +2883,7 @@ test("workflow run and inspect keep grouped stage directories anchored to the fi
 
 test("workflow run --from-stage rewrites legacy single-stage metadata from current config", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-stage-rewrite-"));
-  const workspaceRoot = path.join(projectRoot, "workspace");
+  const workspaceRoot = projectRoot;
   const depsDir = path.join(projectRoot, "deps");
   fs.mkdirSync(depsDir, { recursive: true });
   const qemuA = path.join(depsDir, "qemu-a");
@@ -3035,7 +2991,7 @@ test("workflow run --from-stage rewrites legacy single-stage metadata from curre
 
 test("workflow run --from-step resets the rerun step log before execution", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-rerun-log-"));
-  const workspaceRoot = path.join(projectRoot, "workspace");
+  const workspaceRoot = projectRoot;
   const depsDir = path.join(projectRoot, "deps");
   fs.mkdirSync(depsDir, { recursive: true });
   const qemuA = path.join(depsDir, "qemu-a");
@@ -3089,7 +3045,7 @@ test("workflow run --from-step resets the rerun step log before execution", () =
 
 test("workflow run --only-step executes just the requested step", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-only-step-"));
-  const workspaceRoot = path.join(projectRoot, "workspace");
+  const workspaceRoot = projectRoot;
   const depsDir = path.join(projectRoot, "deps");
   fs.mkdirSync(depsDir, { recursive: true });
   const qemuA = path.join(depsDir, "qemu-a");
@@ -3192,7 +3148,7 @@ test("workflow run rejects removed --one-step control", () => {
 
 test("workflow run --from-step resolves templated prior-step args for reuse validation", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-from-step-template-"));
-  const workspaceRoot = path.join(projectRoot, "workspace");
+  const workspaceRoot = projectRoot;
   const sourceParent = path.join(projectRoot, "archive-src");
   const archiveSource = path.join(sourceParent, "qemu-1.0.0");
   const archivePath = path.join(projectRoot, "qemu-1.0.0.tar.xz");
@@ -3331,7 +3287,8 @@ test("explicit local tool workspace is not overridden by morpheus.yaml remote", 
   }, { allowGlobalRemote: false, allowToolDefaults: true });
   process.chdir(previousCwd);
 
-  assert.equal(resolved.flags.workspace, explicitWorkspace);
+  assert.equal(resolved.flags.workspace, projectRoot);
+  assert.equal(resolved.flags.localWorkspace, projectRoot);
   assert.equal(resolved.flags.ssh, undefined);
   assert.equal(resolved.flags.remote, undefined);
 
@@ -3369,6 +3326,7 @@ test("tool config can make only Buildroot run remotely", () => {
   process.chdir(previousCwd);
 
   assert.equal(resolved.flags.mode, "remote");
+  assert.equal(resolved.flags.localWorkspace, projectRoot);
   assert.equal(resolved.flags.workspace, "./remote-buildroot-workspace");
   assert.equal(resolved.flags.ssh, "builder@example.com:2222");
   assert.equal(resolved.flags.remote, "remote");
@@ -3455,7 +3413,7 @@ test("tool config resolves managed buildroot patch-dir relative to workspace roo
 
   assert.equal(
     resolved.flags["patch-dir"],
-    path.join(projectRoot, "workflow-workspace", "tools", "buildroot", "patches")
+    path.join(projectRoot, "tools", "buildroot", "patches")
   );
 
   fs.rmSync(projectRoot, { recursive: true, force: true });

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import re
 from collections import defaultdict, deque
 from pathlib import Path
@@ -158,9 +157,7 @@ def main():
         "--runtime-groups",
         type=Path,
         default=(
-            Path(os.environ.get("MORPHEUS_DATA_ROOT", "."))
-            / "workspaces"
-            / "hyperarm"
+            Path(__file__).resolve().parents[4]
             / "tools"
             / "driver-callgraph"
             / "scripts"

@@ -3,14 +3,13 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { spawn, spawnSync } = require("child_process");
-const { applyConfigDefaults, loadConfig, configDir, resolveLocalPath } = require("../core/config");
+const { applyConfigDefaults, loadConfig, configDir, resolveConfiguredWorkspaceRoot } = require("../core/config");
 const { parseToolArgs, descriptorFlagMetadata } = require("../core/tool-invoke");
 const { readToolDescriptor } = require("../core/tool-descriptor");
-const { repoRoot } = require("../core/paths");
+const { repoRoot, workspaceRoot } = require("../core/paths");
 const { writeStdoutLine } = require("../core/io");
 const { emitEvent, withEventContext, withLogFile } = require("../core/logger");
 const { runConfigCheck } = require("./config-check");
-const { exportWorkflowBundle } = require("./workflow-export");
 const { validateToolDescriptor } = require("../core/tool-validator");
 const {
   parseSshTarget,
@@ -76,7 +75,6 @@ function workflowUsage() {
     "Usage:",
     "  morpheus [--config PATH] workflow runs [--limit N] [--offset N] [--json]",
     "  morpheus [--config PATH] workflow list [--json]",
-    "  morpheus [--config PATH] workflow export --name WORKFLOW_NAME [--output-dir PATH] [--link-mode copy|hardlink] [--prepare] [--force] [--json]",
     "  morpheus --config <workspace-root>/morpheus.yaml workflow run --name WORKFLOW_NAME [--from-stage STAGE_ID] [--only-stage STAGE_ID] [--json]",
     "  morpheus [--config PATH] workflow resume --name WORKFLOW_NAME [--from-stage STAGE_ID] [--only-stage STAGE_ID] [--json]",
     "  morpheus [--config PATH] workflow inspect --name WORKFLOW_NAME [--json]",
@@ -91,7 +89,6 @@ function workflowUsage() {
     "Commands:",
     "  workflow runs      List managed workflow instances.",
     "  workflow list      List configured workflows.",
-    "  workflow export    Export a runnable bundle for a configured workflow.",
     "  workflow run       Start a configured workflow.",
     "  workflow resume    Resume a workflow instance.",
     "  workflow inspect   Inspect workflow state and stages.",
@@ -103,7 +100,6 @@ function workflowUsage() {
     "Examples:",
     "  morpheus --config <workspace-root>/morpheus.yaml workflow runs --json",
     "  morpheus --config <workspace-root>/morpheus.yaml workflow list --json",
-    "  morpheus --config <workspace-root>/morpheus.yaml workflow export --name qemu-build --json",
     "  morpheus --config <workspace-root>/morpheus.yaml workflow run --name qemu-build --json",
     "  morpheus --config <workspace-root>/morpheus.yaml workflow inspect --name qemu-build --json",
     "  morpheus --config <workspace-root>/morpheus.yaml workflow events --name qemu-build --json",
@@ -268,21 +264,8 @@ function resolvePreferredStepLogFile(step) {
   return step.logFile || (step.stepDir ? path.join(step.stepDir, "stdout.log") : null);
 }
 
-function resolveWorkspaceRoot(flags) {
-  if (flags.workspace) {
-    return path.resolve(String(flags.workspace));
-  }
-  const { flags: resolved } = applyConfigDefaults(
-    {
-      tool: "workflow",
-      workspace: flags.workspace || null,
-    },
-    { allowGlobalRemote: false, allowToolDefaults: false }
-  );
-  if (!resolved.workspace) {
-    throw new Error("workflow requires --workspace DIR or workspace.root in morpheus.yaml");
-  }
-  return resolved.workspace;
+function resolveWorkspaceRoot() {
+  return workspaceRoot();
 }
 
 function getByPath(value, dottedPath) {
@@ -745,16 +728,8 @@ function listConfiguredWorkflows(explicitConfigPath = null) {
   }
 
   function workspaceConfigPaths() {
-    const workspacesRoot = process.env.MORPHEUS_DATA_ROOT
-      ? path.join(process.env.MORPHEUS_DATA_ROOT, "workspaces")
-      : null;
-    if (!workspacesRoot || !fs.existsSync(workspacesRoot) || !fs.statSync(workspacesRoot).isDirectory()) {
-      return [];
-    }
-    return fs.readdirSync(workspacesRoot)
-      .sort((left, right) => left.localeCompare(right))
-      .map((entry) => path.join(workspacesRoot, entry, "morpheus.yaml"))
-      .filter((configPath) => fs.existsSync(configPath));
+    const localConfig = path.join(workspaceRoot(), "morpheus.yaml");
+    return fs.existsSync(localConfig) ? [localConfig] : [];
   }
 
   function findViewerConfigs() {
@@ -763,12 +738,7 @@ function listConfiguredWorkflows(explicitConfigPath = null) {
     for (const configPath of workspaceConfigPaths()) {
       const itemConfig = loadConfig(process.cwd(), { explicitPath: configPath });
       const itemBaseDir = configDir(itemConfig.path);
-      const workspaceRoot =
-        itemConfig.value
-        && itemConfig.value.workspace
-        && itemConfig.value.workspace.root
-          ? resolveLocalPath(itemBaseDir, itemConfig.value.workspace.root)
-          : null;
+      const workspaceRoot = resolveConfiguredWorkspaceRoot(itemConfig.value || {}, itemBaseDir);
       if (!workspaceRoot || seenWorkspaceRoots.has(workspaceRoot)) {
         continue;
       }
@@ -799,12 +769,7 @@ function listConfiguredWorkflows(explicitConfigPath = null) {
       for (const configPath of configPaths.filter((candidate) => fs.existsSync(candidate))) {
         const itemConfig = loadConfig(process.cwd(), { explicitPath: configPath });
         const itemBaseDir = configDir(itemConfig.path);
-        const workspaceRoot =
-          itemConfig.value
-          && itemConfig.value.workspace
-          && itemConfig.value.workspace.root
-            ? resolveLocalPath(itemBaseDir, itemConfig.value.workspace.root)
-            : null;
+        const workspaceRoot = resolveConfiguredWorkspaceRoot(itemConfig.value || {}, itemBaseDir);
         if (!workspaceRoot || seenWorkspaceRoots.has(workspaceRoot)) {
           continue;
         }
@@ -822,10 +787,7 @@ function listConfiguredWorkflows(explicitConfigPath = null) {
       .sort((left, right) => left.label.localeCompare(right.label));
   }
 
-  const currentWorkspaceRoot =
-    config.value && config.value.workspace && config.value.workspace.root
-      ? resolveLocalPath(baseDir, config.value.workspace.root)
-      : null;
+  const currentWorkspaceRoot = resolveConfiguredWorkspaceRoot(config.value || {}, baseDir);
   const configs = findViewerConfigs();
   return {
     command: "workflow list",
@@ -1513,7 +1475,7 @@ function stopWorkflowStepTool(step) {
       "--json",
     ];
     return spawnSync(command, args, {
-      cwd: step.stepDir,
+      cwd: workspaceRoot(),
       encoding: "utf8",
       env: process.env,
     });
@@ -1527,7 +1489,7 @@ function stopWorkflowStepTool(step) {
     ? process.execPath
     : entryPath;
   const result = spawnSync(command, args, {
-    cwd: step.stepDir,
+    cwd: descriptor.runtime === "node" ? workspaceRoot() : step.stepDir,
     encoding: "utf8",
     env: process.env,
   });
@@ -2639,6 +2601,9 @@ async function runToolWorkflow({
     });
     emitConsumedArtifactEvents(workflow, step, resolvedStep.relations);
 
+    const runDirArgs = ["exec", "benchmark"].includes(toolCommand)
+      ? ["--run-dir", step.stepDir]
+      : [];
     const args = (
       ["fetch", "patch", "build", "inspect", "logs", "exec", "stop", "postprocess", "genhtml"].includes(toolCommand)
     )
@@ -2647,8 +2612,7 @@ async function runToolWorkflow({
           toolCommand,
           "--tool",
           step.tool,
-          "--workspace",
-          workspaceRoot,
+          ...runDirArgs,
           ...toolArgv
         ]
       : [
@@ -2657,8 +2621,7 @@ async function runToolWorkflow({
           toolCommand,
           "--tool",
           step.tool,
-          "--workspace",
-          workspaceRoot,
+          ...runDirArgs,
           ...toolArgv
         ];
     if (!attach) {
@@ -2707,7 +2670,7 @@ async function runToolWorkflow({
           currentChildPid: childPid || null,
         }));
       },
-      { attach, cwd: step.stepDir, eventContext: { workflowId: workflow.id, stepId: step.id, tool: step.tool } },
+      { attach, cwd: workspaceRoot, eventContext: { workflowId: workflow.id, stepId: step.id, tool: step.tool } },
     );
     let result;
     if (spec && Number(spec.timeoutSeconds || 0) > 0) {
@@ -3236,32 +3199,6 @@ async function handleWorkflowCommand(argv) {
     return 0;
   }
 
-  if (subcommand === "export") {
-    const id = workflowKey(flags);
-    if (!id) {
-      throw new Error("workflow export requires --name WORKFLOW_NAME");
-    }
-    const payload = exportWorkflowBundle({
-      workflowName: String(id),
-      outputDir: typeof flags["output-dir"] === "string" ? String(flags["output-dir"]) : null,
-      linkMode: typeof flags["link-mode"] === "string" ? String(flags["link-mode"]) : "copy",
-      prepare: Boolean(flags.prepare),
-      force: Boolean(flags.force),
-      configPath: typeof process.env.MORPHEUS_CONFIG === "string" ? process.env.MORPHEUS_CONFIG : null,
-    });
-    if (flags.json) {
-      writeStdoutLine(JSON.stringify(payload, null, 2));
-    } else {
-      writeStdoutLine([
-        `workflow=${payload.details.workflow}`,
-        `category=${payload.details.category}`,
-        `bundle_dir=${payload.details.output_dir}`,
-        `bundle_config=${payload.details.bundle_config}`,
-      ].join("\n"));
-    }
-    return 0;
-  }
-
   if (subcommand === "run") {
     const selectedWorkflowName = workflowKey(flags);
     if (selectedWorkflowName) {
@@ -3337,7 +3274,7 @@ async function handleWorkflowCommand(argv) {
       ? [...passthrough]
       : argv.filter((token) => token !== "run").filter((token) => token !== "--tool").filter((token) => token !== tool)
         .filter((token) => token !== "--workflow").filter((token) => token !== workflowName)
-        .filter((token) => token !== "--json").filter((token) => token !== "--workspace").filter((token) => token !== workspaceRoot);
+        .filter((token) => token !== "--json");
 
     return runToolWorkflow({
       steps: [{ tool, name: `${tool}.exec`, toolArgv, toolCommand: "exec" }],

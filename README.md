@@ -69,7 +69,8 @@ Common maintenance tasks:
 pnpm --filter @morpheus/app build
 ```
 
-Set `cache.root` in the project `morpheus.yaml`. That is the only cache source.
+The workspace is the current directory. It must contain both `morpheus.yaml`
+and `.morpheus`. Cache is only `cache.root` in the project `morpheus.yaml`.
 
 - check available scripts:
 

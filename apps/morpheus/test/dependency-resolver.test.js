@@ -19,6 +19,7 @@ function tempDir(prefix) {
 }
 
 function writeConfig(dir, lines) {
+  fs.mkdirSync(path.join(dir, ".morpheus"), { recursive: true });
   const file = path.join(dir, "morpheus.yaml");
   fs.writeFileSync(file, `${lines.join("\n")}\n`, "utf8");
   return file;
@@ -26,10 +27,13 @@ function writeConfig(dir, lines) {
 
 function withConfig(configPath, fn) {
   const previous = process.env.MORPHEUS_CONFIG;
+  const previousCwd = process.cwd();
   process.env.MORPHEUS_CONFIG = configPath;
+  process.chdir(path.dirname(configPath));
   try {
     return fn();
   } finally {
+    process.chdir(previousCwd);
     if (previous === undefined) {
       delete process.env.MORPHEUS_CONFIG;
     } else {
@@ -178,13 +182,11 @@ test("resolveToolDependencies keeps workspace paths when cache is workspace-scop
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
-test("resolveToolDependencies infers cache namespace from workspace.root when missing", () => {
-  const projectRoot = tempDir("morpheus-resolve-infer-namespace-");
-  const workspaceRoot = path.join(projectRoot, "hyperarm");
+test("resolveToolDependencies infers cache namespace from the workspace directory name when missing", () => {
+  const parentRoot = tempDir("morpheus-resolve-infer-namespace-");
+  const workspaceRoot = path.join(parentRoot, "hyperarm");
   fs.mkdirSync(workspaceRoot, { recursive: true });
-  const configPath = writeConfig(projectRoot, [
-    "workspace:",
-    "  root: ./hyperarm",
+  const configPath = writeConfig(workspaceRoot, [
     "cache:",
     "  root: ./cache",
     "  downloads: global",
@@ -216,21 +218,17 @@ test("resolveToolDependencies infers cache namespace from workspace.root when mi
     );
     assert.equal(
       microkit.sel4,
-      path.join(projectRoot, "cache", "hyperarm", "tools", "sel4", "builds", "sel4-c0fc3245", "source"),
+      path.join(workspaceRoot, "cache", "hyperarm", "tools", "sel4", "builds", "sel4-c0fc3245", "source"),
     );
   });
 
-  fs.rmSync(projectRoot, { recursive: true, force: true });
+  fs.rmSync(parentRoot, { recursive: true, force: true });
 });
 
 test("resolveToolDependencies stays workspace-local when cache.root is omitted", () => {
   const projectRoot = tempDir("morpheus-resolve-no-cache-root-");
-  const dataRoot = path.join(projectRoot, "data");
-  const workspaceRoot = path.join(dataRoot, "workspaces", "hyperarm");
-  fs.mkdirSync(workspaceRoot, { recursive: true });
+  const workspaceRoot = projectRoot;
   const configPath = writeConfig(projectRoot, [
-    "workspace:",
-    "  root: ./data/workspaces/hyperarm",
     "cache:",
     "  downloads: global",
     "  builds: global",
@@ -249,32 +247,22 @@ test("resolveToolDependencies stays workspace-local when cache.root is omitted",
     "",
   ]);
 
-  const previousDataRoot = process.env.MORPHEUS_DATA_ROOT;
-  process.env.MORPHEUS_DATA_ROOT = dataRoot;
-  try {
-    withConfig(configPath, () => {
-      const microkit = dependencyResolver.resolveToolDependencies(
-        {
-          tool: "microkit-sdk",
-          workspace: workspaceRoot,
-          localWorkspace: workspaceRoot,
-          json: true,
-        },
-        "build",
-      );
-      assert.equal(
-        microkit.sel4,
-        path.join(workspaceRoot, "tools", "sel4", "builds", "sel4-c0fc3245", "source"),
-      );
-    });
-  } finally {
-    if (previousDataRoot == null) {
-      delete process.env.MORPHEUS_DATA_ROOT;
-    } else {
-      process.env.MORPHEUS_DATA_ROOT = previousDataRoot;
-    }
-    fs.rmSync(projectRoot, { recursive: true, force: true });
-  }
+  withConfig(configPath, () => {
+    const microkit = dependencyResolver.resolveToolDependencies(
+      {
+        tool: "microkit-sdk",
+        workspace: workspaceRoot,
+        localWorkspace: workspaceRoot,
+        json: true,
+      },
+      "build",
+    );
+    assert.equal(
+      microkit.sel4,
+      path.join(workspaceRoot, "tools", "sel4", "builds", "sel4-c0fc3245", "source"),
+    );
+  });
+  fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
 test("resolveToolDependencies projects nvirsh runtime inputs through Morpheus", () => {

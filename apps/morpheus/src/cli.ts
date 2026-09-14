@@ -16,6 +16,7 @@ const { handleStopCommand } = require("./commands/stop");
 const { handleToolCommand } = require("./commands/tools");
 const { handleWorkflowCommand } = require("./commands/workflow");
 const { findConfigPath, normalizeMorpheusEnv } = require("./core/config");
+const { workspaceRoot } = require("./core/paths");
 const { writeStdout, writeStdoutLine, writeStderrLine } = require("./core/io");
 
 function parseEnvLine(line) {
@@ -139,7 +140,6 @@ function usage() {
       "  tool list          List declared tools and their readiness.",
       "  workflow runs      List managed workflow instances.",
       "  workflow list      List configured workflows.",
-      "  workflow export    Export a runnable workflow bundle.",
       "  workflow run       Start a configured workflow.",
       "  workflow resume    Resume a workflow instance.",
       "  workflow inspect   Inspect workflow state and stages.",
@@ -199,6 +199,9 @@ async function main() {
   loadProjectEnv(explicitConfig);
   const wantsHelp = Boolean(flags.help) || positionals[0] === "help" || rawArgv.includes("--help");
   const command = positionals[0];
+  if (!wantsHelp && command && command !== "help") {
+    workspaceRoot();
+  }
   const subcommand = positionals[1];
   const isReadOnlyConfigCommand =
     command === "config"

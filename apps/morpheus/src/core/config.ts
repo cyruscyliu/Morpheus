@@ -79,20 +79,6 @@ function loadEnvFile(filePath) {
 }
 
 function normalizeMorpheusEnv() {
-  let dataRoot = typeof process.env.MORPHEUS_DATA_ROOT === "string" && process.env.MORPHEUS_DATA_ROOT
-    ? process.env.MORPHEUS_DATA_ROOT
-    : null;
-  const workspacesRoot = typeof process.env.MORPHEUS_WORKSPACES_ROOT === "string" && process.env.MORPHEUS_WORKSPACES_ROOT
-    ? process.env.MORPHEUS_WORKSPACES_ROOT
-    : null;
-
-  if (!dataRoot && workspacesRoot) {
-    dataRoot = path.dirname(workspacesRoot);
-    process.env.MORPHEUS_DATA_ROOT = dataRoot;
-  }
-  if (dataRoot) {
-    process.env.MORPHEUS_WORKSPACES_ROOT = path.join(dataRoot, "workspaces");
-  }
   if (!process.env.MORPHEUS_REPO_ROOT) {
     process.env.MORPHEUS_REPO_ROOT = appRepoRoot();
   }
@@ -127,18 +113,9 @@ function findConfigPath(startDir, options = {}) {
   if (chosen) {
     return chosen;
   }
-  let current = path.resolve(startDir || process.cwd());
-  while (true) {
-    const candidate = path.join(current, "morpheus.yaml");
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-    const parent = path.dirname(current);
-    if (parent === current) {
-      return null;
-    }
-    current = parent;
-  }
+  const current = path.resolve(startDir || process.cwd());
+  const candidate = path.join(current, "morpheus.yaml");
+  return fs.existsSync(candidate) ? candidate : null;
 }
 
 function importedParentConfigPath(filePath) {
@@ -275,23 +252,20 @@ function resolveLocalPath(baseDir, inputPath) {
   return path.resolve(baseDir, value);
 }
 
+function resolveConfiguredWorkspaceRoot() {
+  const { workspaceRoot } = require("./paths");
+  return workspaceRoot();
+}
+
 function inferCacheNamespace(configValue, baseDir) {
   const cache = isPlainObject(configValue && configValue.cache) ? configValue.cache : {};
   if (cache.namespace) {
     return String(cache.namespace);
   }
-  const workspaceRootRaw = configValue
-    && configValue.workspace
-    && configValue.workspace.root
-    ? String(configValue.workspace.root)
-    : null;
-  if (workspaceRootRaw) {
-    const expanded = expandEnvironmentVariables(workspaceRootRaw);
-    const resolved = resolveLocalPath(baseDir || process.cwd(), expanded);
-    const base = path.basename(resolved);
-    if (base && base !== "." && base !== ".." && base !== "workspaces") {
-      return base;
-    }
+  const resolved = resolveConfiguredWorkspaceRoot(configValue, baseDir);
+  const base = path.basename(resolved);
+  if (base && base !== "." && base !== ".." && base !== "workspaces") {
+    return base;
   }
   return null;
 }
@@ -424,16 +398,18 @@ function resolveDefaultRemote(configValue) {
   return resolveRemoteName(configValue, remoteName);
 }
 
+function defaultWorkspaceEntry(configValue) {
+  return {
+    name: "workspace",
+    root: resolveConfiguredWorkspaceRoot(),
+    remote: configValue && configValue.workspace ? configValue.workspace.remote || null : null
+  };
+}
+
 function resolveWorkspaceName(configValue, name, options) {
   const baseDir = (options && options.baseDir) || process.cwd();
-  if (configValue.workspace && configValue.workspace.root) {
-    if (!name || name === "default" || name === "workspace") {
-      return {
-        name: name || "workspace",
-        root: resolveLocalPath(baseDir, configValue.workspace.root),
-        remote: configValue.workspace.remote || null
-      };
-    }
+  if (!name || name === "default" || name === "workspace") {
+    return defaultWorkspaceEntry(configValue);
   }
 
   const items = configValue.workspaces && configValue.workspaces.items;
@@ -452,16 +428,7 @@ function resolveWorkspaceName(configValue, name, options) {
 }
 
 function resolveDefaultWorkspace(configValue, options) {
-  if (configValue.workspace && configValue.workspace.root) {
-    return {
-      name: "workspace",
-      root: resolveLocalPath((options && options.baseDir) || process.cwd(), configValue.workspace.root),
-      remote: configValue.workspace.remote || null
-    };
-  }
-
-  const name = configValue.workspaces && configValue.workspaces.default;
-  return resolveWorkspaceName(configValue, name, options);
+  return defaultWorkspaceEntry(configValue);
 }
 
 function resolveToolName(configValue, name) {
@@ -569,28 +536,10 @@ function applyConfigDefaults(flags, options) {
   }
   const allowGlobalRemote = Boolean(options && options.allowGlobalRemote);
   const allowToolDefaults = Boolean(options && options.allowToolDefaults);
-  let workspaceEntry = null;
-  if (next.workspace) {
-    workspaceEntry = resolveWorkspaceName(value, next.workspace, { baseDir });
-    if (workspaceEntry) {
-      next.localWorkspace = workspaceEntry.root;
-      next.workspace = workspaceEntry.root;
-    } else {
-      const raw = String(next.workspace);
-      const looksLikePath = raw.includes("/") || raw.includes("\\") || raw.startsWith(".") || raw.startsWith("~");
-      if (looksLikePath) {
-        const resolved = resolveLocalPath(baseDir, raw);
-        next.localWorkspace = resolved;
-        next.workspace = resolved;
-      }
-    }
-  } else {
-    workspaceEntry = resolveDefaultWorkspace(value, { baseDir });
-    if (workspaceEntry) {
-      next.localWorkspace = workspaceEntry.root;
-      next.workspace = workspaceEntry.root;
-    }
-  }
+  const cwdWorkspace = resolveConfiguredWorkspaceRoot();
+  const workspaceEntry = defaultWorkspaceEntry(value);
+  next.localWorkspace = cwdWorkspace;
+  next.workspace = cwdWorkspace;
 
   const toolEntry = allowToolDefaults ? resolveToolName(value, next.tool) : null;
   if (toolEntry && toolEntry["mode"] && !next.mode) {
@@ -700,5 +649,6 @@ module.exports = {
   RESERVED_MANAGED_TOOL_CONFIG_KEYS,
   expandEnvironmentVariables,
   resolveLocalPath,
-  resolveCachePolicy
+  resolveCachePolicy,
+  resolveConfiguredWorkspaceRoot
 };

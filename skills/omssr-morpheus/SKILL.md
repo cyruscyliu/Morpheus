@@ -35,10 +35,13 @@ When operating in this repo:
 Minimal config:
 
 ```yaml
-workspace:
-  root: ./workspace
-
+cache:
+  root: /absolute/cache
+  namespace: example
 ```
+
+The workspace is the current directory. It must contain both `morpheus.yaml`
+and `.morpheus`.
 
 Project configs can live under `<workspace-root>/morpheus.yaml`.
 The repository has no default project config at its root.
@@ -51,8 +54,8 @@ using references such as `root.buildroot-build`.
 Treat `morpheus.yaml` as the stable Morpheus config surface.
 The main field families are:
 
-- workspace selection:
-  `workspace.root`
+- workspace:
+  the current directory, which must contain `morpheus.yaml` and `.morpheus`
 - tool policy:
   `tools.<name>.*`
 - workflow definitions:
@@ -103,7 +106,8 @@ Operational rule:
 
 ## Core Rules
 
-- Treat `--workspace` as the shared managed workspace root.
+- Treat the current directory as the workspace when it contains both
+  `morpheus.yaml` and `.morpheus`.
 - Treat workflow ids as the stable lookup key for managed workflow lifecycle
   commands.
 - Use `morpheus workflow run`, `morpheus workflow inspect`, and

@@ -1,7 +1,5 @@
-workspace:
-  root: ${MORPHEUS_DATA_ROOT}/workspaces/ci
 cache:
-  root: ${MORPHEUS_DATA_ROOT}/cache
+  root: ./cache
   namespace: ci
   downloads: global
   builds: global

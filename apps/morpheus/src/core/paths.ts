@@ -1,38 +1,30 @@
 // @ts-nocheck
+const fs = require("fs");
 const path = require("path");
 
 function repoRoot() {
   return path.resolve(__dirname, "..", "..", "..", "..");
 }
 
-function workRoot() {
-  const { loadConfig, configDir, resolveLocalPath } = require("./config");
-  const override = process.env.MORPHEUS_WORK_ROOT || process.env.RESEARCH_RUNTIME_WORK_ROOT;
-  if (override) {
-    return path.resolve(override);
-  }
-
-  const config = loadConfig(process.cwd());
-  const baseDir = configDir(config.path);
-  const configured = config.value && config.value.workspace && config.value.workspace.root
-    ? resolveLocalPath(baseDir, config.value.workspace.root)
-    : null;
-
-  if (!configured) {
-    throw new Error("workspace.root must be configured in Morpheus config or provided via MORPHEUS_WORK_ROOT");
-  }
-
-  return path.resolve(configured);
+function isWorkspaceDir(dir) {
+  const current = path.resolve(dir || process.cwd());
+  const configPath = path.join(current, "morpheus.yaml");
+  const marker = path.join(current, ".morpheus");
+  return fs.existsSync(configPath)
+    && fs.existsSync(marker)
+    && fs.statSync(marker).isDirectory();
 }
 
-function dataRoot() {
-  if (process.env.MORPHEUS_DATA_ROOT) {
-    return path.resolve(process.env.MORPHEUS_DATA_ROOT);
+function workspaceRoot(startDir) {
+  const current = path.resolve(startDir || process.cwd());
+  if (!isWorkspaceDir(current)) {
+    throw new Error("could not find workspace: current directory must contain morpheus.yaml and .morpheus");
   }
-  if (process.env.MORPHEUS_WORKSPACES_ROOT) {
-    return path.resolve(path.dirname(process.env.MORPHEUS_WORKSPACES_ROOT));
-  }
-  return null;
+  return current;
+}
+
+function workRoot() {
+  return workspaceRoot();
 }
 
 function workspacePaths() {
@@ -60,7 +52,8 @@ function workspacePaths() {
 
 module.exports = {
   repoRoot,
+  isWorkspaceDir,
+  workspaceRoot,
   workRoot,
-  dataRoot,
   workspacePaths
 };

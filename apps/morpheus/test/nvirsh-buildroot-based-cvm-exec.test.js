@@ -91,14 +91,11 @@ function collectChildResult(child) {
   });
 }
 
-function isolatedWorkflowEnv(tmpDir) {
+function isolatedWorkflowEnv() {
   const env = {
     ...process.env,
-    MORPHEUS_WORK_ROOT: path.join(tmpDir, "work-root"),
   };
   delete env.MORPHEUS_CONFIG;
-  delete env.MORPHEUS_DATA_ROOT;
-  delete env.MORPHEUS_WORKSPACES_ROOT;
   return env;
 }
 
@@ -729,7 +726,7 @@ test("buildroot-based CVM exec handles SIGINT by stopping the L1 process group",
 
 test("workflow SIGINT stops the CVM stage and clears its timeout", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-cvm-workflow-interrupt-"));
-  const workspaceRoot = path.join(tmpDir, "workspace");
+  const workspaceRoot = tmpDir;
   const configPath = path.join(tmpDir, "morpheus.yaml");
   const workflowName = "interrupt-cvm";
   const stepId = "cvm-exec";
@@ -742,12 +739,10 @@ test("workflow SIGINT stops the CVM stage and clears its timeout", async () => {
 
   writeBlockingHostQemu(hostQemu, childPidFile);
   const { installDir } = prepareBuildFixture(tmpDir, hostQemu);
-  fs.mkdirSync(workspaceRoot, { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, ".morpheus"), { recursive: true });
   fs.writeFileSync(
     configPath,
     [
-      "workspace:",
-      `  root: ${JSON.stringify(workspaceRoot)}`,
       "workflows:",
       `  ${workflowName}:`,
       "    category: run",
@@ -770,10 +765,10 @@ test("workflow SIGINT stops the CVM stage and clears its timeout", async () => {
   try {
     workflowChild = spawn(
       process.execPath,
-      [appBin, "--json", "--config", configPath, "workflow", "run", "--name", workflowName],
+      [appBin, "--json", "workflow", "run", "--name", workflowName],
       {
         cwd: tmpDir,
-        env: isolatedWorkflowEnv(tmpDir),
+        env: isolatedWorkflowEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       },
     );

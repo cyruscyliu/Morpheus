@@ -92,16 +92,13 @@ test("qemu fetch prefers an explicit archive over a configured seed dir", () => 
 
 test("CLI qemu fetch with a configured seed dir does not auto-infer a default archive URL", () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-qemu-cli-fetch-"));
-  const workspaceRoot = path.join(tmpDir, "workspace");
   const cacheRoot = path.join(tmpDir, "cache");
   const configPath = path.join(tmpDir, "morpheus.yaml");
 
-  fs.mkdirSync(workspaceRoot, { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, ".morpheus"), { recursive: true });
   fs.writeFileSync(
     configPath,
     [
-      "workspace:",
-      "  root: ./workspace",
       "cache:",
       "  root: ./cache",
       "  namespace: smoke",
@@ -119,14 +116,12 @@ test("CLI qemu fetch with a configured seed dir does not auto-infer a default ar
   const runResult = spawnSync(process.execPath, [
     cli,
     "--json",
-    "--config",
-    configPath,
     "fetch",
     "--tool",
     "qemu",
   ], {
     encoding: "utf8",
-    cwd: repoRoot,
+    cwd: tmpDir,
   });
 
   assert.equal(runResult.status, 0, runResult.stderr || runResult.stdout);
@@ -147,12 +142,11 @@ test("CLI qemu fetch with a configured seed dir does not auto-infer a default ar
 
 test("CLI qemu fetch with a configured git url does not auto-infer a default archive URL", () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-qemu-cli-git-fetch-"));
-  const workspaceRoot = path.join(tmpDir, "workspace");
   const cacheRoot = path.join(tmpDir, "cache");
   const configPath = path.join(tmpDir, "morpheus.yaml");
   const repoDir = path.join(tmpDir, "qemu-upstream");
 
-  fs.mkdirSync(workspaceRoot, { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, ".morpheus"), { recursive: true });
   fs.mkdirSync(repoDir, { recursive: true });
 
   const initResult = spawnSync("git", ["init", "--initial-branch=main"], {
@@ -192,8 +186,6 @@ test("CLI qemu fetch with a configured git url does not auto-infer a default arc
   fs.writeFileSync(
     configPath,
     [
-      "workspace:",
-      "  root: ./workspace",
       "cache:",
       "  root: ./cache",
       "  namespace: smoke",
@@ -213,14 +205,12 @@ test("CLI qemu fetch with a configured git url does not auto-infer a default arc
   const runResult = spawnSync(process.execPath, [
     cli,
     "--json",
-    "--config",
-    configPath,
     "fetch",
     "--tool",
     "qemu",
   ], {
     encoding: "utf8",
-    cwd: repoRoot,
+    cwd: tmpDir,
   });
 
   assert.equal(runResult.status, 0, runResult.stderr || runResult.stdout);

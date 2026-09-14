@@ -22,8 +22,8 @@ const TOOL_PATH_KEYS = new Set([
 function usage() {
   return [
     "Usage:",
-    "  ./bin/morpheus [--config PATH] config show [--json]",
-    "  ./bin/morpheus [--config PATH] config check [--json]",
+    "  morpheus [--config PATH] config show [--json]",
+    "  morpheus [--config PATH] config check [--json]",
     "",
     "Purpose:",
     "  Validate morpheus.yaml and report config issues before running workflows.",
@@ -34,10 +34,10 @@ function usage() {
     "  config check       Validate morpheus.yaml.",
     "",
     "Examples:",
-    "  ./bin/morpheus config show",
-    "  ./bin/morpheus --config <workspace-root>/morpheus.yaml config show --json",
-    "  ./bin/morpheus config check",
-    "  ./bin/morpheus --config <workspace-root>/morpheus.yaml config check --json"
+    "  morpheus config show",
+    "  morpheus --config <workspace-root>/morpheus.yaml config show --json",
+    "  morpheus config check",
+    "  morpheus --config <workspace-root>/morpheus.yaml config check --json"
   ].join("\n");
 }
 

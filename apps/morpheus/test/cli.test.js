@@ -2427,7 +2427,7 @@ test("workflow run failure hint uses grouped stage id", () => {
   assert.ok(failedStepEvent, "missing step.failed event for patch_missing");
   assert.equal(
     failedStepEvent.data && failedStepEvent.data.hint,
-    `./bin/morpheus --json workflow logs --name ${payload.details.id} --stage prepare`,
+    `morpheus --json workflow logs --name ${payload.details.id} --stage prepare`,
   );
 
   fs.rmSync(projectRoot, { recursive: true, force: true });

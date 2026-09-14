@@ -99,8 +99,8 @@ function extractToolSubcommand(argv) {
 function toolUsage() {
   return [
     "Usage:",
-    "  ./bin/morpheus tool list [--json]",
-    "  ./bin/morpheus tool validate --tool <name> [--json]",
+    "  morpheus tool list [--json]",
+    "  morpheus tool validate --tool <name> [--json]",
     "",
     "Purpose:",
     "  Inspect declared tools and whether Morpheus can use them directly or through workflows.",
@@ -110,9 +110,9 @@ function toolUsage() {
     "  tool validate      Validate tools/<name>/tool.json against the descriptor schema.",
     "",
     "Examples:",
-    "  ./bin/morpheus tool list",
-    "  ./bin/morpheus tool list --json",
-    "  ./bin/morpheus tool validate --tool nvirsh --json",
+    "  morpheus tool list",
+    "  morpheus tool list --json",
+    "  morpheus tool validate --tool nvirsh --json",
     "",
     "Notes:",
     "  - 'workflow-only' tools are managed through configured workflows.",
@@ -123,8 +123,8 @@ function toolUsage() {
 function toolSubcommandUsage(subcommand) {
   return [
     "Usage:",
-    `  ./bin/morpheus tool ${subcommand} --tool <name> [--json] [tool ${subcommand} flags]`,
-    `  ./bin/morpheus tool ${subcommand} --tool <name> [--json] -- [tool ${subcommand} flags]`,
+    `  morpheus tool ${subcommand} --tool <name> [--json] [tool ${subcommand} flags]`,
+    `  morpheus tool ${subcommand} --tool <name> [--json] -- [tool ${subcommand} flags]`,
   ].join("\n");
 }
 

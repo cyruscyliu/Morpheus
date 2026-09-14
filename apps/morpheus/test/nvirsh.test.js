@@ -39,7 +39,7 @@ function makeProject() {
       "    build-dir-key: qemu-debian-arm64",
       "    reuse-build-dir: true",
       "    l2-mode: cvm",
-      "    firmware: /usr/share/qemu-efi-aarch64/QEMU_EFI.fd",
+      "    firmware: ./firmware/QEMU_EFI.fd",
       "    dependencies:",
       "      qemu:",
       `        path: ${path.join(sharedCacheRoot, "tools", "qemu", "builds", "qemu-11.0.3-aarch64-softmmu", "install", "bin", "qemu-system-aarch64")}`,

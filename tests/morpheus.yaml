@@ -46,7 +46,7 @@ tools:
     profile: qemu-debian-arm64
     build-dir-key: qemu-debian-arm64
     reuse-build-dir: true
-    firmware: /usr/share/qemu-efi-aarch64/QEMU_EFI.fd
+    firmware: ./fixtures/nvirsh-cvm/SBSA_FLASH0.fd
     dependencies:
       qemu:
         tool: qemu

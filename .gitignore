@@ -31,6 +31,10 @@ tools/buildroot/.tmp-smoke-out/
 # Generic local artifacts
 tmp/
 tests/workflows/
+tests/cache/
+tests/tools/
+tests/runs/
+tests/tmp/
 *.log
 .morpheus-sync/
 .morpheus-patches.json

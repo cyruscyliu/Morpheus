@@ -330,7 +330,7 @@ test("applyConfigDefaults resolves nvirsh firmware path from config", () => {
     "  root: ./workspace",
     "tools:",
     "  nvirsh:",
-    "    firmware: /usr/share/qemu-efi-aarch64/QEMU_EFI.fd",
+    "    firmware: ./firmware/QEMU_EFI.fd",
     "",
   ]);
 
@@ -345,7 +345,7 @@ test("applyConfigDefaults resolves nvirsh firmware path from config", () => {
 
     assert.equal(
       resolved.flags.firmware,
-      "/usr/share/qemu-efi-aarch64/QEMU_EFI.fd",
+      path.join(projectRoot, "firmware", "QEMU_EFI.fd"),
     );
   });
 

@@ -1,33 +1,30 @@
 /*
- * VIA-inspired passthrough interception model.
+ * VIA-inspired emulated device-interface model.
  *
- * This model describes harness and driver execution phases, not a virtual
- * device state machine. Passthrough forwards mutated device-to-driver values,
- * ignores driver-to-device writes, and injects interrupts from the harness.
- * Addresses, buffers, and values are synthetic.
+ * Paper, Sec. 4 (Device Simulation): “The emulation mode allows VIA to
+ * target higher layers ... emulated devices process data sent from the
+ * driver to the device and automatically trigger interrupts depending on
+ * the device's internal state.”
  *
- * Paper, Sec. 4 (Device Simulation): “After the initial configuration, the
- * simulated device only forwards mutated data ... and ignores data sent from
- * the driver to the device. Interrupts have to be triggered by the harness.”
- * The ellipses abbreviate the original text; this model records only those
- * interface responsibilities.
+ * This keeps the passthrough interface traces unchanged and redirects their
+ * fill/ignore effects to externally supplied emulated-device hooks.
  */
-
 extern observe_map_sync;
+extern observe_dma_event;
 extern unmap_passthrough_dma_buffers;
 extern initialize_driver;
 extern observe_interrupt_injection;
 extern unload_driver;
 extern return_input_stream_value;
-extern observe_dma_event;
+extern emulated_mmio_read;
+extern emulated_mmio_write;
+extern emulated_pio_read;
+extern emulated_pio_write;
+extern emulated_dma_to_device;
+extern emulated_dma_from_device;
 
-/*
- * observe_map_sync operation codes:
- * 1 = map, 2 = sync_for_cpu, 3 = unmap.
- */
-machine via_passthrough_mmio_dma {
+machine via_emulation_mmio_dma {
     initial driver_uninitialized
-
     scratch {
         mmio_value;
         pio_value;
@@ -38,64 +35,56 @@ machine via_passthrough_mmio_dma {
         dma_len;
         interrupt_marker;
     }
-
     state driver_uninitialized
     state driver_initialized
     state interaction_active
     final state stopped
 
-    /*
-     * Driver initialization is a harness/syscall operation. The driver's
-     * MMIO/PIO accesses occur after this operation.
-     */
+    /* Paper, Sec. 4: the harness issues system calls to “(i) initialize the
+     * driver, (ii) trigger interactions ... and (iii) un-initialize the
+     * driver”. */
     entry trace initialize_driver {
         sequence {
             extern initialize_driver;
         }
     }
-
-    /* Paper, Sec. 4 (Intercepting IO): VIA injects test data through the
-     * kernel MMIO/PIO access interface. */
+    /* Paper, Sec. 4 (Intercepting IO): “MMIO and PIO regions are accessed via
+     * a defined kernel interface.” */
     entry trace intercept_mmio_read {
         sequence {
             mmio_value = read32(unknown);
-            extern return_input_stream_value(mmio_value, 4);
+            extern emulated_mmio_read(mmio_value);
         }
     }
-
     entry trace intercept_mmio_write {
         sequence {
             write32(write_value, unknown);
-            call ignore_driver_mmio_write(write_value);
+            extern emulated_mmio_write(write_value);
         }
     }
-
     entry trace intercept_pio_read {
         sequence {
             pio_value = read32(unknown);
-            extern return_input_stream_value(pio_value, 4);
+            extern emulated_pio_read(pio_value);
         }
     }
-
     entry trace intercept_pio_write {
         sequence {
             write32(write_value, unknown);
-            call ignore_driver_pio_write(write_value);
+            extern emulated_pio_write(write_value);
         }
     }
-
-    /* Paper, Sec. 4 (Intercepting IO): streaming DMA is synchronized before
-     * and after device interaction. */
+    /* Paper, Sec. 4 (Intercepting IO): “Streaming DMA is synced once before
+     * and after device interaction.” */
     entry trace intercept_driver_to_device_dma {
         sequence {
             dma_addr = 0x4000;
             dma_len = 0x80;
             extern observe_map_sync(1, dma_addr, dma_len);
             dma_event(op=map, dir=to_device, path=dma_api, addr=dma_addr, len=dma_len, data_kind=any);
-            call ignore_driver_to_device_dma(dma_addr, dma_len);
+            extern emulated_dma_to_device(dma_addr, dma_len);
         }
-    }external_dma_unmapped
-
+    }
     entry trace intercept_device_to_driver_dma {
         sequence {
             dma_addr = 0x8000;
@@ -104,7 +93,7 @@ machine via_passthrough_mmio_dma {
             dma_event(op=map, dir=from_device, path=dma_api, addr=dma_addr, len=dma_len, data_kind=any);
             extern observe_map_sync(2, dma_addr, dma_len);
             dma_event(op=sync_for_cpu, dir=from_device, path=dma_api, addr=dma_addr, len=dma_len, data_kind=any);
-            call fill_mutated_dma_payload(dma_addr, dma_len);
+            extern emulated_dma_from_device(dma_addr, dma_len);
         }
     }
 
@@ -116,7 +105,7 @@ machine via_passthrough_mmio_dma {
             dma_len = 0x800;
             extern observe_dma_event(1, dma_addr, dma_len);
             dma_event(op=alloc, dir=from_device, path=dma_api, addr=dma_addr, len=dma_len, data_kind=any);
-            call fill_mutated_dma_payload(dma_addr, dma_len);
+            extern emulated_dma_from_device(dma_addr, dma_len);
         }
     }
     entry trace intercept_coherent_dma_alloc_tx {
@@ -125,10 +114,9 @@ machine via_passthrough_mmio_dma {
             dma_len = 0x800;
             extern observe_dma_event(1, dma_addr, dma_len);
             dma_event(op=alloc, dir=to_device, path=dma_api, addr=dma_addr, len=dma_len, data_kind=any);
-            call ignore_driver_to_device_dma(dma_addr, dma_len);
+            extern emulated_dma_to_device(dma_addr, dma_len);
         }
     }
-
     entry trace external_dma_unmapped {
         sequence {
             dma_addr = 0x8000;
@@ -138,7 +126,6 @@ machine via_passthrough_mmio_dma {
             extern unmap_passthrough_dma_buffers(dma_addr, dma_len);
         }
     }
-
     /* Paper, Sec. 4 (Targeted Interrupt Injection): the harness injects
      * interrupts to trigger driver/device interaction. */
     entry trace external_interrupt_injected {
@@ -149,23 +136,18 @@ machine via_passthrough_mmio_dma {
             call inject_interrupt(interrupt_marker);
         }
     }
-
-    /*
-     * The interrupt status register is deterministic for a given
-     * driver/device pair. VIA does not specify this offset; 0x60 is
-     * an analysis-derived synthetic offset that must be recovered
-     * from the target driver's interrupt path.
-     */
+    /* Emulation changes the value handling delegated to the device model;
+     * the interrupt-handler interface remains the passthrough baseline. */
     entry trace handle_interrupt {
         sequence {
             mmio_base = 0x1000;
             irq_status = read32(mmio_base + 0x60);
-            extern return_input_stream_value(irq_status, 4);
+            extern emulated_mmio_read(irq_status);
             write32(irq_status, mmio_base + 0x64);
-            call ignore_driver_mmio_write(irq_status);
+            extern emulated_mmio_write(irq_status);
         }
     }
-
+    /* Driver teardown is a harness lifecycle operation. */
     entry trace external_driver_unloaded {
         sequence {
             extern unload_driver;

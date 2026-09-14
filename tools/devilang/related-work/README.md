@@ -182,10 +182,17 @@ merely because the corresponding emulation model has one.
 | [DevFuzz](README-devfuzz.md) | Automatic device-model behavior |
 | [DevGen](README-devgen.md) | LLM-generated virtual-device behavior |
 | [DrFuzz](README-drfuzz.md) | Device-free driver validation |
+| [Drifuzz](README-drifuzz.md) | Golden-seed hardware-interface fuzzing |
 | [PCIconfuzz](README-pciconfuzz.md) |
   PCIe configuration and interrupt-related behavior |
 | [PrIntFuzz](README-printfuzz.md) | Automated virtual-device simulation |
 | [VirtFuzz](README-virtfuzz.md) | Universal VirtIO device behavior |
+
+## Comparison
+
+The models are intentionally compared by a partial order rather than a
+linear ranking. See [MODEL-LATTICE.md](MODEL-LATTICE.md) for the feature
+dimensions, current vectors, meet/join examples, and the progress checklist.
 
 ## Verification
 

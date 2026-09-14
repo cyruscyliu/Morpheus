@@ -1,0 +1,126 @@
+/* VirtFuzz fuzzing configuration: mutated input is injected into RX. */
+extern initialize_driver;
+extern unload_driver;
+extern emulated_mmio_read;
+extern emulated_pio_read;
+extern emulated_mmio_write;
+extern emulated_pio_write;
+extern qemu_virtio_tx_hook;
+extern qemu_virtio_rx_hook;
+extern qemu_virtio_tx_notify;
+extern qemu_virtio_rx_notify;
+extern observe_virtio_interrupt;
+
+machine virtfuzz_fuzzing {
+    initial driver_uninitialized
+    scratch {
+        mmio_value;
+        pio_value;
+        write_value;
+        dma_addr;
+        dma_len;
+        irq_status;
+    }
+    state driver_uninitialized
+    state driver_initialized
+    state interaction_active
+    final state stopped
+
+    /* Paper, Sec. 4.2: “a particular VirtIO device has a device ID, a
+     * number of virtqueues, a list of feature bits, and a device
+     * configuration”. */
+    /* Paper, Sec. 4.2: “With all these parameters set, our device registers
+     * itself as a VirtIO device over PCI, negotiates the features with the
+     * driver, and provides its static configuration.” */
+    entry trace initialize_driver {
+        sequence {
+            extern initialize_driver;
+        }
+    }
+    /* Paper, Sec. 4.2: “provides its static configuration.” */
+    entry trace intercept_mmio_read {
+        sequence {
+            mmio_value = read32(unknown);
+            extern emulated_mmio_read(mmio_value);
+        }
+    }
+    /* Paper, Sec. 4.2: “registers itself as a VirtIO device over PCI”. */
+    entry trace intercept_mmio_write {
+        sequence {
+            write32(write_value, unknown);
+            extern emulated_mmio_write(write_value);
+        }
+    }
+    entry trace intercept_pio_read {
+        sequence {
+            pio_value = read32(unknown);
+            extern emulated_pio_read(pio_value);
+        }
+    }
+    entry trace intercept_pio_write {
+        sequence {
+            write32(write_value, unknown);
+            extern emulated_pio_write(write_value);
+        }
+    }
+    /* Paper, Sec. 4.2: “Then, it forwards the buffers received from the
+     * configured transmission queue to the socket”. */
+    /* VirtFuzz forwards a VirtIO virtqueue buffer; this is not a Linux
+     * coherent or streaming DMA-API allocation. */
+    entry trace intercept_driver_to_device_dma {
+        sequence {
+            dma_addr = 0x9000;
+            dma_len = 0x800;
+            extern qemu_virtio_tx_hook(dma_addr, dma_len);
+            dma_event(op=map, dir=to_device, path=phys, addr=dma_addr, len=dma_len, data_kind=any);
+            call ignore_driver_to_device_dma(dma_addr, dma_len);
+            extern qemu_virtio_tx_notify();
+            interrupt_event(vector=1);
+            extern observe_virtio_interrupt(1);
+        }
+    }
+    /* Paper, Sec. 4.2: “the received buffers from the socket to the reception
+     * queue.” */
+    entry trace intercept_device_to_driver_dma {
+        sequence {
+            dma_addr = 0x8000;
+            dma_len = 0x800;
+            extern qemu_virtio_rx_hook(dma_addr, dma_len);
+            dma_event(op=map, dir=from_device, path=phys, addr=dma_addr, len=dma_len, data_kind=any);
+            call fill_mutated_dma_payload(dma_addr, dma_len);
+            extern qemu_virtio_rx_notify();
+            interrupt_event(vector=1);
+            extern observe_virtio_interrupt(1);
+        }
+    }
+    entry trace external_driver_unloaded {
+        sequence {
+            extern unload_driver;
+        }
+    }
+    entry trace handle_interrupt {
+        sequence {
+            irq_status = read32(unknown);
+            extern emulated_mmio_read(irq_status);
+            write32(irq_status, unknown);
+            extern emulated_mmio_write(irq_status);
+        }
+    }
+
+    transition driver_uninitialized -> driver_initialized on initialize_driver
+    transition driver_initialized -> interaction_active on intercept_mmio_read
+    transition driver_initialized -> interaction_active on intercept_mmio_write
+    transition driver_initialized -> interaction_active on intercept_pio_read
+    transition driver_initialized -> interaction_active on intercept_pio_write
+    transition driver_initialized -> interaction_active on intercept_driver_to_device_dma
+    transition driver_initialized -> interaction_active on intercept_device_to_driver_dma
+    transition interaction_active -> interaction_active on intercept_mmio_read
+    transition interaction_active -> interaction_active on intercept_mmio_write
+    transition interaction_active -> interaction_active on intercept_pio_read
+    transition interaction_active -> interaction_active on intercept_pio_write
+    transition interaction_active -> interaction_active on intercept_driver_to_device_dma
+    transition interaction_active -> interaction_active on intercept_device_to_driver_dma
+    transition interaction_active -> interaction_active on handle_interrupt
+    transition driver_initialized -> stopped on external_driver_unloaded
+    transition interaction_active -> stopped on external_driver_unloaded
+}

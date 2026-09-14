@@ -1,0 +1,115 @@
+/* Drifuzz (USENIX Security 2022) device-interface model. */
+extern configure_virtual_device;
+extern initialize_driver;
+extern unload_driver;
+extern return_input_stream_value;
+extern observe_dma_event;
+extern observe_interrupt_injection;
+
+machine drifuzz_golden_seed_device_interface {
+    initial driver_uninitialized
+    scratch {
+        mmio_value;
+        pio_value;
+        write_value;
+        dma_addr;
+        dma_len;
+        interrupt_marker;
+    }
+    state driver_uninitialized
+    state driver_initialized
+    state interaction_active
+    final state stopped
+
+    /* QEMU's emulated PCI device forwards reads to the fuzzer and ignores
+     * writes; port I/O is handled through the same memory-region mechanism. */
+    entry trace intercept_mmio_read {
+        sequence {
+            mmio_value = read32(unknown);
+            extern return_input_stream_value(mmio_value, 4);
+        }
+    }
+    entry trace intercept_mmio_write {
+        sequence {
+            write32(write_value, unknown);
+            call ignore_driver_mmio_write(write_value);
+        }
+    }
+    entry trace intercept_pio_read {
+        sequence {
+            pio_value = read32(unknown);
+            extern return_input_stream_value(pio_value, 4);
+        }
+    }
+    entry trace intercept_pio_write {
+        sequence {
+            write32(write_value, unknown);
+            call ignore_driver_pio_write(write_value);
+        }
+    }
+
+    /* Consistent DMA is registered as an MMIO region at allocation time. */
+    entry trace consistent_dma_alloc {
+        sequence {
+            dma_addr = 0x8000;
+            dma_len = 0x400;
+            extern observe_dma_event(dma_addr, dma_len);
+            dma_event(op=alloc, dir=from_device, path=dma_api, addr=dma_addr, len=dma_len, data_kind=any);
+            call fill_mutated_dma_payload(dma_addr, dma_len);
+        }
+    }
+    /* Streaming DMA input is consumed when the buffer is deallocated. */
+    entry trace streaming_dma_dealloc {
+        sequence {
+            dma_addr = 0x9000;
+            dma_len = 0x400;
+            extern observe_dma_event(dma_addr, dma_len);
+            dma_event(op=unmap, dir=from_device, path=dma_api, addr=dma_addr, len=dma_len, data_kind=any);
+            call fill_mutated_dma_payload(dma_addr, dma_len);
+        }
+    }
+
+    /* Drifuzz periodically triggers the emulated PCI device's interrupt. */
+    entry trace external_interrupt_injected {
+        sequence {
+            interrupt_marker = 1;
+            extern observe_interrupt_injection(interrupt_marker);
+            interrupt_event(vector=interrupt_marker);
+            call inject_interrupt(interrupt_marker);
+        }
+    }
+    entry trace configure_device {
+        sequence {
+            extern configure_virtual_device;
+        }
+    }
+    entry trace initialize_driver {
+        sequence {
+            extern initialize_driver;
+        }
+    }
+    entry trace external_driver_unloaded {
+        sequence {
+            extern unload_driver;
+        }
+    }
+
+    transition driver_uninitialized -> driver_uninitialized on configure_device
+    transition driver_uninitialized -> driver_initialized on initialize_driver
+    transition driver_initialized -> driver_initialized on initialize_driver
+    transition driver_initialized -> interaction_active on intercept_mmio_read
+    transition driver_initialized -> interaction_active on intercept_mmio_write
+    transition driver_initialized -> interaction_active on intercept_pio_read
+    transition driver_initialized -> interaction_active on intercept_pio_write
+    transition driver_initialized -> interaction_active on consistent_dma_alloc
+    transition driver_initialized -> interaction_active on streaming_dma_dealloc
+    transition interaction_active -> interaction_active on intercept_mmio_read
+    transition interaction_active -> interaction_active on intercept_mmio_write
+    transition interaction_active -> interaction_active on intercept_pio_read
+    transition interaction_active -> interaction_active on intercept_pio_write
+    transition interaction_active -> interaction_active on consistent_dma_alloc
+    transition interaction_active -> interaction_active on streaming_dma_dealloc
+    transition interaction_active -> interaction_active on external_interrupt_injected
+    transition driver_initialized -> stopped on external_driver_unloaded
+    transition interaction_active -> stopped on external_driver_unloaded
+}

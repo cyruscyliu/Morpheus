@@ -1,0 +1,126 @@
+/*
+ * DevGen-inspired generated-device interface model.
+ *
+ * DevGen's source analysis and LLM synthesis are outside this model. This
+ * file describes the interface implemented by the generated virtual device:
+ * concrete PCI identity, BAR discovery, generated MMIO behavior, and IRQ
+ * handling. Driver lifecycle and generated-device loading are external.
+ */
+
+extern load_generated_device_model;
+extern initialize_driver;
+extern unload_driver;
+extern return_concrete_value;
+extern return_generated_device_value;
+extern return_input_stream_value;
+extern observe_interrupt_injection;
+extern handle_generated_mmio_write;
+
+machine devgen_llm_virtual_device_synthesis {
+    initial device_model_unloaded
+
+    scratch {
+        vendor_id;
+        device_id;
+        bar_value;
+        register_value;
+        interrupt_status;
+        irq_vector;
+        write_value;
+    }
+
+    state device_model_unloaded
+    state driver_uninitialized
+    state driver_initialized
+    state running
+    final state stopped
+
+    entry trace external_model_loaded {
+        sequence {
+            extern load_generated_device_model;
+        }
+    }
+
+    entry trace pci_identity_read {
+        sequence {
+            vendor_id = read16(unknown);
+            extern return_concrete_value(0x1af4, 2);
+            device_id = read16(unknown);
+            extern return_concrete_value(0x1000, 2);
+        }
+    }
+
+    entry trace pci_bar_read {
+        sequence {
+            bar_value = read32(unknown);
+            extern return_concrete_value(0x10000000, 4);
+        }
+    }
+
+    entry trace external_driver_initialized {
+        sequence {
+            extern initialize_driver;
+        }
+    }
+
+    /*
+     * Paper, Sec. 2.2: “it implements the dynamic device responses (e.g.,
+     * MMIO and PIO handlers) necessary to satisfy the driver's
+     * initialization sequence.” The write is handled by generated QEMU
+     * device code; it is not a passthrough `ignore`.
+     */
+    entry trace generated_mmio_access {
+        sequence {
+            register_value = read32(unknown);
+            extern return_generated_device_value(register_value, 4);
+            write32(write_value, unknown);
+            extern handle_generated_mmio_write(write_value);
+        }
+    }
+
+    entry trace generated_mmio_input {
+        sequence {
+            register_value = read32(unknown);
+            extern return_input_stream_value(register_value, 4);
+            write32(write_value, unknown);
+            extern handle_generated_mmio_write(write_value);
+        }
+    }
+
+    entry trace interrupt_handler {
+        sequence {
+            interrupt_status = read32(unknown);
+            extern return_generated_device_value(interrupt_status, 4);
+            write32(interrupt_status, unknown);
+            extern handle_generated_mmio_write(interrupt_status);
+        }
+    }
+
+    entry trace external_interrupt_injected {
+        sequence {
+            irq_vector = 1;
+            extern observe_interrupt_injection(irq_vector);
+            interrupt_event(vector=irq_vector);
+            call inject_interrupt(irq_vector);
+        }
+    }
+
+    entry trace external_driver_unloaded {
+        sequence {
+            extern unload_driver;
+        }
+    }
+
+    transition device_model_unloaded -> driver_uninitialized on external_model_loaded
+    transition driver_uninitialized -> driver_initialized on external_driver_initialized
+    transition driver_initialized -> driver_initialized on pci_identity_read
+    transition driver_initialized -> driver_initialized on pci_bar_read
+    transition driver_initialized -> running on generated_mmio_access
+    transition driver_initialized -> running on generated_mmio_input
+    transition running -> running on generated_mmio_access
+    transition running -> running on generated_mmio_input
+    transition running -> running on interrupt_handler
+    transition running -> running on external_interrupt_injected
+    transition driver_initialized -> stopped on external_driver_unloaded
+    transition running -> stopped on external_driver_unloaded
+}

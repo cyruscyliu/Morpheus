@@ -1,0 +1,197 @@
+/*
+ * DevFuzz-inspired device-interface model.
+ *
+ * DevFuzz learns a probe model from the driver's device accesses and then
+ * replays it while exercising generic MMIO/PIO/DMA input. The learned probe
+ * values are model values; generic post-probe values come from the input
+ * stream. Addresses are intentionally unknown where DevFuzz discovers them
+ * from the driver.
+ */
+
+extern initialize_driver;
+extern unload_driver;
+extern observe_dma_event;
+extern observe_interrupt_injection;
+extern return_probe_model_value;
+extern return_input_stream_value;
+
+machine devfuzz_automatic_device_model {
+    initial driver_uninitialized
+
+    scratch {
+        probe_value;
+        mmio_value;
+        pio_value;
+        write_value;
+        dma_addr;
+        dma_len;
+        irq_vector;
+        irq_status;
+    }
+
+    state driver_uninitialized
+    state probing
+    state driver_initialized
+    state running
+    final state stopped
+
+    entry trace external_driver_initialized {
+        sequence {
+            extern initialize_driver;
+        }
+    }
+
+    entry trace probe_pio_access {
+        sequence {
+            pio_value = read32(unknown);
+            extern return_probe_model_value(pio_value, 4);
+            write32(write_value, unknown);
+            call ignore_driver_pio_write(write_value);
+        }
+    }
+
+    entry trace probe_mmio_access {
+        sequence {
+            probe_value = read32(unknown);
+            extern return_probe_model_value(probe_value, 4);
+            write32(write_value, unknown);
+            call ignore_driver_mmio_write(write_value);
+        }
+    }
+
+    entry trace runtime_pio_access {
+        sequence {
+            pio_value = read32(unknown);
+            extern return_input_stream_value(pio_value, 4);
+            write32(write_value, unknown);
+            call ignore_driver_pio_write(write_value);
+        }
+    }
+
+    entry trace runtime_mmio_access {
+        sequence {
+            mmio_value = read32(unknown);
+            extern return_input_stream_value(mmio_value, 4);
+            write32(write_value, unknown);
+            call ignore_driver_mmio_write(write_value);
+        }
+    }
+
+    /*
+     * DevFuzz's Stage-2 code records a DMA region when an MMIO write matches
+     * a discovered DMA register (HWModel::captureDMARegistration). The
+     * `map` event below is an interface-level representation of that
+     * streaming-DMA region; the source does not expose a dma_map_single
+     * callback at runtime.
+     */
+    entry trace device_to_driver_dma {
+        sequence {
+            dma_addr = 0x8000;
+            dma_len = 0x800;
+            dma_event(op=map, dir=from_device, path=dma_api, addr=dma_addr, len=dma_len, data_kind=any);
+            extern observe_dma_event(dma_addr, dma_len);
+        }
+    }
+
+    /*
+     * The same discovered-region mechanism covers buffers consumed by the
+     * device. DevFuzz does not infer a payload schema; the driver-to-device
+     * bytes are therefore left unchanged by this abstract model.
+     * Paper, Sec. 4.3: “the device driver informs the device about the
+     * OS-allocated DMA addresses by writing the addresses into the MMIO (or
+     * PIO) regions.”
+     */
+    entry trace driver_to_device_dma {
+        sequence {
+            dma_addr = 0x9000;
+            dma_len = 0x800;
+            dma_event(op=map, dir=to_device, path=dma_api, addr=dma_addr, len=dma_len, data_kind=any);
+            extern observe_dma_event(dma_addr, dma_len);
+            call ignore_driver_to_device_dma(dma_addr, dma_len);
+        }
+    }
+
+    /*
+     * Region lifetime is retained only as a generic DMA interface event.
+     * DevFuzz injects data in batches from ap_fill_dma_buffer(), rather than
+     * on a runtime unmap callback.
+     */
+    entry trace dma_unmapped {
+        sequence {
+            extern observe_dma_event(dma_addr, dma_len);
+            dma_event(op=unmap, dir=bidirectional, path=dma_api, addr=dma_addr, len=dma_len, data_kind=any);
+            call ignore_driver_dma_unmap(dma_addr, dma_len);
+        }
+    }
+
+    /*
+     * The paper's coherent/consistent case is represented by an `alloc`
+     * region. In the implementation, allocation metadata is consumed by the
+     * generated model; runtime injection still operates on the discovered
+     * scatter-gather regions, not on a direct allocation callback.
+     * Paper, Sec. 4.3: “In Linux, the DMA kernel API dma_alloc_coherent is
+     * used to allocate and map a DMA region.”
+     */
+    entry trace coherent_dma_alloc {
+        sequence {
+            dma_addr = 0xa000;
+            dma_len = 0x800;
+            extern observe_dma_event(dma_addr, dma_len);
+            dma_event(op=alloc, dir=from_device, path=dma_api, addr=dma_addr, len=dma_len, data_kind=any);
+            call ignore_driver_dma_alloc(dma_addr, dma_len);
+        }
+    }
+
+    /*
+     * Source: aplib.cpp::ap_trigger_irq() calls ap_fill_dma_buffer() and
+     * then sfp_set_irq(1). USE_IRQ supplies a timer interval in milliseconds;
+     * there is no fixed MMIO/PIO-count trigger (in particular, no 75 count).
+     * Paper, Sec. 4.4: “D EV F UZZ uses a timer to trigger IRQs at a regular
+     * interval.”
+     */
+    entry trace timer_interrupt {
+        sequence {
+            irq_vector = 1;
+            extern observe_interrupt_injection(irq_vector);
+            call fill_mutated_dma_regions();
+            interrupt_event(vector=irq_vector);
+            call inject_interrupt(irq_vector);
+        }
+    }
+
+    entry trace interrupt_handler {
+        sequence {
+            irq_status = read32(unknown);
+            extern return_input_stream_value(irq_status, 4);
+            write32(irq_status, unknown);
+            call ignore_driver_mmio_write(irq_status);
+        }
+    }
+
+    entry trace external_driver_unloaded {
+        sequence {
+            extern unload_driver;
+        }
+    }
+
+    transition driver_uninitialized -> probing on external_driver_initialized
+    transition probing -> probing on probe_pio_access
+    transition probing -> probing on probe_mmio_access
+    transition probing -> driver_initialized on runtime_mmio_access
+    transition probing -> driver_initialized on runtime_pio_access
+    transition driver_initialized -> running on runtime_mmio_access
+    transition driver_initialized -> running on runtime_pio_access
+    transition driver_initialized -> running on device_to_driver_dma
+    transition driver_initialized -> running on driver_to_device_dma
+    transition driver_initialized -> running on coherent_dma_alloc
+    transition running -> running on runtime_mmio_access
+    transition running -> running on runtime_pio_access
+    transition running -> running on device_to_driver_dma
+    transition running -> running on driver_to_device_dma
+    transition running -> running on coherent_dma_alloc
+    transition running -> running on dma_unmapped
+    transition running -> running on timer_interrupt
+    transition running -> running on interrupt_handler
+    transition driver_initialized -> stopped on external_driver_unloaded
+    transition running -> stopped on external_driver_unloaded
+}

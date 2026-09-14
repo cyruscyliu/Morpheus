@@ -1,0 +1,124 @@
+/*
+ * PCIconfuzz-inspired PCIe configuration and driver-probe model.
+ *
+ * Enumeration receives a concrete configuration header so the endpoint can
+ * bind. Probe replay then replaces configuration reads with fuzz input.
+ * DMA is intentionally absent: the paper excludes DMA modeling.
+ */
+
+extern return_concrete_value;
+extern return_input_stream_value;
+extern take_probe_snapshot;
+extern restore_probe_snapshot;
+extern initialize_driver;
+extern unload_driver;
+
+machine pciconfuzz_pcie_configuration_probe {
+    initial enumeration
+
+    scratch {
+        config_value;
+        capability_value;
+        bar_value;
+        mmio_value;
+        interrupt_status;
+    }
+
+    state enumeration
+    state snapshot_ready
+    state probing
+    state resources_ready
+    final state stopped
+
+    /* Paper, Sec. IV-A.3: “During the kernel’s enumeration phase, we supply
+     * concrete PCIe configuration space data that ensures successful MMIO
+     * region setup and capability recognition.” */
+    entry trace enumeration_concrete {
+        sequence {
+            config_value = read16(0x00);
+            extern return_concrete_value(0x1af4, 2);
+            config_value = read16(0x02);
+            extern return_concrete_value(0x1000, 2);
+            config_value = read8(0x0b);
+            extern return_concrete_value(0x02, 1);
+            config_value = read32(0x10);
+            extern return_concrete_value(0x10000000, 4);
+        }
+    }
+
+    entry trace external_probe_snapshot {
+        sequence {
+            extern take_probe_snapshot;
+        }
+    }
+
+    entry trace probe_configuration_input {
+        sequence {
+            config_value = read16(0x00);
+            extern return_input_stream_value(config_value, 2);
+            capability_value = read8(0x34);
+            extern return_input_stream_value(capability_value, 1);
+            bar_value = read32(0x10);
+            extern return_input_stream_value(bar_value, 4);
+        }
+    }
+
+    entry trace probe_capability_chain {
+        sequence {
+            capability_value = read8(0x34);
+            extern return_input_stream_value(capability_value, 1);
+            capability_value = read32(0x100);
+            extern return_input_stream_value(capability_value, 4);
+        }
+    }
+
+    entry trace probe_mmio_access {
+        sequence {
+            mmio_value = read32(0x1000);
+            extern return_input_stream_value(mmio_value, 4);
+            write32(mmio_value, 0x1000);
+            call ignore_driver_mmio_write(mmio_value);
+        }
+    }
+
+    /* Paper, Sec. IV-B.1: “our virtual device trigger an interrupt upon
+     * receiving an MMIO write, effectively passing the interrupt
+     * responsiveness check.” */
+    entry trace trigger_interrupt_write {
+        sequence {
+            write32(1, 0x1000);
+            call ignore_driver_mmio_write(1);
+            interrupt_event(vector=1);
+            call inject_interrupt(1);
+        }
+    }
+
+    entry trace external_probe_restore {
+        sequence {
+            extern restore_probe_snapshot;
+        }
+    }
+
+    entry trace external_driver_initialized {
+        sequence {
+            extern initialize_driver;
+        }
+    }
+
+    entry trace external_driver_unloaded {
+        sequence {
+            extern unload_driver;
+        }
+    }
+
+    transition enumeration -> snapshot_ready on enumeration_concrete
+    transition snapshot_ready -> probing on external_probe_snapshot
+    transition probing -> probing on probe_configuration_input
+    transition probing -> probing on probe_capability_chain
+    transition probing -> resources_ready on probe_mmio_access
+    transition probing -> probing on external_probe_restore
+    transition resources_ready -> probing on external_probe_restore
+    transition snapshot_ready -> stopped on external_driver_unloaded
+    transition probing -> stopped on external_driver_unloaded
+    transition resources_ready -> stopped on external_driver_unloaded
+}

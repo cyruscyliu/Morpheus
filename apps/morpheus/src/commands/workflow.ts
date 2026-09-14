@@ -4,7 +4,11 @@ const path = require("path");
 const crypto = require("crypto");
 const { spawn, spawnSync } = require("child_process");
 const { applyConfigDefaults, loadConfig, configDir, resolveConfiguredWorkspaceRoot } = require("../core/config");
-const { parseToolArgs, descriptorFlagMetadata } = require("../core/tool-invoke");
+const {
+  parseToolArgs,
+  descriptorFlagMetadata,
+  managedPathPolicyIssues,
+} = require("../core/tool-invoke");
 const { readToolDescriptor } = require("../core/tool-descriptor");
 const { repoRoot, workspaceRoot } = require("../core/paths");
 const { writeStdoutLine } = require("../core/io");
@@ -2341,15 +2345,15 @@ function resolveConfiguredStageSelection(configured, stageId) {
   return { fromStepId: target, endIndex: null };
 }
 
-function runWorkflowBuildPreflight(steps, configPath = null) {
+function runWorkflowPreflight(steps, workspaceRoot, configPath = null) {
   const configResult = runConfigCheck(configPath);
   if (configResult.exit_code !== 0) {
     const firstError = Array.isArray(configResult.issues)
       ? configResult.issues.find((issue) => issue.level !== "warn")
       : null;
     throw new Error(firstError
-      ? `build preflight failed: ${firstError.path}: ${firstError.message}`
-      : "build preflight failed");
+      ? `workflow preflight failed: ${firstError.path}: ${firstError.message}`
+      : "workflow preflight failed");
   }
 
   const toolNames = new Set(
@@ -2362,9 +2366,39 @@ function runWorkflowBuildPreflight(steps, configPath = null) {
     if (!result.ok) {
       const firstIssue = Array.isArray(result.issues) ? result.issues[0] : null;
       throw new Error(firstIssue
-        ? `build preflight failed for ${toolName}: ${firstIssue.path}: ${firstIssue.message}`
-        : `build preflight failed for ${toolName}`);
+        ? `workflow preflight failed for ${toolName}: ${firstIssue.path}: ${firstIssue.message}`
+        : `workflow preflight failed for ${toolName}`);
     }
+  }
+
+  for (const [index, step] of (Array.isArray(steps) ? steps : []).entries()) {
+    if (!step || !step.tool) {
+      continue;
+    }
+    const toolArgv = Array.isArray(step.toolArgv)
+      ? step.toolArgv
+      : (Array.isArray(step.args) ? step.args : []);
+    const execution = resolveStepExecution(
+      workspaceRoot,
+      toolArgv,
+      String(step.tool),
+      configPath,
+    );
+    const descriptor = readToolDescriptor(String(step.tool));
+    const command = step.command || step.toolCommand || "build";
+    const issues = [
+      ...managedPathPolicyIssues(execution.resolved, descriptor),
+      ...managedPathPolicyIssues(execution.resolved, descriptor, command),
+    ];
+    if (issues.length === 0) {
+      continue;
+    }
+    const issue = issues[0];
+    throw new Error(
+      `workflow preflight failed for step ${step.id || index + 1} (${step.tool}): `
+      + `${issue.field} resolves to workspace-local managed path ${issue.value}; `
+      + `cache policy requires ${issue.expectedRoot}`,
+    );
   }
 }
 
@@ -2384,9 +2418,7 @@ async function runToolWorkflow({
   configPath = null,
   metadata = null,
 }) {
-  if (category === "build") {
-    runWorkflowBuildPreflight(steps, configPath);
-  }
+  runWorkflowPreflight(steps, workspaceRoot, configPath);
   const workflow = existingWorkflow || createWorkflowRun(workspaceRoot, workflowName, {
     category,
     configPath,

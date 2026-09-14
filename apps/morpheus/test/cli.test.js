@@ -1970,6 +1970,45 @@ test("workflow run resolves prior step artifacts in configured workflows", () =>
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });
 
+test("workflow build preflight rejects workspace-local managed paths", () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-preflight-managed-path-"));
+  writeConfig(
+    projectRoot,
+    [
+      "cache:",
+      "  root: ./cache",
+      "  namespace: example",
+      "  builds: global",
+      "tools:",
+      "  qemu:",
+      "    mode: local",
+      "workflows:",
+      "  bad-build:",
+      "    category: build",
+      "    steps:",
+      "      - id: qemu_build",
+      "        tool: qemu",
+      "        command: build",
+      "        args:",
+      "          - --build-dir",
+      "          - tools/qemu/builds/wrong/build",
+      ""
+    ].join("\n")
+  );
+
+  const result = run(["--json", "workflow", "run", "--name", "bad-build"], {
+    cwd: projectRoot,
+    env: isolatedEnv(),
+  });
+  assert.equal(result.status, 1, result.stderr || result.stdout);
+  assert.match(
+    `${result.stdout}\n${result.stderr}`,
+    /workflow preflight failed.*build-dir resolves to workspace-local managed path/,
+  );
+  assert.equal(fs.existsSync(path.join(projectRoot, "runs", "bad-build")), false);
+  fs.rmSync(projectRoot, { recursive: true, force: true });
+});
+
 test.describe("CI workspace workflows", { concurrency: 1 }, () => {
 test("workflow run builds qemu through scripted fetch patch build steps", () => {
   const workspaceRoot = ciWorkspaceRoot;

@@ -174,6 +174,79 @@ function resolveManagedRelativePath(workspace, relativePath, cachePolicy) {
   return path.join(workspace, relative);
 }
 
+function resolveManagedPathValue(workspace, value, cachePolicy) {
+  if (value == null || value === "") {
+    return value;
+  }
+  const text = String(value);
+  if (text.includes("{{") || text.includes("}}")) {
+    return text;
+  }
+  if (!path.isAbsolute(text)) {
+    return text.startsWith("tools/")
+      ? resolveManagedRelativePath(workspace, text, cachePolicy)
+      : text;
+  }
+  if (!workspace) {
+    return text;
+  }
+  const workspacePrefix = `${path.resolve(workspace)}${path.sep}`;
+  const absolute = path.resolve(text);
+  if (!absolute.startsWith(workspacePrefix)) {
+    return text;
+  }
+  const relative = path.relative(workspace, absolute).replace(/\\/g, "/");
+  return relative.startsWith("tools/")
+    ? resolveManagedRelativePath(workspace, relative, cachePolicy)
+    : text;
+}
+
+function managedPathPolicyIssues(resolved, descriptor, command = null) {
+  const workspace = resolved && resolved.workspace;
+  const cachePolicy = cachePolicyFromResolved(resolved);
+  if (!workspace || !cachePolicy || !cachePolicy.root) {
+    return [];
+  }
+  const metadata = descriptorFlagMetadata(descriptor);
+  const values = { ...resolved };
+  if (command) {
+    const generated = toolCommandArgs(command, resolved, descriptor, []).args;
+    const generatedFlags = parseToolArgs(generated, {
+      repeatableFlags: Array.from(metadata.repeatables),
+      booleanFlags: Array.from(metadata.booleans),
+    }).flags;
+    Object.assign(values, generatedFlags);
+  }
+  const issues = [];
+  for (const key of metadata.paths) {
+    const value = values[key];
+    if (typeof value !== "string" || !value || value.includes("{{")) {
+      continue;
+    }
+    const absolute = path.isAbsolute(value) ? path.resolve(value) : null;
+    const relative = absolute && absolute.startsWith(`${path.resolve(workspace)}${path.sep}`)
+      ? path.relative(workspace, absolute).replace(/\\/g, "/")
+      : value.replace(/\\/g, "/");
+    const match = relative.match(/^tools\/([^/]+)\/(src|sources|downloads|builds)(\/|$)/);
+    if (!match) {
+      continue;
+    }
+    const section = match[2] === "sources" ? "src" : match[2];
+    const mode = section === "src"
+      ? cachePolicy.src
+      : (section === "downloads" ? cachePolicy.downloads : cachePolicy.builds);
+    if (mode !== "global") {
+      continue;
+    }
+    issues.push({
+      field: key,
+      value,
+      expectedRoot: path.join(cachePolicy.root, cachePolicy.namespace, "tools", match[1], section),
+    });
+  }
+  return issues;
+}
+
 function localManaged(descriptor) {
   return descriptor.managed && descriptor.managed.local ? descriptor.managed.local : null;
 }
@@ -1585,9 +1658,21 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
     "build-version": buildVersion,
   };
   const optionalManagedPathResolvers = {
-    "downloads-dir": () => resolved["downloads-dir"] || defaultDownloadsDir(workspace, tool, descriptor, cachePolicy),
-    "build-dir": () => resolved["build-dir"] || defaultBuildDir(workspace, descriptor, buildVersion, buildDirKey, templateExtras, cachePolicy),
-    "install-dir": () => resolved["install-dir"] || defaultInstallDir(workspace, descriptor, buildVersion, buildDirKey, templateExtras, cachePolicy),
+    "downloads-dir": () => resolveManagedPathValue(
+      workspace,
+      resolved["downloads-dir"] || defaultDownloadsDir(workspace, tool, descriptor, cachePolicy),
+      cachePolicy,
+    ),
+    "build-dir": () => resolveManagedPathValue(
+      workspace,
+      resolved["build-dir"] || defaultBuildDir(workspace, descriptor, buildVersion, buildDirKey, templateExtras, cachePolicy),
+      cachePolicy,
+    ),
+    "install-dir": () => resolveManagedPathValue(
+      workspace,
+      resolved["install-dir"] || defaultInstallDir(workspace, descriptor, buildVersion, buildDirKey, templateExtras, cachePolicy),
+      cachePolicy,
+    ),
   };
   for (const [genericFlag, resolveValue] of Object.entries(optionalManagedPathResolvers)) {
     if (
@@ -1889,6 +1974,7 @@ module.exports = {
   printJson,
   requireFlag,
   resolveInvocation,
+  managedPathPolicyIssues,
   spawnTool,
   defaultSourceDir,
   defaultDownloadsDir,

@@ -1,11 +1,19 @@
 {
   "name": "@morpheus/app",
-  "private": true,
   "version": "0.4.3",
   "description": "Morpheus management CLI for workspace metadata, tools, and runs",
   "type": "commonjs",
+  "main": "dist/cli.js",
+  "bin": {
+    "morpheus": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "MIT",
   "scripts": {
     "build": "pnpm exec tsc -p tsconfig.json",
+    "prepack": "pnpm run build",
     "lint": "pnpm exec tsc -p tsconfig.json --noEmit",
     "morpheus": "node dist/cli.js",
     "test:repo-structure": "pnpm run build && node --test test/repo-structure.test.js",

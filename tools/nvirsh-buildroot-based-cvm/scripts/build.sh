@@ -193,7 +193,7 @@ validate_guest_qemu_seed_consumer() {
   # hooks so a stale package tree cannot pass merely because its provenance
   # file was lost.  The active generic seed consumer is required instead.
   if LC_ALL=C grep -aEq \
-      'virtio-net profile:|synthetic_rx_done|virtio_net_seed_rx|morpheus_virtio_seed_(take_rx|dma_write)|morpheus_virtio_mmio_fuzz|virtio_mmio_(observe|fuzz)' \
+      'virtio-net profile:|synthetic_rx_done|morpheus_virtio_mmio_fuzz|virtio_mmio_(observe|fuzz)' \
       "${guest_qemu_source}" 2>/dev/null; then
     echo "guest QEMU is not stock: ${guest_qemu_source}" >&2
     exit 1

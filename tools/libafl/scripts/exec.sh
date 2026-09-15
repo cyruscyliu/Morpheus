@@ -1353,6 +1353,7 @@ if [ ! -d "${runtime_dir}" ]; then
   mkdir -p "${runtime_dir}"
 fi
 printf 'wrapper-after-mkdir\n' >> "${launch_marker}"
+: > "${runtime_dir}/l2-console.log"
 : > "${status_path}"
 printf 'wrapper-after-status-open\n' >> "${launch_marker}"
 input_size="missing"

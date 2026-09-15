@@ -29,6 +29,8 @@
 #define QEMU_STDERR_PATH RUNTIME_DIR "/qemu.stderr.log"
 #define QEMU_INPUT_STATUS_PATH RUNTIME_DIR "/qemu-input.status"
 #define L2_CONSOLE_PATH RUNTIME_DIR "/l2-console.log"
+#define L2_CONSOLE_ALT_PATH "/mnt/morpheus-l2-runtime/l2-console.log"
+#define L2_CONSOLE_ALT2_PATH "/run/morpheus-l2-runtime/l2-console.log"
 #define L2_CONSOLE_PTY_PATH RUNTIME_DIR "/l2-console.pty"
 #define QEMU_TRACE_EVENTS_PATH RUNTIME_DIR "/morpheus-qemu-trace-events.txt"
 #define QEMU_TRACE_LOG_PATH RUNTIME_DIR "/morpheus-qemu-trace.log"
@@ -625,6 +627,8 @@ static bool write_input_snapshot(const uint8_t *data, size_t len) {
       QEMU_STDERR_PATH,
       QEMU_INPUT_STATUS_PATH,
       L2_CONSOLE_PATH,
+      L2_CONSOLE_ALT_PATH,
+      L2_CONSOLE_ALT2_PATH,
       L2_CONSOLE_PTY_PATH,
       RUNTIME_DIR "/launch-l2.ldd",
       QEMU_TRACE_EVENTS_PATH,
@@ -755,6 +759,8 @@ static void dump_runtime_snapshot(void) {
       "qemu.stderr.log",
       "qemu-input.status",
       "l2-console.log",
+      "l2-console-alt.log",
+      "l2-console-alt2.log",
       "l2-console.pty",
       "launch-l2.ldd",
       "morpheus-qemu-trace-events.txt",
@@ -767,6 +773,8 @@ static void dump_runtime_snapshot(void) {
     snprintf(path, sizeof(path), RUNTIME_DIR "/%s", files[i]);
     dump_runtime_file(files[i], path);
   }
+  dump_runtime_file("l2-console.alt.log", L2_CONSOLE_ALT_PATH);
+  dump_runtime_file("l2-console.alt2.log", L2_CONSOLE_ALT2_PATH);
   lqprintf("stub: dumped runtime files to log\n");
 }
 

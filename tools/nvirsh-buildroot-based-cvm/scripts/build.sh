@@ -427,12 +427,15 @@ helper_cfg="${MORPHEUS_L2_GEN_RUN_VMM_CFG:-/mnt/gen-run-vmm.cfg}"
 launch_marker="${runtime_dir}/launch-l2.marker"
 guest_qemu_stdout="${runtime_dir}/qemu.stdout.log"
 guest_qemu_stderr="${runtime_dir}/qemu.stderr.log"
+guest_l2_console="${runtime_dir}/l2-console.log"
 
 if [ ! -d "${runtime_dir}" ]; then
   mkdir -p "${runtime_dir}"
 fi
+: > "${guest_l2_console}"
 : > "${guest_qemu_stdout}"
 : > "${guest_qemu_stderr}"
+: > "${guest_l2_console}"
 printf 'script-start\n' > "${launch_marker}"
 printf 'launch-mode=linaro-gen-run-vmm\n' >> "${launch_marker}"
 printf 'helper-cfg=%s\n' "${helper_cfg}" >> "${launch_marker}"
@@ -514,6 +517,7 @@ guest_qemu_trace_events="${runtime_dir}/morpheus-qemu-trace-events.txt"
 guest_qemu_dtb="${runtime_dir}/qemu-gen.dtb"
 guest_qemu_stdout="${runtime_dir}/qemu.stdout.log"
 guest_qemu_stderr="${runtime_dir}/qemu.stderr.log"
+guest_l2_console="${runtime_dir}/l2-console.log"
 guest_qemu_trace_enabled="true"
 
 if [ "${guest_virtio_transport}" = "mmio" ]; then
@@ -524,10 +528,22 @@ fi
 if [ ! -d "${runtime_dir}" ]; then
   mkdir -p "${runtime_dir}"
 fi
+: > "${guest_l2_console}"
 printf 'inner-after-mkdir\n' >> "${launch_marker}"
 : > "${guest_qemu_stdout}"
 : > "${guest_qemu_stderr}"
 printf 'inner-after-log-open\n' >> "${launch_marker}"
+record_l2_console() {
+  sync
+  printf 'l2-console-stat=' >> "${launch_marker}"
+  if [ -e "${guest_l2_console}" ]; then
+    stat -c 'exists=1,size=%s' "${guest_l2_console}" >> "${launch_marker}" 2>/dev/null || printf 'stat=failed' >> "${launch_marker}"
+  else
+    printf 'exists=0' >> "${launch_marker}"
+  fi
+  printf '\n' >> "${launch_marker}"
+}
+trap record_l2_console EXIT TERM INT
 printf 'script-start\n' >> "${launch_marker}"
 printf 'launch-mode=direct-qemu\n' >> "${launch_marker}"
 
@@ -702,6 +718,14 @@ set +e
 "$@" >> "${guest_qemu_stdout}" 2>> "${guest_qemu_stderr}"
 qemu_status="$?"
 set -e
+sync
+printf 'l2-console-stat=' >> "${launch_marker}"
+if [ -e "${guest_l2_console}" ]; then
+  stat -c 'exists=1,size=%s' "${guest_l2_console}" >> "${launch_marker}" 2>/dev/null || printf 'stat=failed' >> "${launch_marker}"
+else
+  printf 'exists=0' >> "${launch_marker}"
+fi
+printf '\n' >> "${launch_marker}"
 printf 'qemu-exit-status=%s\n' "${qemu_status}" >> "${launch_marker}"
 exit "${qemu_status}"
 EOF

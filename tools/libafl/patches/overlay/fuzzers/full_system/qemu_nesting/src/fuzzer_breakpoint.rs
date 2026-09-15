@@ -251,7 +251,8 @@ pub fn fuzz() {
         .ok()
         .and_then(|value| value.parse::<u16>().ok())
         .unwrap_or(1341);
-    let cores = Cores::from_cmdline("1").unwrap();
+    let cores_value = env::var("MORPHEUS_LIBAFL_CLIENTS").unwrap_or_else(|_| "1".to_string());
+    let cores = Cores::from_cmdline(&cores_value).unwrap();
     let corpus_dir = env::var("MORPHEUS_LIBAFL_CORPUS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("./corpus"));

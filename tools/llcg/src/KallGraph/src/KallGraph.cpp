@@ -90,9 +90,10 @@ static void collectFunctionValuesFromNode(
   }
 
   for (auto edge : node->getIncomingEdges(PAGEdge::Addr)) {
-    if (const auto *value = getLLVMValue(edge->getSrcNode());
-        isa<Function>(value)) {
-      targets.insert(dyn_cast<Function>(value));
+    if (const auto *value = getLLVMValue(edge->getSrcNode())) {
+      if (const auto *func = dyn_cast<Function>(value)) {
+        targets.insert(func);
+      }
     }
   }
 
@@ -444,9 +445,10 @@ void processSELinuxhooks(SVFIR *pag, SVFModule *svfmod) {
   for (auto edge : pag->getGNode(getValueNode(selinuxhooks))
                        ->getOutgoingEdges(PAGEdge::Gep)) {
     for (auto storein : edge->getDstNode()->getIncomingEdges(PAGEdge::Store)) {
-      if (const auto *value = getLLVMValue(storein->getSrcNode());
-          isa<Function>(value)) {
-        SELinuxfuncs.insert(dyn_cast<Function>(value));
+      if (const auto *value = getLLVMValue(storein->getSrcNode())) {
+        if (const auto *func = dyn_cast<Function>(value)) {
+          SELinuxfuncs.insert(func);
+        }
       }
     }
   }

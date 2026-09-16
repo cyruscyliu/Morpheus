@@ -950,6 +950,12 @@ function resolveWorkflowStringTemplate(value, context) {
     if (expr === "workspace.root") {
       return String(context.workspaceRoot);
     }
+    if (expr === "runDir" || expr === "workflow.runDir") {
+      if (!context.runDir) {
+        throw new Error(`workflow template resolved empty value: ${expr}`);
+      }
+      return String(context.runDir);
+    }
     if (expr.startsWith("workflow.metadata.")) {
       const metadataPath = expr.slice("workflow.metadata.".length);
       const resolved = getByPath(context.workflowMetadata, metadataPath);
@@ -1025,6 +1031,12 @@ function resolveWorkflowStringTemplateWithTrace(value, context, currentStepId, d
     }
     if (expr === "workspace.root") {
       return String(context.workspaceRoot);
+    }
+    if (expr === "runDir" || expr === "workflow.runDir") {
+      if (!context.runDir) {
+        throw new Error(`workflow template resolved empty value: ${expr}`);
+      }
+      return String(context.runDir);
     }
     if (expr.startsWith("workflow.metadata.")) {
       const metadataPath = expr.slice("workflow.metadata.".length);

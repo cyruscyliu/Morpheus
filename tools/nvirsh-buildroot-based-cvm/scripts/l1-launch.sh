@@ -195,7 +195,10 @@ l1_qemu_cmd+=(
 )
 if [ "${with_network}" = "true" ]; then
   l1_qemu_cmd+=(
-    -device virtio-net-pci,netdev=net0
+    # The L1 kernel used by this workflow has e1000 enabled but no
+    # virtio-net driver.  An e1000 NIC gives the host stack an eth0 so the
+    # nested L2 slirp can reach the outer user-mode gateway.
+    -device e1000,netdev=net0
     -netdev user,id=net0
   )
 fi

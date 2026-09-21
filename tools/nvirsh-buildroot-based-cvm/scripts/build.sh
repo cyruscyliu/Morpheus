@@ -769,7 +769,47 @@ fi
 [ -L /dev/stderr ] || ln -sf /proc/self/fd/2 /dev/stderr
 [ -f /etc/hostname ] && /bin/hostname -F /etc/hostname || true
 [ -x /etc/init.d/S40network ] && /etc/init.d/S40network start || true
-[ -x /sbin/ip ] && [ -d /sys/class/net/eth0 ] && /sbin/ip link set eth0 up || true
+# PCI discovery of the e1000 races this prelude, so wait for eth0 before
+# configuring the namespace used by the nested L2 slirp.
+l1_net_wait=0
+while [ ! -d /sys/class/net/eth0 ] && [ "${l1_net_wait}" -lt 30 ]; do
+  sleep 1
+  l1_net_wait=$((l1_net_wait + 1))
+done
+# Prefer the outer slirp DHCP lease; static setup is the fallback for images
+# without udhcpc or when the lease server is temporarily unavailable.
+if [ -d /sys/class/net/eth0 ] && command -v udhcpc >/dev/null 2>&1; then
+  ifconfig eth0 up >/dev/null 2>&1 || true
+  udhcpc -n -q -t 3 -T 1 -i eth0 >/dev/null 2>&1 || true
+fi
+# The L2 QEMU uses user-mode networking inside this L1.  Give the L1
+# backend a real address and route so nested slirp can reach the outer
+# user-mode gateway (and therefore DNS/HTTP/HTTPS), rather than stopping at
+# the L2-local 10.0.2.2 gateway.
+if [ -x /sbin/ip ] && [ -d /sys/class/net/eth0 ]; then
+  /sbin/ip link set dev eth0 up || true
+  /sbin/ip addr replace 10.0.2.15/24 dev eth0 || true
+  /sbin/ip route replace default via 10.0.2.2 dev eth0 || true
+  printf 'l1-net-addr=' >> "${runtime_dir}/launch-l2.marker"
+  /sbin/ip -o addr show dev eth0 >> "${runtime_dir}/launch-l2.marker" 2>&1 || true
+  printf 'l1-net-route=' >> "${runtime_dir}/launch-l2.marker"
+  /sbin/ip route show >> "${runtime_dir}/launch-l2.marker" 2>&1 || true
+elif command -v ifconfig >/dev/null 2>&1 && [ -d /sys/class/net/eth0 ]; then
+  ifconfig eth0 up || true
+  ifconfig eth0 10.0.2.15 netmask 255.255.255.0 || true
+  route add default gw 10.0.2.2 || true
+  printf 'l1-net-fallback=ifconfig\n' >> "${runtime_dir}/launch-l2.marker"
+else
+  printf 'l1-net-config=unavailable\n' >> "${runtime_dir}/launch-l2.marker"
+fi
+if [ -d /sys/class/net/eth0 ]; then
+  # udhcpc already writes the outer slirp resolver (10.0.2.3, proven to
+  # resolve from L1); do not shadow it with a local listener the image may
+  # fail to bind, which turned every lookup into a dead path.
+  grep -q 'nameserver 10.0.2.3' /etc/resolv.conf 2>/dev/null || \
+    printf 'nameserver 10.0.2.3\n' >> /etc/resolv.conf 2>/dev/null || true
+  printf 'l1-net-resolv=10.0.2.3\n' >> "${runtime_dir}/launch-l2.marker"
+fi
 [ -x /etc/init.d/S50macvtap ] && [ ! -d /sys/class/net/macvtap0 ] && /etc/init.d/S50macvtap start || true
 if [ ! -d "${runtime_dir}" ]; then
   mkdir -p "${runtime_dir}"
@@ -797,11 +837,60 @@ if [ "${MORPHEUS_L2_SHELL_TRACE:-0}" = "1" ]; then
   set -x
 fi
 runtime_dir="${MORPHEUS_L2_RUNTIME_DIR:-/mnt/morpheus-l2-runtime}"
+mount -t proc proc /proc 2>/dev/null || true
+mount -t sysfs sysfs /sys 2>/dev/null || true
 if [ ! -d "${runtime_dir}" ]; then
   mkdir -p "${runtime_dir}"
 fi
 printf 'hoststack-start\n' > "${runtime_dir}/launch-l2.marker"
 printf 'hoststack-before-inner-exec\n' >> "${runtime_dir}/launch-l2.marker"
+# The host stack is the network namespace for the nested L2 QEMU. Configure
+# its user-mode NIC before launching the inner guest so nested slirp can use
+# the outer QEMU gateway for DNS and TCP egress.
+l1_net_wait=0
+while [ ! -d /sys/class/net/eth0 ] && [ "${l1_net_wait}" -lt 30 ]; do
+  sleep 1
+  l1_net_wait=$((l1_net_wait + 1))
+done
+if [ -d /sys/class/net/eth0 ] && command -v udhcpc >/dev/null 2>&1; then
+  ifconfig eth0 up >/dev/null 2>&1 || true
+  udhcpc -n -q -t 3 -T 1 -i eth0 >/dev/null 2>&1 || true
+fi
+if [ -x /sbin/ip ] && [ -d /sys/class/net/eth0 ]; then
+  /sbin/ip link set dev eth0 up || true
+  /sbin/ip addr replace 10.0.2.15/24 dev eth0 || true
+  /sbin/ip route replace default via 10.0.2.2 dev eth0 || true
+  printf 'l1-net-addr=' >> "${runtime_dir}/launch-l2.marker"
+  /sbin/ip -o addr show dev eth0 >> "${runtime_dir}/launch-l2.marker" 2>&1 || true
+  printf 'l1-net-route=' >> "${runtime_dir}/launch-l2.marker"
+  /sbin/ip route show >> "${runtime_dir}/launch-l2.marker" 2>&1 || true
+elif command -v ifconfig >/dev/null 2>&1 && [ -d /sys/class/net/eth0 ]; then
+  ifconfig eth0 up || true
+  ifconfig eth0 10.0.2.15 netmask 255.255.255.0 || true
+  route add default gw 10.0.2.2 || true
+  printf 'l1-net-fallback=ifconfig\n' >> "${runtime_dir}/launch-l2.marker"
+else
+  printf 'l1-net-config=unavailable\n' >> "${runtime_dir}/launch-l2.marker"
+fi
+if [ -d /sys/class/net/eth0 ]; then
+  # udhcpc already writes the outer slirp resolver (10.0.2.3, proven to
+  # resolve from L1); do not shadow it with a local listener the image may
+  # fail to bind, which turned every lookup into a dead path.
+  grep -q 'nameserver 10.0.2.3' /etc/resolv.conf 2>/dev/null || \
+    printf 'nameserver 10.0.2.3\n' >> /etc/resolv.conf 2>/dev/null || true
+  printf 'l1-net-resolv=10.0.2.3\n' >> "${runtime_dir}/launch-l2.marker"
+  if command -v nslookup >/dev/null 2>&1; then
+    printf 'l1-dns=' >> "${runtime_dir}/launch-l2.marker"
+    nslookup neverssl.com 10.0.2.3 >> "${runtime_dir}/launch-l2.marker" 2>&1 || true
+    printf 'l1-dns-direct=' >> "${runtime_dir}/launch-l2.marker"
+    nslookup neverssl.com 8.8.8.8 >> "${runtime_dir}/launch-l2.marker" 2>&1 || true
+    printf 'l1-dns-default=' >> "${runtime_dir}/launch-l2.marker"
+    nslookup neverssl.com >> "${runtime_dir}/launch-l2.marker" 2>&1 || true
+  fi
+  if command -v wget >/dev/null 2>&1; then
+    wget -T 10 -O /tmp/l1-neverssl.html http://neverssl.com/ >> "${runtime_dir}/launch-l2.marker" 2>&1 || true
+  fi
+fi
 export MORPHEUS_L2_RUNTIME_DIR="${runtime_dir}"
 export MORPHEUS_L2_GUEST_IMAGE_DIR="${MORPHEUS_L2_GUEST_IMAGE_DIR:-/mnt/guest-images}"
 /mnt/launch-l2.sh

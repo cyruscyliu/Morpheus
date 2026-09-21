@@ -646,8 +646,7 @@
           "pathFlags": {
             "source": "tools/libafl/builds/{buildDirKey}/source",
             "install-dir": "tools/libafl/builds/{buildDirKey}/install",
-            "run-dir": "runs/libafl/{buildDirKey}",
-            "seed-input": "tools/libafl/seeds/qemu_nesting/oracle-neutral.raw"
+            "run-dir": "runs/libafl/{buildDirKey}"
           },
           "script": {
             "path": "scripts/benchmark.sh",

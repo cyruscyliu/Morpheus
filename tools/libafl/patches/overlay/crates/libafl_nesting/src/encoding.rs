@@ -8,17 +8,19 @@ use libafl_bolts::ownedref::OwnedSlice;
 
 use crate::input::{DmaSection, MmioSection, ScenarioInput};
 
-/// present 位图字段的字节数(u128)。
+/// Byte size of a `present` bitmap field (u128).
 pub const PRESENT_SECTION_SIZE: usize = 16;
 
-/// 种子的 wire 编码:扁平字节块,counts/长度全部自描述或由位图派生。
+/// Seed wire encoding: a flat byte block. Counts and lengths are either
+/// self-describing or derived from bitmaps. `addr` keeps its width but means a
+/// zero-based index into the monitor's runtime DMA address tables.
 ///
 /// ```text
 /// [16 B]  mmio.present                  (u128 LE)
-/// [pc₁ ×] 每 WordModel:count(u32 LE)+ count×u32 values
-/// [ 4 B]  coherent alloc 条数
-/// [n_c ×] 每 alloc:addr(u64 LE)+ present(u128 LE)+ popcount×u32 values
-/// [到流末尾] 每 StreamUnit:addr(u64 LE)+ size(u32 LE)+ size×u8 data
+/// [pc₁ ×] per WordModel: count(u32 LE) + count×u32 values
+/// [ 4 B]  coherent alloc count
+/// [n_c ×] per alloc: table index(u64 LE) + present(u128 LE) + popcount×u32 values
+/// [to EOF] per StreamUnit: table index(u64 LE) + present(u128 LE) + ones(present)×u32 values
 /// ```
 #[must_use]
 pub fn encode_scenario(input: &ScenarioInput) -> Vec<u8> {
@@ -42,13 +44,15 @@ pub fn encode_scenario(input: &ScenarioInput) -> Vec<u8> {
 
     for unit in &input.dma.streaming {
         bytes.extend_from_slice(&unit.addr.to_le_bytes());
-        bytes.extend_from_slice(&unit.size.to_le_bytes());
-        bytes.extend_from_slice(&unit.data);
+        bytes.extend_from_slice(&unit.present.to_le_bytes());
+        for value in &unit.values {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
     }
     bytes
 }
 
-/// 种子的编码大小(生成期预算用)。
+/// Encoded seed size, used for generation-time budgeting.
 #[must_use]
 pub fn encoded_size(input: &ScenarioInput) -> usize {
     let mmio = PRESENT_SECTION_SIZE
@@ -69,12 +73,12 @@ pub fn encoded_size(input: &ScenarioInput) -> usize {
         .dma
         .streaming
         .iter()
-        .map(|unit| 8 + 4 + usize::try_from(unit.size).unwrap_or(0))
+        .map(|unit| 8 + PRESENT_SECTION_SIZE + unit.values.len() * 4)
         .sum::<usize>();
     mmio + coherent + streaming
 }
 
-/// wire 解码:严格对齐,任何截断/残余不足一个完整单元即拒绝。
+/// Decode the wire format strictly; any truncation or incomplete trailing unit is rejected.
 pub fn decode_scenario(bytes: &[u8]) -> Result<ScenarioInput, Error> {
     let mut cursor = 0usize;
 
@@ -104,7 +108,7 @@ pub fn decode_scenario(bytes: &[u8]) -> Result<ScenarioInput, Error> {
     for _ in 0..alloc_count {
         let addr_chunk = bytes
             .get(cursor..cursor + 8)
-            .ok_or_else(|| Error::illegal_argument("scenario truncated in coherent addr"))?;
+            .ok_or_else(|| Error::illegal_argument("scenario truncated in coherent index"))?;
         cursor += 8;
         let addr = u64::from_le_bytes(addr_chunk.try_into().unwrap());
         let chunk = bytes
@@ -123,20 +127,24 @@ pub fn decode_scenario(bytes: &[u8]) -> Result<ScenarioInput, Error> {
     while cursor < bytes.len() {
         let addr_chunk = bytes
             .get(cursor..cursor + 8)
-            .ok_or_else(|| Error::illegal_argument("scenario truncated in stream unit addr"))?;
+            .ok_or_else(|| Error::illegal_argument("scenario truncated in stream unit index"))?;
         cursor += 8;
         let addr = u64::from_le_bytes(addr_chunk.try_into().unwrap());
-        let size = read_u32(bytes, &mut cursor, "stream unit size")? as usize;
-        let chunk = bytes.get(cursor..cursor + size).ok_or_else(|| {
-            Error::illegal_argument("scenario truncated in stream unit data")
-        })?;
-        cursor += size;
+        let chunk = bytes
+            .get(cursor..cursor + PRESENT_SECTION_SIZE)
+            .ok_or_else(|| Error::illegal_argument("scenario truncated in stream unit present"))?;
+        cursor += PRESENT_SECTION_SIZE;
+        let present = u128::from_le_bytes(chunk.try_into().unwrap());
+        let pc = present.count_ones() as usize;
+        let mut values = Vec::new();
+        for _ in 0..pc {
+            values.push(read_u32(bytes, &mut cursor, "stream unit value")?);
+        }
         dma.streaming
             .push(crate::input::StreamUnit {
                 addr,
-                size: u32::try_from(size)
-                    .map_err(|_| Error::illegal_argument("stream size out of range"))?,
-                data: chunk.to_vec(),
+                present,
+                values,
             });
     }
 
@@ -214,12 +222,12 @@ mod tests {
             },
             DmaSection {
                 coherent: vec![
-                    CoherentAlloc { addr: 0x3000, present: 0b111, word_model: vec![1, 0, 1] },
-                    CoherentAlloc { addr: 0x3100, present: 0b1, word_model: vec![7] },
+                    CoherentAlloc { addr: 0, present: 0b111, word_model: vec![1, 0, 1] },
+                    CoherentAlloc { addr: 1, present: 0b1, word_model: vec![7] },
                 ],
                 streaming: vec![
-                    StreamUnit { addr: 0x1000, size: 128, data: vec![0xAA; 128] },
-                    StreamUnit { addr: 0x2000, size: 28, data: vec![0x55; 28] },
+                    StreamUnit { addr: 0, present: 0xFFFF, values: vec![0xAAAA_AAAA; 16] },
+                    StreamUnit { addr: 1, present: 0b11, values: vec![0x5555_5555; 2] },
                 ],
             },
         );
@@ -236,23 +244,24 @@ mod tests {
 
     #[test]
     fn non_whole_unit_buffers_are_rejected_by_the_decoder() {
-        // 不足一个 present 段
+        // Shorter than one present section.
         let bytes = vec![0u8; 15];
         assert!(decode_scenario(&bytes).is_err());
 
-        // 声明 1 个 alloc 但没有 present/载荷 → 截断拒绝
-        let mut bytes = vec![0u8; 16]; // mmio.present = 0 → 无 mmio 条目
-        bytes.extend_from_slice(&1u32.to_le_bytes()); // coherent 条数 = 1
+        // Declares one alloc but does not include its present/payload: reject as truncated.
+        let mut bytes = vec![0u8; 16]; // mmio.present = 0, no MMIO entries.
+        bytes.extend_from_slice(&1u32.to_le_bytes()); // coherent count = 1.
         assert!(decode_scenario(&bytes).is_err());
 
-        // streaming size 声明 70 但只有 10 B 数据 → 截断拒绝
+        // Streaming present declares 16 set slots but only 10 bytes of values: reject.
         let mut bytes = vec![0u8; 16];
-        bytes.extend_from_slice(&0u32.to_le_bytes()); // coherent 条数 = 0
-        bytes.extend_from_slice(&70u32.to_le_bytes()); // streaming size = 70
+        bytes.extend_from_slice(&0u32.to_le_bytes()); // coherent count = 0.
+        bytes.extend_from_slice(&0u64.to_le_bytes()); // streaming table index = 0.
+        bytes.extend_from_slice(&u128::from(0xFFFFu32).to_le_bytes()); // pc = 16
         bytes.extend_from_slice(&[0u8; 10]);
         assert!(decode_scenario(&bytes).is_err());
 
-        // 全 0 结构(present=0、无 alloc、无 streaming)是合法的 native noop
+        // All-zero structure (present=0, no alloc, no streaming) is a valid native noop.
         let empty = ScenarioInput::default();
         let bytes = encode_scenario(&empty);
         assert_eq!(bytes.len(), 16 + 4);

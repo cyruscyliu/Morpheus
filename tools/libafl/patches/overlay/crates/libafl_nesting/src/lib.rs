@@ -2,9 +2,9 @@
 
 extern crate alloc;
 
-// 种子 = data unit 流(`mmio` 窗口面 + `dma` 两类语义),
-// grammar 用 action 思考并在产出时构造 unit;consumer 只有两面:
-// 捕获的mmio 与 dma mmio event。
+// A seed is a data-unit stream: the `mmio` window plane plus the two `dma`
+// surfaces. Grammar code reasons in actions and lowers them into units; the
+// consumer only sees captured MMIO and DMA telemetry events.
 
 pub mod devilang_grammar;
 pub mod encoding;
@@ -17,13 +17,12 @@ pub mod stub;
 pub use devilang_grammar::{
     Action, DevilangGrammar, DevilangGrammarState, DevilangMachine, DevilangPath,
     DevilangPathStep, DevilangTraceDecision, HyperAction, MAX_ENCODED_SCENARIO_BYTES,
-    format_scenario,
 };
 pub use encoding::{ScenarioCodec, decode_scenario, encoded_size, encode_scenario};
 pub use generator::ScenarioGenerator;
 pub use input::{
-    CoherentAlloc, DmaSection, MmioSection, MAX_STREAM_UNIT_BYTES, MMIO_WINDOW_SLOTS,
-    ScenarioInput, StreamUnit, WordModel,
+    CoherentAlloc, DmaSection, MmioSection, MAX_STREAM_UNIT_SLOTS, MMIO_WINDOW_SLOTS,
+    ScenarioInput, StreamUnit, WordModel, format_scenario,
 };
 pub use model::{DevilangMmioOp, DevilangModel, MmioDirection};
 pub use mutator::ScenarioMutator;

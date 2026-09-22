@@ -9,11 +9,12 @@ use libafl_bolts::{Named, nonzero, rands::Rand};
 
 use crate::{
     generator::ScenarioGenerator,
-    input::{ScenarioInput, MAX_STREAM_UNIT_BYTES},
+    input::ScenarioInput,
 };
 
-/// Schema-aware mutator:骨架 metadata(`present` 位图)不变,
-/// 只动 mmio/word_model 值、coherent 值、streaming 尺寸与字节。
+/// Schema-aware mutator: skeleton metadata (`present` bitmaps) stays fixed.
+/// The mutator only edits MMIO/word-model values, coherent values and indexes,
+/// streaming set-slot words, and whole streaming units.
 #[derive(Debug, Clone)]
 pub struct ScenarioMutator {
     generator: ScenarioGenerator,
@@ -45,7 +46,7 @@ impl ScenarioMutator {
             1 => *value = value.rotate_left(1 + rand.below(nonzero!(31)) as u32),
             _ => *value = value.wrapping_add(1 + rand.below(nonzero!(65536)) as u32),
         }
-        // 保持 0 值可选:不强制把 0 变成非 0。
+        // Keep zero values available; do not force zero to become non-zero.
     }
 }
 
@@ -132,8 +133,8 @@ where
                         Self::mutate_u32(state.rand_mut(), &mut alloc.word_model[visit]);
                         true
                     } else if rand_below_half(state.rand_mut()) {
-                        // 漂移 alloc 的写入地址
-                        alloc.addr = alloc.addr.wrapping_add(0x1000);
+                        // Drift the alloc runtime-table index within a small range.
+                        alloc.addr = state.rand_mut().below(nonzero!(16)) as u64;
                         true
                     } else {
                         false
@@ -147,16 +148,15 @@ where
                     Self::random_index(state.rand_mut(), input.dma.streaming.len())
                 {
                     let unit = &mut input.dma.streaming[index];
-                    let delta = 1 + state.rand_mut().below(nonzero!(64)) as i32;
-                    let direction = state.rand_mut().below(nonzero!(2)) == 0;
-                    if direction {
-                        unit.size = unit.size.saturating_add(delta as u32);
+                    // Mutate one set-slot word in ascending set-bit order.
+                    if let Some(slot) =
+                        Self::random_index(state.rand_mut(), unit.values.len())
+                    {
+                        Self::mutate_u32(state.rand_mut(), &mut unit.values[slot]);
+                        true
                     } else {
-                        unit.size = unit.size.saturating_sub(delta as u32).max(1);
+                        false
                     }
-                    unit.size = unit.size.max(1).min(MAX_STREAM_UNIT_BYTES);
-                    unit.data.resize(usize::try_from(unit.size).unwrap_or(1), 0);
-                    true
                 } else {
                     false
                 }
@@ -166,8 +166,9 @@ where
                     Self::random_index(state.rand_mut(), input.dma.streaming.len())
                 {
                     let unit = &mut input.dma.streaming[index];
-                    if let Some(byte) = Self::random_index(state.rand_mut(), unit.data.len()) {
-                        unit.data[byte] ^= 1 + state.rand_mut().below(nonzero!(255)) as u8;
+                    if let Some(slot) = Self::random_index(state.rand_mut(), unit.values.len())
+                    {
+                        unit.values[slot] ^= random_mask_u32(state.rand_mut());
                         true
                     } else {
                         false
@@ -177,12 +178,16 @@ where
                 }
             }
             6 => {
-                let size = (1 + state.rand_mut().below(nonzero!(512))).max(1);
-                let data = (0..size).map(|_| state.rand_mut().below(nonzero!(256)) as u8).collect();
+                // Add a unit with a contiguous low-bit mask (1..=8 set slots).
+                let slots = 1 + state.rand_mut().below(nonzero!(8));
+                let present = (u128::from(1u32) << slots) - 1;
+                let values = (0..slots)
+                    .map(|_| random_u32(state.rand_mut()))
+                    .collect();
                 input.dma.streaming.push(crate::input::StreamUnit {
-                    addr: 0x4000_0000 + u64::from(state.rand_mut().below(nonzero!(4096)) as u32) * 0x1000,
-                    size: u32::try_from(size).unwrap_or(1),
-                    data,
+                    addr: state.rand_mut().below(nonzero!(16)) as u64,
+                    present,
+                    values,
                 });
                 true
             }
@@ -194,13 +199,29 @@ where
                     false
                 }
             }
+            8 => {
+                if let Some(index) =
+                    Self::random_index(state.rand_mut(), input.dma.streaming.len())
+                {
+                    // Drift the streaming unit's runtime-table index within a small range.
+                    input.dma.streaming[index].addr =
+                        state.rand_mut().below(nonzero!(16)) as u64;
+                    true
+                } else {
+                    false
+                }
+            }
             _ => {
-                // 骨架(present 位图)不参与变异:没有全量重建的 op,
-                // 落到未覆盖的 op 编号一律跳过。
+                // Skeleton (`present` bitmap) is not mutated; there is no whole-section
+                // rebuild op, so uncovered operation IDs are skipped.
                 false
             }
         };
 
+        if mutated && !input.is_valid() {
+            // Treat invariant-breaking mutations as skipped; skeleton validity wins.
+            return Ok(MutationResult::Skipped);
+        }
         Ok(if mutated {
             MutationResult::Mutated
         } else {
@@ -277,9 +298,9 @@ mod tests {
             },
             crate::input::DmaSection {
                 streaming: vec![crate::input::StreamUnit {
-                    addr: 0x1000,
-                    size: 16,
-                    data: vec![1; 16],
+                    addr: 0,
+                    present: 0xF,
+                    values: vec![1; 4],
                 }],
                 ..Default::default()
             },
@@ -289,7 +310,7 @@ mod tests {
         for _ in 0..64 {
             let _ = mutator.mutate(&mut state, &mut input);
             assert!(input.is_valid());
-            // 骨架位图在变异循环里保持不变
+            // Skeleton bitmap remains unchanged across mutation.
             assert_eq!(input.mmio.present, present);
         }
     }

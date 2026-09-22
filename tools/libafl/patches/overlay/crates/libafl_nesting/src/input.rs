@@ -1,88 +1,92 @@
-use std::{fs, path::Path};
+use std::{fmt::Write, fs, path::Path};
 
 use libafl::{Error, inputs::{HasTargetBytes, Input}};
 use libafl_bolts::{HasLen, ownedref::OwnedSlice};
 use serde::{Deserialize, Serialize};
 use crate::encoding::{decode_scenario, encode_scenario};
 
-/// virtio-mmio 窗口槽位总数:0x200 / 4。
+/// Number of virtio-mmio window slots: 0x200 / 4.
 pub const MMIO_WINDOW_SLOTS: usize = 128;
 
-/// streaming 单元的最大 payload 字节数(consumer 校验同值)。
-pub const MAX_STREAM_UNIT_BYTES: u32 = 8192;
+/// Maximum set-slot count for one streaming unit, bounded by the bitmap width.
+/// One set slot is one 32-bit word, so one unit can cover up to 512 bytes.
+pub const MAX_STREAM_UNIT_SLOTS: u32 = 128;
 
-/// 一条寄给 consumer 的种子数据。
+/// One seed payload sent to the consumer.
 ///
-/// 分界规则:骨架 metadata(`present` 位图)在构造期由 grammar 定死、不参与变异;
-/// 值与尺寸是 LibAFL 的变异面。任何访问(读/写/分配)超出种子长度即 native 透传。
+/// Boundary rule: skeleton metadata (`present` bitmaps) is fixed when the
+/// grammar constructs the seed and is not mutated. Values and counts are the
+/// LibAFL mutation surface. Any access beyond the modelled seed data falls
+/// through to native behavior.
 ///
-/// consumer 只有两面:捕获的mmio(`mmio.*` 读表)与 dma mmio event
-/// (aperture commit 通道,`dma.*`)。
+/// The consumer has only two surfaces: captured MMIO (`mmio.*` read tables)
+/// and DMA telemetry commits (`dma.*`).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ScenarioInput {
-    /// virtio-mmio 窗口面(0x200 B,128 个 4 B 槽位)。
+    /// virtio-mmio window plane (0x200 bytes, 128 4-byte slots).
     pub mmio: MmioSection,
-    /// DMA 两类语义。
+    /// The two DMA surfaces.
     pub dma: DmaSection,
 }
 
-/// virtio-mmio 窗口面。
+/// virtio-mmio window plane.
 ///
-/// 槽位按 4 B 划分:bit k ↔ slot k(offset 4k)。同一槽位驱动会读多次,
-/// 因此每个被建模槽位携带一条按访问次数消费的值序列。
+/// Slots are split by 4-byte words: bit k maps to slot k at offset 4k. A
+/// driver may read the same slot repeatedly, so every modelled slot carries
+/// a value sequence consumed by visit order.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MmioSection {
-    /// 骨架位图:bit k = slot k 被建模。变异不碰。
+    /// Skeleton bitmap: bit k means slot k is modelled. Mutation does not edit it.
     pub present: u128,
-    /// len == popcount(present),按 slot 升序。
+    /// len == popcount(present), in ascending slot order.
     pub word_model: Vec<WordModel>,
 }
 
-/// 单个槽位的访问模型:第 v 次读取返回 values[v];v >= count 即 native。
+/// Access model for one slot: read visit v returns values[v]; v >= count is native.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct WordModel {
-    /// values 的个数,即该槽位的消费上限。
+    /// Number of values, and therefore the consumption limit for this slot.
     pub count: u32,
-    /// 按访问序排列的槽位值;guest 读 (offset, 1B) 时按 offset%4 从 word 组装。
+    /// Slot values in visit order; guest reads use offset % 4 to select bytes.
     pub values: Vec<u32>,
 }
 
-/// DMA 段。
+/// DMA section.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DmaSection {
-    /// coherent:**每个条目一次 alloc**(多个 vring/控制 buffer = 多个条目)。
-    /// 每次 dma mmio event 按环形轮转消费一个条目的下一个访问值,写入它的
-    /// guest addr。访问超出该条目长度即 native。
+    /// Coherent surface: each entry models one allocation. `addr` selects a
+    /// runtime coherent-allocation table entry; guest accesses into the remap
+    /// consume `word_model` by visit order.
     pub coherent: Vec<CoherentAlloc>,
-    /// streaming:**每条 = 一次 MAP**;第 k 条 ↔ 第 k 个 MAP
-    /// (次数未知,耗尽即停)。
+    /// Streaming surface: each entry models one MAP. `addr` selects a runtime
+    /// streaming-MAP table entry; `present` selects 32-bit slots at offset 4k.
     pub streaming: Vec<StreamUnit>,
 }
 
-/// 一次 coherent 分配的访问模型:一次 alloc,读写多次。
+/// Access model for one coherent allocation: one alloc, many reads/writes.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CoherentAlloc {
-    /// guest 内存写入地址(consumer 用 QEMU memory API 写入)。
+    /// Zero-based index into the monitor's runtime coherent-allocation table.
     pub addr: u64,
-    /// 骨架位图:bit k = 该 alloc 的第 k 次访问被建模。变异不碰。
+    /// Skeleton bitmap: bit k means access visit k is modelled. Mutation does not edit it.
     pub present: u128,
-    /// len == popcount(present),按访问序;第 k 次访问注入 values[k]。
+    /// len == popcount(present), in access order; visit k injects values[k].
     pub word_model: Vec<u32>,
 }
 
-/// streaming 单元,自描述:size 即 data 长度,addr 即 guest 内存写入点。
+/// Streaming unit, represented sparsely by a bitmap of 32-bit slots.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct StreamUnit {
-    /// guest 内存写入地址(consumer 用 QEMU memory API 写入)。
+    /// Zero-based index into the monitor's runtime streaming-MAP table.
     pub addr: u64,
-    /// payload 字节数(变异面)。
-    pub size: u32,
-    /// payload 字节,len == size。
-    pub data: Vec<u8>,
+    /// Sparse bitmap: bit k maps to the 32-bit slot at region offset 4k. Mutation does not edit it.
+    pub present: u128,
+    /// One u32 per set slot, in ascending set-bit order.
+    pub values: Vec<u32>,
 }
 
 impl WordModel {
-    /// 按 (offset, v) 组装返回值:字节序由 offset%4 决定独 word 内的位置。
+    /// Build the returned value for (offset, visit); offset % 4 selects the byte position.
     #[must_use]
     pub fn answer(&self, offset: usize, visit: usize) -> Option<u32> {
         if visit >= self.values.len() {
@@ -99,13 +103,13 @@ impl ScenarioInput {
         Self { mmio, dma }
     }
 
-    /// 被建模单元总数(mmio 槽位 + coherent alloc + streaming 条目)。
+    /// Total modelled units: MMIO slots + coherent allocs + streaming entries.
     #[must_use]
     pub fn total_units(&self) -> usize {
         self.mmio.word_model.len() + self.dma.coherent.len() + self.dma.streaming.len()
     }
 
-    /// 变异/反馈用的访问单元总数:所有 visit 值与 streaming 字节总量。
+    /// Total action units for mutation/feedback: visit values plus set-slot words.
     #[must_use]
     pub fn total_actions(&self) -> usize {
         let mmio: usize = self.mmio.word_model.iter().map(|w| w.values.len()).sum();
@@ -119,19 +123,21 @@ impl ScenarioInput {
             .dma
             .streaming
             .iter()
-            .map(|s| usize::try_from(s.size).unwrap_or(0))
+            .map(|s| s.present.count_ones() as usize)
             .sum();
         mmio + coherent + streaming
     }
 
-    /// 结构不变量:任何一条被破坏即视为非法种子。
+    /// Structural invariants: violating any of these makes the seed invalid.
+    /// Modelled slots/entries must also be non-empty (`count >= 1` / `present != 0`).
     #[must_use]
     pub fn is_valid(&self) -> bool {
         if self.mmio.word_model.len() != self.mmio.present.count_ones() as usize {
             return false;
         }
         if self.mmio.word_model.iter().any(|w| {
-            w.values.len() != w.count as usize || w.count as usize > MMIO_WINDOW_SLOTS
+            w.count == 0 || w.values.len() != w.count as usize
+                || w.count as usize > MMIO_WINDOW_SLOTS
         }) {
             return false;
         }
@@ -139,28 +145,67 @@ impl ScenarioInput {
             return false;
         }
         if self.dma.coherent.iter().any(|c| {
-            c.word_model.len() != c.present.count_ones() as usize
+            c.present == 0 || c.word_model.len() != c.present.count_ones() as usize
         }) {
             return false;
         }
-        if self.dma.streaming.iter().any(|s| {
-            s.size == 0 || s.data.len() != s.size as usize
-                || s.size > MAX_STREAM_UNIT_BYTES
-        }) {
+        if self
+            .dma
+            .streaming
+            .iter()
+            .any(|s| s.values.len() != s.present.count_ones() as usize)
+        {
             return false;
         }
         true
     }
 }
 
+/// Render a decoded scenario in a stable human-readable form.
+#[must_use]
+pub fn format_scenario(scenario: &ScenarioInput) -> String {
+    let mut rendered = String::new();
+    let _ = writeln!(rendered, "mmio present=0x{:x}", scenario.mmio.present);
+    for (index, model) in scenario.mmio.word_model.iter().enumerate() {
+        let _ = write!(rendered, "  mmio[{index}] count={} values=", model.count);
+        for (position, value) in model.values.iter().enumerate() {
+            let _ = write!(rendered, "{}0x{value:x}", if position == 0 { "" } else { "," });
+        }
+        let _ = writeln!(rendered);
+    }
+    for (index, alloc) in scenario.dma.coherent.iter().enumerate() {
+        let _ = write!(
+            rendered,
+            "  coherent[{index}] addr={} present=0x{:x} word_model=",
+            alloc.addr, alloc.present
+        );
+        for (position, value) in alloc.word_model.iter().enumerate() {
+            let _ = write!(rendered, "{}0x{value:x}", if position == 0 { "" } else { "," });
+        }
+        let _ = writeln!(rendered);
+    }
+    for (index, unit) in scenario.dma.streaming.iter().enumerate() {
+        let _ = write!(
+            rendered,
+            "  streaming[{index}] addr={} present=0x{:x} values=",
+            unit.addr, unit.present
+        );
+        for (position, value) in unit.values.iter().enumerate() {
+            let _ = write!(rendered, "{}0x{value:x}", if position == 0 { "" } else { "," });
+        }
+        let _ = writeln!(rendered);
+    }
+    rendered
+}
+
 impl Input for ScenarioInput {
-    /// 按种子 wire 格式落盘(扁平字节块), LibAFL 不过滤、不二次编码。
+    /// Write the flat seed wire format; LibAFL does not filter or re-encode it.
     fn to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), Error> {
         fs::write(path, encode_scenario(self))?;
         Ok(())
     }
 
-    /// 只接受种子 wire 格式; 任何非 wire 字节块直接拒绝。
+    /// Accept only the seed wire format; reject any non-wire byte block.
     fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         let bytes = fs::read(path)?;
         decode_scenario(&bytes)
@@ -205,11 +250,11 @@ mod tests {
                 ],
             },
             DmaSection {
-                coherent: vec![CoherentAlloc { addr: 0x3000, present: 0b111, word_model: vec![1, 0, 1] }],
+                coherent: vec![CoherentAlloc { addr: 0, present: 0b111, word_model: vec![1, 0, 1] }],
                 streaming: vec![StreamUnit {
-                    addr: 0x1000,
-                    size: 128,
-                    data: vec![0xAA; 128],
+                    addr: 0,
+                    present: 0xFFFF,
+                    values: vec![0xAA; 16],
                 }],
             },
         );
@@ -228,7 +273,7 @@ mod tests {
         assert_eq!(bytes, encode_scenario(&input));
         assert_eq!(decoded, input);
         assert!(decoded.is_valid());
-        assert_eq!(decoded.total_actions(), 9 + 3 + 128);
+        assert_eq!(decoded.total_actions(), 9 + 3 + 16);
     }
 
     #[test]
@@ -244,17 +289,42 @@ mod tests {
         );
         assert!(!mismatched.is_valid());
 
-        let oversized = ScenarioInput::new(
+        let mismatched_stream = ScenarioInput::new(
             MmioSection::default(),
             DmaSection {
                 streaming: vec![StreamUnit {
-                    addr: 0x1000,
-                    size: 9000,
-                    data: vec![0; 9000],
+                    addr: 0,
+                    present: 0b11,
+                    values: vec![0; 1],
                 }],
                 ..Default::default()
             },
         );
-        assert!(!oversized.is_valid());
+        assert!(!mismatched_stream.is_valid());
+
+        let empty_model = ScenarioInput::new(
+            MmioSection {
+                present: 1,
+                word_model: vec![WordModel {
+                    count: 0,
+                    values: Vec::new(),
+                }],
+            },
+            DmaSection::default(),
+        );
+        assert!(!empty_model.is_valid());
+
+        let empty_coherent = ScenarioInput::new(
+            MmioSection::default(),
+            DmaSection {
+                coherent: vec![CoherentAlloc {
+                    addr: 0,
+                    present: 0,
+                    word_model: Vec::new(),
+                }],
+                ..Default::default()
+            },
+        );
+        assert!(!empty_coherent.is_valid());
     }
 }

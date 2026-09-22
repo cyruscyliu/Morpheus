@@ -7,7 +7,7 @@ use libafl_bolts::{nonzero, rands::Rand};
 use crate::devilang_grammar::{MAX_ENCODED_SCENARIO_BYTES, DevilangGrammar};
 use crate::encoding::encoded_size;
 use crate::input::{
-    CoherentAlloc, DmaSection, MmioSection, MMIO_WINDOW_SLOTS, MAX_STREAM_UNIT_BYTES,
+    CoherentAlloc, DmaSection, MmioSection, MMIO_WINDOW_SLOTS, MAX_STREAM_UNIT_SLOTS,
     ScenarioInput, StreamUnit, WordModel,
 };
 use crate::model::{DevilangModel, MmioDirection};
@@ -147,9 +147,9 @@ where
 }
 
 impl ScenarioGenerator {
-    /// Grammar-free seed:随机的窗口站位 + 每站位短值序列 + 随机 coherent
-    /// alloc 与 streaming 条目;预算上限 MAX_ENCODED_SCENARIO_BYTES 内逐段添加,
-    /// 超出即停止。
+    /// Grammar-free seed: random window slots with short value sequences plus
+    /// random coherent allocs and streaming entries. Sections are added under
+    /// `MAX_ENCODED_SCENARIO_BYTES`; generation stops when the budget is exceeded.
     #[must_use]
     pub fn random_scenario<R: Rand>(&self, rand: &mut R, max_actions: usize) -> ScenarioInput {
         let mut mmio = MmioSection::default();
@@ -185,19 +185,30 @@ impl ScenarioGenerator {
         let mut coherent_done = false;
         for _ in 0..max_actions {
             let mut unit = StreamUnit::default();
-            let size = 1 + usize::from(rand.below(nonzero!(256)).max(0)) * 7
-                + usize::from(rand.below(nonzero!(16)));
-            let size = size.min(usize::try_from(MAX_STREAM_UNIT_BYTES).unwrap_or(1));
-            unit.addr = 0x4000_0000 + u64::from(rand.below(nonzero!(4096)) as u32) * 0x1000;
-            unit.size = u32::try_from(size).unwrap_or(1);
-            unit.data = (0..size).map(|_| rand.below(nonzero!(256)) as u8).collect();
+            // Contiguous low-bit mask (1..=128 set slots), one random u32 per slot.
+            let slots =
+                1 + usize::from(rand.below(nonzero!(128)));
+            let slots = slots.min(usize::try_from(MAX_STREAM_UNIT_SLOTS).unwrap_or(1));
+            unit.addr = rand.below(nonzero!(16)) as u64;
+            unit.present = if slots >= u128::BITS as usize {
+                u128::MAX
+            } else {
+                (u128::from(1u32) << slots) - 1
+            };
+            unit.values = (0..slots).map(|_| random_u32(rand)).collect();
 
             let coherent = if !coherent_done && rand.below(nonzero!(8)) == 0 {
-                let present = random_present(rand);
-                let values: Vec<u32> = (0..present).map(|_| random_u32(rand)).collect();
+                // Contiguous low-bit mask (1..=128 visits); present is a u128 bitmap.
+                let visits = 1 + usize::from(rand.below(nonzero!(128)));
+                let present = if visits >= u128::BITS as usize {
+                    u128::MAX
+                } else {
+                    (u128::from(1u32) << visits) - 1
+                };
+                let values: Vec<u32> = (0..visits).map(|_| random_u32(rand)).collect();
                 Some(CoherentAlloc {
-                    addr: 0x4000_0000 + u64::from(rand.below(nonzero!(4096)) as u32) * 0x1000,
-                    present: present as u128,
+                    addr: rand.below(nonzero!(16)) as u64,
+                    present,
                     word_model: values,
                 })
             } else {
@@ -266,12 +277,6 @@ impl ScenarioGenerator {
 fn random_u32<R: Rand>(rand: &mut R) -> u32 {
     let lo = (rand.below(nonzero!(65536)) & 0xffff) as u32;
     let hi = (rand.below(nonzero!(65536)) & 0xffff) as u32;
-    (hi << 16) | lo
-}
-
-fn random_present<R: Rand>(rand: &mut R) -> usize {
-    let lo = usize::from(rand.below(nonzero!(65536)) & 0xffff);
-    let hi = usize::from(rand.below(nonzero!(65536)) & 0xffff);
     (hi << 16) | lo
 }
 

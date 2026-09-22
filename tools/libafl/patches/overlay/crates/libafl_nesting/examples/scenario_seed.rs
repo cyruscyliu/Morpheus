@@ -1,19 +1,19 @@
-//! Generate a deterministic postcard `ScenarioInput` from a Devilang state file.
+//! Generate a deterministic raw scenario block from a Devilang state file.
 //!
 //! Usage:
-//! `cargo run -p libafl_nesting --example scenario_seed -- GRAMMAR POSTCARD RAW`
+//! `cargo run -p libafl_nesting --example scenario_seed -- GRAMMAR RAW`
 
 use std::{env, fs, path::PathBuf};
 
-use libafl::{generators::Generator, inputs::Input, state::HasRand};
+use libafl::generators::Generator;
 use libafl_bolts::{nonzero, rands::StdRand};
-use libafl_nesting::{DevilangGrammar, ScenarioGenerator, encode_scenario, format_scenario};
+use libafl_nesting::{DevilangGrammar, ScenarioGenerator, decode_scenario, encode_scenario, format_scenario};
 
 struct SeedState {
     rand: StdRand,
 }
 
-impl HasRand for SeedState {
+impl libafl::state::HasRand for SeedState {
     type Rand = StdRand;
 
     fn rand(&self) -> &Self::Rand {
@@ -29,18 +29,14 @@ fn main() -> Result<(), String> {
     let mut args = env::args_os().skip(1);
     let grammar_path = PathBuf::from(
         args.next()
-            .ok_or_else(|| "usage: scenario_seed GRAMMAR POSTCARD RAW".to_string())?,
-    );
-    let postcard_path = PathBuf::from(
-        args.next()
-            .ok_or_else(|| "usage: scenario_seed GRAMMAR POSTCARD RAW".to_string())?,
+            .ok_or_else(|| "usage: scenario_seed GRAMMAR RAW".to_string())?,
     );
     let raw_path = PathBuf::from(
         args.next()
-            .ok_or_else(|| "usage: scenario_seed GRAMMAR POSTCARD RAW".to_string())?,
+            .ok_or_else(|| "usage: scenario_seed GRAMMAR RAW".to_string())?,
     );
     if args.next().is_some() {
-        return Err("usage: scenario_seed GRAMMAR POSTCARD RAW".to_string());
+        return Err("usage: scenario_seed GRAMMAR RAW".to_string());
     }
 
     let grammar = DevilangGrammar::from_path(&grammar_path)?;
@@ -54,27 +50,21 @@ fn main() -> Result<(), String> {
         .map_err(|error| format!("failed to generate scenario: {error:?}"))?;
     grammar.validate_scenario(&scenario)?;
 
-    if let Some(parent) = postcard_path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
     if let Some(parent) = raw_path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    scenario
-        .to_file(&postcard_path)
-        .map_err(|error| format!("failed to write postcard: {error:?}"))?;
-    let decoded = libafl_nesting::ScenarioInput::from_file(&postcard_path)
-        .map_err(|error| format!("failed to reload postcard: {error:?}"))?;
-    if decoded != scenario {
-        return Err("postcard round-trip changed the generated scenario".to_string());
     }
     let raw = encode_scenario(&scenario);
     fs::write(&raw_path, &raw).map_err(|error| error.to_string())?;
 
+    let decoded = decode_scenario(&raw)
+        .map_err(|error| format!("raw round-trip failed to decode: {error:?}"))?;
+    if decoded != scenario {
+        return Err("raw round-trip changed the generated scenario".to_string());
+    }
+
     println!(
-        "grammar={} postcard={} raw={} encoded-bytes={}\n{}",
+        "grammar={} raw={} encoded-bytes={}\n{}",
         grammar_path.display(),
-        postcard_path.display(),
         raw_path.display(),
         raw.len(),
         format_scenario(&scenario)

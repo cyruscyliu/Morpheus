@@ -173,30 +173,14 @@ fn validate_input_size(input: ScenarioInput, path: &Path) -> Result<ScenarioInpu
 }
 
 fn load_replay_input(path: &Path) -> Result<ScenarioInput, Error> {
-    if path.extension().is_some_and(|ext| ext == "raw") {
-        let bytes = fs::read(path)?;
-        let input = decode_scenario(&bytes).map_err(|decode_err| {
-            Error::illegal_argument(format!(
-                "failed to load replay input {} as raw scenario bytes ({decode_err})",
-                path.display()
-            ))
-        })?;
-        return validate_input_size(input, path);
-    }
-
-    match <ScenarioInput as Input>::from_file(path) {
-        Ok(input) => validate_input_size(input, path),
-        Err(postcard_err) => {
-            let bytes = fs::read(path)?;
-            let input = decode_scenario(&bytes).map_err(|decode_err| {
-                Error::illegal_argument(format!(
-                    "failed to load replay input {} as ScenarioInput ({postcard_err}) or raw scenario bytes ({decode_err})",
-                    path.display()
-                ))
-            })?;
-            validate_input_size(input, path)
-        }
-    }
+    let bytes = fs::read(path)?;
+    let input = decode_scenario(&bytes).map_err(|decode_err| {
+        Error::illegal_argument(format!(
+            "failed to load replay input {} as raw scenario bytes ({decode_err})",
+            path.display()
+        ))
+    })?;
+    validate_input_size(input, path)
 }
 
 pub fn fuzz() {

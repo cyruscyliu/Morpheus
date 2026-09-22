@@ -1,8 +1,9 @@
-use libafl::inputs::{HasTargetBytes, Input};
+use std::{fs, path::Path};
+
+use libafl::{Error, inputs::{HasTargetBytes, Input}};
 use libafl_bolts::{HasLen, ownedref::OwnedSlice};
 use serde::{Deserialize, Serialize};
-
-use crate::encoding::encode_scenario;
+use crate::encoding::{decode_scenario, encode_scenario};
 
 /// virtio-mmio 窗口槽位总数:0x200 / 4。
 pub const MMIO_WINDOW_SLOTS: usize = 128;
@@ -152,7 +153,19 @@ impl ScenarioInput {
     }
 }
 
-impl Input for ScenarioInput {}
+impl Input for ScenarioInput {
+    /// 按种子 wire 格式落盘(扁平字节块), LibAFL 不过滤、不二次编码。
+    fn to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), Error> {
+        fs::write(path, encode_scenario(self))?;
+        Ok(())
+    }
+
+    /// 只接受种子 wire 格式; 任何非 wire 字节块直接拒绝。
+    fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+        let bytes = fs::read(path)?;
+        decode_scenario(&bytes)
+    }
+}
 
 impl HasLen for ScenarioInput {
     fn len(&self) -> usize {
@@ -171,6 +184,7 @@ mod tests {
     use super::{
         CoherentAlloc, MmioSection, ScenarioInput, StreamUnit, WordModel, DmaSection,
     };
+    use crate::encoding::encode_scenario;
     use libafl::inputs::Input;
     use std::{
         fs,
@@ -178,7 +192,7 @@ mod tests {
     };
 
     #[test]
-    fn postcard_file_round_trip_matches_ondisk_corpus() {
+    fn wire_file_round_trip_matches_ondisk_corpus() {
         let input = ScenarioInput::new(
             MmioSection {
                 present: (1 << 68) | 0b100111,
@@ -211,7 +225,7 @@ mod tests {
         let bytes = fs::read(&path).expect("serialized input should be readable");
         let decoded = ScenarioInput::from_file(&path).expect("input should deserialize");
         fs::remove_file(&path).expect("temporary input should be removed");
-        assert!(!bytes.is_empty());
+        assert_eq!(bytes, encode_scenario(&input));
         assert_eq!(decoded, input);
         assert!(decoded.is_valid());
         assert_eq!(decoded.total_actions(), 9 + 3 + 128);

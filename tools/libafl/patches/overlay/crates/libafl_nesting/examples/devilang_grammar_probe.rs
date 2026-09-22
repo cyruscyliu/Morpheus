@@ -1,20 +1,19 @@
 //! Validate a generated Devilang grammar without starting QEMU.
 //!
 //! Usage:
-//! `cargo run -p libafl_nesting --example devilang_grammar_probe -- GRAMMAR`
-//! `cargo run -p libafl_nesting --example devilang_grammar_probe -- \
-//!     --validate-seed SEED GRAMMAR`
+//! `cargo run -p libafl_nesting --example devilang_grammar_probe -- PATH`
 
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
+use std::{env, path::PathBuf};
+
+use libafl::{
+    generators::Generator,
+    mutators::{MutationResult, Mutator},
+    state::HasRand,
 };
-
-use libafl::{generators::Generator, inputs::Input, mutators::Mutator, state::HasRand};
-use libafl_bolts::{nonzero, rands::StdRand};
+use libafl_bolts::rands::StdRand;
 use libafl_nesting::{
-    DevilangGrammar, ScenarioGenerator, ScenarioInput, ScenarioMutator, decode_scenario,
-    encode_scenario, format_seed,
+    DevilangGrammar, ScenarioGenerator, ScenarioInput, ScenarioMutator, encode_scenario,
+    format_scenario,
 };
 
 struct ProbeState {
@@ -34,112 +33,115 @@ impl HasRand for ProbeState {
 }
 
 fn main() -> Result<(), String> {
-    let mut args = env::args_os().skip(1);
-    let first = args.next().map(PathBuf::from).ok_or_else(|| {
-        "usage: devilang_grammar_probe [--validate-seed SEED] GRAMMAR".to_string()
-    })?;
-    let (seed_path, path) = if first.as_os_str() == std::ffi::OsStr::new("--validate-seed") {
-        let seed_path = args.next().map(PathBuf::from).ok_or_else(|| {
-            "usage: devilang_grammar_probe [--validate-seed SEED] GRAMMAR".to_string()
-        })?;
-        let grammar_path = args.next().map(PathBuf::from).ok_or_else(|| {
-            "usage: devilang_grammar_probe [--validate-seed SEED] GRAMMAR".to_string()
-        })?;
-        (Some(seed_path), grammar_path)
-    } else {
-        (None, first)
-    };
-    if args.next().is_some() {
-        return Err("usage: devilang_grammar_probe [--validate-seed SEED] GRAMMAR".to_string());
+    let path = env::args_os()
+        .nth(1)
+        .map(PathBuf::from)
+        .ok_or_else(|| "usage: devilang_grammar_probe PATH".to_string())?;
+    let grammar = DevilangGrammar::from_path(&path)?;
+    if grammar.is_empty() {
+        return Err(format!(
+            "Devilang grammar {} has no transitions",
+            path.display()
+        ));
     }
 
-    let grammar = DevilangGrammar::from_path(&path)?;
     println!(
-        "device override grammar loaded: mmio-sites={} mmio-write-sites={} queue-dma-sites={} dma-sites={} dma-events={}",
-        grammar.mmio_read_sites().len(),
-        grammar.mmio_write_sites().len(),
-        grammar.queue_dma_sites().len(),
-        grammar.dma_sites().len(),
+        "devilang grammar loaded: machines={} states={} dma-events={}",
+        grammar.machines().len(),
+        grammar.states().len(),
         grammar.dma_event_count()
     );
 
-    if let Some(seed_path) = seed_path {
-        let seed = load_seed(&seed_path)?;
-        grammar.validate_seed(&seed)?;
-        println!(
-            "seed validated: path={} overrides={}",
-            seed_path.display(),
-            seed.total_overrides()
-        );
-    }
-
-    let generator = ScenarioGenerator::new(nonzero!(4)).with_grammar(grammar.clone());
+    let generator =
+        ScenarioGenerator::default().with_devilang_grammar(grammar.clone());
     let mut state = ProbeState {
         rand: StdRand::with_seed(0x4445_5649_4c41_4e47),
     };
-    let mut seed = generator
+    let mut scenario = generator
         .clone()
         .generate(&mut state)
-        .map_err(|error| format!("failed to generate device seed: {error:?}"))?;
-    validate(&grammar, &seed)?;
-    println!("before mutation:\n{}", format_seed(&seed));
+        .map_err(|error| format!("failed to generate Devilang scenario: {error:?}"))?;
+    validate(&grammar, &scenario)?;
+    println!("before mutation:\n{}", format_scenario(&scenario));
 
     let mut mutator = ScenarioMutator::new(generator);
-    let before = seed.clone();
-    let attempts = 4;
-    for _ in 0..attempts {
-        mutator
-            .mutate(&mut state, &mut seed)
-            .map_err(|error| format!("failed to mutate device seed: {error:?}"))?;
-        validate(&grammar, &seed)?;
+    let before = scenario.clone();
+    let mut changed = false;
+    let mut valid_mutations = 0usize;
+    for attempt in 1..=64 {
+        let result = mutator
+            .mutate(&mut state, &mut scenario)
+            .map_err(|error| format!("failed to mutate Devilang scenario: {error:?}"))?;
+        validate(&grammar, &scenario)?;
+        valid_mutations = attempt;
+        if mutation_is_distinct(result, &before, &scenario)? {
+            changed = true;
+            break;
+        }
     }
     println!(
-        "mutation validated: attempts={attempts} distinct={}",
-        before != seed
+        "mutation validated: attempts={} distinct={}",
+        valid_mutations, changed
     );
-    println!("after mutation:\n{}", format_seed(&seed));
+    if changed {
+        println!("after mutation:\n{}", format_scenario(&scenario));
+    } else {
+        println!("after mutation: unchanged (grammar has no alternate valid scenario)");
+    }
     Ok(())
 }
 
-fn load_seed(path: &Path) -> Result<ScenarioInput, String> {
-    match <ScenarioInput as Input>::from_file(path) {
-        Ok(seed) => Ok(seed),
-        Err(postcard_error) => decode_scenario(&fs::read(path).map_err(|error| {
-            format!(
-                "failed to read seed {} after postcard error {postcard_error:?}: {error}",
-                path.display()
-            )
-        })?)
-        .map_err(|raw_error| {
-            format!(
-                "failed to decode seed {} as postcard ({postcard_error:?}) or raw ({raw_error})",
-                path.display()
-            )
-        }),
-    }
-}
-
-fn validate(grammar: &DevilangGrammar, seed: &ScenarioInput) -> Result<(), String> {
-    grammar.validate_seed(seed)?;
-    let encoded_len = encode_scenario(seed).len();
+fn validate(grammar: &DevilangGrammar, scenario: &ScenarioInput) -> Result<(), String> {
+    grammar.validate_scenario(scenario)?;
+    let encoded_len = encode_scenario(scenario).len();
     if encoded_len > 4096 {
         return Err(format!(
-            "encoded device override seed is {encoded_len} bytes, over 4096"
+            "encoded Devilang scenario is {encoded_len} bytes, over 4096"
         ));
     }
     Ok(())
+}
+
+fn mutation_is_distinct(
+    result: MutationResult,
+    before: &ScenarioInput,
+    after: &ScenarioInput,
+) -> Result<bool, String> {
+    let changed = before != after;
+    match (result, changed) {
+        (MutationResult::Mutated, true) => Ok(true),
+        (MutationResult::Skipped, false) => Ok(false),
+        (MutationResult::Mutated, false) => {
+            Err("Devilang mutation reported Mutated without changing the scenario".to_string())
+        }
+        (MutationResult::Skipped, true) => {
+            Err("Devilang mutation reported Skipped after changing the scenario".to_string())
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn seed() -> ScenarioInput {
+    fn scenario() -> ScenarioInput {
         ScenarioInput::new(Vec::new())
     }
 
     #[test]
-    fn empty_seed_is_not_a_grammar_error_in_the_probe_helpers() {
-        assert!(seed().overrides().is_empty());
+    fn accepts_skipped_mutation_for_a_deterministic_grammar() {
+        let before = scenario();
+        let after = before.clone();
+        assert!(
+            !mutation_is_distinct(MutationResult::Skipped, &before, &after)
+                .expect("a skipped mutation should be valid")
+        );
+    }
+
+    #[test]
+    fn rejects_inconsistent_mutation_result() {
+        let before = scenario();
+        let after = ScenarioInput::new(Vec::new());
+        assert!(mutation_is_distinct(MutationResult::Mutated, &before, &after).is_err());
     }
 }

@@ -179,7 +179,7 @@ Operational rule:
   `workspace/tools/...`.
 - Runtime state for `exec` commands should default to the workflow step tree
   under `workspace/runs/<workflow-id>/steps/<step-id>/...`.
-- Treat `workspace/tmp/...` as scratch only, not as the canonical runtime
+- Treat `workspace/run/...` as scratch only, not as the canonical runtime
   location for managed workflow execution.
 - Downstream workflows should depend on stable published artifacts rather than
   tool-private scratch files or intermediate prompt state.
@@ -680,7 +680,7 @@ Managed workspace layout:
     patches/
     src/
     builds/<key>/
-  tmp/
+  run/
 ```
 
 Treat this layout as stable.

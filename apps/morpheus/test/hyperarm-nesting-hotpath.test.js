@@ -149,7 +149,7 @@ const qemuSeedPatchSource = fs.readFileSync(
     "patches-cvm",
     "qemu-cca",
     "upstream-v2",
-    "0002-libafl-virtio-seed-consumer.patch",
+    "0003-libafl-virtio-seed-consumer.patch",
   ),
   "utf8",
 );
@@ -377,7 +377,7 @@ test("runtime extraction preserves an anomalous L2 outcome and its input", () =>
   }
 });
 
-test("runtime extraction rejects device seeds with non-zero reserved bits", () => {
+test("runtime extraction rejects a truncated stream unit", () => {
   const functionStart = harnessSource.indexOf("extract_l1_runtime_from_log() {");
   const functionEnd = harnessSource.indexOf("\n}\n\nwrite_result()", functionStart);
   assert.ok(functionStart >= 0 && functionEnd > functionStart);
@@ -387,15 +387,13 @@ test("runtime extraction rejects device seeds with non-zero reserved bits", () =
     const outputDir = path.join(tempDir, "runtime");
     const logPath = path.join(tempDir, "launcher.log");
     const extractorPath = path.join(tempDir, "extract.sh");
-    const seedInput = Buffer.alloc(4 + 40);
-    seedInput.writeUInt32LE(1, 0);
-    seedInput[4] = 2;
-    seedInput[5] = 1;
-    seedInput.writeUInt16LE(1, 6);
-    seedInput.writeUInt32LE(1, 8);
-    seedInput.writeBigUInt64LE(0x14n, 12);
-    seedInput.writeBigUInt64LE(4n, 20);
-    seedInput.writeBigUInt64LE(0x103n, 28);
+    const seedInput = Buffer.alloc(16 + 4 + 4 + 10);
+    // present = 0 -> no mmio slots; coherent count = 0;
+    // a streaming unit declares 70 bytes but only 10 follow
+    seedInput.writeBigUInt64LE(0n, 0);
+    seedInput.writeBigUInt64LE(0n, 8);
+    seedInput.writeUInt32LE(0, 16);
+    seedInput.writeUInt32LE(70, 20);
     const lines = [
       "LQPRINTF: stub-outcome kind=launcher-exit detail=1",
       `LQPRINTF: stub-runtime begin name=morpheus-qemu-input.bin size=${seedInput.length} dumped=${seedInput.length} truncated=0`,
@@ -423,8 +421,8 @@ test("runtime extraction rejects device seeds with non-zero reserved bits", () =
       "utf8",
     );
     assert.match(trace, /"kind":"seed-decode-error"/);
-    assert.match(trace, /"detail":"non-zero-reserved-bits"/);
-    assert.doesNotMatch(trace, /"kind":"seed-mmio-read-override"/);
+    assert.match(trace, /"detail":"truncated-stream-data"/);
+    assert.doesNotMatch(trace, /"kind":"seed-mmio-slot"/);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
@@ -440,14 +438,12 @@ test("runtime extraction reports every observed MMIO and DMA event", () => {
     const outputDir = path.join(tempDir, "runtime");
     const logPath = path.join(tempDir, "launcher.log");
     const extractorPath = path.join(tempDir, "extract.sh");
-    const seedInput = Buffer.alloc(4 + 40);
-    seedInput.writeUInt32LE(1, 0);
-    seedInput[4] = 2;
-    seedInput[5] = 12;
-    seedInput.writeBigUInt64LE(0n, 12);
-    seedInput.writeBigUInt64LE(70n, 20);
-    seedInput.writeBigUInt64LE(4156n, 28);
-    seedInput.writeBigUInt64LE(0x07010204n, 36);
+    const seedInput = Buffer.alloc(16 + 4 + 4 + 70, 0xEE);
+    // present = 0; coherent count = 0; one streaming unit of 70 bytes
+    seedInput.writeBigUInt64LE(0n, 0);
+    seedInput.writeBigUInt64LE(0n, 8);
+    seedInput.writeUInt32LE(0, 16);
+    seedInput.writeUInt32LE(70, 20);
     const records = [
       ["morpheus-qemu-input.bin", seedInput],
       [
@@ -514,11 +510,7 @@ test("runtime extraction reports every observed MMIO and DMA event", () => {
     assert.ok(
       trace.some(
         (event) =>
-          event.kind === "seed-queue-dma" &&
-          event.operation === "map" &&
-          event.direction_name === "from_device" &&
-          event.path === 1 &&
-          event.sequence === 7,
+          event.kind === "seed-stream-unit" && event.size === 70,
       ),
     );
     assert.ok(trace.some((event) => event.kind === "mmio-read"));
@@ -636,8 +628,8 @@ test("nested L2 stops the normal wait after guest boot readiness", () => {
   assert.match(stubSource, /"buildroot login:"/);
   assert.match(stubSource, /"Welcome to Buildroot"/);
   assert.match(stubSource, /parent-boot-ready/);
-  assert.match(stubSource, /stub: l2 boot ready; ending run window/);
-  assert.match(stubSource, /l2 boot-ready window ended and was terminated/);
+  assert.match(stubSource, /stub: l2 boot ready; continuing run window/);
+  assert.match(stubSource, /l2 run window ended and was terminated/);
   assert.match(stubSource, /while \(!boot_ready && elapsed_ms < window_ms\)/);
 });
 
@@ -1846,7 +1838,7 @@ test("LibAFL CVM snapshot devices use single virtio-blk queues", () => {
 test("LibAFL nesting crate keeps the module doc comment before Rust items", () => {
   assert.match(
     libaflNestingLibSource,
-    /^\/\/! Structured nested fuzzing support for `LibAFL`\.\n\nextern crate alloc;/,
+    /^\/\/! Structured nested fuzzing support for `LibAFL`\.\n+extern crate alloc;/,
   );
 });
 
@@ -1888,15 +1880,16 @@ test("seed-driven native MMIO and DMA input stays in versioned QEMU code", () =>
   assert.match(nvirshBuildrootBasedCvmBuildSource, /MORPHEUS_QEMU_INPUT_PATH/);
   assert.match(
     nvirshBuildrootBasedCvmBuildSource,
-    /qemu-seed-consumer=mmio-queue-dma/,
+    /qemu-seed-consumer=mmio-window/,
   );
   assert.match(nvirshBuildrootBasedCvmBuildSource, /virtio_mmio_seed_read/);
-  assert.match(qemuSeedPatchSource, /morpheus_virtio_seed_read_config/);
-  assert.match(qemuSeedPatchSource, /morpheus_virtio_seed_queue_dma_complete/);
-  assert.match(qemuSeedPatchSource, /dma_memory_write\(vdev->dma_as/);
-  assert.match(qemuSeedPatchSource, /virtqueue_pop/);
-  assert.match(qemuSeedPatchSource, /virtqueue_fill/);
-  assert.match(qemuSeedPatchSource, /virtqueue_flush/);
+  assert.match(qemuSeedPatchSource, /morpheus_virtio_seed_read_slot/);
+  assert.match(qemuSeedPatchSource, /MORPHEUS_SEED_WINDOW_SLOTS 128U/);
+  assert.match(qemuSeedPatchSource, /slot->visits >= slot->count/);
+  assert.doesNotMatch(
+    qemuSeedPatchSource,
+    /morpheus_virtio_seed_queue_dma_complete|virtqueue_pop|virtqueue_fill|virtqueue_flush|dma_memory_write\(vdev->dma_as/,
+  );
   assert.doesNotMatch(
     qemuSeedPatchSource,
     /CVE-[0-9]+|virtio-net profile:|synthetic_rx_done|virtio_net_seed_rx|morpheus_virtio_seed_take_rx|morpheus_virtio_seed_dma_write/,

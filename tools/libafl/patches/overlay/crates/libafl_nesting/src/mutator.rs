@@ -9,10 +9,11 @@ use libafl_bolts::{Named, nonzero, rands::Rand};
 
 use crate::{
     generator::ScenarioGenerator,
-    input::{DeviceOverride, ScenarioInput},
+    input::{ScenarioInput, MAX_STREAM_UNIT_BYTES},
 };
 
-/// Mutates device override values without changing the native guest flow.
+/// Schema-aware mutator:骨架 metadata(`present` 位图)不变,
+/// 只动 mmio/word_model 值、coherent 值、streaming 尺寸与字节。
 #[derive(Debug, Clone)]
 pub struct ScenarioMutator {
     generator: ScenarioGenerator,
@@ -30,92 +31,27 @@ impl ScenarioMutator {
         Self { generator }
     }
 
-    fn mutate_value<R: Rand>(rand: &mut R, value: &mut u64, width: u8) {
-        let byte = rand.below(nonzero!(8)) as usize;
-        if byte < usize::from(width.min(8)) {
-            *value ^= 1u64 << (byte * 8 + rand.below(nonzero!(8)) as usize);
+    fn random_index<R: Rand>(rand: &mut R, len: usize) -> Option<usize> {
+        if len == 0 {
+            None
         } else {
-            *value = rand.next() & value_mask(width);
+            Some(rand.below(unsafe { NonZeroUsize::new_unchecked(len) }))
         }
     }
 
-    fn mutate_override<R: Rand>(rand: &mut R, override_record: &mut DeviceOverride) {
-        match override_record {
-            DeviceOverride::MmioRead { width, value, .. } => {
-                Self::mutate_value(rand, value, *width);
-            }
-            DeviceOverride::QueueDma {
-                payload_len,
-                used_len,
-                ..
-            } => {
-                if rand.below(nonzero!(2)) == 0 {
-                    *payload_len = 1 + rand.below(nonzero!(4096)) as u32;
-                } else {
-                    *used_len = rand.below(nonzero!(8192)) as u32;
-                }
-            }
+    fn mutate_u32<R: Rand>(rand: &mut R, value: &mut u32) {
+        match rand.below(nonzero!(3)) {
+            0 => *value ^= random_mask_u32(rand),
+            1 => *value = value.rotate_left(1 + rand.below(nonzero!(31)) as u32),
+            _ => *value = value.wrapping_add(1 + rand.below(nonzero!(65536)) as u32),
         }
-    }
-
-    fn random_override_index<R: Rand>(rand: &mut R, length: usize) -> Option<usize> {
-        (length > 0).then(|| rand.below(NonZeroUsize::new(length).unwrap()))
-    }
-
-    fn same_override_site(left: &DeviceOverride, right: &DeviceOverride) -> bool {
-        match (left, right) {
-            (
-                DeviceOverride::MmioRead {
-                    address: left_address,
-                    width: left_width,
-                    ..
-                },
-                DeviceOverride::MmioRead {
-                    address: right_address,
-                    width: right_width,
-                    ..
-                },
-            ) => left_address == right_address && left_width == right_width,
-            (
-                DeviceOverride::QueueDma {
-                    operation: left_operation,
-                    direction: left_direction,
-                    path: left_path,
-                    sequence: left_sequence,
-                    queue: left_queue,
-                    ..
-                },
-                DeviceOverride::QueueDma {
-                    operation: right_operation,
-                    direction: right_direction,
-                    path: right_path,
-                    sequence: right_sequence,
-                    queue: right_queue,
-                    ..
-                },
-            ) => {
-                left_operation == right_operation
-                    && left_direction == right_direction
-                    && left_path == right_path
-                    && left_sequence == right_sequence
-                    && left_queue == right_queue
-            }
-            _ => false,
-        }
-    }
-}
-
-fn value_mask(width: u8) -> u64 {
-    if width >= 8 {
-        u64::MAX
-    } else {
-        (1u64 << (width * 8)) - 1
+        // 保持 0 值可选:不强制把 0 变成非 0。
     }
 }
 
 impl Named for ScenarioMutator {
     fn name(&self) -> &Cow<'static, str> {
-        static NAME: Cow<'static, str> = Cow::Borrowed("DeviceOverrideMutator");
+        static NAME: Cow<'static, str> = Cow::Borrowed("ScenarioMutator");
         &NAME
     }
 }
@@ -129,54 +65,147 @@ where
         state: &mut S,
         input: &mut ScenarioInput,
     ) -> Result<MutationResult, Error> {
-        if input.overrides().is_empty() {
-            let Some(grammar) = self.generator.grammar() else {
-                return Ok(MutationResult::Skipped);
-            };
+        if let Some(grammar) = self.generator.devilang_grammar() {
             let replacement = grammar
-                .generate_seed(state.rand_mut(), self.generator.max_overrides())
+                .generate_scenario(state.rand_mut(), self.generator.max_actions())
                 .map_err(Error::illegal_argument)?;
+            if replacement == *input {
+                return Ok(MutationResult::Skipped);
+            }
             *input = replacement;
             return Ok(MutationResult::Mutated);
         }
 
-        match state.rand_mut().below(nonzero!(4)) {
+        let op = state.rand_mut().below(nonzero!(9));
+        let mutated = match op {
             0 => {
-                let index = Self::random_override_index(state.rand_mut(), input.overrides().len())
-                    .expect("non-empty seed has an override");
-                Self::mutate_override(state.rand_mut(), &mut input.overrides_mut()[index]);
-                Ok(MutationResult::Mutated)
-            }
-            1 if input.overrides().len() < self.generator.max_overrides() => {
-                let Some(grammar) = self.generator.grammar() else {
-                    return Ok(MutationResult::Skipped);
-                };
-                let generated = grammar
-                    .generate_seed(state.rand_mut(), 1)
-                    .map_err(Error::illegal_argument)?;
-                if let Some(override_record) = generated.overrides().first() {
-                    if input
-                        .overrides()
-                        .iter()
-                        .any(|current| Self::same_override_site(current, override_record))
-                    {
-                        Ok(MutationResult::Skipped)
+                if let Some(index) =
+                    Self::random_index(state.rand_mut(), input.mmio.word_model.len())
+                {
+                    let model = &mut input.mmio.word_model[index];
+                    if let Some(visit) = Self::random_index(state.rand_mut(), model.values.len()) {
+                        Self::mutate_u32(state.rand_mut(), &mut model.values[visit]);
+                        true
                     } else {
-                        input.overrides_mut().push(override_record.clone());
-                        Ok(MutationResult::Mutated)
+                        false
                     }
                 } else {
-                    Ok(MutationResult::Skipped)
+                    false
                 }
             }
-            2 if input.overrides().len() > 1 => {
-                let index = Self::random_override_index(state.rand_mut(), input.overrides().len())
-                    .expect("non-empty seed has an override");
-                input.overrides_mut().remove(index);
-                Ok(MutationResult::Mutated)
+            1 => {
+                if let Some(index) =
+                    Self::random_index(state.rand_mut(), input.mmio.word_model.len())
+                {
+                    let model = &mut input.mmio.word_model[index];
+                    let value = random_u32(state.rand_mut());
+                    model.values.push(value);
+                    model.count += 1;
+                    true
+                } else {
+                    false
+                }
             }
-            _ => Ok(MutationResult::Skipped),
-        }
+            2 => {
+                if let Some(index) =
+                    Self::random_index(state.rand_mut(), input.mmio.word_model.len())
+                {
+                    let model = &mut input.mmio.word_model[index];
+                    if model.values.len() > 1 {
+                        model.values.pop();
+                        model.count -= 1;
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+            3 => {
+                if let Some(index) =
+                    Self::random_index(state.rand_mut(), input.dma.coherent.len())
+                {
+                    let alloc = &mut input.dma.coherent[index];
+                    if let Some(visit) = Self::random_index(state.rand_mut(), alloc.word_model.len())
+                    {
+                        Self::mutate_u32(state.rand_mut(), &mut alloc.word_model[visit]);
+                        true
+                    } else if rand_below_half(state.rand_mut()) {
+                        // 漂移 alloc 的写入地址
+                        alloc.addr = alloc.addr.wrapping_add(0x1000);
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+            4 => {
+                if let Some(index) =
+                    Self::random_index(state.rand_mut(), input.dma.streaming.len())
+                {
+                    let unit = &mut input.dma.streaming[index];
+                    let delta = 1 + state.rand_mut().below(nonzero!(64)) as i32;
+                    let direction = state.rand_mut().below(nonzero!(2)) == 0;
+                    if direction {
+                        unit.size = unit.size.saturating_add(delta as u32);
+                    } else {
+                        unit.size = unit.size.saturating_sub(delta as u32).max(1);
+                    }
+                    unit.size = unit.size.max(1).min(MAX_STREAM_UNIT_BYTES);
+                    unit.data.resize(usize::try_from(unit.size).unwrap_or(1), 0);
+                    true
+                } else {
+                    false
+                }
+            }
+            5 => {
+                if let Some(index) =
+                    Self::random_index(state.rand_mut(), input.dma.streaming.len())
+                {
+                    let unit = &mut input.dma.streaming[index];
+                    if let Some(byte) = Self::random_index(state.rand_mut(), unit.data.len()) {
+                        unit.data[byte] ^= 1 + state.rand_mut().below(nonzero!(255)) as u8;
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+            6 => {
+                let size = (1 + state.rand_mut().below(nonzero!(512))).max(1);
+                let data = (0..size).map(|_| state.rand_mut().below(nonzero!(256)) as u8).collect();
+                input.dma.streaming.push(crate::input::StreamUnit {
+                    addr: 0x4000_0000 + u64::from(state.rand_mut().below(nonzero!(4096)) as u32) * 0x1000,
+                    size: u32::try_from(size).unwrap_or(1),
+                    data,
+                });
+                true
+            }
+            7 => {
+                if input.dma.streaming.len() > 1 {
+                    input.dma.streaming.pop();
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => {
+                // 骨架(present 位图)不参与变异:没有全量重建的 op,
+                // 落到未覆盖的 op 编号一律跳过。
+                false
+            }
+        };
+
+        Ok(if mutated {
+            MutationResult::Mutated
+        } else {
+            MutationResult::Skipped
+        })
     }
 
     fn post_exec(
@@ -188,16 +217,33 @@ where
     }
 }
 
+fn random_mask_u32<R: Rand>(rand: &mut R) -> u32 {
+    let lo = (rand.below(nonzero!(65536)) & 0xffff) as u32;
+    let hi = (rand.below(nonzero!(65536)) & 0xffff) as u32;
+    (hi << 16) | lo
+}
+
+
+
+fn rand_below_half<R: Rand>(rand: &mut R) -> bool {
+    rand.below(nonzero!(2)) == 0
+}
+
+fn random_u32<R: Rand>(rand: &mut R) -> u32 {
+    let lo = (rand.below(nonzero!(65536)) & 0xffff) as u32;
+    let hi = (rand.below(nonzero!(65536)) & 0xffff) as u32;
+    (hi << 16) | lo
+}
+
 #[cfg(test)]
 mod tests {
-    use libafl::mutators::Mutator;
     use libafl::state::HasRand;
-    use libafl_bolts::{nonzero, rands::StdRand};
+    use libafl_bolts::rands::StdRand;
 
     use super::*;
-    use crate::devilang_grammar::DevilangGrammar;
+    use crate::input::{MmioSection, WordModel};
 
-    #[derive(Debug)]
+    #[derive(Clone, Debug)]
     struct TestState {
         rand: StdRand,
     }
@@ -214,48 +260,37 @@ mod tests {
         }
     }
 
-    fn grammar() -> DevilangGrammar {
-        DevilangGrammar::parse(
-            r#"
-op read_status {
-    mmio read_status {
-        direction = r;
-        address = 112;
-        size = 4;
-    }
-}
-machine m {
-    initial state_0
-    state state_0
-    transition state_0 -> state_0 on loop
-}
-"#,
-        )
-        .expect("grammar should parse")
-    }
-
     #[test]
-    fn mutation_keeps_seed_as_override_only() {
-        let generator = ScenarioGenerator::new(nonzero!(2)).with_grammar(grammar());
-        let mut mutator = ScenarioMutator::new(generator);
-        let mut state = TestState {
-            rand: StdRand::with_seed(3),
-        };
-        let mut input = ScenarioInput::new(vec![DeviceOverride::MmioRead {
-            address: 112,
-            width: 4,
-            value: 1,
-        }]);
+    fn mutator_keeps_skeleton_and_invariants() {
+        let mut state = TestState { rand: StdRand::with_seed(0) };
+        let present = (1 << 68) | 0b100111;
+        let mut input = ScenarioInput::new(
+            MmioSection {
+                present,
+                word_model: vec![
+                    WordModel { count: 2, values: vec![1, 2] },
+                    WordModel { count: 1, values: vec![2] },
+                    WordModel { count: 1, values: vec![1] },
+                    WordModel { count: 2, values: vec![3, 4] },
+                    WordModel { count: 3, values: vec![5, 6, 7] },
+                ],
+            },
+            crate::input::DmaSection {
+                streaming: vec![crate::input::StreamUnit {
+                    addr: 0x1000,
+                    size: 16,
+                    data: vec![1; 16],
+                }],
+                ..Default::default()
+            },
+        );
 
-        for _ in 0..32 {
-            let _ = mutator
-                .mutate(&mut state, &mut input)
-                .expect("mutation should work");
+        let mut mutator = ScenarioMutator::default();
+        for _ in 0..64 {
+            let _ = mutator.mutate(&mut state, &mut input);
             assert!(input.is_valid());
-            assert!(input.overrides().iter().all(|record| matches!(
-                record,
-                DeviceOverride::MmioRead { .. } | DeviceOverride::QueueDma { .. }
-            )));
+            // 骨架位图在变异循环里保持不变
+            assert_eq!(input.mmio.present, present);
         }
     }
 }

@@ -24,7 +24,20 @@ const L2_CONSOLE_PTY_PATH: &str = "/run/morpheus-libafl/l2-console.pty";
 pub static mut FUZZ_INPUT: [u8; INPUT_LEN] = [0; INPUT_LEN];
 
 fn run_window_ms() -> u64 {
-    5_000
+    // Keep the guest-side supervisor alive for the same window configured for
+    // the nested launcher.  The launcher passes this through fw_cfg; falling
+    // back to the evaluation default avoids killing L2 during boot when the
+    // environment is not propagated into the guest.
+    std::env::var("MORPHEUS_L2_RUN_WINDOW_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .or_else(|| {
+            fs::read_to_string("/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/l2-run-window-ms/raw")
+                .ok()
+                .and_then(|value| value.trim().parse::<u64>().ok())
+        })
+        .filter(|value| *value >= 1_000)
+        .unwrap_or(90_000)
 }
 
 fn prepare_runtime() {

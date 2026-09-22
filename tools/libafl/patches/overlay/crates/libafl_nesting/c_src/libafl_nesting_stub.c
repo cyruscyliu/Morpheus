@@ -1738,7 +1738,10 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
   }
   if (boot_ready) {
     append_marker("parent-boot-ready\n");
-    lqprintf("stub: l2 boot ready; ending run window\n");
+    /* Reaching the login prompt only means the L2 guest has booted.  Keep
+     * the process alive for the configured fuzzing window; terminating here
+     * kills the inner fuzzer before its first execution. */
+    lqprintf("stub: l2 boot ready; continuing run window\n");
   }
   append_marker("parent-before-wait\n");
   log_process_state(pid);
@@ -1761,11 +1764,7 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
       return *outcome == L2_OUTCOME_KERNEL_PANIC;
     }
     log_l2_input_evidence();
-    if (boot_ready) {
-      lqprintf("stub: l2 boot-ready window ended and was terminated\n");
-    } else {
-      lqprintf("stub: l2 timed out and was terminated\n");
-    }
+    lqprintf("stub: l2 run window ended and was terminated\n");
     return true;
   }
   if (wait_ret < 0) {

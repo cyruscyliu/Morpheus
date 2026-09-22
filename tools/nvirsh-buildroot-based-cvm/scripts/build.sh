@@ -670,6 +670,15 @@ set -- "$@" \
   -netdev "user,id=net0" \
   -device "${guest_virtio_net_device}"
 
+if [ "${guest_virtio_transport}" = "mmio" ]; then
+  # Aperture reference device set: the 4-queue tier expectation is three
+  # virtio-net queues plus one virtio-rng queue. Without the RNG device the
+  # instrumented kernel fires only the probe-time queue allocations and the
+  # fuzzing windows carry no data-plane aperture commits.
+  set -- "$@" \
+    -device "virtio-rng-device"
+fi
+
 if [ "${guest_l2_accel}" = "kvm" ]; then
   set -- "$@" -enable-kvm
 else
@@ -711,7 +720,7 @@ set -- "${guest_qemu}" "$@"
 printf 'qemu-cmd=' >> "${launch_marker}"
 printf '%s ' "$@" >> "${launch_marker}"
 printf '\n' >> "${launch_marker}"
-printf 'qemu-seed-consumer=mmio-queue-dma\n' >> "${launch_marker}"
+printf 'qemu-seed-consumer=mmio-window\n' >> "${launch_marker}"
 printf 'qemu-mmio-trace=seed\n' >> "${launch_marker}"
 printf 'qemu-exec-start\n' >> "${launch_marker}"
 set +e

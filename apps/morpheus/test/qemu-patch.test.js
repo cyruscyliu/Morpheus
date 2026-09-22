@@ -22,33 +22,33 @@ const seedPatch = fs.readFileSync(
     "patches-cvm",
     "qemu-cca",
     "upstream-v2",
-    "0002-libafl-virtio-seed-consumer.patch",
+    "0003-libafl-virtio-seed-consumer.patch",
   ),
   "utf8",
 );
 
-test("versioned qemu-cca patch consumes low-level MMIO and queue-DMA seed actions", () => {
+test("versioned qemu-cca seed consumer parses the data-unit wire", () => {
   assert.match(seedPatch, /MORPHEUS_SEED_ENV/);
-  assert.match(seedPatch, /morpheus_virtio_seed_read_mmio/);
-  assert.match(seedPatch, /morpheus_virtio_seed_read_features/);
-  assert.match(seedPatch, /morpheus_virtio_seed_read_config/);
-  assert.match(seedPatch, /morpheus_virtio_seed_queue_dma_complete/);
-  assert.match(seedPatch, /dma_memory_write\(vdev->dma_as/);
-  assert.match(seedPatch, /virtqueue_pop/);
-  assert.match(seedPatch, /virtqueue_fill/);
-  assert.match(seedPatch, /virtqueue_flush/);
-  assert.match(seedPatch, /virtio_notify/);
-  assert.match(seedPatch, /\(event >> 8\) & 0x3/);
-  const notifyHunk = seedPatch.slice(seedPatch.lastIndexOf("@@ -431,"));
+  assert.match(seedPatch, /MORPHEUS_SEED_PRESENT_SIZE 16U/);
+  assert.match(seedPatch, /MORPHEUS_SEED_WINDOW_SLOTS 128U/);
+  assert.match(seedPatch, /MORPHEUS_SEED_MAX_UNIT \(8192U\)/);
+  assert.match(seedPatch, /count_ones_u64/);
+  assert.match(seedPatch, /morpheus_virtio_seed_read_slot/);
+  // per-visit model: the v-th read returns values[v], past the model -> native
+  assert.match(seedPatch, /slot->visits >= slot->count/);
+  assert.match(seedPatch, /word = slot->values\[slot->visits\];/);
+  assert.match(seedPatch, /slot->visits \+= 1;/);
+  // the queue-notify forced-completion cheat does not exist: NOTIFY passes through
+  // all writes pass straight through under the data-unit interface
   assert.match(
-    notifyHunk,
-    /\+            if \(!morpheus_virtio_seed_queue_dma_complete\(vdev, vq_idx\)\)/,
+    seedPatch,
+    /The write hook drives the dma data section/,
   );
-  assert.ok(
-    notifyHunk.indexOf("+            if (!morpheus_virtio_seed_queue_dma_complete") <
-      notifyHunk.indexOf("+                virtio_queue_notify(vdev, vq_idx);"),
-    "the seed completion must run before the native queue handler",
-  );
+  assert.doesNotMatch(seedPatch, /morpheus_virtio_seed_queue_dma_complete/);
+  assert.doesNotMatch(seedPatch, /virtqueue_pop/);
+  assert.doesNotMatch(seedPatch, /virtqueue_fill/);
+  assert.doesNotMatch(seedPatch, /virtqueue_flush/);
+  assert.doesNotMatch(seedPatch, /dma_memory_write\(vdev->dma_as/);
   assert.doesNotMatch(
     seedPatch,
     /CVE-[0-9]+|virtio-net profile:|synthetic_rx_done|virtio_net_seed_rx|vhost-user-test-device/,

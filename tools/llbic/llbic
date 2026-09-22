@@ -2603,8 +2603,12 @@ EOF
     cat >> "${kernel_makefile}" <<EOF
 
 ${opaque_marker}
+# Guarded so a plain GCC build of the same tree keeps working: the flags
+# are clang-only and only matter for the analysis builds.
+ifdef CONFIG_CC_IS_CLANG
 KBUILD_USERCFLAGS += ${opaque_ptr_flags}
 KBUILD_CFLAGS += ${opaque_ptr_flags}
+endif
 EOF
   fi
 
@@ -2639,8 +2643,11 @@ EOF
     cat >> "${kernel_makefile}" <<EOF
 
 ${marker}
+# Guarded so a plain GCC build of the same tree keeps working.
+ifdef CONFIG_CC_IS_CLANG
 KBUILD_USERCFLAGS += ${lto_analysis_flags}
 KBUILD_CFLAGS += ${lto_analysis_flags}
+endif
 EOF
   fi
 

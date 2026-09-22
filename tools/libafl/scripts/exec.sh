@@ -672,107 +672,117 @@ function readU64LE(buffer, offset) {
   }
   return value;
 }
-function decodeDeviceOverrideSeed(input) {
+function countBitsU64(value) {
+  return BigInt.asUintN(64, value).toString(2).replace(/0/g, "").length;
+}
+function decodeScenarioUnits(input) {
   if (!input) return [];
   const events = [];
-  const recordSize = 40;
-  let cursor = 0;
-  let group = 0;
+  const schemaVersion = 2;
+  const source = "seed";
+  const fail = (detail, extra = {}) => {
+    events.push({ schemaVersion, source, kind: "seed-decode-error", detail, ...extra });
+  };
+  const hexWord = (value) => hexValue(BigInt.asUintN(64, value));
+
+  if (input.length < 16) {
+    fail("truncated-present-section");
+    return events;
+  }
+  const presentLo = readU64LE(input, 0);
+  const presentHi = readU64LE(input, 8);
+  let cursor = 16;
+
+  for (let slot = 0; slot < 128; slot += 1) {
+    const reg = slot < 64 ? presentLo : presentHi;
+    const shift = BigInt(slot < 64 ? slot : slot - 64);
+    if (!((reg >> shift) & 1n)) {
+      continue;
+    }
+    if (cursor + 4 > input.length) {
+      fail("truncated-word-model-count", { slot });
+      return events;
+    }
+    const count = input.readUInt32LE(cursor);
+    cursor += 4;
+    if (count === 0 || cursor + count * 4 > input.length) {
+      fail("invalid-word-model-count", { slot, count });
+      return events;
+    }
+    const values = [];
+    for (let visit = 0; visit < count; visit += 1) {
+      values.push(input.readUInt32LE(cursor));
+      cursor += 4;
+    }
+    events.push({
+      schemaVersion,
+      source,
+      kind: "seed-mmio-slot",
+      slot,
+      offset: hexValue(BigInt(slot * 4)),
+      count,
+      values: values.map((value) => hexValue(BigInt(value))),
+    });
+  }
+
+  if (cursor + 4 > input.length) {
+    fail("truncated-coherent-count");
+    return events;
+  }
+  const allocCount = input.readUInt32LE(cursor);
+  cursor += 4;
+  for (let index = 0; index < allocCount; index += 1) {
+    if (cursor + 16 > input.length) {
+      fail("truncated-coherent-present", { index });
+      return events;
+    }
+    const lo = readU64LE(input, cursor);
+    const hi = readU64LE(input, cursor + 8);
+    cursor += 16;
+    const pc = countBitsU64(lo) + countBitsU64(hi);
+    if (cursor + pc * 4 > input.length) {
+      fail("truncated-coherent-values", { index, count: pc });
+      return events;
+    }
+    const values = [];
+    for (let visit = 0; visit < pc; visit += 1) {
+      values.push(input.readUInt32LE(cursor));
+      cursor += 4;
+    }
+    events.push({
+      schemaVersion,
+      source,
+      kind: "seed-coherent-alloc",
+      index,
+      present: hexWord((hi << 64n) | lo),
+      count: pc,
+      values: values.map((value) => hexValue(BigInt(value))),
+    });
+  }
+
+  let unitIndex = 0;
   while (cursor < input.length) {
     if (cursor + 4 > input.length) {
-      events.push({
-        schemaVersion: 1,
-        source: "seed",
-        kind: "seed-decode-error",
-        detail: "truncated-group-header",
-      });
-      break;
+      fail("truncated-stream-size", { index: unitIndex });
+      return events;
     }
-    const actionCount = input.readUInt32LE(cursor);
+    const size = input.readUInt32LE(cursor);
     cursor += 4;
-    if (actionCount === 0 || cursor + actionCount * recordSize > input.length) {
-      events.push({
-        schemaVersion: 1,
-        source: "seed",
-        kind: "seed-decode-error",
-        group,
-        action_count: actionCount,
-        detail: "invalid-action-count",
-      });
-      break;
+    if (cursor + size > input.length) {
+      fail("truncated-stream-data", { index: unitIndex, size });
+      return events;
     }
-    for (let actionIndex = 0; actionIndex < actionCount; actionIndex += 1) {
-      const record = cursor;
-      const family = input[record];
-      const opcode = input[record + 1];
-      const flags = input.readUInt16LE(record + 2);
-      const reserved = input.readUInt32LE(record + 4);
-      const arg0 = readU64LE(input, record + 8);
-      const arg1 = readU64LE(input, record + 16);
-      const arg2 = readU64LE(input, record + 24);
-      const arg3 = readU64LE(input, record + 32);
-      const event = {
-        schemaVersion: 1,
-        source: "seed",
-        kind: "seed-override",
-        group,
-        action_index: actionIndex,
-        family,
-        opcode,
-        flags,
-        reserved,
-      };
-      if (family !== 2) {
-        event.kind = "seed-decode-error";
-        event.detail = "non-device-family";
-      } else if (reserved !== 0) {
-        event.kind = "seed-decode-error";
-        event.detail = "non-zero-reserved-bits";
-      } else if (arg0 === null || arg1 === null || arg2 === null || arg3 === null) {
-        event.kind = "seed-decode-error";
-        event.detail = "truncated-record";
-      } else if (opcode === 1 && flags === 1 &&
-                 arg1 >= 1n && arg1 <= 8n) {
-          event.kind = "seed-mmio-read-override";
-          event.address = hexValue(arg0);
-          event.width = Number(arg1);
-          event.value = hexValue(arg2);
-      } else if (opcode === 12 && flags === 0) {
-          const operation = Number(arg3 & 0xffn);
-          const direction = Number((arg3 >> 8n) & 0xffn);
-          const path = Number((arg3 >> 16n) & 0xffn);
-          if (operation === 4 && (direction === 2 || direction === 3) &&
-              path <= 1 && arg0 < 1024n && arg1 > 0n &&
-              arg1 <= 0x100000n && arg2 <= 0xffffffffn) {
-            event.kind = "seed-queue-dma";
-            event.queue = Number(arg0);
-            event.payload_length = Number(arg1);
-            event.used_length = Number(arg2);
-            event.event = hexValue(arg3);
-            event.operation_code = operation;
-            event.operation = dmaOperationName(operation);
-            event.direction = direction;
-            event.direction_name = dmaDirectionName(direction);
-            event.path = path;
-            event.sequence = Number((arg3 >> 24n) & 0xffffn);
-          } else {
-            event.kind = "seed-decode-error";
-            event.detail = "invalid-queue-dma-values";
-          }
-      } else {
-        event.kind = "seed-decode-error";
-        if (opcode === 12) {
-          event.detail = "queue-dma-flags-not-zero";
-        } else if (opcode === 1) {
-          event.detail = "mmio-override-flags-or-width-invalid";
-        } else {
-          event.detail = "unsupported-device-action";
-        }
-      }
-      events.push(event);
-      cursor += recordSize;
-    }
-    group += 1;
+    const data = input.slice(cursor, cursor + size);
+    cursor += size;
+    events.push({
+      schemaVersion,
+      source,
+      kind: "seed-stream-unit",
+      index: unitIndex,
+      size,
+      data: data.toString("hex"),
+    });
+    unitIndex += 1;
   }
   return events;
 }
@@ -982,7 +992,7 @@ function buildTraceReport(records) {
 function writeTraceReport(dir, records) {
   const trace = buildTraceReport(records);
   const input = recordBuffer(records.get("morpheus-qemu-input.bin"));
-  const seedEvents = decodeDeviceOverrideSeed(input);
+  const seedEvents = decodeScenarioUnits(input);
   const header = {
     schemaVersion: 1,
     source: "libafl-nesting",
@@ -992,7 +1002,9 @@ function writeTraceReport(dir, records) {
     mmio_trace_mode: trace.hasObservationEvents ? "instrumented" :
       trace.hasMmioEvents ? "stock" : "none",
     seed_override_events: seedEvents.filter((event) =>
-      event.kind === "seed-mmio-read-override" || event.kind === "seed-queue-dma"
+      event.kind === "seed-mmio-slot" ||
+      event.kind === "seed-coherent-alloc" ||
+      event.kind === "seed-stream-unit"
     ).length,
     profile_markers: trace.profileMarkers,
     input_size: input ? input.length : null,

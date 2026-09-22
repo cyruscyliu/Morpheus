@@ -1,6 +1,5 @@
 use core::time::Duration;
 use std::{
-    collections::HashSet,
     env, fs,
     num::NonZeroUsize,
     path::{Path, PathBuf},
@@ -36,7 +35,8 @@ use libafl_nesting::{
 };
 use libafl_qemu::{
     FastSnapshotManager, QemuSnapshotManager, SnapshotManager, emu::Emulator,
-    executor::QemuExecutor, modules::edges::StdEdgeCoverageModule,
+    executor::QemuExecutor,
+    modules::edges::StdEdgeCoverageModule,
 };
 use libafl_targets::{EDGES_MAP_DEFAULT_SIZE, MAX_EDGES_FOUND, edges_map_mut_ptr};
 
@@ -47,28 +47,6 @@ fn parse_env_u64(name: &str) -> Option<u64> {
 }
 
 const DEFAULT_MUTATIONAL_MAX_ITERATIONS: &str = "1";
-const DEFAULT_INITIAL_GENERATED_SEEDS: &str = "8";
-
-fn parse_initial_generated_seed_count(value: Option<&str>) -> Result<usize, String> {
-    let value = value.unwrap_or(DEFAULT_INITIAL_GENERATED_SEEDS);
-    let count = value.parse::<usize>().map_err(|_| {
-        format!(
-            "MORPHEUS_LIBAFL_INITIAL_GENERATED_SEEDS must be a non-negative integer, got {value:?}"
-        )
-    })?;
-    if count > 1024 {
-        return Err(format!(
-            "MORPHEUS_LIBAFL_INITIAL_GENERATED_SEEDS must be at most 1024, got {count}"
-        ));
-    }
-    Ok(count)
-}
-
-fn initial_generated_seed_count() -> usize {
-    let configured = env::var("MORPHEUS_LIBAFL_INITIAL_GENERATED_SEEDS").ok();
-    parse_initial_generated_seed_count(configured.as_deref())
-        .unwrap_or_else(|err| panic!("invalid grammar-generated corpus configuration: {err}"))
-}
 
 fn parse_mutational_max_iterations(value: Option<&str>) -> Result<NonZeroUsize, String> {
     let value = value.unwrap_or(DEFAULT_MUTATIONAL_MAX_ITERATIONS);
@@ -125,7 +103,9 @@ fn snapshot_manager_from_env() -> SnapshotManager {
             eprintln!("[libafl/qemu_nesting] snapshot manager=fast");
             SnapshotManager::Fast(FastSnapshotManager::default())
         }
-        value => panic!("unsupported MORPHEUS_LIBAFL_SNAPSHOT_MANAGER={value:?}; use fast or qemu"),
+        value => panic!(
+            "unsupported MORPHEUS_LIBAFL_SNAPSHOT_MANAGER={value:?}; use fast or qemu"
+        ),
     }
 }
 
@@ -152,11 +132,11 @@ fn scenario_generator_from_env() -> ScenarioGenerator {
         .unwrap_or_else(|err| panic!("failed to load grammar-backed scenario generator: {err}"));
     if let Some(grammar) = generator.grammar() {
         eprintln!(
-            "[libafl/qemu_nesting] device override grammar loaded: mmio-sites={} mmio-write-sites={} queue-dma-sites={} dma-sites={} dma-events={}",
-            grammar.mmio_read_sites().len(),
-            grammar.mmio_write_sites().len(),
-            grammar.queue_dma_sites().len(),
-            grammar.dma_sites().len(),
+            "[libafl/qemu_nesting] grammar loaded: phases={} machines={} transitions={} traces={} dma-events={}",
+            grammar.phase_machines().len(),
+            grammar.machines().len(),
+            grammar.transition_count(),
+            grammar.trace_count(),
             grammar.dma_event_count(),
         );
     }
@@ -182,34 +162,12 @@ fn input_paths_from_manifest(manifest: &str, kind: &str) -> Option<Vec<PathBuf>>
 }
 
 fn validate_input_size(input: ScenarioInput, path: &Path) -> Result<ScenarioInput, Error> {
-    if !input.is_valid() {
-        return Err(Error::illegal_argument(format!(
-            "input {} is not a valid device override seed",
-            path.display()
-        )));
-    }
     let encoded_len = encode_scenario(&input).len();
     if encoded_len > MAX_INPUT_SIZE {
         return Err(Error::illegal_argument(format!(
             "input {} encodes to {encoded_len} bytes, over the {MAX_INPUT_SIZE}-byte limit",
             path.display()
         )));
-    }
-    Ok(input)
-}
-
-fn validate_seed_against_grammar(
-    input: ScenarioInput,
-    path: &Path,
-    generator: &ScenarioGenerator,
-) -> Result<ScenarioInput, Error> {
-    if let Some(grammar) = generator.grammar() {
-        grammar.validate_seed(&input).map_err(|error| {
-            Error::illegal_argument(format!(
-                "seed {} is not compatible with the configured grammar: {error}",
-                path.display()
-            ))
-        })?;
     }
     Ok(input)
 }
@@ -251,8 +209,7 @@ pub fn fuzz() {
         .ok()
         .and_then(|value| value.parse::<u16>().ok())
         .unwrap_or(1341);
-    let cores_value = env::var("MORPHEUS_LIBAFL_CLIENTS").unwrap_or_else(|_| "1".to_string());
-    let cores = Cores::from_cmdline(&cores_value).unwrap();
+    let cores = Cores::from_cmdline("1").unwrap();
     let corpus_dir = env::var("MORPHEUS_LIBAFL_CORPUS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("./corpus"));
@@ -264,7 +221,7 @@ pub fn fuzz() {
         if !scenario_generator.grammar_enabled() {
             panic!("--check-devilang-grammar requires an enabled grammar");
         }
-        eprintln!("[libafl/qemu_nesting] Devilang grammar probe succeeded");
+        println!("[libafl/qemu_nesting] Devilang grammar probe succeeded");
         return;
     }
 
@@ -277,8 +234,8 @@ pub fn fuzz() {
                                    _state: &mut _,
                                    input: &ScenarioInput| unsafe {
                     eprintln!(
-                        "[libafl/qemu_nesting] execution start overrides={} encoded-bytes={}",
-                        input.total_overrides(),
+                        "[libafl/qemu_nesting] execution start actions={} encoded-bytes={}",
+                        input.total_actions(),
                         encode_scenario(input).len(),
                     );
                     let exit_kind = emulator.run(input).unwrap().try_into().unwrap();
@@ -336,39 +293,20 @@ pub fn fuzz() {
                         &mut objective,
                     )
                     .unwrap();
-                    let mut initial_corpus_inputs = HashSet::new();
                     if let Some(paths) = replay_inputs.as_ref() {
-                        let mut loaded = 0usize;
                         for path in paths {
                             eprintln!("[libafl/qemu_nesting] loading replay input {}", path.display());
-                            let input = match load_replay_input(path).and_then(|input| {
-                                validate_seed_against_grammar(input, path, &scenario_generator)
-                            }) {
-                                Ok(input) => input,
-                                Err(err) => {
-                                    eprintln!(
-                                        "skipping invalid replay input {}: {err:?}",
-                                        path.display()
-                                    );
-                                    continue;
-                                }
-                            };
+                            let input = load_replay_input(path).unwrap();
                             let mut testcase = Testcase::from(input);
                             *testcase.filename_mut() =
                                 Some(path.file_name().unwrap().to_string_lossy().to_string());
                             state.corpus_mut().add(testcase).unwrap();
-                            loaded += 1;
-                        }
-                        if loaded == 0 {
-                            panic!("no valid replay inputs resolved");
                         }
                     } else if let Some(paths) = initial_inputs.as_ref() {
                         let mut loaded = 0usize;
                         for path in paths {
                             eprintln!("[libafl/qemu_nesting] loading initial input {}", path.display());
-                            let input = match load_replay_input(path).and_then(|input| {
-                                validate_seed_against_grammar(input, path, &scenario_generator)
-                            }) {
+                            let input = match load_replay_input(path) {
                                 Ok(input) => input,
                                 Err(err) => {
                                     eprintln!(
@@ -381,34 +319,13 @@ pub fn fuzz() {
                             let mut testcase = Testcase::from(input);
                             *testcase.filename_mut() =
                                 Some(path.file_name().unwrap().to_string_lossy().to_string());
-                            initial_corpus_inputs.insert(testcase.input().clone().unwrap());
                             state.corpus_mut().add(testcase).unwrap();
                             loaded += 1;
                         }
                         if loaded == 0 {
                             panic!("no valid initial fuzz inputs loaded");
                         }
-                    }
-
-                    if replay_inputs.is_none() && scenario_generator.grammar_enabled() {
-                        let requested = initial_generated_seed_count();
-                        let mut generated = 0usize;
-                        let mut attempts = 0usize;
-                        let max_attempts = requested.saturating_mul(16).max(requested);
-                        while generated < requested && attempts < max_attempts {
-                            attempts += 1;
-                            let input = initial_scenario_generator.generate(&mut state).unwrap();
-                            if !initial_corpus_inputs.insert(input.clone()) {
-                                continue;
-                            }
-                            state.corpus_mut().add(input.into()).unwrap();
-                            generated += 1;
-                        }
-                        eprintln!(
-                            "[libafl/qemu_nesting] grammar-generated initial corpus entries={} requested={} attempts={}",
-                            generated, requested, attempts
-                        );
-                    } else if replay_inputs.is_none() && initial_inputs.is_none() {
+                    } else {
                         for _ in 0..4 {
                             let input = initial_scenario_generator.generate(&mut state).unwrap();
                             state.corpus_mut().add(input.into()).unwrap();
@@ -449,7 +366,7 @@ pub fn fuzz() {
                         fuzzer
                             .evaluate_input(&mut state, &mut executor, &mut $mgr, &input)
                             .unwrap_or_else(|err| {
-                                eprintln!("failed replay: {err:?}");
+                                println!("failed replay: {err:?}");
                                 process::exit(1);
                             });
                     }
@@ -457,7 +374,7 @@ pub fn fuzz() {
                     // count explicitly instead of leaving the broker with its
                     // initial zero snapshot.
                     report_progress(&mut $mgr, &mut state).unwrap_or_else(|err| {
-                        eprintln!("failed replay progress report: {err:?}");
+                        println!("failed replay progress report: {err:?}");
                         process::exit(1);
                     });
                 } else {
@@ -481,7 +398,7 @@ pub fn fuzz() {
                             fuzzer
                                 .evaluate_input(&mut state, &mut executor, &mut $mgr, &input)
                                 .unwrap_or_else(|err| {
-                                    eprintln!("failed initial input: {err:?}");
+                                    println!("failed initial input: {err:?}");
                                     process::exit(1);
                                 });
                         }
@@ -489,7 +406,7 @@ pub fn fuzz() {
                         // regular fuzz loop.  Report it now so a slow first
                         // mutation cannot hide completed executions.
                         report_progress(&mut $mgr, &mut state).unwrap_or_else(|err| {
-                            eprintln!("failed initial progress report: {err:?}");
+                            println!("failed initial progress report: {err:?}");
                             process::exit(1);
                         });
                     }
@@ -530,7 +447,7 @@ pub fn fuzz() {
         }};
     }
 
-    let monitor = MultiMonitor::new(|s| eprintln!("{s}"));
+    let monitor = MultiMonitor::new(|s| println!("{s}"));
     if replay_inputs.is_some() {
         let mut mgr = SimpleEventManager::new(monitor);
         run_client_body!(None, mgr).unwrap_or_else(|err| panic!("Failed to run replay: {err:?}"));
@@ -553,32 +470,14 @@ pub fn fuzz() {
         .launch()
     {
         Ok(()) => (),
-        Err(Error::ShuttingDown) => eprintln!("Fuzzing stopped by user. Good bye."),
+        Err(Error::ShuttingDown) => println!("Fuzzing stopped by user. Good bye."),
         Err(err) => panic!("Failed to run launcher: {err:?}"),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        DEFAULT_INITIAL_GENERATED_SEEDS, parse_initial_generated_seed_count,
-        parse_mutational_max_iterations,
-    };
-
-    #[test]
-    fn grammar_generated_corpus_has_a_bounded_default() {
-        assert_eq!(
-            parse_initial_generated_seed_count(None).unwrap(),
-            DEFAULT_INITIAL_GENERATED_SEEDS.parse::<usize>().unwrap()
-        );
-        assert_eq!(parse_initial_generated_seed_count(Some("0")).unwrap(), 0);
-        assert!(parse_initial_generated_seed_count(Some("1025")).is_err());
-    }
-
-    #[test]
-    fn grammar_generated_corpus_rejects_invalid_configuration() {
-        assert!(parse_initial_generated_seed_count(Some("many")).is_err());
-    }
+    use super::parse_mutational_max_iterations;
 
     #[test]
     fn slow_target_defaults_to_one_mutation_per_iteration() {

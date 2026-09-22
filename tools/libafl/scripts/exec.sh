@@ -732,6 +732,12 @@ function decodeScenarioUnits(input) {
   const allocCount = input.readUInt32LE(cursor);
   cursor += 4;
   for (let index = 0; index < allocCount; index += 1) {
+    if (cursor + 8 > input.length) {
+      fail("truncated-coherent-index", { index });
+      return events;
+    }
+    const tableIndex = readU64LE(input, cursor);
+    cursor += 8;
     if (cursor + 16 > input.length) {
       fail("truncated-coherent-present", { index });
       return events;
@@ -754,6 +760,7 @@ function decodeScenarioUnits(input) {
       source,
       kind: "seed-coherent-alloc",
       index,
+      tableIndex: hexValue(tableIndex),
       present: hexWord((hi << 64n) | lo),
       count: pc,
       values: values.map((value) => hexValue(BigInt(value))),
@@ -762,25 +769,33 @@ function decodeScenarioUnits(input) {
 
   let unitIndex = 0;
   while (cursor < input.length) {
-    if (cursor + 4 > input.length) {
-      fail("truncated-stream-size", { index: unitIndex });
+    if (cursor + 24 > input.length) {
+      fail("truncated-stream-unit", { index: unitIndex });
       return events;
     }
-    const size = input.readUInt32LE(cursor);
-    cursor += 4;
-    if (cursor + size > input.length) {
-      fail("truncated-stream-data", { index: unitIndex, size });
+    const tableIndex = readU64LE(input, cursor);
+    cursor += 8;
+    const lo = readU64LE(input, cursor);
+    const hi = readU64LE(input, cursor + 8);
+    cursor += 16;
+    const pc = countBitsU64(lo) + countBitsU64(hi);
+    if (cursor + pc * 4 > input.length) {
+      fail("truncated-stream-values", { index: unitIndex, count: pc });
       return events;
     }
-    const data = input.slice(cursor, cursor + size);
-    cursor += size;
+    const values = [];
+    for (let visit = 0; visit < pc; visit += 1) {
+      values.push(input.readUInt32LE(cursor));
+      cursor += 4;
+    }
     events.push({
       schemaVersion,
       source,
       kind: "seed-stream-unit",
       index: unitIndex,
-      size,
-      data: data.toString("hex"),
+      tableIndex: hexValue(tableIndex),
+      count: pc,
+      values: values.map((value) => hexValue(BigInt(value))),
     });
     unitIndex += 1;
   }

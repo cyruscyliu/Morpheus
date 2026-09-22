@@ -146,13 +146,22 @@ fn terminate_child_gracefully(child: &mut Child) -> bool {
         .is_some_and(|status| status.success());
 
     if !term {
-        return false;
+        // The launcher may already have completed the run window and closed
+        // its shell before `kill` reaches it.  Fall through to the normal
+        // reap path instead of turning that benign race into a crash result.
+        let _ = child.kill();
+        return child.wait().is_ok();
     }
 
     for _ in 0..10 {
         thread::sleep(Duration::from_millis(100));
         match child.try_wait() {
-            Ok(Some(status)) => return status.success(),
+            Ok(Some(_status)) => {
+                // The supervisor deliberately terminates the launcher at the
+                // end of the configured run window.  A SIGTERM exit status is
+                // therefore a normal completion, not a target crash.
+                return true;
+            }
             Ok(None) => continue,
             Err(_) => return false,
         }

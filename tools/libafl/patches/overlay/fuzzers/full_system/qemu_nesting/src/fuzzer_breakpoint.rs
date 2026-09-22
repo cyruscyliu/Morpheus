@@ -222,7 +222,24 @@ pub fn fuzz() {
                         input.total_actions(),
                         encode_scenario(input).len(),
                     );
-                    let exit_kind = emulator.run(input).unwrap().try_into().unwrap();
+                    let emulator_exit = match emulator.run(input) {
+                        Ok(exit) => exit,
+                        Err(err) => {
+                            eprintln!(
+                                "[libafl/qemu_nesting] outer QEMU execution failed: {err:?}"
+                            );
+                            process::exit(1);
+                        }
+                    };
+                    let exit_kind = match emulator_exit.try_into() {
+                        Ok(exit_kind) => exit_kind,
+                        Err(err) => {
+                            eprintln!(
+                                "[libafl/qemu_nesting] invalid outer QEMU exit result: {err:?}"
+                            );
+                            process::exit(1);
+                        }
+                    };
                     eprintln!("[libafl/qemu_nesting] execution complete exit={exit_kind:?}");
                     exit_kind
                 };

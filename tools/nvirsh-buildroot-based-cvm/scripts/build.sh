@@ -630,6 +630,9 @@ printf 'virtio_mmio_read\n' >> "${guest_qemu_trace_events}"
 printf 'virtio_mmio_write_offset\n' >> "${guest_qemu_trace_events}"
 printf 'virtio_mmio_seed_read\n' >> "${guest_qemu_trace_events}"
 printf 'virtio_mmio_seed_dma\n' >> "${guest_qemu_trace_events}"
+printf 'virtio_mmio_dma_model\n' >> "${guest_qemu_trace_events}"
+printf 'virtio_mmio_dma_table\n' >> "${guest_qemu_trace_events}"
+printf 'virtio_mmio_dma_table_reset\n' >> "${guest_qemu_trace_events}"
 
 set -- \
   -L "${guest_qemu_data_dir}"

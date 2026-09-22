@@ -205,10 +205,10 @@ mod tests {
                     WordModel { count: 2, values: vec![0x7472_6976, 0] },
                     WordModel { count: 1, values: vec![2] },
                     WordModel { count: 1, values: vec![1] },
-                    WordModel { count: 2, values: vec![0x0200_0103, 0] },
+                    WordModel { count: 2, values: vec![0x0102_0304, 0] },
                     WordModel {
                         count: 3,
-                        values: vec![0x0000_ff00, 0, 0],
+                        values: vec![0x0000_ab00, 0, 0],
                     },
                 ],
             },
@@ -218,7 +218,7 @@ mod tests {
                     CoherentAlloc { addr: 0x3100, present: 0b1, word_model: vec![7] },
                 ],
                 streaming: vec![
-                    StreamUnit { addr: 0x1000, size: 70, data: vec![0xAA; 70] },
+                    StreamUnit { addr: 0x1000, size: 128, data: vec![0xAA; 128] },
                     StreamUnit { addr: 0x2000, size: 28, data: vec![0x55; 28] },
                 ],
             },

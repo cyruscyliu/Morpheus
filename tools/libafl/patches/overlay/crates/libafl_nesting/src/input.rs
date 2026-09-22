@@ -186,16 +186,16 @@ mod tests {
                     WordModel { count: 2, values: vec![0x7472_6976, 0xdead_beef] },
                     WordModel { count: 1, values: vec![2] },
                     WordModel { count: 1, values: vec![1] },
-                    WordModel { count: 2, values: vec![0x0200_0103, 0] },
-                    WordModel { count: 3, values: vec![0x0000_ff00, 0, 0] },
+                    WordModel { count: 2, values: vec![0x0102_0304, 0] },
+                    WordModel { count: 3, values: vec![0x0000_ab00, 0, 0] },
                 ],
             },
             DmaSection {
                 coherent: vec![CoherentAlloc { addr: 0x3000, present: 0b111, word_model: vec![1, 0, 1] }],
                 streaming: vec![StreamUnit {
                     addr: 0x1000,
-                    size: 70,
-                    data: vec![0xAA; 70],
+                    size: 128,
+                    data: vec![0xAA; 128],
                 }],
             },
         );
@@ -214,7 +214,7 @@ mod tests {
         assert!(!bytes.is_empty());
         assert_eq!(decoded, input);
         assert!(decoded.is_valid());
-        assert_eq!(decoded.total_actions(), 9 + 3 + 70);
+        assert_eq!(decoded.total_actions(), 9 + 3 + 128);
     }
 
     #[test]

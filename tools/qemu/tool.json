@@ -138,6 +138,13 @@
           "append"
         ]
       },
+      "memory": {
+        "aliases": [
+          "memory",
+          "memory-mb",
+          "memoryMb"
+        ]
+      },
       "ssh-port": {
         "aliases": [
           "ssh-port",
@@ -188,6 +195,12 @@
         "aliases": [
           "trace-event",
           "traceEvent"
+        ],
+        "repeatable": true
+      },
+      "env": {
+        "aliases": [
+          "env"
         ],
         "repeatable": true
       },
@@ -380,6 +393,7 @@
             "initrd",
             "run-dir",
             "append",
+            "memory",
             "ssh-port",
             "boot-timeout-seconds",
             "shutdown-timeout-seconds",
@@ -390,7 +404,8 @@
             "copy-to-guest",
             "copy-from-guest",
             "qemu-arg",
-            "trace-event"
+            "trace-event",
+            "env"
           ],
           "script": {
             "path": "scripts/exec.sh",

@@ -6,7 +6,10 @@ kernel_path="${MORPHEUS_QEMU_KERNEL:?}"
 initrd_path="${MORPHEUS_QEMU_INITRD:?}"
 run_dir="${MORPHEUS_QEMU_RUN_DIR:?}"
 append="${MORPHEUS_QEMU_APPEND:-console=ttyAMA0 rdinit=/bin/sh}"
+memory="${MORPHEUS_QEMU_MEMORY:-1024}"
 qemu_arg_file="${MORPHEUS_QEMU_QEMU_ARG_FILE:-}"
+env_file="${MORPHEUS_QEMU_ENV_FILE:-}"
+env_raw="${MORPHEUS_QEMU_ENV:-}"
 trace_event_file="${MORPHEUS_QEMU_TRACE_EVENTS_FILE:-${MORPHEUS_QEMU_TRACE_EVENT_FILE:-}}"
 workload_script="${MORPHEUS_QEMU_WORKLOAD_SCRIPT:-}"
 ssh_port="${MORPHEUS_QEMU_SSH_PORT:-22022}"
@@ -44,9 +47,15 @@ if [ -n "${trace_event_file}" ] && [[ "${trace_event_file}" != /* ]]; then
   trace_event_file="${repo_root}/${trace_event_file#./}"
 fi
 
+expand_runtime_template() {
+  local value="$1"
+  printf '%s\n' "${value//\{run_dir\}/${run_dir}}"
+}
+
 declare -a copy_to_guest_entries=()
 declare -a copy_from_guest_entries=()
 declare -a downloaded_files=()
+declare -a qemu_env_entries=()
 
 read_repeatable_entries() {
   local file_path="$1"
@@ -103,6 +112,28 @@ parse_copy_mapping() {
 
 read_repeatable_entries "${copy_to_guest_file}" "${copy_to_guest_raw}" copy_to_guest_entries
 read_repeatable_entries "${copy_from_guest_file}" "${copy_from_guest_raw}" copy_from_guest_entries
+read_repeatable_entries "${env_file}" "${env_raw}" qemu_env_entries
+
+validate_env_entry() {
+  local entry="$1"
+  local key="${entry%%=*}"
+
+  if [ "${key}" = "${entry}" ] || [ -z "${key}" ]; then
+    echo "invalid qemu env entry, expected KEY=VALUE: ${entry}" >&2
+    exit 1
+  fi
+  if ! [[ "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+    echo "invalid qemu env key: ${key}" >&2
+    exit 1
+  fi
+}
+
+for entry in "${qemu_env_entries[@]}"; do
+  validate_env_entry "${entry}"
+done
+for idx in "${!qemu_env_entries[@]}"; do
+  qemu_env_entries[$idx]="$(expand_runtime_template "${qemu_env_entries[$idx]}")"
+done
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -119,7 +150,7 @@ fi
 args=(
   "-machine" "virt,virtualization=on,gic-version=3"
   "-cpu" "cortex-a57"
-  "-m" "1024"
+  "-m" "${memory}"
   "-nographic"
   "-kernel" "${kernel_path}"
   "-initrd" "${initrd_path}"
@@ -132,11 +163,25 @@ fi
 
 if [ -n "${qemu_arg_file}" ] && [ -s "${qemu_arg_file}" ]; then
   mapfile -t extra_args < "${qemu_arg_file}"
+  for idx in "${!extra_args[@]}"; do
+    extra_args[$idx]="$(expand_runtime_template "${extra_args[$idx]}")"
+  done
   args+=("${extra_args[@]}")
 fi
 
+run_qemu() {
+  env "${qemu_env_entries[@]}" "${qemu_path}" "${args[@]}"
+}
+
+write_qemu_command_file() {
+  printf 'env ' > "${command_file}"
+  printf '%q ' "${qemu_env_entries[@]}" "${qemu_path}" "${args[@]}" >> "${command_file}"
+  printf '\n' >> "${command_file}"
+}
+
 if [ "${use_guest_workload}" = false ] && [ "${detach}" = "true" ]; then
-  "${qemu_path}" "${args[@]}" < /dev/null &
+  write_qemu_command_file
+  run_qemu < /dev/null &
   pid="$!"
   cat > "${manifest_file}" <<EOF
 {"schemaVersion":1,"tool":"qemu","command":"exec","status":"running","run_dir":"${run_dir}","pid":${pid},"detached":true}
@@ -149,7 +194,7 @@ fi
 
 if [ "${use_guest_workload}" = false ] && [ -z "${trace_event_file}" ]; then
   exit_code=0
-  "${qemu_path}" "${args[@]}" || exit_code="$?"
+  run_qemu || exit_code="$?"
 
   if [ "${exit_code}" != "0" ]; then
     exit "${exit_code}"
@@ -165,11 +210,10 @@ EOF
 fi
 
 if [ "${use_guest_workload}" = false ]; then
-  printf '%q ' "${qemu_path}" "${args[@]}" > "${command_file}"
-  printf '\n' >> "${command_file}"
+  write_qemu_command_file
 
   exit_code=0
-  "${qemu_path}" "${args[@]}" >"${stdout_log}" 2>"${stderr_log}" || exit_code="$?"
+  run_qemu >"${stdout_log}" 2>"${stderr_log}" || exit_code="$?"
 
   if [ "${exit_code}" != "0" ]; then
     exit "${exit_code}"
@@ -292,8 +336,7 @@ scp_pass_base=(
 )
 ssh_auth_mode=""
 
-printf '%q ' "${qemu_path}" "${args[@]}" > "${command_file}"
-printf '\n' >> "${command_file}"
+write_qemu_command_file
 
 cleanup() {
   local status="$?"
@@ -313,7 +356,7 @@ trap cleanup EXIT
 : > "${stdout_log}"
 : > "${stderr_log}"
 : > "${workload_log}"
-"${qemu_path}" "${args[@]}" >"${stdout_log}" 2>"${stderr_log}" &
+run_qemu >"${stdout_log}" 2>"${stderr_log}" &
 qemu_pid="$!"
 echo "${qemu_pid}" > "${run_dir}/qemu.pid"
 

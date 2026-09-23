@@ -437,11 +437,10 @@ function readOptionalText(filePath) {
   }
 }
 
-function defaultScriptedCommandCwd(workspace, tool, command) {
-  if (!workspace) {
-    return process.cwd();
-  }
-  return path.join(workspace, "tmp", String(tool || "tool"), String(command || "command"));
+function defaultScriptedCommandCwd(tool, command) {
+  const safeTool = String(tool || "tool").replace(/[^a-zA-Z0-9._-]+/g, "-");
+  const safeCommand = String(command || "command").replace(/[^a-zA-Z0-9._-]+/g, "-");
+  return path.join(os.tmpdir(), "morpheus", safeTool, safeCommand);
 }
 
 function shouldUseEphemeralScriptRuntime(options, spec, childCwd) {
@@ -708,7 +707,7 @@ async function runScriptedToolStreaming(descriptor, args, options = {}) {
     || (
       spec.script && spec.script.cwdTemplate
         ? renderScriptTemplate(spec.script.cwdTemplate, rawValues)
-        : defaultScriptedCommandCwd(options.workspace || null, tool, command)
+        : defaultScriptedCommandCwd(tool, command)
     );
   const runtimeDir = shouldUseEphemeralScriptRuntime(options, spec, childCwd)
     ? createEphemeralScriptRuntimeDir(tool, command)

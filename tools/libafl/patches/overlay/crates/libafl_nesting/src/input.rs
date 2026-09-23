@@ -8,16 +8,16 @@ use crate::encoding::{decode_scenario, encode_scenario};
 /// Number of virtio-mmio window slots: 0x200 / 4.
 pub const MMIO_WINDOW_SLOTS: usize = 128;
 
-/// Maximum set-slot count for one streaming unit, bounded by the bitmap width.
-/// One set slot is one 32-bit word, so one unit can cover up to 512 bytes.
-pub const MAX_STREAM_UNIT_SLOTS: u32 = 128;
+/// Size of the virtio-mmio window in bytes; mmio model offsets stay inside it.
+pub const MMIO_WINDOW_BYTES: u32 = (MMIO_WINDOW_SLOTS * 4) as u32;
 
 /// One seed payload sent to the consumer.
 ///
-/// Boundary rule: skeleton metadata (`present` bitmaps) is fixed when the
-/// grammar constructs the seed and is not mutated. Values and counts are the
-/// LibAFL mutation surface. Any access beyond the modelled seed data falls
-/// through to native behavior.
+/// Boundary rule: skeleton metadata (the modelled slot set, i.e. the
+/// `offset` keys of every `WordModel`) is fixed when the grammar
+/// constructs the seed and is not mutated. Visit values and counts are
+/// the LibAFL mutation surface. Any access beyond the modelled seed data
+/// falls through to native behavior.
 ///
 /// The consumer has only two surfaces: captured MMIO (`mmio.*` read tables)
 /// and DMA telemetry commits (`dma.*`).
@@ -31,23 +31,26 @@ pub struct ScenarioInput {
 
 /// virtio-mmio window plane.
 ///
-/// Slots are split by 4-byte words: bit k maps to slot k at offset 4k. A
-/// driver may read the same slot repeatedly, so every modelled slot carries
-/// a value sequence consumed by visit order.
+/// Every model is one explicit 32-bit window slot: `offset` names the slot
+/// byte offset. A driver may read the same slot repeatedly, so each model
+/// carries a visit-ordered value sequence.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MmioSection {
-    /// Skeleton bitmap: bit k means slot k is modelled. Mutation does not edit it.
-    pub present: u128,
-    /// len == popcount(present), in ascending slot order.
-    pub word_model: Vec<WordModel>,
+    /// One model per modelled window slot, in ascending offset order.
+    pub word_models: Vec<WordModel>,
 }
 
-/// Access model for one slot: read visit v returns values[v]; v >= count is native.
+/// Access model for one 32-bit word slot: visit v returns values[v]; past
+/// the values the slot behaves natively.
+///
+/// The byte offset is explicit: mmio models live inside the 0x200 window,
+/// dma models live inside the claimed or mapped region at any depth (a
+/// used-ring entry at offset 0x1000 is reachable).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct WordModel {
-    /// Number of values, and therefore the consumption limit for this slot.
-    pub count: u32,
-    /// Slot values in visit order; guest reads use offset % 4 to select bytes.
+    /// Byte offset of the modelled 32-bit slot, 4-byte aligned.
+    pub offset: u32,
+    /// Slot values in visit order; len >= 1. Guest bytes use offset % 4.
     pub values: Vec<u32>,
 }
 
@@ -56,10 +59,11 @@ pub struct WordModel {
 pub struct DmaSection {
     /// Coherent surface: each entry models one allocation. `addr` selects a
     /// runtime coherent-allocation table entry; guest accesses into the remap
-    /// consume `word_model` by visit order.
+    /// consume the model at the accessed word's offset by visit order.
     pub coherent: Vec<CoherentAlloc>,
     /// Streaming surface: each entry models one MAP. `addr` selects a runtime
-    /// streaming-MAP table entry; `present` selects 32-bit slots at offset 4k.
+    /// streaming-MAP table entry; each modelled word is filled once at the
+    /// mapping event.
     pub streaming: Vec<StreamUnit>,
 }
 
@@ -68,31 +72,28 @@ pub struct DmaSection {
 pub struct CoherentAlloc {
     /// Zero-based index into the monitor's runtime coherent-allocation table.
     pub addr: u64,
-    /// Skeleton bitmap: bit k means access visit k is modelled. Mutation does not edit it.
-    pub present: u128,
-    /// len == popcount(present), in access order; visit k injects values[k].
-    pub word_model: Vec<u32>,
+    /// One model per accessed word, in ascending offset order.
+    pub word_models: Vec<WordModel>,
 }
 
-/// Streaming unit, represented sparsely by a bitmap of 32-bit slots.
+/// Streaming unit: each entry fills one mapped buffer once.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct StreamUnit {
     /// Zero-based index into the monitor's runtime streaming-MAP table.
     pub addr: u64,
-    /// Sparse bitmap: bit k maps to the 32-bit slot at region offset 4k. Mutation does not edit it.
-    pub present: u128,
-    /// One u32 per set slot, in ascending set-bit order.
-    pub values: Vec<u32>,
+    /// One model per filled word, in ascending offset order.
+    pub word_models: Vec<WordModel>,
 }
 
 impl WordModel {
-    /// Build the returned value for (offset, visit); offset % 4 selects the byte position.
+    /// Build the returned value for a partial access of `size` bytes; the
+    /// byte position is `word_offset % 4` inside the modelled slot word.
     #[must_use]
-    pub fn answer(&self, offset: usize, visit: usize) -> Option<u32> {
-        if visit >= self.values.len() {
+    pub fn answer(&self, word_offset: usize, visit: usize) -> Option<u32> {
+        if self.values.is_empty() || visit >= self.values.len() {
             return None;
         }
-        let shift = u32::try_from(offset % 4).ok()? * 8;
+        let shift = u32::try_from(word_offset % 4).ok()? * 8;
         Some(self.values[visit].rotate_right(shift))
     }
 }
@@ -106,96 +107,111 @@ impl ScenarioInput {
     /// Total modelled units: MMIO slots + coherent allocs + streaming entries.
     #[must_use]
     pub fn total_units(&self) -> usize {
-        self.mmio.word_model.len() + self.dma.coherent.len() + self.dma.streaming.len()
+        self.mmio.word_models.len() + self.dma.coherent.len() + self.dma.streaming.len()
     }
 
-    /// Total action units for mutation/feedback: visit values plus set-slot words.
+    /// Total action units for mutation/feedback: planned visit words.
     #[must_use]
     pub fn total_actions(&self) -> usize {
-        let mmio: usize = self.mmio.word_model.iter().map(|w| w.values.len()).sum();
+        let mmio: usize = self.mmio.word_models.iter().map(|w| w.values.len()).sum();
         let coherent: usize = self
             .dma
             .coherent
             .iter()
-            .map(|c| c.word_model.len())
+            .map(|alloc| {
+                alloc
+                    .word_models
+                    .iter()
+                    .map(|w| w.values.len())
+                    .sum::<usize>()
+            })
             .sum();
         let streaming: usize = self
             .dma
             .streaming
             .iter()
-            .map(|s| s.present.count_ones() as usize)
+            .map(|unit| {
+                unit.word_models
+                    .iter()
+                    .map(|w| w.values.len())
+                    .sum::<usize>()
+            })
             .sum();
         mmio + coherent + streaming
     }
 
     /// Structural invariants: violating any of these makes the seed invalid.
-    /// Modelled slots/entries must also be non-empty (`count >= 1` / `present != 0`).
+    /// Offsets are 4-byte aligned, unique and ascending within their plane;
+    /// mmio offsets stay inside the window; every model carries values.
     #[must_use]
     pub fn is_valid(&self) -> bool {
-        if self.mmio.word_model.len() != self.mmio.present.count_ones() as usize {
+        if !offsets_ascending_unique(&self.mmio.word_models) {
             return false;
         }
-        if self.mmio.word_model.iter().any(|w| {
-            w.count == 0 || w.values.len() != w.count as usize
-                || w.count as usize > MMIO_WINDOW_SLOTS
+        if self.mmio.word_models.iter().any(|model| {
+            model.offset >= MMIO_WINDOW_BYTES || model.values.is_empty()
+                || model.values.len() > MMIO_WINDOW_SLOTS
         }) {
             return false;
         }
-        if self.dma.coherent.len() > MMIO_WINDOW_SLOTS {
-            return false;
+        for alloc in &self.dma.coherent {
+            if !offsets_ascending_unique(&alloc.word_models)
+                || alloc.word_models.iter().any(|model| model.values.is_empty())
+            {
+                return false;
+            }
         }
-        if self.dma.coherent.iter().any(|c| {
-            c.present == 0 || c.word_model.len() != c.present.count_ones() as usize
-        }) {
-            return false;
-        }
-        if self
-            .dma
-            .streaming
-            .iter()
-            .any(|s| s.values.len() != s.present.count_ones() as usize)
-        {
-            return false;
+        for unit in &self.dma.streaming {
+            if !offsets_ascending_unique(&unit.word_models)
+                || unit.word_models.iter().any(|model| model.values.is_empty())
+            {
+                return false;
+            }
         }
         true
     }
+}
+
+fn offsets_ascending_unique(models: &[WordModel]) -> bool {
+    models.windows(2).all(|pair| pair[0].offset < pair[1].offset)
+        && models.iter().all(|model| model.offset % 4 == 0)
 }
 
 /// Render a decoded scenario in a stable human-readable form.
 #[must_use]
 pub fn format_scenario(scenario: &ScenarioInput) -> String {
     let mut rendered = String::new();
-    let _ = writeln!(rendered, "mmio present=0x{:x}", scenario.mmio.present);
-    for (index, model) in scenario.mmio.word_model.iter().enumerate() {
-        let _ = write!(rendered, "  mmio[{index}] count={} values=", model.count);
-        for (position, value) in model.values.iter().enumerate() {
-            let _ = write!(rendered, "{}0x{value:x}", if position == 0 { "" } else { "," });
-        }
-        let _ = writeln!(rendered);
+    let _ = writeln!(
+        rendered,
+        "mmio slots={}",
+        scenario.mmio.word_models.len()
+    );
+    for model in &scenario.mmio.word_models {
+        let _ = write!(rendered, "  mmio offset=0x{:x} values=", model.offset);
+        write_values(&mut rendered, &model.values);
     }
-    for (index, alloc) in scenario.dma.coherent.iter().enumerate() {
-        let _ = write!(
-            rendered,
-            "  coherent[{index}] addr={} present=0x{:x} word_model=",
-            alloc.addr, alloc.present
-        );
-        for (position, value) in alloc.word_model.iter().enumerate() {
-            let _ = write!(rendered, "{}0x{value:x}", if position == 0 { "" } else { "," });
+    for alloc in &scenario.dma.coherent {
+        let _ = writeln!(rendered, "  coherent addr={} slots={}", alloc.addr, alloc.word_models.len());
+        for model in &alloc.word_models {
+            let _ = write!(rendered, "    word offset=0x{:x} values=", model.offset);
+            write_values(&mut rendered, &model.values);
         }
-        let _ = writeln!(rendered);
     }
-    for (index, unit) in scenario.dma.streaming.iter().enumerate() {
-        let _ = write!(
-            rendered,
-            "  streaming[{index}] addr={} present=0x{:x} values=",
-            unit.addr, unit.present
-        );
-        for (position, value) in unit.values.iter().enumerate() {
-            let _ = write!(rendered, "{}0x{value:x}", if position == 0 { "" } else { "," });
+    for unit in &scenario.dma.streaming {
+        let _ = writeln!(rendered, "  streaming addr={} slots={}", unit.addr, unit.word_models.len());
+        for model in &unit.word_models {
+            let _ = write!(rendered, "    word offset=0x{:x} values=", model.offset);
+            write_values(&mut rendered, &model.values);
         }
-        let _ = writeln!(rendered);
     }
     rendered
+}
+
+fn write_values(rendered: &mut String, values: &[u32]) {
+    for (position, value) in values.iter().enumerate() {
+        let _ = write!(rendered, "{}0x{value:x}", if position == 0 { "" } else { "," });
+    }
+    let _ = writeln!(rendered);
 }
 
 impl Input for ScenarioInput {
@@ -227,7 +243,8 @@ impl HasTargetBytes for ScenarioInput {
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use super::{
-        CoherentAlloc, MmioSection, ScenarioInput, StreamUnit, WordModel, DmaSection,
+        CoherentAlloc, DmaSection, MmioSection, ScenarioInput, StreamUnit, WordModel,
+        MMIO_WINDOW_BYTES,
     };
     use crate::encoding::encode_scenario;
     use libafl::inputs::Input;
@@ -236,25 +253,41 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
+    fn word(offset: u32, values: &[u32]) -> WordModel {
+        WordModel {
+            offset,
+            values: values.to_vec(),
+        }
+    }
+
     #[test]
     fn wire_file_round_trip_matches_ondisk_corpus() {
         let input = ScenarioInput::new(
             MmioSection {
-                present: (1 << 68) | 0b100111,
-                word_model: vec![
-                    WordModel { count: 2, values: vec![0x7472_6976, 0xdead_beef] },
-                    WordModel { count: 1, values: vec![2] },
-                    WordModel { count: 1, values: vec![1] },
-                    WordModel { count: 2, values: vec![0x0102_0304, 0] },
-                    WordModel { count: 3, values: vec![0x0000_ab00, 0, 0] },
+                word_models: vec![
+                    word(0x110, &[0x7472_6976, 0xdead_beef]),
+                    word(0x118, &[2]),
+                    word(0x11c, &[1]),
+                    word(0x168, &[0x0102_0304, 0]),
+                    word(0x1b0, &[0x0000_ab00, 0, 0]),
                 ],
             },
             DmaSection {
-                coherent: vec![CoherentAlloc { addr: 0, present: 0b111, word_model: vec![1, 0, 1] }],
+                coherent: vec![CoherentAlloc {
+                    addr: 0,
+                    word_models: vec![
+                        word(0x000, &[1]),
+                        word(0x004, &[0x4141_4101]),
+                        word(0x1000, &[1]),
+                    ],
+                }],
                 streaming: vec![StreamUnit {
                     addr: 0,
-                    present: 0xFFFF,
-                    values: vec![0xAA; 16],
+                    word_models: vec![
+                        word(0x000, &[0xaaaa_aaaa]),
+                        word(0x004, &[0x5555_5555]),
+                        word(0x1004, &[0]),
+                    ],
                 }],
             },
         );
@@ -273,58 +306,63 @@ mod tests {
         assert_eq!(bytes, encode_scenario(&input));
         assert_eq!(decoded, input);
         assert!(decoded.is_valid());
-        assert_eq!(decoded.total_actions(), 9 + 3 + 16);
+        assert_eq!(decoded.total_actions(), 9 + 3 + 3);
+        // A deep dma offset is reachable; mmio offsets stay window-bounded.
+        assert!(decoded.mmio.word_models.iter().all(|m| m.offset < MMIO_WINDOW_BYTES));
+        assert!(decoded.dma.coherent[0].word_models.iter()
+            .any(|m| m.offset >= MMIO_WINDOW_BYTES));
+        assert!(decoded.dma.streaming[0].word_models.iter()
+            .any(|m| m.offset >= MMIO_WINDOW_BYTES));
     }
 
     #[test]
     fn broken_invariants_fail_model_validation() {
-        let mismatched = ScenarioInput::new(
+        let empty_values = ScenarioInput::new(
             MmioSection {
-                present: 1,
-                word_model: vec![
-                    WordModel { count: 2, values: vec![1] }, // count != values.len()
-                ],
+                word_models: vec![word(0, &[])],
             },
             DmaSection::default(),
         );
-        assert!(!mismatched.is_valid());
+        assert!(!empty_values.is_valid());
 
-        let mismatched_stream = ScenarioInput::new(
+        let duplicate_offset = ScenarioInput::new(
             MmioSection::default(),
             DmaSection {
                 streaming: vec![StreamUnit {
                     addr: 0,
-                    present: 0b11,
-                    values: vec![0; 1],
+                    word_models: vec![word(0, &[1]), word(0, &[2])],
                 }],
                 ..Default::default()
             },
         );
-        assert!(!mismatched_stream.is_valid());
+        assert!(!duplicate_offset.is_valid());
 
-        let empty_model = ScenarioInput::new(
-            MmioSection {
-                present: 1,
-                word_model: vec![WordModel {
-                    count: 0,
-                    values: Vec::new(),
-                }],
-            },
-            DmaSection::default(),
-        );
-        assert!(!empty_model.is_valid());
-
-        let empty_coherent = ScenarioInput::new(
+        let descending_offsets = ScenarioInput::new(
             MmioSection::default(),
             DmaSection {
                 coherent: vec![CoherentAlloc {
                     addr: 0,
-                    present: 0,
-                    word_model: Vec::new(),
+                    word_models: vec![word(8, &[1]), word(4, &[2])],
                 }],
                 ..Default::default()
             },
         );
-        assert!(!empty_coherent.is_valid());
+        assert!(!descending_offsets.is_valid());
+
+        let misaligned_offset = ScenarioInput::new(
+            MmioSection {
+                word_models: vec![word(2, &[1])],
+            },
+            DmaSection::default(),
+        );
+        assert!(!misaligned_offset.is_valid());
+
+        let window_escape = ScenarioInput::new(
+            MmioSection {
+                word_models: vec![word(MMIO_WINDOW_BYTES, &[1])],
+            },
+            DmaSection::default(),
+        );
+        assert!(!window_escape.is_valid());
     }
 }

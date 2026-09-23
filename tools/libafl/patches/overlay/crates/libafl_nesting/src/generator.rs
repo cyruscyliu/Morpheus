@@ -7,8 +7,8 @@ use libafl_bolts::{nonzero, rands::Rand};
 use crate::devilang_grammar::{MAX_ENCODED_SCENARIO_BYTES, DevilangGrammar};
 use crate::encoding::encoded_size;
 use crate::input::{
-    CoherentAlloc, DmaSection, MmioSection, MMIO_WINDOW_SLOTS, MAX_STREAM_UNIT_SLOTS,
-    ScenarioInput, StreamUnit, WordModel,
+    CoherentAlloc, DmaSection, MmioSection, MMIO_WINDOW_SLOTS, ScenarioInput, StreamUnit,
+    WordModel,
 };
 use crate::model::{DevilangModel, MmioDirection};
 
@@ -147,8 +147,9 @@ where
 }
 
 impl ScenarioGenerator {
-    /// Grammar-free seed: random window slots with short value sequences plus
-    /// random coherent allocs and streaming entries. Sections are added under
+    /// Grammar-free seed: random window slots with short visit-ordered value
+    /// sequences plus random coherent allocs and streaming entries whose
+    /// models sit at contiguous 4-byte offsets. Sections are added under
     /// `MAX_ENCODED_SCENARIO_BYTES`; generation stops when the budget is exceeded.
     #[must_use]
     pub fn random_scenario<R: Rand>(&self, rand: &mut R, max_actions: usize) -> ScenarioInput {
@@ -162,14 +163,13 @@ impl ScenarioGenerator {
             let count = 1 + usize::from(rand.below(nonzero!(4)).min(3));
             let values: Vec<u32> = (0..count).map(|_| random_u32(rand)).collect();
             let model = WordModel {
-                count: u32::try_from(count).unwrap_or(1),
+                offset: ((slot * 4) as u32),
                 values,
             };
             let candidate = ScenarioInput::new(
                 MmioSection {
-                    present: mmio.present | (1u128 << slot),
-                    word_model: {
-                        let mut items = mmio.word_model.clone();
+                    word_models: {
+                        let mut items = mmio.word_models.clone();
                         items.push(model.clone());
                         items
                     },
@@ -185,37 +185,31 @@ impl ScenarioGenerator {
         let mut coherent_done = false;
         for _ in 0..max_actions {
             let mut unit = StreamUnit::default();
-            // Contiguous low-bit mask (1..=128 set slots), one random u32 per slot.
-            let slots =
-                1 + usize::from(rand.below(nonzero!(128)));
-            let slots = slots.min(usize::try_from(MAX_STREAM_UNIT_SLOTS).unwrap_or(1));
+            // 1..=128 modelled words at contiguous 4-byte offsets, one visit each.
+            let words = 1 + usize::from(rand.below(nonzero!(128)));
             unit.addr = rand.below(nonzero!(16)) as u64;
-            unit.present = if slots >= u128::BITS as usize {
-                u128::MAX
-            } else {
-                (u128::from(1u32) << slots) - 1
-            };
-            unit.values = (0..slots).map(|_| random_u32(rand)).collect();
+            unit.word_models = contiguous_words(words);
+            for model in &mut unit.word_models {
+                model.values = vec![random_u32(rand)];
+            }
 
             let coherent = if !coherent_done && rand.below(nonzero!(8)) == 0 {
-                // Contiguous low-bit mask (1..=128 visits); present is a u128 bitmap.
-                let visits = 1 + usize::from(rand.below(nonzero!(128)));
-                let present = if visits >= u128::BITS as usize {
-                    u128::MAX
-                } else {
-                    (u128::from(1u32) << visits) - 1
-                };
-                let values: Vec<u32> = (0..visits).map(|_| random_u32(rand)).collect();
+                // 1..=128 modelled words at contiguous 4-byte offsets, one visit each.
+                let words = 1 + usize::from(rand.below(nonzero!(128)));
                 Some(CoherentAlloc {
                     addr: rand.below(nonzero!(16)) as u64,
-                    present,
-                    word_model: values,
+                    word_models: contiguous_words(words),
                 })
             } else {
                 None
             };
             if let Some(alloc) = coherent {
                 let mut items = dma.coherent.clone();
+                let mut alloc = alloc;
+                for frame in &mut alloc.word_models {
+                    let visits = 1 + usize::from(rand.below(nonzero!(2)).min(1));
+                    frame.values = (0..visits).map(|_| random_u32(rand)).collect();
+                }
                 items.push(alloc);
                 let candidate = ScenarioInput::new(
                     mmio.clone(),
@@ -274,10 +268,13 @@ impl ScenarioGenerator {
     }
 }
 
-fn random_u32<R: Rand>(rand: &mut R) -> u32 {
-    let lo = (rand.below(nonzero!(65536)) & 0xffff) as u32;
-    let hi = (rand.below(nonzero!(65536)) & 0xffff) as u32;
-    (hi << 16) | lo
+fn contiguous_words(words: usize) -> Vec<WordModel> {
+    (0..words)
+        .map(|word| WordModel {
+            offset: ((word * 4) as u32),
+            values: Vec::new(),
+        })
+        .collect()
 }
 
 #[allow(dead_code)]
@@ -287,6 +284,12 @@ fn mask_for_width(width: u8) -> u32 {
     } else {
         (1u32 << (width * 8)) - 1
     }
+}
+
+fn random_u32<R: Rand>(rand: &mut R) -> u32 {
+    let lo = (rand.below(nonzero!(65536)) & 0xffff) as u32;
+    let hi = (rand.below(nonzero!(65536)) & 0xffff) as u32;
+    (hi << 16) | lo
 }
 
 #[cfg(test)]

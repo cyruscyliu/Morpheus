@@ -7,14 +7,14 @@ use libafl::{
 };
 use libafl_bolts::{Named, nonzero, rands::Rand};
 
-use crate::{
-    generator::ScenarioGenerator,
-    input::ScenarioInput,
-};
+    use crate::{
+        generator::ScenarioGenerator,
+        input::ScenarioInput,
+    };
 
-/// Schema-aware mutator: skeleton metadata (`present` bitmaps) stays fixed.
-/// The mutator only edits MMIO/word-model values, coherent values and indexes,
-/// streaming set-slot words, and whole streaming units.
+/// Schema-aware mutator: skeleton metadata (the modelled slot set, i.e. the
+/// `offset` keys) stays fixed. The mutator only edits visit values, visit
+/// sequence lengths, coherent values and indexes, and whole streaming units.
 #[derive(Debug, Clone)]
 pub struct ScenarioMutator {
     generator: ScenarioGenerator,
@@ -81,9 +81,9 @@ where
         let mutated = match op {
             0 => {
                 if let Some(index) =
-                    Self::random_index(state.rand_mut(), input.mmio.word_model.len())
+                    Self::random_index(state.rand_mut(), input.mmio.word_models.len())
                 {
-                    let model = &mut input.mmio.word_model[index];
+                    let model = &mut input.mmio.word_models[index];
                     if let Some(visit) = Self::random_index(state.rand_mut(), model.values.len()) {
                         Self::mutate_u32(state.rand_mut(), &mut model.values[visit]);
                         true
@@ -96,12 +96,11 @@ where
             }
             1 => {
                 if let Some(index) =
-                    Self::random_index(state.rand_mut(), input.mmio.word_model.len())
+                    Self::random_index(state.rand_mut(), input.mmio.word_models.len())
                 {
-                    let model = &mut input.mmio.word_model[index];
+                    let model = &mut input.mmio.word_models[index];
                     let value = random_u32(state.rand_mut());
                     model.values.push(value);
-                    model.count += 1;
                     true
                 } else {
                     false
@@ -109,12 +108,11 @@ where
             }
             2 => {
                 if let Some(index) =
-                    Self::random_index(state.rand_mut(), input.mmio.word_model.len())
+                    Self::random_index(state.rand_mut(), input.mmio.word_models.len())
                 {
-                    let model = &mut input.mmio.word_model[index];
+                    let model = &mut input.mmio.word_models[index];
                     if model.values.len() > 1 {
                         model.values.pop();
-                        model.count -= 1;
                         true
                     } else {
                         false
@@ -128,10 +126,17 @@ where
                     Self::random_index(state.rand_mut(), input.dma.coherent.len())
                 {
                     let alloc = &mut input.dma.coherent[index];
-                    if let Some(visit) = Self::random_index(state.rand_mut(), alloc.word_model.len())
-                    {
-                        Self::mutate_u32(state.rand_mut(), &mut alloc.word_model[visit]);
-                        true
+                    let model_index =
+                        Self::random_index(state.rand_mut(), alloc.word_models.len());
+                    if let Some(model_index) = model_index {
+                        let model = &mut alloc.word_models[model_index];
+                        if let Some(visit) = Self::random_index(state.rand_mut(), model.values.len())
+                        {
+                            Self::mutate_u32(state.rand_mut(), &mut model.values[visit]);
+                            true
+                        } else {
+                            false
+                        }
                     } else if rand_below_half(state.rand_mut()) {
                         // Drift the alloc runtime-table index within a small range.
                         alloc.addr = state.rand_mut().below(nonzero!(16)) as u64;
@@ -148,12 +153,17 @@ where
                     Self::random_index(state.rand_mut(), input.dma.streaming.len())
                 {
                     let unit = &mut input.dma.streaming[index];
-                    // Mutate one set-slot word in ascending set-bit order.
-                    if let Some(slot) =
-                        Self::random_index(state.rand_mut(), unit.values.len())
-                    {
-                        Self::mutate_u32(state.rand_mut(), &mut unit.values[slot]);
-                        true
+                    // Mutate one modelled visit value in ascending offset order.
+                    let model_index = Self::random_index(state.rand_mut(), unit.word_models.len());
+                    if let Some(model_index) = model_index {
+                        let model = &mut unit.word_models[model_index];
+                        if let Some(visit) = Self::random_index(state.rand_mut(), model.values.len())
+                        {
+                            Self::mutate_u32(state.rand_mut(), &mut model.values[visit]);
+                            true
+                        } else {
+                            false
+                        }
                     } else {
                         false
                     }
@@ -166,10 +176,16 @@ where
                     Self::random_index(state.rand_mut(), input.dma.streaming.len())
                 {
                     let unit = &mut input.dma.streaming[index];
-                    if let Some(slot) = Self::random_index(state.rand_mut(), unit.values.len())
-                    {
-                        unit.values[slot] ^= random_mask_u32(state.rand_mut());
-                        true
+                    let model_index = Self::random_index(state.rand_mut(), unit.word_models.len());
+                    if let Some(model_index) = model_index {
+                        let model = &mut unit.word_models[model_index];
+                        if let Some(visit) = Self::random_index(state.rand_mut(), model.values.len())
+                        {
+                            model.values[visit] ^= random_mask_u32(state.rand_mut());
+                            true
+                        } else {
+                            false
+                        }
                     } else {
                         false
                     }
@@ -178,16 +194,16 @@ where
                 }
             }
             6 => {
-                // Add a unit with a contiguous low-bit mask (1..=8 set slots).
-                let slots = 1 + state.rand_mut().below(nonzero!(8));
-                let present = (u128::from(1u32) << slots) - 1;
-                let values = (0..slots)
-                    .map(|_| random_u32(state.rand_mut()))
-                    .collect();
+                // Add a unit with 1..=8 modelled words at contiguous 4-byte offsets.
+                let words = 1 + state.rand_mut().below(nonzero!(8));
                 input.dma.streaming.push(crate::input::StreamUnit {
                     addr: state.rand_mut().below(nonzero!(16)) as u64,
-                    present,
-                    values,
+                    word_models: (0..words)
+                        .map(|word| crate::input::WordModel {
+                            offset: ((word * 4) as u32),
+                            values: vec![random_u32(state.rand_mut())],
+                        })
+                        .collect(),
                 });
                 true
             }
@@ -212,8 +228,8 @@ where
                 }
             }
             _ => {
-                // Skeleton (`present` bitmap) is not mutated; there is no whole-section
-                // rebuild op, so uncovered operation IDs are skipped.
+                // Skeleton (the modelled slot set) is not mutated; there is no
+                // whole-section rebuild op, so uncovered operation IDs are skipped.
                 false
             }
         };
@@ -243,8 +259,6 @@ fn random_mask_u32<R: Rand>(rand: &mut R) -> u32 {
     let hi = (rand.below(nonzero!(65536)) & 0xffff) as u32;
     (hi << 16) | lo
 }
-
-
 
 fn rand_below_half<R: Rand>(rand: &mut R) -> bool {
     rand.below(nonzero!(2)) == 0
@@ -281,26 +295,31 @@ mod tests {
         }
     }
 
+    fn word(offset: u32, values: &[u32]) -> WordModel {
+        WordModel {
+            offset,
+            values: values.to_vec(),
+        }
+    }
+
     #[test]
     fn mutator_keeps_skeleton_and_invariants() {
         let mut state = TestState { rand: StdRand::with_seed(0) };
-        let present = (1 << 68) | 0b100111;
+        let mmio_offsets = [0x110u32, 0x118, 0x11c, 0x168, 0x1b0];
         let mut input = ScenarioInput::new(
             MmioSection {
-                present,
-                word_model: vec![
-                    WordModel { count: 2, values: vec![1, 2] },
-                    WordModel { count: 1, values: vec![2] },
-                    WordModel { count: 1, values: vec![1] },
-                    WordModel { count: 2, values: vec![3, 4] },
-                    WordModel { count: 3, values: vec![5, 6, 7] },
+                word_models: vec![
+                    word(0x110, &[1, 2]),
+                    word(0x118, &[2]),
+                    word(0x11c, &[1]),
+                    word(0x168, &[3, 4]),
+                    word(0x1b0, &[5, 6, 7]),
                 ],
             },
             crate::input::DmaSection {
                 streaming: vec![crate::input::StreamUnit {
                     addr: 0,
-                    present: 0xF,
-                    values: vec![1; 4],
+                    word_models: vec![word(0, &[1]), word(4, &[2])],
                 }],
                 ..Default::default()
             },
@@ -310,8 +329,10 @@ mod tests {
         for _ in 0..64 {
             let _ = mutator.mutate(&mut state, &mut input);
             assert!(input.is_valid());
-            // Skeleton bitmap remains unchanged across mutation.
-            assert_eq!(input.mmio.present, present);
+            // The modelled slot set remains unchanged across mutation.
+            let offsets: Vec<u32> =
+                input.mmio.word_models.iter().map(|model| model.offset).collect();
+            assert_eq!(offsets, mmio_offsets);
         }
     }
 }

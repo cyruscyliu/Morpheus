@@ -21,8 +21,8 @@ pub use devilang_grammar::{
 pub use encoding::{ScenarioCodec, decode_scenario, encoded_size, encode_scenario};
 pub use generator::ScenarioGenerator;
 pub use input::{
-    CoherentAlloc, DmaSection, MmioSection, MAX_STREAM_UNIT_SLOTS, MMIO_WINDOW_SLOTS,
-    ScenarioInput, StreamUnit, WordModel, format_scenario,
+    CoherentAlloc, DmaSection, MmioSection, MMIO_WINDOW_SLOTS, ScenarioInput, StreamUnit,
+    WordModel, format_scenario,
 };
 pub use model::{DevilangMmioOp, DevilangModel, MmioDirection};
 pub use mutator::ScenarioMutator;

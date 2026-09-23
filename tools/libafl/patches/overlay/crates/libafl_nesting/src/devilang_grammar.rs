@@ -17,7 +17,7 @@ use libafl_bolts::rands::Rand;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    input::{DmaSection, MmioSection, ScenarioInput},
+    input::{DmaSection, MmioSection, ScenarioInput, WordModel},
 };
 
 pub const MAX_ENCODED_SCENARIO_BYTES: usize = 4096;
@@ -1535,9 +1535,10 @@ fn call_target(statement: &str) -> Option<String> {
 
 /// Lower the action stream produced by the grammar into consumer data units:
 /// - MmioRead/MmioWrite/MmioReadOverride within the window become visit-value
-///   sequences for window slots;
-/// - QueueDmaWrite/DmaEvent becomes a streaming entry (`present` selects
-///   32-bit slots, `addr` is the zero-based runtime streaming-MAP ordinal);
+///   sequences for explicit window slot offsets;
+/// - QueueDmaWrite/DmaEvent becomes a streaming entry (one WordModel per
+///   planned 32-bit word, `addr` is the zero-based runtime streaming-MAP
+///   ordinal);
 /// - other action families (PIO/IRQ/Mem) have no target in the new interface
 ///   and are ignored; the coherent section remains empty here.
 fn sections_from_actions<R: Rand>(actions: &[Action], rand: &mut R) -> (MmioSection, DmaSection) {
@@ -1557,32 +1558,26 @@ fn sections_from_actions<R: Rand>(actions: &[Action], rand: &mut R) -> (MmioSect
             }
             HyperAction::QueueDmaWrite { payload_len, .. }
             | HyperAction::DmaEvent { len: payload_len, .. } => {
-                // Model the planned payload by 32-bit slots: one u32 per slot.
+                // Model the planned payload by explicit slot words: one
+                // WordModel per 32-bit word, contiguous from offset 0. The
+                // modelled word count is budget-bounded so the entry stays
+                // inside the 4096-byte scenario cap.
                 let slots = usize::try_from(*payload_len)
                     .unwrap_or(0)
                     .div_ceil(4)
-                    .min(usize::try_from(crate::input::MAX_STREAM_UNIT_SLOTS).unwrap_or(1));
+                    .min(BUDGET_STREAM_WORDS);
                 if slots == 0 {
                     continue;
                 }
-                let present = if slots >= u128::BITS as usize {
-                    u128::MAX
-                } else {
-                    (u128::from(1u32) << slots) - 1
-                };
-                let values: Vec<u32> = (0..slots)
-                    .map(|_| {
-                        let lo = (rand.below(unsafe { NonZeroUsize::new_unchecked(65536) })
-                            & 0xffff) as u32;
-                        let hi = (rand.below(unsafe { NonZeroUsize::new_unchecked(65536) })
-                            & 0xffff) as u32;
-                        (hi << 16) | lo
+                let word_models: Vec<WordModel> = (0..slots)
+                    .map(|word| WordModel {
+                        offset: ((word * 4) as u32),
+                        values: vec![random_stream_word(rand)],
                     })
                     .collect();
                 streaming.push(crate::input::StreamUnit {
                     addr: u64::try_from(streaming.len()).unwrap_or(u64::MAX),
-                    present,
-                    values,
+                    word_models,
                 });
             }
             _ => {}
@@ -1591,15 +1586,24 @@ fn sections_from_actions<R: Rand>(actions: &[Action], rand: &mut R) -> (MmioSect
 
     let mut mmio = MmioSection::default();
     for (slot, values) in visits {
-        let count = values.len() as u32;
-        mmio.present |= 1u128 << slot;
-        mmio.word_model.push(crate::input::WordModel { count, values });
+        mmio.word_models.push(WordModel {
+            offset: ((slot * 4) as u32),
+            values,
+        });
     }
     let dma = DmaSection {
         coherent: Vec::new(),
         streaming,
     };
     (mmio, dma)
+}
+
+const BUDGET_STREAM_WORDS: usize = 88;
+
+fn random_stream_word<R: Rand>(rand: &mut R) -> u32 {
+    let lo = (rand.below(unsafe { NonZeroUsize::new_unchecked(65536) }) & 0xffff) as u32;
+    let hi = (rand.below(unsafe { NonZeroUsize::new_unchecked(65536) }) & 0xffff) as u32;
+    (hi << 16) | lo
 }
 
 /// Project an action's (addr, width, value) into a window-word visit value.
@@ -2287,7 +2291,7 @@ mod tests {
     use libafl_bolts::rands::StdRand;
 
     use super::*;
-    use crate::input::{WordModel, format_scenario};
+    use crate::input::format_scenario;
     use crate::{ScenarioGenerator, ScenarioMutator, encode_scenario};
 
     #[derive(Debug)]
@@ -2397,7 +2401,8 @@ machine dma_trace {
             .expect("DMA grammar should generate");
         assert!(matches!(
             scenario.dma.streaming.as_slice(),
-            [crate::input::StreamUnit { present: u128::MAX, .. }]
+            [crate::input::StreamUnit { word_models, .. }]
+                if word_models.len() == BUDGET_STREAM_WORDS
         ));
         grammar
             .validate_scenario(&scenario)
@@ -2589,17 +2594,22 @@ machine low_level_seed {
             .generate_scenario(&mut rand, 1)
             .expect("low-level seed grammar should generate");
 
-        assert!(matches!(
-            scenario.mmio.word_model.as_slice(),
-            [WordModel { count: 1, .. }, WordModel { count: 1, .. }]
-        ));
-        assert_eq!(scenario.mmio.word_model[0].values, [0x005a_0000]); // addr 0x22, slot 8, byte 2
-        assert_eq!(scenario.mmio.word_model[1].values, [0x1234_abcd]); // addr 0x100, slot 64
-        // payload_len=64 -> 16 32-bit slots, contiguous low-bit mask.
-        assert!(matches!(
-            scenario.dma.streaming.as_slice(),
-            [crate::input::StreamUnit { present: 0xFFFF, .. }]
-        ));
+        assert_eq!(scenario.mmio.word_models.len(), 2);
+        assert_eq!(scenario.mmio.word_models[0].values, [0x005a_0000]); // addr 0x22, slot 8
+        assert_eq!(scenario.mmio.word_models[1].values, [0x1234_abcd]); // addr 0x100, slot 64
+        assert_eq!(scenario.mmio.word_models[0].offset, 32);
+        assert_eq!(scenario.mmio.word_models[1].offset, 0x100);
+        // payload_len=64 -> 16 modelled words, contiguous from offset 0.
+        assert_eq!(scenario.dma.streaming.len(), 1);
+        {
+            let unit = &scenario.dma.streaming[0];
+            assert_eq!(unit.word_models.len(), 16);
+            assert!(unit
+                .word_models
+                .iter()
+                .enumerate()
+                .all(|(word, model)| model.offset == ((word * 4) as u32)));
+        }
         grammar
             .validate_scenario(&scenario)
             .expect("low-level seed scenario should validate");
@@ -2701,12 +2711,10 @@ machine m {
             .validate_scenario(&scenario)
             .expect("finite branch scenario must validate");
 
-        assert!(matches!(
-            scenario.mmio.word_model.as_slice(),
-            [WordModel { count: 1, .. }]
-        ));
-        assert_eq!(scenario.mmio.word_model[0].values, [1]);
-        assert!(scenario.mmio.present == 1u128 << 28);
+        assert_eq!(scenario.mmio.word_models.len(), 1);
+        assert_eq!(scenario.mmio.word_models[0].values, [1]);
+        // VIRTIO_MMIO_STATUS = 112, byte offset inside the window.
+        assert_eq!(scenario.mmio.word_models[0].offset, 112);
     }
 
     #[test]
@@ -2766,12 +2774,8 @@ machine virtio_net {
             .generate_scenario(&mut rand, 1)
             .expect("grammar should generate the terminal trace");
 
-        assert_eq!(scenario.mmio.word_model.len(), 1);
-        assert!(matches!(
-            scenario.mmio.word_model.as_slice(),
-            [WordModel { count: 1, .. }]
-        ));
-        assert_eq!(scenario.mmio.word_model[0].values, [0]);
+        assert_eq!(scenario.mmio.word_models.len(), 1);
+        assert_eq!(scenario.mmio.word_models[0].values, [0]);
         grammar
             .validate_scenario(&scenario)
             .expect("terminal trace should validate");

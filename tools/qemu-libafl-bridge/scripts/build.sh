@@ -100,15 +100,44 @@ source_diff_fingerprint="$({
     git ls-files --others --exclude-standard -z -- . ':(exclude)build' \
       | sort -z \
       | while IFS= read -r -d '' path; do
+          # The provenance metadata is not part of the bridge source and its
+          # content embeds the (relocation-dependent) absolute localPatchDir
+          # path, so it must not feed the source fingerprint.  The source is
+          # identified below by the stable provenance fields alone.
+          [ "${path}" = ".morpheus-bridge.json" ] && continue
           printf 'untracked:%s\n' "${path}"
           sha256sum "${path}"
         done
   )
 } | sha256sum | awk '{print $1}')"
+
+# Derive the source provenance from the stable fields the patch stage
+# recorded (provider/base commits, build version, local-patch fingerprint),
+# not from the raw metadata file.  The raw file also carries the absolute
+# localPatchDir path, which differs across machine relocations and would
+# otherwise change the reuse signature on every move and force a rebuild.
 source_provenance_fingerprint="$({
-  printf 'git-head=%s\n' "${source_git_head}"
-  printf 'source-diff=%s\n' "${source_diff_fingerprint}"
-  sha256sum "${bridge_provenance_file}"
+  node - "${bridge_provenance_file}" "${source_git_head}" <<'NODE'
+const fs = require("fs");
+const [file, gitHead] = process.argv.slice(2);
+let m;
+try {
+  m = JSON.parse(fs.readFileSync(file, "utf8"));
+} catch {
+  process.exit(1);
+}
+const fields = [
+  "git-head=" + gitHead,
+  "provider-head=" + (m.providerHead || ""),
+  "provider-base-ref=" + (m.providerBaseRef || ""),
+  "provider-base-version=" + (m.providerBaseVersion || ""),
+  "base-qemu-head=" + (m.baseQemuHead || ""),
+  "base-qemu-version=" + (m.baseQemuVersion || ""),
+  "build-version=" + (m.buildVersion || ""),
+  "local-patch-fingerprint=" + (m.localPatchFingerprint || ""),
+];
+process.stdout.write(fields.join("\n") + "\n");
+NODE
 } | sha256sum | awk '{print $1}')"
 
 if [ -n "${target_list_file}" ] && [ -s "${target_list_file}" ]; then

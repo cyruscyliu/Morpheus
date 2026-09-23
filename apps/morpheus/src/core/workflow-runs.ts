@@ -39,20 +39,12 @@ function workflowRunsRoot(workspaceRoot) {
   return workflowInstancesRoot(workspaceRoot);
 }
 
-function legacyWorkflowRunsRoot(workspaceRoot) {
-  return path.join(path.resolve(process.cwd(), workspaceRoot), "workflows");
-}
-
 function workflowRunDir(workspaceRoot, workflowRunId) {
   return path.join(workflowRunsRoot(workspaceRoot), workflowRunId);
 }
 
 function workflowManifestPath(workflowRunDir) {
   return path.join(workflowRunDir, "workflow.json");
-}
-
-function legacyRunRecordPath(workflowRunDir) {
-  return path.join(workflowRunDir, "run.json");
 }
 
 function workflowEventLogPath(workflowRunDir) {
@@ -63,20 +55,12 @@ function stageDir(workflowRunDir, stageId) {
   return path.join(workflowRunDir, "stages", stageId);
 }
 
-function legacyStepDir(workflowRunDir, stepId) {
-  return path.join(workflowRunDir, "steps", stepId);
-}
-
 function stepDir(workflowRunDir, stepId) {
   return stageDir(workflowRunDir, stepId);
 }
 
 function stageManifestPath(stageDirPath) {
   return path.join(stageDirPath, "stage.json");
-}
-
-function legacyStepManifestPath(stepDirPath) {
-  return path.join(stepDirPath, "step.json");
 }
 
 function stepManifestPath(stepDir) {
@@ -132,14 +116,8 @@ function workflowStageEntries(record) {
   if (Array.isArray(record.stages) && record.stages.length > 0) {
     return cloneArrayEntries(record.stages);
   }
-  if (Array.isArray(record.steps) && record.steps.length > 0) {
-    return cloneArrayEntries(record.steps);
-  }
   if (Array.isArray(record.stages)) {
     return cloneArrayEntries(record.stages);
-  }
-  if (Array.isArray(record.steps)) {
-    return cloneArrayEntries(record.steps);
   }
   return [];
 }
@@ -177,7 +155,6 @@ function normalizeWorkflowRecordAliases(record) {
     currentStageId,
     currentStepId,
     stages: normalizedStages,
-    steps: normalizedStages.map((entry) => ({ ...entry })),
   };
 }
 
@@ -212,226 +189,6 @@ function listRunDirs(runRoot) {
     });
 }
 
-function readLegacyWorkflowName(runDir) {
-  const workflowRecord = tryReadJson(path.join(runDir, "workflow.json"));
-  if (workflowRecord && typeof workflowRecord.workflow === "string" && workflowRecord.workflow.trim()) {
-    return workflowRecord.workflow.trim();
-  }
-  const legacyRecord = tryReadJson(path.join(runDir, "run.json"));
-  if (
-    legacyRecord
-    && legacyRecord.summary
-    && typeof legacyRecord.summary.workflow === "string"
-    && legacyRecord.summary.workflow.trim()
-  ) {
-    return legacyRecord.summary.workflow.trim();
-  }
-  return null;
-}
-
-function workflowCreatedAt(runDir) {
-  const workflowRecord = tryReadJson(path.join(runDir, "workflow.json"));
-  if (workflowRecord && typeof workflowRecord.createdAt === "string" && workflowRecord.createdAt.trim()) {
-    return workflowRecord.createdAt.trim();
-  }
-  const legacyRecord = tryReadJson(path.join(runDir, "run.json"));
-  if (legacyRecord && typeof legacyRecord.createdAt === "string" && legacyRecord.createdAt.trim()) {
-    return legacyRecord.createdAt.trim();
-  }
-  return path.basename(runDir);
-}
-
-function findLatestLegacyWorkflowRunDir(workspaceRoot, workflowName) {
-  const normalized = String(workflowName || "").trim();
-  if (!normalized) {
-    return null;
-  }
-  const root = legacyWorkflowRunsRoot(workspaceRoot);
-  const matches = listRunDirs(root)
-    .filter((runDir) => readLegacyWorkflowName(runDir) === normalized)
-    .sort((left, right) => String(workflowCreatedAt(right)).localeCompare(String(workflowCreatedAt(left))));
-  return matches[0] || null;
-}
-
-function rewritePathString(value, sourceRoot, targetRoot) {
-  if (typeof value !== "string") {
-    return value;
-  }
-  if (value === sourceRoot) {
-    return targetRoot;
-  }
-  const prefix = `${sourceRoot}${path.sep}`;
-  if (value.startsWith(prefix)) {
-    return path.join(targetRoot, value.slice(prefix.length));
-  }
-  return value;
-}
-
-function rewritePathTree(value, sourceRoot, targetRoot) {
-  if (Array.isArray(value)) {
-    return value.map((entry) => rewritePathTree(entry, sourceRoot, targetRoot));
-  }
-  if (!value || typeof value !== "object") {
-    return rewritePathString(value, sourceRoot, targetRoot);
-  }
-  const next = {};
-  for (const [key, entry] of Object.entries(value)) {
-    next[key] = rewritePathTree(entry, sourceRoot, targetRoot);
-  }
-  return next;
-}
-
-function copyTree(sourceDir, targetDir) {
-  fs.mkdirSync(targetDir, { recursive: true });
-  for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
-    const sourcePath = path.join(sourceDir, entry.name);
-    const targetPath = path.join(targetDir, entry.name);
-    if (entry.isDirectory()) {
-      copyTree(sourcePath, targetPath);
-      continue;
-    }
-    if (entry.isSymbolicLink()) {
-      const link = fs.readlinkSync(sourcePath);
-      try {
-        fs.unlinkSync(targetPath);
-      } catch {}
-      fs.symlinkSync(link, targetPath);
-      continue;
-    }
-    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-    fs.copyFileSync(sourcePath, targetPath);
-  }
-}
-
-function rewriteJsonFilePaths(filePath, sourceRoot, targetRoot) {
-  const text = fs.readFileSync(filePath, "utf8");
-  if (!String(text).trim()) {
-    return;
-  }
-  const next = rewritePathTree(JSON.parse(text), sourceRoot, targetRoot);
-  fs.writeFileSync(filePath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
-}
-
-function rewriteJsonlFilePaths(filePath, sourceRoot, targetRoot) {
-  const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
-  const next = lines.map((line) => {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      return "";
-    }
-    try {
-      return JSON.stringify(rewritePathTree(JSON.parse(line), sourceRoot, targetRoot));
-    } catch {
-      return line;
-    }
-  }).join("\n");
-  fs.writeFileSync(filePath, next.endsWith("\n") || next.length === 0 ? next : `${next}\n`, "utf8");
-}
-
-function rewriteCopiedTreePaths(targetDir, sourceRoot, targetRoot) {
-  const entries = fs.readdirSync(targetDir, { withFileTypes: true });
-  for (const entry of entries) {
-    const targetPath = path.join(targetDir, entry.name);
-    if (entry.isDirectory()) {
-      rewriteCopiedTreePaths(targetPath, sourceRoot, targetRoot);
-      continue;
-    }
-    if (!entry.isFile()) {
-      continue;
-    }
-    if (entry.name.endsWith(".json")) {
-      try {
-        rewriteJsonFilePaths(targetPath, sourceRoot, targetRoot);
-      } catch {}
-      continue;
-    }
-    if (entry.name.endsWith(".jsonl")) {
-      try {
-        rewriteJsonlFilePaths(targetPath, sourceRoot, targetRoot);
-      } catch {}
-    }
-  }
-}
-
-function rewriteWorkflowIdsInJsonl(filePath, workflowId) {
-  const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
-  const next = lines.map((line) => {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      return "";
-    }
-    try {
-      const parsed = JSON.parse(line);
-      if (parsed && typeof parsed === "object" && Object.prototype.hasOwnProperty.call(parsed, "workflow_id")) {
-        parsed.workflow_id = workflowId;
-      }
-      return JSON.stringify(parsed);
-    } catch {
-      return line;
-    }
-  }).join("\n");
-  fs.writeFileSync(filePath, next.endsWith("\n") || next.length === 0 ? next : `${next}\n`, "utf8");
-}
-
-function finalizeMigratedWorkflowRecord(targetDir, workflowId) {
-  const manifestPath = workflowManifestPath(targetDir);
-  const workflowRecord = tryReadJson(manifestPath);
-  if (workflowRecord && typeof workflowRecord === "object") {
-    const previousId = typeof workflowRecord.id === "string" ? workflowRecord.id : null;
-    writeJson(manifestPath, normalizeWorkflowRecordAliases({
-      ...workflowRecord,
-      id: workflowId,
-      workflow: typeof workflowRecord.workflow === "string" && workflowRecord.workflow.trim()
-        ? workflowRecord.workflow
-        : workflowId,
-      workflowDir: targetDir,
-      runDir: targetDir,
-      legacyRunId: previousId && previousId !== workflowId ? previousId : workflowRecord.legacyRunId || null,
-    }));
-  }
-
-  const legacyPath = legacyRunRecordPath(targetDir);
-  const legacyRecord = tryReadJson(legacyPath);
-  if (legacyRecord && typeof legacyRecord === "object") {
-    const previousId = typeof legacyRecord.id === "string" ? legacyRecord.id : null;
-    writeJson(legacyPath, {
-      ...legacyRecord,
-      id: workflowId,
-      summary: {
-        ...(legacyRecord.summary && typeof legacyRecord.summary === "object" ? legacyRecord.summary : {}),
-        workflow: workflowId,
-      },
-      legacyRunId: previousId && previousId !== workflowId ? previousId : legacyRecord.legacyRunId || null,
-    });
-  }
-
-  const eventLog = workflowEventLogPath(targetDir);
-  if (fs.existsSync(eventLog)) {
-    try {
-      rewriteWorkflowIdsInJsonl(eventLog, workflowId);
-    } catch {}
-  }
-}
-
-function migrateLegacyWorkflowRunToInstance(workspaceRoot, workflowId) {
-  const sourceDir = findLatestLegacyWorkflowRunDir(workspaceRoot, workflowId)
-    || path.join(legacyWorkflowRunsRoot(workspaceRoot), workflowId);
-  if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
-    return null;
-  }
-  const targetDir = workflowRunDir(workspaceRoot, workflowId);
-  if (!fs.existsSync(targetDir)) {
-    copyTree(sourceDir, targetDir);
-  }
-  rewriteCopiedTreePaths(targetDir, sourceDir, targetDir);
-  fs.mkdirSync(path.join(targetDir, "stages"), { recursive: true });
-  if (!fs.existsSync(workflowEventLogPath(targetDir))) {
-    fs.writeFileSync(workflowEventLogPath(targetDir), "", "utf8");
-  }
-  finalizeMigratedWorkflowRecord(targetDir, workflowId);
-  return targetDir;
-}
-
 function createWorkflowRun(workspaceRoot, workflowName, options = {}) {
   const id = String(options.id || workflowName || generateWorkflowRunId()).trim();
   const runDir = workflowRunDir(workspaceRoot, id);
@@ -461,19 +218,6 @@ function createWorkflowRun(workspaceRoot, workflowName, options = {}) {
   });
 
   writeJson(workflowManifestPath(runDir), record);
-  writeJson(legacyRunRecordPath(runDir), {
-    id,
-    kind: "workflow",
-    category: record.category,
-    status: record.status,
-    createdAt: record.createdAt,
-    completedAt: null,
-    summary: {
-      workflow: record.workflow,
-      category: record.category,
-      metadata: record.metadata == null ? null : record.metadata,
-    }
-  });
   return record;
 }
 
@@ -484,21 +228,6 @@ function updateWorkflowRun(runDir, mutator) {
   next.category = normalizeWorkflowCategory(next.category, normalizeWorkflowCategory(current.category, "build"));
   next.updatedAt = nowIso();
   writeJson(manifestPath, next);
-  writeJson(legacyRunRecordPath(runDir), {
-    id: next.id,
-    kind: "workflow",
-    category: next.category,
-    status: next.status,
-    createdAt: next.createdAt,
-    completedAt: next.status === "success" || next.status === "error" || next.status === "stopped"
-      ? next.updatedAt
-      : null,
-    summary: {
-      workflow: next.workflow,
-      category: next.category,
-      metadata: next.metadata == null ? null : next.metadata,
-    }
-  });
   return next;
 }
 
@@ -542,12 +271,7 @@ function createWorkflowStep(runDir, index, name, options = {}) {
 
 function updateWorkflowStep(stepDirPath, mutator) {
   const manifestPath = stepManifestPath(stepDirPath);
-  const legacyManifestPath = legacyStepManifestPath(stepDirPath);
-  const current = normalizeStageRecordAliases(
-    fs.existsSync(manifestPath)
-      ? readJson(manifestPath)
-      : readJson(legacyManifestPath)
-  );
+  const current = normalizeStageRecordAliases(readJson(manifestPath));
   const next = normalizeStageRecordAliases(mutator({ ...current }));
   next.updatedAt = nowIso();
   writeJson(manifestPath, next);
@@ -558,13 +282,7 @@ module.exports = {
   createWorkflowRun,
   createWorkflowStep,
   generateWorkflowRunId,
-  legacyWorkflowRunsRoot,
-  legacyStepDir,
-  legacyStepManifestPath,
-  findLatestLegacyWorkflowRunDir,
-  migrateLegacyWorkflowRunToInstance,
   sanitizeStepName,
-  legacyRunRecordPath,
   stageDir,
   stageManifestPath,
   stepArtifactsDir,

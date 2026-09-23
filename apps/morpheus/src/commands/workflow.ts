@@ -22,7 +22,6 @@ const {
 const {
   createWorkflowRun,
   createWorkflowStep,
-  migrateLegacyWorkflowRunToInstance,
   updateWorkflowRun,
   updateWorkflowStep,
   workflowManifestPath,
@@ -579,19 +578,11 @@ function flattenConfiguredWorkflowStages(stageGroups) {
 }
 
 function workflowStageDir(runDir, stageId) {
-  const canonicalDir = path.join(runDir, "stages", stageId);
-  if (fs.existsSync(canonicalDir)) {
-    return canonicalDir;
-  }
-  return path.join(runDir, "steps", stageId);
+  return path.join(runDir, "stages", stageId);
 }
 
 function workflowStageManifestPathForDir(stageDirPath) {
-  const canonicalManifest = path.join(stageDirPath, "stage.json");
-  if (fs.existsSync(canonicalManifest)) {
-    return canonicalManifest;
-  }
-  return path.join(stageDirPath, "step.json");
+  return path.join(stageDirPath, "stage.json");
 }
 
 function workflowStageManifestPath(runDir, stageId) {
@@ -1196,9 +1187,7 @@ function listWorkflowSteps(runDir) {
         : { ...entry, id: stepId, stageDir: resolvedStepDir, stepDir: resolvedStepDir };
     });
   }
-  const stagesDir = fs.existsSync(path.join(runDir, "stages"))
-    ? path.join(runDir, "stages")
-    : path.join(runDir, "steps");
+  const stagesDir = path.join(runDir, "stages");
   if (!fs.existsSync(stagesDir)) {
     return [];
   }
@@ -1208,80 +1197,17 @@ function listWorkflowSteps(runDir) {
     .filter((entry) => fs.statSync(entry).isDirectory())
     .sort((left, right) => path.basename(left).localeCompare(path.basename(right)))
     .map((stepDir) => {
-      const stageManifest = path.join(stepDir, "stage.json");
-      const stepManifest = path.join(stepDir, "step.json");
-      const manifestPath = fs.existsSync(stageManifest) ? stageManifest : stepManifest;
+      const manifestPath = path.join(stepDir, "stage.json");
       return fs.existsSync(manifestPath)
         ? readJson(manifestPath)
         : { id: path.basename(stepDir), stageDir: stepDir, stepDir };
     });
 }
 
-function inferWorkflowStatusFromSteps(steps, fallback = "unknown") {
-  if (steps.some((step) => step && step.status === "running")) {
-    return "running";
-  }
-  if (steps.some((step) => step && (step.status === "error" || step.status === "failed"))) {
-    return "error";
-  }
-  if (steps.some((step) => step && step.status === "stopped")) {
-    return "stopped";
-  }
-  if (steps.length > 0 && steps.every((step) => step && (step.status === "success" || step.status === "reused"))) {
-    return "success";
-  }
-  return String(fallback || "unknown");
-}
-
-function rebuildWorkflowManifest(runDir) {
-  const legacyPath = path.join(runDir, "run.json");
-  const legacy = tryReadJson(legacyPath);
-  if (!legacy || typeof legacy !== "object") {
-    return null;
-  }
-  const steps = listWorkflowSteps(runDir);
-  const updatedAtCandidates = steps
-    .map((step) => String(step?.updatedAt || step?.createdAt || "").trim())
-    .filter(Boolean)
-    .sort();
-  const updatedAt = updatedAtCandidates.at(-1) || legacy.completedAt || legacy.createdAt || new Date().toISOString();
-  const record = {
-    schemaVersion: 1,
-    id: String(legacy.id || path.basename(runDir)),
-    workflow: typeof legacy.summary?.workflow === "string" ? legacy.summary.workflow : "workflow",
-    configPath: null,
-    metadata: legacy.summary?.metadata == null ? null : legacy.summary.metadata,
-    category: String(legacy.category || legacy.summary?.category || "build"),
-    status: inferWorkflowStatusFromSteps(steps, legacy.status || "unknown"),
-    createdAt: legacy.createdAt || updatedAt,
-    updatedAt,
-    eventLogFile: workflowEventLogPath(runDir),
-    workspace: path.resolve(runDir, "..", ".."),
-    runDir,
-    currentStageId: null,
-    currentStepId: null,
-    currentChildPid: null,
-    runnerPid: null,
-    stages: steps.map((step) => ({
-      id: step.id || path.basename(step.stepDir || ""),
-      name: step.name || step.id || path.basename(step.stepDir || ""),
-      status: step.status || "unknown",
-      stepDir: step.stepDir || path.join(runDir, "steps", String(step.id || "")),
-    })),
-  };
-  record.steps = workflowStageAliases(record.stages);
-  writeJson(workflowManifestPath(runDir), record);
-  return record;
-}
-
 function ensureWorkflowManifest(runDir) {
   const manifestPath = workflowManifestPath(runDir);
   const record = tryReadJson(manifestPath);
   if (record && typeof record === "object") {
-    return { runDir, manifestPath };
-  }
-  const rebuilt = rebuildWorkflowManifest(runDir);
-  if (rebuilt && typeof rebuilt === "object") {
     return { runDir, manifestPath };
   }
   throw new Error(`workflow run manifest is missing or invalid: ${path.relative(process.cwd(), manifestPath)}`);
@@ -1291,13 +1217,6 @@ function findWorkflowRun(workspaceRoot, id) {
   const detail = loadWorkflowDetail(workspaceRoot, id);
   if (!detail || !detail.runDir) {
     throw new Error(missingWorkflowInstanceError(id));
-  }
-  const canonicalDir = path.join(workflowRunsRoot(workspaceRoot), id);
-  if (path.resolve(detail.runDir) !== path.resolve(canonicalDir)) {
-    const migratedDir = migrateLegacyWorkflowRunToInstance(workspaceRoot, id);
-    if (migratedDir) {
-      return ensureWorkflowManifest(migratedDir);
-    }
   }
   return ensureWorkflowManifest(detail.runDir);
 }

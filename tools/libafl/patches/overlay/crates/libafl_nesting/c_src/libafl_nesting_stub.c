@@ -55,8 +55,8 @@
 #define L2_CPU_TCG "cortex-a57"
 #define L2_CPU_KVM "host"
 #define L2_READY_POLL_MS 250U
-#define RUNTIME_DUMP_MAX_BYTES (256U * 1024U)
-#define RUNTIME_DUMP_CHUNK_BYTES 128U
+#define RUNTIME_DUMP_MAX_BYTES (2048U * 1024U)
+#define RUNTIME_DUMP_CHUNK_BYTES 512U
 #define L2_DISABLE_NQC2_FW_CFG \
   "/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/l2-disable-nqc2-plugin/raw"
 #define L2_RUN_WINDOW_FW_CFG \
@@ -84,6 +84,7 @@
 #define L2_CPU_CMDLINE "morpheus.l2_cpu="
 #define RUNTIME_CAPTURE_CMDLINE "morpheus.capture_runtime=1"
 #define RUNTIME_CAPTURE_ENV "MORPHEUS_CAPTURE_RUNTIME"
+#define TRACE_DEBUG_ENV "MORPHEUS_L2_TRACE_DEBUG"
 #define L2_MODE_ENV "MORPHEUS_L2_MODE"
 #define L2_RUN_WINDOW_ENV "MORPHEUS_L2_RUN_WINDOW_MS"
 #define L2_MEASURE_STARTUP_ENV "MORPHEUS_L2_MEASURE_STARTUP"
@@ -694,10 +695,19 @@ static void log_file_state(const char *path, const char *label) {
   }
 }
 
+static bool trace_debug_enabled(void) {
+  const char *value = getenv(TRACE_DEBUG_ENV);
+
+  return value && value[0] == '1';
+}
+
 static void dump_runtime_file(const char *name, const char *path) {
   static const char hex_digits[] = "0123456789abcdef";
   uint8_t buf[RUNTIME_DUMP_CHUNK_BYTES];
   char hex[(RUNTIME_DUMP_CHUNK_BYTES * 2U) + 1U];
+  char line[512];
+  size_t line_len = 0;
+  bool text_mode;
   struct stat st;
   size_t dumped = 0;
   size_t offset = 0;
@@ -718,6 +728,9 @@ static void dump_runtime_file(const char *name, const char *path) {
                                            : (size_t)size;
   }
 
+  text_mode = trace_debug_enabled() &&
+              strcmp(name, "morpheus-qemu-trace.log") == 0;
+
   lqprintf("stub-runtime begin name=%s size=%llu dumped=%zu truncated=%u\n",
            name, (unsigned long long)st.st_size, dumped,
            (unsigned)(st.st_size > (off_t)dumped));
@@ -735,14 +748,31 @@ static void dump_runtime_file(const char *name, const char *path) {
       break;
     }
 
-    for (ssize_t i = 0; i < nread; i++) {
-      hex[(size_t)i * 2U] = hex_digits[buf[i] >> 4];
-      hex[((size_t)i * 2U) + 1U] = hex_digits[buf[i] & 0x0fU];
+    if (text_mode) {
+      for (ssize_t i = 0; i < nread; i++) {
+        if (buf[i] == '\n') {
+          line[line_len] = '\0';
+          lqprintf("l2-mmio %s\n", line);
+          line_len = 0;
+        } else if (line_len + 1 < sizeof(line)) {
+          line[line_len++] = (char)buf[i];
+        }
+      }
+    } else {
+      for (ssize_t i = 0; i < nread; i++) {
+        hex[(size_t)i * 2U] = hex_digits[buf[i] >> 4];
+        hex[((size_t)i * 2U) + 1U] = hex_digits[buf[i] & 0x0fU];
+      }
+      hex[(size_t)nread * 2U] = '\0';
+      lqprintf("stub-runtime data name=%s offset=%zu hex=%s\n", name, offset,
+               hex);
     }
-    hex[(size_t)nread * 2U] = '\0';
-    lqprintf("stub-runtime data name=%s offset=%zu hex=%s\n", name, offset,
-             hex);
     offset += (size_t)nread;
+  }
+
+  if (text_mode && line_len > 0) {
+    line[line_len] = '\0';
+    lqprintf("l2-mmio %s\n", line);
   }
 
   close(fd);

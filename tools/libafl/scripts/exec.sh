@@ -66,6 +66,7 @@ elif [ "${MORPHEUS_LIBAFL_DEVILANG_GRAMMAR_MODE+x}" = "x" ]; then
   devilang_grammar_mode="${MORPHEUS_LIBAFL_DEVILANG_GRAMMAR_MODE}"
 fi
 mutational_max_iterations="${MORPHEUS_LIBAFL_MUTATIONAL_MAX_ITERATIONS:-}"
+initial_generated_seeds="${MORPHEUS_LIBAFL_INITIAL_GENERATED_SEEDS:-}"
 show_console="${MORPHEUS_LIBAFL_SHOW_CONSOLE:-false}"
 
 normalize_boolean() {
@@ -110,6 +111,7 @@ while [ "$#" -gt 0 ]; do
     --disable-grammar) disable_devilang_grammar="true" ;;
     --disable-devilang-grammar) disable_devilang_grammar="true" ;;
     --mutational-max-iterations) shift; mutational_max_iterations="${1:-}" ;;
+    --initial-generated-seeds) shift; initial_generated_seeds="${1:-}" ;;
     --show-console)
       case "${2:-}" in
         true|TRUE|True|1|yes|YES|on|ON|false|FALSE|False|0|no|NO|off|OFF)
@@ -1272,7 +1274,12 @@ fi
 if [ -n "${l2_memory_mb}" ]; then
   direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_MEMORY_MB=${l2_memory_mb}"
 fi
-if [ "${MORPHEUS_L2_SHELL_TRACE:-0}" = "1" ]; then
+if [ "${MORPHEUS_L2_DEBUG:-0}" = "1" ]; then
+  # Single debug switch: carries the launcher shell trace, the nested-CVM
+  # runtime capture, and the stub's text-mode trace dump (readable l2-mmio
+  # lines instead of hex) through the init command explicitly.
+  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_SHELL_TRACE=1 MORPHEUS_CAPTURE_RUNTIME=1 MORPHEUS_L2_TRACE_DEBUG=1"
+elif [ "${MORPHEUS_L2_SHELL_TRACE:-0}" = "1" ]; then
   # The launcher runs inside the L1 guest, so an observation-only trace flag
   # from the host must be carried through the init command explicitly.
   direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_SHELL_TRACE=1"
@@ -1787,6 +1794,9 @@ if [ -n "${l2_memory_mb}" ]; then
 fi
 if [ -n "${mutational_max_iterations}" ]; then
   launch_env+=("MORPHEUS_LIBAFL_MUTATIONAL_MAX_ITERATIONS=${mutational_max_iterations}")
+fi
+if [ -n "${initial_generated_seeds}" ]; then
+  launch_env+=("MORPHEUS_LIBAFL_INITIAL_GENERATED_SEEDS=${initial_generated_seeds}")
 fi
 if [ -n "${l2_run_window_ms}" ]; then
   launch_env+=("MORPHEUS_LIBAFL_L2_RUN_WINDOW_MS=${l2_run_window_ms}")

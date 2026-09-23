@@ -2199,6 +2199,22 @@ function workflowRuntimeSteps(stepRecords) {
   }));
 }
 
+function inferWorkflowStatusFromSteps(steps, fallback = "unknown") {
+  if (steps.some((step) => step && step.status === "running")) {
+    return "running";
+  }
+  if (steps.some((step) => step && (step.status === "error" || step.status === "failed"))) {
+    return "error";
+  }
+  if (steps.some((step) => step && step.status === "stopped")) {
+    return "stopped";
+  }
+  if (steps.length > 0 && steps.every((step) => step && (step.status === "success" || step.status === "reused"))) {
+    return "success";
+  }
+  return String(fallback || "unknown");
+}
+
 function workflowRuntimeStages(stageGroups, stepRecords) {
   const stepsById = new Map(workflowRuntimeSteps(stepRecords).map((step) => [step.id, step]));
   return stageGroups.map((stage, stageIndex) => {

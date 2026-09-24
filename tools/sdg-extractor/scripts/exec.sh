@@ -3,7 +3,7 @@ set -euo pipefail
 
 tool_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 output_dir="${MORPHEUS_SDG_EXTRACTOR_OUTPUT:?}"
-build_dir="${MORPHEUS_SDG_EXTRACTOR_BUILD_DIR:-${tool_root}/build}"
+build_dir="${MORPHEUS_SDG_EXTRACTOR_BUILD_DIR:-${tool_root}/builds/default/build}"
 result_file="${MORPHEUS_SDG_EXTRACTOR_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 
 bitcode_list="${MORPHEUS_SDG_EXTRACTOR_BITCODE_LIST:-}"
@@ -15,7 +15,6 @@ sink_catalog="${MORPHEUS_SDG_EXTRACTOR_SINK_CATALOG:-}"
 struct_catalog="${MORPHEUS_SDG_EXTRACTOR_STRUCT_CATALOG:-}"
 
 mkdir -p "${output_dir}"
-mkdir -p "${build_dir}"
 
 log_file="${output_dir}/sdg-extractor.log"
 rules_file="${output_dir}/sdg-rules.json"
@@ -32,18 +31,18 @@ log() {
 log "sdg-extractor exec start"
 log "output_dir=${output_dir}"
 
+plugin="${build_dir}/SDGExtractPass.so"
+if [ ! -f "${plugin}" ]; then
+  log "error: pass plugin not found at ${plugin}; run build first"
+  exit 1
+fi
+
 for f in "${bitcode_list}" "${llcg_dot}" "${kallgraph_text}" "${points_to_json}"; do
-  if [ -n "${f}" ] && [ ! -f "${f}" ]; then
+  if [ -n "${f}" ] && [ ! -e "${f}" ]; then
     log "error: required input not found: ${f}"
     exit 1
   fi
 done
-
-# Placeholder extraction: verify inputs and emit empty but valid artifacts.
-# The real implementation will parse bitcode, apply the algorithm from
-# docs/grammar-extraction.md, and emit populated nodes/edges/rules.
-
-log "placeholder extraction: parsing inputs"
 
 bitcode_count=0
 if [ -n "${bitcode_list}" ] && [ -f "${bitcode_list}" ]; then
@@ -55,37 +54,89 @@ if [ -n "${llcg_dot}" ] && [ -f "${llcg_dot}" ]; then
   cg_nodes=$(grep -cE '^\s*"[^"]+"\s*;' "${llcg_dot}" || true)
 fi
 
+log "plugin=${plugin}"
 log "bitcode files=${bitcode_count} callgraph nodes=${cg_nodes}"
 
-cat > "${nodes_file}" <<EOF
-{
-  "version": "0.1.0",
-  "count": 0,
-  "nodes": []
-}
-EOF
+work_dir="${output_dir}/per-module"
+mkdir -p "${work_dir}"
 
-cat > "${edges_file}" <<EOF
-{
-  "version": "0.1.0",
-  "self_edges": [],
-  "cross_edges": []
-}
-EOF
+OPT="${OPT:-opt-15}"
+entry_arg=""
+if [ -n "${entry_list}" ] && [ -f "${entry_list}" ]; then
+  entry_arg="-sdg-entry-list=${entry_list}"
+fi
 
-cat > "${rules_file}" <<EOF
-{
-  "version": "0.1.0",
-  "count": 0,
-  "rules": []
-}
-EOF
+idx=0
+while IFS= read -r bc_file; do
+  [ -z "${bc_file}" ] && continue
+  [ ! -f "${bc_file}" ] && { log "warning: missing bitcode ${bc_file}"; continue; }
+  tmp_out="${work_dir}/out_${idx}.json"
+  log "extracting from ${bc_file}"
+  "${OPT}" -load-pass-plugin "${plugin}" \
+    -passes=sdg-extract \
+    -sdg-output "${tmp_out}" \
+    ${entry_arg} \
+    "${bc_file}" \
+    -o /dev/null
+  idx=$((idx + 1))
+done < "${bitcode_list}"
+
+# Merge per-module JSON outputs into the final artifacts.
+python3 - <<PYEOF
+import json, os, glob
+
+work_dir = "${work_dir}"
+nodes = []
+self_edges = []
+cross_edges = []
+rules = []
+seen_node_ids = set()
+seen_rule_ids = set()
+
+def edge_key(e):
+    return (e.get("src"), e.get("dst"), e.get("head"),
+            str(e.get("predicate")), e.get("function"))
+seen_edge_keys = set()
+
+for path in sorted(glob.glob(os.path.join(work_dir, "out_*.json"))):
+    with open(path) as f:
+        data = json.load(f)
+    for n in data.get("nodes", {}).get("nodes", []):
+        if n["id"] not in seen_node_ids:
+            seen_node_ids.add(n["id"])
+            nodes.append(n)
+    for e in data.get("edges", {}).get("self_edges", []):
+        k = edge_key(e)
+        if k not in seen_edge_keys:
+            seen_edge_keys.add(k)
+            self_edges.append(e)
+    for e in data.get("edges", {}).get("cross_edges", []):
+        k = edge_key(e)
+        if k not in seen_edge_keys:
+            seen_edge_keys.add(k)
+            cross_edges.append(e)
+    for r in data.get("rules", {}).get("rules", []):
+        if r["id"] not in seen_rule_ids:
+            seen_rule_ids.add(r["id"])
+            rules.append(r)
+
+version = "0.2.0"
+with open("${nodes_file}", "w") as f:
+    json.dump({"version": version, "count": len(nodes), "nodes": nodes}, f, indent=2)
+with open("${edges_file}", "w") as f:
+    json.dump({"version": version, "self_count": len(self_edges), "cross_count": len(cross_edges),
+               "self_edges": self_edges, "cross_edges": cross_edges}, f, indent=2)
+with open("${rules_file}", "w") as f:
+    json.dump({"version": version, "count": len(rules), "rules": rules}, f, indent=2)
+
+print(f"merged: {len(nodes)} nodes, {len(self_edges)} self edges, {len(cross_edges)} cross edges, {len(rules)} rules")
+PYEOF
 
 cat > "${manifest_file}" <<EOF
 {
   "command": "exec",
   "status": "success",
-  "summary": "extracted SDG rules from bitcode (placeholder)",
+  "summary": "extracted SDG rules from bitcode",
   "details": {
     "output": "${output_dir}",
     "bitcode_count": ${bitcode_count},
@@ -130,7 +181,7 @@ EOF
 
 cat > "${result_file}" <<EOF
 {
-  "summary": "extracted SDG rules from bitcode (placeholder)",
+  "summary": "extracted SDG rules from bitcode",
   "details": {
     "output": "${output_dir}",
     "bitcode_count": ${bitcode_count},

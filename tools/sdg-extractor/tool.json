@@ -85,14 +85,14 @@
           "scalarFlags": ["build-dir"],
           "repeatableFlags": [],
           "pathFlags": {
-            "build-dir": "tools/sdg-extractor/build"
+            "build-dir": "tools/sdg-extractor/builds/{buildDirKey}/build"
           },
           "script": {
             "path": "scripts/build.sh",
             "shell": "bash"
           },
           "result": {
-            "successSummary": "built sdg-extractor placeholder artifacts",
+            "successSummary": "built sdg-extractor LLVM pass",
             "errorSummary": "sdg-extractor build failed",
             "manifestTemplate": "{build-dir}/manifest.json",
             "artifact": {
@@ -116,7 +116,7 @@
           ],
           "repeatableFlags": [],
           "pathFlags": {
-            "build-dir": "tools/sdg-extractor/build",
+            "build-dir": "tools/sdg-extractor/builds/{buildDirKey}/build",
             "output": "tools/sdg-extractor/builds/{buildDirKey}/output"
           },
           "script": {

@@ -51,8 +51,9 @@ patched QEMU coverage backend.
 ## SDG Rule Configuration
 
 The generator loads plain-text `.sdg` rule files from the directory named by
-`MORPHEUS_LIBAFL_SDG_RULES`, or from the crate's `rules/` directory by
-default.
+`MORPHEUS_LIBAFL_SDG_RULES`. When the variable is unset the generator runs in
+plain mode and draws initial scenarios from its random generator without
+reading any rule directory.
 
 ```text
 MORPHEUS_LIBAFL_SDG_RULES=<rules-directory>

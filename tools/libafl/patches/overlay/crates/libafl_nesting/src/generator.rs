@@ -39,11 +39,11 @@ impl ScenarioGenerator {
 
     #[cfg(feature = "std")]
     pub fn from_env() -> Result<Self, String> {
-        let path = std::env::var("MORPHEUS_LIBAFL_SDG_RULES")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("rules"));
         let mut generator = Self::default();
-        generator.sdg = Some(SemanticDependencyGraph::from_dir(&path)?);
+        if let Ok(path) = std::env::var("MORPHEUS_LIBAFL_SDG_RULES") {
+            let sdg = SemanticDependencyGraph::from_dir(std::path::Path::new(&path))?;
+            generator.sdg = Some(sdg);
+        }
         Ok(generator)
     }
 }

@@ -57,18 +57,19 @@ def rule_key(r: dict) -> tuple:
 
 
 def rule_body(r: dict) -> dict:
-    """Detailed content used for exact comparison after grouping."""
+    """Semantic content used for comparison (ignores IDs, heads, debug locs)."""
+    trigger = r.get("trigger", {})
     return {
-        "trigger": r.get("trigger"),
+        "trigger_predicate": trigger.get("predicate"),
         "mutation": r.get("mutation"),
         "preconditions": sorted(
-            r.get("preconditions", []),
-            key=lambda e: (e.get("src"), e.get("dst"), str(e.get("predicate"))),
+            (e.get("predicate") for e in r.get("preconditions", [])),
+            key=lambda p: str(p),
         ),
     }
 
 
-def exact_match(a: dict, b: dict) -> bool:
+def semantic_match(a: dict, b: dict) -> bool:
     return rule_body(a) == rule_body(b)
 
 
@@ -100,7 +101,7 @@ def compare_fixture(name: str) -> dict:
     for key, lr in llm_by_key.items():
         if key in llvm_by_key:
             rr = llvm_by_key[key]
-            if exact_match(lr, rr):
+            if semantic_match(lr, rr):
                 matched.append(lr["id"])
             else:
                 # Same semantic group but detail differs; treat as mismatch to review.

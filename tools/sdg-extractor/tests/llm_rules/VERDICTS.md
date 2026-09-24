@@ -6,19 +6,23 @@ bugs.
 
 ## dma_sink.c
 
-### LLM-only: `probe-queue_num_max-kmalloc`
+### LLM rule: `probe-queue_num_max-kmalloc`
 - Source: `MmioTransport.queue_num_max` (offset 0x034)
 - Sink: `kmalloc` size argument
-- Trigger: `queue_num_max != 0` (guard that must hold to reach the sink)
-- Verdict: **VALID** — directly supported by source code.
+- Trigger: `queue_num_max != 0` (the condition that must hold to reach the sink)
+- Verdict: **VALID**
 
-### LLVM-only: `probe-MmioTransport.queue_num_max`
-- Source and sink are correct.
-- Trigger is the early-exit guard `queue_num_max == 0`, which is the branch
-  that does **not** reach the sink.
-- Mutation hint `SetValue(0)` therefore points away from the sink path.
-- Verdict: **LLVM BUG** — rule assembly should invert the guard for sinks on
-  the opposite branch, or select the branch condition that dominates the sink.
+### LLVM rule: `probe-MmioTransport.queue_num_max`
+After fixing rule assembly:
+- Trigger is now oriented to the sink-reaching branch (`queue_num_max != 0`).
+- Mutation is `SetBoundary Above 0`.
+- The early-exit guard `queue_num_max == 0` is no longer emitted as a
+  precondition.
+- Verdict: **VALID**
+
+The original LLVM output had the trigger inverted (`== 0`) because self-edge
+extraction took the early-exit branch. This was fixed by checking which branch
+successor reaches the sink and inverting the predicate accordingly.
 
 ## mmio_read.c, feature_check.c, feature_inline.c
 

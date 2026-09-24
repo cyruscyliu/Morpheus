@@ -17,6 +17,7 @@
 #include "llvm/Analysis/DominanceFrontier.h"
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/CFG.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -597,6 +598,24 @@ static std::string icmpPredicateName(ICmpInst::Predicate pred) {
   }
 }
 
+static std::string invertPredicateKind(const std::string &kind) {
+  if (kind == "Eq") return "Ne";
+  if (kind == "Ne") return "Eq";
+  if (kind == "Lt") return "Ge";
+  if (kind == "Le") return "Gt";
+  if (kind == "Gt") return "Le";
+  if (kind == "Ge") return "Lt";
+  if (kind == "BitSet") return "BitClear";
+  if (kind == "BitClear") return "BitSet";
+  return kind;
+}
+
+static Predicate invertPredicate(const Predicate &p) {
+  Predicate r = p;
+  r.kind = invertPredicateKind(p.kind);
+  return r;
+}
+
 static Optional<Predicate> predicateForICmp(
     const ICmpInst *icmp,
     const Value *root,
@@ -665,8 +684,31 @@ static Optional<Predicate> predicateForICmp(
   return p;
 }
 
-static std::vector<Edge> extractSelfEdges(const std::vector<Node> &nodes,
-                                           Function &F) {
+static bool blockLeadsToSink(const BasicBlock *start,
+                             const std::set<const CallBase *> &sinkCalls) {
+  std::set<const BasicBlock *> visited;
+  std::vector<const BasicBlock *> work = {start};
+  while (!work.empty()) {
+    const BasicBlock *BB = work.back();
+    work.pop_back();
+    if (!visited.insert(BB).second)
+      continue;
+    for (const auto &I : *BB) {
+      if (auto *CB = dyn_cast<CallBase>(&I)) {
+        if (sinkCalls.count(CB))
+          return true;
+      }
+    }
+    for (const BasicBlock *succ : successors(BB))
+      work.push_back(succ);
+  }
+  return false;
+}
+
+static std::vector<Edge> extractSelfEdges(
+    const std::vector<Node> &nodes,
+    Function &F,
+    const std::map<std::string, std::set<const CallBase *>> &sinkCalls) {
   std::vector<Edge> edges;
   std::map<std::string, const Value *> nodeDef;
 
@@ -705,6 +747,25 @@ static std::vector<Edge> extractSelfEdges(const std::vector<Node> &nodes,
         continue;
 
       Predicate p = pred.getValue();
+
+      // If this icmp drives a conditional branch, orient the predicate
+      // towards the branch on which the sink is reachable.
+      const BranchInst *br = nullptr;
+      for (const User *u : icmp->users()) {
+        if (auto *b = dyn_cast<BranchInst>(u)) {
+          br = b;
+          break;
+        }
+      }
+      auto scIt = sinkCalls.find(n.id);
+      if (br && scIt != sinkCalls.end()) {
+        bool trueSink = blockLeadsToSink(br->getSuccessor(0), scIt->second);
+        bool falseSink = blockLeadsToSink(br->getSuccessor(1), scIt->second);
+        if (!trueSink && falseSink)
+          p = invertPredicate(p);
+        // If both or neither side reaches a sink, keep the predicate as-is.
+      }
+
       std::string head = "head_bound";
       std::set<const Instruction *> icmpReached;
       collectReachableUsers(icmp, icmpReached, 4);
@@ -809,7 +870,8 @@ static std::vector<Edge> extractCrossEdges(const std::vector<Node> &nodes,
 //===----------------------------------------------------------------------===//
 
 static std::map<std::string, std::vector<Sink>>
-extractSinks(const std::vector<Node> &nodes, Function &F) {
+extractSinks(const std::vector<Node> &nodes, Function &F,
+             std::map<std::string, std::set<const CallBase *>> *sinkCallsOut = nullptr) {
   std::map<std::string, std::vector<Sink>> sinks;
 
   for (const Node &n : nodes) {
@@ -852,6 +914,8 @@ extractSinks(const std::vector<Node> &nodes, Function &F) {
         k.arg_index = idx;
         k.role = role;
         sinks[n.id].push_back(k);
+        if (sinkCallsOut)
+          (*sinkCallsOut)[n.id].insert(CB);
       }
     }
   }
@@ -871,6 +935,12 @@ static MutationHint hintForPredicate(const Predicate &p, const std::string &var)
     m.op = "SetBoundary"; m.side = "Below";
   } else if (p.kind == "Eq") {
     m.op = "SetValue"; m.value = p.value;
+  } else if (p.kind == "Ne") {
+    if (p.value.hasValue() && p.value.getValue() == 0) {
+      m.op = "SetBoundary"; m.side = "Above";
+    } else {
+      m.op = "SampleRange";
+    }
   } else if (p.kind == "BitSet") {
     m.op = "FlipBit"; m.bit = p.bit;
   } else if (p.kind == "BitClear") {
@@ -881,10 +951,20 @@ static MutationHint hintForPredicate(const Predicate &p, const std::string &var)
   return m;
 }
 
+static bool predicatesNegate(const Predicate &a, const Predicate &b) {
+  if (a.kind != invertPredicateKind(b.kind))
+    return false;
+  if (a.value.hasValue() && b.value.hasValue())
+    return a.value.getValue() == b.value.getValue();
+  if (a.bit.hasValue() && b.bit.hasValue())
+    return a.bit.getValue() == b.bit.getValue();
+  return false;
+}
+
 static std::vector<Rule> assembleRules(const std::vector<Node> &nodes,
-                                       const std::vector<Edge> &selfEdges,
-                                       const std::vector<Edge> &crossEdges,
-                                       const std::map<std::string, std::vector<Sink>> &sinks) {
+                                        const std::vector<Edge> &selfEdges,
+                                        const std::vector<Edge> &crossEdges,
+                                        const std::map<std::string, std::vector<Sink>> &sinks) {
   std::vector<Rule> rules;
   std::map<std::string, Node> nodeById;
   for (const Node &n : nodes) nodeById[n.id] = n;
@@ -896,8 +976,13 @@ static std::vector<Rule> assembleRules(const std::vector<Node> &nodes,
 
     std::vector<Edge> pre;
     for (const Edge &e : crossEdges) {
-      if ((e.src == trigger.src || e.dst == trigger.src) && e.head == "head_guard")
+      if ((e.src == trigger.src || e.dst == trigger.src) && e.head == "head_guard") {
+        // A guard that is the exact negation of the trigger is the early-exit
+        // branch, not a precondition for reaching the sink.
+        if (predicatesNegate(e.pred, trigger.pred))
+          continue;
         pre.push_back(e);
+      }
     }
 
     float score = 0.5f;
@@ -930,6 +1015,7 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
   std::vector<Edge> allSelfEdges;
   std::vector<Edge> allCrossEdges;
   std::map<std::string, std::vector<Sink>> allSinks;
+  std::map<std::string, std::set<const CallBase *>> allSinkCalls;
 
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &) {
     // Load optional entry list to scope analysis.
@@ -972,14 +1058,16 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
         }
       }
 
-      auto selfEdges = extractSelfEdges(nodes, F);
+      std::map<std::string, std::set<const CallBase *>> sinkCalls;
+      auto sinks = extractSinks(nodes, F, &sinkCalls);
+      auto selfEdges = extractSelfEdges(nodes, F, sinkCalls);
       auto crossEdges = extractCrossEdges(nodes, F);
-      auto sinks = extractSinks(nodes, F);
 
       allNodes.insert(allNodes.end(), nodes.begin(), nodes.end());
       allSelfEdges.insert(allSelfEdges.end(), selfEdges.begin(), selfEdges.end());
       allCrossEdges.insert(allCrossEdges.end(), crossEdges.begin(), crossEdges.end());
       allSinks.insert(sinks.begin(), sinks.end());
+      allSinkCalls.insert(sinkCalls.begin(), sinkCalls.end());
     }
 
     auto rules = assembleRules(allNodes, allSelfEdges, allCrossEdges, allSinks);

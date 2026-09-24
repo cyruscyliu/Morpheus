@@ -126,6 +126,10 @@ device-side emulation
 `data_kind=any` is the correct top-level representation when the paper does
 not establish a payload schema. A guessed schema is not a refinement.
 
+The lifecycle order above is about *observable DMA phases*.  The *hook layer*
+(where those phases are intercepted) is orthogonal.  See Section 3.5 for the
+per-model hook implementation.
+
 ### Interrupts `I`
 
 ```text
@@ -206,6 +210,30 @@ is best read from the state files. All revised models keep lifecycle,
 input-source, or DMA/interrupt integration signals separate from interface
 events where the paper requires them.
 
+### 3.5 DMA hook implementation vectors
+
+This table complements the `D` column.  `D` says which DMA lifecycle phases
+are modeled; this table says *where* the fuzzer observes or injects them.
+
+| Model | Hook layer | Coherent DMA | Streaming DMA | Driver-to-device handling | Evidence quality |
+| --- | --- | --- | --- | --- | --- |
+| Drifuzz | Kernel DMA API + QEMU PCI command channel | `dma_alloc_attrs`/`dma_free_attrs` call `handle_const_dma_init/exit` | Declared; `STREAM_DMA_EXIT` fills buffer in QEMU | Consistent writes go to device mem; USB stream ignored | Full code |
+| VIA | LKL wrapper / kernel access interface | Allocation event → fill at alloc | `map`/`sync_for_cpu`/`unmap` events → fill at sync | Ignored | Paper + model only |
+| DrFuzz | VMM hypercall + shared payload | None | None | Same payload region reused | README + partial code |
+| DevFuzz | QEMU-side MMIO write interception | None | DMA address inferred from MMIO write | Not tracked / ignored | Full code |
+| PrIntFuzz | Kernel inline + host KVM hypercall | `dma_alloc_coherent` → `KVM_HC_ALLOC_DMA` | `KVM_HC_PREPARE_DATA` injects guest DMA buffer | Explicitly ignored in fake device | QEMU + Linux patches |
+| VirtFuzz | VirtIO virtqueue layer | N/A (virtqueue buffers) | N/A | Forwarded to socket | QEMU patch + Rust code |
+| PCIconfuzz | None | None | None | None | Paper only |
+| DevGen | None | None | None | None | Paper + model only |
+
+Hook-layer shorthand used below:
+
+- `K` = kernel DMA API hook (`dma_alloc_*` / `dma_map_*`);
+- `V` = VMM hypercall / QEMU command channel;
+- `M` = MMIO-derived DMA address capture;
+- `T` = transport / packet / payload layer;
+- `-` = absent.
+
 ## 4. What the Table Says
 
 There is no valid total order over the current models.
@@ -213,21 +241,27 @@ There is no valid total order over the current models.
 The current set is mostly an antichain:
 
 - **DrFuzz** adds semantic validation order, but has no interrupt model and
-  only a device-free input abstraction.
+  only a device-free input abstraction.  Its DMA path is a transport/payload
+  injection (`T`) rather than a DMA lifecycle hook.
 - **PCIconfuzz** adds concrete-versus-fuzzed PCI configuration phases and
-  snapshot boundaries, but has no DMA lifecycle.
+  snapshot boundaries, but has no DMA lifecycle or DMA hook.
 - **DevFuzz** adds both PIO and DMA to MMIO and learns a distinct probe-value
-  source. Its writes remain passthrough-like.
-- **PrIntFuzz** adds concrete configuration, DMA, and interrupt injection,
-  but does not provide PIO in the current paper-specific model.
+  source.  Its DMA hook is MMIO-derived (`M`); it does not modify the kernel
+  DMA API.
+- **PrIntFuzz** adds concrete configuration, DMA, and interrupt injection.
+  Its DMA hook is kernel-DMA-API plus VMM hypercall (`K+V`).  It does not
+  provide PIO in the current paper-specific model.
 - **VirtFuzz** adds a queue-oriented protocol state and full opaque DMA
-  movement, but is specialized to the universal VirtIO transport.
+  movement, but is specialized to the universal VirtIO transport.  Its hook
+  is the virtqueue transport layer (`T`).
 - **DevGen** adds generated device-side write/read semantics and generated
   device values, but does not model DMA in this re-framing.
 - **VIA passthrough** has broad interception coverage and explicit external
   DMA/interrupt integration, but intentionally does not interpret writes.
+  Its DMA hook is an LKL/kernel access-interface wrapper (`K`).
 - **VIA emulation** adds device-side protocol state and generated behavior,
   but changes the responsibility boundary from passthrough to emulation.
+  It keeps the same DMA hook layer as VIA passthrough.
 
 Therefore, publication order does not establish:
 
@@ -291,10 +325,12 @@ When a new paper model is added, compare it in this order:
 3. Does it identify the value source as concrete, learned, generated, or
    serialized input?
 4. Does it add a real DMA lifecycle: map, sync, fill/ignore, unmap?
-5. Does it separate external observation from Devilang events and actions?
-6. Does it add an interrupt source and delivery path?
-7. Does its state constrain interface ordering, or only describe workflow?
-8. Does it preserve every behavior already represented by the nearest model?
+5. Does it add or change a DMA hook layer (kernel API, VMM hypercall,
+   MMIO-derived, transport/payload)?
+6. Does it separate external observation from Devilang events and actions?
+7. Does it add an interrupt source and delivery path?
+8. Does its state constrain interface ordering, or only describe workflow?
+9. Does it preserve every behavior already represented by the nearest model?
 
 Only a "yes" to the last question plus at least one meaningful earlier
 addition establishes strict progress. Otherwise the result is a different

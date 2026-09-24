@@ -94,7 +94,7 @@ machine via_passthrough_mmio_dma {
             dma_event(op=map, dir=to_device, path=dma_api, addr=dma_addr, len=dma_len, data_kind=any);
             call ignore_driver_to_device_dma(dma_addr, dma_len);
         }
-    }external_dma_unmapped
+    }
 
     entry trace intercept_device_to_driver_dma {
         sequence {

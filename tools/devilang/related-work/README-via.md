@@ -3,8 +3,10 @@
 This directory contains a Devilang re-framing of the device-interface
 interaction described by Hetzelt et al. in:
 
-> Felicitas Hetzelt et al., "VIA: Analyzing Device Interfaces of Protected
-> Virtual Machines", arXiv:2109.10660.
+> Felicitas Hetzelt, Moritz Schlögel, Robert Buhren, Manuel Radev, and
+> Jean-Pierre Seifert, "VIA: Analyzing Device Interfaces of Protected Virtual
+> Machines", Proceedings of the 37th Annual Computer Security Applications
+> Conference (ACSAC), 2021. DOI: 10.1145/3485832.3485916.
 
 The model is intentionally about device behavior and interface ordering. It
 does not encode the paper's threat model, exploit classes, or security

@@ -1,0 +1,42 @@
+{
+  "version": "0.2.0-llm",
+  "rules": [
+    {
+      "id": "probe-queue_num_max-kmalloc",
+      "function": "probe",
+      "vars": [
+        {
+          "id": "MmioTransport.queue_num_max",
+          "source": {
+            "class": "Mmio",
+            "access_kind": "transport",
+            "width_bytes": 4,
+            "offset": 52,
+            "field": "queue_num_max"
+          },
+          "llvm_value": "",
+          "function": "probe",
+          "debug_loc": { "file": "", "line": 0 }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "MmioTransport.queue_num_max",
+        "dst": "MmioTransport.queue_num_max",
+        "head": "head_guard",
+        "predicate": { "kind": "Ne", "value": 0 },
+        "function": "probe",
+        "debug_loc": { "file": "dma_sink.c", "line": 14 }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "MmioTransport.queue_num_max",
+        "side": "Above"
+      },
+      "sinks": [
+        { "function": "kmalloc", "arg_index": 0, "role": "size" }
+      ],
+      "confidence": 1.0
+    }
+  ]
+}

@@ -66,10 +66,42 @@ if [ -n "${entry_list}" ] && [ -f "${entry_list}" ]; then
   entry_arg="-sdg-entry-list=${entry_list}"
 fi
 
+# Resolve bitcode paths. llbic emits paths relative to a kbuild-* subdirectory
+# of the directory containing the bitcode list.
+bc_list_dir=""
+bc_search_dir=""
+if [ -n "${bitcode_list}" ] && [ -f "${bitcode_list}" ]; then
+  bc_list_dir="$(cd "$(dirname "${bitcode_list}")" && pwd)"
+  bc_search_dir="$(find "${bc_list_dir}" -maxdepth 1 -type d -name 'kbuild-*' | head -n 1)"
+fi
+
+resolve_bc() {
+  local ent="$1"
+  if [ -z "${ent}" ]; then
+    return
+  fi
+  if [ -f "${ent}" ]; then
+    printf '%s' "${ent}"
+    return
+  fi
+  if [ -n "${bc_list_dir}" ] && [ -f "${bc_list_dir}/${ent}" ]; then
+    printf '%s' "${bc_list_dir}/${ent}"
+    return
+  fi
+  if [ -n "${bc_search_dir}" ] && [ -f "${bc_search_dir}/${ent}" ]; then
+    printf '%s' "${bc_search_dir}/${ent}"
+    return
+  fi
+}
+
 idx=0
-while IFS= read -r bc_file; do
-  [ -z "${bc_file}" ] && continue
-  [ ! -f "${bc_file}" ] && { log "warning: missing bitcode ${bc_file}"; continue; }
+while IFS= read -r bc_entry; do
+  [ -z "${bc_entry}" ] && continue
+  bc_file="$(resolve_bc "${bc_entry}")"
+  if [ -z "${bc_file}" ]; then
+    log "warning: missing bitcode ${bc_entry}"
+    continue
+  fi
   tmp_out="${work_dir}/out_${idx}.json"
   log "extracting from ${bc_file}"
   "${OPT}" -load-pass-plugin "${plugin}" \

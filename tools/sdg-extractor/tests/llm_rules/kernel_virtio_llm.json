@@ -1,0 +1,1253 @@
+{
+  "version": "0.2.0-llm",
+  "rules": [
+    {
+      "id": "virtio-mmio-queue-num-max-kmalloc",
+      "function": "vm_setup_vq",
+      "vars": [
+        {
+          "id": "MmioTransport.queue_num_max",
+          "source": {
+            "class": "Mmio",
+            "access_kind": "transport",
+            "width_bytes": 4,
+            "offset": 52,
+            "field": "queue_num_max",
+            "feature_bit": null,
+            "telemetry_event": null
+          },
+          "llvm_value": "",
+          "function": "vm_setup_vq",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "MmioTransport.queue_num_max",
+        "dst": "MmioTransport.queue_num_max",
+        "head": "head_bound",
+        "predicate": {
+          "kind": "Gt",
+          "value": 0
+        },
+        "function": "vm_setup_vq",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "MmioTransport.queue_num_max",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "kmalloc",
+          "arg_index": 0,
+          "role": "size"
+        }
+      ],
+      "confidence": 0.72
+    },
+    {
+      "id": "virtio-mmio-queue-num-max-vring-alloc",
+      "function": "vring_alloc_queue",
+      "vars": [
+        {
+          "id": "MmioTransport.queue_num_max",
+          "source": {
+            "class": "Mmio",
+            "access_kind": "transport",
+            "width_bytes": 4,
+            "offset": 52,
+            "field": "queue_num_max",
+            "feature_bit": null,
+            "telemetry_event": null
+          },
+          "llvm_value": "",
+          "function": "vring_alloc_queue",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "MmioTransport.queue_num_max",
+        "dst": "MmioTransport.queue_num_max",
+        "head": "head_bound",
+        "predicate": {
+          "kind": "Gt",
+          "value": 0
+        },
+        "function": "vring_alloc_queue",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "MmioTransport.queue_num_max",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "alloc_pages_exact",
+          "arg_index": 0,
+          "role": "size"
+        }
+      ],
+      "confidence": 0.72
+    },
+    {
+      "id": "virtio-mmio-queue-ready-index",
+      "function": "vm_setup_vq",
+      "vars": [
+        {
+          "id": "MmioTransport.queue_ready",
+          "source": {
+            "class": "Mmio",
+            "access_kind": "transport",
+            "width_bytes": 4,
+            "offset": 68,
+            "field": "queue_ready",
+            "feature_bit": null,
+            "telemetry_event": null
+          },
+          "llvm_value": "",
+          "function": "vm_setup_vq",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "MmioTransport.queue_ready",
+        "dst": "MmioTransport.queue_ready",
+        "head": "head_guard",
+        "predicate": {
+          "kind": "Ne",
+          "value": 0
+        },
+        "function": "vm_setup_vq",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "MmioTransport.queue_ready",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "writel",
+          "arg_index": 1,
+          "role": "value"
+        }
+      ],
+      "confidence": 0.72
+    },
+    {
+      "id": "virtio-mmio-queue-notify",
+      "function": "vm_notify",
+      "vars": [
+        {
+          "id": "MmioTransport.queue_notify",
+          "source": {
+            "class": "Mmio",
+            "access_kind": "transport",
+            "width_bytes": 4,
+            "offset": 80,
+            "field": "queue_notify",
+            "feature_bit": null,
+            "telemetry_event": null
+          },
+          "llvm_value": "",
+          "function": "vm_notify",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "MmioTransport.queue_notify",
+        "dst": "MmioTransport.queue_notify",
+        "head": "head_bound",
+        "predicate": {
+          "kind": "Gt",
+          "value": 0
+        },
+        "function": "vm_notify",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "MmioTransport.queue_notify",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "writel",
+          "arg_index": 1,
+          "role": "value"
+        }
+      ],
+      "confidence": 0.72
+    },
+    {
+      "id": "virtio-mmio-status-transition",
+      "function": "vm_set_status",
+      "vars": [
+        {
+          "id": "MmioTransport.status",
+          "source": {
+            "class": "Mmio",
+            "access_kind": "transport",
+            "width_bytes": 4,
+            "offset": 112,
+            "field": "status",
+            "feature_bit": null,
+            "telemetry_event": null
+          },
+          "llvm_value": "",
+          "function": "vm_set_status",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "MmioTransport.status",
+        "dst": "MmioTransport.status",
+        "head": "head_guard",
+        "predicate": {
+          "kind": "Ne",
+          "value": 0
+        },
+        "function": "vm_set_status",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "MmioTransport.status",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "writel",
+          "arg_index": 1,
+          "role": "value"
+        }
+      ],
+      "confidence": 0.72
+    },
+    {
+      "id": "virtio-mmio-config-generation",
+      "function": "vm_get_config",
+      "vars": [
+        {
+          "id": "MmioTransport.config_generation",
+          "source": {
+            "class": "Mmio",
+            "access_kind": "transport",
+            "width_bytes": 4,
+            "offset": 252,
+            "field": "config_generation",
+            "feature_bit": null,
+            "telemetry_event": null
+          },
+          "llvm_value": "",
+          "function": "vm_get_config",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "MmioTransport.config_generation",
+        "dst": "MmioTransport.config_generation",
+        "head": "head_guard",
+        "predicate": {
+          "kind": "Ne",
+          "value": 0
+        },
+        "function": "vm_get_config",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "MmioTransport.config_generation",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "readl",
+          "arg_index": 0,
+          "role": "address"
+        }
+      ],
+      "confidence": 0.72
+    },
+    {
+      "id": "virtio-device-feature-bit-check",
+      "function": "virtio_has_feature",
+      "vars": [
+        {
+          "id": "MmioFeature.bit",
+          "source": {
+            "class": "Mmio",
+            "access_kind": "feature",
+            "width_bytes": 4,
+            "offset": null,
+            "field": null,
+            "feature_bit": 5,
+            "telemetry_event": null
+          },
+          "llvm_value": "",
+          "function": "virtio_has_feature",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "MmioFeature.bit",
+        "dst": "MmioFeature.bit",
+        "head": "head_guard",
+        "predicate": {
+          "kind": "BitSet",
+          "bit": 5
+        },
+        "function": "virtio_has_feature",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "FlipBit",
+        "var": "MmioFeature.bit",
+        "bit": 5
+      },
+      "sinks": [
+        {
+          "function": "virtio_has_feature",
+          "arg_index": 1,
+          "role": "feature_bit"
+        }
+      ],
+      "confidence": 0.9
+    },
+    {
+      "id": "virtio-ring-event-index-feature",
+      "function": "vring_use_event_idx",
+      "vars": [
+        {
+          "id": "MmioFeature.event_idx",
+          "source": {
+            "class": "Mmio",
+            "access_kind": "feature",
+            "width_bytes": 4,
+            "offset": null,
+            "field": null,
+            "feature_bit": 29,
+            "telemetry_event": null
+          },
+          "llvm_value": "",
+          "function": "vring_use_event_idx",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "MmioFeature.event_idx",
+        "dst": "MmioFeature.event_idx",
+        "head": "head_guard",
+        "predicate": {
+          "kind": "BitSet",
+          "bit": 29
+        },
+        "function": "vring_use_event_idx",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "FlipBit",
+        "var": "MmioFeature.event_idx",
+        "bit": 29
+      },
+      "sinks": [
+        {
+          "function": "virtqueue_add_sgs",
+          "arg_index": 0,
+          "role": "control"
+        }
+      ],
+      "confidence": 0.8
+    },
+    {
+      "id": "virtio-net-mrg-rxbuf-feature",
+      "function": "virtnet_probe",
+      "vars": [
+        {
+          "id": "MmioFeature.mrg_rxbuf",
+          "source": {
+            "class": "Mmio",
+            "access_kind": "feature",
+            "width_bytes": 4,
+            "offset": null,
+            "field": null,
+            "feature_bit": 15,
+            "telemetry_event": null
+          },
+          "llvm_value": "",
+          "function": "virtnet_probe",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "MmioFeature.mrg_rxbuf",
+        "dst": "MmioFeature.mrg_rxbuf",
+        "head": "head_guard",
+        "predicate": {
+          "kind": "BitSet",
+          "bit": 15
+        },
+        "function": "virtnet_probe",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "FlipBit",
+        "var": "MmioFeature.mrg_rxbuf",
+        "bit": 15
+      },
+      "sinks": [
+        {
+          "function": "kmalloc",
+          "arg_index": 0,
+          "role": "size"
+        }
+      ],
+      "confidence": 0.75
+    },
+    {
+      "id": "virtio-net-mtu-skb-allocation",
+      "function": "virtnet_probe",
+      "vars": [
+        {
+          "id": "MmioConfig.mtu",
+          "source": {
+            "class": "Mmio",
+            "access_kind": "config",
+            "width_bytes": 2,
+            "offset": null,
+            "field": "mtu",
+            "feature_bit": null,
+            "telemetry_event": null
+          },
+          "llvm_value": "",
+          "function": "virtnet_probe",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "MmioConfig.mtu",
+        "dst": "MmioConfig.mtu",
+        "head": "head_bound",
+        "predicate": {
+          "kind": "Gt",
+          "value": 0
+        },
+        "function": "virtnet_probe",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "MmioConfig.mtu",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "alloc_page",
+          "arg_index": 0,
+          "role": "size"
+        }
+      ],
+      "confidence": 0.72
+    },
+    {
+      "id": "virtio-net-mac-config-copy",
+      "function": "virtnet_probe",
+      "vars": [
+        {
+          "id": "MmioConfig.mac",
+          "source": {
+            "class": "Mmio",
+            "access_kind": "config",
+            "width_bytes": 6,
+            "offset": null,
+            "field": "mac",
+            "feature_bit": null,
+            "telemetry_event": null
+          },
+          "llvm_value": "",
+          "function": "virtnet_probe",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "MmioConfig.mac",
+        "dst": "MmioConfig.mac",
+        "head": "head_guard",
+        "predicate": {
+          "kind": "Ne",
+          "value": 0
+        },
+        "function": "virtnet_probe",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "MmioConfig.mac",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "memcpy",
+          "arg_index": 1,
+          "role": "source"
+        }
+      ],
+      "confidence": 0.8
+    },
+    {
+      "id": "virtio-net-status-config",
+      "function": "virtnet_config_changed",
+      "vars": [
+        {
+          "id": "MmioConfig.status",
+          "source": {
+            "class": "Mmio",
+            "access_kind": "config",
+            "width_bytes": 1,
+            "offset": null,
+            "field": "status",
+            "feature_bit": null,
+            "telemetry_event": null
+          },
+          "llvm_value": "",
+          "function": "virtnet_config_changed",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "MmioConfig.status",
+        "dst": "MmioConfig.status",
+        "head": "head_guard",
+        "predicate": {
+          "kind": "Ne",
+          "value": 0
+        },
+        "function": "virtnet_config_changed",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "MmioConfig.status",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "netif_carrier_on",
+          "arg_index": 0,
+          "role": "control"
+        }
+      ],
+      "confidence": 0.78
+    },
+    {
+      "id": "virtio-net-max-queue-pairs",
+      "function": "virtnet_probe",
+      "vars": [
+        {
+          "id": "MmioConfig.max_queue_pairs",
+          "source": {
+            "class": "Mmio",
+            "access_kind": "config",
+            "width_bytes": 2,
+            "offset": null,
+            "field": "max_queue_pairs",
+            "feature_bit": null,
+            "telemetry_event": null
+          },
+          "llvm_value": "",
+          "function": "virtnet_probe",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "MmioConfig.max_queue_pairs",
+        "dst": "MmioConfig.max_queue_pairs",
+        "head": "head_bound",
+        "predicate": {
+          "kind": "Gt",
+          "value": 0
+        },
+        "function": "virtnet_probe",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "MmioConfig.max_queue_pairs",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "kzalloc",
+          "arg_index": 0,
+          "role": "size"
+        }
+      ],
+      "confidence": 0.8
+    },
+    {
+      "id": "virtio-net-csum-feature",
+      "function": "virtnet_probe",
+      "vars": [
+        {
+          "id": "MmioFeature.csum",
+          "source": {
+            "class": "Mmio",
+            "access_kind": "feature",
+            "width_bytes": 4,
+            "offset": null,
+            "field": null,
+            "feature_bit": 0,
+            "telemetry_event": null
+          },
+          "llvm_value": "",
+          "function": "virtnet_probe",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "MmioFeature.csum",
+        "dst": "MmioFeature.csum",
+        "head": "head_guard",
+        "predicate": {
+          "kind": "BitSet",
+          "bit": 0
+        },
+        "function": "virtnet_probe",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "FlipBit",
+        "var": "MmioFeature.csum",
+        "bit": 0
+      },
+      "sinks": [
+        {
+          "function": "skb_put",
+          "arg_index": 1,
+          "role": "size"
+        }
+      ],
+      "confidence": 0.7
+    },
+    {
+      "id": "virtio-ring-coherent-queue-size",
+      "function": "vring_alloc_queue",
+      "vars": [
+        {
+          "id": "Dma.coherent.queue_size",
+          "source": {
+            "class": "Dma",
+            "access_kind": "coherent",
+            "width_bytes": 4,
+            "offset": null,
+            "field": "Dma.coherent.queue_size",
+            "feature_bit": null,
+            "telemetry_event": "alloc_success"
+          },
+          "llvm_value": "",
+          "function": "vring_alloc_queue",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "Dma.coherent.queue_size",
+        "dst": "Dma.coherent.queue_size",
+        "head": "head_bound",
+        "predicate": {
+          "kind": "Gt",
+          "value": 0
+        },
+        "function": "vring_alloc_queue",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "Dma.coherent.queue_size",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "alloc_pages_exact",
+          "arg_index": 0,
+          "role": "size"
+        }
+      ],
+      "confidence": 0.95
+    },
+    {
+      "id": "virtio-ring-streaming-sg-length",
+      "function": "vring_map_one_sg",
+      "vars": [
+        {
+          "id": "Dma.streaming.sg_length",
+          "source": {
+            "class": "Dma",
+            "access_kind": "streaming",
+            "width_bytes": 4,
+            "offset": null,
+            "field": "Dma.streaming.sg_length",
+            "feature_bit": null,
+            "telemetry_event": "map"
+          },
+          "llvm_value": "",
+          "function": "vring_map_one_sg",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "Dma.streaming.sg_length",
+        "dst": "Dma.streaming.sg_length",
+        "head": "head_bound",
+        "predicate": {
+          "kind": "Gt",
+          "value": 0
+        },
+        "function": "vring_map_one_sg",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "Dma.streaming.sg_length",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "dma_map_sg_attrs",
+          "arg_index": 2,
+          "role": "size"
+        }
+      ],
+      "confidence": 0.95
+    },
+    {
+      "id": "virtio-ring-streaming-single-size",
+      "function": "vring_map_single",
+      "vars": [
+        {
+          "id": "Dma.streaming.single_size",
+          "source": {
+            "class": "Dma",
+            "access_kind": "streaming",
+            "width_bytes": 4,
+            "offset": null,
+            "field": "Dma.streaming.single_size",
+            "feature_bit": null,
+            "telemetry_event": "map"
+          },
+          "llvm_value": "",
+          "function": "vring_map_single",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "Dma.streaming.single_size",
+        "dst": "Dma.streaming.single_size",
+        "head": "head_bound",
+        "predicate": {
+          "kind": "Gt",
+          "value": 0
+        },
+        "function": "vring_map_single",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "Dma.streaming.single_size",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "virtqueue_map_single_attrs",
+          "arg_index": 2,
+          "role": "size"
+        }
+      ],
+      "confidence": 0.95
+    },
+    {
+      "id": "virtio-ring-map-failure-address",
+      "function": "vring_map_one_sg",
+      "vars": [
+        {
+          "id": "Dma.streaming.mapping_error",
+          "source": {
+            "class": "Dma",
+            "access_kind": "streaming",
+            "width_bytes": 4,
+            "offset": null,
+            "field": "Dma.streaming.mapping_error",
+            "feature_bit": null,
+            "telemetry_event": "map_fail"
+          },
+          "llvm_value": "",
+          "function": "vring_map_one_sg",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "Dma.streaming.mapping_error",
+        "dst": "Dma.streaming.mapping_error",
+        "head": "head_bound",
+        "predicate": {
+          "kind": "Gt",
+          "value": 0
+        },
+        "function": "vring_map_one_sg",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "Dma.streaming.mapping_error",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "vring_mapping_error",
+          "arg_index": 1,
+          "role": "address"
+        }
+      ],
+      "confidence": 0.9
+    },
+    {
+      "id": "virtio-ring-vq-get-buf-index",
+      "function": "virtqueue_get_buf_ctx_split",
+      "vars": [
+        {
+          "id": "Dma.coherent.used_index",
+          "source": {
+            "class": "Dma",
+            "access_kind": "coherent",
+            "width_bytes": 4,
+            "offset": null,
+            "field": "Dma.coherent.used_index",
+            "feature_bit": null,
+            "telemetry_event": "vq_get_buf"
+          },
+          "llvm_value": "",
+          "function": "virtqueue_get_buf_ctx_split",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "Dma.coherent.used_index",
+        "dst": "Dma.coherent.used_index",
+        "head": "head_bound",
+        "predicate": {
+          "kind": "Gt",
+          "value": 0
+        },
+        "function": "virtqueue_get_buf_ctx_split",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "Dma.coherent.used_index",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "detach_buf_split",
+          "arg_index": 1,
+          "role": "index"
+        }
+      ],
+      "confidence": 0.88
+    },
+    {
+      "id": "virtio-ring-vq-poll-index",
+      "function": "virtqueue_poll",
+      "vars": [
+        {
+          "id": "Dma.coherent.last_used_idx",
+          "source": {
+            "class": "Dma",
+            "access_kind": "coherent",
+            "width_bytes": 4,
+            "offset": null,
+            "field": "Dma.coherent.last_used_idx",
+            "feature_bit": null,
+            "telemetry_event": "vq_poll_hit"
+          },
+          "llvm_value": "",
+          "function": "virtqueue_poll",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "Dma.coherent.last_used_idx",
+        "dst": "Dma.coherent.last_used_idx",
+        "head": "head_bound",
+        "predicate": {
+          "kind": "Gt",
+          "value": 0
+        },
+        "function": "virtqueue_poll",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "Dma.coherent.last_used_idx",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "VIRTQUEUE_CALL",
+          "arg_index": 1,
+          "role": "index"
+        }
+      ],
+      "confidence": 0.82
+    },
+    {
+      "id": "virtio-net-rx-length-skb-put",
+      "function": "receive_buf",
+      "vars": [
+        {
+          "id": "InternalState.rx_length",
+          "source": {
+            "class": "InternalState",
+            "access_kind": "state",
+            "width_bytes": 4,
+            "offset": null,
+            "field": "rx_length",
+            "feature_bit": null,
+            "telemetry_event": null
+          },
+          "llvm_value": "",
+          "function": "receive_buf",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "InternalState.rx_length",
+        "dst": "InternalState.rx_length",
+        "head": "head_bound",
+        "predicate": {
+          "kind": "Gt",
+          "value": 0
+        },
+        "function": "receive_buf",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "InternalState.rx_length",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "skb_put",
+          "arg_index": 1,
+          "role": "size"
+        }
+      ],
+      "confidence": 0.9
+    },
+    {
+      "id": "virtio-net-rx-copy-memcpy",
+      "function": "receive_buf",
+      "vars": [
+        {
+          "id": "InternalState.rx_len",
+          "source": {
+            "class": "InternalState",
+            "access_kind": "state",
+            "width_bytes": 4,
+            "offset": null,
+            "field": "rx_len",
+            "feature_bit": null,
+            "telemetry_event": null
+          },
+          "llvm_value": "",
+          "function": "receive_buf",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "InternalState.rx_len",
+        "dst": "InternalState.rx_len",
+        "head": "head_bound",
+        "predicate": {
+          "kind": "Gt",
+          "value": 0
+        },
+        "function": "receive_buf",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "InternalState.rx_len",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "memcpy",
+          "arg_index": 2,
+          "role": "size"
+        }
+      ],
+      "confidence": 0.9
+    },
+    {
+      "id": "virtio-net-xdp-frame-size",
+      "function": "virtnet_xdp_xmit",
+      "vars": [
+        {
+          "id": "InternalState.frame_len",
+          "source": {
+            "class": "InternalState",
+            "access_kind": "state",
+            "width_bytes": 4,
+            "offset": null,
+            "field": "frame_len",
+            "feature_bit": null,
+            "telemetry_event": null
+          },
+          "llvm_value": "",
+          "function": "virtnet_xdp_xmit",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "InternalState.frame_len",
+        "dst": "InternalState.frame_len",
+        "head": "head_bound",
+        "predicate": {
+          "kind": "Gt",
+          "value": 0
+        },
+        "function": "virtnet_xdp_xmit",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "InternalState.frame_len",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "memcpy",
+          "arg_index": 2,
+          "role": "size"
+        }
+      ],
+      "confidence": 0.75
+    },
+    {
+      "id": "virtio-ring-desc-length",
+      "function": "virtqueue_add_desc_split",
+      "vars": [
+        {
+          "id": "Dma.streaming.desc_len",
+          "source": {
+            "class": "Dma",
+            "access_kind": "streaming",
+            "width_bytes": 4,
+            "offset": null,
+            "field": "desc_len",
+            "feature_bit": null,
+            "telemetry_event": "map"
+          },
+          "llvm_value": "",
+          "function": "virtqueue_add_desc_split",
+          "debug_loc": {
+            "file": "",
+            "line": 0
+          }
+        }
+      ],
+      "preconditions": [],
+      "trigger": {
+        "src": "Dma.streaming.desc_len",
+        "dst": "Dma.streaming.desc_len",
+        "head": "head_bound",
+        "predicate": {
+          "kind": "Gt",
+          "value": 0
+        },
+        "function": "virtqueue_add_desc_split",
+        "debug_loc": {
+          "file": "",
+          "line": 0
+        }
+      },
+      "mutation": {
+        "operator": "SetBoundary",
+        "var": "Dma.streaming.desc_len",
+        "side": "Above"
+      },
+      "sinks": [
+        {
+          "function": "cpu_to_virtio32",
+          "arg_index": 1,
+          "role": "value"
+        }
+      ],
+      "confidence": 0.82
+    }
+  ]
+}

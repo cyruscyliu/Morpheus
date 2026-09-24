@@ -57,10 +57,11 @@ fi
 log "plugin=${plugin}"
 log "bitcode files=${bitcode_count} callgraph nodes=${cg_nodes}"
 
-work_dir="${output_dir}/per-module"
+work_dir="${output_dir}/work"
 mkdir -p "${work_dir}"
 
 OPT="${OPT:-opt-15}"
+LLVM_LINK="${LLVM_LINK:-llvm-link-15}"
 entry_arg=""
 if [ -n "${entry_list}" ] && [ -f "${entry_list}" ]; then
   entry_arg="-sdg-entry-list=${entry_list}"
@@ -94,7 +95,9 @@ resolve_bc() {
   fi
 }
 
-idx=0
+# Collect existing bitcode files. If there is more than one, link them into a
+# single module so the pass can reason about cross-function dataflow.
+bc_files=()
 while IFS= read -r bc_entry; do
   [ -z "${bc_entry}" ] && continue
   bc_file="$(resolve_bc "${bc_entry}")"
@@ -102,66 +105,58 @@ while IFS= read -r bc_entry; do
     log "warning: missing bitcode ${bc_entry}"
     continue
   fi
-  tmp_out="${work_dir}/out_${idx}.json"
-  log "extracting from ${bc_file}"
-  "${OPT}" -load-pass-plugin "${plugin}" \
-    -passes=sdg-extract \
-    -sdg-output "${tmp_out}" \
-    ${entry_arg} \
-    "${bc_file}" \
-    -o /dev/null
-  idx=$((idx + 1))
+  bc_files+=("${bc_file}")
 done < "${bitcode_list}"
 
-# Merge per-module JSON outputs into the final artifacts.
+if [ ${#bc_files[@]} -eq 0 ]; then
+  log "error: no bitcode files to process"
+  exit 1
+fi
+
+merged_bc="${work_dir}/merged.bc"
+if [ ${#bc_files[@]} -eq 1 ]; then
+  merged_bc="${bc_files[0]}"
+else
+  log "linking ${#bc_files[@]} bitcode modules into ${merged_bc}"
+  "${LLVM_LINK}" -o "${merged_bc}" "${bc_files[@]}"
+fi
+
+log "extracting from ${merged_bc}"
+"${OPT}" -load-pass-plugin "${plugin}" \
+  -passes=sdg-extract \
+  -sdg-output "${rules_file}" \
+  ${entry_arg} \
+  "${merged_bc}" \
+  -o /dev/null
+
+# The pass writes a single combined JSON; split it into the three artifact files.
 python3 - <<PYEOF
-import json, os, glob
+import json
 
-work_dir = "${work_dir}"
-nodes = []
-self_edges = []
-cross_edges = []
-rules = []
-seen_node_ids = set()
-seen_rule_ids = set()
+with open("${rules_file}") as f:
+    data = json.load(f)
 
-def edge_key(e):
-    return (e.get("src"), e.get("dst"), e.get("head"),
-            str(e.get("predicate")), e.get("function"))
-seen_edge_keys = set()
-
-for path in sorted(glob.glob(os.path.join(work_dir, "out_*.json"))):
-    with open(path) as f:
-        data = json.load(f)
-    for n in data.get("nodes", {}).get("nodes", []):
-        if n["id"] not in seen_node_ids:
-            seen_node_ids.add(n["id"])
-            nodes.append(n)
-    for e in data.get("edges", {}).get("self_edges", []):
-        k = edge_key(e)
-        if k not in seen_edge_keys:
-            seen_edge_keys.add(k)
-            self_edges.append(e)
-    for e in data.get("edges", {}).get("cross_edges", []):
-        k = edge_key(e)
-        if k not in seen_edge_keys:
-            seen_edge_keys.add(k)
-            cross_edges.append(e)
-    for r in data.get("rules", {}).get("rules", []):
-        if r["id"] not in seen_rule_ids:
-            seen_rule_ids.add(r["id"])
-            rules.append(r)
-
-version = "0.2.0"
+version = data.get("version", "0.2.0")
 with open("${nodes_file}", "w") as f:
-    json.dump({"version": version, "count": len(nodes), "nodes": nodes}, f, indent=2)
+    json.dump({"version": version,
+               "count": data.get("nodes", {}).get("count", 0),
+               "nodes": data.get("nodes", {}).get("nodes", [])}, f, indent=2)
 with open("${edges_file}", "w") as f:
-    json.dump({"version": version, "self_count": len(self_edges), "cross_count": len(cross_edges),
-               "self_edges": self_edges, "cross_edges": cross_edges}, f, indent=2)
+    edges = data.get("edges", {})
+    json.dump({"version": version,
+               "self_count": edges.get("self_count", 0),
+               "cross_count": edges.get("cross_count", 0),
+               "self_edges": edges.get("self_edges", []),
+               "cross_edges": edges.get("cross_edges", [])}, f, indent=2)
 with open("${rules_file}", "w") as f:
-    json.dump({"version": version, "count": len(rules), "rules": rules}, f, indent=2)
+    json.dump({"version": version,
+               "count": data.get("rules", {}).get("count", 0),
+               "rules": data.get("rules", {}).get("rules", [])}, f, indent=2)
 
-print(f"merged: {len(nodes)} nodes, {len(self_edges)} self edges, {len(cross_edges)} cross edges, {len(rules)} rules")
+print(f"merged: {data.get('nodes',{}).get('count',0)} nodes, "
+      f"{data.get('edges',{}).get('self_count',0)} self edges, "
+      f"{data.get('edges',{}).get('cross_count',0)} cross edges, "
+      f"{data.get('rules',{}).get('count',0)} rules")
 PYEOF
 
 cat > "${manifest_file}" <<EOF

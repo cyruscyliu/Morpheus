@@ -40,6 +40,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 using namespace llvm;
@@ -107,6 +108,11 @@ struct Sink {
   std::string function;
   unsigned arg_index;
   std::string role;
+};
+
+struct SinkCall {
+  const CallBase *call;
+  Sink sink;
 };
 
 struct MutationHint {
@@ -379,6 +385,18 @@ static bool isSinkFunction(StringRef name, unsigned &argIdx, std::string &role) 
     {"kmalloc_noprof", 0, "size"},
     {"kzalloc_noprof", 0, "size"},
     {"__kmalloc", 0, "size"},
+    {"krealloc", 1, "size"},
+    {"krealloc_noprof", 1, "size"},
+    {"kvzalloc", 0, "size"},
+    {"kvcalloc", 1, "size"},
+    {"alloc_pages_exact", 0, "size"},
+    {"alloc_pages_exact_noprof", 0, "size"},
+    {"__get_free_pages", 1, "size"},
+    {"dma_alloc_coherent", 1, "size"},
+    {"dma_alloc_attrs", 1, "size"},
+    {"dma_map_sg_attrs", 2, "size"},
+    {"dma_map_page_attrs", 3, "len"},
+    {"dma_map_single_attrs", 2, "size"},
     {"vring_map_one_sg", 3, "len"},
     {"vring_map_single", 2, "size"},
     {"virtqueue_map_single_attrs", 2, "size"},
@@ -869,6 +887,35 @@ static std::vector<Edge> extractCrossEdges(const std::vector<Node> &nodes,
 // Sink extraction
 //===----------------------------------------------------------------------===//
 
+static std::vector<SinkCall> collectAllSinkCalls(Module &M) {
+  std::vector<SinkCall> out;
+  for (Function &F : M) {
+    for (auto &BB : F) {
+      for (auto &I : BB) {
+        auto *CB = dyn_cast<CallBase>(&I);
+        if (!CB)
+          continue;
+        Function *callee = CB->getCalledFunction();
+        if (!callee)
+          continue;
+        unsigned idx;
+        std::string role;
+        if (!isSinkFunction(callee->getName(), idx, role))
+          continue;
+        if (idx >= CB->arg_size())
+          continue;
+        SinkCall sc;
+        sc.call = CB;
+        sc.sink.function = callee->getName().str();
+        sc.sink.arg_index = idx;
+        sc.sink.role = role;
+        out.push_back(sc);
+      }
+    }
+  }
+  return out;
+}
+
 static std::map<std::string, std::vector<Sink>>
 extractSinks(const std::vector<Node> &nodes, Function &F,
              std::map<std::string, std::set<const CallBase *>> *sinkCallsOut = nullptr) {
@@ -951,6 +998,20 @@ static MutationHint hintForPredicate(const Predicate &p, const std::string &var)
   return m;
 }
 
+static bool predicatesEqual(const Predicate &a, const Predicate &b) {
+  if (a.kind != b.kind)
+    return false;
+  if (a.value.hasValue() != b.value.hasValue())
+    return false;
+  if (a.value.hasValue() && a.value.getValue() != b.value.getValue())
+    return false;
+  if (a.bit.hasValue() != b.bit.hasValue())
+    return false;
+  if (a.bit.hasValue() && a.bit.getValue() != b.bit.getValue())
+    return false;
+  return true;
+}
+
 static bool predicatesNegate(const Predicate &a, const Predicate &b) {
   if (a.kind != invertPredicateKind(b.kind))
     return false;
@@ -1007,6 +1068,253 @@ static std::vector<Rule> assembleRules(const std::vector<Node> &nodes,
 }
 
 //===----------------------------------------------------------------------===//
+// Global, cross-function rule builder
+//===----------------------------------------------------------------------===//
+
+static std::vector<Rule> buildGlobalRules(
+    const std::vector<Node> &nodes,
+    const std::map<std::string, std::vector<const Value *>> &nodeValues,
+    const std::vector<Edge> &selfEdges,
+    const std::vector<Edge> &crossEdges,
+    Module &M) {
+  std::vector<Rule> rules;
+  std::map<std::string, Node> nodeById;
+  for (const Node &n : nodes)
+    nodeById[n.id] = n;
+
+  // Forward dataflow edges: operand -> result.
+  std::map<const Value *, std::set<const Value *>> fwd;
+  for (Function &F : M) {
+    for (auto &BB : F) {
+      for (auto &I : BB) {
+        for (unsigned i = 0; i < I.getNumOperands(); ++i) {
+          if (const Value *op = I.getOperand(i))
+            fwd[op].insert(&I);
+        }
+      }
+    }
+  }
+
+  // Call argument edges: actual -> formal.
+  for (Function &F : M) {
+    for (auto &BB : F) {
+      for (auto &I : BB) {
+        auto *CB = dyn_cast<CallBase>(&I);
+        if (!CB)
+          continue;
+        Function *callee = CB->getCalledFunction();
+        if (!callee || callee->isDeclaration())
+          continue;
+        unsigned limit = std::min<unsigned>(CB->arg_size(), callee->arg_size());
+        for (unsigned i = 0; i < limit; ++i)
+          fwd[CB->getArgOperand(i)].insert(callee->getArg(i));
+      }
+    }
+  }
+
+  // Collect return values per function.
+  std::map<const Function *, std::set<const Value *>> retVals;
+  for (Function &F : M) {
+    for (auto &BB : F) {
+      for (auto &I : BB) {
+        if (auto *RI = dyn_cast<ReturnInst>(&I)) {
+          if (Value *rv = RI->getReturnValue())
+            retVals[&F].insert(rv);
+        }
+      }
+    }
+  }
+
+  // Return edges: return value -> call result.
+  for (Function &F : M) {
+    for (auto &BB : F) {
+      for (auto &I : BB) {
+        auto *CB = dyn_cast<CallBase>(&I);
+        if (!CB)
+          continue;
+        Function *callee = CB->getCalledFunction();
+        if (!callee)
+          continue;
+        auto it = retVals.find(callee);
+        if (it != retVals.end()) {
+          for (const Value *rv : it->second)
+            fwd[rv].insert(CB);
+        }
+      }
+    }
+  }
+
+  // Collect all sink calls.
+  std::vector<SinkCall> sinkCalls = collectAllSinkCalls(M);
+  std::map<const Value *, std::vector<std::pair<const CallBase *, unsigned>>> sinkArgMap;
+  for (const SinkCall &sc : sinkCalls) {
+    Value *arg = sc.call->getArgOperand(sc.sink.arg_index);
+    sinkArgMap[arg].push_back({sc.call, sc.sink.arg_index});
+  }
+
+  // BFS from each source value and record reached sink arguments.
+  std::set<std::tuple<std::string, const CallBase *, unsigned>> records;
+  for (const auto &kv : nodeValues) {
+    const std::string &nid = kv.first;
+    for (const Value *src : kv.second) {
+      std::set<const Value *> visited;
+      std::vector<const Value *> work = {src};
+      while (!work.empty()) {
+        const Value *cur = work.back();
+        work.pop_back();
+        if (!visited.insert(cur).second)
+          continue;
+
+        auto sIt = sinkArgMap.find(cur);
+        if (sIt != sinkArgMap.end()) {
+          for (const auto &p : sIt->second)
+            records.insert(std::make_tuple(nid, p.first, p.second));
+        }
+
+        auto fIt = fwd.find(cur);
+        if (fIt != fwd.end()) {
+          for (const Value *nxt : fIt->second)
+            work.push_back(nxt);
+        }
+      }
+    }
+  }
+
+  // Group by (node id, sink call) to collect all reached argument positions.
+  std::map<std::pair<std::string, const CallBase *>, std::set<unsigned>> callArgs;
+  for (const auto &rec : records) {
+    const std::string &nid = std::get<0>(rec);
+    const CallBase *CB = std::get<1>(rec);
+    unsigned argIdx = std::get<2>(rec);
+    callArgs[{nid, CB}].insert(argIdx);
+  }
+
+  // Index self edges by source node id.
+  std::map<std::string, std::vector<Edge>> selfEdgesByNode;
+  for (const Edge &e : selfEdges) {
+    if (e.self)
+      selfEdgesByNode[e.src].push_back(e);
+  }
+
+  std::set<std::string> ruleIds;
+  for (const auto &kv : callArgs) {
+    const std::string &nid = kv.first.first;
+    const CallBase *CB = kv.first.second;
+
+    auto nit = nodeById.find(nid);
+    if (nit == nodeById.end())
+      continue;
+
+    // Build sink list for this rule.
+    std::vector<Sink> ruleSinks;
+    for (unsigned argIdx : kv.second) {
+      for (const SinkCall &sc : sinkCalls) {
+        if (sc.call == CB && sc.sink.arg_index == argIdx) {
+          ruleSinks.push_back(sc.sink);
+          break;
+        }
+      }
+    }
+
+    // Choose a trigger for this source.
+    Edge trigger;
+    trigger.src = nid;
+    trigger.dst = nid;
+    trigger.function = CB->getFunction()->getName().str();
+    trigger.loc = getDebugLoc(CB);
+
+    std::string sourceFunction = nit->second.function;
+    auto sIt = selfEdgesByNode.find(nid);
+    if (sIt != selfEdgesByNode.end() && !sIt->second.empty()) {
+      trigger = sIt->second.front();
+      // Prefer a self edge located in the same function as the source node and
+      // with a concrete predicate.
+      for (const Edge &e : sIt->second) {
+        if (e.function == sourceFunction &&
+            (e.pred.value.hasValue() || e.pred.bit.hasValue())) {
+          trigger = e;
+          break;
+        }
+      }
+      // Otherwise pick any concrete-predicate edge.
+      if (!(trigger.pred.value.hasValue() || trigger.pred.bit.hasValue())) {
+        for (const Edge &e : sIt->second) {
+          if (e.pred.value.hasValue() || e.pred.bit.hasValue()) {
+            trigger = e;
+            break;
+          }
+        }
+      }
+    } else {
+      trigger.head = "head_bound";
+      Predicate p;
+      if (nit->second.source.feature_bit.hasValue()) {
+        p.kind = "BitSet";
+        p.bit = nit->second.source.feature_bit.getValue();
+      } else {
+        p.kind = "Ne";
+        p.value = 0;
+      }
+      trigger.pred = p;
+    }
+
+    // If the source reaches a sink and the chosen trigger matches an
+    // early-exit guard, flip it so the mutation targets the sink-reaching
+    // branch.
+    bool reachesSink = false;
+    for (const auto &rec : records) {
+      if (std::get<0>(rec) == nid) {
+        reachesSink = true;
+        break;
+      }
+    }
+    if (reachesSink) {
+      for (const Edge &e : crossEdges) {
+        if (e.head == "head_guard" && e.src == nid &&
+            predicatesEqual(e.pred, trigger.pred)) {
+          trigger.pred = invertPredicate(trigger.pred);
+          break;
+        }
+      }
+    }
+
+    // Filter preconditions that are just the negation of the trigger.
+    std::vector<Edge> pre;
+    for (const Edge &e : crossEdges) {
+      if ((e.src == nid || e.dst == nid) && e.head == "head_guard") {
+        if (predicatesNegate(e.pred, trigger.pred))
+          continue;
+        pre.push_back(e);
+      }
+    }
+
+    Rule r;
+    r.id = trigger.function + "-" + nid;
+    if (ruleIds.count(r.id))
+      continue;
+    ruleIds.insert(r.id);
+    r.function = trigger.function;
+    r.vars.push_back(nit->second);
+    r.preconditions = pre;
+    r.trigger = trigger;
+    r.mutation = hintForPredicate(trigger.pred, nid);
+    r.sinks = ruleSinks;
+    r.confidence = 0.5f;
+    if (trigger.pred.value.hasValue() || trigger.pred.bit.hasValue())
+      r.confidence += 0.2f;
+    if (!pre.empty())
+      r.confidence += 0.15f;
+    if (!ruleSinks.empty())
+      r.confidence += 0.15f;
+    if (r.confidence > 1.0f)
+      r.confidence = 1.0f;
+    rules.push_back(r);
+  }
+
+  return rules;
+}
+
+//===----------------------------------------------------------------------===//
 // Pass
 //===----------------------------------------------------------------------===//
 
@@ -1016,6 +1324,7 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
   std::vector<Edge> allCrossEdges;
   std::map<std::string, std::vector<Sink>> allSinks;
   std::map<std::string, std::set<const CallBase *>> allSinkCalls;
+  std::map<std::string, std::vector<const Value *>> nodeValues;
 
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &) {
     // Load optional entry list to scope analysis.
@@ -1043,16 +1352,20 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
       for (auto &BB : F) {
         for (auto &I : BB) {
           if (auto *CB = dyn_cast<CallBase>(&I)) {
-            if (auto n = tryExtractSource(CB, F.getName().str()))
+            if (auto n = tryExtractSource(CB, F.getName().str())) {
               nodes.push_back(n.getValue());
+              nodeValues[n.getValue().id].push_back(CB);
+            }
           } else if (auto *LI = dyn_cast<LoadInst>(&I)) {
             // In kernel bitcode readl() and friends are usually inlined into
             // volatile integer loads from a base + const offset pointer.
             if (LI->isVolatile()) {
               if (auto n = tryExtractMMIORead(LI->getPointerOperand(),
                                               LI->getType(), valueRef(LI),
-                                              F.getName().str(), getDebugLoc(LI)))
+                                              F.getName().str(), getDebugLoc(LI))) {
                 nodes.push_back(n.getValue());
+                nodeValues[n.getValue().id].push_back(LI);
+              }
             }
           }
         }
@@ -1070,7 +1383,7 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
       allSinkCalls.insert(sinkCalls.begin(), sinkCalls.end());
     }
 
-    auto rules = assembleRules(allNodes, allSelfEdges, allCrossEdges, allSinks);
+    auto rules = buildGlobalRules(allNodes, nodeValues, allSelfEdges, allCrossEdges, M);
     writeJSON(SDGOutputPath, allNodes, allSelfEdges, allCrossEdges, rules);
 
     return PreservedAnalyses::all();

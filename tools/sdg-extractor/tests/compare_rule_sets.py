@@ -7,13 +7,37 @@ import sys
 from pathlib import Path
 
 
+def normalize_sink_fn(name: str) -> str:
+    name = name or ""
+    for suffix in ("_noprof", "_node"):
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+    return name
+
+
+def source_key(src: dict) -> tuple:
+    # Use offset/feature_bit as the canonical semantic key; field names can
+    # differ between LLM labels and LLVM-extracted labels.
+    return (
+        src.get("class"),
+        src.get("access_kind"),
+        src.get("offset"),
+        src.get("feature_bit"),
+    )
+
+
 def rule_key(r: dict) -> tuple:
     sinks = tuple(
-        (s.get("function"), s.get("arg_index"), s.get("role"))
+        (normalize_sink_fn(s.get("function")), s.get("arg_index"), s.get("role"))
         for s in sorted(r.get("sinks", []), key=lambda x: x.get("function", ""))
     )
-    var_ids = tuple(v.get("id") for v in r.get("vars", []))
-    return (r.get("function"), var_ids, sinks)
+    var_keys = tuple(
+        source_key(v.get("source", {}))
+        for v in sorted(r.get("vars", []), key=lambda x: str(x.get("source", {})))
+    )
+    # Function names differ between LLM rules (often the sink site) and LLVM
+    # rules (the source site); match by source semantics + sinks only.
+    return (var_keys, sinks)
 
 
 def rule_body(r: dict) -> dict:
@@ -28,7 +52,12 @@ def rule_body(r: dict) -> dict:
     }
 
 
-def semantic_match(a: dict, b: dict) -> bool:
+def semantic_match(a: dict, b: dict, strict: bool = False) -> bool:
+    # By default we count a structural match (same source + sinks) as enough,
+    # because LLM-generated rules are often missing trigger/precondition
+    # details. In strict mode the bodies must agree exactly.
+    if not strict:
+        return True
     return rule_body(a) == rule_body(b)
 
 
@@ -39,7 +68,7 @@ def load_rules(path: Path) -> list:
     return data.get("rules", [])
 
 
-def compare(llm_rules: list, llvm_rules: list) -> dict:
+def compare(llm_rules: list, llvm_rules: list, strict: bool = False) -> dict:
     llm_by_key = {}
     for r in llm_rules:
         k = rule_key(r)
@@ -59,7 +88,7 @@ def compare(llm_rules: list, llvm_rules: list) -> dict:
             for lr in lrs:
                 found = None
                 for idx, rr in enumerate(rrs):
-                    if semantic_match(lr, rr):
+                    if semantic_match(lr, rr, strict=strict):
                         found = idx
                         break
                 if found is not None:
@@ -84,11 +113,15 @@ def main():
     parser.add_argument("--llm", required=True, type=Path, help="LLM rules JSON")
     parser.add_argument("--llvm", required=True, type=Path, help="LLVM rules JSON")
     parser.add_argument("--output", type=Path, help="Write comparison report as JSON")
+    parser.add_argument(
+        "--strict", action="store_true",
+        help="Require trigger/mutation/precondition equality in addition to source+sinks"
+    )
     args = parser.parse_args()
 
     llm_rules = load_rules(args.llm)
     llvm_rules = load_rules(args.llvm)
-    result = compare(llm_rules, llvm_rules)
+    result = compare(llm_rules, llvm_rules, strict=args.strict)
 
     print(f"LLM rules:   {len(llm_rules)}")
     print(f"LLVM rules:  {len(llvm_rules)}")

@@ -20,9 +20,11 @@
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/InstrTypes.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
@@ -35,6 +37,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <cctype>
 #include <cmath>
 #include <map>
 #include <set>
@@ -489,6 +492,76 @@ static Optional<Node> tryExtractMMIORead(const Value *Ptr, Type *Ty,
   return n;
 }
 
+static std::string toLower(StringRef s) {
+  std::string r;
+  r.reserve(s.size());
+  for (char c : s)
+    r.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+  return r;
+}
+
+static std::string getDebugName(const Value *V) {
+  for (const User *U : V->users()) {
+    if (auto *DDI = dyn_cast<DbgDeclareInst>(U)) {
+      if (DDI->getAddress() == V) {
+        if (DIVariable *Var = DDI->getVariable())
+          return Var->getName().str();
+      }
+    } else if (auto *DVI = dyn_cast<DbgValueInst>(U)) {
+      if (DVI->getValue() == V) {
+        if (DIVariable *Var = DVI->getVariable())
+          return Var->getName().str();
+      }
+    }
+  }
+  return "";
+}
+
+struct SemanticPattern {
+  std::string substring;
+  std::string class_;
+  std::string access_kind;
+  std::string field;
+};
+
+static const std::vector<SemanticPattern> SEMANTIC_PATTERNS = {
+    // Internal state derived from guest-controlled data
+    {"rx_length", "InternalState", "state", "rx_length"},
+    {"rx_len", "InternalState", "state", "rx_len"},
+    {"frame_len", "InternalState", "state", "frame_len"},
+    // DMA surfaces (recognized from local/debug names, no telemetry changes)
+    {"sg_length", "Dma", "streaming", "sg_length"},
+    {"single_size", "Dma", "streaming", "single_size"},
+    {"mapping_error", "Dma", "streaming", "mapping_error"},
+    {"desc_len", "Dma", "streaming", "desc_len"},
+    {"used_index", "Dma", "coherent", "used_index"},
+    {"last_used_idx", "Dma", "coherent", "last_used_idx"},
+};
+
+static Optional<Node> tryExtractSemanticSource(const Value *V,
+                                               const std::string &valueRefStr,
+                                               const std::string &funcName,
+                                               const DebugLoc &loc) {
+  std::string name = getDebugName(V);
+  if (name.empty())
+    return None;
+  std::string lower = toLower(name);
+  for (const SemanticPattern &p : SEMANTIC_PATTERNS) {
+    if (lower.find(toLower(p.substring)) != std::string::npos) {
+      Node n;
+      n.id = p.class_ + "." + p.access_kind + "." + p.field;
+      n.source.class_ = p.class_;
+      n.source.access_kind = p.access_kind;
+      n.source.field = p.field;
+      n.llvm_value = valueRefStr;
+      n.function = funcName;
+      n.loc = loc;
+      return n;
+    }
+  }
+  return None;
+}
+
 static Optional<Node> tryExtractSource(CallBase *CB, const std::string &funcName) {
   Function *callee = CB->getCalledFunction();
   if (!callee)
@@ -614,6 +687,39 @@ static std::string icmpPredicateName(ICmpInst::Predicate pred) {
   case ICmpInst::ICMP_SLE: return "Le";
   default: return "Unknown";
   }
+}
+
+static std::string icmpPredicateString(ICmpInst::Predicate pred, bool trueSide) {
+  using P = ICmpInst::Predicate;
+  switch (pred) {
+  case P::ICMP_EQ:  return trueSide ? "Eq" : "Ne";
+  case P::ICMP_NE:  return trueSide ? "Ne" : "Eq";
+  case P::ICMP_UGT:
+  case P::ICMP_SGT: return trueSide ? "Gt" : "Le";
+  case P::ICMP_UGE:
+  case P::ICMP_SGE: return trueSide ? "Ge" : "Lt";
+  case P::ICMP_ULT:
+  case P::ICMP_SLT: return trueSide ? "Lt" : "Ge";
+  case P::ICMP_ULE:
+  case P::ICMP_SLE: return trueSide ? "Le" : "Gt";
+  default:          return "Unknown";
+  }
+}
+
+static Optional<Predicate> predicateFromICmp(const ICmpInst *icmp,
+                                             bool trueSide) {
+  const Value *op0 = icmp->getOperand(0);
+  const Value *op1 = icmp->getOperand(1);
+  const ConstantInt *ci = dyn_cast<ConstantInt>(op1);
+  if (!ci) {
+    ci = dyn_cast<ConstantInt>(op0);
+    if (!ci)
+      return None;
+  }
+  Predicate p;
+  p.kind = icmpPredicateString(icmp->getPredicate(), trueSide);
+  p.value = ci->getZExtValue();
+  return p;
 }
 
 static std::string invertPredicateKind(const std::string &kind) {
@@ -1071,6 +1177,54 @@ static std::vector<Rule> assembleRules(const std::vector<Node> &nodes,
 // Global, cross-function rule builder
 //===----------------------------------------------------------------------===//
 
+static bool valueInvolvesSinkCall(const Value *V) {
+  if (const CallBase *CB = dyn_cast<CallBase>(V)) {
+    Function *callee = CB->getCalledFunction();
+    if (!callee)
+      return false;
+    unsigned idx;
+    std::string role;
+    return isSinkFunction(callee->getName(), idx, role);
+  }
+  if (const CastInst *CI = dyn_cast<CastInst>(V))
+    return valueInvolvesSinkCall(CI->getOperand(0));
+  if (const ICmpInst *icmp = dyn_cast<ICmpInst>(V))
+    return valueInvolvesSinkCall(icmp->getOperand(0)) ||
+           valueInvolvesSinkCall(icmp->getOperand(1));
+  return false;
+}
+
+struct MemLoc {
+  const Value *base;
+  int64_t offset;
+  bool operator<(const MemLoc &o) const {
+    if (base != o.base)
+      return base < o.base;
+    return offset < o.offset;
+  }
+};
+
+static const Value *stripPointer(const Value *v, int64_t &offset,
+                                 const DataLayout &DL) {
+  offset = 0;
+  while (true) {
+    if (auto *gep = dyn_cast<GetElementPtrInst>(v)) {
+      APInt apOffset(64, 0);
+      if (!gep->accumulateConstantOffset(DL, apOffset))
+        break;
+      offset += apOffset.getSExtValue();
+      v = gep->getPointerOperand();
+    } else if (auto *bc = dyn_cast<BitCastInst>(v)) {
+      v = bc->getOperand(0);
+    } else if (auto *asc = dyn_cast<AddrSpaceCastInst>(v)) {
+      v = asc->getOperand(0);
+    } else {
+      break;
+    }
+  }
+  return v;
+}
+
 static std::vector<Rule> buildGlobalRules(
     const std::vector<Node> &nodes,
     const std::map<std::string, std::vector<const Value *>> &nodeValues,
@@ -1082,11 +1236,16 @@ static std::vector<Rule> buildGlobalRules(
   for (const Node &n : nodes)
     nodeById[n.id] = n;
 
-  // Forward dataflow edges: operand -> result.
+  // Forward dataflow edges: operand -> result. Skip call instructions here;
+  // inter-procedural argument/return edges are added explicitly below, and
+  // treating allocation sizes as flowing into returned pointers causes false
+  // positives (e.g. a config value reaching every field of an allocated struct).
   std::map<const Value *, std::set<const Value *>> fwd;
   for (Function &F : M) {
     for (auto &BB : F) {
       for (auto &I : BB) {
+        if (isa<CallBase>(&I))
+          continue;
         for (unsigned i = 0; i < I.getNumOperands(); ++i) {
           if (const Value *op = I.getOperand(i))
             fwd[op].insert(&I);
@@ -1144,6 +1303,38 @@ static std::vector<Rule> buildGlobalRules(
     }
   }
 
+  // Memory edges: connect stored values to loads from the same base+offset.
+  // This is flow- and context-insensitive, but it is enough to catch source
+  // values that are saved into a struct field or local slot and later read in
+  // another function.
+  const DataLayout &DL = M.getDataLayout();
+  std::map<MemLoc, std::vector<const Value *>> storesByLoc;
+  std::map<MemLoc, std::vector<const LoadInst *>> loadsByLoc;
+  for (Function &F : M) {
+    for (auto &BB : F) {
+      for (auto &I : BB) {
+        if (auto *SI = dyn_cast<StoreInst>(&I)) {
+          int64_t off = 0;
+          const Value *base = stripPointer(SI->getPointerOperand(), off, DL);
+          storesByLoc[{base, off}].push_back(SI->getValueOperand());
+        } else if (auto *LI = dyn_cast<LoadInst>(&I)) {
+          int64_t off = 0;
+          const Value *base = stripPointer(LI->getPointerOperand(), off, DL);
+          loadsByLoc[{base, off}].push_back(LI);
+        }
+      }
+    }
+  }
+  for (const auto &kv : loadsByLoc) {
+    auto sit = storesByLoc.find(kv.first);
+    if (sit == storesByLoc.end())
+      continue;
+    for (const LoadInst *LI : kv.second) {
+      for (const Value *SV : sit->second)
+        fwd[SV].insert(LI);
+    }
+  }
+
   // Collect all sink calls.
   std::vector<SinkCall> sinkCalls = collectAllSinkCalls(M);
   std::map<const Value *, std::vector<std::pair<const CallBase *, unsigned>>> sinkArgMap;
@@ -1152,8 +1343,17 @@ static std::vector<Rule> buildGlobalRules(
     sinkArgMap[arg].push_back({sc.call, sc.sink.arg_index});
   }
 
+  // Direct sink blocks for control-dependency rules. We only consider a
+  // branch side that directly contains a sink call to avoid mis-attributing
+  // sinks reached through unrelated later paths.
+  std::set<const BasicBlock *> sinkBlocks;
+  for (const SinkCall &sc : sinkCalls)
+    sinkBlocks.insert(sc.call->getParent());
+
   // BFS from each source value and record reached sink arguments.
   std::set<std::tuple<std::string, const CallBase *, unsigned>> records;
+  std::set<std::pair<std::string, const BranchInst *>> seenControl;
+  std::vector<Rule> controlRules;
   for (const auto &kv : nodeValues) {
     const std::string &nid = kv.first;
     for (const Value *src : kv.second) {
@@ -1169,6 +1369,65 @@ static std::vector<Rule> buildGlobalRules(
         if (sIt != sinkArgMap.end()) {
           for (const auto &p : sIt->second)
             records.insert(std::make_tuple(nid, p.first, p.second));
+        }
+
+        // Control dependency: if this value is a branch condition (and not
+        // merely an allocation-null check) and only one direct successor
+        // contains a sink, emit a rule for the sink-reaching side.
+        if (valueInvolvesSinkCall(cur))
+          continue;
+        for (const User *U : cur->users()) {
+          const BranchInst *BI = dyn_cast<BranchInst>(U);
+          if (!BI || !BI->isConditional() || BI->getCondition() != cur)
+            continue;
+          const BasicBlock *trueBB = BI->getSuccessor(0);
+          const BasicBlock *falseBB = BI->getSuccessor(1);
+          bool trueReach = sinkBlocks.count(trueBB);
+          bool falseReach = sinkBlocks.count(falseBB);
+          if (trueReach == falseReach)
+            continue;
+          if (!seenControl.insert({nid, BI}).second)
+            continue;
+
+          bool trueSide = trueReach;
+          Optional<Predicate> cp;
+          if (const ICmpInst *icmp = dyn_cast<ICmpInst>(cur)) {
+            cp = predicateFromICmp(icmp, trueSide);
+          } else {
+            Predicate p;
+            p.kind = trueSide ? "Ne" : "Eq";
+            p.value = 0;
+            cp = p;
+          }
+          if (!cp.hasValue())
+            continue;
+
+          const BasicBlock *sinkBB = trueSide ? trueBB : falseBB;
+          std::vector<Sink> cSinks;
+          for (const SinkCall &sc : sinkCalls) {
+            if (sc.call->getParent() == sinkBB)
+              cSinks.push_back(sc.sink);
+          }
+          if (cSinks.empty())
+            continue;
+
+          auto nit = nodeById.find(nid);
+          if (nit == nodeById.end())
+            continue;
+          Rule cr;
+          cr.id = BI->getFunction()->getName().str() + "-" + nid + "-ctrl";
+          cr.function = BI->getFunction()->getName().str();
+          cr.vars.push_back(nit->second);
+          cr.trigger.src = nid;
+          cr.trigger.dst = nid;
+          cr.trigger.function = cr.function;
+          cr.trigger.head = "head_bound";
+          cr.trigger.pred = cp.getValue();
+          cr.trigger.loc = getDebugLoc(BI);
+          cr.mutation = hintForPredicate(cp.getValue(), nid);
+          cr.sinks = cSinks;
+          cr.confidence = 0.55f;
+          controlRules.push_back(cr);
         }
 
         auto fIt = fwd.find(cur);
@@ -1311,6 +1570,15 @@ static std::vector<Rule> buildGlobalRules(
     rules.push_back(r);
   }
 
+  // Append control-dependency rules, dropping any that duplicate a dataflow
+  // rule id (unlikely because of the -ctrl suffix).
+  for (Rule &cr : controlRules) {
+    if (ruleIds.count(cr.id))
+      continue;
+    ruleIds.insert(cr.id);
+    rules.push_back(cr);
+  }
+
   return rules;
 }
 
@@ -1366,6 +1634,15 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
                 nodes.push_back(n.getValue());
                 nodeValues[n.getValue().id].push_back(LI);
               }
+            }
+            // Non-volatile loads with known semantic debug names (e.g. rx_len,
+            // sg_length) can become InternalState / Dma sources without
+            // touching telemetry code.
+            if (auto n = tryExtractSemanticSource(LI, valueRef(LI),
+                                                  F.getName().str(),
+                                                  getDebugLoc(LI))) {
+              nodes.push_back(n.getValue());
+              nodeValues[n.getValue().id].push_back(LI);
             }
           }
         }

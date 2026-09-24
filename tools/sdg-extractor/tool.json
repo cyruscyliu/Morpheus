@@ -1,0 +1,166 @@
+{
+  "name": "sdg-extractor",
+  "runtime": null,
+  "cli-contract": "build,exec,inspect,logs",
+  "config": {
+    "fields": {
+      "build-dir-key": {
+        "aliases": ["build-dir-key", "buildDirKey"]
+      },
+      "output": {
+        "aliases": ["output"],
+        "path": true
+      },
+      "target": {
+        "aliases": ["target"],
+        "path": true
+      },
+      "bitcode-list": {
+        "aliases": ["bitcode-list", "bitcodeList"],
+        "path": true
+      },
+      "llcg-dot": {
+        "aliases": ["llcg-dot", "llcgDot"],
+        "path": true
+      },
+      "kallgraph-text": {
+        "aliases": ["kallgraph-text", "kallgraphText"],
+        "path": true
+      },
+      "points-to-json": {
+        "aliases": ["points-to-json", "pointsToJson", "kallgraph-points-to-json", "kallgraphPointsToJson"],
+        "path": true
+      },
+      "entry-list": {
+        "aliases": ["entry-list", "entryList"],
+        "path": true
+      },
+      "sink-catalog": {
+        "aliases": ["sink-catalog", "sinkCatalog"],
+        "path": true
+      },
+      "struct-catalog": {
+        "aliases": ["struct-catalog", "structCatalog"],
+        "path": true
+      },
+      "artifacts": {
+        "aliases": ["artifacts"],
+        "repeatable": true
+      }
+    }
+  },
+  "managed": {
+    "schemaVersion": 1,
+    "modes": ["local"],
+    "local": {
+      "sourceTemplate": "tools/sdg-extractor/src",
+      "buildDirTemplate": "tools/sdg-extractor/builds/{buildDirKey}/build",
+      "outputDirTemplate": "tools/sdg-extractor/builds/{buildDirKey}/output",
+      "artifacts": {
+        "build-dir": {
+          "pathTemplate": "tools/sdg-extractor/builds/{buildDirKey}/build"
+        },
+        "output-dir": {
+          "pathTemplate": "tools/sdg-extractor/builds/{buildDirKey}/output"
+        },
+        "manifest": {
+          "pathTemplate": "tools/sdg-extractor/builds/{buildDirKey}/output/manifest.json"
+        },
+        "log-file": {
+          "pathTemplate": "tools/sdg-extractor/builds/{buildDirKey}/output/sdg-extractor.log"
+        },
+        "sdg-rules": {
+          "pathTemplate": "tools/sdg-extractor/builds/{buildDirKey}/output/sdg-rules.json"
+        },
+        "sdg-nodes": {
+          "pathTemplate": "tools/sdg-extractor/builds/{buildDirKey}/output/sdg-nodes.json"
+        },
+        "sdg-edges": {
+          "pathTemplate": "tools/sdg-extractor/builds/{buildDirKey}/output/sdg-edges.json"
+        }
+      },
+      "commands": {
+        "build": {
+          "requiredFlags": [],
+          "scalarFlags": ["build-dir"],
+          "repeatableFlags": [],
+          "pathFlags": {
+            "build-dir": "tools/sdg-extractor/build"
+          },
+          "script": {
+            "path": "scripts/build.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "built sdg-extractor placeholder artifacts",
+            "errorSummary": "sdg-extractor build failed",
+            "manifestTemplate": "{build-dir}/manifest.json",
+            "artifact": {
+              "path": "build-dir",
+              "locationTemplate": "{build-dir}"
+            }
+          }
+        },
+        "exec": {
+          "requiredFlags": ["output"],
+          "scalarFlags": [
+            "output",
+            "build-dir",
+            "bitcode-list",
+            "llcg-dot",
+            "kallgraph-text",
+            "points-to-json",
+            "entry-list",
+            "sink-catalog",
+            "struct-catalog"
+          ],
+          "repeatableFlags": [],
+          "pathFlags": {
+            "build-dir": "tools/sdg-extractor/build",
+            "output": "tools/sdg-extractor/builds/{buildDirKey}/output"
+          },
+          "script": {
+            "path": "scripts/exec.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "extracted SDG rules from bitcode",
+            "errorSummary": "sdg-extractor rule extraction failed",
+            "manifestTemplate": "{output}/manifest.json",
+            "artifact": {
+              "path": "manifest",
+              "locationTemplate": "{output}/sdg-extractor-manifest.json"
+            },
+            "details": {
+              "output": "{output}"
+            }
+          }
+        },
+        "inspect": {
+          "requiredFlags": ["target"],
+          "scalarFlags": ["target"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/inspect.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "inspected existing sdg-extractor manifest"
+          }
+        },
+        "logs": {
+          "requiredFlags": ["target"],
+          "scalarFlags": ["target"],
+          "repeatableFlags": [],
+          "script": {
+            "path": "scripts/logs.sh",
+            "shell": "bash"
+          },
+          "result": {
+            "successSummary": "read sdg-extractor log"
+          }
+        }
+      }
+    }
+  }
+}

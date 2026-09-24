@@ -15,6 +15,8 @@ struct PhaseRequest {
   std::string machineName;
   std::vector<std::string> entryFunctions;
   bool chainedEntries = false;
+  // Optional directory for control-plane/data-plane analysis intermediates.
+  std::string analysisDumpDir;
 };
 
 struct BuildRequest {

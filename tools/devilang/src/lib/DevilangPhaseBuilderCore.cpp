@@ -67,6 +67,7 @@ public:
       }
     }
     collectTraceModelConfigMmioSemantics();
+    dumpAnalysisIntermediates();
     return renderModel();
   }
 

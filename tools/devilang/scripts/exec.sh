@@ -30,6 +30,7 @@ llcg_dot="${MORPHEUS_DEVILANG_LLCG_DOT:-}"
 points_to_json="${MORPHEUS_DEVILANG_POINTS_TO_JSON:-${MORPHEUS_DEVILANG_KALLGRAPH_POINTS_TO_JSON:-}}"
 booting_machine_name="${MORPHEUS_DEVILANG_BOOTING_MACHINE_NAME:-booting}"
 runtime_machine_name="${MORPHEUS_DEVILANG_RUNTIME_MACHINE_NAME:-runtime}"
+analysis_dump_dir="${MORPHEUS_DEVILANG_ANALYSIS_DUMP_DIR:-${output_dir}/analysis}"
 log_file="${output_dir}/devilang.log"
 manifest_file="${output_dir}/devilang-manifest.json"
 
@@ -427,6 +428,7 @@ if [ -n "${points_to_json}" ]; then
   cmd+=("--points-to-json" "${points_to_copy}")
 fi
 cmd+=("--generated-points-to-json" "${output_dir}/devilang-svf-points.json")
+cmd+=("--analysis-dump-dir" "${analysis_dump_dir}")
 if [ -n "${svf_extapi_bc}" ] && [ -f "${svf_extapi_bc}" ]; then
   cp -f "${svf_extapi_bc}" "${build_dir}/bin/extapi.bc"
   cmd+=("--svf-extapi" "${svf_extapi_bc}")
@@ -475,6 +477,7 @@ const artifacts = [
 const bootingState = path.join(outputDir, "booting.state");
 const runtimeState = path.join(outputDir, "runtime.state");
 const pointsToJson = path.join(outputDir, "devilang-svf-points.json");
+const analysisDir = path.join(outputDir, "analysis");
 if (fs.existsSync(bootingState)) {
   artifacts.push({ path: "booting-state", location: bootingState });
 }
@@ -483,6 +486,9 @@ if (fs.existsSync(runtimeState)) {
 }
 if (fs.existsSync(pointsToJson)) {
   artifacts.push({ path: "points-to-json", location: pointsToJson });
+}
+if (fs.existsSync(analysisDir)) {
+  artifacts.push({ path: "analysis-dir", location: analysisDir });
 }
 const payload = {
   summary: rawExitCode === 0 ? "generated devilang state artifacts" : "devilang state generation failed",

@@ -60,6 +60,10 @@
         "aliases": ["points-to-json", "pointsToJson", "kallgraph-points-to-json", "kallgraphPointsToJson"],
         "path": true
       },
+      "analysis-dump-dir": {
+        "aliases": ["analysis-dump-dir", "analysisDumpDir"],
+        "path": true
+      },
       "booting-entry": {
         "aliases": ["booting-entry", "bootingEntry"],
         "repeatable": true
@@ -160,6 +164,15 @@
         "log-file": {
           "pathTemplate": "tools/devilang/builds/{buildDirKey}/output/devilang.log"
         },
+        "booting-state": {
+          "pathTemplate": "tools/devilang/builds/{buildDirKey}/output/booting.state"
+        },
+        "runtime-state": {
+          "pathTemplate": "tools/devilang/builds/{buildDirKey}/output/runtime.state"
+        },
+        "points-to-json": {
+          "pathTemplate": "tools/devilang/builds/{buildDirKey}/output/devilang-svf-points.json"
+        },
         "output": {
           "pathTemplate": "tools/devilang/builds/{buildDirKey}/output"
         },
@@ -208,6 +221,7 @@
             "kallgraph-text",
             "llcg-dot",
             "points-to-json",
+            "analysis-dump-dir",
             "booting-entry-list",
             "runtime-entry-list",
             "booting-machine-name",

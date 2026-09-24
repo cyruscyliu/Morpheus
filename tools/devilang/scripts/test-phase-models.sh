@@ -12,6 +12,7 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "${tmpdir}"' EXIT
 
 booting_state="${tmpdir}/booting.state"
+compaction_state="${tmpdir}/compaction.state"
 runtime_state="${tmpdir}/runtime.state"
 compile_result="${tmpdir}/compile.json"
 compiled_c="${tmpdir}/phase-models.c"
@@ -53,6 +54,47 @@ grep -q '^    transition state_0 -> state_1 on boot_transport_trace$' "${booting
 grep -q '^    transition state_1 -> state_2 on register_virtio_device_trace$' "${booting_state}"
 grep -q '^    transition state_2 -> state_3 on virtio_dev_probe_trace$' "${booting_state}"
 grep -q '^    transition state_3 -> state_4 on boot_driver_trace$' "${booting_state}"
+
+"${devilang_bin}" \
+  --module "${fixture}" \
+  --booting-entry boot_branch \
+  --booting-output "${compaction_state}" \
+  --booting-machine-name phase_compaction \
+  --svf-extapi "${svf_extapi_bc}"
+
+grep -q '^    entry trace boot_branch_trace {$' "${compaction_state}"
+if grep -q 'silent_helper' "${compaction_state}"; then
+  echo "non-event helper unexpectedly survived analysis" >&2
+  exit 1
+fi
+
+if awk '
+/^[[:space:]]+(@[^:]+: )?sequence \{/ {
+  in_block = 1
+  label = $0
+  lines = 0
+  only_goto = 1
+  next
+}
+in_block && /^[[:space:]]+\}/ {
+  if (label ~ /@[^:]+:/ && lines == 1 && only_goto) {
+    exit 1
+  }
+  in_block = 0
+  next
+}
+in_block && $0 !~ /^[[:space:]]*$/ {
+  lines++
+  if ($0 !~ /^[[:space:]]*goto @[A-Za-z0-9_]+;?$/) {
+    only_goto = 0
+  }
+}
+' "${compaction_state}"; then
+  :
+else
+  echo "generated booting state still contains a labeled goto-only block" >&2
+  exit 1
+fi
 
 grep -q '^machine phase_runtime {$' "${runtime_state}"
 grep -q '^    transition state_0 -> state_0 on runtime_open_trace$' "${runtime_state}"

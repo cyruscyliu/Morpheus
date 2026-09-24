@@ -437,7 +437,6 @@
         }
         if (isReadLeaf(resolvedCallee->getName()) ||
             isWriteLeaf(resolvedCallee->getName()) ||
-            isSgFunction(resolvedCallee->getName()) ||
             isSyntheticDmaTraceTarget(resolvedCallee->getName()) ||
             isFunctionRelevant(*resolvedCallee)) {
           return true;
@@ -449,7 +448,6 @@
       return false;
     }
     return isReadLeaf(callee->getName()) || isWriteLeaf(callee->getName()) ||
-           isSgFunction(callee->getName()) ||
            isSyntheticDmaTraceTarget(callee->getName()) ||
            isFunctionRelevant(*callee);
   }
@@ -476,14 +474,16 @@
       blockRelevanceCache_[&block] = Relevance::Relevant;
       return true;
     }
-    if (currentTraceEntry_ && blockReachesExit(block)) {
-      blockRelevanceCache_[&block] = Relevance::Relevant;
-      return true;
-    }
-
     const BranchInst *branch =
         llvm::dyn_cast<BranchInst>(block.getTerminator());
     if (branch) {
+      // An empty unconditional jump is only a CFG transport node. Keep
+      // conditional branches that select an observable path, but let these
+      // jump-only blocks be bypassed by resolveRelevantSuccessor().
+      if (branch->isUnconditional()) {
+        blockRelevanceCache_[&block] = Relevance::Irrelevant;
+        return false;
+      }
       for (unsigned index = 0; index < branch->getNumSuccessors(); ++index) {
         BasicBlock *successor = branch->getSuccessor(index);
         auto succIt = blockRelevanceCache_.find(successor);
@@ -829,8 +829,7 @@
     if (function.isDeclaration()) {
       const bool relevant =
           isReadLeaf(function.getName()) ||
-          isWriteLeaf(function.getName()) ||
-          isSgFunction(function.getName());
+          isWriteLeaf(function.getName());
       relevanceCache_[&function] =
           relevant ? Relevance::Relevant : Relevance::Irrelevant;
       return relevant;
@@ -857,7 +856,6 @@
               }
               if (isReadLeaf(resolvedCallee->getName()) ||
                   isWriteLeaf(resolvedCallee->getName()) ||
-                  isSgFunction(resolvedCallee->getName()) ||
                   isSyntheticDmaTraceTarget(resolvedCallee->getName()) ||
                   isFunctionRelevant(*resolvedCallee)) {
                 relevant = true;
@@ -871,7 +869,6 @@
           continue;
         }
         if (isReadLeaf(callee->getName()) || isWriteLeaf(callee->getName()) ||
-            isSgFunction(callee->getName()) ||
             isSyntheticDmaTraceTarget(callee->getName())) {
           relevant = true;
           break;
@@ -951,6 +948,9 @@
       }
     }
 
+    if (trace.blocks.empty()) {
+      return;
+    }
     model_.traces.push_back(std::move(trace));
   }
 
@@ -1410,11 +1410,6 @@
           call.arg_size() >= 2 ? renderValue(call.getArgOperand(1)) : "unknown";
       lines.push_back("write" + std::to_string(width) + "(" + value + ", " +
                       address + ")");
-      return;
-    }
-
-    if (isSgFunction(name)) {
-      lines.push_back("call " + sanitizeToken(name) + renderCallArgs(call));
       return;
     }
 

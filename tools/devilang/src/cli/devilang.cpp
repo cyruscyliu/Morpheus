@@ -75,6 +75,12 @@ llvm::cl::opt<std::string> generatedPointsToJson(
     llvm::cl::desc("Write internally generated SVF hints JSON to this path"),
     llvm::cl::init(""), llvm::cl::cat(cliCategory));
 
+llvm::cl::opt<std::string> analysisDumpDir(
+    "analysis-dump-dir",
+    llvm::cl::desc(
+        "Directory for control-plane/data-plane analysis intermediates"),
+    llvm::cl::init(""), llvm::cl::cat(cliCategory));
+
 llvm::cl::opt<std::string> svfExtapi(
     "svf-extapi",
     llvm::cl::desc("Path to SVF extapi.bc for in-process analysis"),
@@ -285,6 +291,11 @@ int main(int argc, char **argv) {
          std::vector<std::string>(runtimeEntries.begin(),
                                   runtimeEntries.end()),
          false});
+  }
+  if (!analysisDumpDir.empty()) {
+    for (devilang::PhaseRequest &phase : request.phases) {
+      phase.analysisDumpDir = analysisDumpDir;
+    }
   }
   request.indirectCalls = parseKallgraphText(kallgraphText);
   request.functionEdges = parseLlcgDotFunctionEdges(llcgDot);

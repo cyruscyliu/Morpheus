@@ -4,8 +4,29 @@ source_filename = "phase-topology.c"
 declare i32 @readl(ptr noundef)
 declare void @writel(i32 noundef, ptr noundef)
 
+define void @silent_helper() {
+entry:
+  ret void
+}
+
 define void @boot_driver(ptr noundef %base) {
 entry:
+  %status = call i32 @readl(ptr noundef %base)
+  ret void
+}
+
+define void @boot_branch(ptr noundef %base, i1 noundef %condition) {
+entry:
+  call void @silent_helper()
+  br i1 %condition, label %through, label %read
+
+through:
+  br label %through_again
+
+through_again:
+  br label %read
+
+read:
   %status = call i32 @readl(ptr noundef %base)
   ret void
 }

@@ -581,6 +581,280 @@
     out << "}\n";
     return out.str();
   }
+
+  static std::string dumpHexValue(uint64_t value) {
+    std::ostringstream out;
+    out << "0x" << std::hex << value;
+    return out.str();
+  }
+
+  static void writeDumpFile(const std::string &path,
+                            const std::string &content) {
+    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    if (!stream) {
+      llvm::errs() << "warning: failed to open analysis dump file " << path
+                   << "\n";
+      return;
+    }
+    stream << content;
+  }
+
+  void dumpAnalysisIntermediates() {
+    if (request_.analysisDumpDir.empty()) {
+      return;
+    }
+    std::error_code error;
+    llvm::sys::fs::create_directories(request_.analysisDumpDir);
+    if (error) {
+      llvm::errs() << "warning: failed to create analysis dump dir "
+                   << request_.analysisDumpDir << ": " << error.message()
+                   << "\n";
+      return;
+    }
+    const std::string machine = sanitizeToken(request_.machineName);
+    writeDumpFile(request_.analysisDumpDir + "/" + machine +
+                      "-control-plane.txt",
+                  renderControlPlaneDump());
+    writeDumpFile(request_.analysisDumpDir + "/" + machine + "-data-plane.txt",
+                  renderDataPlaneDump());
+  }
+
+  std::string renderControlPlaneDump() const {
+    std::ostringstream out;
+    out << "machine " << sanitizeToken(request_.machineName) << "\n";
+    out << "chained_entries = " << (request_.chainedEntries ? "yes" : "no")
+        << "\n";
+    for (const std::string &entryName : request_.entryFunctions) {
+      out << "entry_function = " << entryName << "\n";
+    }
+    out << "\n";
+
+    std::vector<std::pair<std::string, std::string>> scopeFunctions;
+    for (const Function *function : phaseScopeFunctions_) {
+      if (!function) {
+        continue;
+      }
+      scopeFunctions.emplace_back(function->getName().str(),
+                                  function->isDeclaration() ? "declaration"
+                                                            : "defined");
+    }
+    std::sort(scopeFunctions.begin(), scopeFunctions.end());
+    out << "phase_scope_functions = " << scopeFunctions.size() << "\n";
+    for (const auto &[name, state] : scopeFunctions) {
+      out << "    " << name << " " << state << "\n";
+    }
+    out << "\n";
+
+    std::vector<std::string> bridgeFunctions;
+    for (const Function *bridge : bootingGraphBridgeFunctions_) {
+      if (bridge) {
+        bridgeFunctions.push_back(bridge->getName().str());
+      }
+    }
+    std::sort(bridgeFunctions.begin(), bridgeFunctions.end());
+    out << "bridge_functions = " << bridgeFunctions.size() << "\n";
+    for (const std::string &name : bridgeFunctions) {
+      out << "    " << name << "\n";
+    }
+    out << "\n";
+
+    out << "transition_traces = " << bootingTransitionTraceNames_.size()
+        << "\n";
+    for (const std::string &traceName : bootingTransitionTraceNames_) {
+      out << "    " << traceName << "\n";
+    }
+    out << "\n";
+
+    std::vector<std::pair<std::string, std::string>> relevanceRows;
+    for (const auto &entry : relevanceCache_) {
+      const Function *function = entry.first;
+      if (!function) {
+        continue;
+      }
+      const char *verdict = "unknown";
+      if (entry.second == Relevance::Relevant) {
+        verdict = "relevant";
+      } else if (entry.second == Relevance::Irrelevant) {
+        verdict = "irrelevant";
+      }
+      relevanceRows.emplace_back(function->getName().str(), verdict);
+    }
+    std::sort(relevanceRows.begin(), relevanceRows.end());
+    out << "function_relevance = " << relevanceRows.size() << "\n";
+    for (const auto &[name, verdict] : relevanceRows) {
+      out << "    " << name << " " << verdict << "\n";
+    }
+    out << "\n";
+
+    out << "emitted_trace_bases = " << model_.emittedTraceBases.size() << "\n";
+    for (const std::string &base : model_.emittedTraceBases) {
+      out << "    " << base << "\n";
+    }
+    out << "\n";
+
+    out << "traces = " << model_.traces.size() << "\n";
+    for (const TraceModel &trace : model_.traces) {
+      size_t lineCount = 0;
+      for (const TraceBlock &block : trace.blocks) {
+        lineCount += block.lines.size();
+      }
+      out << "    " << sanitizeToken(trace.name)
+          << " entry=" << (trace.entry ? "yes" : "no")
+          << " blocks=" << trace.blocks.size() << " lines=" << lineCount
+          << "\n";
+    }
+    return out.str();
+  }
+
+  std::string renderDataPlaneDump() const {
+    std::ostringstream out;
+    out << "machine " << sanitizeToken(request_.machineName) << "\n\n";
+
+    std::vector<const MachineModel::DynamicMmioOp *> dynamicOps;
+    for (const MachineModel::DynamicMmioOp &op : model_.dynamicMmioOps) {
+      dynamicOps.push_back(&op);
+    }
+    std::sort(dynamicOps.begin(), dynamicOps.end(),
+              [](const MachineModel::DynamicMmioOp *lhs,
+                 const MachineModel::DynamicMmioOp *rhs) {
+                return std::tie(lhs->schemaName, lhs->offset, lhs->name) <
+                       std::tie(rhs->schemaName, rhs->offset, rhs->name);
+              });
+    out << "dynamic_mmio_ops = " << dynamicOps.size() << "\n";
+    for (const MachineModel::DynamicMmioOp *op : dynamicOps) {
+      out << "    " << op->name << " " << (op->isRead ? "read" : "write")
+          << " offset=" << dumpHexValue(op->offset) << " size=" << op->size
+          << " schema=" << op->schemaName << "\n";
+    }
+    out << "\n";
+
+    out << "mmio_op_names = " << model_.mmioOpNames.size() << "\n";
+    for (const std::string &name : model_.mmioOpNames) {
+      out << "    " << name << "\n";
+    }
+    out << "\n";
+
+    out << "schema_types = " << model_.schemaTypes.size() << "\n";
+    for (const std::string &schema : model_.schemaTypes) {
+      out << "    " << schema << "\n";
+    }
+    out << "\n";
+
+    out << "schema_positions = " << model_.schemaHeadPositions.size() << "\n";
+    for (const auto &[schema, positions] : model_.schemaHeadPositions) {
+      out << "    " << schema << " count=" << positions.size() << "\n";
+      for (const std::string &position : positions) {
+        out << "        " << position << "\n";
+      }
+    }
+    out << "\n";
+
+    out << "schema_observed_fields = " << model_.schemaObservedFields.size()
+        << "\n";
+    for (const auto &[schema, fields] : model_.schemaObservedFields) {
+      out << "    " << schema << "\n";
+      for (const std::string &field : fields) {
+        out << "        " << field << "\n";
+      }
+    }
+    out << "\n";
+
+    out << "schema_length_immediates = "
+        << model_.schemaLengthImmediates.size() << "\n";
+    for (const auto &[schema, values] : model_.schemaLengthImmediates) {
+      for (const uint64_t value : values) {
+        out << "    " << schema << " = " << dumpHexValue(value) << "\n";
+      }
+    }
+    out << "\n";
+
+    out << "schema_immediate_ranges = "
+        << model_.schemaImmediateRanges.size() << "\n";
+    for (const auto &[schema, ranges] : model_.schemaImmediateRanges) {
+      for (const auto &range : ranges) {
+        out << "    " << schema << " = [" << dumpHexValue(range.first) << ", "
+            << dumpHexValue(range.second) << "]\n";
+      }
+    }
+    out << "\n";
+
+    out << "mmio_bit_ranges = " << model_.mmioObservedBitRanges.size() << "\n";
+    for (const auto &[schema, ranges] : model_.mmioObservedBitRanges) {
+      for (const auto &range : ranges) {
+        out << "    " << schema << " bits=[" << range.first << ", "
+            << range.second << "]\n";
+      }
+    }
+    out << "\n";
+
+    out << "mmio_bit_ranges_by_selector = "
+        << model_.mmioObservedBitRangesBySelector.size() << "\n";
+    for (const auto &[schema, bySelector] :
+         model_.mmioObservedBitRangesBySelector) {
+      for (const auto &[selector, ranges] : bySelector) {
+        for (const auto &range : ranges) {
+          out << "    " << schema << " selector=" << selector
+              << " bits=[" << range.first << ", " << range.second << "]\n";
+        }
+      }
+    }
+    out << "\n";
+
+    out << "explicit_schemas = " << model_.explicitSchemas.size() << "\n";
+    for (const auto &[schema, decl] : model_.explicitSchemas) {
+      out << "    " << schema << " fields=" << decl.fields.size() << "\n";
+      for (const MachineModel::ExplicitSchemaField &field : decl.fields) {
+        out << "        " << field.name << " : " << field.typeName << "\n";
+      }
+    }
+    out << "\n";
+
+    out << "field_range_hints = " << fieldRangeHints_.size() << "\n";
+    for (const auto &entry : fieldRangeHints_) {
+      out << "    " << entry.first.first << " offset=" << dumpHexValue(
+                            static_cast<uint64_t>(entry.first.second))
+          << " = [" << dumpHexValue(entry.second.first) << ", "
+          << dumpHexValue(entry.second.second) << "]\n";
+    }
+    out << "\n";
+
+    std::vector<std::string> readCalls;
+    for (const CallBase *call : observedMmioReadSemanticCalls_) {
+      if (call) {
+        readCalls.push_back(callsiteKeyFor(call));
+      }
+    }
+    std::sort(readCalls.begin(), readCalls.end());
+    readCalls.erase(std::unique(readCalls.begin(), readCalls.end()),
+                    readCalls.end());
+    out << "observed_read_semantic_calls = " << readCalls.size() << "\n";
+    for (const std::string &callsite : readCalls) {
+      out << "    " << callsite << "\n";
+    }
+    out << "\n";
+
+    std::vector<std::string> writeCalls;
+    for (const CallBase *call : observedMmioWriteSemanticCalls_) {
+      if (call) {
+        writeCalls.push_back(callsiteKeyFor(call));
+      }
+    }
+    std::sort(writeCalls.begin(), writeCalls.end());
+    writeCalls.erase(std::unique(writeCalls.begin(), writeCalls.end()),
+                     writeCalls.end());
+    out << "observed_write_semantic_calls = " << writeCalls.size() << "\n";
+    for (const std::string &callsite : writeCalls) {
+      out << "    " << callsite << "\n";
+    }
+    out << "\n";
+
+    out << "emitted_synthetic_traces = "
+        << emittedSyntheticTraces_.size() << "\n";
+    for (const std::string &traceName : emittedSyntheticTraces_) {
+      out << "    " << traceName << "\n";
+    }
+    return out.str();
+  }
 };
 
 }  // namespace

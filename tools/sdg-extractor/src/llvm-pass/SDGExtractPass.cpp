@@ -23,10 +23,11 @@
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/GetElementPtrTypeIterator.h"
 #include "llvm/IR/InstrTypes.h"
-#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Pass.h"
@@ -375,7 +376,37 @@ static std::string featureBitName(unsigned bit) {
   }
 }
 
+static std::string sinkBaseName(StringRef name) {
+  // Kernel/LLVM clones may append .NNN to internal function names.
+  size_t dot = name.rfind('.');
+  if (dot != StringRef::npos) {
+    bool allDigits = true;
+    for (size_t i = dot + 1; i < name.size(); ++i) {
+      if (!isdigit(static_cast<unsigned char>(name[i]))) {
+        allDigits = false;
+        break;
+      }
+    }
+    if (allDigits)
+      return name.substr(0, dot).str();
+  }
+  return name.str();
+}
+
 static bool isSinkFunction(StringRef name, unsigned &argIdx, std::string &role) {
+  std::string base = sinkBaseName(name);
+  // LLVM memory intrinsics use a size/len argument.
+  StringRef baseRef(base);
+  if (baseRef.startswith("llvm.memcpy") || baseRef.startswith("llvm.memmove")) {
+    argIdx = 2;
+    role = "size";
+    return true;
+  }
+  if (baseRef.startswith("llvm.memset")) {
+    argIdx = 2;
+    role = "size";
+    return true;
+  }
   struct SinkInfo { const char *name; unsigned idx; const char *role; };
   static const SinkInfo sinks[] = {
     {"memcpy", 2, "size"},
@@ -404,9 +435,14 @@ static bool isSinkFunction(StringRef name, unsigned &argIdx, std::string &role) 
     {"vring_map_single", 2, "size"},
     {"virtqueue_map_single_attrs", 2, "size"},
     {"virtqueue_map_page_attrs", 3, "len"},
+    // virtio data-format helpers treated as sinks because guest-controlled
+    // values are passed through them.
+    {"cpu_to_virtio32", 1, "value"},
+    {"detach_buf_split", 1, "index"},
+    {"detach_buf_split_in_order", 1, "index"},
   };
   for (const auto &si : sinks) {
-    if (name == si.name) {
+    if (base == si.name) {
       argIdx = si.idx;
       role = si.role;
       return true;
@@ -518,25 +554,107 @@ static std::string getDebugName(const Value *V) {
 }
 
 struct SemanticPattern {
-  std::string substring;
+  std::vector<std::string> substrings;
   std::string class_;
   std::string access_kind;
   std::string field;
 };
 
+static bool nameMatches(const std::string &argLower,
+                        const std::string &funcLower,
+                        const SemanticPattern &p) {
+  for (const std::string &s : p.substrings) {
+    std::string sl = toLower(s);
+    if (argLower.find(sl) == std::string::npos &&
+        funcLower.find(sl) == std::string::npos)
+      return false;
+  }
+  return true;
+}
+
+// Patterns for function arguments / local variables that carry guest-controlled
+// semantics. These are generic (name-based) and not tied to any specific
+// function implementation.
 static const std::vector<SemanticPattern> SEMANTIC_PATTERNS = {
+    // DMA surfaces (multi-substring patterns first to win over generic names)
+    {{"sg", "len"}, "Dma", "streaming", "sg_length"},
+    {{"single", "len"}, "Dma", "streaming", "single_size"},
+    {{"single", "size"}, "Dma", "streaming", "single_size"},
+    {{"mapping", "error"}, "Dma", "streaming", "mapping_error"},
+    {{"desc", "len"}, "Dma", "streaming", "desc_len"},
+    {{"used", "idx"}, "Dma", "coherent", "used_index"},
+    {{"last_used", "idx"}, "Dma", "coherent", "last_used_idx"},
     // Internal state derived from guest-controlled data
-    {"rx_length", "InternalState", "state", "rx_length"},
-    {"rx_len", "InternalState", "state", "rx_len"},
-    {"frame_len", "InternalState", "state", "frame_len"},
-    // DMA surfaces (recognized from local/debug names, no telemetry changes)
-    {"sg_length", "Dma", "streaming", "sg_length"},
-    {"single_size", "Dma", "streaming", "single_size"},
-    {"mapping_error", "Dma", "streaming", "mapping_error"},
-    {"desc_len", "Dma", "streaming", "desc_len"},
-    {"used_index", "Dma", "coherent", "used_index"},
-    {"last_used_idx", "Dma", "coherent", "last_used_idx"},
+    {{"rx", "len"}, "InternalState", "state", "rx_length"},
+    {{"rx_len"}, "InternalState", "state", "rx_len"},
+    {{"frame", "len"}, "InternalState", "state", "frame_len"},
+    {{"length"}, "InternalState", "state", "length"},
+    {{"len"}, "InternalState", "state", "length"},
 };
+
+// Generic struct-field semantic sources. Format:
+//   (struct_type_substring, field_index, class, access_kind, field_name)
+static const std::vector<std::tuple<std::string, unsigned, std::string,
+                                    std::string, std::string>>
+    STRUCT_FIELD_PATTERNS = {
+        // scatterlist length fields
+        {"scatterlist", 2, "Dma", "streaming", "sg_length"},
+        {"scatterlist", 4, "Dma", "streaming", "sg_length"},
+        // vring descriptor length
+        {"vring_desc", 1, "Dma", "streaming", "desc_len"},
+        // virtqueue state used for polling/getting buffers
+        {"vring_virtqueue", 10, "Dma", "coherent", "last_used_idx"},
+        {"vring_used", 1, "Dma", "coherent", "used_index"},
+        {"vring_used_elem", 0, "Dma", "coherent", "used_index"},
+        {"vring_used_elem", 1, "Dma", "streaming", "sg_length"},
+};
+
+static Optional<Node> tryExtractStructFieldSource(
+    LoadInst *LI, const std::string &funcName, const DebugLoc &loc) {
+  auto *GEP = dyn_cast<GetElementPtrInst>(LI->getPointerOperand());
+  if (!GEP)
+    return None;
+  unsigned n = GEP->getNumOperands();
+  if (n < 2)
+    return None;
+
+  Type *containerTy = nullptr;
+  unsigned fieldIdx = 0;
+  Type *prevTy = GEP->getSourceElementType();
+  gep_type_iterator It = gep_type_begin(GEP);
+  for (unsigned i = 1; i < n; ++i, ++It) {
+    if (i == n - 1) {
+      containerTy = prevTy;
+      if (auto *CI = dyn_cast<ConstantInt>(GEP->getOperand(i)))
+        fieldIdx = static_cast<unsigned>(CI->getZExtValue());
+      else
+        return None;
+      break;
+    }
+    prevTy = It.getIndexedType();
+  }
+
+  auto *ST = dyn_cast<StructType>(containerTy);
+  if (!ST || !ST->hasName())
+    return None;
+  std::string structName = ST->getName().str();
+  for (const auto &entry : STRUCT_FIELD_PATTERNS) {
+    if (structName.find(std::get<0>(entry)) != std::string::npos &&
+        fieldIdx == std::get<1>(entry)) {
+      Node node;
+      node.id = std::get<2>(entry) + "." + std::get<3>(entry) + "." +
+                std::get<4>(entry);
+      node.source.class_ = std::get<2>(entry);
+      node.source.access_kind = std::get<3>(entry);
+      node.source.field = std::get<4>(entry);
+      node.llvm_value = valueRef(LI);
+      node.function = funcName;
+      node.loc = loc;
+      return node;
+    }
+  }
+  return None;
+}
 
 static Optional<Node> tryExtractSemanticSource(const Value *V,
                                                const std::string &valueRefStr,
@@ -546,14 +664,41 @@ static Optional<Node> tryExtractSemanticSource(const Value *V,
   if (name.empty())
     return None;
   std::string lower = toLower(name);
+  std::string funcLower = toLower(funcName);
   for (const SemanticPattern &p : SEMANTIC_PATTERNS) {
-    if (lower.find(toLower(p.substring)) != std::string::npos) {
+    if (nameMatches(lower, funcLower, p)) {
       Node n;
       n.id = p.class_ + "." + p.access_kind + "." + p.field;
       n.source.class_ = p.class_;
       n.source.access_kind = p.access_kind;
       n.source.field = p.field;
       n.llvm_value = valueRefStr;
+      n.function = funcName;
+      n.loc = loc;
+      return n;
+    }
+  }
+  return None;
+}
+
+static Optional<Node> tryExtractArgumentSource(const Argument *A,
+                                               const std::string &funcName,
+                                               const DebugLoc &loc) {
+  std::string name = getDebugName(A);
+  if (name.empty())
+    name = A->getName().str();
+  if (name.empty())
+    return None;
+  std::string lower = toLower(name);
+  std::string funcLower = toLower(funcName);
+  for (const SemanticPattern &p : SEMANTIC_PATTERNS) {
+    if (nameMatches(lower, funcLower, p)) {
+      Node n;
+      n.id = p.class_ + "." + p.access_kind + "." + p.field;
+      n.source.class_ = p.class_;
+      n.source.access_kind = p.access_kind;
+      n.source.field = p.field;
+      n.llvm_value = valueRef(A);
       n.function = funcName;
       n.loc = loc;
       return n;
@@ -1617,6 +1762,13 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
         continue;
 
       std::vector<Node> nodes;
+      for (auto &A : F.args()) {
+        if (auto n = tryExtractArgumentSource(&A, F.getName().str(),
+                                              DebugLoc())) {
+          nodes.push_back(n.getValue());
+          nodeValues[n.getValue().id].push_back(&A);
+        }
+      }
       for (auto &BB : F) {
         for (auto &I : BB) {
           if (auto *CB = dyn_cast<CallBase>(&I)) {
@@ -1641,6 +1793,26 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
             if (auto n = tryExtractSemanticSource(LI, valueRef(LI),
                                                   F.getName().str(),
                                                   getDebugLoc(LI))) {
+              nodes.push_back(n.getValue());
+              nodeValues[n.getValue().id].push_back(LI);
+            }
+            // Loads from semantic pointer arguments (e.g. a function that
+            // receives `i32 *len` and reads the guest-controlled length).
+            int64_t off = 0;
+            const Value *base = stripPointer(LI->getPointerOperand(), off,
+                                             F.getParent()->getDataLayout());
+            if (off == 0) {
+              if (auto *A = dyn_cast<Argument>(base)) {
+                if (auto n = tryExtractArgumentSource(A, F.getName().str(),
+                                                      getDebugLoc(LI))) {
+                  nodes.push_back(n.getValue());
+                  nodeValues[n.getValue().id].push_back(LI);
+                }
+              }
+            }
+            // Loads from known semantic struct fields.
+            if (auto n = tryExtractStructFieldSource(LI, F.getName().str(),
+                                                     getDebugLoc(LI))) {
               nodes.push_back(n.getValue());
               nodeValues[n.getValue().id].push_back(LI);
             }

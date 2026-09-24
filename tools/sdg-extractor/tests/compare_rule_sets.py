@@ -12,6 +12,16 @@ def normalize_sink_fn(name: str) -> str:
     for suffix in ("_noprof", "_node"):
         if name.endswith(suffix):
             name = name[: -len(suffix)]
+    # LLVM may clone internal functions and append .NNN.
+    import re
+    name = re.sub(r"\.\d+$", "", name)
+    # Normalize LLVM memory intrinsics to their C names.
+    if name.startswith("llvm.memcpy."):
+        return "memcpy"
+    if name.startswith("llvm.memmove."):
+        return "memmove"
+    if name.startswith("llvm.memset."):
+        return "memset"
     return name
 
 

@@ -6,7 +6,7 @@ It owns:
 
 - `ScenarioInput`, which contains device override records only
 - fixed-width override-seed encoding and decoding
-- grammar-guided override generation and value mutation
+- SDG rule-guided override generation and value mutation
 - the guest stub artifact contract
 
 ## QEMU Bridge Build Support
@@ -48,33 +48,28 @@ virtio protocol; the seed never describes that protocol as a trace.
 The exact communication model can evolve independently on top of the same
 patched QEMU coverage backend.
 
-## Devilang Grammar Configuration
+## SDG Rule Configuration
 
-Grammar-guided generation is device-agnostic at the configuration boundary.
-Pass a generated state-machine `.state` file, a directory of `.state` files,
-or a manifest listing root `.state` files to the LibAFL tool:
+The generator loads plain-text `.sdg` rule files from the directory named by
+`MORPHEUS_LIBAFL_SDG_RULES`, or from the crate's `rules/` directory by
+default.
 
 ```text
---enable-grammar
---grammar <grammar-path>
+MORPHEUS_LIBAFL_SDG_RULES=<rules-directory>
 ```
 
-The active workflow uses the virtio-net analysis output, but another workflow
-can pass any grammar with the same format. A directory loads every top-level
-`.state` file as a root phase; use a manifest when the directory also contains
-import-only helper modules. Enabled mode is fail-closed: an unreadable, empty,
-or unsupported grammar aborts the fuzzing runner instead of silently falling
-back to random generation. The `probe-grammar` tool command loads the path,
-generates and mutates a device seed, and prints the readable overrides without
-starting QEMU. The `--devilang-grammar` and `--enable-devilang-grammar` names
-remain accepted as compatibility aliases.
+Each rule declares semantic nodes, cross-edge preconditions, a self-edge
+trigger, and a mutation operator. Generation satisfies the declared
+preconditions and emits a `ScenarioInput`; mutation selects a rule and applies
+its operator to the corresponding modeled value while preserving the seed
+wire invariants.
 
 ## Seed-driven virtio device input
 
 The L2 QEMU seed consumer is compiled into the version-scoped qemu-cca patch
 used by the workflow. It consumes the same encoded `ScenarioInput` that the
 guest stub hands to the L2 launcher; no QMP, vhost-user process, or separate
-device backend is involved. The supported Devilang seed directives are:
+device backend is involved. The supported seed surfaces are:
 
 ```text
 mmio_read_override(ADDRESS, WIDTH, VALUE);
@@ -104,7 +99,7 @@ runtime extraction. Pass `--show-console` (or set
 The LibAFL nesting workflow exposes the same boolean in its `libafl_exec` step;
 Set
 `workflows.nvirsh-qemu-arm64-cvm-libafl-nesting-fuzzing.metadata.console.show`
-(or the corresponding grammar-workflow value) to `true` when running that
+(or the corresponding workflow value) to `true` when running that
 workflow interactively.
 
 ## SMP startup calibration

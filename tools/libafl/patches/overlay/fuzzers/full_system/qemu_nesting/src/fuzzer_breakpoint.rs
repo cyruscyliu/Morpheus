@@ -75,6 +75,23 @@ where
     manager.report_progress(state)
 }
 
+/// QEMU's stdio chardev marks fd 1 non-blocking (char-fd.c). LibAFL's monitor
+/// prints share that fd, so a backed-up console pipeline would panic the
+/// fuzzer with EAGAIN instead of blocking. Restore the default blocking mode
+/// after the outer QEMU boots so slow consoles only slow down, never crash.
+fn restore_blocking_stdout() {
+    unsafe {
+        let flags = libc::fcntl(libc::STDOUT_FILENO, libc::F_GETFL);
+        if flags >= 0 && (flags & libc::O_NONBLOCK) != 0 {
+            libc::fcntl(
+                libc::STDOUT_FILENO,
+                libc::F_SETFL,
+                flags & !libc::O_NONBLOCK,
+            );
+        }
+    }
+}
+
 fn executor_timeout(replay_enabled: bool) -> Duration {
     if let Some(seconds) = parse_env_u64("MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS") {
         return Duration::from_secs(seconds);
@@ -129,24 +146,8 @@ fn initial_input_paths() -> Option<Vec<PathBuf>> {
 
 fn scenario_generator_from_env() -> ScenarioGenerator {
     let generator = ScenarioGenerator::from_env()
-        .unwrap_or_else(|err| panic!("failed to load grammar-backed scenario generator: {err}"));
-    if let Some(grammar) = generator.grammar() {
-        eprintln!(
-            "[libafl/qemu_nesting] grammar loaded: phases={} machines={} transitions={} traces={} dma-events={}",
-            grammar.phase_machines().len(),
-            grammar.machines().len(),
-            grammar.transition_count(),
-            grammar.trace_count(),
-            grammar.dma_event_count(),
-        );
-    }
+        .unwrap_or_else(|err| panic!("failed to load SDG rules: {err}"));
     generator
-}
-
-fn grammar_probe_requested() -> bool {
-    env::args()
-        .skip(1)
-        .any(|argument| argument == "--check-grammar" || argument == "--check-devilang-grammar")
 }
 
 fn input_paths_from_manifest(manifest: &str, kind: &str) -> Option<Vec<PathBuf>> {
@@ -201,14 +202,6 @@ pub fn fuzz() {
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("./crashes"));
     let scenario_generator = scenario_generator_from_env();
-    if grammar_probe_requested() {
-        if !scenario_generator.grammar_enabled() {
-            panic!("--check-devilang-grammar requires an enabled grammar");
-        }
-        println!("[libafl/qemu_nesting] Devilang grammar probe succeeded");
-        return;
-    }
-
     macro_rules! run_client_body {
         ($state:expr, $mgr:ident) => {{
             (|| -> Result<(), Error> {
@@ -277,6 +270,7 @@ pub fn fuzz() {
                     emu.start().expect("failed to start outer QEMU");
                 }
                 eprintln!("[libafl/qemu_nesting] outer QEMU reached guest stub");
+                restore_blocking_stdout();
 
                 let mut feedback = feedback_or!(
                     MaxMapFeedback::new(&edges_observer),

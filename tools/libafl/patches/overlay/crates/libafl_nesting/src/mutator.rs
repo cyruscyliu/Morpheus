@@ -8,9 +8,20 @@ use libafl::{
 use libafl_bolts::{Named, nonzero, rands::Rand};
 
     use crate::{
+        MAX_ENCODED_SCENARIO_BYTES,
+        encoding::encode_scenario,
         generator::ScenarioGenerator,
         input::ScenarioInput,
     };
+
+const U32_BYTES: usize = core::mem::size_of::<u32>();
+
+/// The L1 stub caps each raw testcase at `MAX_ENCODED_SCENARIO_BYTES` and
+/// truncates anything longer, so a mutated scenario must stay within the
+/// encoded budget. `extra_bytes` is the exact wire growth of the mutation.
+fn fits_budget(input: &ScenarioInput, extra_bytes: usize) -> bool {
+    encode_scenario(input).len() + extra_bytes <= MAX_ENCODED_SCENARIO_BYTES
+}
 
 /// Schema-aware mutator: skeleton metadata (the modelled slot set, i.e. the
 /// `offset` keys) stays fixed. The mutator only edits visit values, visit
@@ -66,15 +77,12 @@ where
         state: &mut S,
         input: &mut ScenarioInput,
     ) -> Result<MutationResult, Error> {
-        if let Some(grammar) = self.generator.devilang_grammar() {
-            let replacement = grammar
-                .generate_scenario(state.rand_mut(), self.generator.max_actions())
-                .map_err(Error::illegal_argument)?;
-            if replacement == *input {
-                return Ok(MutationResult::Skipped);
-            }
-            *input = replacement;
-            return Ok(MutationResult::Mutated);
+        if let Some(sdg) = self.generator.sdg() {
+            return Ok(if sdg.mutate(state.rand_mut(), input) && input.is_valid() && fits_budget(input, 0) {
+                MutationResult::Mutated
+            } else {
+                MutationResult::Skipped
+            });
         }
 
         let op = state.rand_mut().below(nonzero!(9));
@@ -98,10 +106,13 @@ where
                 if let Some(index) =
                     Self::random_index(state.rand_mut(), input.mmio.word_models.len())
                 {
-                    let model = &mut input.mmio.word_models[index];
-                    let value = random_u32(state.rand_mut());
-                    model.values.push(value);
-                    true
+                    if fits_budget(input, U32_BYTES) {
+                        let model = &mut input.mmio.word_models[index];
+                        model.values.push(random_u32(state.rand_mut()));
+                        true
+                    } else {
+                        false
+                    }
                 } else {
                     false
                 }
@@ -196,16 +207,23 @@ where
             6 => {
                 // Add a unit with 1..=8 modelled words at contiguous 4-byte offsets.
                 let words = 1 + state.rand_mut().below(nonzero!(8));
-                input.dma.streaming.push(crate::input::StreamUnit {
-                    addr: state.rand_mut().below(nonzero!(16)) as u64,
-                    word_models: (0..words)
-                        .map(|word| crate::input::WordModel {
-                            offset: ((word * 4) as u32),
-                            values: vec![random_u32(state.rand_mut())],
-                        })
-                        .collect(),
-                });
-                true
+                // Wire growth: addr(u64) + count(u32) + per word offset(u32) +
+                // visit count(u32) + one u32 value.
+                if fits_budget(input, 2 * U32_BYTES + words * (3 * U32_BYTES)) {
+                    let addr = state.rand_mut().below(nonzero!(16)) as u64;
+                    input.dma.streaming.push(crate::input::StreamUnit {
+                        addr,
+                        word_models: (0..words)
+                            .map(|word| crate::input::WordModel {
+                                offset: ((word * 4) as u32),
+                                values: vec![random_u32(state.rand_mut())],
+                            })
+                            .collect(),
+                    });
+                    true
+                } else {
+                    false
+                }
             }
             7 => {
                 if input.dma.streaming.len() > 1 {
@@ -236,6 +254,11 @@ where
 
         if mutated && !input.is_valid() {
             // Treat invariant-breaking mutations as skipped; skeleton validity wins.
+            return Ok(MutationResult::Skipped);
+        }
+        if mutated && !fits_budget(input, 0) {
+            // Belt and braces: the growth ops pre-check their wire cost, so a
+            // mutation that still exceeds the stub cap is discarded locally.
             return Ok(MutationResult::Skipped);
         }
         Ok(if mutated {
@@ -333,6 +356,45 @@ mod tests {
             let offsets: Vec<u32> =
                 input.mmio.word_models.iter().map(|model| model.offset).collect();
             assert_eq!(offsets, mmio_offsets);
+        }
+    }
+
+    #[test]
+    fn mutator_never_exceeds_the_encoded_budget() {
+        use crate::encoding::encode_scenario;
+
+        let mut state = TestState { rand: StdRand::with_seed(7) };
+        // One streaming unit encodes to addr(8) + count(4) + num * (offset(4) +
+        // visit count(4) + one value(4)); empty mmio/coherent sections add 8.
+        let start_len = {
+            let words = (MAX_ENCODED_SCENARIO_BYTES - 20) / (3 * U32_BYTES);
+            assert_eq!(20 + words * (3 * U32_BYTES), MAX_ENCODED_SCENARIO_BYTES - 8);
+            MAX_ENCODED_SCENARIO_BYTES - 8
+        };
+        let streaming_words = (start_len - 20) / (3 * U32_BYTES);
+        let mut input = ScenarioInput::new(
+            MmioSection::default(),
+            crate::input::DmaSection {
+                streaming: vec![crate::input::StreamUnit {
+                    addr: 0,
+                    word_models: (0..streaming_words)
+                        .map(|w| word((w * 4) as u32, &[1]))
+                        .collect(),
+                }],
+                ..Default::default()
+            },
+        );
+        assert_eq!(encode_scenario(&input).len(), start_len);
+
+        let mut mutator = ScenarioMutator::default();
+        for _ in 0..256 {
+            let _ = mutator.mutate(&mut state, &mut input);
+            assert!(
+                encode_scenario(&input).len() <= MAX_ENCODED_SCENARIO_BYTES,
+                "mutated input {} exceeds the stub cap {}",
+                encode_scenario(&input).len(),
+                MAX_ENCODED_SCENARIO_BYTES
+            );
         }
     }
 }

@@ -1,0 +1,4 @@
+rule streaming-payload
+node payload_word streaming 0 0 0x0
+trigger payload_word eq 0
+mutation set_value 0

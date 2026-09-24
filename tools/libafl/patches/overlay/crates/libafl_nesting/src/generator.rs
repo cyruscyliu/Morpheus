@@ -4,20 +4,18 @@ use core::num::NonZeroUsize;
 use libafl::{Error, generators::Generator};
 use libafl_bolts::{nonzero, rands::Rand};
 
-use crate::devilang_grammar::{MAX_ENCODED_SCENARIO_BYTES, DevilangGrammar};
+use crate::sdg::SemanticDependencyGraph;
+use crate::input::MAX_ENCODED_SCENARIO_BYTES;
 use crate::encoding::encoded_size;
 use crate::input::{
     CoherentAlloc, DmaSection, MmioSection, MMIO_WINDOW_SLOTS, ScenarioInput, StreamUnit,
     WordModel,
 };
-use crate::model::{DevilangModel, MmioDirection};
 
 #[derive(Debug, Clone)]
 pub struct ScenarioGenerator {
     max_actions: NonZeroUsize,
-    devilang_model: Option<DevilangModel>,
-    devilang_grammar: Option<DevilangGrammar>,
-    devilang_grammar_enabled: bool,
+    sdg: Option<SemanticDependencyGraph>,
 }
 
 impl Default for ScenarioGenerator {
@@ -31,102 +29,21 @@ impl ScenarioGenerator {
     pub fn new(max_actions: NonZeroUsize) -> Self {
         Self {
             max_actions,
-            devilang_model: None,
-            devilang_grammar: None,
-            devilang_grammar_enabled: false,
+            sdg: None,
         }
     }
 
-    #[must_use]
-    pub fn with_devilang_model(mut self, devilang_model: DevilangModel) -> Self {
-        self.devilang_model = Some(devilang_model);
-        self
-    }
-
-    /// Enable grammar-guided generation from a parsed Devilang machine.
-    #[must_use]
-    pub fn with_devilang_grammar(mut self, grammar: DevilangGrammar) -> Self {
-        self.devilang_grammar = Some(grammar);
-        self.devilang_grammar_enabled = true;
-        self
-    }
-
-    /// Enable the configured grammar format without coupling callers to the
-    /// historical Devilang name.
-    #[must_use]
-    pub fn with_grammar(self, grammar: DevilangGrammar) -> Self {
-        self.with_devilang_grammar(grammar)
-    }
-
-    /// Toggle grammar-guided generation without changing the parsed grammar.
-    #[must_use]
-    pub fn with_devilang_grammar_enabled(mut self, enabled: bool) -> Self {
-        self.devilang_grammar_enabled = enabled;
-        self
-    }
-
-    #[must_use]
-    pub fn with_grammar_enabled(self, enabled: bool) -> Self {
-        self.with_devilang_grammar_enabled(enabled)
-    }
-
-    #[must_use]
-    pub fn devilang_grammar_enabled(&self) -> bool {
-        self.devilang_grammar_enabled && self.devilang_grammar.is_some()
-    }
-
-    #[must_use]
-    pub fn grammar_enabled(&self) -> bool {
-        self.devilang_grammar_enabled()
-    }
-
-    #[must_use]
-    pub fn devilang_grammar(&self) -> Option<&DevilangGrammar> {
-        self.devilang_grammar_enabled()
-            .then_some(self.devilang_grammar.as_ref())
-            .flatten()
-    }
-
-    #[must_use]
-    pub fn grammar(&self) -> Option<&DevilangGrammar> {
-        self.devilang_grammar()
-    }
-
-    #[must_use]
-    pub(crate) fn max_actions(&self) -> usize {
-        self.max_actions.get()
+    pub(crate) fn sdg(&self) -> Option<&SemanticDependencyGraph> {
+        self.sdg.as_ref()
     }
 
     #[cfg(feature = "std")]
     pub fn from_env() -> Result<Self, String> {
+        let path = std::env::var("MORPHEUS_LIBAFL_SDG_RULES")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("rules"));
         let mut generator = Self::default();
-        let grammar_mode = std::env::var("MORPHEUS_LIBAFL_GRAMMAR_MODE")
-            .or_else(|_| std::env::var("MORPHEUS_LIBAFL_DEVILANG_GRAMMAR_MODE"))
-            .unwrap_or_else(|_| "auto".to_string());
-        let grammar_path = std::env::var("MORPHEUS_LIBAFL_GRAMMAR")
-            .or_else(|_| std::env::var("MORPHEUS_LIBAFL_DEVILANG_GRAMMAR"))
-            .ok();
-        match grammar_mode.as_str() {
-            "off" => {}
-            "auto" => {
-                if let Some(grammar_path) = grammar_path {
-                    generator.devilang_grammar = Some(DevilangGrammar::from_path(grammar_path)?);
-                    generator.devilang_grammar_enabled = true;
-                }
-            }
-            "on" => {
-                let grammar_path = grammar_path.ok_or_else(|| {
-                    "MORPHEUS_LIBAFL_GRAMMAR_MODE=on requires MORPHEUS_LIBAFL_GRAMMAR".to_string()
-                })?;
-                generator.devilang_grammar = Some(DevilangGrammar::from_path(grammar_path)?);
-                generator.devilang_grammar_enabled = true;
-            }
-            other => {
-                return Err(format!(
-                    "invalid MORPHEUS_LIBAFL_GRAMMAR_MODE {other}; expected auto, on, or off"
-                ));
-            }
-        }
+        generator.sdg = Some(SemanticDependencyGraph::from_dir(&path)?);
         Ok(generator)
     }
 }
@@ -136,10 +53,8 @@ where
     S: libafl::state::HasRand,
 {
     fn generate(&mut self, state: &mut S) -> Result<ScenarioInput, Error> {
-        if let Some(grammar) = self.devilang_grammar() {
-            return grammar
-                .generate_scenario(state.rand_mut(), self.max_actions.get())
-                .map_err(Error::illegal_argument);
+        if let Some(sdg) = &self.sdg {
+            return Ok(sdg.generate(state.rand_mut()));
         }
 
         Ok(self.random_scenario(state.rand_mut(), self.max_actions.get()))
@@ -147,7 +62,7 @@ where
 }
 
 impl ScenarioGenerator {
-    /// Grammar-free seed: random window slots with short visit-ordered value
+    /// Fallback seed: random window slots with short visit-ordered value
     /// sequences plus random coherent allocs and streaming entries whose
     /// models sit at contiguous 4-byte offsets. Sections are added under
     /// `MAX_ENCODED_SCENARIO_BYTES`; generation stops when the budget is exceeded.
@@ -243,29 +158,6 @@ impl ScenarioGenerator {
         ScenarioInput::new(mmio, dma)
     }
 
-    /// Legacy model-backed helper kept for workflows that configure the
-    /// obsolete flat Devilang model: returns a random MMIO visit value.
-    #[allow(dead_code)]
-    pub(crate) fn model_mmio_value<R: Rand>(&self, rand: &mut R) -> Option<u32> {
-        let model = self.devilang_model.as_ref()?;
-        let mmio_ops = model.mmio_ops();
-        if mmio_ops.is_empty() {
-            return None;
-        }
-        let op = &mmio_ops[rand.below(unsafe {
-            NonZeroUsize::new_unchecked(mmio_ops.len())
-        })];
-        match op.direction() {
-            MmioDirection::Read => Some(0),
-            MmioDirection::Write => Some(
-                op.data()
-                    .map_or_else(
-                        || random_u32(rand) & mask_for_width(op.size()),
-                        |data| u32::try_from(data).unwrap_or(u32::MAX),
-                    ),
-            ),
-        }
-    }
 }
 
 fn contiguous_words(words: usize) -> Vec<WordModel> {
@@ -329,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn grammar_free_generator_stays_inside_the_budget() {
+    fn fallback_generator_stays_inside_the_budget() {
         let mut state = TestState { rand: StdRand::with_seed(7) };
         let mut generator = ScenarioGenerator::default();
         for seed in 0..16 {

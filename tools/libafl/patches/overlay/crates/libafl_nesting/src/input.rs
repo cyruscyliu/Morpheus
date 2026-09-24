@@ -10,12 +10,13 @@ pub const MMIO_WINDOW_SLOTS: usize = 128;
 
 /// Size of the virtio-mmio window in bytes; mmio model offsets stay inside it.
 pub const MMIO_WINDOW_BYTES: u32 = (MMIO_WINDOW_SLOTS * 4) as u32;
+pub const MAX_ENCODED_SCENARIO_BYTES: usize = 4096;
 
 /// One seed payload sent to the consumer.
 ///
 /// Boundary rule: skeleton metadata (the modelled slot set, i.e. the
-/// `offset` keys of every `WordModel`) is fixed when the grammar
-/// constructs the seed and is not mutated. Visit values and counts are
+/// `offset` keys of every `WordModel`) is fixed when the SDG constructs the
+/// seed and is not mutated. Visit values and counts are
 /// the LibAFL mutation surface. Any access beyond the modelled seed data
 /// falls through to native behavior.
 ///

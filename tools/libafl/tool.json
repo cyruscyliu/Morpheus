@@ -1,7 +1,7 @@
 {
   "name": "libafl",
   "runtime": null,
-  "cli-contract": "fetch,patch,build,probe-grammar,probe-devilang-grammar,exec,benchmark,inspect",
+  "cli-contract": "fetch,patch,build,exec,benchmark,inspect",
   "config": {
     "fields": {
       "mode": {
@@ -138,47 +138,6 @@
           "harnessArgs"
         ],
         "repeatable": true
-      },
-      "devilang-grammar": {
-        "aliases": [
-          "devilang-grammar",
-          "devilangGrammar"
-        ],
-        "path": true
-      },
-      "grammar": {
-        "aliases": [
-          "grammar"
-        ],
-        "path": true
-      },
-      "enable-devilang-grammar": {
-        "aliases": [
-          "enable-devilang-grammar",
-          "enableDevilangGrammar"
-        ],
-        "boolean": true
-      },
-      "enable-grammar": {
-        "aliases": [
-          "enable-grammar",
-          "enableGrammar"
-        ],
-        "boolean": true
-      },
-      "disable-devilang-grammar": {
-        "aliases": [
-          "disable-devilang-grammar",
-          "disableDevilangGrammar"
-        ],
-        "boolean": true
-      },
-      "disable-grammar": {
-        "aliases": [
-          "disable-grammar",
-          "disableGrammar"
-        ],
-        "boolean": true
       },
       "show-console": {
         "aliases": [
@@ -489,68 +448,6 @@
             }
           }
         },
-        "probe-devilang-grammar": {
-          "requiredFlags": [
-            "source",
-            "devilang-grammar"
-          ],
-          "scalarFlags": [
-            "source",
-            "devilang-grammar",
-            "build-version",
-            "build-dir-key"
-          ],
-          "repeatableFlags": [],
-          "script": {
-            "path": "scripts/probe-devilang-grammar.sh",
-            "shell": "bash"
-          },
-          "pathFlags": {
-            "source": "tools/libafl/builds/{buildDirKey}/source"
-          },
-          "result": {
-            "successSummary": "generated and validated a Devilang grammar scenario",
-            "artifact": {
-              "path": "source-dir",
-              "locationTemplate": "{source}"
-            },
-            "details": {
-              "source": "{source}",
-              "grammar": "{devilang-grammar}"
-            }
-          }
-        },
-        "probe-grammar": {
-          "requiredFlags": [
-            "source",
-            "grammar"
-          ],
-          "scalarFlags": [
-            "source",
-            "grammar",
-            "build-version",
-            "build-dir-key"
-          ],
-          "repeatableFlags": [],
-          "script": {
-            "path": "scripts/probe-devilang-grammar.sh",
-            "shell": "bash"
-          },
-          "pathFlags": {
-            "source": "tools/libafl/builds/{buildDirKey}/source"
-          },
-          "result": {
-            "successSummary": "generated and validated a grammar scenario",
-            "artifact": {
-              "path": "source-dir",
-              "locationTemplate": "{source}"
-            },
-            "details": {
-              "source": "{source}",
-              "grammar": "{grammar}"
-            }
-          }
-        },
         "exec": {
           "requiredFlags": [
             "source",
@@ -567,12 +464,6 @@
             "qemu-plugin",
             "qemu-plugin-el",
             "harness-script",
-            "grammar",
-            "devilang-grammar",
-            "enable-grammar",
-            "enable-devilang-grammar",
-            "disable-grammar",
-            "disable-devilang-grammar",
             "show-console",
             "mutational-max-iterations",
             "l2-smp",

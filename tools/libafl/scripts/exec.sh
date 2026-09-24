@@ -44,27 +44,7 @@ disable_nqc2_plugin="false"
 capture_runtime="false"
 replay_inputs=()
 seed_inputs=()
-devilang_states=()
-devilang_grammar="${MORPHEUS_LIBAFL_DEVILANG_GRAMMAR:-}"
-enable_devilang_grammar="${MORPHEUS_LIBAFL_ENABLE_DEVILANG_GRAMMAR:-false}"
-disable_devilang_grammar="${MORPHEUS_LIBAFL_DISABLE_DEVILANG_GRAMMAR:-false}"
-devilang_grammar_mode="auto"
-# Generic grammar names are preferred.  The Devilang names above remain
-# compatibility aliases for existing workflow runs and cached harnesses.
-if [ "${MORPHEUS_LIBAFL_GRAMMAR+x}" = "x" ]; then
-  devilang_grammar="${MORPHEUS_LIBAFL_GRAMMAR}"
-fi
-if [ "${MORPHEUS_LIBAFL_ENABLE_GRAMMAR+x}" = "x" ]; then
-  enable_devilang_grammar="${MORPHEUS_LIBAFL_ENABLE_GRAMMAR}"
-fi
-if [ "${MORPHEUS_LIBAFL_DISABLE_GRAMMAR+x}" = "x" ]; then
-  disable_devilang_grammar="${MORPHEUS_LIBAFL_DISABLE_GRAMMAR}"
-fi
-if [ "${MORPHEUS_LIBAFL_GRAMMAR_MODE+x}" = "x" ]; then
-  devilang_grammar_mode="${MORPHEUS_LIBAFL_GRAMMAR_MODE}"
-elif [ "${MORPHEUS_LIBAFL_DEVILANG_GRAMMAR_MODE+x}" = "x" ]; then
-  devilang_grammar_mode="${MORPHEUS_LIBAFL_DEVILANG_GRAMMAR_MODE}"
-fi
+sdg_rules="${MORPHEUS_LIBAFL_SDG_RULES:-}"
 mutational_max_iterations="${MORPHEUS_LIBAFL_MUTATIONAL_MAX_ITERATIONS:-}"
 initial_generated_seeds="${MORPHEUS_LIBAFL_INITIAL_GENERATED_SEEDS:-}"
 show_console="${MORPHEUS_LIBAFL_SHOW_CONSOLE:-false}"
@@ -103,13 +83,6 @@ while [ "$#" -gt 0 ]; do
     --qemu-plugin-el) shift; qemu_plugin_el="${1:-}" ;;
     --replay-input) shift; replay_inputs+=("${1:-}") ;;
     --seed-input) shift; seed_inputs+=("${1:-}") ;;
-    --devilang-state) shift; devilang_states+=("${1:-}") ;;
-    --grammar) shift; devilang_grammar="${1:-}" ;;
-    --devilang-grammar) shift; devilang_grammar="${1:-}" ;;
-    --enable-grammar) enable_devilang_grammar="true" ;;
-    --enable-devilang-grammar) enable_devilang_grammar="true" ;;
-    --disable-grammar) disable_devilang_grammar="true" ;;
-    --disable-devilang-grammar) disable_devilang_grammar="true" ;;
     --mutational-max-iterations) shift; mutational_max_iterations="${1:-}" ;;
     --initial-generated-seeds) shift; initial_generated_seeds="${1:-}" ;;
     --show-console)
@@ -128,23 +101,6 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
-
-if [ "${enable_devilang_grammar}" = "true" ] &&
-   [ "${disable_devilang_grammar}" = "true" ]; then
-  echo "--enable-devilang-grammar and --disable-devilang-grammar are mutually exclusive" >&2
-  exit 1
-fi
-
-if [ "${enable_devilang_grammar}" = "true" ]; then
-  devilang_grammar_mode="on"
-elif [ "${disable_devilang_grammar}" = "true" ]; then
-  devilang_grammar_mode="off"
-fi
-
-if [ "${devilang_grammar_mode}" = "on" ] && [ -z "${devilang_grammar}" ]; then
-  echo "grammar mode on requires --grammar (or --devilang-grammar)" >&2
-  exit 1
-fi
 
 if [ -n "${mutational_max_iterations}" ] &&
    ! [[ "${mutational_max_iterations}" =~ ^[1-9][0-9]*$ ]]; then
@@ -174,8 +130,6 @@ l2_timing_file="${run_dir}/l2-startup-timing.json"
 replay_inputs_file="${run_dir}/replay-inputs.txt"
 replay_state_file="${run_dir}/replay-state.json"
 seed_inputs_file="${run_dir}/seed-inputs.txt"
-devilang_states_file="${run_dir}/devilang-states.txt"
-devilang_grammar_file="${run_dir}/devilang-grammar.path"
 runner_log_file="${run_dir}/launcher.stdout.log"
 fuzzer_bin="${install_dir}/bin/qemu_nesting"
 stub_elf="${install_dir}/bin/libafl_nesting_stub"
@@ -215,8 +169,6 @@ find "${corpus_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 find "${objective_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 rm -f "${replay_inputs_file}" "${replay_state_file}"
 rm -f "${seed_inputs_file}"
-rm -f "${devilang_states_file}"
-rm -f "${devilang_grammar_file}"
 rm -f "${l2_timing_file}"
 : > "${runner_log_file}"
 
@@ -347,68 +299,6 @@ for (const root of roots) {
 const unique = [...new Set(inputs)].sort();
 if (unique.length === 0) throw new Error("no seed inputs resolved");
 fs.writeFileSync(outputFile, `${unique.join("\n")}\n`);
-NODE
-fi
-
-if [ "${#devilang_states[@]}" -gt 0 ]; then
-  node - "${devilang_states_file}" "${workspace_root}" "${repo_root}" "${devilang_states[@]}" <<'NODE'
-const fs = require("fs");
-const path = require("path");
-const outputFile = process.argv[2];
-const workspaceRoot = process.argv[3];
-const repoRoot = process.argv[4];
-const roots = process.argv.slice(5);
-const inputs = [];
-function resolveInputPath(input) {
-  const candidates = [
-    path.resolve(input),
-    path.resolve(workspaceRoot, input),
-    path.resolve(repoRoot, input),
-  ];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return path.resolve(input);
-}
-function addFile(file) {
-  const stat = fs.statSync(file);
-  if (!stat.isFile()) return;
-  if (!file.endsWith(".state")) return;
-  inputs.push(path.resolve(file));
-}
-for (const root of roots) {
-  const resolved = resolveInputPath(root);
-  const stat = fs.statSync(resolved);
-  if (stat.isDirectory()) {
-    for (const entry of fs.readdirSync(resolved).sort()) addFile(path.join(resolved, entry));
-  } else {
-    addFile(resolved);
-  }
-}
-const unique = [...new Set(inputs)].sort();
-if (unique.length === 0) throw new Error("no devilang state files resolved");
-fs.writeFileSync(outputFile, `${unique.join("\n")}\n`);
-NODE
-fi
-
-if [ "${devilang_grammar_mode}" != "off" ] && [ -n "${devilang_grammar}" ]; then
-  node - "${devilang_grammar_file}" "${workspace_root}" "${repo_root}" "${devilang_grammar}" <<'NODE'
-const fs = require("fs");
-const path = require("path");
-const outputFile = process.argv[2];
-const workspaceRoot = process.argv[3];
-const repoRoot = process.argv[4];
-const input = process.argv[5];
-const candidates = [
-  path.resolve(input),
-  path.resolve(workspaceRoot, input),
-  path.resolve(repoRoot, input),
-];
-const resolved = candidates.find((candidate) => fs.existsSync(candidate));
-if (!resolved) {
-  throw new Error(`no Devilang grammar path found for ${input}`);
-}
-fs.writeFileSync(outputFile, `${path.resolve(resolved)}\n`);
 NODE
 fi
 
@@ -1785,10 +1675,10 @@ if [ -n "${qemu_plugin}" ]; then
   args+=("-plugin" "file=${qemu_plugin},trace=${run_dir}/morpheus-l1-nqc2.trace,el=${qemu_plugin_el}")
 fi
 
-unset MORPHEUS_LIBAFL_GRAMMAR MORPHEUS_LIBAFL_DEVILANG_GRAMMAR
 launch_env=("STUB=${stub_elf}" "MORPHEUS_LIBAFL_CORPUS_DIR=${corpus_dir}" "MORPHEUS_LIBAFL_OBJECTIVE_DIR=${objective_dir}")
-launch_env+=("MORPHEUS_LIBAFL_DEVILANG_GRAMMAR_MODE=${devilang_grammar_mode}")
-launch_env+=("MORPHEUS_LIBAFL_GRAMMAR_MODE=${devilang_grammar_mode}")
+if [ -n "${sdg_rules}" ]; then
+  launch_env+=("MORPHEUS_LIBAFL_SDG_RULES=${sdg_rules}")
+fi
 if [ -n "${l2_memory_mb}" ]; then
   launch_env+=("MORPHEUS_L2_MEMORY_MB=${l2_memory_mb}")
 fi
@@ -1822,15 +1712,6 @@ if [ "${replay_enabled}" = "true" ]; then
 fi
 if [ -f "${seed_inputs_file}" ] && [ -s "${seed_inputs_file}" ]; then
   launch_env+=("MORPHEUS_LIBAFL_INITIAL_INPUTS=${seed_inputs_file}")
-fi
-if [ -f "${devilang_states_file}" ] && [ -s "${devilang_states_file}" ]; then
-  launch_env+=("MORPHEUS_LIBAFL_DEVILANG_STATES=${devilang_states_file}")
-fi
-if [ "${devilang_grammar_mode}" != "off" ] &&
-   [ -f "${devilang_grammar_file}" ] && [ -s "${devilang_grammar_file}" ]; then
-  devilang_grammar_path="$(sed -n '1p' "${devilang_grammar_file}")"
-  launch_env+=("MORPHEUS_LIBAFL_GRAMMAR=${devilang_grammar_path}")
-  launch_env+=("MORPHEUS_LIBAFL_DEVILANG_GRAMMAR=${devilang_grammar_path}")
 fi
 
 launch_cmd=(env "${launch_env[@]}" "${fuzzer_bin}" "${args[@]}")

@@ -57,7 +57,12 @@ reading any rule directory.
 
 ```text
 MORPHEUS_LIBAFL_SDG_RULES=<rules-directory>
+MORPHEUS_LIBAFL_DISABLE_SDG=true|false
 ```
+
+Setting `MORPHEUS_LIBAFL_DISABLE_SDG` to a truthy value forces plain mode
+even when a rule directory is named, so a plain evaluation stays plain
+regardless of an ambient rule variable in the caller's shell.
 
 Each rule declares semantic nodes, cross-edge preconditions, a self-edge
 trigger, and a mutation operator. Generation satisfies the declared

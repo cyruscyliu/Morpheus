@@ -40,9 +40,19 @@ impl ScenarioGenerator {
     #[cfg(feature = "std")]
     pub fn from_env() -> Result<Self, String> {
         let mut generator = Self::default();
-        if let Ok(path) = std::env::var("MORPHEUS_LIBAFL_SDG_RULES") {
-            let sdg = SemanticDependencyGraph::from_dir(std::path::Path::new(&path))?;
-            generator.sdg = Some(sdg);
+        let disabled = std::env::var("MORPHEUS_LIBAFL_DISABLE_SDG")
+            .map(|v| {
+                matches!(
+                    v.as_str(),
+                    "true" | "True" | "TRUE" | "1" | "yes" | "Yes" | "YES" | "on" | "On" | "ON"
+                )
+            })
+            .unwrap_or(false);
+        if !disabled {
+            if let Ok(path) = std::env::var("MORPHEUS_LIBAFL_SDG_RULES") {
+                let sdg = SemanticDependencyGraph::from_dir(std::path::Path::new(&path))?;
+                generator.sdg = Some(sdg);
+            }
         }
         Ok(generator)
     }

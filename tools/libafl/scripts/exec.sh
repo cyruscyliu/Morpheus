@@ -45,6 +45,7 @@ capture_runtime="false"
 replay_inputs=()
 seed_inputs=()
 sdg_rules="${MORPHEUS_LIBAFL_SDG_RULES:-}"
+disable_sdg="${MORPHEUS_LIBAFL_DISABLE_SDG:-}"
 mutational_max_iterations="${MORPHEUS_LIBAFL_MUTATIONAL_MAX_ITERATIONS:-}"
 initial_generated_seeds="${MORPHEUS_LIBAFL_INITIAL_GENERATED_SEEDS:-}"
 show_console="${MORPHEUS_LIBAFL_SHOW_CONSOLE:-false}"
@@ -1679,6 +1680,9 @@ launch_env=("STUB=${stub_elf}" "MORPHEUS_LIBAFL_CORPUS_DIR=${corpus_dir}" "MORPH
 if [ -n "${sdg_rules}" ]; then
   launch_env+=("MORPHEUS_LIBAFL_SDG_RULES=${sdg_rules}")
 fi
+if [ -n "${disable_sdg}" ]; then
+  launch_env+=("MORPHEUS_LIBAFL_DISABLE_SDG=${disable_sdg}")
+fi
 if [ -n "${l2_memory_mb}" ]; then
   launch_env+=("MORPHEUS_L2_MEMORY_MB=${l2_memory_mb}")
 fi
@@ -1691,10 +1695,13 @@ fi
 if [ -n "${l2_run_window_ms}" ]; then
   launch_env+=("MORPHEUS_LIBAFL_L2_RUN_WINDOW_MS=${l2_run_window_ms}")
   # Default non-replay executor timeout is 12s, far below CVM L2 windows.
-  # Cover the full L2 window plus headroom for L1/L2 bring-up under TCG.
+  # Cover the full L2 window plus the nested-CVM boot inside each iteration
+  # (it consumes several minutes of wall time under TCG) and the shutdown
+  # handback, so a normal iteration reports exit=Ok instead of a
+  # window-boundary timeout objective.
   if [ -z "${MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS:-}" ]; then
-    executor_timeout_secs=$(( (l2_run_window_ms + 999) / 1000 + 90 ))
-    if [ "${l2_mode}" = "cvm" ] && [ "${executor_timeout_secs}" -lt 300 ]; then
+    executor_timeout_secs=$(( (l2_run_window_ms + 999) / 1000 + 300 ))
+    if [ "${executor_timeout_secs}" -lt 300 ]; then
       executor_timeout_secs=300
     fi
     launch_env+=("MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS=${executor_timeout_secs}")

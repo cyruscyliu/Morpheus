@@ -239,6 +239,13 @@
         ],
         "boolean": true
       },
+      "disable-sdg": {
+        "aliases": [
+          "disable-sdg",
+          "disableSdg"
+        ],
+        "boolean": true
+      },
       "run-seconds": {
         "aliases": [
           "run-seconds",
@@ -469,6 +476,7 @@
             "l2-smp",
             "measure-l2-startup",
             "detach",
+            "disable-sdg",
             "run-seconds",
             "build-version",
             "build-dir-key"

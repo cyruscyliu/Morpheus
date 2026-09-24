@@ -72,4 +72,8 @@ if command -v apt-get >/dev/null 2>&1; then
     libssl-dev
 fi
 
-python3 -m pip install "mako>=0.8.0" --break-system-packages
+pip_system_args=()
+if python3 -m pip install --help 2>&1 | grep -q -- '--break-system-packages'; then
+  pip_system_args+=(--break-system-packages)
+fi
+python3 -m pip install "${pip_system_args[@]}" "mako>=0.8.0"

@@ -165,7 +165,7 @@ if [ -n "${generator}" ]; then
     "${file_list}" \
     "${scope_list}" \
     -- \
-    bash -lc 'export PYTHONPATH="$1${PYTHONPATH:+:$PYTHONPATH}"; python3 -c "import kconfiglib" 2>/dev/null || python3 -m pip install --target "$1" --break-system-packages kconfiglib >/dev/null; shift; exec "$@"' bash "${python_deps_dir}" "${cmd[@]}" \
+    bash -lc 'export PYTHONPATH="$1${PYTHONPATH:+:$PYTHONPATH}"; python3 -c "import kconfiglib" 2>/dev/null || { pip_system_args=(); if python3 -m pip install --help 2>&1 | grep -q -- "--break-system-packages"; then pip_system_args+=(--break-system-packages); fi; python3 -m pip install --target "$1" "${pip_system_args[@]}" kconfiglib >/dev/null; }; shift; exec "$@"' bash "${python_deps_dir}" "${cmd[@]}" \
     > "${tmp_json}" 2> "${tmp_err}"
   llcg_rc=$?
   set -e

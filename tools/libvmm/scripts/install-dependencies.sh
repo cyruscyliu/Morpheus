@@ -7,7 +7,11 @@ if command -v apt-get >/dev/null 2>&1; then
 fi
 
 if python3 -m pip --version >/dev/null 2>&1; then
-  python3 -m pip install --break-system-packages 'sdfgen==0.26.0'
+  pip_system_args=()
+  if python3 -m pip install --help 2>&1 | grep -q -- '--break-system-packages'; then
+    pip_system_args+=(--break-system-packages)
+  fi
+  python3 -m pip install "${pip_system_args[@]}" 'sdfgen==0.26.0'
 fi
 
 export PATH="${PATH}:/usr/sbin"

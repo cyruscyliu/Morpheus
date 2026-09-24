@@ -75,5 +75,9 @@ fi
 "${ROOT_DIR}/pyenv/bin/pip" install pyyaml pyfdt jinja2 ply lxml
 
 if python3 -m pip --version >/dev/null 2>&1; then
-  python3 -m pip install --break-system-packages pyfdt jinja2 ply lxml
+  pip_system_args=()
+  if python3 -m pip install --help 2>&1 | grep -q -- '--break-system-packages'; then
+    pip_system_args+=(--break-system-packages)
+  fi
+  python3 -m pip install "${pip_system_args[@]}" pyfdt jinja2 ply lxml
 fi

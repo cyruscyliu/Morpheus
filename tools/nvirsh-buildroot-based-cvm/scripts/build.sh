@@ -628,6 +628,7 @@ done
 : > "${guest_qemu_trace_events}"
 printf 'virtio_mmio_read\n' >> "${guest_qemu_trace_events}"
 printf 'virtio_mmio_write_offset\n' >> "${guest_qemu_trace_events}"
+printf 'virtio_mmio_setting_irq\n' >> "${guest_qemu_trace_events}"
 printf 'virtio_mmio_seed_read\n' >> "${guest_qemu_trace_events}"
 printf 'virtio_mmio_seed_dma\n' >> "${guest_qemu_trace_events}"
 printf 'virtio_mmio_claim_read\n' >> "${guest_qemu_trace_events}"

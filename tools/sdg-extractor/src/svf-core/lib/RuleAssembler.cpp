@@ -101,6 +101,30 @@ static bool isGenericTrigger(const Predicate &p) {
   return false;
 }
 
+/// Determine whether a source should be used as a primary fuzzable variable in
+/// a rule.  Feature bits are preconditions, not variables, and pointer-to-object
+/// fields (e.g. dev, vdev) are not fuzzable data.
+static bool isPrimarySource(const SemanticSource &src) {
+  if (src.schema.accessKind == "feature")
+    return false;
+  static const std::set<std::string> kNonFuzzableFields = {
+      "dev",      "vdev",   "napi",   "priv",   "rq",
+      "sq",       "cvq",    "ctrl",   "failover", "rss_hdr",
+      "device_stats_cap"};
+  if (kNonFuzzableFields.count(src.schema.field))
+    return false;
+  return true;
+}
+
+static std::string triggerKey(const Edge &e) {
+  std::string s = e.head + "|" + e.pred.kind;
+  if (e.pred.value.hasValue())
+    s += "|" + std::to_string(e.pred.value.getValue());
+  if (e.pred.bit.hasValue())
+    s += "|bit" + std::to_string(e.pred.bit.getValue());
+  return s;
+}
+
 static llvm::Optional<Edge>
 modeledBoundForSource(const std::string &sourceId,
                       const std::string &functionName, llvm::DebugLoc loc) {
@@ -161,8 +185,6 @@ RuleAssembler::assemble(const TaintResult &dataflow,
                         const std::vector<SemanticSource> &sources,
                         const std::map<std::string, Edge> &selfEdges,
                         const std::vector<Edge> &crossDataflow) const {
-  std::vector<Rule> rules;
-
   // Map control results by sink function/arg so they can be attached as guard
   // preconditions to the data-flow rules that reach the same sink.  Using the
   // function name rather than the call pointer lets interprocedural control
@@ -174,31 +196,32 @@ RuleAssembler::assemble(const TaintResult &dataflow,
     ctrlBySink[{cr.sink.function, cr.sink.argIndex}].push_back(&cr);
   }
 
+  std::map<std::string, Rule> ruleMap;
+
   for (const auto &kv : dataflow) {
     const std::string &sourceId = kv.first;
     for (const auto &tuple : kv.second) {
       const SemanticSink &sink = std::get<0>(tuple);
       const TaintLabel &label = std::get<1>(tuple);
 
-      Rule r;
-      r.id = sink.call->getFunction()->getName().str() + "-" + sourceId;
-      r.function = sink.call->getFunction()->getName().str();
-      r.vars.push_back(*label.source);
-      r.sinks.push_back(sink);
+      if (!isPrimarySource(*label.source))
+        continue;
+
+      std::string functionName = sink.call->getFunction()->getName().str();
 
       // Trigger: use the extracted self-edge if available; otherwise infer a
       // missing-check trigger for size/offset sinks (grammar Pattern 3).
       Edge trigger;
       trigger.src = sourceId;
       trigger.dst = sourceId;
-      trigger.function = r.function;
+      trigger.function = functionName;
       trigger.loc = sink.call->getDebugLoc();
       auto selfIt = selfEdges.find(sourceId);
       if (selfIt != selfEdges.end()) {
         trigger = selfIt->second;
         trigger.src = sourceId;
         trigger.dst = sourceId;
-        trigger.function = r.function;
+        trigger.function = functionName;
       } else if (sink.role == Role::Size || sink.role == Role::Index) {
         trigger.head = heads::kBound;
         trigger.pred = Predicate{"Gt", llvm::None, llvm::None};
@@ -214,17 +237,42 @@ RuleAssembler::assemble(const TaintResult &dataflow,
         if (auto inferred = inferBufferBound(sink, sourceId, DL)) {
           trigger = *inferred;
         } else if (auto modeled = modeledBoundForSource(
-                       sourceId, r.function, sink.call->getDebugLoc())) {
+                       sourceId, functionName, sink.call->getDebugLoc())) {
           trigger = *modeled;
         }
       }
-      r.trigger = trigger;
+
+      std::string key = functionName + "|" + sourceId + "|" + triggerKey(trigger);
+      Rule *rp = nullptr;
+      auto rmIt = ruleMap.find(key);
+      if (rmIt == ruleMap.end()) {
+        Rule r;
+        r.id = functionName + "-" + sourceId;
+        r.function = functionName;
+        r.vars.push_back(*label.source);
+        r.trigger = trigger;
+        ruleMap[key] = std::move(r);
+        rp = &ruleMap[key];
+      } else {
+        rp = &rmIt->second;
+      }
+
+      // Merge sink if new.
+      bool hasSink = false;
+      for (const SemanticSink &s : rp->sinks) {
+        if (s.function == sink.function && s.argIndex == sink.argIndex) {
+          hasSink = true;
+          break;
+        }
+      }
+      if (!hasSink)
+        rp->sinks.push_back(sink);
 
       // Cross preconditions.
       // 1. Dataflow edges where this source is the destination.
       for (const Edge &e : crossDataflow) {
         if (e.dst == sourceId)
-          r.preconditions.push_back(e);
+          rp->preconditions.push_back(e);
       }
       // 2. Guard edges from control dependency analysis that gate the same
       // sink function/argument.
@@ -250,33 +298,56 @@ RuleAssembler::assemble(const TaintResult &dataflow,
           pre.pred = cr->pred;
           pre.function = cr->function;
           pre.loc = cr->loc;
-          r.preconditions.push_back(pre);
+          rp->preconditions.push_back(pre);
         }
       }
-
-      // Cap preconditions to avoid rules that are dominated by a long chain
-      // of unrelated feature-bit checks.  Prefer concrete feature-bit guards.
-      if (r.preconditions.size() > 10) {
-        std::stable_sort(
-            r.preconditions.begin(), r.preconditions.end(),
-            [](const Edge &a, const Edge &b) {
-              auto rank = [](const Edge &e) -> int {
-                if (e.pred.kind == "BitSet" || e.pred.kind == "BitClear")
-                  return 0;
-                if (e.pred.value.hasValue() || e.pred.bit.hasValue())
-                  return 1;
-                return 2;
-              };
-              return rank(a) < rank(b);
-            });
-        r.preconditions.resize(10);
-      }
-
-      r.mutation = mutationForPredicate(r.trigger.pred, sourceId);
-      r.confidence = scoreRule(r);
-      if (r.confidence >= 0.3f)
-        rules.push_back(r);
     }
+  }
+
+  std::vector<Rule> rules;
+  for (auto &kv : ruleMap) {
+    Rule &r = kv.second;
+
+    // Cap preconditions to avoid rules that are dominated by a long chain
+    // of unrelated feature-bit checks.  Prefer concrete feature-bit guards.
+    if (r.preconditions.size() > 10) {
+      std::stable_sort(
+          r.preconditions.begin(), r.preconditions.end(),
+          [](const Edge &a, const Edge &b) {
+            auto rank = [](const Edge &e) -> int {
+              if (e.pred.kind == "BitSet" || e.pred.kind == "BitClear")
+                return 0;
+              if (e.pred.value.hasValue() || e.pred.bit.hasValue())
+                return 1;
+              return 2;
+            };
+            return rank(a) < rank(b);
+          });
+      r.preconditions.resize(10);
+    }
+
+    // Deduplicate preconditions after merging.
+    std::sort(r.preconditions.begin(), r.preconditions.end(),
+              [](const Edge &a, const Edge &b) {
+                return std::tie(a.src, a.dst, a.head, a.pred.kind,
+                                a.pred.value, a.pred.bit) <
+                       std::tie(b.src, b.dst, b.head, b.pred.kind,
+                                b.pred.value, b.pred.bit);
+              });
+    r.preconditions.erase(
+        std::unique(r.preconditions.begin(), r.preconditions.end(),
+                    [](const Edge &a, const Edge &b) {
+                      return std::tie(a.src, a.dst, a.head, a.pred.kind,
+                                      a.pred.value, a.pred.bit) ==
+                             std::tie(b.src, b.dst, b.head, b.pred.kind,
+                                      b.pred.value, b.pred.bit);
+                    }),
+        r.preconditions.end());
+
+    r.mutation = mutationForPredicate(r.trigger.pred, r.vars.front().schema.id);
+    r.confidence = scoreRule(r);
+    if (r.confidence >= 0.3f)
+      rules.push_back(std::move(r));
   }
 
   return deduplicate(std::move(rules));

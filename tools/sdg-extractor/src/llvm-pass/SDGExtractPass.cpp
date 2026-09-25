@@ -28,6 +28,7 @@
 #include "SVF-LLVM/LLVMModule.h"
 #include "SVF-LLVM/SVFIRBuilder.h"
 #include "SVFIR/SVFIR.h"
+#include "llvm/IR/DataLayout.h"
 #include "Util/ExtAPI.h"
 #include "WPA/Andersen.h"
 
@@ -611,6 +612,28 @@ extractCrossDataflow(const std::vector<SemanticSource> &sources,
   return out;
 }
 
+/// Normalize a pointer and compute its constant byte offset from the base.
+/// Duplicated here because the helper in ControlDependencyAnalysis.cpp is TU-
+/// local.
+static Optional<std::pair<const Value *, int64_t>>
+getBaseAndByteOffset(const Value *V, const DataLayout &DL) {
+  if (!V)
+    return llvm::None;
+  V = V->stripPointerCasts();
+  auto *GEP = dyn_cast<GEPOperator>(V);
+  if (!GEP)
+    return std::make_pair(V, int64_t(0));
+  if (!GEP->hasAllConstantIndices())
+    return std::make_pair(V, int64_t(0));
+  APInt Off(64, 0);
+  if (!GEP->accumulateConstantOffset(DL, Off))
+    return std::make_pair(V, int64_t(0));
+  if (Off.getSignificantBits() > 63)
+    return llvm::None;
+  return std::make_pair(GEP->getPointerOperand()->stripPointerCasts(),
+                        Off.getSExtValue());
+}
+
 static Optional<std::pair<std::string, unsigned>>
 structFieldKey(const Value *ptr) {
   auto *gep = dyn_cast<GEPOperator>(ptr);
@@ -629,10 +652,8 @@ structFieldKey(const Value *ptr) {
 
 static void
 recordBoolStores(const BasicBlock *entry, const SemanticSource &src,
-                 bool trueSide,
-                 std::map<StructFieldAliasKey, std::vector<BoolFlagAlias>>
-                     &out,
-                 unsigned maxDepth = 4) {
+                 bool trueSide, BoolFlagAliasMaps &out,
+                 const DataLayout &DL, unsigned maxDepth = 4) {
   if (!entry)
     return;
   std::set<const BasicBlock *> seen;
@@ -652,9 +673,6 @@ recordBoolStores(const BasicBlock *entry, const SemanticSource &src,
       if (!CI)
         continue;
       uint64_t val = CI->getZExtValue();
-      auto key = structFieldKey(SI->getPointerOperand());
-      if (!key)
-        continue;
       Predicate p;
       if (trueSide && val == 1)
         p = Predicate{"BitSet", llvm::None, src.schema.featureBit.getValue()};
@@ -663,7 +681,16 @@ recordBoolStores(const BasicBlock *entry, const SemanticSource &src,
                       src.schema.featureBit.getValue()};
       else
         continue;
-      out[*key].push_back({src.schema.id, p});
+
+      // Field-key alias (struct GEPs).
+      if (auto key = structFieldKey(SI->getPointerOperand()))
+        out.fieldAliases[*key].push_back({src.schema.id, p});
+
+      // Location alias (byte-offset GEPs after SROA/bitcast).
+      if (auto baseOff = getBaseAndByteOffset(SI->getPointerOperand(), DL)) {
+        out.locationAliases[{baseOff->first, baseOff->second}].push_back(
+            {src.schema.id, p});
+      }
     }
     for (const BasicBlock *succ : successors(BB)) {
       if (seen.insert(succ).second)
@@ -675,9 +702,11 @@ recordBoolStores(const BasicBlock *entry, const SemanticSource &src,
 /// Feature-bit tests often set a boolean flag (e.g. vi->has_rss) that is later
 /// used as a branch condition.  Record these aliases so control-dependency
 /// analysis can recover the original feature-bit guard.
-static std::map<StructFieldAliasKey, std::vector<BoolFlagAlias>>
-buildBoolFlagAliases(const std::vector<SemanticSource> &sources) {
-  std::map<StructFieldAliasKey, std::vector<BoolFlagAlias>> out;
+static BoolFlagAliasMaps
+buildBoolFlagAliases(const std::vector<SemanticSource> &sources,
+                     const llvm::Module &M) {
+  BoolFlagAliasMaps out;
+  const DataLayout &DL = M.getDataLayout();
   for (const SemanticSource &src : sources) {
     if (!src.schema.featureBit.hasValue())
       continue;
@@ -690,8 +719,8 @@ buildBoolFlagAliases(const std::vector<SemanticSource> &sources) {
       q.pop();
       for (const User *U : V->users()) {
         if (auto *BI = dyn_cast<BranchInst>(U)) {
-          recordBoolStores(BI->getSuccessor(0), src, true, out);
-          recordBoolStores(BI->getSuccessor(1), src, false, out);
+          recordBoolStores(BI->getSuccessor(0), src, true, out, DL);
+          recordBoolStores(BI->getSuccessor(1), src, false, out, DL);
         } else if (isa<CastInst>(U) || isa<SelectInst>(U) ||
                    isa<PHINode>(U) || isa<ICmpInst>(U)) {
           if (seen.insert(U).second)
@@ -838,7 +867,7 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
     taint.run(/*maxDepth=*/1024);
 
     // Control dependency: source branch conditions that gate sink calls.
-    auto boolFlagAliases = buildBoolFlagAliases(sources);
+    auto boolFlagAliases = buildBoolFlagAliases(sources, M);
     ControlDependencyAnalysis ctrl(icfg, &svfGraph, M, sinkCatalog,
                                    boolFlagAliases);
     std::vector<ControlResult> ctrlResults;
@@ -855,6 +884,8 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
     // (e.g. vring_mapping_error(addr) checks a DMA address), emit the rule
     // directly because SVFG taint has no CallBase to consume the argument.
     for (const SemanticSource &src : sources) {
+      if (src.schema.accessKind == "feature")
+        continue;
       if (!src.rootValue || !isa<Argument>(src.rootValue))
         continue;
       auto *A = cast<Argument>(src.rootValue);
@@ -891,6 +922,8 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
     // Source-level modeled sinks for relationships that are guaranteed by the
     // protocol / source code but not visible as IR dataflow in this build.
     for (const SemanticSource &src : sources) {
+      if (src.schema.accessKind == "feature")
+        continue;
       if (auto modeled = srcCatalog.modeledSinkForSourceId(src.schema.id)) {
         Rule r;
         r.id = src.function + "-" + src.schema.id + "-modeled-" +

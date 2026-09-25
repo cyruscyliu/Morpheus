@@ -3,6 +3,7 @@
 #include "Graphs/VFGNode.h"
 #include "llvm/Analysis/CFG.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
@@ -17,8 +18,7 @@ using namespace sdg::core;
 ControlDependencyAnalysis::ControlDependencyAnalysis(
     SVF::ICFG *icfg, const SemanticValueFlowGraph *graph,
     const Module &M, const SinkCatalog &sinks,
-    const std::map<StructFieldAliasKey, std::vector<BoolFlagAlias>>
-        &boolFlagAliases)
+    const BoolFlagAliasMaps &boolFlagAliases)
     : icfg_(icfg), graph_(graph), boolFlagAliases_(boolFlagAliases) {
   buildFunctionSinks(M, sinks);
 }
@@ -148,6 +148,27 @@ static Predicate flipBitPredicate(const Predicate &p) {
   else if (out.kind == "BitClear")
     out.kind = "BitSet";
   return out;
+}
+
+/// Normalize a pointer and compute its constant byte offset from the base.
+/// This handles both struct GEPs and byte-offset GEPs that SROA introduces.
+static Optional<std::pair<const Value *, int64_t>>
+getBaseAndByteOffset(const Value *V, const DataLayout &DL) {
+  if (!V)
+    return llvm::None;
+  V = V->stripPointerCasts();
+  auto *GEP = dyn_cast<GEPOperator>(V);
+  if (!GEP)
+    return std::make_pair(V, int64_t(0));
+  if (!GEP->hasAllConstantIndices())
+    return std::make_pair(V, int64_t(0));
+  APInt Off(64, 0);
+  if (!GEP->accumulateConstantOffset(DL, Off))
+    return std::make_pair(V, int64_t(0));
+  if (Off.getSignificantBits() > 63)
+    return llvm::None;
+  return std::make_pair(GEP->getPointerOperand()->stripPointerCasts(),
+                        Off.getSExtValue());
 }
 
 static Optional<ExtractedGuard>
@@ -350,6 +371,86 @@ ControlDependencyAnalysis::findSinkInRegion(const BasicBlock *BB,
   return out;
 }
 
+/// Collect all load values inside a boolean expression (handles OR chains).
+static void collectLoadValues(const Value *V,
+                              SmallVectorImpl<const LoadInst *> &loads) {
+  if (auto *LI = dyn_cast<LoadInst>(V)) {
+    loads.push_back(LI);
+    return;
+  }
+  if (auto *BO = dyn_cast<BinaryOperator>(V)) {
+    if (BO->getOpcode() == Instruction::Or) {
+      collectLoadValues(BO->getOperand(0), loads);
+      collectLoadValues(BO->getOperand(1), loads);
+      return;
+    }
+  }
+  if (auto *CI = dyn_cast<CastInst>(V)) {
+    collectLoadValues(CI->getOperand(0), loads);
+    return;
+  }
+}
+
+/// Extract guards from a branch condition that loads a boolean flag which is
+/// aliased to a feature bit.  This works even when SROA has flattened the
+/// struct access into a byte-offset GEP.
+static std::vector<ExtractedGuard>
+extractLocationAliasGuards(
+    const Value *cond, const SemanticSource &src,
+    const std::map<LocationAliasKey, std::vector<BoolFlagAlias>>
+        &locationAliases,
+    const DataLayout &DL) {
+  std::vector<ExtractedGuard> out;
+  if (!src.schema.featureBit.hasValue())
+    return out;
+
+  auto processLoad = [&](const LoadInst *LI,
+                         bool trueWhenSet) -> bool {
+    auto baseOff = getBaseAndByteOffset(LI->getPointerOperand(), DL);
+    if (!baseOff)
+      return false;
+    auto it = locationAliases.find({baseOff->first, baseOff->second});
+    if (it == locationAliases.end())
+      return false;
+    bool found = false;
+    for (const auto &alias : it->second) {
+      if (alias.first != src.schema.id)
+        continue;
+      Predicate p = alias.second;
+      if (!trueWhenSet)
+        p = flipBitPredicate(p);
+      out.push_back(ExtractedGuard{p, trueWhenSet, src.schema.id});
+      found = true;
+    }
+    return found;
+  };
+
+  if (auto *LI = dyn_cast<LoadInst>(cond)) {
+    processLoad(LI, /*trueWhenSet=*/true);
+    return out;
+  }
+
+  if (auto *ICI = dyn_cast<ICmpInst>(cond)) {
+    auto *zero0 = dyn_cast<ConstantInt>(ICI->getOperand(0));
+    auto *zero1 = dyn_cast<ConstantInt>(ICI->getOperand(1));
+    const Value *maybeVal = zero1 ? ICI->getOperand(0)
+                                  : (zero0 ? ICI->getOperand(1) : nullptr);
+    auto *zero = zero1 ? zero1 : zero0;
+    if (!maybeVal || !zero || !zero->isZero() ||
+        (ICI->getPredicate() != ICmpInst::ICMP_NE &&
+         ICI->getPredicate() != ICmpInst::ICMP_EQ))
+      return out;
+    bool trueWhenSet = (ICI->getPredicate() == ICmpInst::ICMP_NE);
+    SmallVector<const LoadInst *, 4> loads;
+    collectLoadValues(maybeVal, loads);
+    for (const LoadInst *LI : loads)
+      processLoad(LI, trueWhenSet);
+    return out;
+  }
+
+  return out;
+}
+
 std::vector<ControlResult>
 ControlDependencyAnalysis::analyze(const SemanticSource &src,
                                    const SinkCatalog &sinks) const {
@@ -399,7 +500,7 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
     for (const User *U : V->users()) {
       if (auto *BI = dyn_cast<BranchInst>(U)) {
         const Value *cond = BI->getCondition();
-        Optional<ExtractedGuard> guard = extractPredicate(cond, src, boolFlagAliases_);
+        Optional<ExtractedGuard> guard = extractPredicate(cond, src, boolFlagAliases_.fieldAliases);
 
         // Fallback: if the condition (or its operands) is derived from the
         // source through conversions/calls/phis, create a generic predicate.
@@ -548,6 +649,106 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
     }
   }
 
+  // Feature-bit sources may gate sinks through boolean flags stored to memory.
+  // The branch condition may not be data-reachable from the feature call, so
+  // scan all branches in the source's function for aliased bool flags.
+  if (src.schema.featureBit.hasValue()) {
+    auto featureGuards = analyzeFeatureFlagGuards(src, sinks);
+    out.insert(out.end(), featureGuards.begin(), featureGuards.end());
+  }
+
   (void)icfg_;
+  return out;
+}
+
+static const Function *getFunctionForValue(const Value *V) {
+  if (auto *I = dyn_cast<Instruction>(V))
+    return I->getFunction();
+  if (auto *A = dyn_cast<Argument>(V))
+    return A->getParent();
+  if (auto *BB = dyn_cast<BasicBlock>(V))
+    return BB->getParent();
+  return nullptr;
+}
+
+std::vector<ControlResult>
+ControlDependencyAnalysis::analyzeFeatureFlagGuards(
+    const SemanticSource &src, const SinkCatalog &sinks) const {
+  std::vector<ControlResult> out;
+  if (!src.rootValue)
+    return out;
+  const Function *F = getFunctionForValue(src.rootValue);
+  if (!F)
+    return out;
+  const DataLayout &DL = F->getParent()->getDataLayout();
+
+  auto sinkKey = [](const SemanticSink &s) {
+    return std::make_pair(s.function, s.argIndex);
+  };
+
+  for (const BasicBlock &BB : *F) {
+    const Instruction *TI = BB.getTerminator();
+    if (!TI)
+      continue;
+
+    const Value *cond = nullptr;
+    const BasicBlock *trueSucc = nullptr;
+    const BasicBlock *falseSucc = nullptr;
+    if (auto *BI = dyn_cast<BranchInst>(TI)) {
+      if (BI->isUnconditional())
+        continue;
+      cond = BI->getCondition();
+      trueSucc = BI->getSuccessor(0);
+      falseSucc = BI->getSuccessor(1);
+    } else {
+      continue;
+    }
+
+    std::vector<ExtractedGuard> guards =
+        extractLocationAliasGuards(cond, src, boolFlagAliases_.locationAliases,
+                                   DL);
+    if (guards.empty())
+      continue;
+
+    std::vector<SemanticSink> trueSinks = findSinkInRegion(trueSucc, sinks);
+    std::vector<SemanticSink> falseSinks = findSinkInRegion(falseSucc, sinks);
+    std::set<std::pair<std::string, unsigned>> trueKeys, falseKeys;
+    for (const SemanticSink &s : trueSinks)
+      trueKeys.insert(sinkKey(s));
+    for (const SemanticSink &s : falseSinks)
+      falseKeys.insert(sinkKey(s));
+
+    std::string func = F->getName().str();
+    for (const ExtractedGuard &guard : guards) {
+      const BasicBlock *trueSide = guard.trueWhenSet ? trueSucc : falseSucc;
+      const BasicBlock *falseSide = guard.trueWhenSet ? falseSucc : trueSucc;
+      std::vector<SemanticSink> sideTrueSinks =
+          (trueSide == trueSucc) ? trueSinks : falseSinks;
+      std::vector<SemanticSink> sideFalseSinks =
+          (falseSide == trueSucc) ? trueSinks : falseSinks;
+      const std::set<std::pair<std::string, unsigned>> &sideTrueKeys =
+          (trueSide == trueSucc) ? trueKeys : falseKeys;
+      const std::set<std::pair<std::string, unsigned>> &sideFalseKeys =
+          (falseSide == trueSucc) ? trueKeys : falseKeys;
+
+      for (const SemanticSink &s : sideTrueSinks) {
+        if (!sideFalseKeys.count(sinkKey(s))) {
+          out.push_back({guard.sourceId, guard.pred, s, func,
+                         TI->getDebugLoc(), src});
+        }
+      }
+      Predicate negP = guard.pred;
+      negP.kind = (negP.kind == "BitSet")   ? "BitClear"
+                  : (negP.kind == "BitClear") ? "BitSet"
+                                              : negP.kind;
+      for (const SemanticSink &s : sideFalseSinks) {
+        if (!sideTrueKeys.count(sinkKey(s))) {
+          out.push_back({guard.sourceId, negP, s, func,
+                         TI->getDebugLoc(), src});
+        }
+      }
+    }
+  }
+
   return out;
 }

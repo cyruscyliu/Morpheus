@@ -128,7 +128,11 @@ def main():
     with open(args.rules) as f:
         data = json.load(f)
 
-    rules = data.get("rules", {}).get("rules", data.get("rules", []))
+    raw_rules = data.get("rules", [])
+    if isinstance(raw_rules, dict):
+        rules = raw_rules.get("rules", [])
+    else:
+        rules = raw_rules
     os.makedirs(args.output, exist_ok=True)
 
     written = 0

@@ -1,0 +1,79 @@
+diff --git a/crates/libafl_qemu/src/qemu/systemmode.rs b/crates/libafl_qemu/src/qemu/systemmode.rs
+index a1e1cab4..b533ce2c 100644
+--- a/crates/libafl_qemu/src/qemu/systemmode.rs
++++ b/crates/libafl_qemu/src/qemu/systemmode.rs
+@@ -503,8 +503,9 @@ impl Iterator for HostMemoryIter {
+             let start_host_addr: *mut u8 =
+                 unsafe { libafl_qemu_sys::libafl_paddr2host(self.cpu.cpu_ptr, self.addr, false) };
+             let host_page_size = Qemu::get().unwrap().host_page_size();
+-            let mut size_taken: usize = std::cmp::min(
+-                (start_host_addr as usize).next_multiple_of(host_page_size),
++            let host_page_offset = start_host_addr as usize % host_page_size;
++            let mut size_taken = std::cmp::min(
++                host_page_size - host_page_offset,
+                 self.remaining_len,
+             );
+ 
+@@ -518,7 +519,8 @@ impl Iterator for HostMemoryIter {
+                 };
+ 
+                 // Non-contiguous, we stop here for the slice
+-                if next_page_host_addr != start_host_addr {
++                let expected_host_addr = unsafe { start_host_addr.add(size_taken) };
++                if next_page_host_addr != expected_host_addr {
+                     return Some(HostMemoryChunk {
+                         addr: start_host_addr,
+                         size: size_taken,
+@@ -526,10 +528,11 @@ impl Iterator for HostMemoryIter {
+                 }
+ 
+                 // The host memory is contiguous, we can widen the slice up to the next host page
+-                size_taken += std::cmp::min(self.remaining_len, host_page_size);
++                let chunk_size = std::cmp::min(self.remaining_len, host_page_size);
++                size_taken += chunk_size;
+ 
+-                self.remaining_len -= size_taken;
+-                self.addr += size_taken as GuestPhysAddr;
++                self.remaining_len -= chunk_size;
++                self.addr += chunk_size as GuestPhysAddr;
+             }
+ 
+             // We finished to explore the memory, return the last slice.
+@@ -565,8 +568,9 @@ impl Iterator for PhysMemoryIter {
+             let phys_page_size = self.qemu.target_page_size();
+ 
+             // TODO: Turn this into a generic function
+-            let mut size_taken: usize = std::cmp::min(
+-                (start_phys_addr as usize).next_multiple_of(phys_page_size),
++            let virtual_page_offset = *vaddr as usize % phys_page_size;
++            let mut size_taken = std::cmp::min(
++                phys_page_size - virtual_page_offset,
+                 self.remaining_len,
+             );
+ 
+@@ -580,7 +584,8 @@ impl Iterator for PhysMemoryIter {
+                 ));
+ 
+                 // Non-contiguous, we stop here for the slice
+-                if next_page_phys_addr != start_phys_addr {
++                let expected_phys_addr = start_phys_addr + size_taken as GuestPhysAddr;
++                if next_page_phys_addr != expected_phys_addr {
+                     return Some(PhysMemoryChunk::new(
+                         start_phys_addr,
+                         size_taken,
+@@ -590,10 +595,11 @@ impl Iterator for PhysMemoryIter {
+                 }
+ 
+                 // The host memory is contiguous, we can widen the slice up to the next host page
+-                size_taken += std::cmp::min(self.remaining_len, phys_page_size);
++                let chunk_size = std::cmp::min(self.remaining_len, phys_page_size);
++                size_taken += chunk_size;
+ 
+-                self.remaining_len -= size_taken;
+-                *vaddr += size_taken as GuestVirtAddr;
++                self.remaining_len -= chunk_size;
++                *vaddr += chunk_size as GuestVirtAddr;
+             }
+ 
+             // We finished to explore the memory, return the last slice.
+             assert_eq!(self.remaining_len, 0);

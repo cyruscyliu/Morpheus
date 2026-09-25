@@ -96,6 +96,69 @@ extern char **environ;
 
 static bool ensure_runtime_dir(void);
 
+static uint64_t input_probe_hash(const uint8_t *data, size_t len) {
+  uint64_t hash = UINT64_C(1469598103934665603);
+
+  for (size_t i = 0; i < len; i++) {
+    hash ^= data[i];
+    hash *= UINT64_C(1099511628211);
+  }
+  return hash;
+}
+
+static void log_input_probe(const char *label, const uint8_t *data,
+                            size_t len) {
+  uint8_t bytes[16] = {0};
+  size_t copied = 0;
+
+  if (len > 0x610U) {
+    copied = len - 0x610U;
+    if (copied > sizeof(bytes)) {
+      copied = sizeof(bytes);
+    }
+    memcpy(bytes, data + 0x610U, copied);
+  }
+
+  lqprintf("stub-input-probe stage=%s len=%zu fnv1a=0x%016llx "
+           "off=0x610 bytes=%02x%02x%02x%02x%02x%02x%02x%02x"
+           "%02x%02x%02x%02x%02x%02x%02x%02x\n",
+           label, len, (unsigned long long)input_probe_hash(data, len),
+           bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5],
+           bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11],
+           bytes[12], bytes[13], bytes[14], bytes[15]);
+}
+
+static void log_input_file_probe(const char *label) {
+  uint8_t data[INPUT_LEN];
+  size_t len = 0;
+  int fd = open(INPUT_PATH, O_RDONLY);
+
+  if (fd < 0) {
+    lqprintf("stub-input-probe stage=%s file=missing errno=%d\n", label,
+             errno);
+    return;
+  }
+
+  while (len < sizeof(data)) {
+    ssize_t read_len = read(fd, data + len, sizeof(data) - len);
+    if (read_len < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      lqprintf("stub-input-probe stage=%s file=read-failed errno=%d\n", label,
+               errno);
+      close(fd);
+      return;
+    }
+    if (read_len == 0) {
+      break;
+    }
+    len += (size_t)read_len;
+  }
+  close(fd);
+  log_input_probe(label, data, len);
+}
+
 static bool read_text_prefix_value(const char *path, const char *prefix,
                                    char *out, size_t out_len) {
   FILE *fp = fopen(path, "rb");
@@ -682,6 +745,7 @@ static bool write_input_snapshot(const uint8_t *data, size_t len) {
   }
   if (ok) {
     lqprintf("stub: input path=%s input-size=%zu\n", INPUT_PATH, len);
+    log_input_file_probe("after-snapshot");
   }
   return ok;
 }
@@ -1861,6 +1925,7 @@ int main(void) {
       len = INPUT_LEN;
     }
 
+    log_input_probe("after-start-virt", FUZZ_INPUT, len);
     enum l2_outcome outcome = L2_OUTCOME_HARNESS_ERROR;
     int outcome_detail = 0;
     bool launched = write_input_snapshot(FUZZ_INPUT, len) &&

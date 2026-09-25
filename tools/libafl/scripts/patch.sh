@@ -18,7 +18,9 @@ mkdir -p "$(dirname "${result_file}")"
 [ -d "${patch_dir}/crates/libafl_nesting" ] || { echo "missing libafl_nesting patch tree under ${patch_dir}" >&2; exit 1; }
 [ -d "${patch_dir}/fuzzers/full_system/qemu_nesting" ] || { echo "missing qemu_nesting patch tree under ${patch_dir}" >&2; exit 1; }
 
-fingerprint_files="$(find "${patch_dir}/crates/libafl_nesting" "${patch_dir}/fuzzers/full_system/qemu_nesting" -type f | sort)"
+extra_patch="${patch_dir%/*}/0001-libafl-qemu-fix-systemmode-input-segment-copy.patch"
+
+fingerprint_files="$( (find "${patch_dir}/crates/libafl_nesting" "${patch_dir}/fuzzers/full_system/qemu_nesting" -type f -print; printf '%s\n' "${extra_patch}") | sort )"
 fingerprint="$(printf 'external-qemu-build-adapter-v3-timeout-restore\n%s\n' "${fingerprint_files}" | morpheus_hash_files_from_stdin)"
 
 if morpheus_patch_state_matches "${state_file}" "${fingerprint}" "${patch_dir}"; then
@@ -132,6 +134,10 @@ edit("crates/libafl_qemu/src/emu/drivers/mod.rs", [
   ],
 ]);
 NODE
+
+if [ -f "${extra_patch}" ] && git -C "${source_dir}" apply --check "${extra_patch}" >/dev/null 2>&1; then
+  git -C "${source_dir}" apply "${extra_patch}"
+fi
 
 morpheus_write_patch_state "${state_file}" "${patch_dir}" "${fingerprint}"
 

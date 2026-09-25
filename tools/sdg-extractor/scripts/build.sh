@@ -12,6 +12,9 @@ plugin="${build_dir}/src/llvm-pass/SDGExtractPass.so"
 
 mkdir -p "${build_dir}"
 
+# Force a fresh CMake configuration if the project layout has changed.
+rm -rf "${build_dir}/CMakeCache.txt" "${build_dir}/CMakeFiles"
+
 # Build SVF if it has not been built yet.
 svf_install="${tool_root}/third_party/SVF/install"
 if [ ! -f "${svf_install}/lib/cmake/SVF/SVFConfig.cmake" ]; then

@@ -83,6 +83,13 @@ try {
 ' "${source_dir}/.morpheus-fetch.json")"
 
   downloads_dir="$(cd "$(dirname "${source_dir}")/.." && pwd)/downloads"
+  if [ -d "${source_dir}/.git" ] && [ -n "${git_ref}" ]; then
+    if git -C "${source_dir}" reset --hard "${git_ref}" && \
+       git -C "${source_dir}" clean -xfd && \
+       [ -z "$(git -C "${source_dir}" status --porcelain)" ]; then
+      return 0
+    fi
+  fi
   rm -rf "${source_dir}"
   env \
     MORPHEUS_LINUX_SOURCE="${source_dir}" \

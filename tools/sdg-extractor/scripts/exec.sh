@@ -31,9 +31,14 @@ log() {
 log "sdg-extractor exec start"
 log "output_dir=${output_dir}"
 
-plugin="${build_dir}/SDGExtractPass.so"
+plugin="${build_dir}/src/llvm-pass/SDGExtractPass.so"
+extapi_bc="${tool_root}/third_party/SVF/install/lib/extapi.bc"
 if [ ! -f "${plugin}" ]; then
   log "error: pass plugin not found at ${plugin}; run build first"
+  exit 1
+fi
+if [ ! -f "${extapi_bc}" ]; then
+  log "error: SVF extapi.bc not found at ${extapi_bc}; run third_party/SVF/build-svf.sh"
   exit 1
 fi
 
@@ -66,6 +71,7 @@ entry_arg=""
 if [ -n "${entry_list}" ] && [ -f "${entry_list}" ]; then
   entry_arg="-sdg-entry-list=${entry_list}"
 fi
+# No external hints are required; all schemas are embedded in SdgSvfCore.
 
 # Resolve bitcode paths. llbic emits paths relative to a kbuild-* subdirectory
 # of the directory containing the bitcode list.
@@ -125,6 +131,7 @@ log "extracting from ${merged_bc}"
 "${OPT}" -load-pass-plugin "${plugin}" \
   -passes=sdg-extract \
   -sdg-output "${rules_file}" \
+  -sdg-extapi "${extapi_bc}" \
   ${entry_arg} \
   "${merged_bc}" \
   -o /dev/null

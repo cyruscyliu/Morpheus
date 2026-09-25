@@ -1,10 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
-project(SDGExtractPass)
-
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-
 find_package(LLVM REQUIRED CONFIG)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
@@ -21,6 +14,8 @@ set_target_properties(SDGExtractPass PROPERTIES
     PREFIX ""
     COMPILE_FLAGS "-fno-rtti"
 )
+
+target_link_libraries(SDGExtractPass PRIVATE SdgSvfCore)
 
 if(APPLE)
   set_target_properties(SDGExtractPass PROPERTIES

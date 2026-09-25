@@ -1,19 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build the sdg-extractor C++ LLVM pass.
+# Build the sdg-extractor C++ LLVM pass and SdgSvfCore library.
 # Expects MORPHEUS_SDG_EXTRACTOR_BUILD_DIR from the managed runner.
 
 tool_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build_dir="${MORPHEUS_SDG_EXTRACTOR_BUILD_DIR:-${tool_root}/builds/default/build}"
 result_file="${MORPHEUS_SDG_EXTRACTOR_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 
-src_dir="${tool_root}/src/llvm-pass"
-plugin="${build_dir}/SDGExtractPass.so"
+plugin="${build_dir}/src/llvm-pass/SDGExtractPass.so"
 
 mkdir -p "${build_dir}"
 
-cmake -S "${src_dir}" -B "${build_dir}" \
+# Build SVF if it has not been built yet.
+svf_install="${tool_root}/third_party/SVF/install"
+if [ ! -f "${svf_install}/lib/cmake/SVF/SVFConfig.cmake" ]; then
+  "${tool_root}/third_party/SVF/build-svf.sh"
+fi
+
+cmake -S "${tool_root}" -B "${build_dir}" \
   -DCMAKE_BUILD_TYPE=Release \
   -DLLVM_DIR=/usr/lib/llvm-15/cmake \
   >/dev/null
@@ -41,7 +46,7 @@ cat > "${build_dir}/manifest.json" <<EOF
       "resolved_path": "${build_dir}"
     },
     "plugin": {
-      "portable": "SDGExtractPass.so",
+      "portable": "src/llvm-pass/SDGExtractPass.so",
       "runtime_path": "${plugin}",
       "resolved_path": "${plugin}"
     }

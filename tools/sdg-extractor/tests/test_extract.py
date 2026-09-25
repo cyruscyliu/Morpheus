@@ -10,8 +10,9 @@ from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent
 TOOL_ROOT = TESTS_DIR.parent
-BUILD_DIR = TOOL_ROOT / "builds" / "arm64-clang15" / "build"
-PLUGIN = BUILD_DIR / "SDGExtractPass.so"
+BUILD_DIR = TOOL_ROOT / "builds" / "svf-test"
+PLUGIN = BUILD_DIR / "src" / "llvm-pass" / "SDGExtractPass.so"
+EXTAPI = TOOL_ROOT / "third_party" / "SVF" / "install" / "lib" / "extapi.bc"
 FIXTURES = TESTS_DIR / "fixtures"
 
 
@@ -24,6 +25,8 @@ def run_opt(bitcode: Path, output: Path) -> None:
             "-passes=sdg-extract",
             "-sdg-output",
             str(output),
+            "-sdg-extapi",
+            str(EXTAPI),
             str(bitcode),
             "-o",
             "/dev/null",

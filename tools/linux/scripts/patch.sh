@@ -85,7 +85,7 @@ try {
   downloads_dir="$(cd "$(dirname "${source_dir}")/.." && pwd)/downloads"
   if [ -d "${source_dir}/.git" ] && [ -n "${git_ref}" ]; then
     if git -C "${source_dir}" reset --hard "${git_ref}" && \
-       git -C "${source_dir}" clean -xfd && \
+       git -C "${source_dir}" clean -xfd -e ".morpheus-fetch.json" -e ".morpheus-patches.json" && \
        [ -z "$(git -C "${source_dir}" status --porcelain)" ]; then
       return 0
     fi

@@ -611,6 +611,98 @@ extractCrossDataflow(const std::vector<SemanticSource> &sources,
   return out;
 }
 
+static Optional<std::pair<std::string, unsigned>>
+structFieldKey(const Value *ptr) {
+  auto *gep = dyn_cast<GEPOperator>(ptr);
+  if (!gep || gep->getNumIndices() < 2)
+    return llvm::None;
+  Type *srcTy = gep->getSourceElementType();
+  auto *st = dyn_cast<StructType>(srcTy);
+  if (!st || !st->hasName())
+    return llvm::None;
+  auto *fieldIdx = dyn_cast<ConstantInt>(*(gep->idx_begin() + 1));
+  if (!fieldIdx)
+    return llvm::None;
+  return std::make_pair(st->getName().str(),
+                        static_cast<unsigned>(fieldIdx->getZExtValue()));
+}
+
+static void
+recordBoolStores(const BasicBlock *entry, const SemanticSource &src,
+                 bool trueSide,
+                 std::map<StructFieldAliasKey, std::vector<BoolFlagAlias>>
+                     &out,
+                 unsigned maxDepth = 4) {
+  if (!entry)
+    return;
+  std::set<const BasicBlock *> seen;
+  std::queue<std::pair<const BasicBlock *, unsigned>> q;
+  q.push({entry, 0});
+  seen.insert(entry);
+  while (!q.empty()) {
+    auto [BB, depth] = q.front();
+    q.pop();
+    if (depth > maxDepth)
+      continue;
+    for (const Instruction &I : *BB) {
+      auto *SI = dyn_cast<StoreInst>(&I);
+      if (!SI)
+        continue;
+      auto *CI = dyn_cast<ConstantInt>(SI->getValueOperand());
+      if (!CI)
+        continue;
+      uint64_t val = CI->getZExtValue();
+      auto key = structFieldKey(SI->getPointerOperand());
+      if (!key)
+        continue;
+      Predicate p;
+      if (trueSide && val == 1)
+        p = Predicate{"BitSet", llvm::None, src.schema.featureBit.getValue()};
+      else if (!trueSide && val == 0)
+        p = Predicate{"BitClear", llvm::None,
+                      src.schema.featureBit.getValue()};
+      else
+        continue;
+      out[*key].push_back({src.schema.id, p});
+    }
+    for (const BasicBlock *succ : successors(BB)) {
+      if (seen.insert(succ).second)
+        q.push({succ, depth + 1});
+    }
+  }
+}
+
+/// Feature-bit tests often set a boolean flag (e.g. vi->has_rss) that is later
+/// used as a branch condition.  Record these aliases so control-dependency
+/// analysis can recover the original feature-bit guard.
+static std::map<StructFieldAliasKey, std::vector<BoolFlagAlias>>
+buildBoolFlagAliases(const std::vector<SemanticSource> &sources) {
+  std::map<StructFieldAliasKey, std::vector<BoolFlagAlias>> out;
+  for (const SemanticSource &src : sources) {
+    if (!src.schema.featureBit.hasValue())
+      continue;
+    std::set<const Value *> seen;
+    std::queue<const Value *> q;
+    q.push(src.rootValue);
+    seen.insert(src.rootValue);
+    while (!q.empty()) {
+      const Value *V = q.front();
+      q.pop();
+      for (const User *U : V->users()) {
+        if (auto *BI = dyn_cast<BranchInst>(U)) {
+          recordBoolStores(BI->getSuccessor(0), src, true, out);
+          recordBoolStores(BI->getSuccessor(1), src, false, out);
+        } else if (isa<CastInst>(U) || isa<SelectInst>(U) ||
+                   isa<PHINode>(U) || isa<ICmpInst>(U)) {
+          if (seen.insert(U).second)
+            q.push(U);
+        }
+      }
+    }
+  }
+  return out;
+}
+
 static void writeJSON(const std::string &path,
                        const std::vector<SemanticSource> &nodes,
                        const std::map<std::string, Edge> &selfEdges,
@@ -701,6 +793,7 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
 
     SemanticValueFlowGraph svfGraph(svfg);
     SourceCatalog srcCatalog;
+    srcCatalog.initialize(M);
     SinkCatalog sinkCatalog;
 
     // Discover sources and sinks by scanning the module.
@@ -745,7 +838,9 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
     taint.run(/*maxDepth=*/1024);
 
     // Control dependency: source branch conditions that gate sink calls.
-    ControlDependencyAnalysis ctrl(icfg, &svfGraph, M, sinkCatalog);
+    auto boolFlagAliases = buildBoolFlagAliases(sources);
+    ControlDependencyAnalysis ctrl(icfg, &svfGraph, M, sinkCatalog,
+                                   boolFlagAliases);
     std::vector<ControlResult> ctrlResults;
     for (const SemanticSource &src : sources) {
       auto found = ctrl.analyze(src, sinkCatalog);

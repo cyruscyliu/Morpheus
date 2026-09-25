@@ -14,6 +14,7 @@ namespace llvm {
 class Argument;
 class CallBase;
 class LoadInst;
+class Module;
 class Value;
 } // namespace llvm
 
@@ -27,6 +28,10 @@ public:
 
   /// Register the default virtio-mmio + virtio-net schemas.
   void registerDefaultSchemas();
+
+  /// Auto-discover struct-field schemas from DWARF debug info in the module.
+  /// This removes the need to manually list every config/state field.
+  void initialize(const llvm::Module &M);
 
   /// Try to classify a call as a source.
   llvm::Optional<SemanticSource> matchCall(llvm::CallBase *CB,

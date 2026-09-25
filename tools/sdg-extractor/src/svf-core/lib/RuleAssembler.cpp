@@ -163,13 +163,15 @@ RuleAssembler::assemble(const TaintResult &dataflow,
                         const std::vector<Edge> &crossDataflow) const {
   std::vector<Rule> rules;
 
-  // Map control results by sink call site so they can be attached as guard
-  // preconditions to the data-flow rules that reach the same sink.
-  std::map<std::pair<const CallBase *, unsigned>, std::vector<const ControlResult *>>
+  // Map control results by sink function/arg so they can be attached as guard
+  // preconditions to the data-flow rules that reach the same sink.  Using the
+  // function name rather than the call pointer lets interprocedural control
+  // dependencies (e.g. a guard in the caller that gates a callee containing
+  // the sink) attach correctly.
+  std::map<std::pair<std::string, unsigned>, std::vector<const ControlResult *>>
       ctrlBySink;
   for (const ControlResult &cr : control) {
-    if (cr.sink.call)
-      ctrlBySink[{cr.sink.call, cr.sink.argIndex}].push_back(&cr);
+    ctrlBySink[{cr.sink.function, cr.sink.argIndex}].push_back(&cr);
   }
 
   for (const auto &kv : dataflow) {
@@ -225,8 +227,8 @@ RuleAssembler::assemble(const TaintResult &dataflow,
           r.preconditions.push_back(e);
       }
       // 2. Guard edges from control dependency analysis that gate the same
-      // sink call site.
-      auto ctrlIt = ctrlBySink.find({sink.call, sink.argIndex});
+      // sink function/argument.
+      auto ctrlIt = ctrlBySink.find({sink.function, sink.argIndex});
       if (ctrlIt != ctrlBySink.end()) {
         for (const ControlResult *cr : ctrlIt->second) {
           if (cr->sourceId == sourceId)

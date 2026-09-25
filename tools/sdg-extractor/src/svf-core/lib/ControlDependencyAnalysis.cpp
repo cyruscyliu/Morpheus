@@ -6,6 +6,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Operator.h"
 #include <queue>
 #include <set>
 
@@ -14,9 +15,11 @@ using namespace SVF;
 using namespace sdg::core;
 
 ControlDependencyAnalysis::ControlDependencyAnalysis(
-    SVF::ICFG *icfg, const SemanticValueFlowGraph *graph, const Module &M,
-    const SinkCatalog &sinks)
-    : icfg_(icfg), graph_(graph) {
+    SVF::ICFG *icfg, const SemanticValueFlowGraph *graph,
+    const Module &M, const SinkCatalog &sinks,
+    const std::map<StructFieldAliasKey, std::vector<BoolFlagAlias>>
+        &boolFlagAliases)
+    : icfg_(icfg), graph_(graph), boolFlagAliases_(boolFlagAliases) {
   buildFunctionSinks(M, sinks);
 }
 
@@ -108,13 +111,93 @@ extractBitAnd(const Value *V) {
   return llvm::None;
 }
 
+struct ExtractedGuard {
+  Predicate pred;
+  bool trueWhenSet;
+  std::string sourceId;
+};
+
+static Optional<std::pair<std::string, unsigned>>
+fieldKeyFromPointer(const Value *ptr) {
+  auto *gep = dyn_cast<GEPOperator>(ptr);
+  if (!gep || gep->getNumIndices() < 2)
+    return llvm::None;
+  Type *srcTy = gep->getSourceElementType();
+  auto *st = dyn_cast<StructType>(srcTy);
+  if (!st || !st->hasName())
+    return llvm::None;
+  auto *fieldIdx = dyn_cast<ConstantInt>(*(gep->idx_begin() + 1));
+  if (!fieldIdx)
+    return llvm::None;
+  return std::make_pair(st->getName().str(),
+                        static_cast<unsigned>(fieldIdx->getZExtValue()));
+}
+
 /// Extract a feature-bit predicate from a branch condition.
-static Optional<std::pair<Predicate, bool>>
-extractPredicate(const Value *cond, const SemanticSource &src) {
+static Optional<StructFieldAliasKey> fieldKeyOfValue(const Value *V) {
+  auto *LI = dyn_cast<LoadInst>(V);
+  if (!LI)
+    return llvm::None;
+  return fieldKeyFromPointer(LI->getPointerOperand());
+}
+
+static Predicate flipBitPredicate(const Predicate &p) {
+  Predicate out = p;
+  if (out.kind == "BitSet")
+    out.kind = "BitClear";
+  else if (out.kind == "BitClear")
+    out.kind = "BitSet";
+  return out;
+}
+
+static Optional<ExtractedGuard>
+extractPredicate(
+    const Value *cond, const SemanticSource &src,
+    const std::map<StructFieldAliasKey, std::vector<BoolFlagAlias>>
+        &aliases) {
+  // If this source is itself a boolean flag that aliases a feature-bit
+  // predicate (e.g. vi->has_rss), use the original feature source.
+  if (auto srcKey = fieldKeyOfValue(src.rootValue)) {
+    auto it = aliases.find(*srcKey);
+    if (it != aliases.end() && !it->second.empty()) {
+      const auto &alias = it->second.front();
+      Predicate baseP = alias.second;
+      if (cond == src.rootValue)
+        return ExtractedGuard{baseP, true, alias.first};
+      if (auto *ICI = dyn_cast<ICmpInst>(cond)) {
+        const Value *op0 = ICI->getOperand(0);
+        const Value *op1 = ICI->getOperand(1);
+        auto *zero0 = dyn_cast<ConstantInt>(op0);
+        auto *zero1 = dyn_cast<ConstantInt>(op1);
+        const Value *maybeVal = zero1 ? op0 : (zero0 ? op1 : nullptr);
+        auto *zero = zero1 ? zero1 : zero0;
+        if (maybeVal && zero && zero->isZero() &&
+            (ICI->getPredicate() == ICmpInst::ICMP_NE ||
+             ICI->getPredicate() == ICmpInst::ICMP_EQ)) {
+          bool trueWhenNe = (ICI->getPredicate() == ICmpInst::ICMP_NE);
+          // Direct operand match.
+          if (maybeVal == src.rootValue) {
+            Predicate p = trueWhenNe ? baseP : flipBitPredicate(baseP);
+            return ExtractedGuard{p, trueWhenNe, alias.first};
+          }
+          // OR-of-bools match: vi->has_rss || vi->has_rss_hash_report.
+          if (auto *BO = dyn_cast<BinaryOperator>(maybeVal)) {
+            if (BO->getOpcode() == Instruction::Or &&
+                (BO->getOperand(0) == src.rootValue ||
+                 BO->getOperand(1) == src.rootValue)) {
+              Predicate p = trueWhenNe ? baseP : flipBitPredicate(baseP);
+              return ExtractedGuard{p, trueWhenNe, alias.first};
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Direct feature call: virtio_has_feature(..., bit)
   if (cond == src.rootValue && src.schema.featureBit.hasValue()) {
     Predicate p{"BitSet", llvm::None, src.schema.featureBit.getValue()};
-    return std::make_pair(p, true);
+    return ExtractedGuard{p, true, src.schema.id};
   }
 
   // Inlined: (src & (1<<b)) pred 0
@@ -125,7 +208,7 @@ extractPredicate(const Value *cond, const SemanticSource &src) {
     auto and1 = extractBitAnd(op1);
 
     auto check = [&](const std::pair<const Value *, unsigned> &ab,
-                     const Value *other) -> Optional<std::pair<Predicate, bool>> {
+                     const Value *other) -> Optional<ExtractedGuard> {
       const Value *base = ab.first;
       unsigned bit = ab.second;
       // Ensure the base is data-dependent on the source.  Simple case: base is
@@ -158,13 +241,64 @@ extractPredicate(const Value *cond, const SemanticSource &src) {
         return llvm::None;
 
       Predicate out{trueWhenSet ? "BitSet" : "BitClear", llvm::None, bit};
-      return std::make_pair(out, trueWhenSet);
+      return ExtractedGuard{out, trueWhenSet, src.schema.id};
     };
 
     if (and0.hasValue() && !and1.hasValue())
-      return check(and0.getValue(), op1);
+      if (auto eg = check(and0.getValue(), op1))
+        return eg;
     if (and1.hasValue() && !and0.hasValue())
-      return check(and1.getValue(), op0);
+      if (auto eg = check(and1.getValue(), op0))
+        return eg;
+
+    // Boolean flag aliases: the condition may be `has_rss || has_hash_report`
+    // or simply `has_rss != 0`.
+    auto checkAlias = [&](const Value *maybeVal,
+                          const Value *other) -> Optional<ExtractedGuard> {
+      auto *zero = dyn_cast<ConstantInt>(other);
+      if (!zero || !zero->isZero())
+        return llvm::None;
+      if (ICI->getPredicate() != ICmpInst::ICMP_NE &&
+          ICI->getPredicate() != ICmpInst::ICMP_EQ)
+        return llvm::None;
+      bool trueWhenSet = (ICI->getPredicate() == ICmpInst::ICMP_NE);
+
+      SmallVector<const Value *, 4> work;
+      work.push_back(maybeVal);
+      while (!work.empty()) {
+        const Value *cur = work.pop_back_val();
+        if (auto *LI = dyn_cast<LoadInst>(cur)) {
+          auto key = fieldKeyFromPointer(LI->getPointerOperand());
+          if (!key)
+            continue;
+          auto it = aliases.find(*key);
+          if (it == aliases.end() || it->second.empty())
+            continue;
+          const auto &alias = it->second.front();
+          Predicate p = alias.second;
+          // Flip the predicate if the branch takes the false side.
+          if (!trueWhenSet) {
+            if (p.kind == "BitSet")
+              p.kind = "BitClear";
+            else if (p.kind == "BitClear")
+              p.kind = "BitSet";
+          }
+          return ExtractedGuard{p, trueWhenSet, alias.first};
+        }
+        if (auto *BO = dyn_cast<BinaryOperator>(cur)) {
+          if (BO->getOpcode() == Instruction::Or) {
+            work.push_back(BO->getOperand(0));
+            work.push_back(BO->getOperand(1));
+          }
+        }
+      }
+      return llvm::None;
+    };
+
+    if (auto eg = checkAlias(op0, op1))
+      return eg;
+    if (auto eg = checkAlias(op1, op0))
+      return eg;
   }
   return llvm::None;
 }
@@ -265,11 +399,11 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
     for (const User *U : V->users()) {
       if (auto *BI = dyn_cast<BranchInst>(U)) {
         const Value *cond = BI->getCondition();
-        Optional<std::pair<Predicate, bool>> pred = extractPredicate(cond, src);
+        Optional<ExtractedGuard> guard = extractPredicate(cond, src, boolFlagAliases_);
 
         // Fallback: if the condition (or its operands) is derived from the
         // source through conversions/calls/phis, create a generic predicate.
-        if (!pred.hasValue() && valueIsDerivedFromSrc(cond)) {
+        if (!guard.hasValue() && valueIsDerivedFromSrc(cond)) {
           bool trueWhenNonZero = true;
           if (auto *ICI = dyn_cast<ICmpInst>(cond)) {
             if (ICI->getPredicate() == ICmpInst::ICMP_EQ)
@@ -277,13 +411,14 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
           }
           Predicate p{trueWhenNonZero ? "Ne" : "Eq", llvm::None,
                       src.schema.featureBit};
-          pred = std::make_pair(p, trueWhenNonZero);
+          guard = ExtractedGuard{p, trueWhenNonZero, src.schema.id};
         }
-        if (!pred.hasValue())
+        if (!guard.hasValue())
           continue;
 
-        Predicate p = pred->first;
-        bool trueWhenSet = pred->second;
+        Predicate p = guard->pred;
+        bool trueWhenSet = guard->trueWhenSet;
+        const std::string &guardSourceId = guard->sourceId;
 
         const BasicBlock *trueSide = trueWhenSet ? BI->getSuccessor(0)
                                                  : BI->getSuccessor(1);
@@ -313,7 +448,7 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
           if (!falseKeys.count(sinkKey(s))) {
             emitted = true;
             out.push_back(
-                {src.schema.id, p, s, func, BI->getDebugLoc(), src});
+                {guardSourceId, p, s, func, BI->getDebugLoc(), src});
           }
         }
         Predicate negP = p;
@@ -324,7 +459,7 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
           if (!trueKeys.count(sinkKey(s))) {
             emitted = true;
             out.push_back(
-                {src.schema.id, negP, s, func, BI->getDebugLoc(), src});
+                {guardSourceId, negP, s, func, BI->getDebugLoc(), src});
           }
         }
 
@@ -332,7 +467,7 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
         // feature-bit tests remain visible.
         if (!emitted && trueSinks.empty() && falseSinks.empty()) {
           CallBase *dummy = nullptr;
-          out.push_back({src.schema.id, p,
+          out.push_back({guardSourceId, p,
                          SemanticSink{"", Role::Control, 0, dummy}, func,
                          BI->getDebugLoc(), src});
         }

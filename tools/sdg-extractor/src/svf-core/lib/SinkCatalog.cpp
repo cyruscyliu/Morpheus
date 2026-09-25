@@ -18,6 +18,13 @@ void SinkCatalog::registerDefaultSinks() {
   entries_.push_back({"alloc_page", 0, Role::Size});
   entries_.push_back({"alloc_pages", 1, Role::Size});
   entries_.push_back({"alloc_pages_exact", 0, Role::Size});
+  entries_.push_back({"kmemdup", 1, Role::Size});
+  entries_.push_back({"kstrndup", 1, Role::Size});
+  entries_.push_back({"kvmalloc", 0, Role::Size});
+  entries_.push_back({"kvzalloc", 0, Role::Size});
+  entries_.push_back({"kvcalloc", 0, Role::Size});
+  entries_.push_back({"kvcalloc", 1, Role::Size});
+  entries_.push_back({"devm_kmemdup", 1, Role::Size});
 
   // DMA / virtqueue mapping sinks
   entries_.push_back({"dma_map_sg_attrs", 2, Role::Size});
@@ -35,9 +42,23 @@ void SinkCatalog::registerDefaultSinks() {
   entries_.push_back({"memset", 2, Role::Size});
   entries_.push_back({"netdev_rss_key_fill", 0, Role::Address});
   entries_.push_back({"netdev_rss_key_fill", 1, Role::Size});
+  entries_.push_back({"strscpy", 0, Role::Address});
+  entries_.push_back({"strscpy", 2, Role::Size});
+  entries_.push_back({"strlcpy", 0, Role::Address});
+  entries_.push_back({"strlcpy", 2, Role::Size});
+  entries_.push_back({"strncpy", 0, Role::Address});
+  entries_.push_back({"strncpy", 2, Role::Size});
+  entries_.push_back({"eth_hw_addr_set", 1, Role::Address});
   entries_.push_back({"skb_put", 1, Role::Size});
   entries_.push_back({"__skb_put", 1, Role::Size});
+  entries_.push_back({"skb_put_data", 0, Role::Address});
   entries_.push_back({"skb_put_data", 1, Role::Size});
+  entries_.push_back({"netdev_alloc_skb", 1, Role::Size});
+  entries_.push_back({"napi_alloc_skb", 1, Role::Size});
+  entries_.push_back({"skb_copy", 1, Role::Size});
+  entries_.push_back({"skb_copy_expand", 1, Role::Size});
+  entries_.push_back({"skb_copy_expand", 2, Role::Size});
+  entries_.push_back({"skb_realloc", 1, Role::Size});
   entries_.push_back({"netif_carrier_on", 0, Role::Control});
   entries_.push_back({"netif_carrier_off", 0, Role::Control});
   entries_.push_back({"virtqueue_poll", 1, Role::Control});

@@ -3,6 +3,9 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
@@ -47,46 +50,11 @@ void SourceCatalog::registerDefaultSchemas() {
   schemas_.push_back({"MmioTransport.config_generation", "Mmio", "transport",
                       252, llvm::None, 4, "config_generation"});
 
-  // virtio-net config space
-  schemas_.push_back({"MmioConfig.mac", "Mmio", "config", 0, llvm::None, 6,
-                      "mac"});
-  schemas_.push_back({"MmioConfig.status", "Mmio", "config", 6, llvm::None,
-                      1, "status"});
-  schemas_.push_back({"MmioConfig.max_virtqueue_pairs", "Mmio", "config", 8,
-                      llvm::None, 2, "max_queue_pairs"});
-  schemas_.push_back({"MmioConfig.mtu", "Mmio", "config", 10, llvm::None, 2,
-                      "mtu"});
-  schemas_.push_back({"MmioConfig.speed", "Mmio", "config", 12,
-                      llvm::None, 4, "speed"});
-  schemas_.push_back({"MmioConfig.duplex", "Mmio", "config", 16,
-                      llvm::None, 1, "duplex"});
-  schemas_.push_back({"MmioConfig.rss_max_key_size", "Mmio", "config", 17,
-                      llvm::None, 1, "rss_max_key_size"});
-  schemas_.push_back({"MmioConfig.rss_max_indirection_table_length", "Mmio",
-                      "config", 18, llvm::None, 2,
-                      "rss_max_indirection_table_length"});
-  schemas_.push_back({"MmioConfig.rss_hash_types", "Mmio", "config", 20,
-                      llvm::None, 4, "rss_hash_types"});
-
   // Some device trees / layouts place config_generation at 252.
   schemas_.push_back({"MmioTransport.config_generation", "Mmio", "transport",
                       252, llvm::None, 4, "config_generation"});
 
   // DMA / vring structure fields that are guest-controlled
-  // Internal driver state fields that mirror config or DMA values.
-  structFieldSchemas_[{"struct.virtnet_info", 15}] = {
-      "InternalState.rss_key_size", "InternalState", "state", llvm::None,
-      llvm::None, 1, "rss_key_size"};
-  structFieldSchemas_[{"struct.virtnet_info", 16}] = {
-      "InternalState.rss_indir_table_size", "InternalState", "state",
-      llvm::None, llvm::None, 2, "rss_indir_table_size"};
-  structFieldSchemas_[{"struct.virtnet_info", 17}] = {
-      "InternalState.rss_hash_types_supported", "InternalState", "state",
-      llvm::None, llvm::None, 4, "rss_hash_types_supported"};
-  structFieldSchemas_[{"struct.virtnet_info", 43}] = {
-      "InternalState.rss_hash_key_data", "InternalState", "state",
-      llvm::None, llvm::None, 40, "rss_hash_key_data"};
-
   structFieldSchemas_[{"struct.vring_desc", 1}] = {
       "Dma.streaming.desc_len", "Dma", "streaming", llvm::None,
       llvm::None, 2, "desc_len"};
@@ -185,6 +153,100 @@ void SourceCatalog::registerDefaultSchemas() {
   argSchemas_["virtqueue_add_desc_split"].push_back(
       {5, {"Dma.streaming.desc_len", "Dma", "streaming", llvm::None,
            llvm::None, 4, "desc_len"}});
+}
+
+static StructType *findStructTypeByName(const Module &M, StringRef name) {
+  for (StructType *ST : M.getIdentifiedStructTypes())
+    if (ST->hasName() && ST->getName() == name)
+      return ST;
+  return nullptr;
+}
+
+/// Find the DICompositeType that describes a struct.  IR struct names are
+/// prefixed with "struct.", while DWARF names are not.
+static const DICompositeType *findDICompositeTypeForStruct(const Module &M,
+                                                           StructType *ST,
+                                                           StringRef diName) {
+  if (!ST)
+    return nullptr;
+  DebugInfoFinder finder;
+  finder.processModule(M);
+  for (const DIType *T : finder.types()) {
+    auto *DCT = dyn_cast<DICompositeType>(T);
+    if (!DCT)
+      continue;
+    if (DCT->getName() == diName)
+      return DCT;
+  }
+  return nullptr;
+}
+
+/// Generate InternalState / MmioConfig schemas from the DWARF description of a
+/// struct, falling back to field_N names when debug info is missing.
+static void addStructFieldSchemas(
+    const Module &M, StringRef irStructName, StringRef diName,
+    StringRef idPrefix, StringRef className, StringRef accessKind,
+    std::vector<SourceSchema> &schemas,
+    std::map<std::pair<std::string, unsigned>, SourceSchema>
+        &structFieldSchemas) {
+  StructType *ST = findStructTypeByName(M, irStructName);
+  if (!ST)
+    return;
+
+  const DICompositeType *DCT = findDICompositeTypeForStruct(M, ST, diName);
+  const DataLayout &DL = M.getDataLayout();
+  const StructLayout *SL = DL.getStructLayout(ST);
+
+  // Build an offset->DIDerivedType map when debug info is available.
+  std::map<uint64_t, const DIDerivedType *> offsetToField;
+  if (DCT) {
+    for (const DINode *N : DCT->getElements()) {
+      auto *DDT = dyn_cast<DIDerivedType>(N);
+      if (!DDT)
+        continue;
+      uint64_t off = DDT->getOffsetInBits() / 8;
+      // Prefer the first (non-zero-size) field at this offset.
+      if (!offsetToField.count(off) && DDT->getSizeInBits() > 0)
+        offsetToField[off] = DDT;
+    }
+  }
+
+  for (unsigned i = 0, e = ST->getNumElements(); i < e; ++i) {
+    uint64_t offset = SL->getElementOffset(i);
+    Type *ET = ST->getElementType(i);
+    uint64_t size = DL.getTypeStoreSize(ET).getFixedSize();
+
+    std::string fieldName;
+    if (auto it = offsetToField.find(offset); it != offsetToField.end()) {
+      fieldName = it->second->getName().str();
+      size = std::max(size, it->second->getSizeInBits() / 8);
+    }
+    if (fieldName.empty())
+      fieldName = "field_" + std::to_string(i);
+
+    SourceSchema schema{std::string(idPrefix) + "." + fieldName,
+                        std::string(className), std::string(accessKind),
+                        offset,        llvm::None,
+                        static_cast<unsigned>(size), fieldName};
+    structFieldSchemas[{std::string(irStructName), i}] = schema;
+    if (accessKind == "config")
+      schemas.push_back(schema);
+  }
+}
+
+void SourceCatalog::initialize(const Module &M) {
+  // Auto-discover virtio-net config-space fields from DWARF.  This replaces
+  // the previous hand-maintained list of MmioConfig.* schemas.
+  addStructFieldSchemas(M, "struct.virtio_net_config", "virtio_net_config",
+                        "MmioConfig", "Mmio", "config", schemas_,
+                        structFieldSchemas_);
+
+  // Auto-discover all virtnet_info fields as InternalState sources.  Any
+  // future field added to this struct (e.g. has_rss, rss_key_size) will now
+  // be recognized automatically.
+  addStructFieldSchemas(M, "struct.virtnet_info", "virtnet_info",
+                        "InternalState", "InternalState", "state", schemas_,
+                        structFieldSchemas_);
 }
 
 /// Return a constant byte offset if V is a pointer expression of the form

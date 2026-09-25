@@ -10,7 +10,7 @@ from pathlib import Path
 TESTS_DIR = Path(__file__).resolve().parent
 TOOL_ROOT = TESTS_DIR.parent
 BUILD_DIR = TOOL_ROOT / "builds" / "arm64-clang15" / "build"
-PLUGIN = BUILD_DIR / "SDGExtractPass.so"
+PLUGIN = BUILD_DIR / "src" / "llvm-pass" / "SDGExtractPass.so"
 FIXTURES = TESTS_DIR / "fixtures"
 LLM_RULES = TESTS_DIR / "llm_rules"
 

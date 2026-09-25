@@ -44,6 +44,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <map>
+#include <queue>
 #include <set>
 #include <string>
 #include <tuple>
@@ -89,13 +90,15 @@ static json::Value toJSON(const Predicate &p) {
 
 static json::Value toJSON(const Mutation &m) {
   json::Object obj;
-  obj["op"] = m.op;
+  obj["operator"] = m.op;
   if (m.value.hasValue())
     obj["value"] = static_cast<int64_t>(m.value.getValue());
   if (m.bit.hasValue())
     obj["bit"] = static_cast<int64_t>(m.bit.getValue());
   if (m.side.hasValue())
     obj["side"] = m.side.getValue();
+  if (!m.var.empty())
+    obj["var"] = m.var;
   return json::Value(std::move(obj));
 }
 
@@ -188,9 +191,317 @@ static json::Value toJSON(const Rule &r) {
   return json::Value(std::move(obj));
 }
 
+//===----------------------------------------------------------------------===//
+// Grammar-compliant self-edge and cross-edge extraction
+//===----------------------------------------------------------------------===//
+
+static bool isTransparentUse(const User *U) {
+  if (isa<CastInst>(U) || isa<PHINode>(U) || isa<SelectInst>(U) ||
+      isa<UnaryOperator>(U))
+    return true;
+  if (auto *BO = dyn_cast<BinaryOperator>(U)) {
+    auto op = BO->getOpcode();
+    return op == Instruction::And || op == Instruction::Or ||
+           op == Instruction::Add || op == Instruction::Sub;
+  }
+  return false;
+}
+
+/// reachable_uses from grammar-extraction.md: traverse casts, phi, select,
+/// zext/sext/trunc, and and/or bit operations, yielding other users.
+static std::vector<const Value *>
+reachableUses(const Value *root) {
+  std::vector<const Value *> yielded;
+  std::set<const Value *> seen;
+  std::vector<const Value *> work = {root};
+  while (!work.empty()) {
+    const Value *v = work.back();
+    work.pop_back();
+    if (!seen.insert(v).second)
+      continue;
+    for (const User *U : v->users()) {
+      if (isTransparentUse(U))
+        work.push_back(U);
+      else
+        yielded.push_back(U);
+    }
+  }
+  return yielded;
+}
+
+static bool valueIsError(const Value *V) {
+  if (!V)
+    return false;
+  if (auto *CI = dyn_cast<ConstantInt>(V)) {
+    if (CI->getSExtValue() < 0)
+      return true;
+  }
+  if (isa<ConstantPointerNull>(V))
+    return true;
+  return false;
+}
+
+static bool blockHasErrorCall(const BasicBlock *BB) {
+  if (!BB)
+    return false;
+  for (const Instruction &I : *BB) {
+    if (auto *CB = dyn_cast<CallBase>(&I)) {
+      if (const Function *F = CB->getCalledFunction()) {
+        StringRef name = F->getName();
+        if (name == "BUG" || name == "panic" || name == "free_netdev" ||
+            name == "kfree" || name.startswith("WARN") ||
+            name == "dev_err")
+          return true;
+      }
+    }
+    if (isa<UnreachableInst>(&I))
+      return true;
+  }
+  return false;
+}
+
+/// Return true if BB, when reached from pred, returns an error value or calls
+/// an error handler.  This handles phi nodes in a shared return block.
+static bool isErrorEdge(const BasicBlock *BB, const BasicBlock *pred) {
+  if (!BB || !pred)
+    return false;
+  if (blockHasErrorCall(BB))
+    return true;
+  for (const Instruction &I : *BB) {
+    if (auto *RI = dyn_cast<ReturnInst>(&I)) {
+      const Value *rv = RI->getReturnValue();
+      if (rv) {
+        if (auto *PN = dyn_cast<PHINode>(rv)) {
+          int idx = PN->getBasicBlockIndex(pred);
+          if (idx >= 0)
+            rv = PN->getIncomingValue(idx);
+          else
+            continue;
+        }
+        if (valueIsError(rv))
+          return true;
+      }
+    }
+  }
+  return false;
+}
+
+/// Map an LLVM integer predicate to an SDG predicate kind.
+static std::string predicateKindForICmp(ICmpInst::Predicate pred,
+                                        bool invert) {
+  switch (pred) {
+  case ICmpInst::ICMP_EQ:
+    return invert ? "Ne" : "Eq";
+  case ICmpInst::ICMP_NE:
+    return invert ? "Eq" : "Ne";
+  case ICmpInst::ICMP_UGT:
+  case ICmpInst::ICMP_SGT:
+    return invert ? "Le" : "Gt";
+  case ICmpInst::ICMP_ULT:
+  case ICmpInst::ICMP_SLT:
+    return invert ? "Ge" : "Lt";
+  case ICmpInst::ICMP_UGE:
+  case ICmpInst::ICMP_SGE:
+    return invert ? "Lt" : "Ge";
+  case ICmpInst::ICMP_ULE:
+  case ICmpInst::ICMP_SLE:
+    return invert ? "Gt" : "Le";
+  default:
+    return "Ne";
+  }
+}
+
+/// If V is `X & (1 << b)` or `(1 << b) & X`, return (X, b).
+static Optional<std::pair<const Value *, unsigned>>
+extractBitAnd(const Value *V) {
+  auto *BO = dyn_cast<BinaryOperator>(V);
+  if (!BO || BO->getOpcode() != Instruction::And)
+    return llvm::None;
+  const Value *lhs = BO->getOperand(0);
+  const Value *rhs = BO->getOperand(1);
+  auto bitFromValue = [](const Value *C) -> Optional<unsigned> {
+    if (auto *CI = dyn_cast<ConstantInt>(C)) {
+      const APInt &v = CI->getValue();
+      if (v.countPopulation() == 1)
+        return v.countTrailingZeros();
+    }
+    return llvm::None;
+  };
+  if (auto b = bitFromValue(rhs))
+    return std::make_pair(lhs, *b);
+  if (auto b = bitFromValue(lhs))
+    return std::make_pair(rhs, *b);
+  return llvm::None;
+}
+
+/// Extract the best self-edge for a source following grammar Section 3.2.
+static Edge extractSelfEdge(const SemanticSource &src) {
+  Edge edge;
+  edge.src = src.schema.id;
+  edge.dst = src.schema.id;
+  edge.function = src.function;
+  edge.loc = src.loc;
+  edge.head = heads::kBound;
+
+  bool found = false;
+  bool usedAsOffset = false;
+  bool usedAsCallArg = false;
+
+  auto uses = reachableUses(src.rootValue);
+
+  for (const Value *U : uses) {
+    if (auto *GEP = dyn_cast<GetElementPtrInst>(U)) {
+      for (auto idxIt = GEP->idx_begin(); idxIt != GEP->idx_end(); ++idxIt)
+        if (idxIt->get() == src.rootValue)
+          usedAsOffset = true;
+    }
+    if (auto *CB = dyn_cast<CallBase>(U)) {
+      for (unsigned i = 0, e = CB->arg_size(); i < e; ++i)
+        if (CB->getArgOperand(i) == src.rootValue)
+          usedAsCallArg = true;
+    }
+
+    // Pattern 1: direct ICmp against a constant.
+    if (auto *ICI = dyn_cast<ICmpInst>(U)) {
+      for (unsigned i = 0; i < 2; ++i) {
+        const Value *candidate = ICI->getOperand(i);
+        const Value *otherOp = ICI->getOperand(1 - i);
+        auto *CI = dyn_cast<ConstantInt>(otherOp);
+        if (!CI)
+          continue;
+        if (candidate != src.rootValue &&
+            std::find(uses.begin(), uses.end(), candidate) == uses.end())
+          continue;
+
+        const BasicBlock *trueBB = nullptr;
+        const BasicBlock *falseBB = nullptr;
+        const BasicBlock *brBB = nullptr;
+        for (const User *BU : ICI->users()) {
+          if (auto *BI = dyn_cast<BranchInst>(BU)) {
+            if (!BI->isConditional())
+              continue;
+            trueBB = BI->getSuccessor(0);
+            falseBB = BI->getSuccessor(1);
+            brBB = BI->getParent();
+            break;
+          }
+        }
+        bool invert = false;
+        if (trueBB && falseBB && brBB) {
+          if (isErrorEdge(trueBB, brBB) && !isErrorEdge(falseBB, brBB))
+            invert = true;
+        }
+
+        Predicate p{predicateKindForICmp(ICI->getPredicate(), invert),
+                    llvm::None, llvm::None};
+        p.value = static_cast<uint64_t>(CI->getZExtValue());
+        edge.pred = p;
+        found = true;
+        break;
+      }
+    }
+  }
+
+  // Boolean helper / feature-bit call used directly as a branch condition
+  // (Pattern 2 simplified).
+  if (!found && src.schema.featureBit.hasValue()) {
+    for (const User *U : src.rootValue->users()) {
+      if (auto *BI = dyn_cast<BranchInst>(U)) {
+        if (BI->getCondition() == src.rootValue) {
+          bool invert = isErrorEdge(BI->getSuccessor(0), BI->getParent());
+          Predicate p{invert ? "BitClear" : "BitSet", llvm::None,
+                      src.schema.featureBit.getValue()};
+          edge.pred = p;
+          found = true;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!found)
+    edge.pred = Predicate{"Ne", 0, llvm::None};
+
+  // Head selection per grammar Section 3.2.4.
+  if (usedAsOffset)
+    edge.head = heads::kOffset;
+  else if (usedAsCallArg)
+    edge.head = heads::kCall;
+  else
+    edge.head = heads::kBound;
+
+  return edge;
+}
+
+/// Extract self-edges for every source.  Sources without a real boundary check
+/// get a default non-zero bound so that isolated MMIO reads are still
+/// represented in the edge output.
+static std::map<std::string, Edge>
+extractSelfEdges(const std::vector<SemanticSource> &sources) {
+  std::map<std::string, Edge> out;
+  for (const SemanticSource &src : sources)
+    out[src.schema.id] = extractSelfEdge(src);
+  return out;
+}
+
+/// Extract direct cross dataflow edges: node m's defining value is a load or
+/// copy from node n (grammar Section 3.3.2).  Only one SVFG step is followed
+/// to avoid transitive explosion.
+static std::vector<Edge>
+extractCrossDataflow(const std::vector<SemanticSource> &sources,
+                     const SemanticValueFlowGraph &graph) {
+  std::vector<Edge> out;
+  std::map<const Value *, std::string> valueToSource;
+  for (const SemanticSource &src : sources)
+    if (src.rootValue)
+      valueToSource[src.rootValue] = src.schema.id;
+
+  for (const SemanticSource &dst : sources) {
+    if (!dst.rootValue)
+      continue;
+    for (const VFGNode *root : graph.nodesForValue(dst.rootValue)) {
+      SmallVector<const VFGNode *, 8> preds;
+      graph.backwardNeighbours(root, preds);
+      for (const VFGNode *pred : preds) {
+        const Value *V = graph.llvmValue(pred);
+        if (!V)
+          continue;
+        auto it = valueToSource.find(V);
+        if (it == valueToSource.end())
+          continue;
+        if (it->second == dst.schema.id)
+          continue;
+        Edge e;
+        e.src = it->second;
+        e.dst = dst.schema.id;
+        e.head = heads::kDataflow;
+        e.pred = Predicate{"Identity", llvm::None, llvm::None};
+        e.function = dst.function;
+        e.loc = dst.loc;
+        out.push_back(e);
+      }
+    }
+  }
+
+  // Deduplicate by (src, dst).
+  auto cmp = [](const Edge &a, const Edge &b) {
+    return std::tie(a.src, a.dst, a.head) <
+           std::tie(b.src, b.dst, b.head);
+  };
+  std::sort(out.begin(), out.end(), cmp);
+  out.erase(std::unique(out.begin(), out.end(),
+                        [&cmp](const Edge &a, const Edge &b) {
+                          return !cmp(a, b) && !cmp(b, a);
+                        }),
+            out.end());
+  return out;
+}
+
 static void writeJSON(const std::string &path,
-                      const std::vector<SemanticSource> &nodes,
-                      const std::vector<Rule> &rules) {
+                       const std::vector<SemanticSource> &nodes,
+                       const std::map<std::string, Edge> &selfEdges,
+                       const std::vector<Edge> &crossDataflow,
+                       const std::vector<Rule> &rules) {
   json::Object root;
   root["version"] = "0.3.0-svf";
 
@@ -202,22 +513,18 @@ static void writeJSON(const std::string &path,
   nodesObj["nodes"] = json::Value(std::move(nodeArr));
   root["nodes"] = json::Value(std::move(nodesObj));
 
-  // Edges are derived from rule triggers/preconditions plus one self edge
-  // per discovered source so that isolated MMIO reads are still represented.
+  // Edges come from grammar extraction (self + cross dataflow) and from
+  // assembled rule preconditions (cross guards).
   json::Object edgesObj;
   json::Array selfArr, crossArr;
   for (const SemanticSource &n : nodes) {
-    Edge e;
-    e.src = n.schema.id;
-    e.dst = n.schema.id;
-    e.head = heads::kBound;
-    e.pred = Predicate{"Ne", 0, llvm::None};
-    e.function = n.function;
-    e.loc = n.loc;
-    selfArr.push_back(toJSON(e));
+    auto it = selfEdges.find(n.schema.id);
+    if (it != selfEdges.end())
+      selfArr.push_back(toJSON(it->second));
   }
+  for (const Edge &e : crossDataflow)
+    crossArr.push_back(toJSON(e));
   for (const Rule &r : rules) {
-    selfArr.push_back(toJSON(r.trigger));
     for (const Edge &e : r.preconditions)
       crossArr.push_back(toJSON(e));
   }
@@ -313,6 +620,10 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
       }
     }
 
+    // Grammar-compliant self-edge and cross dataflow extraction.
+    std::map<std::string, Edge> selfEdges = extractSelfEdges(sources);
+    std::vector<Edge> crossDataflow = extractCrossDataflow(sources, svfGraph);
+
     // Role-preserving taint analysis over SVFG.
     RoleTaintAnalysis taint(svfGraph, sources, sinkCatalog);
     // Use a very high depth bound for recall-first soundness. The BFS is still
@@ -328,7 +639,8 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
     }
 
     RuleAssembler assembler;
-    auto rules = assembler.assemble(taint.result(), ctrlResults);
+    auto rules = assembler.assemble(taint.result(), ctrlResults, sources,
+                                    selfEdges, crossDataflow);
 
     // Self-check rules: when a function argument is both a source and a sink
     // (e.g. vring_mapping_error(addr) checks a DMA address), emit the rule
@@ -349,8 +661,16 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
         r.trigger.src = src.schema.id;
         r.trigger.dst = src.schema.id;
         r.trigger.function = src.function;
-        r.trigger.head = heads::kBound;
-        r.trigger.pred = Predicate{"Ne", 0, llvm::None};
+        auto selfIt = selfEdges.find(src.schema.id);
+        if (selfIt != selfEdges.end()) {
+          r.trigger = selfIt->second;
+          r.trigger.src = src.schema.id;
+          r.trigger.dst = src.schema.id;
+          r.trigger.function = src.function;
+        } else {
+          r.trigger.head = heads::kBound;
+          r.trigger.pred = Predicate{"Ne", 0, llvm::None};
+        }
         r.trigger.loc = src.loc;
         r.mutation = Mutation{"SampleRange", llvm::None, llvm::None,
                                llvm::None};
@@ -372,8 +692,16 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
         r.trigger.src = src.schema.id;
         r.trigger.dst = src.schema.id;
         r.trigger.function = src.function;
-        r.trigger.head = heads::kBound;
-        r.trigger.pred = Predicate{"Ne", 0, llvm::None};
+        auto selfIt = selfEdges.find(src.schema.id);
+        if (selfIt != selfEdges.end()) {
+          r.trigger = selfIt->second;
+          r.trigger.src = src.schema.id;
+          r.trigger.dst = src.schema.id;
+          r.trigger.function = src.function;
+        } else {
+          r.trigger.head = heads::kBound;
+          r.trigger.pred = Predicate{"Ne", 0, llvm::None};
+        }
         r.trigger.loc = src.loc;
         r.mutation = Mutation{"SampleRange", llvm::None, llvm::None,
                               llvm::None};
@@ -540,7 +868,7 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
           rules.end());
     }
 
-    writeJSON(SDGOutputPath, sources, rules);
+    writeJSON(SDGOutputPath, sources, selfEdges, crossDataflow, rules);
 
     // SVF's module set must be released before LLVM destroys the module.
     LLVMModuleSet::releaseLLVMModuleSet();

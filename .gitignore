@@ -50,4 +50,5 @@ projects/*/workspace/**
 !projects/*/workspace/tools/*/scripts/
 !projects/*/workspace/tools/*/scripts/**
 crashes/
-core*
+core
+core.*

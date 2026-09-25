@@ -85,6 +85,10 @@ static json::Value toJSON(const Predicate &p) {
     obj["value"] = static_cast<int64_t>(p.value.getValue());
   if (p.bit.hasValue())
     obj["bit"] = static_cast<int64_t>(p.bit.getValue());
+  if (p.min.hasValue())
+    obj["min"] = static_cast<int64_t>(p.min.getValue());
+  if (p.max.hasValue())
+    obj["max"] = static_cast<int64_t>(p.max.getValue());
   return json::Value(std::move(obj));
 }
 
@@ -334,6 +338,57 @@ extractBitAnd(const Value *V) {
   return llvm::None;
 }
 
+struct IcmpBound {
+  const ICmpInst *inst;
+  uint64_t value;
+  bool isLower;
+  bool isUpper;
+};
+
+static Optional<IcmpBound>
+extractIcmpBound(const ICmpInst *ICI, const Value *root,
+                 const std::vector<const Value *> &uses) {
+  for (unsigned i = 0; i < 2; ++i) {
+    const Value *candidate = ICI->getOperand(i);
+    const Value *otherOp = ICI->getOperand(1 - i);
+    auto *CI = dyn_cast<ConstantInt>(otherOp);
+    if (!CI)
+      continue;
+    if (candidate != root &&
+        std::find(uses.begin(), uses.end(), candidate) == uses.end())
+      continue;
+
+    IcmpBound b;
+    b.inst = ICI;
+    b.value = static_cast<uint64_t>(CI->getZExtValue());
+    b.isLower = false;
+    b.isUpper = false;
+    switch (ICI->getPredicate()) {
+    case ICmpInst::ICMP_UGT:
+    case ICmpInst::ICMP_SGT:
+      b.isLower = true;
+      break;
+    case ICmpInst::ICMP_ULT:
+    case ICmpInst::ICMP_SLT:
+      b.isUpper = true;
+      break;
+    case ICmpInst::ICMP_UGE:
+    case ICmpInst::ICMP_SGE:
+      b.isLower = true;
+      break;
+    case ICmpInst::ICMP_ULE:
+    case ICmpInst::ICMP_SLE:
+      b.isUpper = true;
+      break;
+    default:
+      break;
+    }
+    if (b.isLower || b.isUpper)
+      return b;
+  }
+  return llvm::None;
+}
+
 /// Extract the best self-edge for a source following grammar Section 3.2.
 static Edge extractSelfEdge(const SemanticSource &src) {
   Edge edge;
@@ -348,6 +403,7 @@ static Edge extractSelfEdge(const SemanticSource &src) {
   bool usedAsCallArg = false;
 
   auto uses = reachableUses(src.rootValue);
+  std::vector<IcmpBound> bounds;
 
   for (const Value *U : uses) {
     if (auto *GEP = dyn_cast<GetElementPtrInst>(U)) {
@@ -361,45 +417,77 @@ static Edge extractSelfEdge(const SemanticSource &src) {
           usedAsCallArg = true;
     }
 
-    // Pattern 1: direct ICmp against a constant.
+    // Collect ICmp bounds; Pattern 1 single comparison and InRange are both
+    // resolved in a second pass.
     if (auto *ICI = dyn_cast<ICmpInst>(U)) {
-      for (unsigned i = 0; i < 2; ++i) {
-        const Value *candidate = ICI->getOperand(i);
-        const Value *otherOp = ICI->getOperand(1 - i);
-        auto *CI = dyn_cast<ConstantInt>(otherOp);
-        if (!CI)
-          continue;
-        if (candidate != src.rootValue &&
-            std::find(uses.begin(), uses.end(), candidate) == uses.end())
-          continue;
+      if (auto b = extractIcmpBound(ICI, src.rootValue, uses))
+        bounds.push_back(*b);
+    }
+  }
 
-        const BasicBlock *trueBB = nullptr;
-        const BasicBlock *falseBB = nullptr;
-        const BasicBlock *brBB = nullptr;
-        for (const User *BU : ICI->users()) {
-          if (auto *BI = dyn_cast<BranchInst>(BU)) {
-            if (!BI->isConditional())
-              continue;
-            trueBB = BI->getSuccessor(0);
-            falseBB = BI->getSuccessor(1);
-            brBB = BI->getParent();
-            break;
-          }
-        }
-        bool invert = false;
-        if (trueBB && falseBB && brBB) {
-          if (isErrorEdge(trueBB, brBB) && !isErrorEdge(falseBB, brBB))
-            invert = true;
-        }
+  // Prefer an InRange pattern: a lower bound and an upper bound whose
+  // results feed the same binary `and`.
+  if (bounds.size() >= 2) {
+    auto hasAndPartner = [](const ICmpInst *A,
+                            const ICmpInst *B) -> bool {
+      for (const User *UA : A->users()) {
+        auto *BO = dyn_cast<BinaryOperator>(UA);
+        if (!BO || BO->getOpcode() != Instruction::And)
+          continue;
+        for (const User *UB : B->users())
+          if (UB == BO)
+            return true;
+      }
+      return false;
+    };
 
-        Predicate p{predicateKindForICmp(ICI->getPredicate(), invert),
-                    llvm::None, llvm::None};
-        p.value = static_cast<uint64_t>(CI->getZExtValue());
+    for (const IcmpBound &lo : bounds) {
+      if (!lo.isLower)
+        continue;
+      for (const IcmpBound &hi : bounds) {
+        if (!hi.isUpper || lo.value > hi.value)
+          continue;
+        if (!hasAndPartner(lo.inst, hi.inst))
+          continue;
+        Predicate p{"InRange", llvm::None, llvm::None};
+        p.min = lo.value;
+        p.max = hi.value;
         edge.pred = p;
         found = true;
         break;
       }
+      if (found)
+        break;
     }
+  }
+
+  // Otherwise use the first single bound.
+  if (!found && !bounds.empty()) {
+    const IcmpBound &b = bounds.front();
+    const BasicBlock *trueBB = nullptr;
+    const BasicBlock *falseBB = nullptr;
+    const BasicBlock *brBB = nullptr;
+    for (const User *BU : b.inst->users()) {
+      if (auto *BI = dyn_cast<BranchInst>(BU)) {
+        if (!BI->isConditional())
+          continue;
+        trueBB = BI->getSuccessor(0);
+        falseBB = BI->getSuccessor(1);
+        brBB = BI->getParent();
+        break;
+      }
+    }
+    bool invert = false;
+    if (trueBB && falseBB && brBB) {
+      if (isErrorEdge(trueBB, brBB) && !isErrorEdge(falseBB, brBB))
+        invert = true;
+    }
+
+    Predicate p{predicateKindForICmp(b.inst->getPredicate(), invert),
+                llvm::None, llvm::None};
+    p.value = b.value;
+    edge.pred = p;
+    found = true;
   }
 
   // Boolean helper / feature-bit call used directly as a branch condition
@@ -444,9 +532,22 @@ extractSelfEdges(const std::vector<SemanticSource> &sources) {
   return out;
 }
 
-/// Extract direct cross dataflow edges: node m's defining value is a load or
-/// copy from node n (grammar Section 3.3.2).  Only one SVFG step is followed
-/// to avoid transitive explosion.
+/// For a VFG node that represents a store, the value being stored is the
+/// meaningful source; for other nodes use the LLVM value directly.
+static const Value *valueFlowingThroughNode(const SemanticValueFlowGraph &graph,
+                                            const VFGNode *node) {
+  if (const Instruction *I = graph.llvmInstruction(node)) {
+    if (auto *SI = dyn_cast<StoreInst>(I))
+      return SI->getValueOperand();
+    if (auto *LI = dyn_cast<LoadInst>(I))
+      return LI;
+  }
+  return graph.llvmValue(node);
+}
+
+/// Extract cross dataflow edges, including value flow through memory
+/// (store/load pairs).  A small bounded BFS over the SVFG lets us connect a
+/// config read stored into a struct field to the later load of that field.
 static std::vector<Edge>
 extractCrossDataflow(const std::vector<SemanticSource> &sources,
                      const SemanticValueFlowGraph &graph) {
@@ -460,25 +561,38 @@ extractCrossDataflow(const std::vector<SemanticSource> &sources,
     if (!dst.rootValue)
       continue;
     for (const VFGNode *root : graph.nodesForValue(dst.rootValue)) {
-      SmallVector<const VFGNode *, 8> preds;
-      graph.backwardNeighbours(root, preds);
-      for (const VFGNode *pred : preds) {
-        const Value *V = graph.llvmValue(pred);
-        if (!V)
+      std::set<NodeID> seen;
+      std::queue<std::pair<const VFGNode *, unsigned>> q;
+      seen.insert(root->getId());
+      q.push({root, 0});
+
+      while (!q.empty()) {
+        auto [node, depth] = q.front();
+        q.pop();
+        if (depth >= 4)
           continue;
-        auto it = valueToSource.find(V);
-        if (it == valueToSource.end())
-          continue;
-        if (it->second == dst.schema.id)
-          continue;
-        Edge e;
-        e.src = it->second;
-        e.dst = dst.schema.id;
-        e.head = heads::kDataflow;
-        e.pred = Predicate{"Identity", llvm::None, llvm::None};
-        e.function = dst.function;
-        e.loc = dst.loc;
-        out.push_back(e);
+
+        const Value *V = valueFlowingThroughNode(graph, node);
+        if (V) {
+          auto it = valueToSource.find(V);
+          if (it != valueToSource.end() && it->second != dst.schema.id) {
+            Edge e;
+            e.src = it->second;
+            e.dst = dst.schema.id;
+            e.head = heads::kDataflow;
+            e.pred = Predicate{"Identity", llvm::None, llvm::None};
+            e.function = dst.function;
+            e.loc = dst.loc;
+            out.push_back(e);
+          }
+        }
+
+        SmallVector<const VFGNode *, 8> preds;
+        graph.backwardNeighbours(node, preds);
+        for (const VFGNode *pred : preds) {
+          if (seen.insert(pred->getId()).second)
+            q.push({pred, depth + 1});
+        }
       }
     }
   }

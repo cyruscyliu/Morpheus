@@ -20,6 +20,7 @@ log_file="${output_dir}/sdg-extractor.log"
 rules_file="${output_dir}/sdg-rules.json"
 nodes_file="${output_dir}/sdg-nodes.json"
 edges_file="${output_dir}/sdg-edges.json"
+sdg_files_dir="${output_dir}/sdg"
 manifest_file="${output_dir}/manifest.json"
 
 : > "${log_file}"
@@ -166,6 +167,11 @@ print(f"merged: {data.get('nodes',{}).get('count',0)} nodes, "
       f"{data.get('rules',{}).get('count',0)} rules")
 PYEOF
 
+# Convert the JSON rules into the line-oriented .sdg files used by libafl.
+"${tool_root}/scripts/convert_to_sdg.py" \
+  --rules "${rules_file}" \
+  --output "${sdg_files_dir}"
+
 cat > "${manifest_file}" <<EOF
 {
   "command": "exec",
@@ -201,6 +207,11 @@ cat > "${manifest_file}" <<EOF
       "portable": "sdg-extractor.log",
       "runtime_path": "${log_file}",
       "resolved_path": "${log_file}"
+    },
+    "sdg-files": {
+      "portable": "sdg",
+      "runtime_path": "${sdg_files_dir}",
+      "resolved_path": "${sdg_files_dir}"
     }
   },
   "artifacts": {
@@ -208,7 +219,8 @@ cat > "${manifest_file}" <<EOF
     "sdg-rules": true,
     "sdg-nodes": true,
     "sdg-edges": true,
-    "log-file": true
+    "log-file": true,
+    "sdg-files": true
   }
 }
 EOF
@@ -226,7 +238,8 @@ cat > "${result_file}" <<EOF
     { "path": "sdg-rules", "location": "${rules_file}" },
     { "path": "sdg-nodes", "location": "${nodes_file}" },
     { "path": "sdg-edges", "location": "${edges_file}" },
-    { "path": "log-file", "location": "${log_file}" }
+    { "path": "log-file", "location": "${log_file}" },
+    { "path": "sdg-files", "location": "${sdg_files_dir}" }
   ]
 }
 EOF

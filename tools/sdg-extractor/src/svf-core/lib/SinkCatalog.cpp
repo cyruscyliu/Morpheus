@@ -33,6 +33,8 @@ void SinkCatalog::registerDefaultSinks() {
   entries_.push_back({"memcpy", 2, Role::Size});
   entries_.push_back({"memmove", 2, Role::Size});
   entries_.push_back({"memset", 2, Role::Size});
+  entries_.push_back({"netdev_rss_key_fill", 0, Role::Address});
+  entries_.push_back({"netdev_rss_key_fill", 1, Role::Size});
   entries_.push_back({"skb_put", 1, Role::Size});
   entries_.push_back({"__skb_put", 1, Role::Size});
   entries_.push_back({"skb_put_data", 1, Role::Size});

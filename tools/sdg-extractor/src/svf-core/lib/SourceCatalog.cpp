@@ -56,12 +56,37 @@ void SourceCatalog::registerDefaultSchemas() {
                       llvm::None, 2, "max_queue_pairs"});
   schemas_.push_back({"MmioConfig.mtu", "Mmio", "config", 10, llvm::None, 2,
                       "mtu"});
+  schemas_.push_back({"MmioConfig.speed", "Mmio", "config", 12,
+                      llvm::None, 4, "speed"});
+  schemas_.push_back({"MmioConfig.duplex", "Mmio", "config", 16,
+                      llvm::None, 1, "duplex"});
+  schemas_.push_back({"MmioConfig.rss_max_key_size", "Mmio", "config", 17,
+                      llvm::None, 1, "rss_max_key_size"});
+  schemas_.push_back({"MmioConfig.rss_max_indirection_table_length", "Mmio",
+                      "config", 18, llvm::None, 2,
+                      "rss_max_indirection_table_length"});
+  schemas_.push_back({"MmioConfig.rss_hash_types", "Mmio", "config", 20,
+                      llvm::None, 4, "rss_hash_types"});
 
   // Some device trees / layouts place config_generation at 252.
   schemas_.push_back({"MmioTransport.config_generation", "Mmio", "transport",
                       252, llvm::None, 4, "config_generation"});
 
   // DMA / vring structure fields that are guest-controlled
+  // Internal driver state fields that mirror config or DMA values.
+  structFieldSchemas_[{"struct.virtnet_info", 15}] = {
+      "InternalState.rss_key_size", "InternalState", "state", llvm::None,
+      llvm::None, 1, "rss_key_size"};
+  structFieldSchemas_[{"struct.virtnet_info", 16}] = {
+      "InternalState.rss_indir_table_size", "InternalState", "state",
+      llvm::None, llvm::None, 2, "rss_indir_table_size"};
+  structFieldSchemas_[{"struct.virtnet_info", 17}] = {
+      "InternalState.rss_hash_types_supported", "InternalState", "state",
+      llvm::None, llvm::None, 4, "rss_hash_types_supported"};
+  structFieldSchemas_[{"struct.virtnet_info", 43}] = {
+      "InternalState.rss_hash_key_data", "InternalState", "state",
+      llvm::None, llvm::None, 40, "rss_hash_key_data"};
+
   structFieldSchemas_[{"struct.vring_desc", 1}] = {
       "Dma.streaming.desc_len", "Dma", "streaming", llvm::None,
       llvm::None, 2, "desc_len"};

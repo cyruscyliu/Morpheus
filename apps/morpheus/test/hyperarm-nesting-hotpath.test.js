@@ -7,6 +7,14 @@ const { spawnSync } = require("node:child_process");
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
 const workspaceRoot = path.resolve(repoRoot, "..");
+process.env.MORPHEUS_LIBAFL_SEEDCODEC_PATH = path.join(
+  workspaceRoot,
+  ".morpheus",
+  "tools",
+  "libafl",
+  "scripts",
+  "seedcodec.py",
+);
 const stubSource = fs.readFileSync(
   path.join(
     repoRoot,
@@ -387,13 +395,17 @@ test("runtime extraction rejects a truncated stream unit", () => {
     const outputDir = path.join(tempDir, "runtime");
     const logPath = path.join(tempDir, "launcher.log");
     const extractorPath = path.join(tempDir, "extract.sh");
-    const seedInput = Buffer.alloc(16 + 4 + 4 + 10);
-    // present = 0 -> no mmio slots; coherent count = 0;
-    // a streaming unit declares 70 bytes but only 10 follow
-    seedInput.writeBigUInt64LE(0n, 0);
-    seedInput.writeBigUInt64LE(0n, 8);
-    seedInput.writeUInt32LE(0, 16);
-    seedInput.writeUInt32LE(70, 20);
+    // v4 wire format: no mmio models, no coherent allocs, one streaming unit
+    // whose single word model claims 70 values but only provides 10 bytes.
+    const seedInput = Buffer.concat([
+      Buffer.alloc(4), // window model count = 0
+      Buffer.alloc(4), // coherent alloc count = 0
+      Buffer.alloc(8, 0xee), // streaming unit address
+      Buffer.from([0x01, 0x00, 0x00, 0x00]), // model_count = 1
+      Buffer.from([0x00, 0x00, 0x00, 0x00]), // word offset = 0
+      Buffer.from([0x46, 0x00, 0x00, 0x00]), // value count = 70
+      Buffer.alloc(10, 0xee), // only 10 value bytes follow (needs 280)
+    ]);
     const lines = [
       "LQPRINTF: stub-outcome kind=launcher-exit detail=1",
       `LQPRINTF: stub-runtime begin name=morpheus-qemu-input.bin size=${seedInput.length} dumped=${seedInput.length} truncated=0`,
@@ -421,7 +433,7 @@ test("runtime extraction rejects a truncated stream unit", () => {
       "utf8",
     );
     assert.match(trace, /"kind":"seed-decode-error"/);
-    assert.match(trace, /"detail":"truncated-stream-data"/);
+    assert.match(trace, /"detail":"seedcodec-failed"/);
     assert.doesNotMatch(trace, /"kind":"seed-mmio-slot"/);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
@@ -438,12 +450,17 @@ test("runtime extraction reports every observed MMIO and DMA event", () => {
     const outputDir = path.join(tempDir, "runtime");
     const logPath = path.join(tempDir, "launcher.log");
     const extractorPath = path.join(tempDir, "extract.sh");
-    const seedInput = Buffer.alloc(16 + 4 + 4 + 70, 0xEE);
-    // present = 0; coherent count = 0; one streaming unit of 70 bytes
-    seedInput.writeBigUInt64LE(0n, 0);
-    seedInput.writeBigUInt64LE(0n, 8);
-    seedInput.writeUInt32LE(0, 16);
-    seedInput.writeUInt32LE(70, 20);
+    // v4 wire format: no mmio models, no coherent allocs, one streaming unit
+    // with a single word model of 70 values.
+    const seedInput = Buffer.concat([
+      Buffer.alloc(4), // window model count = 0
+      Buffer.alloc(4), // coherent alloc count = 0
+      Buffer.alloc(8, 0xee), // streaming unit address
+      Buffer.from([0x01, 0x00, 0x00, 0x00]), // model_count = 1
+      Buffer.from([0x00, 0x00, 0x00, 0x00]), // word offset = 0
+      Buffer.from([0x46, 0x00, 0x00, 0x00]), // value count = 70
+      Buffer.alloc(70 * 4, 0xee), // 70 u32 values
+    ]);
     const records = [
       ["morpheus-qemu-input.bin", seedInput],
       [
@@ -510,7 +527,9 @@ test("runtime extraction reports every observed MMIO and DMA event", () => {
     assert.ok(
       trace.some(
         (event) =>
-          event.kind === "seed-stream-unit" && event.size === 70,
+          event.kind === "seed-stream-unit" &&
+          event.models.length === 1 &&
+          event.models[0].count === 70,
       ),
     );
     assert.ok(trace.some((event) => event.kind === "mmio-read"));
@@ -1885,7 +1904,7 @@ test("seed-driven native MMIO and DMA input stays in versioned QEMU code", () =>
   assert.match(nvirshBuildrootBasedCvmBuildSource, /virtio_mmio_seed_read/);
   assert.match(qemuSeedPatchSource, /morpheus_virtio_seed_read_slot/);
   assert.match(qemuSeedPatchSource, /MORPHEUS_SEED_WINDOW_SLOTS 128U/);
-  assert.match(qemuSeedPatchSource, /slot->visits >= slot->count/);
+  assert.match(qemuSeedPatchSource, /model->visits >= model->count/);
   assert.doesNotMatch(
     qemuSeedPatchSource,
     /morpheus_virtio_seed_queue_dma_complete|virtqueue_pop|virtqueue_fill|virtqueue_flush|dma_memory_write\(vdev->dma_as/,

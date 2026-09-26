@@ -25,6 +25,8 @@ fi
 source_dir="${MORPHEUS_LIBAFL_SOURCE:?}"
 run_dir="${MORPHEUS_LIBAFL_RUN_DIR:?}"
 install_dir="${MORPHEUS_LIBAFL_INSTALL_DIR:?}"
+seedcodec_path="$(realpath "$(dirname "${BASH_SOURCE[0]}")/seedcodec.py")"
+export MORPHEUS_LIBAFL_SEEDCODEC_PATH="${seedcodec_path}"
 detach="${MORPHEUS_LIBAFL_DETACH:-false}"
 run_seconds="${MORPHEUS_LIBAFL_RUN_SECONDS:-0}"
 result_file="${MORPHEUS_LIBAFL_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
@@ -479,6 +481,7 @@ node - "${log_file}" "${output_dir}" "${replay_mode}" "${replay_state}" <<'NODE'
 const fs = require("fs");
 const crypto = require("crypto");
 const path = require("path");
+const { spawnSync } = require("child_process");
 const logFile = process.argv[2];
 const outputDir = process.argv[3];
 const replayMode = process.argv[4] === "true";
@@ -569,128 +572,48 @@ function countBitsU64(value) {
   return BigInt.asUintN(64, value).toString(2).replace(/0/g, "").length;
 }
 function decodeScenarioUnits(input) {
-  if (!input) return [];
-  const events = [];
-  const schemaVersion = 2;
+  if (!input || input.length === 0) return [];
+  const schemaVersion = 4;
   const source = "seed";
-  const fail = (detail, extra = {}) => {
-    events.push({ schemaVersion, source, kind: "seed-decode-error", detail, ...extra });
-  };
-  const hexWord = (value) => hexValue(BigInt.asUintN(64, value));
-
-  if (input.length < 16) {
-    fail("truncated-present-section");
-    return events;
-  }
-  const presentLo = readU64LE(input, 0);
-  const presentHi = readU64LE(input, 8);
-  let cursor = 16;
-
-  for (let slot = 0; slot < 128; slot += 1) {
-    const reg = slot < 64 ? presentLo : presentHi;
-    const shift = BigInt(slot < 64 ? slot : slot - 64);
-    if (!((reg >> shift) & 1n)) {
-      continue;
-    }
-    if (cursor + 4 > input.length) {
-      fail("truncated-word-model-count", { slot });
-      return events;
-    }
-    const count = input.readUInt32LE(cursor);
-    cursor += 4;
-    if (count === 0 || cursor + count * 4 > input.length) {
-      fail("invalid-word-model-count", { slot, count });
-      return events;
-    }
-    const values = [];
-    for (let visit = 0; visit < count; visit += 1) {
-      values.push(input.readUInt32LE(cursor));
-      cursor += 4;
-    }
-    events.push({
+  const seedcodecPath = process.env.MORPHEUS_LIBAFL_SEEDCODEC_PATH;
+  if (!seedcodecPath || !fs.existsSync(seedcodecPath)) {
+    return [{
       schemaVersion,
       source,
-      kind: "seed-mmio-slot",
-      slot,
-      offset: hexValue(BigInt(slot * 4)),
-      count,
-      values: values.map((value) => hexValue(BigInt(value))),
-    });
+      kind: "seed-decode-error",
+      detail: "seedcodec-not-found",
+      path: seedcodecPath || null,
+    }];
   }
-
-  if (cursor + 4 > input.length) {
-    fail("truncated-coherent-count");
-    return events;
-  }
-  const allocCount = input.readUInt32LE(cursor);
-  cursor += 4;
-  for (let index = 0; index < allocCount; index += 1) {
-    if (cursor + 8 > input.length) {
-      fail("truncated-coherent-index", { index });
-      return events;
-    }
-    const tableIndex = readU64LE(input, cursor);
-    cursor += 8;
-    if (cursor + 16 > input.length) {
-      fail("truncated-coherent-present", { index });
-      return events;
-    }
-    const lo = readU64LE(input, cursor);
-    const hi = readU64LE(input, cursor + 8);
-    cursor += 16;
-    const pc = countBitsU64(lo) + countBitsU64(hi);
-    if (cursor + pc * 4 > input.length) {
-      fail("truncated-coherent-values", { index, count: pc });
-      return events;
-    }
-    const values = [];
-    for (let visit = 0; visit < pc; visit += 1) {
-      values.push(input.readUInt32LE(cursor));
-      cursor += 4;
-    }
-    events.push({
+  const result = spawnSync("python3", [seedcodecPath, "--json", "-"], {
+    input,
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  if (result.status !== 0) {
+    return [{
       schemaVersion,
       source,
-      kind: "seed-coherent-alloc",
-      index,
-      tableIndex: hexValue(tableIndex),
-      present: hexWord((hi << 64n) | lo),
-      count: pc,
-      values: values.map((value) => hexValue(BigInt(value))),
-    });
+      kind: "seed-decode-error",
+      detail: "seedcodec-failed",
+      stderr: result.stderr || "",
+    }];
   }
-
-  let unitIndex = 0;
-  while (cursor < input.length) {
-    if (cursor + 24 > input.length) {
-      fail("truncated-stream-unit", { index: unitIndex });
-      return events;
+  const events = [];
+  for (const line of result.stdout.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      events.push(JSON.parse(line));
+    } catch (error) {
+      return [{
+        schemaVersion,
+        source,
+        kind: "seed-decode-error",
+        detail: "seedcodec-json-parse",
+        line,
+        error: error.message,
+      }];
     }
-    const tableIndex = readU64LE(input, cursor);
-    cursor += 8;
-    const lo = readU64LE(input, cursor);
-    const hi = readU64LE(input, cursor + 8);
-    cursor += 16;
-    const pc = countBitsU64(lo) + countBitsU64(hi);
-    if (cursor + pc * 4 > input.length) {
-      fail("truncated-stream-values", { index: unitIndex, count: pc });
-      return events;
-    }
-    const values = [];
-    for (let visit = 0; visit < pc; visit += 1) {
-      values.push(input.readUInt32LE(cursor));
-      cursor += 4;
-    }
-    events.push({
-      schemaVersion,
-      source,
-      kind: "seed-stream-unit",
-      index: unitIndex,
-      tableIndex: hexValue(tableIndex),
-      count: pc,
-      values: values.map((value) => hexValue(BigInt(value))),
-    });
-    unitIndex += 1;
   }
   return events;
 }

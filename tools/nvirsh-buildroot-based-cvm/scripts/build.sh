@@ -521,8 +521,11 @@ guest_l2_console="${runtime_dir}/l2-console.log"
 guest_qemu_trace_enabled="true"
 
 if [ "${guest_virtio_transport}" = "mmio" ]; then
-  guest_virtio_net_device="virtio-net-device,netdev=net0"
-  guest_bootargs="console=ttyAMA0 oops=panic panic=-1 kasan.fault=panic"
+  # Disable all control features (and therefore the control vq) so the
+  # driver does not block on MQ/mac-filter commands while we arm the RX
+  # used-ring seed.
+  guest_virtio_net_device="virtio-net-device,ctrl_vq=off,ctrl_rx=off,ctrl_vlan=off,ctrl_rx_extra=off,ctrl_mac_addr=off,ctrl_guest_offloads=off,guest_announce=off,mq=off,netdev=net0"
+  guest_bootargs="console=ttyAMA0 oops=panic panic=-1 panic_on_warn=1 kasan.fault=panic"
 fi
 
 if [ ! -d "${runtime_dir}" ]; then
@@ -628,6 +631,8 @@ done
 : > "${guest_qemu_trace_events}"
 printf 'virtio_mmio_read\n' >> "${guest_qemu_trace_events}"
 printf 'virtio_mmio_write_offset\n' >> "${guest_qemu_trace_events}"
+printf 'virtio_mmio_monitor_read\n' >> "${guest_qemu_trace_events}"
+printf 'virtio_mmio_monitor_write\n' >> "${guest_qemu_trace_events}"
 printf 'virtio_mmio_setting_irq\n' >> "${guest_qemu_trace_events}"
 printf 'virtio_mmio_seed_read\n' >> "${guest_qemu_trace_events}"
 printf 'virtio_mmio_seed_dma\n' >> "${guest_qemu_trace_events}"

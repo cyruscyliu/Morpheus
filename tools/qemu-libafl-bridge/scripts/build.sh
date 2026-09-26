@@ -280,13 +280,18 @@ configure_signature="$({
   sha256sum "${source_dir}/linker_interceptor.py" "${source_dir}/linker_interceptor++.py"
 } | sha256sum | awk '{print $1}')"
 
+stored_configure_signature=""
+if [ -f "${signature_file}" ]; then
+  stored_configure_signature="$(cat "${signature_file}")"
+fi
+
 build_is_current=false
 if [ "${reuse_build_dir}" = "true" ] \
   && [ -f "${bridge_lib}" ] \
   && [ -f "${linkinfo_file}" ] \
   && [ -d "${bundle_dir}" ] \
   && [ -f "${signature_file}" ] \
-  && [ "$(cat "${signature_file}")" = "${configure_signature}" ]; then
+  && [ "${stored_configure_signature}" = "${configure_signature}" ]; then
   build_is_current=true
 fi
 

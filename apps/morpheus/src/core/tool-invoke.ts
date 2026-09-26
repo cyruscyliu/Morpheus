@@ -1824,13 +1824,25 @@ function toolCommandArgs(command, resolved, descriptor, passthrough) {
 }
 
 async function handleToolLifecycleCommand(command, argv, usage, options = {}) {
-  const { positionals, flags, passthrough } = parseToolArgs(argv);
+  const initial = parseToolArgs(argv);
+  const initialFlags = initial.flags || {};
+  if (initialFlags.help) {
+    writeStdoutLine(usage);
+    return 0;
+  }
+  const tool = requireFlag(initialFlags, "tool", `${command} requires --tool <name>`);
+  const descriptor = readToolDescriptor(tool);
+  const metadata = descriptorFlagMetadata(descriptor);
+  const { positionals, flags, passthrough } = parseToolArgs(argv, {
+    repeatableFlags: Array.from(metadata.repeatables),
+    booleanFlags: Array.from(metadata.booleans),
+  });
   if (positionals.length > 0 || flags.help) {
     writeStdoutLine(usage);
     return 0;
   }
 
-  const { tool, descriptor, resolved } = resolveInvocation(command, flags, options);
+  const { resolved } = resolveInvocation(command, flags, options);
   const { args } = toolCommandArgs(command, resolved, descriptor, passthrough);
   const remoteEnabled = Boolean(resolved.ssh && resolved.workspace && resolved.localWorkspace && resolved.workspace !== resolved.localWorkspace);
   const payload = normalizeArtifacts(remoteEnabled

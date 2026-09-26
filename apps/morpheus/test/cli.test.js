@@ -168,6 +168,29 @@ test("boolean tool flags consume explicit workflow values", () => {
   );
 });
 
+test("descriptor boolean metadata preserves reuse flag during lifecycle parsing", () => {
+  assert.deepEqual(
+    parseToolArgs([
+      "--json",
+      "--tool",
+      "qemu-libafl-bridge",
+      "--reuse-build-dir",
+      "true",
+    ], {
+      booleanFlags: ["reuse-build-dir"],
+    }),
+    {
+      positionals: [],
+      flags: {
+        json: true,
+        tool: "qemu-libafl-bridge",
+        "reuse-build-dir": true,
+      },
+      passthrough: [],
+    },
+  );
+});
+
 function pidState(pid) {
   const result = spawnSync("ps", ["-o", "stat=", "-p", String(pid)], {
     encoding: "utf8",

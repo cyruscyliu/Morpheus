@@ -238,3 +238,244 @@ test("config check reports template and override errors", () => {
     assert.equal(issue.level, "error");
   });
 });
+
+test("stage-template reference expands to the named stage record", () => {
+  const dir = tempDir("morpheus-templates-");
+  const configPath = writeConfig(dir, [
+    "stage-templates:",
+    "  buildroot-probe:",
+    "    id: buildroot",
+    "    name: buildroot",
+    "    steps:",
+    "      - id: buildroot_fetch",
+    "        tool: buildroot",
+    "        command: fetch",
+    "        args:",
+    "          - --build-version",
+    "          - \"2025.05\"",
+    "      - id: buildroot_build",
+    "        tool: buildroot",
+    "        command: build",
+    "        args:",
+    "          - --defconfig",
+    "          - probe_defconfig",
+    "workflows:",
+    "  sample-stage-template-workflow:",
+    "    category: run",
+    "    stages:",
+    "      - id: buildroot",
+    "        stage-template: buildroot-probe",
+    "      - id: next-stage",
+    "        name: next-stage",
+    "        steps:",
+    "          - id: next_step",
+    "            tool: sample",
+    "            command: build",
+  ]);
+  withConfig(configPath, () => {
+    const resolved = resolveConfiguredWorkflow("sample-stage-template-workflow");
+    assert.deepEqual(
+      resolved.stages.map((stage) => stage.id),
+      ["buildroot", "next-stage"],
+    );
+    const buildStep = resolved.steps.find((entry) => entry.id === "buildroot_build");
+    assert.deepEqual(buildStep.args, ["--defconfig", "probe_defconfig"]);
+  });
+});
+
+test("unknown stage template raises and fails config check", () => {
+  const dir = tempDir("morpheus-templates-");
+  const configPath = writeConfig(dir, [
+    ...TEMPLATE_YAML,
+    "  sample-bad-stage-template:",
+    "    category: run",
+    "    stages:",
+    "      - id: buildroot",
+    "        stage-template: missing-stage-template",
+  ]);
+  withConfig(configPath, () => {
+    assert.throws(
+      () => resolveConfiguredWorkflow("sample-bad-stage-template"),
+      /stage template not found/,
+    );
+    const result = runConfigCheck(configPath);
+    assert.equal(result.exit_code, 1);
+    const issue = result.issues.find((entry) => entry.path === "workflows.sample-bad-stage-template.overrides");
+    assert.ok(issue, "unknown stage template issue");
+    assert.match(issue.message, /stage template not found/);
+  });
+});
+
+test("append override adds flag value pairs at the end of the args", () => {
+  const dir = tempDir("morpheus-templates-");
+  const configPath = writeConfig(dir, [
+    ...TEMPLATE_YAML,
+    "  sample-append-override:",
+    "    template: sample-template",
+    "    overrides:",
+    "      stage-one:",
+    "        --flag+: appended-value",
+    "      stage-two:",
+    "        --repeat+:",
+    "          - added-one",
+    "          - added-two",
+  ]);
+  withConfig(configPath, () => {
+    const resolved = resolveConfiguredWorkflow("sample-append-override");
+    const stepOne = resolved.steps.find((entry) => entry.id === "step-one");
+    assert.deepEqual(stepOne.args, ["--flag", "template-value", "--flag", "appended-value"]);
+    const stepTwo = resolved.steps.find((entry) => entry.id === "step-two");
+    assert.deepEqual(
+      stepTwo.args,
+      ["--repeat", "keep-one", "--repeat", "keep-two", "--repeat", "added-one", "--repeat", "added-two"],
+    );
+  });
+});
+
+test("append override with a null value adds the bare flag", () => {
+  const dir = tempDir("morpheus-templates-");
+  const configPath = writeConfig(dir, [
+    ...TEMPLATE_YAML,
+    "  sample-append-bare-override:",
+    "    template: sample-template",
+    "    overrides:",
+    "      stage-one:",
+    "        --bare+:",
+  ]);
+  withConfig(configPath, () => {
+    const resolved = resolveConfiguredWorkflow("sample-append-bare-override");
+    const step = resolved.steps.find((entry) => entry.id === "step-one");
+    assert.deepEqual(step.args, ["--flag", "template-value", "--bare"]);
+  });
+});
+
+test("remove override drops bare flags and matching value pairs", () => {
+  const dir = tempDir("morpheus-templates-");
+  const configPath = writeConfig(dir, [
+    "workflow-templates:",
+    "  sample-remove-template:",
+    "    category: run",
+    "    stages:",
+    "      - id: stage-one",
+    "        name: stage-one",
+    "        steps:",
+    "          - id: step-one",
+    "            tool: sample",
+    "            command: build",
+    "            args:",
+    "              - --bare",
+    "              - --repeat",
+    "              - keep-one",
+    "              - --repeat",
+    "              - drop-two",
+    "              - --repeat",
+    "              - keep-three",
+    "workflows:",
+    "  sample-remove-override:",
+    "    template: sample-remove-template",
+    "    overrides:",
+    "      stage-one:",
+    "        --bare-: true",
+    "        --repeat-:",
+    "          drop-two: true",
+  ]);
+  withConfig(configPath, () => {
+    const resolved = resolveConfiguredWorkflow("sample-remove-override");
+    const step = resolved.steps.find((entry) => entry.id === "step-one");
+    assert.deepEqual(step.args, ["--repeat", "keep-one", "--repeat", "keep-three"]);
+  });
+});
+
+test("remove override that matches nothing raises an error", () => {
+  const dir = tempDir("morpheus-templates-");
+  const configPath = writeConfig(dir, [
+    ...TEMPLATE_YAML,
+    "  sample-bad-remove:",
+    "    template: sample-template",
+    "    overrides:",
+    "      stage-one:",
+    "        --missing-: true",
+  ]);
+  withConfig(configPath, () => {
+    assert.throws(() => resolveConfiguredWorkflow("sample-bad-remove"), /matched no step argument/);
+  });
+});
+
+test("step-fields override sets step fields without touching args", () => {
+  const dir = tempDir("morpheus-templates-");
+  const configPath = writeConfig(dir, [
+    ...TEMPLATE_YAML,
+    "  sample-step-fields-override:",
+    "    template: sample-template",
+    "    overrides:",
+    "      stage-one:",
+    "        step-fields:",
+    "          timeout-seconds: 99",
+  ]);
+  withConfig(configPath, () => {
+    const resolved = resolveConfiguredWorkflow("sample-step-fields-override");
+    const step = resolved.steps.find((entry) => entry.id === "step-one");
+    assert.equal(step["timeout-seconds"], 99);
+    assert.deepEqual(step.args, ["--flag", "template-value"]);
+  });
+});
+
+test("step-fields override that is not a map raises an error", () => {
+  const dir = tempDir("morpheus-templates-");
+  const configPath = writeConfig(dir, [
+    ...TEMPLATE_YAML,
+    "  sample-bad-step-fields:",
+    "    template: sample-template",
+    "    overrides:",
+    "      stage-one:",
+    "        step-fields: not-a-map",
+  ]);
+  withConfig(configPath, () => {
+    assert.throws(() => resolveConfiguredWorkflow("sample-bad-step-fields"), /matched no step argument/);
+  });
+});
+
+test("template overrides apply to consumers and workflow overrides win", () => {
+  const dir = tempDir("morpheus-templates-");
+  const configPath = writeConfig(dir, [
+    "workflow-templates:",
+    "  sample-templated-override:",
+    "    category: run",
+    "    overrides:",
+    "      stage-one:",
+    "        --flag+: appended-value",
+    "        step-fields:",
+    "          timeout-seconds: 60",
+    "    stages:",
+    "      - id: stage-one",
+    "        name: stage-one",
+    "        steps:",
+    "          - id: step-one",
+    "            tool: sample",
+    "            command: build",
+    "            args:",
+    "              - --flag",
+    "              - template-value",
+    "workflows:",
+    "  sample-template-consumer:",
+    "    template: sample-templated-override",
+  "  sample-override-consumer:",
+  "    template: sample-templated-override",
+  "    overrides:",
+  "      stage-one:",
+  "        --flag:",
+  "          template-value: replaced-value",
+  "        step-fields:",
+  "          timeout-seconds: 120",
+  ]);
+  withConfig(configPath, () => {
+    const inherited = resolveConfiguredWorkflow("sample-template-consumer");
+    const inheritedStep = inherited.steps.find((entry) => entry.id === "step-one");
+    assert.deepEqual(inheritedStep.args, ["--flag", "template-value", "--flag", "appended-value"]);
+    assert.equal(inheritedStep["timeout-seconds"], 60);
+    const overridden = resolveConfiguredWorkflow("sample-override-consumer");
+    const overriddenStep = overridden.steps.find((entry) => entry.id === "step-one");
+    assert.deepEqual(overriddenStep.args, ["--flag", "replaced-value", "--flag", "appended-value"]);
+    assert.equal(overriddenStep["timeout-seconds"], 120);
+  });
+});

@@ -11,10 +11,32 @@
     replace only matching current values for repeated flags
     (`--flag: {current: replacement}`); dotted `stage.flag` keys are
     accepted
+  - `overrides` also support appending args (`--flag+: value`, a list
+    appends one pair per element, a null value appends the bare flag),
+    removing args (`--flag-: true` for bare flags, `--flag-: value` or
+    `--flag-: {current: true}` for pairs), and setting step fields
+    (`step-fields: {timeout-seconds: 4500}`)
+  - a `workflow-templates` entry may carry its own `overrides`; they are
+    applied to every consuming workflow before the workflow's own
+    overrides, so template definitions are self-contained and instances
+    only override what differs
   - `config check` validates template references and override targets so
     errors surface before a run
   - the two CVE replay workflows now share a template and shrink from
     two ~570-line blocks to ~20-line definitions
+- Added a generic `stage-templates` mechanism:
+  - a top-level `stage-templates` map holds named stage-shaped records
+    for any tool
+  - a stage declares `stage-template: <name>` and expands to the named
+    record, keeping its own stage id; `config check` validates the
+    references
+  - the qemu-host, linux, qemu-libafl-bridge, libafl, and linux-l2 stage
+    variants are extracted into stage templates shared by the CVM
+    workflows (linux-l2 into `linux-l2`, `linux-l2-probe`, and
+    `linux-l2-minimal` fragment classes); the buildroot variants into
+    `buildroot-dma-mmio`, `buildroot-probe`, and
+    `buildroot-dma-mmio-seed-v2`; `morpheus.yaml` shrinks from ~7000 to
+    ~3700 lines
 - Added front-end static semantic checks for DeviLang compilation, covering:
   - layout constraints for field modifiers, bit ranges, and immediate values
   - topology constraints for heads, pointers, and list/ring-style links

@@ -38,6 +38,7 @@ const {
   loadWorkflowStepLogPaths,
   loadWorkflowStepLogFiles,
 } = require("../core/workflow-read");
+const { resolveWorkflowTemplateRecord } = require("../core/workflow-templates");
 
 function parseWorkflowArgs(argv) {
   const positionals = [];
@@ -643,7 +644,12 @@ function listConfiguredWorkflows(explicitConfigPath = null) {
   const baseDir = configDir(config.path);
   const items = Object.entries(workflows)
     .map(([name, workflow]) => {
-      const value = workflow && typeof workflow === "object" ? workflow : {};
+      let value;
+      try {
+        value = resolveWorkflowTemplateRecord(config.value || {}, name) || {};
+      } catch {
+        value = workflow && typeof workflow === "object" ? workflow : {};
+      }
       const stageGroups = workflowStageGroups(value);
       const steps = workflowStageEntries(value);
       return {
@@ -914,7 +920,7 @@ function inspectPayloadForRun(workspaceRoot, id) {
 function resolveConfiguredWorkflow(name, explicitConfigPath = null) {
   const config = loadConfig(process.cwd(), { explicitPath: explicitConfigPath });
   const workflows = config && config.value && config.value.workflows ? config.value.workflows : {};
-  const workflow = workflows && workflows[name] ? workflows[name] : null;
+  const workflow = resolveWorkflowTemplateRecord(config.value || {}, name);
   if (!workflow) {
     throw new Error(`unknown configured workflow: ${name}; run 'morpheus workflow list' to inspect available workflows`);
   }
@@ -3459,6 +3465,7 @@ module.exports = {
   runSingleToolWorkflow,
   runToolBuildWorkflow,
   resolveConfiguredStepArgs,
+  resolveConfiguredWorkflow,
   stopWorkflowRun,
   removeWorkflowRun
 };

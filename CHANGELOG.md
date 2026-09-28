@@ -2,6 +2,19 @@
 
 ## 0.4.3
 
+- Added workflow templates and overrides for `morpheus.yaml`:
+  - a top-level `workflow-templates` map holds shared, workflow-shaped
+    definitions
+  - a workflow may declare `template:` and inherit the template stages;
+    workflow stages with the same id replace the template stage in place
+  - `overrides` retarget flag values per stage (`--flag: value`), or
+    replace only matching current values for repeated flags
+    (`--flag: {current: replacement}`); dotted `stage.flag` keys are
+    accepted
+  - `config check` validates template references and override targets so
+    errors surface before a run
+  - the two CVE replay workflows now share a template and shrink from
+    two ~570-line blocks to ~20-line definitions
 - Added front-end static semantic checks for DeviLang compilation, covering:
   - layout constraints for field modifiers, bit ranges, and immediate values
   - topology constraints for heads, pointers, and list/ring-style links

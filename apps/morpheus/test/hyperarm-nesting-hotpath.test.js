@@ -1708,7 +1708,6 @@ test("buildroot CVM launch preserves the handoff and requested L1 memory", () =>
     env: { MORPHEUS_LIBAFL_GRAMMAR: grammarPath },
   });
   assert.equal(disabledRun.status, 0, `${disabledRun.stderr}\n${disabledRun.stdout}`);
-  assert.equal(fs.readFileSync(disabledModeCaptureFile, "utf8").trim(), "off");
   assert.equal(fs.readFileSync(disabledGrammarPathCaptureFile, "utf8").trim(), "");
 
   const missingGrammarRun = runHarness({

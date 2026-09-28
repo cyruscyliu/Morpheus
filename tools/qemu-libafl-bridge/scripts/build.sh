@@ -2,6 +2,7 @@
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/lock.sh"
 
 repo_root="${MORPHEUS_REPO_ROOT:?missing MORPHEUS_REPO_ROOT}"
 source_dir="${MORPHEUS_QEMU_LIBAFL_BRIDGE_SOURCE:?missing bridge source}"
@@ -13,6 +14,7 @@ target_list_raw="${MORPHEUS_QEMU_LIBAFL_BRIDGE_TARGET_LIST:-}"
 configure_arg_raw="${MORPHEUS_QEMU_LIBAFL_BRIDGE_CONFIGURE_ARG:-}"
 jobs="${MORPHEUS_QEMU_LIBAFL_BRIDGE_JOBS:-$(morpheus_default_jobs)}"
 reuse_build_dir="${MORPHEUS_QEMU_LIBAFL_BRIDGE_REUSE_BUILD_DIR:-false}"
+build_dir_key="${MORPHEUS_QEMU_LIBAFL_BRIDGE_BUILD_DIR_KEY:-default}"
 result_file="${MORPHEUS_QEMU_LIBAFL_BRIDGE_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?missing result file}}"
 build_version="${MORPHEUS_QEMU_LIBAFL_BRIDGE_BUILD_VERSION:-}"
 manifest_file="${build_dir}/manifest.json"
@@ -22,6 +24,9 @@ linkinfo_file="${build_dir}/linkinfo.json"
 bundle_dir="${build_dir}/qemu-bundle/usr/local/share/qemu"
 installed_lib="${install_dir}/lib/libqemu-system-aarch64.so"
 installed_bundle="${install_dir}/share/qemu"
+morpheus_lock_acquire "${source_dir}.morpheus.lock"
+morpheus_build_lock qemu-libafl-bridge "${build_dir_key}"
+trap morpheus_lock_release EXIT INT TERM
 
 case "${source_dir}" in
   /*) ;;
@@ -352,7 +357,18 @@ cp -f "${bridge_lib}" "${installed_lib}"
 if [ -L "${installed_bundle}" ] || [ -e "${installed_bundle}" ]; then
   rm -rf "${installed_bundle}"
 fi
-ln -s "${bundle_dir}" "${installed_bundle}"
+if [ -L "${installed_bundle}" ]; then
+  current_bundle="$(readlink "${installed_bundle}")"
+  if [ "${current_bundle}" != "${bundle_dir}" ]; then
+    rm -f "${installed_bundle}"
+    ln -s "${bundle_dir}" "${installed_bundle}"
+  fi
+elif [ -e "${installed_bundle}" ]; then
+  rm -rf "${installed_bundle}"
+  ln -s "${bundle_dir}" "${installed_bundle}"
+else
+  ln -s "${bundle_dir}" "${installed_bundle}"
+fi
 
 cat > "${manifest_file}" <<EOF
 {"schemaVersion":1,"tool":"qemu-libafl-bridge","status":"success","source":"${source_dir}","buildDir":"${build_dir}","installDir":"${install_dir}","buildVersion":"${build_version}","targetList":"${target_csv}","bridgeLibrary":"${installed_lib}","bridgeBuildLibrary":"${bridge_lib}","dataDir":"${bundle_dir}","linkinfo":"${linkinfo_file}","reused":${build_is_current}}

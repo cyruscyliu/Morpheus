@@ -46,6 +46,7 @@ const allowedHiddenFiles = new Set([
 ]);
 const allowedFileExtensions = new Set([
   ".c",
+  ".sdg",
   ".cjs",
   ".cmake",
   ".config",
@@ -140,6 +141,16 @@ function shouldSkipStructureSubtree(relativeDir) {
     normalized === ".tmp" ||
     normalized.startsWith(".tmp/") ||
     /(^|\/)\.morpheus(?:\/|$)/.test(normalized)
+  ) {
+    return true;
+  }
+  if (/^tools\/sdg-extractor\/third_party\/SVF(?:\/|$)/.test(normalized)) {
+    return true;
+  }
+
+  if (
+    /^tools\/sdg-extractor\/(src|tests)\/__pycache__(\/|$)/.test(normalized)
+    || /^tools\/sdg-extractor\/third_party\/SVF\/(build|install|\.git|\.github|docs\/images)(\/|$)/.test(normalized)
   ) {
     return true;
   }

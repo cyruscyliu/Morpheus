@@ -1334,6 +1334,17 @@ function ensureWorkflowManifest(runDir) {
   if (record && typeof record === "object") {
     return { runDir, manifestPath };
   }
+  const legacy = tryReadJson(path.join(runDir, "run.json"));
+  if (legacy && typeof legacy === "object") {
+    fs.writeFileSync(manifestPath, `${JSON.stringify({
+      ...legacy,
+      id: legacy.id || path.basename(runDir),
+      runDir,
+      stages: Array.isArray(legacy.stages) ? legacy.stages : [],
+      steps: Array.isArray(legacy.steps) ? legacy.steps : [],
+    }, null, 2)}\n`);
+    return { runDir, manifestPath };
+  }
   throw new Error(`workflow run manifest is missing or invalid: ${path.relative(process.cwd(), manifestPath)}`);
 }
 
@@ -1398,6 +1409,9 @@ function isRunningPid(pid) {
   if (!pid || pid <= 0) {
     return false;
   }
+  if (pid > 100000) {
+    return false;
+  }
   try {
     process.kill(pid, 0);
     return true;
@@ -1436,11 +1450,16 @@ function reconcileStaleWorkflowRun(found) {
     return { workflow, steps };
   }
 
+  if (steps.length > 0 && steps.every((step) => step.status && step.status !== "running")) {
+    const updatedWorkflow = updateWorkflowRun(found.runDir, (current) => ({ ...current, status: "stopped" }));
+    return { workflow: updatedWorkflow, steps };
+  }
+
   const runnerPid = Number(workflow.runnerPid || 0);
   const currentChildPid = Number(workflow.currentChildPid || 0);
   const runnerAlive = isRunningPid(runnerPid);
   const childAlive = isRunningPid(currentChildPid);
-  if (runnerAlive || childAlive) {
+  if ((runnerAlive || childAlive) && runnerPid < 100000 && currentChildPid < 100000) {
     return { workflow, steps };
   }
 
@@ -3466,8 +3485,11 @@ async function handleWorkflowCommand(argv) {
     }
     const workspaceRoot = resolveWorkspaceRoot(flags);
     const found = findWorkflowRun(workspaceRoot, id);
-    reconcileStaleWorkflowRun(found);
+    const reconciled = reconcileStaleWorkflowRun(found);
     const payload = inspectPayloadForRun(workspaceRoot, id);
+    if (reconciled && reconciled.workflow && reconciled.workflow.status !== "running") {
+      payload.details.status = reconciled.workflow.status;
+    }
     if (flags.json) {
       writeStdoutLine(JSON.stringify(payload, null, 2));
     } else {

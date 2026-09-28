@@ -2,6 +2,7 @@
 set -euo pipefail
 
 tool_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${tool_root}/../_shared/scripts/lock.sh"
 legacy="${tool_root}/llbic"
 runtime_helper_default="$(cd "${tool_root}/../llbase/scripts" && pwd)/runtime.sh"
 result_file="${MORPHEUS_LLBIC_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
@@ -19,6 +20,10 @@ file_file="${MORPHEUS_LLBIC_FILE_FILE:-}"
 file_inline="${MORPHEUS_LLBIC_FILE:-}"
 rust_target_file="${MORPHEUS_LLBIC_RUST_TARGET_FILE:-}"
 rust_target_inline="${MORPHEUS_LLBIC_RUST_TARGET:-}"
+build_dir_key="${MORPHEUS_LLBIC_BUILD_DIR_KEY:-${build_version:-default}}"
+morpheus_lock_acquire "${sources_dir}.morpheus.lock"
+morpheus_build_lock llbic "${build_dir_key}"
+trap morpheus_lock_release EXIT INT TERM
 
 mkdir -p "${sources_dir}" "${output_dir}"
 

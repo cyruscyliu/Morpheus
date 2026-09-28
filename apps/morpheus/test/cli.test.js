@@ -455,7 +455,7 @@ test("tool list discovers repo-local tools", () => {
   assert.equal(Object.prototype.hasOwnProperty.call(payload, "tools"), false);
   assert.deepEqual(
     payload.details.tools.map((tool) => tool.name),
-    ["buildroot", "devilang", "driver-callgraph", "libafl", "libvmm", "linux", "llbase", "llbic", "llcg", "microkit-sdk", "nqc2", "nvirsh", "nvirsh-buildroot-based-cvm", "pkvm-aarch64", "qemu", "qemu-libafl-bridge", "sel4"]
+    ["buildroot", "devilang", "driver-callgraph", "libafl", "libvmm", "linux", "llbase", "llbic", "llcg", "microkit-sdk", "nqc2", "nvirsh", "nvirsh-buildroot-based-cvm", "pkvm-aarch64", "qemu", "qemu-libafl-bridge", "sdg-extractor", "sel4"]
   );
 });
 

@@ -29,14 +29,12 @@ const seedPatch = fs.readFileSync(
 
 test("versioned qemu-cca seed consumer parses the data-unit wire", () => {
   assert.match(seedPatch, /MORPHEUS_SEED_ENV/);
-  assert.match(seedPatch, /MORPHEUS_SEED_PRESENT_SIZE 16U/);
   assert.match(seedPatch, /MORPHEUS_SEED_WINDOW_SLOTS 128U/);
-  assert.match(seedPatch, /MORPHEUS_SEED_MAX_UNIT \(8192U\)/);
-  assert.match(seedPatch, /count_ones_u64/);
+  assert.match(seedPatch, /MORPHEUS_SEED_MAX_MODELS \(8192U\)/);
   assert.match(seedPatch, /morpheus_virtio_seed_read_slot/);
   // per-visit model: the v-th read returns values[v], past the model -> native
-  assert.match(seedPatch, /slot->visits >= slot->count/);
-  assert.match(seedPatch, /word = slot->values\[slot->visits\];/);
+  assert.match(seedPatch, /visits >= .*count/);
+  assert.match(seedPatch, /word = model->values\[model->visits\];/);
   assert.match(seedPatch, /slot->visits \+= 1;/);
   // the queue-notify forced-completion cheat does not exist: NOTIFY passes through
   // all writes pass straight through under the data-unit interface

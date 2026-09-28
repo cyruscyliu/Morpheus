@@ -199,6 +199,10 @@ function readWorkflowRecord(runDir) {
   if (direct && typeof direct === "object") {
     return normalizeWorkflowRecordAliases(direct);
   }
+  const legacy = tryReadJson(path.join(runDir, "run.json"));
+  if (legacy && typeof legacy === "object") {
+    return normalizeWorkflowRecordAliases(legacy);
+  }
   return readJson(manifestPath);
 }
 
@@ -577,7 +581,9 @@ function summarizeWorkflowFirst(runDir) {
   const steps = stepRecords.map((entry) => entry.summary);
   const stages = groupStageSummaries(steps);
   const graph = buildGraph(steps, relations);
-  const status = workflowStatusFromSteps(record.status, steps);
+  const status = ["error", "stopped", "success"].includes(record.status)
+    ? record.status
+    : workflowStatusFromSteps(record.status, steps);
   return {
     id: String(record.id || path.basename(runDir)),
     kind: "workflow",

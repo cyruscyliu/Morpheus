@@ -129,7 +129,12 @@ function templateValues(buildVersion, buildDirKey, extras = {}) {
     tool: extras.tool || null,
     toolchainVersion: extras.toolchainVersion || "12.3.rel1",
     example: extras.example || "virtio",
+    invocationId: extras.invocationId || "invocation",
   };
+}
+
+function generateInvocationId() {
+  return `inv-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 10)}`;
 }
 
 function cachePolicyFromResolved(resolved) {
@@ -143,6 +148,13 @@ function cachePolicyFromResolved(resolved) {
     builds: resolved.__cache_builds || "workspace",
     src: resolved.__cache_src || "workspace",
   };
+}
+
+function lockRootFromResolved(resolved) {
+  const policy = cachePolicyFromResolved(resolved);
+  return policy && policy.root && policy.namespace
+    ? path.join(policy.root, policy.namespace, "locks")
+    : null;
 }
 
 function resolveManagedRelativePath(workspace, relativePath, cachePolicy) {
@@ -1885,6 +1897,9 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
   );
   const toolCommand = command;
   const effective = resolveToolDependencies(resolved, toolCommand);
+  if (["exec", "benchmark"].includes(command) && !effective.invocationId) {
+    effective.invocationId = generateInvocationId();
+  }
   const workflowStepCwd = ["exec", "benchmark"].includes(command) && (
     fs.existsSync(path.join(process.cwd(), "step.json"))
     || fs.existsSync(path.join(process.cwd(), "stage.json"))
@@ -1937,6 +1952,7 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
       defaultExecRunDir(workspaceForExec, tool, descriptor, {
         toolchainVersion: effective["toolchain-version"] || null,
         example: effective.example || null,
+        invocationId: effective.invocationId || null,
       })
       || legacyExecRunDir
     )
@@ -1955,10 +1971,15 @@ async function handleToolPassthroughCommand(command, argv, usage, options = {}) 
     fs.mkdirSync(childCwd, { recursive: true });
   }
 
+  const toolEnv = { ...process.env };
+  const lockRoot = lockRootFromResolved(effective);
+  if (lockRoot) {
+    toolEnv.MORPHEUS_LOCK_ROOT = lockRoot;
+  }
   const payload = remoteEnabled
     ? await executeRemoteTopLevelToolCommand(command, tool, args, effective, flags)
     : parseToolPayload(
-      await runToolStreaming(descriptor, args, { jsonMode: Boolean(flags.json), env: process.env, cwd: childCwd, workspace: effective.workspace, emitStream: Boolean(process.env.MORPHEUS_EVENT_LOG_FILE) }),
+      await runToolStreaming(descriptor, args, { jsonMode: Boolean(flags.json), env: toolEnv, cwd: childCwd, workspace: effective.workspace, emitStream: Boolean(process.env.MORPHEUS_EVENT_LOG_FILE) }),
       `failed to ${command} with tool ${tool}`
     );
 

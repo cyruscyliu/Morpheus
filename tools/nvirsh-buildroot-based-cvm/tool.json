@@ -228,7 +228,7 @@
       "sourceTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/source",
       "buildDirTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/build",
       "installDirTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/install",
-      "execDirTemplate": "runs/nvirsh-buildroot-based-cvm/{buildDirKey}",
+      "execDirTemplate": "runs/nvirsh-buildroot-based-cvm/{buildDirKey}/{invocationId}",
       "artifacts": {
         "prepared-state": {
           "pathTemplate": "tools/nvirsh-buildroot-based-cvm/builds/{buildDirKey}/install/state.json"

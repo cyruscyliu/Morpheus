@@ -2,6 +2,7 @@
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/lock.sh"
 
 source_dir="${MORPHEUS_NVIRSH_SOURCE:?}"
 build_dir="${MORPHEUS_NVIRSH_BUILD_DIR:?}"
@@ -19,6 +20,7 @@ guest_nqc2_plugin="${MORPHEUS_NVIRSH_GUEST_NQC2_PLUGIN:-}"
 l2_mode="${MORPHEUS_NVIRSH_L2_MODE:-vm}"
 reuse_build_dir="${MORPHEUS_NVIRSH_REUSE_BUILD_DIR:-false}"
 phase="${MORPHEUS_NVIRSH_PHASE:-build}"
+morpheus_build_lock nvirsh "${build_dir_key}"
 guest_jobs="${MORPHEUS_NVIRSH_GUEST_JOBS:-$(morpheus_default_jobs)}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 profile_file="${source_dir}/profile.json"

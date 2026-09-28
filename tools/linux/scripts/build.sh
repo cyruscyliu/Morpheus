@@ -2,6 +2,7 @@
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/lock.sh"
 
 source_dir="${MORPHEUS_LINUX_SOURCE:?}"
 output_dir="${MORPHEUS_LINUX_OUTPUT:?}"
@@ -16,6 +17,11 @@ git_ref="${MORPHEUS_LINUX_GIT_REF:-}"
 fetch_submodules="${MORPHEUS_LINUX_FETCH_SUBMODULES:-false}"
 build_version="${MORPHEUS_LINUX_BUILD_VERSION:-}"
 reuse_build_dir="${MORPHEUS_LINUX_REUSE_BUILD_DIR:-false}"
+build_dir_key="${MORPHEUS_LINUX_BUILD_DIR_KEY:-${build_version:-default}}"
+morpheus_lock_acquire "${source_dir}.morpheus.lock"
+morpheus_build_lock linux "${build_dir_key}"
+trap morpheus_lock_release EXIT INT TERM
+morpheus_build_lock linux "${build_dir_key}"
 build_inputs_state_file="${output_dir}/.morpheus-build-inputs.json"
 
 compute_build_inputs_fingerprint() {

@@ -139,7 +139,7 @@
       "sourceTemplate": "tools/nvirsh/builds/{buildDirKey}/source",
       "buildDirTemplate": "tools/nvirsh/builds/{buildDirKey}/build",
       "installDirTemplate": "tools/nvirsh/builds/{buildDirKey}/install",
-      "execDirTemplate": "runs/nvirsh/{buildDirKey}",
+      "execDirTemplate": "runs/nvirsh/{buildDirKey}/{invocationId}",
       "artifacts": {
         "profile-source": {
           "pathTemplate": "tools/nvirsh/builds/{buildDirKey}/source"

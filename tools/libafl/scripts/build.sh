@@ -3,12 +3,15 @@ set -euo pipefail
 
 repo_root="${MORPHEUS_REPO_ROOT:?missing MORPHEUS_REPO_ROOT}"
 source "${repo_root}/tools/_shared/scripts/parallelism.sh"
+source "${repo_root}/tools/_shared/scripts/lock.sh"
 
 source_dir="${MORPHEUS_LIBAFL_SOURCE:?}"
 build_dir="${MORPHEUS_LIBAFL_BUILD_DIR:?}"
 install_dir="${MORPHEUS_LIBAFL_INSTALL_DIR:?}"
 cargo_arg_file="${MORPHEUS_LIBAFL_CARGO_ARG_FILE:-}"
 reuse_build_dir="${MORPHEUS_LIBAFL_REUSE_BUILD_DIR:-false}"
+build_dir_key="${MORPHEUS_LIBAFL_BUILD_DIR_KEY:-default}"
+morpheus_build_lock libafl "${build_dir_key}"
 result_file="${MORPHEUS_LIBAFL_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 tmp_root="${build_dir}/tmp"
 guest_target="aarch64-unknown-linux-gnu"

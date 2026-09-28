@@ -28,6 +28,10 @@ if [ ! -d "${patch_dir}" ]; then
   exit 1
 fi
 
+source_lock="${source_dir}.morpheus.lock"
+morpheus_lock_acquire "${source_lock}"
+trap morpheus_lock_release EXIT INT TERM
+
 recreate_clean_source() {
   local seed_dir=""
   local archive_url=""

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+source "$(dirname "${BASH_SOURCE[0]}")/lock.sh"
+
 morpheus_json_field() {
   local file="$1"
   local field="$2"

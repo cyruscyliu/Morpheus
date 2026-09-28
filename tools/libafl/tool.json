@@ -291,7 +291,7 @@
       "sourceTemplate": "tools/libafl/builds/{buildDirKey}/source",
       "buildDirTemplate": "tools/libafl/builds/{buildDirKey}/build",
       "installDirTemplate": "tools/libafl/builds/{buildDirKey}/install",
-      "execDirTemplate": "runs/libafl/{buildDirKey}",
+      "execDirTemplate": "runs/libafl/{buildDirKey}/{invocationId}",
       "artifacts": {
         "source-dir": {
           "pathTemplate": "tools/libafl/builds/{buildDirKey}/source"

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/lock.sh"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 source_dir="${MORPHEUS_QEMU_SOURCE:?}"
@@ -20,6 +21,11 @@ seed_dir="${MORPHEUS_QEMU_SEED_DIR:-}"
 build_version="${MORPHEUS_QEMU_BUILD_VERSION:-}"
 artifact_path="${install_dir}/bin/qemu-system-aarch64"
 reuse_build_dir="${MORPHEUS_QEMU_REUSE_BUILD_DIR:-false}"
+build_dir_key="${MORPHEUS_QEMU_BUILD_DIR_KEY:-${build_version:-default}}"
+morpheus_lock_acquire "${source_dir}.morpheus.lock"
+morpheus_build_lock qemu "${build_dir_key}"
+trap morpheus_lock_release EXIT INT TERM
+morpheus_build_lock qemu "${build_dir_key}"
 needs_rebuild="true"
 use_system_meson="${MORPHEUS_QEMU_USE_SYSTEM_MESON:-0}"
 configure_signature_file="${build_dir}/.morpheus-configure-signature"

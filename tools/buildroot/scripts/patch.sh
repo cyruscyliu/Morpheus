@@ -18,6 +18,10 @@ if [ ! -d "${patch_dir}" ]; then
   exit 1
 fi
 
+source_lock="${source_dir}.morpheus.lock"
+morpheus_lock_acquire "${source_lock}"
+trap morpheus_lock_release EXIT INT TERM
+
 has_strategy() {
   case ",${patch_strategies}," in
     *,"$1",*) return 0 ;;

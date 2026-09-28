@@ -222,8 +222,10 @@ function checkStepArtifactReferences(value) {
 // Workflows reuse cached build artifacts by matching --build-dir-key
 // strings. Steps that share a (tool, command, --build-dir-key) triple must
 // agree on the build-defining arguments; per-run flags (source tree,
-// output dir, run dir) are excluded. Divergence makes the cache behavior
-// uncertain: one consumer's rebuild clobbers what the others expect.
+// output dir, run dir) are excluded. Steps without an explicit
+// --build-dir-key inherit the tool config's default key and are grouped
+// under it too. Divergence makes the cache behavior uncertain: one
+// consumer's rebuild clobbers what the others expect.
 function checkBuildKeyConsistency(value) {
   const issues = [];
   const workflows = value.workflows;
@@ -251,12 +253,22 @@ function checkBuildKeyConsistency(value) {
           continue;
         }
         const keyIndex = step.args.findIndex((item) => item === "--build-dir-key");
-        const buildKey = keyIndex >= 0 ? String(step.args[keyIndex + 1] || "") : "";
+        let buildKey = keyIndex >= 0 ? String(step.args[keyIndex + 1] || "") : "";
+        if (!buildKey) {
+          const toolConfig = value.tools && typeof value.tools === "object"
+            ? value.tools[step.tool]
+            : null;
+          buildKey = toolConfig && typeof toolConfig === "object"
+            ? String(toolConfig["build-dir-key"] || "")
+            : "";
+        }
         if (!buildKey) {
           continue;
         }
         const args = step.args.filter((arg, index) => (
           !runSpecificFlags.has(String(arg))
+          && String(arg) !== "--build-dir-key"
+          && String(step.args[index - 1] || "") !== "--build-dir-key"
           && (index === 0 || !runSpecificFlags.has(String(step.args[index - 1])))
         ));
         const groupKey = `${step.tool}|${step.command || "exec"}|${buildKey}`;

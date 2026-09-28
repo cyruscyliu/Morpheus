@@ -245,3 +245,75 @@ test("config check warns when a build key is shared with diverging arguments", (
     assert.equal(issue.level, "warn");
   });
 });
+
+test("config check groups build steps without an explicit build-dir-key under the tool default", () => {
+  const dir = tempDir("morpheus-bkey-default-");
+  const configPath = writeConfig(dir, [
+    "tools:",
+    "  sample:",
+    "    mode: local",
+    "    build-dir-key: default-key",
+    "workflows:",
+    "  sample-build:",
+    "    category: build",
+    "    steps:",
+    "      - id: build_step",
+    "        tool: sample",
+    "        command: build",
+    "        args:",
+    "          - --defconfig",
+    "          - defconfig_a",
+    "  sample-run:",
+    "    category: run",
+    "    steps:",
+    "      - id: build_step",
+    "        tool: sample",
+    "        command: build",
+    "        args:",
+    "          - --defconfig",
+    "          - defconfig_b",
+  ]);
+  withConfig(configPath, () => {
+    const result = runConfigCheck(configPath);
+    assert.equal(result.exit_code, 0);
+    const issue = result.issues.find((entry) => entry.message.includes("build key sample / build / default-key"));
+    assert.ok(issue, "tool-default build key issue");
+    assert.equal(issue.level, "warn");
+  });
+});
+
+test("config check treats an explicit build-dir-key and the tool default as one cache", () => {
+  const dir = tempDir("morpheus-bkey-mixed-");
+  const configPath = writeConfig(dir, [
+    "tools:",
+    "  sample:",
+    "    mode: local",
+    "    build-dir-key: default-key",
+    "workflows:",
+    "  sample-build:",
+    "    category: build",
+    "    steps:",
+    "      - id: build_step",
+    "        tool: sample",
+    "        command: build",
+    "        args:",
+    "          - --build-dir-key",
+    "          - default-key",
+    "          - --defconfig",
+    "          - defconfig_a",
+    "  sample-run:",
+    "    category: run",
+    "    steps:",
+    "      - id: build_step",
+    "        tool: sample",
+    "        command: build",
+    "        args:",
+    "          - --defconfig",
+    "          - defconfig_a",
+  ]);
+  withConfig(configPath, () => {
+    const result = runConfigCheck(configPath);
+    const issue = result.issues.find((entry) => entry.message.includes("diverging arguments"));
+    assert.ok(!issue, "no divergence for matching explicit and implicit keys");
+  });
+});

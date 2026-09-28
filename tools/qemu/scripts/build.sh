@@ -25,7 +25,6 @@ build_dir_key="${MORPHEUS_QEMU_BUILD_DIR_KEY:-${build_version:-default}}"
 morpheus_lock_acquire "${source_dir}.morpheus.lock"
 morpheus_build_lock qemu "${build_dir_key}"
 trap morpheus_lock_release EXIT INT TERM
-morpheus_build_lock qemu "${build_dir_key}"
 needs_rebuild="true"
 use_system_meson="${MORPHEUS_QEMU_USE_SYSTEM_MESON:-0}"
 configure_signature_file="${build_dir}/.morpheus-configure-signature"

@@ -18,7 +18,6 @@ build_dir_key="${MORPHEUS_BUILDROOT_BUILD_DIR_KEY:-${build_version:-default}}"
 morpheus_lock_acquire "${source_dir}.morpheus.lock"
 morpheus_build_lock buildroot "${build_dir_key}"
 trap morpheus_lock_release EXIT INT TERM
-morpheus_build_lock buildroot "${build_dir_key}"
 build_inputs_state_file="${output_dir}/.morpheus-build-inputs.json"
 tmp_dir="${MORPHEUS_BUILDROOT_TMPDIR:-${output_dir}/tmp}"
 

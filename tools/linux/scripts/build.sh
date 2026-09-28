@@ -21,7 +21,6 @@ build_dir_key="${MORPHEUS_LINUX_BUILD_DIR_KEY:-${build_version:-default}}"
 morpheus_lock_acquire "${source_dir}.morpheus.lock"
 morpheus_build_lock linux "${build_dir_key}"
 trap morpheus_lock_release EXIT INT TERM
-morpheus_build_lock linux "${build_dir_key}"
 build_inputs_state_file="${output_dir}/.morpheus-build-inputs.json"
 
 compute_build_inputs_fingerprint() {

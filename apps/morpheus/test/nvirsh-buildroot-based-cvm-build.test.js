@@ -13,6 +13,11 @@ const buildScript = path.join(
   "scripts",
   "build.sh",
 );
+const buildScriptSource = fs.readFileSync(buildScript, "utf8");
+
+test("buildroot-based CVM build recreates the state parent before publication", () => {
+  assert.match(buildScriptSource, /fs\.mkdirSync\(path\.dirname\(stateFile\), \{ recursive: true \}\)/);
+});
 const inspectScript = path.join(
   repoRoot,
   "tools",

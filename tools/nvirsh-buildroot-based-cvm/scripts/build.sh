@@ -1034,6 +1034,7 @@ const state = {
   createdAt: now,
   updatedAt: now,
 };
+fs.mkdirSync(path.dirname(stateFile), { recursive: true });
 fs.writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`);
 NODE
 

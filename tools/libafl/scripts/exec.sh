@@ -33,7 +33,6 @@ result_file="${MORPHEUS_LIBAFL_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
 
 nvirsh_state=""
-l2_run_window_ms=""
 l2_mode="vm"
 l2_accel="auto"
 l2_cpu=""
@@ -76,7 +75,6 @@ fi
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --nvirsh-state) shift; nvirsh_state="${1:-}" ;;
-    --l2-run-window-ms) shift; l2_run_window_ms="${1:-}" ;;
     --l2-mode) shift; l2_mode="${1:-}" ;;
     --l2-accel) shift; l2_accel="${1:-}" ;;
     --l2-cpu) shift; l2_cpu="${1:-}" ;;
@@ -309,12 +307,6 @@ if [ "${replay_enabled}" = "true" ] && [ "${detach}" = "true" ]; then
   echo "libafl replay does not support --detach" >&2
   exit 1
 fi
-if [ -n "${l2_run_window_ms}" ]; then
-  if ! [[ "${l2_run_window_ms}" =~ ^[0-9]+$ ]] || [ "${l2_run_window_ms}" -lt 1000 ] || [ "${l2_run_window_ms}" -gt 900000 ]; then
-    echo "l2-run-window-ms must be an integer between 1000 and 900000" >&2
-    exit 1
-  fi
-fi
 case "${l2_mode}" in vm|cvm) ;; *) echo "l2-mode must be one of: vm, cvm" >&2; exit 1 ;; esac
 case "${l2_accel}" in auto|kvm|tcg) ;; *) echo "l2-accel must be one of: auto, kvm, tcg" >&2; exit 1 ;; esac
 if [ -n "${l2_cpu}" ]; then
@@ -333,8 +325,8 @@ if [ -n "${l2_memory_mb}" ]; then
   fi
 fi
 
-printf '[libafl/qemu_nesting] l2 controls: mode=%s accel=%s cpu=%s window_ms=%s\n' \
-  "${l2_mode}" "${l2_accel}" "${l2_cpu:-default}" "${l2_run_window_ms:-default}" >&2
+printf '[libafl/qemu_nesting] l2 controls: mode=%s accel=%s cpu=%s\n' \
+  "${l2_mode}" "${l2_accel}" "${l2_cpu:-default}" >&2
 printf '[libafl/qemu_nesting] l2 smp=%s startup_measurement=%s\n' \
   "${l2_smp:-launcher-default}" "${measure_l2_startup}" >&2
 if [ -n "${l2_memory_mb}" ]; then
@@ -1000,9 +992,6 @@ fi
 if [ "${capture_runtime}" = "true" ]; then
   direct_l1_append="${direct_l1_append} morpheus.capture_runtime=1"
 fi
-if [ -n "${l2_run_window_ms}" ]; then
-  direct_l1_append="${direct_l1_append} morpheus.l2_run_window_ms=${l2_run_window_ms}"
-fi
 if [ "${l2_mode}" != "vm" ]; then
   direct_l1_append="${direct_l1_append} morpheus.l2_mode=${l2_mode}"
 fi
@@ -1036,12 +1025,6 @@ append_l2_fw_cfg() {
       args+=("-fw_cfg" "name=opt/morpheus/capture-runtime,string=1")
     fi
     args+=("-smbios" "type=11,value=morpheus.capture_runtime=1")
-  fi
-  if [ -n "${l2_run_window_ms}" ]; then
-    if [ "${fw_cfg_supported}" = "true" ]; then
-      args+=("-fw_cfg" "name=opt/morpheus/l2-run-window-ms,string=${l2_run_window_ms}")
-    fi
-    args+=("-smbios" "type=11,value=morpheus.l2_run_window_ms=${l2_run_window_ms}")
   fi
   if [ "${l2_mode}" != "vm" ]; then
     if [ "${fw_cfg_supported}" = "true" ]; then
@@ -1097,9 +1080,6 @@ elif [ "${MORPHEUS_L2_SHELL_TRACE:-0}" = "1" ]; then
   # The launcher runs inside the L1 guest, so an observation-only trace flag
   # from the host must be carried through the init command explicitly.
   direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_SHELL_TRACE=1"
-fi
-if [ -n "${l2_run_window_ms}" ]; then
-  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_RUN_WINDOW_MS=${l2_run_window_ms}"
 fi
 if [ "${capture_runtime}" = "true" ]; then
   direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_CAPTURE_RUNTIME=1"
@@ -1615,28 +1595,9 @@ fi
 if [ -n "${initial_generated_seeds}" ]; then
   launch_env+=("MORPHEUS_LIBAFL_INITIAL_GENERATED_SEEDS=${initial_generated_seeds}")
 fi
-if [ -n "${l2_run_window_ms}" ]; then
-  launch_env+=("MORPHEUS_LIBAFL_L2_RUN_WINDOW_MS=${l2_run_window_ms}")
-  # Default non-replay executor timeout is 12s, far below CVM L2 windows.
-  # Cover the full L2 window plus the nested-CVM boot inside each iteration
-  # (it consumes several minutes of wall time under TCG) and the shutdown
-  # handback, so a normal iteration reports exit=Ok instead of a
-  # window-boundary timeout objective.
-  if [ -z "${MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS:-}" ]; then
-    executor_timeout_secs=$(( (l2_run_window_ms + 999) / 1000 + 300 ))
-    if [ "${executor_timeout_secs}" -lt 300 ]; then
-      executor_timeout_secs=300
-    fi
-    launch_env+=("MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS=${executor_timeout_secs}")
-    printf '[libafl/qemu_nesting] executor timeout seconds=%s (from l2 window %s ms)\n' \
-      "${executor_timeout_secs}" "${l2_run_window_ms}" >&2
-  else
-    launch_env+=("MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS=${MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS}")
-  fi
-elif [ "${l2_mode}" = "cvm" ]; then
-  # CVM without explicit window still needs far more than the 12s default.
-  launch_env+=("MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS=${MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS:-300}")
-fi
+# CVM iterations are bounded by the executor timeout passed by the
+# workflow; default to 300s when it is not set.
+launch_env+=("MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS=${MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS:-300}")
 if [ "${replay_enabled}" = "true" ]; then
   launch_env+=("MORPHEUS_LIBAFL_REPLAY_INPUTS=${replay_inputs_file}" "MORPHEUS_LIBAFL_REPLAY_STATE=${replay_state_file}")
 fi

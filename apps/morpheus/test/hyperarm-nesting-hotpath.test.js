@@ -221,26 +221,15 @@ test("nested L2 crash feedback requires a verified kernel panic", () => {
   assert.match(stubSource, /POSIX_SPAWN_SETPGROUP/);
   assert.match(stubSource, /posix_spawnattr_setpgroup\(&spawn_attributes, 0\)/);
   assert.match(stubSource, /setpgid\(pid, pid\)/);
-  assert.match(stubSource, /signal_l2_process_group\(pid, SIGTERM\)/);
-  assert.match(stubSource, /signal_l2_process_group\(pid, SIGKILL\)/);
-  assert.match(stubSource, /reap_l2_process\(pid, &status\)/);
 
-  const timeoutBody = stubSource.match(
-    /if \(wait_ret == 0\) \{([\s\S]*?)\n  \}\n  if \(wait_ret < 0\)/,
-  );
-  assert.ok(timeoutBody, "expected the L2 timeout branch");
-  assert.match(timeoutBody[1], /l2_kernel_panic_logged\(\)/);
-  assert.match(timeoutBody[1], /signal_l2_process_group\(pid, SIGTERM\)/);
+  assert.match(stubSource, /waitpid\(pid, &status, 0\)/);
+  assert.doesNotMatch(stubSource, /WNOHANG\);\n  if \(wait_ret == 0\)/);
+  assert.doesNotMatch(stubSource, /L2_OUTCOME_RUN_WINDOW_COMPLETE/);
   assert.match(stubSource, /morpheus\.capture_runtime=1/);
-  assert.match(timeoutBody[1], /log_l2_input_evidence\(\)/);
+  assert.match(stubSource, /log_l2_input_evidence\(\)/);
   assert.match(stubSource, /QEMU_STDOUT_PATH/);
   assert.match(stubSource, /QEMU_STDERR_PATH/);
   assert.match(stubSource, /QEMU_INPUT_STATUS_PATH/);
-  assert.doesNotMatch(
-    timeoutBody[1],
-    /dump_runtime_snapshot\(\)/,
-    "normal timeout must not dump every runtime file through hypercalls",
-  );
 
   const panicDetector = stubSource.match(
     /static bool l2_kernel_panic_logged\(void\) \{([\s\S]*?)\n\}/,
@@ -647,9 +636,9 @@ test("nested L2 stops the normal wait after guest boot readiness", () => {
   assert.match(stubSource, /"buildroot login:"/);
   assert.match(stubSource, /"Welcome to Buildroot"/);
   assert.match(stubSource, /parent-boot-ready/);
-  assert.match(stubSource, /stub: l2 boot ready; continuing run window/);
-  assert.match(stubSource, /l2 run window ended and was terminated/);
-  assert.match(stubSource, /while \(!boot_ready && elapsed_ms < window_ms\)/);
+  assert.match(stubSource, /stub: l2 boot ready/);
+  assert.match(stubSource, /while \(!boot_ready\)/);
+  assert.doesNotMatch(stubSource, /window_ms/);
 });
 
 test("SMP startup calibration skips combinations with L1 below L2", () => {
@@ -1434,8 +1423,6 @@ test("buildroot CVM launch preserves the handoff and requested L1 memory", () =>
     "kvm",
     "--l2-cpu",
     "host",
-    "--l2-run-window-ms",
-    "1000",
     "--l2-memory-mb",
     "512",
   ];
@@ -1649,11 +1636,10 @@ test("buildroot CVM launch preserves the handoff and requested L1 memory", () =>
   assert.match(startup, /^fs0:\\Image /m);
   assert.match(
     startup,
-    /init=\/bin\/sh -- -c "mkdir -p \/mnt && mount [^\n]* && MORPHEUS_L2_MODE=cvm(?: MORPHEUS_L2_ACCEL=kvm)?(?: MORPHEUS_L2_CPU=host)?(?: MORPHEUS_L2_MEMORY_MB=512)?(?: MORPHEUS_L2_RUN_WINDOW_MS=1000)? exec \/mnt\/libafl_nesting_stub"/,
+    /init=\/bin\/sh -- -c "mkdir -p \/mnt && mount [^\n]* && MORPHEUS_L2_MODE=cvm(?: MORPHEUS_L2_ACCEL=kvm)?(?: MORPHEUS_L2_CPU=host)?(?: MORPHEUS_L2_MEMORY_MB=512)? exec \/mnt\/libafl_nesting_stub"/,
   );
   assert.match(startup, /MORPHEUS_L2_MODE=cvm/);
   assert.match(startup, /MORPHEUS_L2_MEMORY_MB=512/);
-  assert.match(startup, /MORPHEUS_L2_RUN_WINDOW_MS=1000/);
   assert.doesNotMatch(startup, /init=\/root\/libafl_nesting_stub/);
   assert.equal((startup.match(/init=/g) || []).length, 1);
 
@@ -1836,7 +1822,6 @@ test("full runtime capture is opt-in for the fuzzing harness", () => {
   );
   assert.match(stubSource, /MORPHEUS_L2_MODE/);
   assert.match(stubSource, /env_l2_mode\(/);
-  assert.match(stubSource, /MORPHEUS_L2_RUN_WINDOW_MS/);
   assert.match(stubSource, /MORPHEUS_CAPTURE_RUNTIME/);
   assert.doesNotMatch(stubSource, /MORPHEUS_QEMU_FUZZ_VIRTIO_IDS/);
   assert.doesNotMatch(rustStubSource, /MORPHEUS_QEMU_FUZZ_VIRTIO_IDS/);

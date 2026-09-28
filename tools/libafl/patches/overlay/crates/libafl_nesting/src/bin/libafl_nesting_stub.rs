@@ -2,8 +2,6 @@ use std::{
     ffi::c_void,
     fs,
     process::{Child, Command},
-    thread,
-    time::Duration,
 };
 
 use libvharness_sys::{
@@ -22,23 +20,6 @@ const L2_CONSOLE_PTY_PATH: &str = "/run/morpheus-libafl/l2-console.pty";
 
 #[unsafe(no_mangle)]
 pub static mut FUZZ_INPUT: [u8; INPUT_LEN] = [0; INPUT_LEN];
-
-fn run_window_ms() -> u64 {
-    // Keep the guest-side supervisor alive for the same window configured for
-    // the nested launcher.  The launcher passes this through fw_cfg; falling
-    // back to the evaluation default avoids killing L2 during boot when the
-    // environment is not propagated into the guest.
-    std::env::var("MORPHEUS_L2_RUN_WINDOW_MS")
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .or_else(|| {
-            fs::read_to_string("/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/l2-run-window-ms/raw")
-                .ok()
-                .and_then(|value| value.trim().parse::<u64>().ok())
-        })
-        .filter(|value| *value >= 1_000)
-        .unwrap_or(90_000)
-}
 
 fn prepare_runtime() {
     let remount = ["/bin/mount", "/usr/bin/mount"]
@@ -133,44 +114,6 @@ fn launch_l2() -> std::io::Result<Child> {
     command.spawn()
 }
 
-fn terminate_child_gracefully(child: &mut Child) -> bool {
-    let pid = child.id().to_string();
-    let term = ["/bin/kill", "/usr/bin/kill"]
-        .into_iter()
-        .find_map(|path| {
-            Command::new(path)
-                .args(["-TERM", &pid])
-                .status()
-                .ok()
-        })
-        .is_some_and(|status| status.success());
-
-    if !term {
-        // The launcher may already have completed the run window and closed
-        // its shell before `kill` reaches it.  Fall through to the normal
-        // reap path instead of turning that benign race into a crash result.
-        let _ = child.kill();
-        return child.wait().is_ok();
-    }
-
-    for _ in 0..10 {
-        thread::sleep(Duration::from_millis(100));
-        match child.try_wait() {
-            Ok(Some(_status)) => {
-                // The supervisor deliberately terminates the launcher at the
-                // end of the configured run window.  A SIGTERM exit status is
-                // therefore a normal completion, not a target crash.
-                return true;
-            }
-            Ok(None) => continue,
-            Err(_) => return false,
-        }
-    }
-
-    let _ = child.kill();
-    child.wait().is_ok()
-}
-
 fn run_iteration(data: &[u8]) -> bool {
     if write_input_snapshot(data).is_err() {
         return false;
@@ -188,17 +131,12 @@ fn run_iteration(data: &[u8]) -> bool {
         lqprintf(bytes.as_ptr().cast());
     }
 
-    thread::sleep(Duration::from_millis(run_window_ms()));
-
-    match child.try_wait() {
-        Ok(Some(status)) => {
+    // The host-side executor timeout bounds the iteration; wait for the
+    // launcher to exit.
+    match child.wait() {
+        Ok(status) => {
             log_runtime_snapshot();
             status.success()
-        }
-        Ok(None) => {
-            let ok = terminate_child_gracefully(&mut child);
-            log_runtime_snapshot();
-            ok
         }
         Err(_) => false,
     }

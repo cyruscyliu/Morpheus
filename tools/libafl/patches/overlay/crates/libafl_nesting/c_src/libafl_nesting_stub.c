@@ -59,8 +59,6 @@
 #define RUNTIME_DUMP_CHUNK_BYTES 512U
 #define L2_DISABLE_NQC2_FW_CFG \
   "/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/l2-disable-nqc2-plugin/raw"
-#define L2_RUN_WINDOW_FW_CFG \
-  "/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/l2-run-window-ms/raw"
 #define L2_MODE_FW_CFG \
   "/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/l2-mode/raw"
 #define L2_ACCEL_FW_CFG \
@@ -71,14 +69,12 @@
   "/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/capture-runtime/raw"
 #define DMI_ENTRIES_DIR "/sys/firmware/dmi/entries"
 #define L2_DISABLE_NQC2_DMI "morpheus.l2_disable_nqc2_plugin=1"
-#define L2_RUN_WINDOW_DMI "morpheus.l2_run_window_ms="
 #define L2_MODE_DMI "morpheus.l2_mode="
 #define L2_ACCEL_DMI "morpheus.l2_accel="
 #define L2_CPU_DMI "morpheus.l2_cpu="
 #define RUNTIME_CAPTURE_DMI "morpheus.capture_runtime=1"
 #define PROC_CMDLINE_PATH "/proc/cmdline"
 #define L2_DISABLE_NQC2_CMDLINE "morpheus.l2_disable_nqc2_plugin=1"
-#define L2_RUN_WINDOW_CMDLINE "morpheus.l2_run_window_ms="
 #define L2_MODE_CMDLINE "morpheus.l2_mode="
 #define L2_ACCEL_CMDLINE "morpheus.l2_accel="
 #define L2_CPU_CMDLINE "morpheus.l2_cpu="
@@ -86,7 +82,6 @@
 #define RUNTIME_CAPTURE_ENV "MORPHEUS_CAPTURE_RUNTIME"
 #define TRACE_DEBUG_ENV "MORPHEUS_L2_TRACE_DEBUG"
 #define L2_MODE_ENV "MORPHEUS_L2_MODE"
-#define L2_RUN_WINDOW_ENV "MORPHEUS_L2_RUN_WINDOW_MS"
 #define L2_MEASURE_STARTUP_ENV "MORPHEUS_L2_MEASURE_STARTUP"
 #define L2_STARTUP_TIMING_POLL_MS 25U
 
@@ -207,15 +202,6 @@ static bool proc_cmdline_has_token(const char *token) {
   return found;
 }
 
-static bool parse_run_window_ms(const char *value, unsigned *out) {
-  char *end = NULL;
-  unsigned long parsed = strtoul(value, &end, 10);
-  if (end != value && parsed >= 1000UL && parsed <= 900000UL) {
-    *out = (unsigned)parsed;
-    return true;
-  }
-  return false;
-}
 
 static const char *parse_l2_accel(const char *value) {
   if (strncmp(value, "kvm", 3) == 0) {
@@ -462,98 +448,6 @@ static bool dmi_l2_mode(bool *out) {
   }
   closedir(dir);
   return false;
-}
-
-static bool fw_cfg_run_window_ms(unsigned *out) {
-  char value[32] = {0};
-  FILE *fp = fopen(L2_RUN_WINDOW_FW_CFG, "rb");
-  size_t n;
-
-  if (!fp) {
-    return false;
-  }
-  n = fread(value, 1, sizeof(value) - 1, fp);
-  fclose(fp);
-  return n > 0 && parse_run_window_ms(value, out);
-}
-
-static bool proc_cmdline_run_window_ms(unsigned *out) {
-  char value[32] = {0};
-  if (!read_text_prefix_value(PROC_CMDLINE_PATH, L2_RUN_WINDOW_CMDLINE,
-                              value, sizeof(value))) {
-    return false;
-  }
-  return parse_run_window_ms(value, out);
-}
-
-static bool env_run_window_ms(unsigned *out) {
-  const char *value = getenv(L2_RUN_WINDOW_ENV);
-  return value && parse_run_window_ms(value, out);
-}
-
-static bool dmi_run_window_ms(unsigned *out) {
-  DIR *dir = opendir(DMI_ENTRIES_DIR);
-  struct dirent *entry = NULL;
-  const size_t prefix_len = strlen(L2_RUN_WINDOW_DMI);
-
-  if (!dir) {
-    return false;
-  }
-
-  while ((entry = readdir(dir)) != NULL) {
-    char raw_path[256];
-    FILE *raw = NULL;
-    char data[512];
-    size_t len;
-    int written;
-
-    if (strncmp(entry->d_name, "11-", 3) != 0) {
-      continue;
-    }
-
-    written = snprintf(raw_path, sizeof(raw_path), "%s/%s/raw",
-                       DMI_ENTRIES_DIR, entry->d_name);
-    if (written < 0 || (size_t)written >= sizeof(raw_path)) {
-      continue;
-    }
-
-    raw = fopen(raw_path, "rb");
-    if (!raw) {
-      continue;
-    }
-    len = fread(data, 1, sizeof(data) - 1, raw);
-    fclose(raw);
-    data[len] = '\0';
-
-    for (size_t i = 0; i + prefix_len < len; i++) {
-      if (memcmp(&data[i], L2_RUN_WINDOW_DMI, prefix_len) == 0 &&
-          parse_run_window_ms(&data[i + prefix_len], out)) {
-        closedir(dir);
-        return true;
-      }
-    }
-  }
-
-  closedir(dir);
-  return false;
-}
-
-static unsigned run_window_ms(void) {
-  static bool configured_checked = false;
-  static unsigned configured_window = 0;
-
-  if (!configured_checked) {
-    configured_checked = true;
-    (void)(fw_cfg_run_window_ms(&configured_window) ||
-           env_run_window_ms(&configured_window) ||
-           proc_cmdline_run_window_ms(&configured_window) ||
-           dmi_run_window_ms(&configured_window));
-  }
-  if (configured_window != 0) {
-    return configured_window;
-  }
-
-  return 5000U;
 }
 
 static bool l2_startup_measurement_enabled(void) {
@@ -898,7 +792,6 @@ static bool file_contains_any(const char *path, const char **needles,
 enum l2_outcome {
   L2_OUTCOME_HARNESS_ERROR,
   L2_OUTCOME_COMPLETE,
-  L2_OUTCOME_RUN_WINDOW_COMPLETE,
   L2_OUTCOME_KERNEL_PANIC,
   L2_OUTCOME_LAUNCHER_EXIT,
   L2_OUTCOME_LAUNCHER_SIGNAL,
@@ -908,8 +801,6 @@ static const char *l2_outcome_name(enum l2_outcome outcome) {
   switch (outcome) {
     case L2_OUTCOME_COMPLETE:
       return "complete";
-    case L2_OUTCOME_RUN_WINDOW_COMPLETE:
-      return "run-window-complete";
     case L2_OUTCOME_KERNEL_PANIC:
       return "kernel-panic";
     case L2_OUTCOME_LAUNCHER_EXIT:
@@ -1602,42 +1493,6 @@ static bool prepare_l2_launcher(const char **shell_out,
   return true;
 }
 
-static void signal_l2_process_group(pid_t pid, int signal_number) {
-  if (pid <= 0) {
-    return;
-  }
-
-  /* The launcher owns the nested QEMU descendants. Kill the whole
-   * process group so a shell waiting on QEMU cannot hold up the next input. */
-  (void)kill(-pid, signal_number);
-  (void)kill(pid, signal_number);
-}
-
-static bool reap_l2_process(pid_t pid, int *status) {
-  for (unsigned attempt = 0; attempt < 50U; attempt++) {
-    pid_t wait_ret = waitpid(pid, status, WNOHANG);
-    if (wait_ret == pid) {
-      return true;
-    }
-    if (wait_ret < 0) {
-      if (errno == EINTR) {
-        attempt--;
-        continue;
-      }
-      return false;
-    }
-    usleep(10000U);
-  }
-
-  signal_l2_process_group(pid, SIGKILL);
-  while (waitpid(pid, status, 0) < 0) {
-    if (errno != EINTR) {
-      return false;
-    }
-  }
-  return true;
-}
-
 static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
   char input_env[128];
   char runtime_env[128];
@@ -1790,17 +1645,11 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
   }
 
   lqprintf("stub: launched l2 pid=%u\n", (unsigned)pid);
-  lqprintf("stub: entering l2 run window pid=%u\n", (unsigned)pid);
   measure_startup = l2_startup_measurement_enabled();
-  unsigned window_ms = run_window_ms();
-  unsigned evidence_wait_ms = window_ms < 5000U ? window_ms : 5000U;
   bool boot_ready = false;
-  unsigned elapsed_ms = evidence_wait_ms;
-  lqprintf("stub: l2 run window ms=%u\n", window_ms);
   if (measure_startup) {
     append_marker("l2-startup-measurement=enabled\n");
-    elapsed_ms = 0;
-    while (!boot_ready && elapsed_ms < window_ms) {
+    while (!boot_ready) {
       if (qemu_exec_start_ns == 0 && l2_qemu_exec_started()) {
         qemu_exec_start_ns = monotonic_time_ns();
         append_marker("l2-qemu-exec-start-monotonic-ns=%llu\n",
@@ -1814,54 +1663,26 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
         break;
       }
       usleep(L2_STARTUP_TIMING_POLL_MS * 1000U);
-      elapsed_ms += L2_STARTUP_TIMING_POLL_MS;
     }
     log_l2_startup_timing(qemu_exec_start_ns, buildroot_ready_ns);
   } else {
-    usleep(evidence_wait_ms * 1000U);
     boot_ready = l2_boot_ready_logged();
-    while (!boot_ready && elapsed_ms < window_ms) {
-      unsigned sleep_ms = window_ms - elapsed_ms;
-      if (sleep_ms > L2_READY_POLL_MS) {
-        sleep_ms = L2_READY_POLL_MS;
-      }
-      usleep(sleep_ms * 1000U);
-      elapsed_ms += sleep_ms;
+    while (!boot_ready) {
+      usleep(L2_READY_POLL_MS * 1000U);
       boot_ready = l2_boot_ready_logged();
     }
   }
   if (boot_ready) {
     append_marker("parent-boot-ready\n");
-    /* Reaching the login prompt only means the L2 guest has booted.  Keep
-     * the process alive for the configured fuzzing window; terminating here
-     * kills the inner fuzzer before its first execution. */
-    lqprintf("stub: l2 boot ready; continuing run window\n");
+    lqprintf("stub: l2 boot ready\n");
   }
   append_marker("parent-before-wait\n");
   log_process_state(pid);
 
   int status = 0;
-  pid_t wait_ret = waitpid(pid, &status, WNOHANG);
-  if (wait_ret == 0) {
-    const bool kernel_panic_logged = l2_kernel_panic_logged();
-    /* A run-window completion is the hot path. Diagnostics are emitted only
-     * after outcome classification, unless runtime capture is explicitly on. */
-    if (kernel_panic_logged) {
-      lqprintf("stub: l2 kernel panic found before timeout kill\n");
-      *outcome = L2_OUTCOME_KERNEL_PANIC;
-    } else {
-      *outcome = L2_OUTCOME_RUN_WINDOW_COMPLETE;
-    }
-    signal_l2_process_group(pid, SIGTERM);
-    if (!reap_l2_process(pid, &status)) {
-      lqprintf("stub: failed to reap l2 process group\n");
-      return *outcome == L2_OUTCOME_KERNEL_PANIC;
-    }
-    log_l2_input_evidence();
-    lqprintf("stub: l2 run window ended and was terminated\n");
-    return true;
-  }
-  if (wait_ret < 0) {
+  /* The host-side executor timeout bounds the iteration; wait for the
+   * launcher to exit. */
+  if (waitpid(pid, &status, 0) < 0) {
     lqprintf("stub: waitpid failed pid=%u errno=%d\n", (unsigned)pid, errno);
     return false;
   }
@@ -1938,9 +1759,7 @@ int main(void) {
     if (outcome == L2_OUTCOME_KERNEL_PANIC ||
         outcome == L2_OUTCOME_LAUNCHER_EXIT ||
         outcome == L2_OUTCOME_LAUNCHER_SIGNAL ||
-        outcome == L2_OUTCOME_HARNESS_ERROR ||
-        (outcome == L2_OUTCOME_RUN_WINDOW_COMPLETE &&
-         runtime_capture_enabled())) {
+        outcome == L2_OUTCOME_HARNESS_ERROR) {
       dump_l2_diagnostics();
     }
 

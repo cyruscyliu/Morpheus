@@ -179,3 +179,31 @@ test("workflow explain reports the template chain and stage provenance", () => {
     assert.equal(stage.steps[0].tool, "llbase");
   });
 });
+
+test("config check flags step references to unknown steps", () => {
+  const dir = tempDir("morpheus-ref-");
+  const configPath = writeConfig(dir, [
+    "workflows:",
+    "  sample-flow:",
+    "    category: build",
+    "    steps:",
+    "      - id: first_step",
+    "        tool: sample",
+    "        command: build",
+    "      - id: second_step",
+    "        tool: sample",
+    "        command: exec",
+    "        args:",
+    "          - --source",
+    "          - '{{steps.first_step.artifacts.source-dir.location}}'",
+    "          - --extra",
+    "          - '{{steps.missing_step.artifacts.other.location}}'",
+  ]);
+  withConfig(configPath, () => {
+    const result = runConfigCheck(configPath);
+    assert.equal(result.exit_code, 1);
+    const issue = result.issues.find((entry) => entry.message.includes("unknown step: missing_step"));
+    assert.ok(issue, "unknown step issue");
+    assert.equal(issue.level, "error");
+  });
+});

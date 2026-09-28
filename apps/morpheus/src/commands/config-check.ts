@@ -1,7 +1,7 @@
 // @ts-nocheck
 const path = require("path");
 const { loadConfig, configDir, resolveConfiguredWorkspaceRoot } = require("../core/config");
-const { workflowTemplateIssues } = require("../core/workflow-templates");
+const { workflowTemplateIssues, resolveWorkflowTemplateRecord } = require("../core/workflow-templates");
 const { evaluationEntryIssues } = require("../core/evaluation-entries");
 const { writeStdoutLine } = require("../core/io");
 
@@ -162,6 +162,63 @@ function checkWorkflowRunDirs(value) {
   return issues;
 }
 
+// Validate every `{{steps.<id>...}}` reference in every concrete workflow's
+// resolved step args: the referenced step id must be one of the workflow's
+// own steps. Artifact-alias validity is left to the runtime, which consumes
+// the tool's own emitted result payload.
+function checkStepArtifactReferences(value) {
+  const issues = [];
+  const workflows = value.workflows;
+  if (!workflows || typeof workflows !== "object") {
+    return issues;
+  }
+  for (const [workflowName] of Object.entries(workflows)) {
+    let expanded = null;
+    try {
+      expanded = resolveWorkflowTemplateRecord(value, workflowName);
+    } catch {
+      continue;
+    }
+    if (!expanded || !Array.isArray(expanded.stages)) {
+      continue;
+    }
+    const stepIds = new Set();
+    const scanSteps = [];
+    for (const stage of expanded.stages) {
+      for (const step of (stage && stage.steps) || []) {
+        if (step && step.id) {
+          stepIds.add(String(step.id));
+          scanSteps.push(step);
+        }
+      }
+    }
+    for (const step of Array.isArray(expanded.steps) ? expanded.steps : []) {
+      if (step && step.id) {
+        stepIds.add(String(step.id));
+        scanSteps.push(step);
+      }
+    }
+    for (const step of scanSteps) {
+      if (!step || !step.tool || !Array.isArray(step.args)) {
+        continue;
+      }
+      for (const arg of step.args) {
+        for (const match of String(arg || "").matchAll(/\{\{\s*steps\.([^.}\s]+)/g)) {
+          const stepId = match[1];
+          if (!stepIds.has(stepId)) {
+            issues.push({
+              level: "error",
+              path: `workflows.${workflowName}.steps.${step.id}`,
+              message: `step reference points to unknown step: ${stepId}`,
+            });
+          }
+        }
+      }
+    }
+  }
+  return issues;
+}
+
 function formatText(result) {
   const lines = [
     "Config check",
@@ -224,6 +281,7 @@ function runConfigCheck(explicitConfigPath = null) {
     ...checkToolPaths(config.value || {}),
     ...checkWorkflowRunDirs(config.value || {}),
     ...workflowTemplateIssues(config.value || {}),
+    ...checkStepArtifactReferences(config.value || {}),
     ...evaluationEntryIssues(config.value || {}, configDir(config.path)),
   ];
   const hasErrors = issues.some((issue) => issue.level !== "warn");

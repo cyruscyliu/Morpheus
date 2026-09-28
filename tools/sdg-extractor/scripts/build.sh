@@ -5,8 +5,13 @@ set -euo pipefail
 # Expects MORPHEUS_SDG_EXTRACTOR_BUILD_DIR from the managed runner.
 
 tool_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${tool_root}/../_shared/scripts/lock.sh"
 build_dir="${MORPHEUS_SDG_EXTRACTOR_BUILD_DIR:-${tool_root}/builds/default/build}"
 result_file="${MORPHEUS_SDG_EXTRACTOR_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
+build_dir_key="${MORPHEUS_SDG_EXTRACTOR_BUILD_DIR_KEY:-default}"
+morpheus_lock_acquire "${MORPHEUS_SDG_EXTRACTOR_SOURCE:-${tool_root}}.morpheus.lock"
+morpheus_build_lock sdg-extractor "${build_dir_key}"
+trap morpheus_lock_release EXIT INT TERM
 
 plugin="${build_dir}/src/llvm-pass/SDGExtractPass.so"
 

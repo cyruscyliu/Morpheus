@@ -3,12 +3,17 @@ set -euo pipefail
 
 tool_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${tool_root}/../_shared/scripts/parallelism.sh"
+source "${tool_root}/../_shared/scripts/lock.sh"
 runtime_helper_default="$(cd "${tool_root}/../llbase/scripts" && pwd)/runtime.sh"
 result_file="${MORPHEUS_LLCG_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 build_dir="${MORPHEUS_LLCG_BUILD_DIR:-${tool_root}/build}"
 clang="${MORPHEUS_LLCG_CLANG:-15}"
 llbase_contract="${MORPHEUS_LLCG_LLBASE_CONTRACT:-}"
 jobs="${MORPHEUS_LLCG_JOBS:-$(morpheus_default_jobs)}"
+build_dir_key="${MORPHEUS_LLCG_BUILD_DIR_KEY:-native}"
+morpheus_lock_acquire "${MORPHEUS_LLCG_SOURCE:-${tool_root}}.morpheus.lock"
+morpheus_build_lock llcg "${build_dir_key}"
+trap morpheus_lock_release EXIT INT TERM
 
 mkdir -p "${build_dir}"
 [ -n "${llbase_contract}" ] || {

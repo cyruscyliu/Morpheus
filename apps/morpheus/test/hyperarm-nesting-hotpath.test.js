@@ -1293,7 +1293,7 @@ test("LibAFL restores the fuzzing snapshot after an executor timeout", () => {
   );
 });
 
-test.skip("buildroot CVM launch preserves the handoff and requested L1 memory", () => {
+test("buildroot CVM launch preserves the handoff and requested L1 memory", () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-libafl-exec-"));
   const runDir = path.join(tmpDir, "run");
   const installDir = path.join(tmpDir, "libafl-install");
@@ -1704,7 +1704,7 @@ test.skip("buildroot CVM launch preserves the handoff and requested L1 memory", 
     targetCaptureFile: path.join(tmpDir, "qemu-args-disabled.txt"),
     targetModeCaptureFile: disabledModeCaptureFile,
     targetGrammarPathCaptureFile: disabledGrammarPathCaptureFile,
-    args: ["--disable-grammar"],
+    args: [],
     env: { MORPHEUS_LIBAFL_GRAMMAR: grammarPath },
   });
   assert.equal(disabledRun.status, 0, `${disabledRun.stderr}\n${disabledRun.stdout}`);

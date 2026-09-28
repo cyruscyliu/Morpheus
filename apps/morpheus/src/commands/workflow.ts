@@ -1336,6 +1336,19 @@ function ensureWorkflowManifest(runDir) {
   }
   const legacy = tryReadJson(path.join(runDir, "run.json"));
   if (legacy && typeof legacy === "object") {
+    const stepsDir = path.join(runDir, "steps");
+    const steps = fs.existsSync(stepsDir)
+      ? fs.readdirSync(stepsDir, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .sort((left, right) => left.name.localeCompare(right.name))
+        .map((entry) => {
+          const stepDir = path.join(stepsDir, entry.name);
+          const stepManifest = path.join(stepDir, "step.json");
+          return fs.existsSync(stepManifest)
+            ? tryReadJson(stepManifest) || { id: entry.name, stepDir }
+            : { id: entry.name, stepDir };
+        })
+      : [];
     fs.writeFileSync(manifestPath, `${JSON.stringify({
       ...legacy,
       workflow: legacy.workflow || (legacy.summary && legacy.summary.workflow) || null,
@@ -1343,7 +1356,7 @@ function ensureWorkflowManifest(runDir) {
       id: legacy.id || path.basename(runDir),
       runDir,
       stages: Array.isArray(legacy.stages) ? legacy.stages : [],
-      steps: Array.isArray(legacy.steps) ? legacy.steps : [],
+      steps: Array.isArray(legacy.steps) ? legacy.steps : steps,
     }, null, 2)}\n`);
     return { runDir, manifestPath };
   }

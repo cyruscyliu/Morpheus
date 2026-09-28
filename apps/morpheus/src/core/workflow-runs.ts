@@ -270,7 +270,11 @@ function createWorkflowStep(runDir, index, name, options = {}) {
 }
 
 function updateWorkflowStep(stepDirPath, mutator) {
-  const manifestPath = stepManifestPath(stepDirPath);
+  const stagePath = stepManifestPath(stepDirPath);
+  const legacyPath = path.join(stepDirPath, "step.json");
+  const manifestPath = fs.existsSync(stagePath) || !fs.existsSync(legacyPath)
+    ? stagePath
+    : legacyPath;
   const current = normalizeStageRecordAliases(readJson(manifestPath));
   const next = normalizeStageRecordAliases(mutator({ ...current }));
   next.updatedAt = nowIso();

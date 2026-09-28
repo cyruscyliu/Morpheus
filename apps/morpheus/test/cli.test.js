@@ -1151,7 +1151,7 @@ test("workflow inspect reconciles stale running workflows with dead pids", () =>
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });
 
-test.skip("workflow inspect repairs an empty workflow manifest from legacy run state", () => {
+test("workflow inspect repairs an empty workflow manifest from legacy run state", () => {
   const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-repair-")));
   const runId = "wf-repair-test";
   const runDir = path.join(workspaceRoot, "runs", runId);
@@ -1807,7 +1807,7 @@ test("workflow logs does not warn when config is discovered implicitly", () => {
 });
 
 
-test.skip("workflow remove requires a prior stop and removes stopped workflow state", () => {
+test("workflow remove requires a prior stop and removes stopped workflow state", () => {
   const workspaceRoot = ensureWorkspace(fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-workflow-remove-")));
   const runId = "wf-remove-test";
   const runDir = path.join(workspaceRoot, "runs", runId);

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/runtime.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts" && pwd)/lock.sh"
 
 source_dir="${MORPHEUS_LLBASE_SOURCE:?}"
 output_dir="${MORPHEUS_LLBASE_OUTPUT:?}"
@@ -15,6 +16,10 @@ pull_image="${MORPHEUS_LLBASE_PULL_IMAGE:-false}"
 result_file="${MORPHEUS_LLBASE_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 contract_path="${output_dir}/runtime-contract.json"
 irdumper_root="${output_dir}/irdumper"
+build_dir_key="${MORPHEUS_LLBASE_BUILD_DIR_KEY:-default}"
+morpheus_lock_acquire "${source_dir}.morpheus.lock"
+morpheus_build_lock llbase "${build_dir_key}"
+trap morpheus_lock_release EXIT INT TERM
 
 mkdir -p "${output_dir}"
 

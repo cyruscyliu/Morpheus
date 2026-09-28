@@ -5,6 +5,10 @@ repo_root="${MORPHEUS_REPO_ROOT:?missing MORPHEUS_REPO_ROOT}"
 source "${repo_root}/tools/_shared/scripts/state.sh"
 
 source_dir="${MORPHEUS_LIBAFL_SOURCE:?}"
+build_dir_key="${MORPHEUS_LIBAFL_BUILD_DIR_KEY:-default}"
+morpheus_lock_acquire "${source_dir}.morpheus.lock"
+morpheus_build_lock libafl "${build_dir_key}"
+trap morpheus_lock_release EXIT INT TERM
 patch_dir="${MORPHEUS_LIBAFL_PATCH_DIR:?}"
 result_file="${MORPHEUS_LIBAFL_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 state_file="${source_dir}/.morpheus-qemu-nesting.json"

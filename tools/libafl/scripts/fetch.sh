@@ -4,6 +4,10 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/state.sh"
 
 source_dir="${MORPHEUS_LIBAFL_SOURCE:?}"
+build_dir_key="${MORPHEUS_LIBAFL_BUILD_DIR_KEY:-${MORPHEUS_LIBAFL_BUILD_VERSION:-default}}"
+morpheus_lock_acquire "${source_dir}.morpheus.lock"
+morpheus_build_lock libafl "${build_dir_key}"
+trap morpheus_lock_release EXIT INT TERM
 seed_dir="${MORPHEUS_LIBAFL_SEED_DIR:-}"
 git_url="${MORPHEUS_LIBAFL_GIT_URL:-https://github.com/AFLplusplus/LibAFL.git}"
 build_version="${MORPHEUS_LIBAFL_BUILD_VERSION:-}"

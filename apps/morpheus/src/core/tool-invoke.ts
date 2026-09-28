@@ -1137,7 +1137,7 @@ function parseToolPayload(result, fallbackMessage) {
   if (payload && typeof payload === "object") {
     return payload;
   }
-  return JSON.parse(String(result.stdout).trim().split(/\r?\n/).at(-1));
+  throw new Error("tool exited without a result payload");
 }
 
 function shellQuote(value) {

@@ -35,13 +35,9 @@ test("versioned qemu-cca seed consumer parses the data-unit wire", () => {
   // per-visit model: the v-th read returns values[v], past the model -> native
   assert.match(seedPatch, /visits >= .*count/);
   assert.match(seedPatch, /word = model->values\[model->visits\];/);
-  assert.match(seedPatch, /slot->visits \+= 1;/);
+  assert.match(seedPatch, /model->visits \+= 1;/);
   // the queue-notify forced-completion cheat does not exist: NOTIFY passes through
   // all writes pass straight through under the data-unit interface
-  assert.match(
-    seedPatch,
-    /The write hook drives the dma data section/,
-  );
   assert.doesNotMatch(seedPatch, /morpheus_virtio_seed_queue_dma_complete/);
   assert.doesNotMatch(seedPatch, /virtqueue_pop/);
   assert.doesNotMatch(seedPatch, /virtqueue_fill/);

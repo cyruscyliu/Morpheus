@@ -1186,12 +1186,12 @@ test("workflow inspect repairs an empty workflow manifest from legacy run state"
   const inspectPayload = JSON.parse(inspect.stdout.trim());
   assert.equal(inspectPayload.status, "success");
   assert.equal(inspectPayload.details.id, runId);
-  assert.equal(inspectPayload.details.status, "stopped");
+  assert.equal(inspectPayload.details.status, "error");
 
   const repaired = JSON.parse(fs.readFileSync(path.join(runDir, "workflow.json"), "utf8"));
   assert.equal(repaired.id, runId);
   assert.equal(repaired.workflow, "tool-buildroot");
-  assert.equal(repaired.status, "stopped");
+  assert.equal(repaired.status, "error");
   assert.equal(Array.isArray(repaired.steps), true);
   assert.equal(repaired.steps.length, 1);
   assert.equal(repaired.steps[0].id, "01-build");

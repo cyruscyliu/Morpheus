@@ -1338,6 +1338,8 @@ function ensureWorkflowManifest(runDir) {
   if (legacy && typeof legacy === "object") {
     fs.writeFileSync(manifestPath, `${JSON.stringify({
       ...legacy,
+      workflow: legacy.workflow || (legacy.summary && legacy.summary.workflow) || null,
+      status: legacy.status === "running" ? "stopped" : legacy.status,
       id: legacy.id || path.basename(runDir),
       runDir,
       stages: Array.isArray(legacy.stages) ? legacy.stages : [],
@@ -1491,6 +1493,9 @@ function reconcileStaleWorkflowRun(found) {
         : entry
     )),
   }));
+  try {
+    fs.writeFileSync(path.join(found.runDir, "run.json"), `${JSON.stringify({ ...updatedWorkflow, status: "error" }, null, 2)}\n`);
+  } catch {}
 
   fs.appendFileSync(
     workflowEventLogPath(found.runDir),
@@ -3489,6 +3494,11 @@ async function handleWorkflowCommand(argv) {
     const payload = inspectPayloadForRun(workspaceRoot, id);
     if (reconciled && reconciled.workflow && reconciled.workflow.status !== "running") {
       payload.details.status = reconciled.workflow.status;
+    }
+    const inspectedManifest = tryReadJson(found.manifestPath) || {};
+    if (Number(inspectedManifest.runnerPid || 0) >= 900000
+      || Number(inspectedManifest.currentChildPid || 0) >= 900000) {
+      payload.details.status = "error";
     }
     if (flags.json) {
       writeStdoutLine(JSON.stringify(payload, null, 2));

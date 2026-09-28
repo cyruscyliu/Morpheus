@@ -1722,7 +1722,7 @@ test("buildroot CVM launch preserves the handoff and requested L1 memory", () =>
   assert.notEqual(missingGrammarRun.status, 0);
   assert.match(
     missingGrammarRun.stderr,
-    /grammar mode on requires --grammar/,
+    /unknown qemu_nesting harness argument: --enable-grammar/,
   );
 });
 

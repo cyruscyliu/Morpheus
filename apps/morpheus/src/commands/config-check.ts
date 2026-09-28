@@ -219,6 +219,77 @@ function checkStepArtifactReferences(value) {
   return issues;
 }
 
+// Workflows reuse cached build artifacts by matching --build-dir-key
+// strings. Steps that share a (tool, command, --build-dir-key) triple must
+// agree on the build-defining arguments; per-run flags (source tree,
+// output dir, run dir) are excluded. Divergence makes the cache behavior
+// uncertain: one consumer's rebuild clobbers what the others expect.
+function checkBuildKeyConsistency(value) {
+  const issues = [];
+  const workflows = value.workflows;
+  if (!workflows || typeof workflows !== "object") {
+    return issues;
+  }
+  const runSpecificFlags = new Set(["--source", "--source-dir", "--output", "--run-dir"]);
+  const groups = new Map();
+  for (const [workflowName] of Object.entries(workflows)) {
+    let expanded = null;
+    try {
+      expanded = resolveWorkflowTemplateRecord(value, workflowName);
+    } catch {
+      continue;
+    }
+    if (!expanded) {
+      continue;
+    }
+    const collect = (steps) => {
+      for (const step of steps || []) {
+        if (!step || !step.tool || !Array.isArray(step.args)) {
+          continue;
+        }
+        if (step.command && step.command !== "build") {
+          continue;
+        }
+        const keyIndex = step.args.findIndex((item) => item === "--build-dir-key");
+        const buildKey = keyIndex >= 0 ? String(step.args[keyIndex + 1] || "") : "";
+        if (!buildKey) {
+          continue;
+        }
+        const args = step.args.filter((arg, index) => (
+          !runSpecificFlags.has(String(arg))
+          && (index === 0 || !runSpecificFlags.has(String(step.args[index - 1])))
+        ));
+        const groupKey = `${step.tool}|${step.command || "exec"}|${buildKey}`;
+        if (!groups.has(groupKey)) {
+          groups.set(groupKey, []);
+        }
+        groups.get(groupKey).push({
+          workflow: workflowName,
+          step: String(step.id),
+          signature: JSON.stringify(args),
+        });
+      }
+    };
+    for (const stage of Array.isArray(expanded.stages) ? expanded.stages : []) {
+      collect(stage && stage.steps);
+    }
+    collect(Array.isArray(expanded.steps) ? expanded.steps : null);
+  }
+  for (const [groupKey, members] of groups) {
+    const first = members[0];
+    const diverged = members.find((member) => member.signature !== first.signature);
+    if (diverged) {
+      const label = groupKey.split("|").join(" / ");
+      issues.push({
+        level: "warn",
+        path: `workflows.${diverged.workflow}.steps.${diverged.step}`,
+        message: `build key ${label} is shared by ${members.length} steps with diverging arguments; the cache reuse behavior is uncertain`,
+      });
+    }
+  }
+  return issues;
+}
+
 function formatText(result) {
   const lines = [
     "Config check",
@@ -282,6 +353,7 @@ function runConfigCheck(explicitConfigPath = null) {
     ...checkWorkflowRunDirs(config.value || {}),
     ...workflowTemplateIssues(config.value || {}),
     ...checkStepArtifactReferences(config.value || {}),
+    ...checkBuildKeyConsistency(config.value || {}),
     ...evaluationEntryIssues(config.value || {}, configDir(config.path)),
   ];
   const hasErrors = issues.some((issue) => issue.level !== "warn");

@@ -207,3 +207,41 @@ test("config check flags step references to unknown steps", () => {
     assert.equal(issue.level, "error");
   });
 });
+
+test("config check warns when a build key is shared with diverging arguments", () => {
+  const dir = tempDir("morpheus-bkey-");
+  const configPath = writeConfig(dir, [
+    "workflows:",
+    "  sample-build:",
+    "    category: build",
+    "    steps:",
+    "      - id: build_step",
+    "        tool: sample",
+    "        command: build",
+    "        args:",
+    "          - --build-dir-key",
+    "          - shared-key",
+    "          - --defconfig",
+    "          - defconfig_a",
+    "  sample-run:",
+    "    category: run",
+    "    steps:",
+    "      - id: build_step",
+    "        tool: sample",
+    "        command: build",
+    "        args:",
+    "          - --build-dir-key",
+    "          - shared-key",
+    "          - --defconfig",
+    "          - defconfig_b",
+    "          - --source",
+    "          - '{{steps.other_step.artifacts.source-dir.location}}'",
+  ]);
+  withConfig(configPath, () => {
+    const result = runConfigCheck(configPath);
+    assert.equal(result.exit_code, 1);
+    const issue = result.issues.find((entry) => entry.message.includes("shared by 2 steps with diverging arguments"));
+    assert.ok(issue, "diverging build key issue");
+    assert.equal(issue.level, "warn");
+  });
+});

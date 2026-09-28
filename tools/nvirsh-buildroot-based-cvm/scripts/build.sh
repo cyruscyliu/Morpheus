@@ -521,10 +521,12 @@ guest_l2_console="${runtime_dir}/l2-console.log"
 guest_qemu_trace_enabled="true"
 
 if [ "${guest_virtio_transport}" = "mmio" ]; then
-  # Disable all control features (and therefore the control vq) so the
-  # driver does not block on MQ/mac-filter commands while we arm the RX
-  # used-ring seed.
-  guest_virtio_net_device="virtio-net-device,ctrl_vq=off,ctrl_rx=off,ctrl_vlan=off,ctrl_rx_extra=off,ctrl_mac_addr=off,ctrl_guest_offloads=off,guest_announce=off,mq=off,netdev=net0"
+  # Keep the MQ/mac-filter control features off so the driver does not
+  # block on those commands while we arm the RX used-ring seed. The
+  # control vq itself stays advertised: the kernel rejects
+  # VIRTIO_NET_F_HASH_REPORT without VIRTIO_NET_F_CTRL_VQ, which the
+  # RSS-key replay profile negotiates through the seed.
+  guest_virtio_net_device="virtio-net-device,ctrl_rx=off,ctrl_vlan=off,ctrl_rx_extra=off,ctrl_mac_addr=off,ctrl_guest_offloads=off,guest_announce=off,mq=off,netdev=net0"
   guest_bootargs="console=ttyAMA0 oops=panic panic=-1 panic_on_warn=1 kasan.fault=panic"
 fi
 

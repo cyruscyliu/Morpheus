@@ -2,6 +2,7 @@
 const path = require("path");
 const { loadConfig, configDir, resolveConfiguredWorkspaceRoot } = require("../core/config");
 const { workflowTemplateIssues } = require("../core/workflow-templates");
+const { evaluationEntryIssues } = require("../core/evaluation-entries");
 const { writeStdoutLine } = require("../core/io");
 
 const ALLOWED_TOOL_MODES = ["local", "remote"];
@@ -223,6 +224,7 @@ function runConfigCheck(explicitConfigPath = null) {
     ...checkToolPaths(config.value || {}),
     ...checkWorkflowRunDirs(config.value || {}),
     ...workflowTemplateIssues(config.value || {}),
+    ...evaluationEntryIssues(config.value || {}, configDir(config.path)),
   ];
   const hasErrors = issues.some((issue) => issue.level !== "warn");
   return {

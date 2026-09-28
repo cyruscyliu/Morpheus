@@ -15,6 +15,7 @@ const { handlePostprocessCommand } = require("./commands/postprocess");
 const { handleStopCommand } = require("./commands/stop");
 const { handleToolCommand } = require("./commands/tools");
 const { handleWorkflowCommand } = require("./commands/workflow");
+const { handleEvalCommand } = require("./commands/eval");
 const { findConfigPath, normalizeMorpheusEnv } = require("./core/config");
 const { workspaceRoot } = require("./core/paths");
 const { writeStdout, writeStdoutLine, writeStderrLine } = require("./core/io");
@@ -147,6 +148,8 @@ function usage() {
       "  workflow logs      Print workflow stage logs.",
       "  workflow stop      Stop a running workflow instance.",
       "  workflow remove    Remove a stopped workflow instance.",
+      "  eval list          List configured evaluation entries.",
+      "  eval run           Start an evaluation entry's workflows.",
       "",
       "Start Here:",
       "  morpheus tool list",
@@ -209,13 +212,13 @@ async function main() {
       subcommand === "show"
       || (subcommand === "check" && !flags.json)
     );
-  const isReadOnlyWorkflowCommand = command === "workflow" && ["list", "runs", "inspect", "events", "logs"].includes(String(subcommand || ""));
+  const isReadOnlyWorkflowCommand = command === "workflow" && ["list", "runs", "inspect", "events", "logs", "explain"].includes(String(subcommand || ""));
   const suppressImplicitConfigWarning = wantsHelp || isReadOnlyConfigCommand || isReadOnlyWorkflowCommand;
   if (flags.config && typeof flags.config === "string") {
     process.env.MORPHEUS_CONFIG = path.resolve(String(flags.config));
   }
   const argv = stripGlobalFlags(rawArgv);
-  const configAwareCommands = new Set(["config", "fetch", "patch", "build", "inspect", "logs", "exec", "postprocess", "genhtml", "stop", "workflow"]);
+  const configAwareCommands = new Set(["config", "fetch", "patch", "build", "inspect", "logs", "exec", "postprocess", "genhtml", "stop", "workflow", "eval"]);
 
   if (!command || command === "help" || command === "--help") {
     usage();
@@ -278,6 +281,10 @@ async function main() {
 
   if (command === "workflow") {
     return handleWorkflowCommand(argvWithoutCommand(argv, "workflow"));
+  }
+
+  if (command === "eval") {
+    return await handleEvalCommand(argvWithoutCommand(argv, "eval"));
   }
 
   throw new Error(`unknown command: ${command}`);

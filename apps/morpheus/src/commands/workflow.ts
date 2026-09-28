@@ -93,6 +93,7 @@ function workflowUsage() {
     "Commands:",
     "  workflow runs      List managed workflow instances.",
     "  workflow list      List configured workflows.",
+    "  workflow explain   Explain a configured workflow's resolved stages and steps.",
     "  workflow run       Start a configured workflow.",
     "  workflow resume    Resume a workflow instance.",
     "  workflow inspect   Inspect workflow state and stages.",
@@ -636,6 +637,123 @@ function resolveTemplateStepValue(context, stepId, stepPath) {
     return undefined;
   }
   return resolveArtifactTemplateValue(payload, stepPath, preferLocal);
+}
+
+const EXPLAIN_IDENTITY_KEYS = [
+  "build-version",
+  "build-dir-key",
+  "git-url",
+  "git-ref",
+  "patch-dir",
+  "defconfig",
+];
+
+// Stage id -> stage-template name, collected from the workflow's own stage
+// list and (when the workflow uses one) its template's stage list. A
+// workflow stage without a stage-template key replaces the template stage
+// and clears the provenance for that id.
+function stageTemplateProvenance(configValue, name) {
+  const map = new Map();
+  const workflows = configValue && typeof configValue.workflows === "object" && configValue.workflows
+    ? configValue.workflows : {};
+  const record = workflows[name];
+  if (!record || typeof record !== "object") {
+    return map;
+  }
+  const templates = configValue && configValue["workflow-templates"]
+    && typeof configValue["workflow-templates"] === "object"
+    ? configValue["workflow-templates"] : {};
+  const templateRecord = record.template && templates[String(record.template)]
+    ? templates[String(record.template)] : null;
+  for (const source of [templateRecord, record]) {
+    if (!source || !Array.isArray(source.stages)) {
+      continue;
+    }
+    for (const stage of source.stages) {
+      if (!stage || typeof stage !== "object") {
+        continue;
+      }
+      const id = String(stage.id || "");
+      if (!id) {
+        continue;
+      }
+      if (stage["stage-template"]) {
+        map.set(id, String(stage["stage-template"]));
+      } else if (source === record) {
+        map.delete(id);
+      }
+    }
+  }
+  return map;
+}
+
+function explainWorkflowPayload(name, explicitConfigPath = null) {
+  const config = loadConfig(process.cwd(), { explicitPath: explicitConfigPath });
+  const configured = resolveConfiguredWorkflow(name, explicitConfigPath);
+  const provenance = stageTemplateProvenance(config.value || {}, name);
+  const workspaceRoot = resolveWorkspaceRoot();
+  const stageDetails = configured.stages.map((stage) => ({
+    id: stage.id,
+    stageTemplate: provenance.get(String(stage.id)) || null,
+    steps: (Array.isArray(stage.steps) ? stage.steps : []).map((step) => {
+      const stepSpec = {
+        id: step.id,
+        tool: step.tool,
+        name: step.name || `${step.tool}.${step.command || "exec"}`,
+        toolArgv: Array.isArray(step.args) ? step.args.map(String) : [],
+        toolCommand: step.command || "exec",
+      };
+      let args = stepSpec.toolArgv;
+      let templateError = null;
+      try {
+        args = resolveConfiguredStepArgs(stepSpec, {
+          workspaceRoot,
+          stepResults: {},
+          runDir: null,
+          configPath: configured.configPath,
+          workflowMetadata: configured.metadata,
+        }).args;
+      } catch (error) {
+        templateError = String(error && error.message ? error.message : error);
+      }
+      const execution = resolveStepExecution(workspaceRoot, args, step.tool, configured.configPath);
+      const resolved = execution && execution.resolved ? execution.resolved : null;
+      const identity = {};
+      for (const key of EXPLAIN_IDENTITY_KEYS) {
+        const value = resolved ? resolved[key] : null;
+        if (value == null || value === "") {
+          continue;
+        }
+        if (String(value).includes("{{")) {
+          continue;
+        }
+        identity[key] = String(value);
+      }
+      return {
+        id: step.id,
+        tool: step.tool,
+        command: step.command || "exec",
+        args,
+        identity,
+        templateError,
+      };
+    }),
+  }));
+  const record = config.value && config.value.workflows
+    ? config.value.workflows[name] : null;
+  return {
+    command: "workflow explain",
+    status: "success",
+    exit_code: 0,
+    summary: `explained workflow ${name}`,
+    details: {
+      name,
+      category: configured.category || "run",
+      template: record && record.template ? record.template : null,
+      configPath: configured.configPath || null,
+      stages: stageDetails,
+    },
+  };
 }
 
 function listConfiguredWorkflows(explicitConfigPath = null) {
@@ -3185,6 +3303,36 @@ async function handleWorkflowCommand(argv) {
     return 0;
   }
 
+  if (subcommand === "explain") {
+    const selectedWorkflowName = workflowKey(flags);
+    if (!selectedWorkflowName) {
+      throw new Error("workflow explain requires --name WORKFLOW_NAME");
+    }
+    const payload = explainWorkflowPayload(String(selectedWorkflowName));
+    if (flags.json) {
+      writeStdoutLine(JSON.stringify(payload, null, 2));
+    } else {
+      const details = payload.details;
+      writeStdoutLine(`workflow ${details.name} (category ${details.category}${details.template ? `, template ${details.template}` : ""})`);
+      for (const stage of details.stages) {
+        writeStdoutLine(`  stage ${stage.id}${stage.stageTemplate ? ` <- stage-template ${stage.stageTemplate}` : ""}`);
+        for (const step of stage.steps) {
+          writeStdoutLine(`    step ${step.id} [${step.tool} ${step.command}]`);
+          writeStdoutLine(`      args: ${step.args.length > 0 ? step.args.map(shellQuote).join(" ") : "(none)"}`);
+          const identity = Object.entries(step.identity)
+            .map(([key, value]) => `${key}=${value}`).join(" ");
+          if (identity) {
+            writeStdoutLine(`      identity: ${identity}`);
+          }
+          if (step.templateError) {
+            writeStdoutLine(`      unresolved templates: ${step.templateError}`);
+          }
+        }
+      }
+    }
+    return 0;
+  }
+
   if (subcommand === "run") {
     const selectedWorkflowName = workflowKey(flags);
     if (selectedWorkflowName) {
@@ -3466,6 +3614,7 @@ module.exports = {
   runToolBuildWorkflow,
   resolveConfiguredStepArgs,
   resolveConfiguredWorkflow,
+  explainWorkflowPayload,
   stopWorkflowRun,
   removeWorkflowRun
 };

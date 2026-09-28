@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const yaml = require("yaml");
 const { pathToFileURL } = require("node:url");
 const { spawnSync, spawn } = require("node:child_process");
 
@@ -1989,6 +1990,16 @@ test("workflow run resolves prior step artifacts in configured workflows", () =>
   assert.equal(events.some((entry) => entry.event === "step.started" && entry.step_id === "inspect_a"), true);
   assert.equal(events.some((entry) => entry.event === "step.completed" && entry.step_id === "inspect_a"), true);
   assert.equal(events.some((entry) => entry.event === "workflow.completed"), true);
+
+  const expandedPath = path.join(projectRoot, ".workflows", "llbic-artifact-resolution.yaml");
+  assert.equal(fs.existsSync(expandedPath), true, "expanded workflow file should be written");
+  const expanded = yaml.parse(fs.readFileSync(expandedPath, "utf8"));
+  assert.equal(expanded.name, "llbic-artifact-resolution");
+  assert.equal(expanded.category, "run");
+  assert.equal(Array.isArray(expanded.steps), true);
+  assert.equal(expanded.steps.length, 1);
+  assert.equal(expanded.steps[0].id, "inspect_a");
+  assert.equal(expanded.steps[0].tool, "llbic");
 
   fs.rmSync(projectRoot, { recursive: true, force: true });
 });

@@ -2,6 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const yaml = require("yaml");
 const { spawn, spawnSync } = require("child_process");
 const { applyConfigDefaults, loadConfig, configDir, resolveConfiguredWorkspaceRoot } = require("../core/config");
 const {
@@ -2510,8 +2511,24 @@ function runWorkflowPreflight(steps, workspaceRoot, configPath = null) {
   }
 }
 
+function writeExpandedWorkflow(workspaceRoot, workflowName, record) {
+  const root = path.resolve(process.cwd(), workspaceRoot);
+  const expandedDir = path.join(root, ".workflows");
+  fs.mkdirSync(expandedDir, { recursive: true });
+  const expandedPath = path.join(expandedDir, `${workflowName}.yaml`);
+  const payload = {
+    name: workflowName,
+    category: record.category || "run",
+    ...(record.metadata ? { metadata: record.metadata } : {}),
+    stages: Array.isArray(record.stages) ? record.stages : [],
+    steps: Array.isArray(record.steps) ? record.steps : [],
+  };
+  fs.writeFileSync(expandedPath, yaml.stringify(payload, { indent: 2, aliasDuplicateObjects: false }), "utf8");
+}
+
 async function runToolWorkflow({
   steps,
+  stages,
   workflowName,
   workspaceRoot,
   jsonMode,
@@ -2527,6 +2544,12 @@ async function runToolWorkflow({
   metadata = null,
 }) {
   runWorkflowPreflight(steps, workspaceRoot, configPath);
+  writeExpandedWorkflow(workspaceRoot, workflowName, {
+    category,
+    metadata,
+    stages: stages || [],
+    steps: steps || [],
+  });
   const workflow = existingWorkflow || createWorkflowRun(workspaceRoot, workflowName, {
     category,
     configPath,

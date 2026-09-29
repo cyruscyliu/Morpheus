@@ -277,7 +277,8 @@
             "l1-memory-mb",
             "l1-cpus",
             "reuse-build-dir",
-            "build-dir-key"
+            "build-dir-key",
+            "probe-mode"
           ],
           "repeatableFlags": [],
           "pathFlags": {

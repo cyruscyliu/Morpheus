@@ -23,6 +23,11 @@ l1_cpu="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_CPU:-max,x-rme=on,sme=off,pauth
 l1_cmdline="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_CMDLINE:-root=/dev/vda console=ttyAMA0}"
 reuse_build_dir="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_REUSE_BUILD_DIR:-false}"
 build_dir_key="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR_KEY:-default}"
+probe_mode="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_PROBE_MODE:-false}"
+case "${probe_mode}" in
+  true|1|yes|on) probe_mode="true" ;;
+  *) probe_mode="false" ;;
+esac
 result_file="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 
 if [[ "${build_dir}" != /* ]]; then
@@ -192,11 +197,14 @@ validate_guest_qemu_seed_consumer() {
   # oracle.  Reject both the old CVE profiles and the former profile/raw-byte
   # hooks so a stale package tree cannot pass merely because its provenance
   # file was lost.  The active generic seed consumer is required instead.
-  if LC_ALL=C grep -aEq \
-      'virtio-net profile:|synthetic_rx_done|morpheus_virtio_mmio_fuzz|virtio_mmio_(observe|fuzz)' \
+  if LC_ALL=C grep -aEq \\
+      'virtio-net profile:|synthetic_rx_done|morpheus_virtio_mmio_fuzz|virtio_mmio_(observe|fuzz)' \\
       "${guest_qemu_source}" 2>/dev/null; then
     echo "guest QEMU is not stock: ${guest_qemu_source}" >&2
     exit 1
+  fi
+  if [ "${probe_mode}" = "true" ]; then
+    return 0
   fi
   if ! LC_ALL=C grep -aEq \
       'MORPHEUS_QEMU_INPUT_PATH|morpheus_virtio_seed|virtio_mmio_seed_' \

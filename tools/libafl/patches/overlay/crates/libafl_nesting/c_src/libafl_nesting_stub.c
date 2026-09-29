@@ -1417,6 +1417,7 @@ static bool l2_boot_ready_logged(void) {
   static const char *needles[] = {
       "buildroot login:",
       "Welcome to Buildroot",
+      "Starting network",
   };
   const size_t needle_count = sizeof(needles) / sizeof(needles[0]);
 

@@ -3399,11 +3399,6 @@ async function handleWorkflowCommand(argv) {
       const configured = resolveConfiguredWorkflow(String(selectedWorkflowName));
       const workspaceRoot = resolveWorkspaceRoot(flags);
       const stageControl = workflowStageControl(flags);
-      const existingFound = tryFindWorkflowRun(workspaceRoot, selectedWorkflowName);
-      const existingWorkflow = existingFound ? readJson(existingFound.manifestPath) : null;
-      if (existingWorkflow && existingWorkflow.status === "running") {
-        throw new Error(`workflow run requires a non-running workflow instance: ${selectedWorkflowName}`);
-      }
       if (stageControl.fromStage) {
         const workflowRuns = listRunDirsForWorkflow(workspaceRoot, selectedWorkflowName);
         if (workflowRuns.length === 0) {
@@ -3449,7 +3444,7 @@ async function handleWorkflowCommand(argv) {
         commandLabel: "workflow run",
         configPath: configured.configPath,
         metadata: configured.metadata,
-        existingWorkflow,
+        existingWorkflow: null,
       });
     }
 

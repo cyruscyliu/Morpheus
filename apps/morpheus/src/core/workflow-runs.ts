@@ -190,7 +190,11 @@ function listRunDirs(runRoot) {
 }
 
 function createWorkflowRun(workspaceRoot, workflowName, options = {}) {
-  const id = String(options.id || workflowName || generateWorkflowRunId()).trim();
+  let id = String(options.id || workflowName || generateWorkflowRunId()).trim();
+  if (!options.id && workflowName) {
+    const stamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+    id = `${workflowName}-${stamp}`;
+  }
   const runDir = workflowRunDir(workspaceRoot, id);
   const createdAt = nowIso();
   const category = normalizeWorkflowCategory(options.category, "build");

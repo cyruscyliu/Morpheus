@@ -42,6 +42,7 @@ l2_smp="${MORPHEUS_LIBAFL_L2_SMP:-}"
 qemu_plugin="${MORPHEUS_LIBAFL_QEMU_PLUGIN:-}"
 qemu_plugin_el="${MORPHEUS_LIBAFL_QEMU_PLUGIN_EL:-all}"
 measure_l2_startup="${MORPHEUS_LIBAFL_MEASURE_L2_STARTUP:-false}"
+stop_on_ready="${MORPHEUS_LIBAFL_STOP_ON_READY:-false}"
 disable_nqc2_plugin="false"
 capture_runtime="false"
 replay_inputs=()
@@ -100,6 +101,19 @@ while [ "$#" -gt 0 ]; do
     --disable-nqc2-plugin) disable_nqc2_plugin="true" ;;
     --capture-runtime) capture_runtime="true" ;;
     --measure-l2-startup) measure_l2_startup="true" ;;
+    --stop-on-ready)
+      case "${2:-}" in
+        true|TRUE|True|1|yes|YES|on|ON)
+          shift
+          stop_on_ready="${1:-}"
+          ;;
+        false|FALSE|False|0|no|NO|off|OFF)
+          shift
+          stop_on_ready="${1:-}"
+          ;;
+        *) stop_on_ready="true" ;;
+      esac
+      ;;
     *) echo "unknown qemu_nesting harness argument: $1" >&2; exit 1 ;;
   esac
   shift
@@ -118,6 +132,15 @@ fi
 if ! measure_l2_startup="$(normalize_boolean "${measure_l2_startup}")"; then
   echo "--measure-l2-startup must be a boolean (true/false)" >&2
   exit 1
+fi
+if ! stop_on_ready="$(normalize_boolean "${stop_on_ready}")"; then
+  echo "--stop-on-ready must be a boolean (true/false)" >&2
+  exit 1
+fi
+if [ "${stop_on_ready}" = "true" ]; then
+  # stop-on-ready and run-window are mutually exclusive: the L2 runs until
+  # the guest signals readiness, not for a fixed window.
+  l2_run_window_ms=""
 fi
 
 if ! show_console="$(normalize_boolean "${show_console}")"; then
@@ -1043,6 +1066,12 @@ append_l2_fw_cfg() {
     fi
     args+=("-smbios" "type=11,value=morpheus.l2_run_window_ms=${l2_run_window_ms}")
   fi
+  if [ "${stop_on_ready}" = "true" ]; then
+    if [ "${fw_cfg_supported}" = "true" ]; then
+      args+=("-fw_cfg" "name=opt/morpheus/stop-on-ready,string=1")
+    fi
+    args+=("-smbios" "type=11,value=morpheus.stop_on_ready=1")
+  fi
   if [ "${l2_mode}" != "vm" ]; then
     if [ "${fw_cfg_supported}" = "true" ]; then
       args+=("-fw_cfg" "name=opt/morpheus/l2-mode,string=${l2_mode}")
@@ -1106,6 +1135,9 @@ if [ "${capture_runtime}" = "true" ]; then
 fi
 if [ "${measure_l2_startup}" = "true" ]; then
   direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_MEASURE_STARTUP=1"
+fi
+if [ "${stop_on_ready}" = "true" ]; then
+  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_STOP_ON_READY=1"
 fi
 direct_l1_stub_launch_cmd="mkdir -p /mnt && mount -t ext4 -o ro /dev/vdb /mnt && ${direct_l1_stub_env} exec ${direct_l1_share_stub_path}"
 direct_l1_share_prefix="${direct_l1_append%% init=/root/libafl_nesting_stub *}"
@@ -1600,6 +1632,9 @@ if [ -n "${qemu_plugin}" ]; then
 fi
 
 launch_env=("STUB=${stub_elf}" "MORPHEUS_LIBAFL_CORPUS_DIR=${corpus_dir}" "MORPHEUS_LIBAFL_OBJECTIVE_DIR=${objective_dir}")
+if [ "${stop_on_ready}" = "true" ]; then
+  launch_env+=("MORPHEUS_LIBAFL_STOP_ON_READY=1")
+fi
 if [ -n "${sdg_rules}" ]; then
   launch_env+=("MORPHEUS_LIBAFL_SDG_RULES=${sdg_rules}")
 fi

@@ -176,6 +176,13 @@
           "l2RunWindowMs"
         ]
       },
+      "stop-on-ready": {
+        "aliases": [
+          "stop-on-ready",
+          "stopOnReady"
+        ],
+        "boolean": true
+      },
       "measure-l2-startup": {
         "aliases": [
           "measure-l2-startup",
@@ -478,6 +485,7 @@
             "detach",
             "disable-sdg",
             "run-seconds",
+            "stop-on-ready",
             "build-version",
             "build-dir-key"
           ],

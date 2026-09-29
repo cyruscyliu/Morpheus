@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include <dirent.h>
+#include <limits.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -61,6 +62,8 @@
   "/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/l2-disable-nqc2-plugin/raw"
 #define L2_RUN_WINDOW_FW_CFG \
   "/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/l2-run-window-ms/raw"
+#define L2_STOP_ON_READY_FW_CFG \
+  "/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/stop-on-ready/raw"
 #define L2_MODE_FW_CFG \
   "/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/l2-mode/raw"
 #define L2_ACCEL_FW_CFG \
@@ -72,6 +75,7 @@
 #define DMI_ENTRIES_DIR "/sys/firmware/dmi/entries"
 #define L2_DISABLE_NQC2_DMI "morpheus.l2_disable_nqc2_plugin=1"
 #define L2_RUN_WINDOW_DMI "morpheus.l2_run_window_ms="
+#define L2_STOP_ON_READY_DMI "morpheus.stop_on_ready=1"
 #define L2_MODE_DMI "morpheus.l2_mode="
 #define L2_ACCEL_DMI "morpheus.l2_accel="
 #define L2_CPU_DMI "morpheus.l2_cpu="
@@ -79,6 +83,7 @@
 #define PROC_CMDLINE_PATH "/proc/cmdline"
 #define L2_DISABLE_NQC2_CMDLINE "morpheus.l2_disable_nqc2_plugin=1"
 #define L2_RUN_WINDOW_CMDLINE "morpheus.l2_run_window_ms="
+#define L2_STOP_ON_READY_CMDLINE "morpheus.stop_on_ready=1"
 #define L2_MODE_CMDLINE "morpheus.l2_mode="
 #define L2_ACCEL_CMDLINE "morpheus.l2_accel="
 #define L2_CPU_CMDLINE "morpheus.l2_cpu="
@@ -88,6 +93,7 @@
 #define L2_MODE_ENV "MORPHEUS_L2_MODE"
 #define L2_RUN_WINDOW_ENV "MORPHEUS_L2_RUN_WINDOW_MS"
 #define L2_MEASURE_STARTUP_ENV "MORPHEUS_L2_MEASURE_STARTUP"
+#define L2_STOP_ON_READY_ENV "MORPHEUS_L2_STOP_ON_READY"
 #define L2_STARTUP_TIMING_POLL_MS 25U
 
 static uint8_t FUZZ_INPUT[INPUT_LEN];
@@ -560,6 +566,87 @@ static bool l2_startup_measurement_enabled(void) {
   const char *value = getenv(L2_MEASURE_STARTUP_ENV);
   return value && (value[0] == '1' || strcasecmp(value, "true") == 0 ||
                    strcasecmp(value, "yes") == 0);
+}
+
+static bool fw_cfg_stop_on_ready(bool *out) {
+  char value[8] = {0};
+  FILE *fp = fopen(L2_STOP_ON_READY_FW_CFG, "rb");
+  size_t n;
+
+  if (!fp) {
+    return false;
+  }
+  n = fread(value, 1, sizeof(value) - 1, fp);
+  fclose(fp);
+  return n > 0 && parse_l2_mode(value, out);
+}
+
+static bool proc_cmdline_stop_on_ready(bool *out) {
+  if (proc_cmdline_has_token(L2_STOP_ON_READY_CMDLINE)) {
+    *out = true;
+    return true;
+  }
+  return false;
+}
+
+static bool env_stop_on_ready(bool *out) {
+  const char *value = getenv(L2_STOP_ON_READY_ENV);
+  return value && parse_l2_mode(value, out);
+}
+
+static bool dmi_stop_on_ready(bool *out) {
+  DIR *dir = opendir(DMI_ENTRIES_DIR);
+  struct dirent *entry = NULL;
+
+  if (!dir) {
+    return false;
+  }
+
+  while ((entry = readdir(dir)) != NULL) {
+    char raw_path[256];
+    FILE *raw = NULL;
+    char data[512];
+    size_t len;
+    int written;
+
+    if (strncmp(entry->d_name, "11-", 3) != 0) {
+      continue;
+    }
+
+    written = snprintf(raw_path, sizeof(raw_path), "%s/%s/raw",
+                       DMI_ENTRIES_DIR, entry->d_name);
+    if (written < 0 || (size_t)written >= sizeof(raw_path)) {
+      continue;
+    }
+
+    raw = fopen(raw_path, "rb");
+    if (!raw) {
+      continue;
+    }
+    len = fread(data, 1, sizeof(data) - 1, raw);
+    fclose(raw);
+    data[len] = '\0';
+
+    if (strstr(data, L2_STOP_ON_READY_DMI) != NULL) {
+      *out = true;
+      closedir(dir);
+      return true;
+    }
+  }
+
+  closedir(dir);
+  return false;
+}
+
+static bool l2_stop_on_ready_enabled(void) {
+  bool value = false;
+  if (fw_cfg_stop_on_ready(&value) ||
+      env_stop_on_ready(&value) ||
+      proc_cmdline_stop_on_ready(&value) ||
+      dmi_stop_on_ready(&value)) {
+    return value;
+  }
+  return false;
 }
 
 static uint64_t monotonic_time_ns(void) {
@@ -1790,13 +1877,20 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
   }
 
   lqprintf("stub: launched l2 pid=%u\n", (unsigned)pid);
-  lqprintf("stub: entering l2 run window pid=%u\n", (unsigned)pid);
   measure_startup = l2_startup_measurement_enabled();
-  unsigned window_ms = run_window_ms();
+  bool stop_on_ready = l2_stop_on_ready_enabled();
+  unsigned window_ms;
+  if (stop_on_ready) {
+    window_ms = UINT_MAX;
+    lqprintf("stub: stop-on-ready enabled; run window disabled\n");
+  } else {
+    window_ms = run_window_ms();
+    lqprintf("stub: entering l2 run window pid=%u ms=%u\n", (unsigned)pid,
+             window_ms);
+  }
   unsigned evidence_wait_ms = window_ms < 5000U ? window_ms : 5000U;
   bool boot_ready = false;
   unsigned elapsed_ms = evidence_wait_ms;
-  lqprintf("stub: l2 run window ms=%u\n", window_ms);
   if (measure_startup) {
     append_marker("l2-startup-measurement=enabled\n");
     elapsed_ms = 0;
@@ -1832,6 +1926,19 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
   }
   if (boot_ready) {
     append_marker("parent-boot-ready\n");
+    if (l2_stop_on_ready_enabled()) {
+      int term_status = 0;
+      lqprintf("stub: l2 boot ready; stop-on-ready requested, terminating\n");
+      signal_l2_process_group(pid, SIGTERM);
+      if (!reap_l2_process(pid, &term_status)) {
+        lqprintf("stub: failed to reap l2 process group on stop-on-ready\n");
+        return false;
+      }
+      log_l2_input_evidence();
+      lqprintf("stub: l2 stopped on ready\n");
+      *outcome = L2_OUTCOME_RUN_WINDOW_COMPLETE;
+      return true;
+    }
     /* Reaching the login prompt only means the L2 guest has booted.  Keep
      * the process alive for the configured fuzzing window; terminating here
      * kills the inner fuzzer before its first execution. */

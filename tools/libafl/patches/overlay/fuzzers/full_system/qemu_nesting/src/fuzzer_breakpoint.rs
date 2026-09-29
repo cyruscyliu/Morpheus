@@ -92,18 +92,27 @@ fn restore_blocking_stdout() {
     }
 }
 
-fn executor_timeout(replay_enabled: bool) -> Duration {
+fn executor_timeout(_replay_enabled: bool) -> Duration {
     if let Some(seconds) = parse_env_u64("MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS") {
         return Duration::from_secs(seconds);
     }
 
-    if replay_enabled {
-        let l2_window_ms = parse_env_u64("MORPHEUS_LIBAFL_L2_RUN_WINDOW_MS").unwrap_or(30_000);
-        let l2_window_seconds = l2_window_ms.div_ceil(1000);
-        return Duration::from_secs(l2_window_seconds + 30);
+    // stop-on-ready and run-window are mutually exclusive.  When stop-on-ready
+    // is active the L2 runs until the guest signals readiness, so use a fixed
+    // long timeout instead of deriving one from the window.
+    if env::var("MORPHEUS_LIBAFL_STOP_ON_READY")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        return Duration::from_secs(600);
     }
 
-    Duration::from_secs(12)
+    // Both fuzzing and replay need enough time for the L2 run window to finish.
+    // Use the configured window plus a safety margin so normal completions are
+    // not misclassified as timeout objectives.
+    let l2_window_ms = parse_env_u64("MORPHEUS_LIBAFL_L2_RUN_WINDOW_MS").unwrap_or(30_000);
+    let l2_window_seconds = l2_window_ms.div_ceil(1000);
+    Duration::from_secs(l2_window_seconds + 30)
 }
 
 fn snapshot_manager_from_env() -> SnapshotManager {

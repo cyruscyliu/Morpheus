@@ -127,10 +127,10 @@ report. The measured interval is:
 L2 qemu-exec-start -> Buildroot login:
 ```
 
-Each iteration runs until the iteration timeout (the host-side executor
-timeout) fires; it does not stop at the Buildroot login prompt. The measured
-startup boundary remains qemu-exec-start -> Buildroot login. The report
-includes the host CPU model and the effective L1 SMP cap.
+The configured L2 run window is only a readiness timeout. It is never used as
+the startup duration. Each case stops as soon as the Buildroot login prompt is
+observed, and the report includes the host CPU model and the effective L1 SMP
+cap.
 
 For a different host, use the 1/1 median as the calibration point. If the
 reference host's 1/1 median is `T_reference` and the new host measures

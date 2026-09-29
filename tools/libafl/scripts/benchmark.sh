@@ -15,6 +15,7 @@ seed_input="${MORPHEUS_LIBAFL_SEED_INPUT:?}"
 build_dir_key="${MORPHEUS_LIBAFL_BUILD_DIR_KEY:-default}"
 repetitions="${MORPHEUS_LIBAFL_REPETITIONS:-3}"
 l2_memory_mb="${MORPHEUS_LIBAFL_L2_MEMORY_MB:-512}"
+l2_run_window_ms="${MORPHEUS_LIBAFL_L2_RUN_WINDOW_MS:-180000}"
 startup_timeout="${MORPHEUS_LIBAFL_STARTUP_TIMEOUT_SECONDS:-300}"
 reference_baseline="${MORPHEUS_LIBAFL_REFERENCE_BASELINE_MS:-}"
 reference_report="${MORPHEUS_LIBAFL_REFERENCE_REPORT:-}"
@@ -35,6 +36,10 @@ if ! [[ "${repetitions}" =~ ^[1-9][0-9]*$ ]]; then
 fi
 if ! [[ "${l2_memory_mb}" =~ ^[1-9][0-9]*$ ]]; then
   echo "l2-memory-mb must be a positive integer" >&2
+  exit 1
+fi
+if ! [[ "${l2_run_window_ms}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "l2-run-window-ms must be a positive integer" >&2
   exit 1
 fi
 if ! [[ "${startup_timeout}" =~ ^[1-9][0-9]*$ ]]; then
@@ -127,6 +132,7 @@ NODE
           --l2-cpu host \
           --l2-smp "${l2_smp}" \
           --l2-memory-mb "${l2_memory_mb}" \
+          --l2-run-window-ms "${l2_run_window_ms}" \
           --replay-input "${seed_input}" \
           --disable-nqc2-plugin \
           --measure-l2-startup \
@@ -169,11 +175,11 @@ host_cpus="$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)"
 
 node - "${records_file}" "${report_file}" "${build_dir_key}" \
   "${repetitions}" "${reference_baseline}" "${host_model}" "${host_cpus}" \
-  "${l2_memory_mb}" "${l1_values[*]}" \
+  "${l2_memory_mb}" "${l2_run_window_ms}" "${l1_values[*]}" \
   "${l2_values[*]}" "${l1_smp_cap}" "${reference_report}" <<'NODE'
 const fs = require("fs");
 const [recordsFile, reportFile, buildDirKey, repetitionsRaw, referenceRaw,
-  hostModel, hostCpusRaw, l2MemoryRaw, l1Raw, l2Raw, l1CapRaw,
+  hostModel, hostCpusRaw, l2MemoryRaw, l2WindowRaw, l1Raw, l2Raw, l1CapRaw,
   referenceReportPath] =
   process.argv.slice(2);
 const referenceReportFile = referenceReportPath || "";
@@ -293,6 +299,8 @@ const report = {
     repetitions,
     l1_smp_cap: Number(l1CapRaw),
     timing_boundary: "L2 qemu-exec-start to Buildroot login prompt",
+    readiness_timeout_ms: Number(l2WindowRaw),
+    readiness_timeout_is_not_a_measurement: true,
   },
   normalization: {
     local_1x1_median_ms: baselineMs,

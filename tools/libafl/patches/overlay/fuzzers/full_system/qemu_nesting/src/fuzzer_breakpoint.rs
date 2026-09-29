@@ -92,9 +92,15 @@ fn restore_blocking_stdout() {
     }
 }
 
-fn executor_timeout() -> Duration {
+fn executor_timeout(replay_enabled: bool) -> Duration {
     if let Some(seconds) = parse_env_u64("MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS") {
         return Duration::from_secs(seconds);
+    }
+
+    if replay_enabled {
+        let l2_window_ms = parse_env_u64("MORPHEUS_LIBAFL_L2_RUN_WINDOW_MS").unwrap_or(30_000);
+        let l2_window_seconds = l2_window_ms.div_ceil(1000);
+        return Duration::from_secs(l2_window_seconds + 30);
     }
 
     Duration::from_secs(12)
@@ -183,7 +189,7 @@ pub fn fuzz() {
 
     let replay_inputs = replay_input_paths();
     let initial_inputs = initial_input_paths();
-    let timeout = executor_timeout();
+    let timeout = executor_timeout(replay_inputs.is_some());
     let broker_port = env::var("BROKER_PORT")
         .ok()
         .and_then(|value| value.parse::<u16>().ok())

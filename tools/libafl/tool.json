@@ -170,6 +170,12 @@
           "l2MemoryMb"
         ]
       },
+      "l2-run-window-ms": {
+        "aliases": [
+          "l2-run-window-ms",
+          "l2RunWindowMs"
+        ]
+      },
       "measure-l2-startup": {
         "aliases": [
           "measure-l2-startup",
@@ -523,6 +529,7 @@
             "qemu-bridge-build-dir-key",
             "nvirsh-build-dir-key",
             "l2-memory-mb",
+            "l2-run-window-ms",
             "measure-l2-startup",
             "repetitions",
             "startup-timeout-seconds",

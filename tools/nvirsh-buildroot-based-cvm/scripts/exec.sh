@@ -35,6 +35,7 @@ l2_cvm_evidence_reported="false"
 l2_ready_reported="false"
 l2_rsi_status_reported="false"
 l2_qemu_exec_start_ns=""
+l2_userspace_start_ns=""
 l2_buildroot_ready_ns=""
 l2_timing_file="${run_dir}/l2-startup-timing.json"
 failure_message=""
@@ -172,16 +173,27 @@ host_time_ns() {
 write_l2_startup_timing() {
   [ "${measure_l2_startup}" = "true" ] || return 0
   node - "${l2_timing_file}" "${l2_qemu_exec_start_ns}" \
-    "${l2_buildroot_ready_ns}" "${l2_smp}" <<'NODE'
+    "${l2_userspace_start_ns}" "${l2_buildroot_ready_ns}" "${l2_smp}" <<'NODE'
 const fs = require("fs");
-const [outputFile, startRaw, readyRaw, smpRaw] = process.argv.slice(2);
+const [outputFile, startRaw, userspaceRaw, readyRaw, smpRaw] = process.argv.slice(2);
 const isInteger = (value) => /^\d+$/.test(value || "");
 const hasStart = isInteger(startRaw);
+const hasUserspace = isInteger(userspaceRaw);
 const hasReady = isInteger(readyRaw);
 let durationMs = null;
+let bootToUserspaceMs = null;
+let userspaceToLoginMs = null;
 if (hasStart && hasReady) {
   const durationNs = BigInt(readyRaw) - BigInt(startRaw);
   if (durationNs >= 0n) durationMs = Number(durationNs) / 1e6;
+}
+if (hasStart && hasUserspace) {
+  const ns = BigInt(userspaceRaw) - BigInt(startRaw);
+  if (ns >= 0n) bootToUserspaceMs = Number(ns) / 1e6;
+}
+if (hasUserspace && hasReady) {
+  const ns = BigInt(readyRaw) - BigInt(userspaceRaw);
+  if (ns >= 0n) userspaceToLoginMs = Number(ns) / 1e6;
 }
 const result = {
   schemaVersion: 1,
@@ -189,8 +201,11 @@ const result = {
   source: "nvirsh-buildroot-based-cvm-host-observer",
   l2_smp: isInteger(smpRaw) ? Number(smpRaw) : null,
   qemu_exec_start_ns: hasStart ? startRaw : null,
+  userspace_start_ns: hasUserspace ? userspaceRaw : null,
   buildroot_ready_ns: hasReady ? readyRaw : null,
   duration_ms: durationMs,
+  boot_to_userspace_ms: bootToUserspaceMs,
+  userspace_to_login_ms: userspaceToLoginMs,
   status: durationMs === null ? "incomplete" : "complete",
 };
 fs.writeFileSync(outputFile, `${JSON.stringify(result, null, 2)}\n`);
@@ -628,6 +643,13 @@ observe_l2_runtime() {
     && [ -f "${l2_launch_marker_log}" ] \
     && LC_ALL=C grep -a -q -- 'qemu-exec-start' "${l2_launch_marker_log}" 2>/dev/null; then
     l2_qemu_exec_start_ns="$(host_time_ns)"
+  fi
+
+  if [ "${measure_l2_startup}" = "true" ] \
+    && [ -z "${l2_userspace_start_ns}" ] \
+    && [ -f "${l2_console_log}" ] \
+    && LC_ALL=C grep -a -q -- 'MORPHEUS_USERSPACE_START' "${l2_console_log}" 2>/dev/null; then
+    l2_userspace_start_ns="$(host_time_ns)"
   fi
 
   if [ "${l2_cvm_evidence_reported}" != "true" ] \

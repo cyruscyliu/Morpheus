@@ -197,8 +197,8 @@ validate_guest_qemu_seed_consumer() {
   # oracle.  Reject both the old CVE profiles and the former profile/raw-byte
   # hooks so a stale package tree cannot pass merely because its provenance
   # file was lost.  The active generic seed consumer is required instead.
-  if LC_ALL=C grep -aEq \\
-      'virtio-net profile:|synthetic_rx_done|morpheus_virtio_mmio_fuzz|virtio_mmio_(observe|fuzz)' \\
+  if LC_ALL=C grep -aEq \
+      'virtio-net profile:|synthetic_rx_done|morpheus_virtio_mmio_fuzz|virtio_mmio_(observe|fuzz)' \
       "${guest_qemu_source}" 2>/dev/null; then
     echo "guest QEMU is not stock: ${guest_qemu_source}" >&2
     exit 1
@@ -834,8 +834,7 @@ if [ -d /sys/class/net/eth0 ]; then
   # udhcpc already writes the outer slirp resolver (10.0.2.3, proven to
   # resolve from L1); do not shadow it with a local listener the image may
   # fail to bind, which turned every lookup into a dead path.
-  grep -q 'nameserver 10.0.2.3' /etc/resolv.conf 2>/dev/null || \
-    printf 'nameserver 10.0.2.3\n' >> /etc/resolv.conf 2>/dev/null || true
+  printf 'nameserver 10.0.2.3\n' > /etc/resolv.conf 2>/dev/null || true
   printf 'l1-net-resolv=10.0.2.3\n' >> "${runtime_dir}/launch-l2.marker"
 fi
 [ -x /etc/init.d/S50macvtap ] && [ ! -d /sys/class/net/macvtap0 ] && /etc/init.d/S50macvtap start || true
@@ -904,8 +903,7 @@ if [ -d /sys/class/net/eth0 ]; then
   # udhcpc already writes the outer slirp resolver (10.0.2.3, proven to
   # resolve from L1); do not shadow it with a local listener the image may
   # fail to bind, which turned every lookup into a dead path.
-  grep -q 'nameserver 10.0.2.3' /etc/resolv.conf 2>/dev/null || \
-    printf 'nameserver 10.0.2.3\n' >> /etc/resolv.conf 2>/dev/null || true
+  printf 'nameserver 10.0.2.3\n' > /etc/resolv.conf 2>/dev/null || true
   printf 'l1-net-resolv=10.0.2.3\n' >> "${runtime_dir}/launch-l2.marker"
   if command -v nslookup >/dev/null 2>&1; then
     printf 'l1-dns=' >> "${runtime_dir}/launch-l2.marker"

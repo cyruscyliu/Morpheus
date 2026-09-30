@@ -524,6 +524,162 @@ def test_unproven_dma():
     assert data["nodes"]["count"] == 0, data["nodes"]["nodes"]
 
 
+def test_stored_guarded_bound():
+    bc = compile_fixture("stored_guarded_bound.c")
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "out.json"
+        run_opt(bc, out)
+        data = load_json(out)
+
+    rule = next(
+        rule for rule in data["rules"]["rules"]
+        if rule["target_state"]["src"] == "mmio:266:2:mtu"
+        and rule["target_state"]["predicate"].get("kind") == "Gt"
+        and rule["target_state"]["predicate"].get("value") == 40
+    )
+    assert rule["target_state"]["dst"] == "mmio:266:2:mtu", rule
+    assert rule["mutation"]["operator"] == "SetBoundary", rule["mutation"]
+    guards = {
+        (pre["predicate"].get("kind"), pre["predicate"].get("bit"))
+        for pre in rule["preconditions"]
+        if pre["src"].startswith("mmio:16:4:")
+    }
+    assert ("BitSet", 17) in guards, guards
+    assert ("BitSet", 18) in guards, guards
+
+
+def test_capacity_bound_40():
+    # The evidence-backed cross-function capacity rule shape: a
+    # device-provided config byte stored into state, loaded by the caller,
+    # and passed as the length argument of a helper whose real copy is a
+    # memcpy() into a 40-byte trailing-overlap destination.
+    bc = compile_fixture("capacity_bound.c")
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "out.json"
+        run_opt(bc, out)
+        data = load_json(out)
+
+    rule = next(
+        rule for rule in data["rules"]["rules"]
+        if rule["target_state"]["src"] == "mmio:273:1:rss_max_key_size"
+    )
+    assert rule["target_state"]["dst"] == "mmio:273:1:rss_max_key_size", rule
+    assert rule["target_state"]["predicate"].get("kind") == "Gt", rule
+    assert rule["target_state"]["predicate"].get("value") == 40, rule
+    assert rule["mutation"]["operator"] == "SetBoundary", rule["mutation"]
+    assert rule["mutation"]["side"] == "Above", rule["mutation"]
+    assert not any(
+        var["source"].get("class") == "InternalState"
+        for var in rule["vars"]
+    ), rule["vars"]
+    # The final sink is the real generic copy operation inside the helper,
+    # not the helper itself.
+    assert any(
+        sink["function"] == "memcpy"
+        and sink["role"] == "size"
+        and sink["arg_index"] == 2
+        for sink in rule["sinks"]
+    ), rule["sinks"]
+    assert not any(
+        sink["function"] == "fill_buffer" for sink in rule["sinks"]
+    ), rule["sinks"]
+
+
+def test_capacity_bound_out_of_domain():
+    # A 256-byte backing storage bounds the value at 256; a u8 device value
+    # cannot exceed it, so the bound is tautological and must be rejected
+    # rather than wrapped or truncated into an executable rule.
+    bc = compile_fixture("capacity_bound_256.c")
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "out.json"
+        run_opt(bc, out)
+        data = load_json(out)
+
+    rules = [
+        rule for rule in data["rules"]["rules"]
+        if rule["target_state"]["src"] == "mmio:273:1:rss_max_key_size"
+        and rule["target_state"]["predicate"].get("kind") == "Gt"
+    ]
+    assert not rules, [rule["id"] for rule in rules]
+
+
+def test_alias_pollution_rejected():
+    # SVFG address propagation may connect a stored guest value to an
+    # unrelated memcpy size through the shared object. The sink argument is
+    # not derived from the guest value by an exact LLVM use chain, so no
+    # rule may be emitted.
+    bc = compile_fixture("alias_pollution_rejected.c")
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "out.json"
+        run_opt(bc, out)
+        data = load_json(out)
+
+    polluted = [
+        rule for rule in data["rules"]["rules"]
+        if rule["sinks"]
+        and any(sink["function"] == "memcpy" for sink in rule["sinks"])
+    ]
+    assert not polluted, [rule["id"] for rule in polluted]
+
+
+def test_dead_caller_capacity_unchanged():
+    # A dead caller passes the tainted value through the spare formal, whose
+    # flow never reaches the sink's size operand. Its smaller destination
+    # storage is explored during the search but is dead provenance: it must
+    # not lower the successful path's inferred bound.
+    bc = compile_fixture("dead_caller_capacity.c")
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "out.json"
+        run_opt(bc, out)
+        data = load_json(out)
+
+    rule = next(
+        rule for rule in data["rules"]["rules"]
+        if rule["target_state"]["src"] == "mmio:273:1:rss_max_key_size"
+    )
+    assert rule["target_state"]["dst"] == "mmio:273:1:rss_max_key_size", rule
+    assert rule["target_state"]["predicate"].get("kind") == "Gt", rule
+    assert rule["target_state"]["predicate"].get("value") == 40, rule
+    assert rule["mutation"]["operator"] == "SetBoundary", rule["mutation"]
+    assert rule["mutation"]["side"] == "Above", rule["mutation"]
+    assert not any(
+        var["source"].get("class") == "InternalState"
+        for var in rule["vars"]
+    ), rule["vars"]
+    # The final sink is the real generic copy operation inside the helper.
+    assert any(
+        sink["function"] == "memcpy"
+        and sink["role"] == "size"
+        and sink["arg_index"] == 2
+        for sink in rule["sinks"]
+    ), rule["sinks"]
+
+
+def test_unrelated_guard_rejected():
+    # The unrelated feature guard reaches the same sink helper through a
+    # different call path that carries no proven value flow. It is explored
+    # but rejected: the rule's guard set stays exactly the two intended
+    # stored-boolean bits on the proven path.
+    bc = compile_fixture("unrelated_guard_rejected.c")
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "out.json"
+        run_opt(bc, out)
+        data = load_json(out)
+
+    rule = next(
+        rule for rule in data["rules"]["rules"]
+        if rule["target_state"]["src"] == "mmio:273:1:rss_max_key_size"
+    )
+    assert rule["target_state"]["predicate"].get("kind") == "Gt", rule
+    assert rule["target_state"]["predicate"].get("value") == 40, rule
+    guards = {
+        (pre["predicate"].get("kind"), pre["predicate"].get("bit"))
+        for pre in rule["preconditions"]
+        if pre["src"].startswith("mmio:16:4:")
+    }
+    assert guards == {("BitSet", 17), ("BitSet", 18)}, guards
+
+
 def main():
     if not PLUGIN.exists():
         print(f"error: pass plugin not found at {PLUGIN}", file=sys.stderr)
@@ -551,6 +707,12 @@ def main():
         test_guard_polarity,
         test_unproven_reads,
         test_unproven_dma,
+        test_stored_guarded_bound,
+        test_capacity_bound_40,
+        test_capacity_bound_out_of_domain,
+        test_alias_pollution_rejected,
+        test_dead_caller_capacity_unchanged,
+        test_unrelated_guard_rejected,
     ):
         try:
             test()

@@ -9,7 +9,9 @@
 #include <vector>
 
 namespace llvm {
+class CallBase;
 class DebugLoc;
+class Function;
 class Instruction;
 } // namespace llvm
 
@@ -27,10 +29,21 @@ struct Edge {
   /// The basic block reached when the predicate holds: for target states,
   /// the direction that stays on the non-error path.
   const llvm::BasicBlock *guardedRegion = nullptr;
+  /// The opposite (condition-false) successor of the guarding branch. A
+  /// callsite reachable from both sides runs regardless of the predicate,
+  /// so the false side is what confines the proven region. Metadata only;
+  /// not part of the .sdg condition identity.
+  const llvm::BasicBlock *falseRegion = nullptr;
   std::string evidence = "llvm";
 };
 
 using SelfEdgeMap = std::map<std::string, std::vector<Edge>>;
+
+/// Call sites traversed by an exact value-flow proof, paired with the
+/// callee each argument was passed into. Object provenance for a sink's
+/// destination formal is resolved along this proven path only.
+using ProvenArgumentPassing =
+    std::vector<std::pair<const llvm::CallBase *, const llvm::Function *>>;
 
 namespace heads {
 inline constexpr const char *kBound = "head_bound";
@@ -57,6 +70,10 @@ struct Rule {
   std::vector<SemanticSink> sinks;
   std::vector<Edge> preconditions;
   Edge trigger;
+  /// Argument-passing callsites traversed by the rule's exact value-flow
+  /// proofs: the record cross-function guard proofs replay. Internal only;
+  /// not serialized.
+  ProvenArgumentPassing provenFlow;
   Mutation mutation;
   float confidence;
 };

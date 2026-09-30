@@ -85,6 +85,78 @@ getBufferSizeBytes(const llvm::Value *V, const llvm::DataLayout &DL) {
   auto *GEP = dyn_cast<GEPOperator>(V);
   if (!GEP)
     return llvm::None;
+
+  // Prefer the remaining capacity of the innermost constant-indexed array.
+  // This recovers fixed destination storage such as `u8 key[40]` even when
+  // the GEP decays it to i8*. It is source-layout evidence, not a name-based
+  // bound.
+  Type *current = GEP->getSourceElementType();
+  bool firstIndex = true;
+  llvm::Optional<uint64_t> arrayCapacity;
+  llvm::Optional<uint64_t> overlayArrayCapacity;
+  bool reachedFlexibleArray = false;
+  for (const Use &indexUse : GEP->indices()) {
+    auto *index = dyn_cast<ConstantInt>(indexUse.get());
+    if (!index)
+      break;
+    if (firstIndex) {
+      firstIndex = false;
+      continue;
+    }
+    if (auto *structure = dyn_cast<StructType>(current)) {
+      for (Type *elementType : structure->elements()) {
+        if (auto *backingArray = dyn_cast<ArrayType>(elementType)) {
+          uint64_t bytes =
+              DL.getTypeAllocSize(backingArray).getFixedSize();
+          if (bytes > 0 &&
+              (!overlayArrayCapacity.hasValue() ||
+               bytes > overlayArrayCapacity.getValue()))
+            overlayArrayCapacity = bytes;
+        }
+      }
+      uint64_t field = index->getZExtValue();
+      if (field >= structure->getNumElements())
+        break;
+      current = structure->getElementType(field);
+      continue;
+    }
+    if (auto *array = dyn_cast<ArrayType>(current)) {
+      uint64_t element = index->getZExtValue();
+      if (array->getNumElements() == 0 && element == 0) {
+        reachedFlexibleArray = true;
+        current = array->getElementType();
+        continue;
+      }
+      if (element >= array->getNumElements())
+        break;
+      uint64_t elementBytes =
+          DL.getTypeAllocSize(array->getElementType()).getFixedSize();
+      arrayCapacity = (array->getNumElements() - element) * elementBytes;
+      current = array->getElementType();
+      continue;
+    }
+    break;
+  }
+  if (arrayCapacity.hasValue() && arrayCapacity.getValue() > 0)
+    return arrayCapacity;
+  if (reachedFlexibleArray && overlayArrayCapacity.hasValue())
+    return overlayArrayCapacity;
+
+  // A zero-length/flexible array may be overlaid with trailing storage in
+  // the containing object. In that case the usable capacity is the constant
+  // remainder from the GEP to the end of the source aggregate.
+  APInt aggregateOffset(64, 0);
+  if (GEP->hasAllConstantIndices() &&
+      GEP->accumulateConstantOffset(DL, aggregateOffset) &&
+      aggregateOffset.isNonNegative() &&
+      GEP->getSourceElementType()->isSized()) {
+    uint64_t total =
+        DL.getTypeAllocSize(GEP->getSourceElementType()).getFixedSize();
+    uint64_t offset = aggregateOffset.getZExtValue();
+    if (offset < total)
+      return total - offset;
+  }
+
   SmallVector<Value *, 8> indices(GEP->idx_begin(), GEP->idx_end());
   Type *resultType = GetElementPtrInst::getIndexedType(
       GEP->getSourceElementType(), indices);
@@ -108,6 +180,182 @@ static bool isPrimarySource(const SemanticSource &src) {
   return src.schema.accessKind != "feature";
 }
 
+static bool directlyReachesSink(const Value *root,
+                                const SemanticSink &sink,
+                                const CallGraphInfo &callGraph,
+                                ProvenArgumentPassing *provenPassing) {
+  if (!root || !sink.call || sink.argIndex >= sink.call->arg_size())
+    return false;
+  const Value *target = sink.call->getArgOperand(sink.argIndex);
+  const Function *sinkFunction = sink.call->getFunction();
+
+  auto functionOf = [](const Value *value) -> const Function * {
+    if (const auto *argument = dyn_cast<Argument>(value))
+      return argument->getParent();
+    if (const auto *instruction = dyn_cast<Instruction>(value))
+      return instruction->getFunction();
+    return nullptr;
+  };
+
+  using Node = std::pair<const Value *, const Function *>;
+
+  // Exact forward value flow: transparent operations, actual-to-formal
+  // argument passing, and return-value continuation, all through resolved
+  // call edges (direct plus pointer-analysis indirect callees). Memory hops
+  // are deliberately excluded: SVFG address propagation merges unrelated
+  // sizes across functions, so a proof that requires a store/load hop is
+  // unproven here.
+  auto successorsOf = [&](const Node &node, std::vector<Node> &out) {
+    const Value *value = node.first;
+    const Function *function = node.second;
+    for (const User *user : value->users()) {
+      if (isa<CastInst>(user) || isa<PHINode>(user) ||
+          isa<SelectInst>(user) || isa<UnaryOperator>(user) ||
+          isa<BinaryOperator>(user)) {
+        out.push_back({cast<Value>(user), functionOf(user)});
+        continue;
+      }
+      // Actual-to-formal argument passing through resolved call edges.
+      if (const CallBase *call = dyn_cast<CallBase>(user)) {
+        auto calleeIt = callGraph.callees.find(call);
+        if (calleeIt == callGraph.callees.end())
+          continue;
+        for (const Function *callee : calleeIt->second) {
+          if (!callee || callee->isDeclaration())
+            continue;
+          for (unsigned i = 0, e = call->arg_size(); i < e; ++i) {
+            if (call->getArgOperand(i) != value)
+              continue;
+            if (i < callee->arg_size())
+              out.push_back({callee->getArg(i), callee});
+          }
+        }
+        continue;
+      }
+      // Return-value continuation: the value is returned from `function`,
+      // so every resolved caller's call result continues the chain.
+      if (isa<ReturnInst>(user)) {
+        if (!function)
+          continue;
+        auto callerIt = callGraph.callersOf.find(function);
+        if (callerIt == callGraph.callersOf.end())
+          continue;
+        for (const CallBase *caller : callerIt->second) {
+          if (caller->getType()->isVoidTy())
+            continue;
+          out.push_back({caller, caller->getFunction()});
+        }
+      }
+    }
+  };
+
+  // Backward in-edges of a node, the exact inverse of the kinds above.
+  auto predecessorsOf = [&](const Node &node, std::vector<Node> &out) {
+    const Value *value = node.first;
+    const Function *function = node.second;
+    if (const auto *argument = dyn_cast<Argument>(value)) {
+      unsigned index = argument->getArgNo();
+      auto callerIt = callGraph.callersOf.find(function);
+      if (callerIt == callGraph.callersOf.end())
+        return;
+      for (const CallBase *caller : callerIt->second) {
+        if (index >= caller->arg_size())
+          continue;
+        const Value *actual = caller->getArgOperand(index);
+        out.push_back({actual, functionOf(actual)});
+      }
+      return;
+    }
+    if (const auto *callValue = dyn_cast<CallBase>(value)) {
+      if (callValue->getType()->isVoidTy())
+        return;
+      auto calleeIt = callGraph.callees.find(callValue);
+      if (calleeIt == callGraph.callees.end())
+        return;
+      for (const Function *callee : calleeIt->second) {
+        if (!callee || callee->isDeclaration())
+          continue;
+        for (const BasicBlock &BB : *callee) {
+          for (const Instruction &I : BB) {
+            auto *ret = dyn_cast<ReturnInst>(&I);
+            if (!ret || !ret->getReturnValue())
+              continue;
+            out.push_back({ret->getReturnValue(), callee});
+          }
+        }
+      }
+      return;
+    }
+    // A transparent operation receives flow from its operands.
+    if (isa<CastInst>(value) || isa<PHINode>(value) || isa<SelectInst>(value) ||
+        isa<UnaryOperator>(value) || isa<BinaryOperator>(value))
+      for (const Use &operandUse : cast<User>(value)->operands())
+        out.push_back({operandUse.get(), functionOf(operandUse.get())});
+  };
+
+  // Provenance must consist of complete successful root-to-exact-sink paths
+  // only, so the reachability runs in two passes. The forward pass collects
+  // the nodes the root reaches; the backward pass collects the nodes that
+  // reach the exact sink argument. An argument-passing step is proven only
+  // when both of its endpoints are live in both passes, which keeps
+  // explored-but-dead callers out of the capacity provenance.
+  std::set<Node> forwardLive;
+  std::vector<Node> work = {{root, functionOf(root)}};
+  while (!work.empty()) {
+    Node node = work.back();
+    work.pop_back();
+    if (!forwardLive.insert(node).second)
+      continue;
+    if (node.first == target && node.second == sinkFunction)
+      continue;
+    std::vector<Node> succs;
+    successorsOf(node, succs);
+    for (const Node &succ : succs)
+      if (!forwardLive.count(succ))
+        work.push_back(succ);
+  }
+  if (!forwardLive.count({target, sinkFunction}))
+    return false;
+
+  std::set<Node> backwardLive;
+  work = {{target, sinkFunction}};
+  while (!work.empty()) {
+    Node node = work.back();
+    work.pop_back();
+    if (!backwardLive.insert(node).second)
+      continue;
+    std::vector<Node> preds;
+    predecessorsOf(node, preds);
+    for (const Node &pred : preds)
+      if (!backwardLive.count(pred))
+        work.push_back(pred);
+  }
+
+  if (provenPassing) {
+    std::set<std::pair<const CallBase *, const Function *>> seen;
+    for (const Node &node : backwardLive) {
+      const auto *argument = dyn_cast<Argument>(node.first);
+      if (!argument || node.second != argument->getParent())
+        continue;
+      auto callerIt = callGraph.callersOf.find(node.second);
+      if (callerIt == callGraph.callersOf.end())
+        continue;
+      unsigned index = argument->getArgNo();
+      for (const CallBase *caller : callerIt->second) {
+        if (index >= caller->arg_size())
+          continue;
+        const Value *actual = caller->getArgOperand(index);
+        Node actualNode = {actual, functionOf(actual)};
+        if (!forwardLive.count(actualNode) || !backwardLive.count(actualNode))
+          continue;
+        if (seen.insert({caller, node.second}).second)
+          provenPassing->push_back({caller, node.second});
+      }
+    }
+  }
+  return true;
+}
+
 static std::string triggerKey(const Edge &e) {
   std::string s = e.head + "|" + e.pred.kind;
   if (e.pred.value.hasValue())
@@ -122,43 +370,19 @@ static std::string triggerKey(const Edge &e) {
   return s;
 }
 
-/// Return true if `inst` executes on some path from its function's entry
-/// block, i.e. its basic block is reachable from the entry block.
-static bool reachableFromEntry(const llvm::Instruction *inst) {
-  if (!inst || !inst->getFunction())
-    return false;
-  const Function *F = inst->getFunction();
-  std::set<const BasicBlock *> seen;
-  std::vector<const BasicBlock *> work = {&F->getEntryBlock()};
-  while (!work.empty()) {
-    const BasicBlock *BB = work.back();
-    work.pop_back();
-    if (BB == inst->getParent())
-      return true;
-    if (!seen.insert(BB).second)
-      continue;
-    for (const BasicBlock *succ : successors(BB))
-      if (seen.insert(succ).second)
-        work.push_back(succ);
-  }
-  return false;
-}
-
 /// Return true if `inst` executes on some path from `from` through the CFG.
 static bool reachableInRegion(const BasicBlock *from, const Instruction *inst) {
   if (!from || !inst || !inst->getFunction())
     return false;
   if (from->getParent() != inst->getFunction())
     return false;
-  std::set<const BasicBlock *> seen;
+  std::set<const BasicBlock *> seen = {from};
   std::vector<const BasicBlock *> work = {from};
   while (!work.empty()) {
     const BasicBlock *BB = work.back();
     work.pop_back();
     if (BB == inst->getParent())
       return true;
-    if (!seen.insert(BB).second)
-      continue;
     for (const BasicBlock *succ : successors(BB))
       if (seen.insert(succ).second)
         work.push_back(succ);
@@ -166,81 +390,135 @@ static bool reachableInRegion(const BasicBlock *from, const Instruction *inst) {
   return false;
 }
 
-/// Prove that a guarded region controls `sink` through a call chain.
+/// Prove that a guard's proven region controls every tainted execution of
+/// `sink`.
 ///
-/// Same-function control requires the sink to sit in the guarded region: the
-/// subgraph reachable from the block taken when the predicate holds. A branch
-/// dominates calls on both successors, so dominance alone would attach a
-/// guard to sinks reached through the predicate-false branch. Cross-function
-/// control requires a proven chain: every call site on the chain must be
-/// reachable from the guarded region (first hop) or from its function's entry
-/// (later hops), and the sink must be reachable from its function's entry.
-/// Call edges come from resolved direct and indirect (pointer-analysis)
-/// callees; calls and sinks are never associated by name.
-static bool guardControlsThroughChain(const Instruction *guard,
-                                      const BasicBlock *guardedRegion,
-                                      const Instruction *sink,
-                                      const CallGraphInfo &callGraph) {
+/// Same-function control requires the sink callsite to sit in the proven
+/// region: reachable from the block taken when the predicate holds and not
+/// reachable from the opposite side. Sinks after the guard's join are
+/// reachable from both sides and are excluded.
+///
+/// Cross-function control replays the rule's proven value-flow record: every
+/// callsite through which the proven flow entered the sink's function — and,
+/// transitively, every callsite that fed that entry — must sit in the proven
+/// region. A function-level descent from one controlled callsite would also
+/// attach guards whose control never covers the sink call's own executions.
+/// Calls and sinks are never associated by name.
+static bool guardControlsThroughChain(
+    const Instruction *guard, const BasicBlock *guardedRegion,
+    const BasicBlock *falseRegion, const llvm::CallBase *sink,
+    const ProvenArgumentPassing &provenFlow, const CallGraphInfo &callGraph) {
   if (!guard || !guardedRegion || !sink || !guard->getFunction() ||
       !sink->getFunction())
     return false;
-  if (guard->getFunction() == sink->getFunction())
-    return reachableInRegion(guardedRegion, sink);
-  if (!reachableFromEntry(sink))
-    return false;
-
-  const Function *sinkFn = sink->getFunction();
   const Function *guardFn = guard->getFunction();
-  // BFS over call edges; (function, inGuardedRegion) tracks whether calls in
-  // that function still sit in the proven guarded path.
+  auto inProvenRegion = [&](const CallBase *call) -> bool {
+    return reachableInRegion(guardedRegion, call) &&
+           (!falseRegion || !reachableInRegion(falseRegion, call));
+  };
+  if (guardFn == sink->getFunction())
+    return inProvenRegion(sink);
+
+  std::map<const Function *, std::set<const CallBase *>> flowEntries;
+  for (const auto &step : provenFlow)
+    if (step.first && step.second)
+      flowEntries[step.second].insert(step.first);
+
+  // A direct proof (the sink argument is the tracked source value itself)
+  // leaves no argument-passing record, so every execution of the sink call
+  // is tainted and every caller chain must be anchored in the proven
+  // region.
+  auto entriesIt = flowEntries.find(sink->getFunction());
+  const bool directFlow = entriesIt == flowEntries.end() ||
+                          entriesIt->second.empty();
   std::set<const Function *> seen;
-  std::vector<std::pair<const Function *, bool>> work;
-  work.push_back({guardFn, true});
+  std::vector<const Function *> work = {sink->getFunction()};
   while (!work.empty()) {
-    auto [F, inGuardedRegion] = work.back();
+    const Function *F = work.back();
     work.pop_back();
     if (!seen.insert(F).second)
       continue;
-    auto callsIt = callGraph.calls.find(F);
-    if (callsIt == callGraph.calls.end())
-      continue;
-    for (const CallBase *call : callsIt->second) {
-      if (inGuardedRegion) {
-        if (!reachableInRegion(guardedRegion, call))
+    if (directFlow) {
+      auto callerIt = callGraph.callersOf.find(F);
+      if (callerIt == callGraph.callersOf.end())
+        return false; // entered from outside the resolved call graph
+      for (const CallBase *caller : callerIt->second) {
+        if (caller->getFunction() == guardFn) {
+          if (!inProvenRegion(caller))
+            return false;
           continue;
-      } else if (!reachableFromEntry(call)) {
+        }
+        work.push_back(caller->getFunction());
+      }
+      continue;
+    }
+    auto it = flowEntries.find(F);
+    if (it == flowEntries.end())
+      return false; // the proven flow originates here, unguarded
+    for (const CallBase *entry : it->second) {
+      if (entry->getFunction() == guardFn) {
+        if (!inProvenRegion(entry))
+          return false;
         continue;
       }
-      auto calleesIt = callGraph.callees.find(call);
-      if (calleesIt == callGraph.callees.end())
-        continue;
-      for (const Function *callee : calleesIt->second) {
-        if (callee == sinkFn)
-          return true;
-        work.push_back({callee, false});
-      }
+      work.push_back(entry->getFunction());
     }
   }
-  return false;
+  return true;
+}
+
+/// Static capacity of the destination buffer behind `dest`. A formal
+/// parameter carries no layout of its own, so its object provenance is
+/// resolved along the proven actual-to-formal argument-passing path only:
+/// the caller callsites an exact value-flow proof traversed are the callers
+/// whose actual arguments feed this sink call. When several proven callers
+/// pass different buffers, the minimum capacity is the sound bound for the
+/// sink call. This is interprocedural evidence, not a name-based bound.
+static llvm::Optional<uint64_t>
+resolveDestCapacity(const llvm::Value *dest, const llvm::DataLayout &DL,
+                    const ProvenArgumentPassing &provenPassing,
+                    unsigned depth = 4) {
+  if (!dest || depth == 0)
+    return llvm::None;
+  const llvm::Value *current = dest->stripPointerCasts();
+  if (auto size = getBufferSizeBytes(current, DL))
+    return size;
+  const auto *argument = dyn_cast<Argument>(current);
+  if (!argument)
+    return llvm::None;
+  const llvm::Function *parent = argument->getParent();
+  if (!parent)
+    return llvm::None;
+  unsigned index = argument->getArgNo();
+  llvm::Optional<uint64_t> best;
+  for (const auto &step : provenPassing) {
+    if (step.second != parent || index >= step.first->arg_size())
+      continue;
+    auto candidate = resolveDestCapacity(step.first->getArgOperand(index), DL,
+                                         provenPassing, depth - 1);
+    if (candidate &&
+        (!best.hasValue() || candidate.getValue() < best.getValue()))
+      best = candidate;
+  }
+  return best;
 }
 
 static llvm::Optional<Edge>
 inferBufferBound(const SemanticSink &sink, const std::string &sourceId,
-                 const llvm::DataLayout &DL) {
+                 const llvm::DataLayout &DL,
+                 const ProvenArgumentPassing &provenPassing) {
   if (sink.role != Role::Size)
     return llvm::None;
 
-  static const std::map<std::string, unsigned> kDestArg = {
-      {"memcpy", 0},
-      {"memmove", 0},
-      {"memset", 0},
-  };
-  auto it = kDestArg.find(sink.function);
-  if (it == kDestArg.end() || !sink.call)
+  // The destination-buffer contract lives in the sink catalog, not in a
+  // name-keyed table here: sink.destArg is the operand whose static
+  // capacity bounds the size operand.
+  if (!sink.call || !sink.destArg.hasValue() ||
+      sink.destArg.getValue() >= sink.call->arg_size())
     return llvm::None;
 
-  const llvm::Value *dest = sink.call->getArgOperand(it->second);
-  auto size = getBufferSizeBytes(dest, DL);
+  const llvm::Value *dest = sink.call->getArgOperand(sink.destArg.getValue());
+  auto size = resolveDestCapacity(dest, DL, provenPassing);
   if (!size || size.getValue() == 0)
     return llvm::None;
 
@@ -260,6 +538,7 @@ RuleAssembler::assemble(const TaintResult &dataflow,
                         const std::vector<ControlResult> &control,
                         const std::vector<SemanticSource> &sources,
                         const SelfEdgeMap &selfEdges,
+                        const std::vector<Edge> &crossDataflow,
                         const CallGraphInfo &callGraph) const {
   // Attach guards only to the exact LLVM callsite they control. Matching by
   // function name and argument index conflates unrelated calls throughout the
@@ -286,19 +565,65 @@ RuleAssembler::assemble(const TaintResult &dataflow,
 
   std::map<std::string, Rule> ruleMap;
 
+  std::map<std::string, const SemanticSource *> sourcesById;
+  for (const SemanticSource &source : sources)
+    sourcesById[source.schema.id] = &source;
+  std::map<std::string, std::set<std::string>> incomingDataflow;
+  for (const Edge &edge : crossDataflow)
+    if (edge.head == heads::kDataflow)
+      incomingDataflow[edge.dst].insert(edge.src);
+
+  auto physicalOrigin = [&](const std::string &id,
+                            const SemanticSource *fallback)
+      -> std::pair<std::string, const SemanticSource *> {
+    if (fallback && fallback->schema.clazz != "InternalState")
+      return {id, fallback};
+    std::set<std::string> seen;
+    std::vector<std::string> work = {id};
+    std::vector<std::pair<std::string, const SemanticSource *>> physical;
+    while (!work.empty()) {
+      std::string current = work.back();
+      work.pop_back();
+      if (!seen.insert(current).second)
+        continue;
+      auto source = sourcesById.find(current);
+      if (source != sourcesById.end() &&
+          source->second->schema.clazz != "InternalState") {
+        physical.push_back({current, source->second});
+        continue;
+      }
+      auto incoming = incomingDataflow.find(current);
+      if (incoming != incomingDataflow.end())
+        work.insert(work.end(), incoming->second.begin(), incoming->second.end());
+    }
+    if (physical.size() == 1)
+      return physical.front();
+    return {id, nullptr};
+  };
+
   for (const auto &kv : dataflow) {
     const std::string &sourceId = kv.first;
     for (const auto &tuple : kv.second) {
       const SemanticSink &sink = std::get<0>(tuple);
       const TaintLabel &label = std::get<1>(tuple);
+      auto [effectiveSourceId, effectiveSource] =
+          physicalOrigin(sourceId, label.source);
 
-      if (!isPrimarySource(*label.source))
+      if (!effectiveSource || !isPrimarySource(*effectiveSource))
         continue;
-      // InternalState values are not physically lowerable; they may appear as
-      // preconditions when the stored-source alias expansion proves a guard,
-      // but they can never be the target state of a fuzzable rule.
-      if (label.source->schema.clazz == "InternalState")
+      // Exact forward dependency: the sink argument must be derived from the
+      // label source by an exact LLVM use chain (casts, phis, selects,
+      // arithmetic, resolved argument passing, and returns). SVFG memory
+      // propagation alone merges unrelated sizes across functions; a
+      // physical source may back a rule only with this exact forward
+      // dependency, on top of the unique stored-source provenance resolved
+      // above for InternalState labels. The traversed argument-passing steps
+      // are the only object provenance for a sink's destination formal.
+      ProvenArgumentPassing provenPassing;
+      if (!directlyReachesSink(label.source->rootValue, sink, callGraph,
+                               &provenPassing))
         continue;
+      const std::string &ruleSourceId = effectiveSourceId;
 
       std::string functionName = sink.call->getFunction()->getName().str();
 
@@ -307,14 +632,33 @@ RuleAssembler::assemble(const TaintResult &dataflow,
       if (selfIt != selfEdges.end() && !selfIt->second.empty()) {
         for (const Edge &e : selfIt->second) {
           // Ne is guard-only, never a target-state mutation target.
-          if (e.pred.kind != "Ne")
-            triggers.push_back(e);
+          if (e.pred.kind == "Ne")
+            continue;
+          Edge trigger = e;
+          trigger.src = ruleSourceId;
+          trigger.dst = ruleSourceId;
+          triggers.push_back(std::move(trigger));
+        }
+      }
+      if (sink.call) {
+        const llvm::DataLayout &DL = sink.call->getModule()->getDataLayout();
+        if (auto inferred =
+                inferBufferBound(sink, ruleSourceId, DL, provenPassing)) {
+          uint64_t maxValue = UINT64_MAX;
+          if (effectiveSource->schema.widthBytes.hasValue()) {
+            unsigned bits = effectiveSource->schema.widthBytes.getValue() * 8;
+            if (bits < 64)
+              maxValue = (1ull << bits) - 1;
+          }
+          if (inferred->pred.value.hasValue() &&
+              inferred->pred.value.getValue() < maxValue)
+            triggers.push_back(*inferred);
         }
       }
       if (triggers.empty() && (sink.role == Role::Size || sink.role == Role::Index)) {
         Edge trigger;
-        trigger.src = sourceId;
-        trigger.dst = sourceId;
+        trigger.src = ruleSourceId;
+        trigger.dst = ruleSourceId;
         trigger.function = functionName;
         trigger.loc = sink.call->getDebugLoc();
         trigger.head = heads::kBound;
@@ -325,8 +669,8 @@ RuleAssembler::assemble(const TaintResult &dataflow,
         continue;
 
       for (Edge trigger : triggers) {
-        trigger.src = sourceId;
-        trigger.dst = sourceId;
+        trigger.src = ruleSourceId;
+        trigger.dst = ruleSourceId;
         trigger.function = functionName;
         if (!trigger.loc)
           trigger.loc = sink.call->getDebugLoc();
@@ -342,7 +686,8 @@ RuleAssembler::assemble(const TaintResult &dataflow,
           bool associated =
               trigger.site == sink.call ||
               guardControlsThroughChain(trigger.site, trigger.guardedRegion,
-                                        sink.call, callGraph);
+                                        trigger.falseRegion, sink.call,
+                                        provenPassing, callGraph);
           if (!associated)
             continue;
         }
@@ -353,23 +698,31 @@ RuleAssembler::assemble(const TaintResult &dataflow,
         // finding; it cannot be lowered into an executable rule.
         if (isGenericTrigger(trigger.pred) && sink.call) {
           const llvm::DataLayout &DL = sink.call->getModule()->getDataLayout();
-          if (auto inferred = inferBufferBound(sink, sourceId, DL))
+          if (auto inferred =
+                  inferBufferBound(sink, ruleSourceId, DL, provenPassing))
             trigger = *inferred;
+        }
+        if (trigger.pred.value.hasValue() &&
+            effectiveSource->schema.widthBytes.hasValue()) {
+          unsigned bits = effectiveSource->schema.widthBytes.getValue() * 8;
+          uint64_t maxValue = bits >= 64 ? UINT64_MAX : (1ull << bits) - 1;
+          if (trigger.pred.value.getValue() > maxValue)
+            continue;
         }
         if ((trigger.pred.kind == "Gt" || trigger.pred.kind == "Lt" ||
              trigger.pred.kind == "Ge" || trigger.pred.kind == "Le") &&
             !trigger.pred.value.hasValue())
           continue;
 
-        std::string key = functionName + "|" + sourceId + "|" +
+        std::string key = functionName + "|" + ruleSourceId + "|" +
                           triggerKey(trigger);
         Rule *rp = nullptr;
         auto rmIt = ruleMap.find(key);
         if (rmIt == ruleMap.end()) {
           Rule r;
-          r.id = functionName + "-" + sourceId;
+          r.id = functionName + "-" + ruleSourceId;
           r.function = functionName;
-          r.vars.push_back(*label.source);
+          r.vars.push_back(*effectiveSource);
           r.trigger = trigger;
           // The rule target-state instruction defaults to the sink call when
           // the self-edge carries no concrete site.
@@ -394,11 +747,13 @@ RuleAssembler::assemble(const TaintResult &dataflow,
         }
         if (!hasSink)
           rp->sinks.push_back(sink);
+        for (const auto &step : provenPassing)
+          rp->provenFlow.push_back(step);
 
         auto ctrlIt = ctrlBySink.find(sink.call);
         if (ctrlIt != ctrlBySink.end()) {
           for (const ControlResult *controlResult : ctrlIt->second) {
-            if (controlResult->sourceId == sourceId)
+            if (controlResult->sourceId == ruleSourceId)
               continue;
             bool isFeatureGuard =
                 controlResult->source.schema.featureBit.hasValue() ||
@@ -410,7 +765,7 @@ RuleAssembler::assemble(const TaintResult &dataflow,
               continue;
             Edge pre;
             pre.src = controlResult->sourceId;
-            pre.dst = sourceId;
+            pre.dst = ruleSourceId;
             pre.head = heads::kGuard;
             pre.pred = controlResult->pred;
             pre.function = controlResult->function;
@@ -425,9 +780,10 @@ RuleAssembler::assemble(const TaintResult &dataflow,
   }
 
   // Guards are attached once every rule exists: a guard on a feature/state
-  // source becomes a precondition when it provably controls the path to one
-  // of the rule's sinks — from its guarded region directly, or through a
-  // proven call chain. Guards on disjoint paths are discarded.
+  // source becomes a precondition when its proven region controls the path
+  // to one of the rule's sinks — directly for same-function sinks, or by
+  // covering the rule's proven value-flow entry into the sink's function.
+  // Guards on disjoint paths are discarded.
   for (auto &kv : ruleMap) {
     Rule &r = kv.second;
     for (const ControlResult *cr : guardCandidates) {
@@ -437,8 +793,9 @@ RuleAssembler::assemble(const TaintResult &dataflow,
       for (const SemanticSink &sink : r.sinks) {
         if (!sink.call)
           continue;
-        if (guardControlsThroughChain(cr->site, cr->guardedRegion, sink.call,
-                                      callGraph)) {
+        if (guardControlsThroughChain(cr->site, cr->guardedRegion,
+                                      cr->falseRegion, sink.call,
+                                      r.provenFlow, callGraph)) {
           ok = true;
           break;
         }
@@ -454,6 +811,7 @@ RuleAssembler::assemble(const TaintResult &dataflow,
       pre.loc = cr->loc;
       pre.site = cr->site;
       pre.guardedRegion = cr->guardedRegion;
+      pre.falseRegion = cr->falseRegion;
       r.preconditions.push_back(std::move(pre));
     }
   }
@@ -463,8 +821,9 @@ RuleAssembler::assemble(const TaintResult &dataflow,
     Rule &r = kv.second;
 
     // Filter preconditions to guards that provably control the path to one
-    // of the rule's sinks: from their guarded region directly, or through a
-    // proven call chain. Guards on disjoint paths are discarded.
+    // of the rule's sinks: from their guarded region directly, or by
+    // covering the rule's proven value-flow entry into the sink's function.
+    // Guards on disjoint paths are discarded.
     r.preconditions.erase(
         std::remove_if(r.preconditions.begin(), r.preconditions.end(),
                        [&](const Edge &pre) {
@@ -474,7 +833,8 @@ RuleAssembler::assemble(const TaintResult &dataflow,
                            if (!sink.call)
                              continue;
                            if (guardControlsThroughChain(
-                                   pre.site, pre.guardedRegion, sink.call,
+                                   pre.site, pre.guardedRegion,
+                                   pre.falseRegion, sink.call, r.provenFlow,
                                    callGraph))
                              return false;
                          }

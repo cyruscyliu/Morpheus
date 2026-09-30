@@ -9,12 +9,14 @@ SinkCatalog::SinkCatalog() { registerDefaultSinks(); }
 
 void SinkCatalog::registerDefaultSinks() {
   // Exact kernel API contracts. Entries identify only operands whose value is
-  // a size, count, or index consumed by a memory-sensitive operation. Call
-  // edges are never invented here; match() requires an actual LLVM callsite.
+  // a size, count, or index consumed by a memory-sensitive operation. Entries
+  // with a destination operand also own that buffer contract: the role
+  // operand's valid range is bounded by the destination's static capacity.
+  // Call edges are never invented here; match() requires an actual callsite.
   entries_ = {
-      {"memcpy", 2, Role::Size},
-      {"memmove", 2, Role::Size},
-      {"memset", 2, Role::Size},
+      {"memcpy", 2, Role::Size, 0},
+      {"memmove", 2, Role::Size, 0},
+      {"memset", 2, Role::Size, 0},
       {"strscpy", 2, Role::Size},
       {"strlcpy", 2, Role::Size},
       {"strncpy", 2, Role::Size},
@@ -77,8 +79,8 @@ std::vector<SemanticSink> SinkCatalog::match(const CallBase *call) const {
   const std::string function = normalizeName(callee->getName());
   for (const Entry &entry : entries_) {
     if (entry.function == function && entry.argIndex < call->arg_size())
-      matches.push_back(
-          SemanticSink{function, entry.role, entry.argIndex, call});
+      matches.push_back(SemanticSink{
+          function, entry.role, entry.argIndex, entry.destArg, call});
   }
   return matches;
 }

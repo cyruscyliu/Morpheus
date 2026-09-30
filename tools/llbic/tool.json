@@ -88,6 +88,13 @@
         ],
         "repeatable": true
       },
+      "file-list": {
+        "aliases": [
+          "file-list",
+          "fileList"
+        ],
+        "path": true
+      },
       "rust-target": {
         "aliases": [
           "rust-target",
@@ -189,6 +196,7 @@
             "arch",
             "cross",
             "defconfig",
+            "file-list",
             "llbase-contract"
           ],
           "repeatableFlags": [

@@ -1,0 +1,39 @@
+diff --git a/svf-llvm/lib/SVFIRExtAPI.cpp b/svf-llvm/lib/SVFIRExtAPI.cpp
+index 7532be6..c0c9e84 100644
+--- a/svf-llvm/lib/SVFIRExtAPI.cpp
++++ b/svf-llvm/lib/SVFIRExtAPI.cpp
+@@ -108,14 +108,17 @@ void collectMemcpyFields(
+     if (const auto* structType = SVFUtil::dyn_cast<StructType>(llvmType))
+     {
+         const StructLayout* layout = dl.getStructLayout(const_cast<StructType*>(structType));
++        const auto& flattenedElemIndices = pag->getTypeInfo(svfType)->getFlattenedElemIdxVec();
+         for (u32_t i = 0; i < structType->getNumElements(); ++i)
+         {
++            if (i >= flattenedElemIndices.size())
++                return;
+             const Type* elemLLVMType = structType->getElementType(i);
+             const SVFType* elemSVFType = pag->getOriginalElemType(svfType, i);
+             if (elemSVFType == nullptr)
+                 return;
+             APOffset elemByteOffset = baseByteOffset + static_cast<APOffset>(layout->getElementOffset(i));
+-            APOffset elemFldIdx = baseFldIdx + pag->getFlattenedElemIdx(svfType, i);
++            APOffset elemFldIdx = baseFldIdx + flattenedElemIndices[i];
+             collectMemcpyFields(elemLLVMType, elemSVFType, dl, pag, fields, elemByteOffset, elemFldIdx);
+         }
+         return;
+@@ -127,11 +130,14 @@ void collectMemcpyFields(
+         const SVFType* elemSVFType = pag->getOriginalElemType(svfType, 0);
+         if (elemSVFType == nullptr)
+             return;
++        const auto& flattenedElemIndices = pag->getTypeInfo(svfType)->getFlattenedElemIdxVec();
+         const APOffset elemByteSize = static_cast<APOffset>(dl.getTypeAllocSize(const_cast<Type*>(elemLLVMType)));
+         for (u32_t i = 0; i < arrayType->getNumElements(); ++i)
+         {
++            if (i >= flattenedElemIndices.size())
++                return;
+             APOffset elemByteOffset = baseByteOffset + i * elemByteSize;
+-            APOffset elemFldIdx = baseFldIdx + pag->getFlattenedElemIdx(svfType, i);
++            APOffset elemFldIdx = baseFldIdx + flattenedElemIndices[i];
+             collectMemcpyFields(elemLLVMType, elemSVFType, dl, pag, fields, elemByteOffset, elemFldIdx);
+         }
+     }

@@ -31,6 +31,10 @@ private:
     std::string function;
     unsigned argIndex;
     Role role;
+    /// Optional destination-buffer operand whose static capacity bounds the
+    /// role operand (e.g. memcpy dst). Source-layout evidence, not a name
+    /// rule; entries without it carry no capacity contract.
+    llvm::Optional<unsigned> destArg;
   };
   std::vector<Entry> entries_;
 };

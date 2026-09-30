@@ -30,6 +30,7 @@
 #include "SVFIR/SVFIR.h"
 #include "llvm/IR/DataLayout.h"
 #include "Util/ExtAPI.h"
+#include "Util/Options.h"
 #include "WPA/Andersen.h"
 
 #include "llvm/IR/Dominators.h"
@@ -924,6 +925,15 @@ static uint64_t normalizeToWidth(uint64_t value, unsigned widthBits) {
   return value & ((1ull << widthBits) - 1);
 }
 
+/// Whether a compared constant is representable in the source's unsigned
+/// width domain. A bound that cannot hold at the source width is tautological
+/// and must be rejected rather than wrapped or truncated.
+static bool constantFitsWidthDomain(uint64_t value, unsigned widthBits) {
+  if (widthBits == 0 || widthBits >= 64)
+    return true;
+  return value <= ((1ull << widthBits) - 1);
+}
+
 /// Map an LLVM integer predicate to an SDG predicate kind.
 static std::string predicateKindForICmp(ICmpInst::Predicate pred,
                                         bool invert) {
@@ -1050,11 +1060,20 @@ extractIcmpBound(const ICmpInst *ICI, const Value *root,
     b.inst = ICI;
     b.predicate = i == 0 ? ICI->getPredicate()
                          : ICmpInst::getSwappedPredicate(ICI->getPredicate());
-    b.value = normalizeToWidth(static_cast<uint64_t>(CI->getZExtValue()), widthBits);
     b.isLower = false;
     b.isUpper = false;
     b.signedness = ICI->isSigned() ? sdg::core::Signedness::Signed
                                    : sdg::core::Signedness::Unsigned;
+    // A bound whose constant cannot hold in the source's unsigned width
+    // domain is tautological at that width: reject it instead of wrapping or
+    // truncating the constant into a fabricated rule. Signed thresholds keep
+    // their two-complement pattern at the source width.
+    if (b.signedness == sdg::core::Signedness::Signed)
+      b.value = normalizeToWidth(static_cast<uint64_t>(CI->getZExtValue()), widthBits);
+    else if (!constantFitsWidthDomain(static_cast<uint64_t>(CI->getZExtValue()), widthBits))
+      return llvm::None;
+    else
+      b.value = static_cast<uint64_t>(CI->getZExtValue());
     switch (b.predicate) {
     case ICmpInst::ICMP_UGT:
     case ICmpInst::ICMP_SGT:
@@ -1896,6 +1915,11 @@ static void writeJSON(const std::string &path,
 
 struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &) {
+    // Networking scope includes nested aggregate memcpy operations. SVF's
+    // flattened-field builder requires array offset modeling for those IR
+    // shapes; leaving it disabled triggers an assertion in IRGraph.
+    Options::ModelArrays.setValue(true);
+
     // SVF needs the extapi.bc path to resolve external functions.
     std::filesystem::path extapi = std::filesystem::current_path();
     if (!SDGExtAPIPath.empty()) {
@@ -2041,9 +2065,14 @@ struct SDGExtractPass : public PassInfoMixin<SDGExtractPass> {
             callGraph.callees[callIt->second].insert(fn);
         }
       }
+      // Reverse edges: every call site resolved to a function, so a
+      // returned value can continue an exact chain into each caller.
+      for (const auto &entry : callGraph.callees)
+        for (const Function *callee : entry.second)
+          callGraph.callersOf[callee].push_back(entry.first);
     }
     auto rules = assembler.assemble(taint.result(), ctrlResults, sources,
-                                    selfEdges, callGraph);
+                                    selfEdges, crossDataflow, callGraph);
 
     writeJSON(SDGOutputPath, sources, selfEdges, crossDataflow, rules);
 

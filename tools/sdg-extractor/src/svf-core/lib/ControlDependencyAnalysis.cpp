@@ -144,6 +144,58 @@ static const Value *skipCasts(const Value *V) {
   return V;
 }
 
+static Optional<std::pair<const Value *, int64_t>>
+constantPointerLocation(const Value *value, const DataLayout &layout) {
+  int64_t total = 0;
+  const Value *current = value;
+  while (current) {
+    if (auto *gep = dyn_cast<GEPOperator>(current)) {
+      if (!gep->hasAllConstantIndices())
+        return llvm::None;
+      APInt offset(64, 0);
+      if (!gep->accumulateConstantOffset(layout, offset) ||
+          offset.getSignificantBits() > 63)
+        return llvm::None;
+      total += offset.getSExtValue();
+      current = gep->getPointerOperand()->stripPointerCasts();
+      continue;
+    }
+    if (auto *cast = dyn_cast<CastInst>(current)) {
+      current = cast->getOperand(0);
+      continue;
+    }
+    return std::make_pair(current, total);
+  }
+  return llvm::None;
+}
+
+/// Whether every path from the function entry to `toBlock` includes the edge
+/// `fromBlock -> toBlock`. A bypass means executions can reach the block
+/// without the guard condition holding, so any predicate derived from a
+/// constant stored there is unsound. This is CFG evidence only.
+static bool edgeDominatesBlock(const BasicBlock *fromBlock,
+                               const BasicBlock *toBlock,
+                               const Function *function) {
+  if (!fromBlock || !toBlock || !function ||
+      fromBlock->getParent() != function || toBlock->getParent() != function)
+    return false;
+  std::set<const BasicBlock *> seen = {&function->getEntryBlock()};
+  std::vector<const BasicBlock *> work = {&function->getEntryBlock()};
+  while (!work.empty()) {
+    const BasicBlock *BB = work.back();
+    work.pop_back();
+    for (const BasicBlock *succ : successors(BB)) {
+      if (BB == fromBlock && succ == toBlock)
+        continue;
+      if (succ == toBlock)
+        return false;
+      if (seen.insert(succ).second)
+        work.push_back(succ);
+    }
+  }
+  return true;
+}
+
 static Optional<ExtractedGuard>
 extractPredicate(const Value *cond, const SemanticSource &src) {
   // Direct feature call: virtio_has_feature(..., bit)
@@ -350,6 +402,108 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
     return false;
   };
 
+  auto emitStoredBooleanGuards = [&](const BranchInst *featureBranch,
+                                     const Predicate &featurePredicate) {
+    if (!src.schema.nodeLocalBit.hasValue())
+      return;
+    const Function *function = featureBranch->getFunction();
+    const DataLayout &layout = function->getParent()->getDataLayout();
+
+    for (unsigned successorIndex = 0; successorIndex < 2; ++successorIndex) {
+      const BasicBlock *storeBlock = featureBranch->getSuccessor(successorIndex);
+      // A constant stored in a branch successor only proves the guarded
+      // predicate when that edge dominates the block. A short-circuit or
+      // else-if join can be reached with the bit clear, so its stores derive
+      // nothing.
+      if (!edgeDominatesBlock(featureBranch->getParent(), storeBlock,
+                              function))
+        continue;
+      Predicate storedPredicate = successorIndex == 0
+                                      ? featurePredicate
+                                      : invertPredicate(featurePredicate);
+      for (const Instruction &instruction : *storeBlock) {
+        auto *store = dyn_cast<StoreInst>(&instruction);
+        if (!store)
+          continue;
+        auto *constant = dyn_cast<ConstantInt>(store->getValueOperand());
+        if (!constant || constant->isZero())
+          continue;
+        auto storedAt =
+            constantPointerLocation(store->getPointerOperand(), layout);
+        if (!storedAt)
+          continue;
+
+        for (const BasicBlock &block : *function) {
+          for (const Instruction &candidate : block) {
+            auto *load = dyn_cast<LoadInst>(&candidate);
+            if (!load)
+              continue;
+            auto loadedAt =
+                constantPointerLocation(load->getPointerOperand(), layout);
+            if (!loadedAt || loadedAt.getValue() != storedAt.getValue())
+              continue;
+
+            std::queue<std::pair<const Value *, bool>> stateWork;
+            std::set<std::pair<const Value *, bool>> stateSeen;
+            stateWork.push({load, true});
+            stateSeen.insert({load, true});
+            while (!stateWork.empty()) {
+              auto [stateValue, trueWhenFeature] = stateWork.front();
+              stateWork.pop();
+              for (const User *user : stateValue->users()) {
+                if (auto *branch = dyn_cast<BranchInst>(user)) {
+                  if (!branch->isConditional() ||
+                      branch->getCondition() != stateValue)
+                    continue;
+                  const BasicBlock *guarded = branch->getSuccessor(
+                      trueWhenFeature ? 0 : 1);
+                  auto guardedSinks = findSinkInRegion(guarded, sinks);
+                  for (const SemanticSink &sink : guardedSinks) {
+                    // The stored constant is the proof here, not region
+                    // membership: a short-circuit join can also flow into
+                    // the guarded block from the opposite successor, so no
+                    // false-side exclusion applies.
+                    out.push_back({src.schema.id, storedPredicate, sink,
+                                   branch->getFunction()->getName().str(),
+                                   branch->getDebugLoc(), branch, guarded,
+                                   nullptr, src});
+                  }
+                  continue;
+                }
+
+                bool nextPolarity = trueWhenFeature;
+                bool transparent = isa<CastInst>(user);
+                if (auto *comparison = dyn_cast<ICmpInst>(user)) {
+                  const Value *other = comparison->getOperand(0) == stateValue
+                                           ? comparison->getOperand(1)
+                                           : comparison->getOperand(0);
+                  auto *zero = dyn_cast<ConstantInt>(other);
+                  if (!zero || !zero->isZero())
+                    continue;
+                  if (comparison->getPredicate() == ICmpInst::ICMP_EQ)
+                    nextPolarity = !trueWhenFeature;
+                  else if (comparison->getPredicate() != ICmpInst::ICMP_NE)
+                    continue;
+                  transparent = true;
+                } else if (auto *binary = dyn_cast<BinaryOperator>(user)) {
+                  if (binary->getOpcode() == Instruction::Or &&
+                      trueWhenFeature)
+                    transparent = true;
+                  else if (binary->getOpcode() == Instruction::And &&
+                           !trueWhenFeature)
+                    transparent = true;
+                }
+                if (transparent &&
+                    stateSeen.insert({cast<Value>(user), nextPolarity}).second)
+                  stateWork.push({cast<Value>(user), nextPolarity});
+              }
+            }
+          }
+        }
+      }
+    }
+  };
+
   while (!q.empty()) {
     const Value *V = q.front();
     q.pop();
@@ -373,6 +527,14 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
         const BasicBlock *predFailsSide = BI->getSuccessor(1);
         std::string func = BI->getFunction()->getName().str();
 
+        bool directFeatureBranch = cond == src.rootValue;
+        if (auto *comparison = dyn_cast<ICmpInst>(cond))
+          directFeatureBranch =
+              skipCasts(comparison->getOperand(0)) == src.rootValue ||
+              skipCasts(comparison->getOperand(1)) == src.rootValue;
+        if (directFeatureBranch)
+          emitStoredBooleanGuards(BI, p);
+
         // Collect sinks reachable from each side. A sink is control-dependent
         // on this branch only if it is reachable from one side but not the
         // other, keyed by exact LLVM callsite identity so two calls to the
@@ -395,7 +557,7 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
           if (!falseKeys.count(sinkKey(s))) {
             emitted = true;
             out.push_back({guardSourceId, p, s, func, BI->getDebugLoc(), BI,
-                           predSide, src});
+                           predSide, predFailsSide, src});
           }
         }
         Predicate negP = invertPredicate(p);
@@ -403,7 +565,7 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
           if (!trueKeys.count(sinkKey(s))) {
             emitted = true;
             out.push_back({guardSourceId, negP, s, func, BI->getDebugLoc(), BI,
-                           predFailsSide, src});
+                           predFailsSide, predSide, src});
           }
         }
 
@@ -412,8 +574,8 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
         if (!emitted && trueSinks.empty() && falseSinks.empty()) {
           CallBase *dummy = nullptr;
           out.push_back({guardSourceId, p,
-                         SemanticSink{"", Role::Control, 0, dummy}, func,
-                         BI->getDebugLoc(), BI, predSide, src});
+                         SemanticSink{"", Role::Control, 0, llvm::None, dummy}, func,
+                         BI->getDebugLoc(), BI, predSide, predFailsSide, src});
         }
       } else if (auto *SI = dyn_cast<SwitchInst>(U)) {
         // If the switch value is derived from the source, each case may gate
@@ -470,7 +632,8 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
             if (keyCounts[sinkKey(s)] == 1) {
               emitted = true;
               out.push_back({src.schema.id, cs.pred, s, func,
-                             SI->getDebugLoc(), SI, cs.guardedRegion, src});
+                             SI->getDebugLoc(), SI, cs.guardedRegion, nullptr,
+                             src});
             }
           }
         };
@@ -482,8 +645,9 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
           CallBase *dummy = nullptr;
           out.push_back({src.schema.id,
                          Predicate{"Switch", llvm::None, llvm::None},
-                         SemanticSink{"", Role::Control, 0, dummy}, func,
-                         SI->getDebugLoc(), SI, SI->getDefaultDest(), src});
+                         SemanticSink{"", Role::Control, 0, llvm::None, dummy}, func,
+                         SI->getDebugLoc(), SI, SI->getDefaultDest(), nullptr,
+                         src});
         }
       } else if (isa<BinaryOperator>(U) || isa<CastInst>(U) ||
                  isa<ICmpInst>(U) || isa<SelectInst>(U) || isa<PHINode>(U) ||

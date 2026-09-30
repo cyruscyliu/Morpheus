@@ -1,0 +1,3 @@
+[submodule "tools/sdg-extractor/third_party/SVF"]
+	path = tools/sdg-extractor/third_party/SVF
+	url = https://github.com/SVF-tools/SVF.git

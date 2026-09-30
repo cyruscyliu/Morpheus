@@ -1417,7 +1417,6 @@ static bool l2_boot_ready_logged(void) {
   static const char *needles[] = {
       "buildroot login:",
       "Welcome to Buildroot",
-      "Starting network",
   };
   const size_t needle_count = sizeof(needles) / sizeof(needles[0]);
 
@@ -1950,6 +1949,7 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
 
   int status = 0;
   pid_t wait_ret = waitpid(pid, &status, WNOHANG);
+
   if (wait_ret == 0) {
     const bool kernel_panic_logged = l2_kernel_panic_logged();
     /* A run-window completion is the hot path. Diagnostics are emitted only

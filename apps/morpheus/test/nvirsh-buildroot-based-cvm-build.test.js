@@ -674,7 +674,7 @@ test("buildroot-based CVM build supports direct MMIO-backed L2 virtio devices", 
   );
   assert.match(
     launchScript,
-    /guest_virtio_net_device="virtio-net-device,ctrl_rx=off,ctrl_vlan=off,ctrl_rx_extra=off,ctrl_mac_addr=off,ctrl_guest_offloads=off,guest_announce=off,mq=off,netdev=net0"/,
+    /guest_virtio_net_device="virtio-net-device,netdev=net0"/,
   );
   assert.match(
     launchScript,

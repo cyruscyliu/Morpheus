@@ -17,9 +17,8 @@ using namespace sdg::core;
 
 ControlDependencyAnalysis::ControlDependencyAnalysis(
     SVF::ICFG *icfg, const SemanticValueFlowGraph *graph,
-    const Module &M, const SinkCatalog &sinks,
-    const BoolFlagAliasMaps &boolFlagAliases)
-    : icfg_(icfg), graph_(graph), boolFlagAliases_(boolFlagAliases) {
+    const Module &M, const SinkCatalog &sinks)
+    : icfg_(icfg), graph_(graph) {
   buildFunctionSinks(M, sinks);
 }
 
@@ -59,9 +58,9 @@ void ControlDependencyAnalysis::buildFunctionSinks(const Module &M,
           for (const SemanticSink &cs : it->second) {
             auto key = std::make_pair(cs.function, cs.argIndex);
             if (seen.insert(key).second) {
-              SemanticSink modeled = cs;
-              modeled.call = CB;
-              summary.push_back(modeled);
+              SemanticSink propagated = cs;
+              propagated.call = CB;
+              summary.push_back(propagated);
               changed = true;
             }
           }
@@ -117,111 +116,122 @@ struct ExtractedGuard {
   std::string sourceId;
 };
 
-static Optional<std::pair<std::string, unsigned>>
-fieldKeyFromPointer(const Value *ptr) {
-  auto *gep = dyn_cast<GEPOperator>(ptr);
-  if (!gep || gep->getNumIndices() < 2)
-    return llvm::None;
-  Type *srcTy = gep->getSourceElementType();
-  auto *st = dyn_cast<StructType>(srcTy);
-  if (!st || !st->hasName())
-    return llvm::None;
-  auto *fieldIdx = dyn_cast<ConstantInt>(*(gep->idx_begin() + 1));
-  if (!fieldIdx)
-    return llvm::None;
-  return std::make_pair(st->getName().str(),
-                        static_cast<unsigned>(fieldIdx->getZExtValue()));
-}
-
-/// Extract a feature-bit predicate from a branch condition.
-static Optional<StructFieldAliasKey> fieldKeyOfValue(const Value *V) {
-  auto *LI = dyn_cast<LoadInst>(V);
-  if (!LI)
-    return llvm::None;
-  return fieldKeyFromPointer(LI->getPointerOperand());
-}
-
-static Predicate flipBitPredicate(const Predicate &p) {
-  Predicate out = p;
-  if (out.kind == "BitSet")
-    out.kind = "BitClear";
-  else if (out.kind == "BitClear")
-    out.kind = "BitSet";
-  return out;
-}
-
-/// Normalize a pointer and compute its constant byte offset from the base.
-/// This handles both struct GEPs and byte-offset GEPs that SROA introduces.
-static Optional<std::pair<const Value *, int64_t>>
-getBaseAndByteOffset(const Value *V, const DataLayout &DL) {
-  if (!V)
-    return llvm::None;
-  V = V->stripPointerCasts();
-  auto *GEP = dyn_cast<GEPOperator>(V);
-  if (!GEP)
-    return std::make_pair(V, int64_t(0));
-  if (!GEP->hasAllConstantIndices())
-    return std::make_pair(V, int64_t(0));
-  APInt Off(64, 0);
-  if (!GEP->accumulateConstantOffset(DL, Off))
-    return std::make_pair(V, int64_t(0));
-  if (Off.getSignificantBits() > 63)
-    return llvm::None;
-  return std::make_pair(GEP->getPointerOperand()->stripPointerCasts(),
-                        Off.getSExtValue());
+static Predicate invertPredicate(const Predicate &predicate) {
+  Predicate inverted = predicate;
+  if (predicate.kind == "Eq") inverted.kind = "Ne";
+  else if (predicate.kind == "Ne") inverted.kind = "Eq";
+  else if (predicate.kind == "Lt") inverted.kind = "Ge";
+  else if (predicate.kind == "Le") inverted.kind = "Gt";
+  else if (predicate.kind == "Gt") inverted.kind = "Le";
+  else if (predicate.kind == "Ge") inverted.kind = "Lt";
+  else if (predicate.kind == "BitSet") inverted.kind = "BitClear";
+  else if (predicate.kind == "BitClear") inverted.kind = "BitSet";
+  return inverted;
 }
 
 static Optional<ExtractedGuard>
-extractPredicate(
-    const Value *cond, const SemanticSource &src,
-    const std::map<StructFieldAliasKey, std::vector<BoolFlagAlias>>
-        &aliases) {
-  // If this source is itself a boolean flag that aliases a feature-bit
-  // predicate (e.g. vi->has_rss), use the original feature source.
-  if (auto srcKey = fieldKeyOfValue(src.rootValue)) {
-    auto it = aliases.find(*srcKey);
-    if (it != aliases.end() && !it->second.empty()) {
-      const auto &alias = it->second.front();
-      Predicate baseP = alias.second;
-      if (cond == src.rootValue)
-        return ExtractedGuard{baseP, true, alias.first};
-      if (auto *ICI = dyn_cast<ICmpInst>(cond)) {
-        const Value *op0 = ICI->getOperand(0);
-        const Value *op1 = ICI->getOperand(1);
-        auto *zero0 = dyn_cast<ConstantInt>(op0);
-        auto *zero1 = dyn_cast<ConstantInt>(op1);
-        const Value *maybeVal = zero1 ? op0 : (zero0 ? op1 : nullptr);
-        auto *zero = zero1 ? zero1 : zero0;
-        if (maybeVal && zero && zero->isZero() &&
-            (ICI->getPredicate() == ICmpInst::ICMP_NE ||
-             ICI->getPredicate() == ICmpInst::ICMP_EQ)) {
-          bool trueWhenNe = (ICI->getPredicate() == ICmpInst::ICMP_NE);
-          // Direct operand match.
-          if (maybeVal == src.rootValue) {
-            Predicate p = trueWhenNe ? baseP : flipBitPredicate(baseP);
-            return ExtractedGuard{p, trueWhenNe, alias.first};
-          }
-          // OR-of-bools match: vi->has_rss || vi->has_rss_hash_report.
-          if (auto *BO = dyn_cast<BinaryOperator>(maybeVal)) {
-            if (BO->getOpcode() == Instruction::Or &&
-                (BO->getOperand(0) == src.rootValue ||
-                 BO->getOperand(1) == src.rootValue)) {
-              Predicate p = trueWhenNe ? baseP : flipBitPredicate(baseP);
-              return ExtractedGuard{p, trueWhenNe, alias.first};
-            }
-          }
-        }
-      }
+extractPredicate(const Value *cond, const SemanticSource &src);
+
+static const Value *skipCasts(const Value *V) {
+  while (V) {
+    if (auto *CE = dyn_cast<ConstantExpr>(V))
+      V = CE->getOperand(0);
+    else if (auto *I = dyn_cast<CastInst>(V))
+      V = I->getOperand(0);
+    else
+      break;
+  }
+  return V;
+}
+
+static Optional<std::pair<const Value *, int64_t>>
+constantPointerLocation(const Value *value, const DataLayout &layout) {
+  int64_t total = 0;
+  const Value *current = value;
+  while (current) {
+    if (auto *gep = dyn_cast<GEPOperator>(current)) {
+      if (!gep->hasAllConstantIndices())
+        return llvm::None;
+      APInt offset(64, 0);
+      if (!gep->accumulateConstantOffset(layout, offset) ||
+          offset.getSignificantBits() > 63)
+        return llvm::None;
+      total += offset.getSExtValue();
+      current = gep->getPointerOperand()->stripPointerCasts();
+      continue;
+    }
+    if (auto *cast = dyn_cast<CastInst>(current)) {
+      current = cast->getOperand(0);
+      continue;
+    }
+    return std::make_pair(current, total);
+  }
+  return llvm::None;
+}
+
+/// Whether every path from the function entry to `toBlock` includes the edge
+/// `fromBlock -> toBlock`. A bypass means executions can reach the block
+/// without the guard condition holding, so any predicate derived from a
+/// constant stored there is unsound. This is CFG evidence only.
+static bool edgeDominatesBlock(const BasicBlock *fromBlock,
+                               const BasicBlock *toBlock,
+                               const Function *function) {
+  if (!fromBlock || !toBlock || !function ||
+      fromBlock->getParent() != function || toBlock->getParent() != function)
+    return false;
+  std::set<const BasicBlock *> seen = {&function->getEntryBlock()};
+  std::vector<const BasicBlock *> work = {&function->getEntryBlock()};
+  while (!work.empty()) {
+    const BasicBlock *BB = work.back();
+    work.pop_back();
+    for (const BasicBlock *succ : successors(BB)) {
+      if (BB == fromBlock && succ == toBlock)
+        continue;
+      if (succ == toBlock)
+        return false;
+      if (seen.insert(succ).second)
+        work.push_back(succ);
     }
   }
+  return true;
+}
 
+static Optional<ExtractedGuard>
+extractPredicate(const Value *cond, const SemanticSource &src) {
   // Direct feature call: virtio_has_feature(..., bit)
-  if (cond == src.rootValue && src.schema.featureBit.hasValue()) {
-    Predicate p{"BitSet", llvm::None, src.schema.featureBit.getValue()};
+  if (cond == src.rootValue && src.schema.nodeLocalBit.hasValue()) {
+    Predicate p{"BitSet", llvm::None, src.schema.nodeLocalBit.getValue()};
     return ExtractedGuard{p, true, src.schema.id};
   }
 
-  // Inlined: (src & (1<<b)) pred 0
+  // Handle `select guard, inner_cmp, false` / `select guard, true, inner_cmp`
+  // patterns created when the optimizer merges a guard with an inner check.
+  if (auto *SI = dyn_cast<SelectInst>(cond)) {
+    const Value *trueVal = skipCasts(SI->getTrueValue());
+    const Value *falseVal = skipCasts(SI->getFalseValue());
+    auto *trueCI = dyn_cast<ICmpInst>(trueVal);
+    auto *falseCI = dyn_cast<ICmpInst>(falseVal);
+    const Value *guardCond = SI->getCondition();
+    // select guard, cmp, false  -> sink reachable only when guard AND cmp true.
+    if (trueCI && isa<ConstantInt>(falseVal) &&
+        cast<ConstantInt>(falseVal)->isZero()) {
+      if (auto inner = extractPredicate(trueCI, src))
+        return inner;
+      return extractPredicate(guardCond, src);
+    }
+    // select guard, true, cmp   -> sink reachable when guard AND cmp false.
+    if (falseCI && isa<ConstantInt>(trueVal) &&
+        cast<ConstantInt>(trueVal)->isOne()) {
+      if (auto inner = extractPredicate(falseCI, src)) {
+        ExtractedGuard eg = *inner;
+        eg.pred = invertPredicate(eg.pred);
+        return eg;
+      }
+      return extractPredicate(guardCond, src);
+    }
+  }
+
+  // Inlined: (src & (1<<b)) pred 0, or direct src pred 0 for feature calls.
   if (auto *ICI = dyn_cast<ICmpInst>(cond)) {
     const Value *op0 = ICI->getOperand(0);
     const Value *op1 = ICI->getOperand(1);
@@ -265,6 +275,33 @@ extractPredicate(
       return ExtractedGuard{out, trueWhenSet, src.schema.id};
     };
 
+    // Direct src == 0 / src != 0 for feature-call results.
+    if (src.schema.nodeLocalBit.hasValue()) {
+      auto directCheck = [&](const Value *candidate,
+                             const Value *other) -> Optional<ExtractedGuard> {
+        if (candidate != src.rootValue)
+          return llvm::None;
+        auto *zero = dyn_cast<ConstantInt>(other);
+        if (!zero || !zero->isZero())
+          return llvm::None;
+        ICmpInst::Predicate pred = ICI->getPredicate();
+        bool trueWhenSet = false;
+        if (pred == ICmpInst::ICMP_NE)
+          trueWhenSet = true;
+        else if (pred == ICmpInst::ICMP_EQ)
+          trueWhenSet = false;
+        else
+          return llvm::None;
+        Predicate out{trueWhenSet ? "BitSet" : "BitClear", llvm::None,
+                      src.schema.nodeLocalBit.getValue()};
+        return ExtractedGuard{out, trueWhenSet, src.schema.id};
+      };
+      if (auto eg = directCheck(op0, op1))
+        return eg;
+      if (auto eg = directCheck(op1, op0))
+        return eg;
+    }
+
     if (and0.hasValue() && !and1.hasValue())
       if (auto eg = check(and0.getValue(), op1))
         return eg;
@@ -272,54 +309,6 @@ extractPredicate(
       if (auto eg = check(and1.getValue(), op0))
         return eg;
 
-    // Boolean flag aliases: the condition may be `has_rss || has_hash_report`
-    // or simply `has_rss != 0`.
-    auto checkAlias = [&](const Value *maybeVal,
-                          const Value *other) -> Optional<ExtractedGuard> {
-      auto *zero = dyn_cast<ConstantInt>(other);
-      if (!zero || !zero->isZero())
-        return llvm::None;
-      if (ICI->getPredicate() != ICmpInst::ICMP_NE &&
-          ICI->getPredicate() != ICmpInst::ICMP_EQ)
-        return llvm::None;
-      bool trueWhenSet = (ICI->getPredicate() == ICmpInst::ICMP_NE);
-
-      SmallVector<const Value *, 4> work;
-      work.push_back(maybeVal);
-      while (!work.empty()) {
-        const Value *cur = work.pop_back_val();
-        if (auto *LI = dyn_cast<LoadInst>(cur)) {
-          auto key = fieldKeyFromPointer(LI->getPointerOperand());
-          if (!key)
-            continue;
-          auto it = aliases.find(*key);
-          if (it == aliases.end() || it->second.empty())
-            continue;
-          const auto &alias = it->second.front();
-          Predicate p = alias.second;
-          // Flip the predicate if the branch takes the false side.
-          if (!trueWhenSet) {
-            if (p.kind == "BitSet")
-              p.kind = "BitClear";
-            else if (p.kind == "BitClear")
-              p.kind = "BitSet";
-          }
-          return ExtractedGuard{p, trueWhenSet, alias.first};
-        }
-        if (auto *BO = dyn_cast<BinaryOperator>(cur)) {
-          if (BO->getOpcode() == Instruction::Or) {
-            work.push_back(BO->getOperand(0));
-            work.push_back(BO->getOperand(1));
-          }
-        }
-      }
-      return llvm::None;
-    };
-
-    if (auto eg = checkAlias(op0, op1))
-      return eg;
-    if (auto eg = checkAlias(op1, op0))
-      return eg;
   }
   return llvm::None;
 }
@@ -352,9 +341,9 @@ ControlDependencyAnalysis::findSinkInRegion(const BasicBlock *BB,
           auto it = functionSinks_.find(callee);
           if (it != functionSinks_.end()) {
             for (const SemanticSink &cs : it->second) {
-              SemanticSink modeled = cs;
-              modeled.call = CB;
-              out.push_back(modeled);
+              SemanticSink propagated = cs;
+              propagated.call = CB;
+              out.push_back(propagated);
             }
           }
         }
@@ -368,86 +357,6 @@ ControlDependencyAnalysis::findSinkInRegion(const BasicBlock *BB,
         q.push({succ, depth + 1});
     }
   }
-  return out;
-}
-
-/// Collect all load values inside a boolean expression (handles OR chains).
-static void collectLoadValues(const Value *V,
-                              SmallVectorImpl<const LoadInst *> &loads) {
-  if (auto *LI = dyn_cast<LoadInst>(V)) {
-    loads.push_back(LI);
-    return;
-  }
-  if (auto *BO = dyn_cast<BinaryOperator>(V)) {
-    if (BO->getOpcode() == Instruction::Or) {
-      collectLoadValues(BO->getOperand(0), loads);
-      collectLoadValues(BO->getOperand(1), loads);
-      return;
-    }
-  }
-  if (auto *CI = dyn_cast<CastInst>(V)) {
-    collectLoadValues(CI->getOperand(0), loads);
-    return;
-  }
-}
-
-/// Extract guards from a branch condition that loads a boolean flag which is
-/// aliased to a feature bit.  This works even when SROA has flattened the
-/// struct access into a byte-offset GEP.
-static std::vector<ExtractedGuard>
-extractLocationAliasGuards(
-    const Value *cond, const SemanticSource &src,
-    const std::map<LocationAliasKey, std::vector<BoolFlagAlias>>
-        &locationAliases,
-    const DataLayout &DL) {
-  std::vector<ExtractedGuard> out;
-  if (!src.schema.featureBit.hasValue())
-    return out;
-
-  auto processLoad = [&](const LoadInst *LI,
-                         bool trueWhenSet) -> bool {
-    auto baseOff = getBaseAndByteOffset(LI->getPointerOperand(), DL);
-    if (!baseOff)
-      return false;
-    auto it = locationAliases.find({baseOff->first, baseOff->second});
-    if (it == locationAliases.end())
-      return false;
-    bool found = false;
-    for (const auto &alias : it->second) {
-      if (alias.first != src.schema.id)
-        continue;
-      Predicate p = alias.second;
-      if (!trueWhenSet)
-        p = flipBitPredicate(p);
-      out.push_back(ExtractedGuard{p, trueWhenSet, src.schema.id});
-      found = true;
-    }
-    return found;
-  };
-
-  if (auto *LI = dyn_cast<LoadInst>(cond)) {
-    processLoad(LI, /*trueWhenSet=*/true);
-    return out;
-  }
-
-  if (auto *ICI = dyn_cast<ICmpInst>(cond)) {
-    auto *zero0 = dyn_cast<ConstantInt>(ICI->getOperand(0));
-    auto *zero1 = dyn_cast<ConstantInt>(ICI->getOperand(1));
-    const Value *maybeVal = zero1 ? ICI->getOperand(0)
-                                  : (zero0 ? ICI->getOperand(1) : nullptr);
-    auto *zero = zero1 ? zero1 : zero0;
-    if (!maybeVal || !zero || !zero->isZero() ||
-        (ICI->getPredicate() != ICmpInst::ICMP_NE &&
-         ICI->getPredicate() != ICmpInst::ICMP_EQ))
-      return out;
-    bool trueWhenSet = (ICI->getPredicate() == ICmpInst::ICMP_NE);
-    SmallVector<const LoadInst *, 4> loads;
-    collectLoadValues(maybeVal, loads);
-    for (const LoadInst *LI : loads)
-      processLoad(LI, trueWhenSet);
-    return out;
-  }
-
   return out;
 }
 
@@ -493,6 +402,108 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
     return false;
   };
 
+  auto emitStoredBooleanGuards = [&](const BranchInst *featureBranch,
+                                     const Predicate &featurePredicate) {
+    if (!src.schema.nodeLocalBit.hasValue())
+      return;
+    const Function *function = featureBranch->getFunction();
+    const DataLayout &layout = function->getParent()->getDataLayout();
+
+    for (unsigned successorIndex = 0; successorIndex < 2; ++successorIndex) {
+      const BasicBlock *storeBlock = featureBranch->getSuccessor(successorIndex);
+      // A constant stored in a branch successor only proves the guarded
+      // predicate when that edge dominates the block. A short-circuit or
+      // else-if join can be reached with the bit clear, so its stores derive
+      // nothing.
+      if (!edgeDominatesBlock(featureBranch->getParent(), storeBlock,
+                              function))
+        continue;
+      Predicate storedPredicate = successorIndex == 0
+                                      ? featurePredicate
+                                      : invertPredicate(featurePredicate);
+      for (const Instruction &instruction : *storeBlock) {
+        auto *store = dyn_cast<StoreInst>(&instruction);
+        if (!store)
+          continue;
+        auto *constant = dyn_cast<ConstantInt>(store->getValueOperand());
+        if (!constant || constant->isZero())
+          continue;
+        auto storedAt =
+            constantPointerLocation(store->getPointerOperand(), layout);
+        if (!storedAt)
+          continue;
+
+        for (const BasicBlock &block : *function) {
+          for (const Instruction &candidate : block) {
+            auto *load = dyn_cast<LoadInst>(&candidate);
+            if (!load)
+              continue;
+            auto loadedAt =
+                constantPointerLocation(load->getPointerOperand(), layout);
+            if (!loadedAt || loadedAt.getValue() != storedAt.getValue())
+              continue;
+
+            std::queue<std::pair<const Value *, bool>> stateWork;
+            std::set<std::pair<const Value *, bool>> stateSeen;
+            stateWork.push({load, true});
+            stateSeen.insert({load, true});
+            while (!stateWork.empty()) {
+              auto [stateValue, trueWhenFeature] = stateWork.front();
+              stateWork.pop();
+              for (const User *user : stateValue->users()) {
+                if (auto *branch = dyn_cast<BranchInst>(user)) {
+                  if (!branch->isConditional() ||
+                      branch->getCondition() != stateValue)
+                    continue;
+                  const BasicBlock *guarded = branch->getSuccessor(
+                      trueWhenFeature ? 0 : 1);
+                  auto guardedSinks = findSinkInRegion(guarded, sinks);
+                  for (const SemanticSink &sink : guardedSinks) {
+                    // The stored constant is the proof here, not region
+                    // membership: a short-circuit join can also flow into
+                    // the guarded block from the opposite successor, so no
+                    // false-side exclusion applies.
+                    out.push_back({src.schema.id, storedPredicate, sink,
+                                   branch->getFunction()->getName().str(),
+                                   branch->getDebugLoc(), branch, guarded,
+                                   nullptr, src});
+                  }
+                  continue;
+                }
+
+                bool nextPolarity = trueWhenFeature;
+                bool transparent = isa<CastInst>(user);
+                if (auto *comparison = dyn_cast<ICmpInst>(user)) {
+                  const Value *other = comparison->getOperand(0) == stateValue
+                                           ? comparison->getOperand(1)
+                                           : comparison->getOperand(0);
+                  auto *zero = dyn_cast<ConstantInt>(other);
+                  if (!zero || !zero->isZero())
+                    continue;
+                  if (comparison->getPredicate() == ICmpInst::ICMP_EQ)
+                    nextPolarity = !trueWhenFeature;
+                  else if (comparison->getPredicate() != ICmpInst::ICMP_NE)
+                    continue;
+                  transparent = true;
+                } else if (auto *binary = dyn_cast<BinaryOperator>(user)) {
+                  if (binary->getOpcode() == Instruction::Or &&
+                      trueWhenFeature)
+                    transparent = true;
+                  else if (binary->getOpcode() == Instruction::And &&
+                           !trueWhenFeature)
+                    transparent = true;
+                }
+                if (transparent &&
+                    stateSeen.insert({cast<Value>(user), nextPolarity}).second)
+                  stateWork.push({cast<Value>(user), nextPolarity});
+              }
+            }
+          }
+        }
+      }
+    }
+  };
+
   while (!q.empty()) {
     const Value *V = q.front();
     q.pop();
@@ -500,45 +511,42 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
     for (const User *U : V->users()) {
       if (auto *BI = dyn_cast<BranchInst>(U)) {
         const Value *cond = BI->getCondition();
-        Optional<ExtractedGuard> guard = extractPredicate(cond, src, boolFlagAliases_.fieldAliases);
+        Optional<ExtractedGuard> guard = extractPredicate(cond, src);
 
-        // Fallback: if the condition (or its operands) is derived from the
-        // source through conversions/calls/phis, create a generic predicate.
-        if (!guard.hasValue() && valueIsDerivedFromSrc(cond)) {
-          bool trueWhenNonZero = true;
-          if (auto *ICI = dyn_cast<ICmpInst>(cond)) {
-            if (ICI->getPredicate() == ICmpInst::ICMP_EQ)
-              trueWhenNonZero = false;
-          }
-          Predicate p{trueWhenNonZero ? "Ne" : "Eq", llvm::None,
-                      src.schema.featureBit};
-          guard = ExtractedGuard{p, trueWhenNonZero, src.schema.id};
-        }
         if (!guard.hasValue())
           continue;
 
         Predicate p = guard->pred;
-        bool trueWhenSet = guard->trueWhenSet;
         const std::string &guardSourceId = guard->sourceId;
 
-        const BasicBlock *trueSide = trueWhenSet ? BI->getSuccessor(0)
-                                                 : BI->getSuccessor(1);
-        const BasicBlock *falseSide = trueWhenSet ? BI->getSuccessor(1)
-                                                  : BI->getSuccessor(0);
+        // The extracted predicate describes the source state under which the
+        // branch condition is TRUE: cond true <=> pred holds. Therefore the
+        // predicate-holds side is always successor(0) and the predicate-fails
+        // side is successor(1), independent of the predicate kind.
+        const BasicBlock *predSide = BI->getSuccessor(0);
+        const BasicBlock *predFailsSide = BI->getSuccessor(1);
         std::string func = BI->getFunction()->getName().str();
+
+        bool directFeatureBranch = cond == src.rootValue;
+        if (auto *comparison = dyn_cast<ICmpInst>(cond))
+          directFeatureBranch =
+              skipCasts(comparison->getOperand(0)) == src.rootValue ||
+              skipCasts(comparison->getOperand(1)) == src.rootValue;
+        if (directFeatureBranch)
+          emitStoredBooleanGuards(BI, p);
 
         // Collect sinks reachable from each side. A sink is control-dependent
         // on this branch only if it is reachable from one side but not the
-        // other (keyed by function + argIndex). This removes the common case
-        // where a sink is reachable regardless of the branch outcome.
-        std::vector<SemanticSink> trueSinks = findSinkInRegion(trueSide, sinks);
+        // other, keyed by exact LLVM callsite identity so two calls to the
+        // same function in opposite branches stay distinct.
+        std::vector<SemanticSink> trueSinks = findSinkInRegion(predSide, sinks);
         std::vector<SemanticSink> falseSinks =
-            findSinkInRegion(falseSide, sinks);
+            findSinkInRegion(predFailsSide, sinks);
 
         auto sinkKey = [](const SemanticSink &s) {
-          return std::make_pair(s.function, s.argIndex);
+          return std::make_pair(s.call, s.argIndex);
         };
-        std::set<std::pair<std::string, unsigned>> trueKeys, falseKeys;
+        std::set<std::pair<const CallBase *, unsigned>> trueKeys, falseKeys;
         for (const SemanticSink &s : trueSinks)
           trueKeys.insert(sinkKey(s));
         for (const SemanticSink &s : falseSinks)
@@ -548,19 +556,16 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
         for (const SemanticSink &s : trueSinks) {
           if (!falseKeys.count(sinkKey(s))) {
             emitted = true;
-            out.push_back(
-                {guardSourceId, p, s, func, BI->getDebugLoc(), src});
+            out.push_back({guardSourceId, p, s, func, BI->getDebugLoc(), BI,
+                           predSide, predFailsSide, src});
           }
         }
-        Predicate negP = p;
-        negP.kind = (p.kind == "Ne")   ? "Eq"
-                    : (p.kind == "Eq") ? "Ne"
-                                       : p.kind;
+        Predicate negP = invertPredicate(p);
         for (const SemanticSink &s : falseSinks) {
           if (!trueKeys.count(sinkKey(s))) {
             emitted = true;
-            out.push_back(
-                {guardSourceId, negP, s, func, BI->getDebugLoc(), src});
+            out.push_back({guardSourceId, negP, s, func, BI->getDebugLoc(), BI,
+                           predFailsSide, predSide, src});
           }
         }
 
@@ -569,8 +574,8 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
         if (!emitted && trueSinks.empty() && falseSinks.empty()) {
           CallBase *dummy = nullptr;
           out.push_back({guardSourceId, p,
-                         SemanticSink{"", Role::Control, 0, dummy}, func,
-                         BI->getDebugLoc(), src});
+                         SemanticSink{"", Role::Control, 0, llvm::None, dummy}, func,
+                         BI->getDebugLoc(), BI, predSide, predFailsSide, src});
         }
       } else if (auto *SI = dyn_cast<SwitchInst>(U)) {
         // If the switch value is derived from the source, each case may gate
@@ -580,16 +585,17 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
           continue;
         std::string func = SI->getFunction()->getName().str();
         auto sinkKey = [](const SemanticSink &s) {
-          return std::make_pair(s.function, s.argIndex);
+          return std::make_pair(s.call, s.argIndex);
         };
 
         struct CaseSinks {
           Predicate pred;
           std::vector<SemanticSink> sinks;
-          std::set<std::pair<std::string, unsigned>> keys;
+          const BasicBlock *guardedRegion = nullptr;
+          std::set<std::pair<const CallBase *, unsigned>> keys;
         };
         std::vector<CaseSinks> cases;
-        std::set<std::pair<std::string, unsigned>> allKeys;
+        std::map<std::pair<const CallBase *, unsigned>, unsigned> keyCounts;
 
         for (const auto &caseIt : SI->cases()) {
           const BasicBlock *caseBB = caseIt.getCaseSuccessor();
@@ -598,34 +604,36 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
           p.value = caseVal;
           CaseSinks cs;
           cs.pred = p;
+          cs.guardedRegion = caseBB;
           cs.sinks = findSinkInRegion(caseBB, sinks);
           for (const SemanticSink &s : cs.sinks) {
             cs.keys.insert(sinkKey(s));
-            allKeys.insert(sinkKey(s));
           }
+          for (const auto &key : cs.keys)
+            ++keyCounts[key];
           cases.push_back(std::move(cs));
         }
 
         Predicate defaultP{"Default", llvm::None, llvm::None};
         CaseSinks defaultCase;
         defaultCase.pred = defaultP;
+        defaultCase.guardedRegion = SI->getDefaultDest();
         defaultCase.sinks = findSinkInRegion(SI->getDefaultDest(), sinks);
         for (const SemanticSink &s : defaultCase.sinks)
           defaultCase.keys.insert(sinkKey(s));
         for (const auto &k : defaultCase.keys)
-          allKeys.insert(k);
+          ++keyCounts[k];
 
         bool emitted = false;
         auto emitUnique = [&](const CaseSinks &cs) {
           for (const SemanticSink &s : cs.sinks) {
             // A sink is control-dependent on this case if it is not reachable
             // from any other case/default.
-            if (cs.keys.count(sinkKey(s)) &&
-                std::count_if(allKeys.begin(), allKeys.end(),
-                              [&](const auto &k) { return k == sinkKey(s); }) == 1) {
+            if (keyCounts[sinkKey(s)] == 1) {
               emitted = true;
-              out.push_back(
-                  {src.schema.id, cs.pred, s, func, SI->getDebugLoc(), src});
+              out.push_back({src.schema.id, cs.pred, s, func,
+                             SI->getDebugLoc(), SI, cs.guardedRegion, nullptr,
+                             src});
             }
           }
         };
@@ -633,12 +641,13 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
           emitUnique(cs);
         emitUnique(defaultCase);
 
-        if (!emitted && allKeys.empty()) {
+        if (!emitted && keyCounts.empty()) {
           CallBase *dummy = nullptr;
           out.push_back({src.schema.id,
                          Predicate{"Switch", llvm::None, llvm::None},
-                         SemanticSink{"", Role::Control, 0, dummy}, func,
-                         SI->getDebugLoc(), src});
+                         SemanticSink{"", Role::Control, 0, llvm::None, dummy}, func,
+                         SI->getDebugLoc(), SI, SI->getDefaultDest(), nullptr,
+                         src});
         }
       } else if (isa<BinaryOperator>(U) || isa<CastInst>(U) ||
                  isa<ICmpInst>(U) || isa<SelectInst>(U) || isa<PHINode>(U) ||
@@ -649,106 +658,6 @@ ControlDependencyAnalysis::analyze(const SemanticSource &src,
     }
   }
 
-  // Feature-bit sources may gate sinks through boolean flags stored to memory.
-  // The branch condition may not be data-reachable from the feature call, so
-  // scan all branches in the source's function for aliased bool flags.
-  if (src.schema.featureBit.hasValue()) {
-    auto featureGuards = analyzeFeatureFlagGuards(src, sinks);
-    out.insert(out.end(), featureGuards.begin(), featureGuards.end());
-  }
-
   (void)icfg_;
-  return out;
-}
-
-static const Function *getFunctionForValue(const Value *V) {
-  if (auto *I = dyn_cast<Instruction>(V))
-    return I->getFunction();
-  if (auto *A = dyn_cast<Argument>(V))
-    return A->getParent();
-  if (auto *BB = dyn_cast<BasicBlock>(V))
-    return BB->getParent();
-  return nullptr;
-}
-
-std::vector<ControlResult>
-ControlDependencyAnalysis::analyzeFeatureFlagGuards(
-    const SemanticSource &src, const SinkCatalog &sinks) const {
-  std::vector<ControlResult> out;
-  if (!src.rootValue)
-    return out;
-  const Function *F = getFunctionForValue(src.rootValue);
-  if (!F)
-    return out;
-  const DataLayout &DL = F->getParent()->getDataLayout();
-
-  auto sinkKey = [](const SemanticSink &s) {
-    return std::make_pair(s.function, s.argIndex);
-  };
-
-  for (const BasicBlock &BB : *F) {
-    const Instruction *TI = BB.getTerminator();
-    if (!TI)
-      continue;
-
-    const Value *cond = nullptr;
-    const BasicBlock *trueSucc = nullptr;
-    const BasicBlock *falseSucc = nullptr;
-    if (auto *BI = dyn_cast<BranchInst>(TI)) {
-      if (BI->isUnconditional())
-        continue;
-      cond = BI->getCondition();
-      trueSucc = BI->getSuccessor(0);
-      falseSucc = BI->getSuccessor(1);
-    } else {
-      continue;
-    }
-
-    std::vector<ExtractedGuard> guards =
-        extractLocationAliasGuards(cond, src, boolFlagAliases_.locationAliases,
-                                   DL);
-    if (guards.empty())
-      continue;
-
-    std::vector<SemanticSink> trueSinks = findSinkInRegion(trueSucc, sinks);
-    std::vector<SemanticSink> falseSinks = findSinkInRegion(falseSucc, sinks);
-    std::set<std::pair<std::string, unsigned>> trueKeys, falseKeys;
-    for (const SemanticSink &s : trueSinks)
-      trueKeys.insert(sinkKey(s));
-    for (const SemanticSink &s : falseSinks)
-      falseKeys.insert(sinkKey(s));
-
-    std::string func = F->getName().str();
-    for (const ExtractedGuard &guard : guards) {
-      const BasicBlock *trueSide = guard.trueWhenSet ? trueSucc : falseSucc;
-      const BasicBlock *falseSide = guard.trueWhenSet ? falseSucc : trueSucc;
-      std::vector<SemanticSink> sideTrueSinks =
-          (trueSide == trueSucc) ? trueSinks : falseSinks;
-      std::vector<SemanticSink> sideFalseSinks =
-          (falseSide == trueSucc) ? trueSinks : falseSinks;
-      const std::set<std::pair<std::string, unsigned>> &sideTrueKeys =
-          (trueSide == trueSucc) ? trueKeys : falseKeys;
-      const std::set<std::pair<std::string, unsigned>> &sideFalseKeys =
-          (falseSide == trueSucc) ? trueKeys : falseKeys;
-
-      for (const SemanticSink &s : sideTrueSinks) {
-        if (!sideFalseKeys.count(sinkKey(s))) {
-          out.push_back({guard.sourceId, guard.pred, s, func,
-                         TI->getDebugLoc(), src});
-        }
-      }
-      Predicate negP = guard.pred;
-      negP.kind = (negP.kind == "BitSet")   ? "BitClear"
-                  : (negP.kind == "BitClear") ? "BitSet"
-                                              : negP.kind;
-      for (const SemanticSink &s : sideFalseSinks) {
-        if (!sideTrueKeys.count(sinkKey(s))) {
-          out.push_back({guard.sourceId, negP, s, func,
-                         TI->getDebugLoc(), src});
-        }
-      }
-    }
-  }
-
   return out;
 }

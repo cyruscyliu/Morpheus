@@ -26,7 +26,9 @@ libafl = { workspace = true, default-features = false }
 libafl_bolts = { workspace = true, default-features = false }
 libafl_qemu = { workspace = true, default-features = false, optional = true }
 libvharness_sys = { workspace = true, features = ["aarch64"] }
-serde = { workspace = true, default-features = false, features = ["alloc"] }
+serde = { workspace = true, default-features = false, features = ["alloc", "derive"] }
+serde_json = { workspace = true, features = ["std"] }
+sha2 = { version = "0.10", default-features = false }
 
 [dev-dependencies]
 static_assertions = { workspace = true }
@@ -34,6 +36,10 @@ static_assertions = { workspace = true }
 [[bin]]
 name = "libafl_nesting_stub"
 path = "src/bin/libafl_nesting_stub.rs"
+# The Rust guest stub links the qemu-bridge C symbols (lqprintf and the
+# libafl_qemu entry points), which are provided by the bridge shared
+# library; without that feature the binary cannot link on the host.
+required-features = ["qemu-bridge-aarch64"]
 
 [lints]
 workspace = true

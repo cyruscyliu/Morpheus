@@ -26,19 +26,15 @@ public:
   /// be sinks for the same function (e.g. memcpy src/dst/size).
   std::vector<SemanticSink> match(const llvm::CallBase *CB) const;
 
-  /// True if the given function argument position is registered as a sink.
-  bool isArgumentSink(llvm::StringRef functionName, unsigned argNo) const;
-
-  /// For functions that are safe and not analyzed in the bitcode, return
-  /// semantic-equivalent sinks that should also be reported (e.g.
-  /// virtqueue_add_sgs internally calls dma_map_sg_attrs).
-  std::vector<SemanticSink> modeledSinks(const SemanticSink &sink) const;
-
 private:
   struct Entry {
     std::string function;
     unsigned argIndex;
     Role role;
+    /// Optional destination-buffer operand whose static capacity bounds the
+    /// role operand (e.g. memcpy dst). Source-layout evidence, not a name
+    /// rule; entries without it carry no capacity contract.
+    llvm::Optional<unsigned> destArg;
   };
   std::vector<Entry> entries_;
 };

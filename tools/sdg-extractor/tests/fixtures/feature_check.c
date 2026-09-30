@@ -9,7 +9,9 @@ int virtio_has_feature(void *vdev, u32 bit) {
 }
 
 int check(void *vdev) {
-    if (virtio_has_feature(vdev, 5)) {
+    if (virtio_has_feature(vdev, 5) ||
+        virtio_has_feature(vdev, 3) ||
+        virtio_has_feature(vdev, 38)) {
         return 1;
     }
     return 0;

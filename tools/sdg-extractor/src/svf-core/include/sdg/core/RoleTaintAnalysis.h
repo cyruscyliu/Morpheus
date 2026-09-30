@@ -37,9 +37,10 @@ public:
                     const std::vector<SemanticSource> &sources,
                     const SinkCatalog &sinks);
 
-  void run(unsigned maxDepth = 64);
+  void run();
 
   const TaintResult &result() const { return result_; }
+  TaintResult &result() { return result_; }
 
 private:
   Role transformRole(Role role, const SVF::VFGNode *from,

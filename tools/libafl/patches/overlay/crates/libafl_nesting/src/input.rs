@@ -3,7 +3,26 @@ use std::{fmt::Write, fs, path::Path};
 use libafl::{Error, inputs::{HasTargetBytes, Input}};
 use libafl_bolts::{HasLen, ownedref::OwnedSlice};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use crate::encoding::{decode_scenario, encode_scenario};
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push(HEX[(b >> 4) as usize] as char);
+        out.push(HEX[(b & 0xf) as usize] as char);
+    }
+    out
+}
+
+/// Compute the SHA-256 digest of a `ScenarioInput`'s wire bytes.
+#[must_use]
+pub fn sha256_of_input(input: &ScenarioInput) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(encode_scenario(input));
+    hasher.finalize().into()
+}
 
 /// Number of virtio-mmio window slots: 0x200 / 4.
 pub const MMIO_WINDOW_SLOTS: usize = 128;
@@ -241,10 +260,60 @@ impl HasTargetBytes for ScenarioInput {
     }
 }
 
+/// Generation provenance record. It references a wire-format seed by the
+/// SHA-256 of its encoded bytes, plus the generation parameters that produced
+/// it. The record itself is not an exact cross-version regeneration guarantee.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeedRecord {
+    pub target_rule: String,
+    pub rng_seed: u64,
+    pub encoded_scenario_sha256: String,
+}
+
+impl SeedRecord {
+    /// Build a record from generation parameters and the encoded seed bytes.
+    #[must_use]
+    pub fn new(target_rule: String, rng_seed: u64, encoded_bytes: &[u8]) -> Self {
+        let digest = Sha256::digest(encoded_bytes);
+        Self {
+            target_rule,
+            rng_seed,
+            encoded_scenario_sha256: hex_encode(digest.as_slice()),
+        }
+    }
+
+    /// Verify that the supplied encoded seed bytes match the stored digest.
+    #[must_use]
+    pub fn verify(&self, encoded_bytes: &[u8]) -> bool {
+        let digest = Sha256::digest(encoded_bytes);
+        self.encoded_scenario_sha256 == hex_encode(digest.as_slice())
+    }
+
+    /// Verify the stored digest against the original on-disk bytes of a seed.
+    pub fn verify_file<P: AsRef<Path>>(&self, path: P) -> Result<bool, Error> {
+        let bytes = fs::read(&path)?;
+        Ok(self.verify(&bytes))
+    }
+
+    /// Read a wire-format seed from disk, verify the externally supplied digest
+    /// against the original file bytes, then decode the scenario. Returns an
+    /// error if the digest does not match.
+    pub fn decode_file_verified<P: AsRef<Path>>(&self, path: P) -> Result<ScenarioInput, Error> {
+        let bytes = fs::read(&path)?;
+        if !self.verify(&bytes) {
+            return Err(Error::illegal_state(format!(
+                "SHA-256 mismatch for seed file {}",
+                path.as_ref().display()
+            )));
+        }
+        decode_scenario(&bytes)
+    }
+}
+
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use super::{
-        CoherentAlloc, DmaSection, MmioSection, ScenarioInput, StreamUnit, WordModel,
+        CoherentAlloc, DmaSection, MmioSection, ScenarioInput, SeedRecord, StreamUnit, WordModel,
         MMIO_WINDOW_BYTES,
     };
     use crate::encoding::encode_scenario;
@@ -314,6 +383,23 @@ mod tests {
             .any(|m| m.offset >= MMIO_WINDOW_BYTES));
         assert!(decoded.dma.streaming[0].word_models.iter()
             .any(|m| m.offset >= MMIO_WINDOW_BYTES));
+    }
+
+    #[test]
+    fn seed_record_sha256_detects_corruption() {
+        let input = ScenarioInput::new(
+            MmioSection {
+                word_models: vec![word(0x110, &[0x7472_6976, 0xdead_beef])],
+            },
+            DmaSection::default(),
+        );
+        let encoded = encode_scenario(&input);
+        let mut corrupted = input.clone();
+        corrupted.mmio.word_models[0].values[0] = 0;
+        let corrupted_bytes = encode_scenario(&corrupted);
+        let record = SeedRecord::new("test-rule".into(), 42, &encoded);
+        assert!(record.verify(&encoded));
+        assert!(!record.verify(&corrupted_bytes));
     }
 
     #[test]

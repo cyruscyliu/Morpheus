@@ -19,30 +19,6 @@
         "aliases": ["bitcode-list", "bitcodeList"],
         "path": true
       },
-      "llcg-dot": {
-        "aliases": ["llcg-dot", "llcgDot"],
-        "path": true
-      },
-      "kallgraph-text": {
-        "aliases": ["kallgraph-text", "kallgraphText"],
-        "path": true
-      },
-      "points-to-json": {
-        "aliases": ["points-to-json", "pointsToJson", "kallgraph-points-to-json", "kallgraphPointsToJson"],
-        "path": true
-      },
-      "entry-list": {
-        "aliases": ["entry-list", "entryList"],
-        "path": true
-      },
-      "sink-catalog": {
-        "aliases": ["sink-catalog", "sinkCatalog"],
-        "path": true
-      },
-      "struct-catalog": {
-        "aliases": ["struct-catalog", "structCatalog"],
-        "path": true
-      },
       "artifacts": {
         "aliases": ["artifacts"],
         "repeatable": true
@@ -109,13 +85,7 @@
           "scalarFlags": [
             "output",
             "build-dir",
-            "bitcode-list",
-            "llcg-dot",
-            "kallgraph-text",
-            "points-to-json",
-            "entry-list",
-            "sink-catalog",
-            "struct-catalog"
+            "bitcode-list"
           ],
           "repeatableFlags": [],
           "pathFlags": {

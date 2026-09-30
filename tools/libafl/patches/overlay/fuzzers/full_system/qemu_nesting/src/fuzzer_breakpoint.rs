@@ -30,8 +30,8 @@ use libafl_bolts::{
     tuples::tuple_list,
 };
 use libafl_nesting::{
-    MAX_ENCODED_SCENARIO_BYTES, ScenarioGenerator, ScenarioInput, ScenarioMutator, decode_scenario,
-    encode_scenario,
+    MAX_ENCODED_SCENARIO_BYTES, ScenarioGenerator, ScenarioInput, ScenarioMetadataStore,
+    ScenarioMutator, decode_scenario, encode_scenario,
 };
 use libafl_qemu::{
     FastSnapshotManager, QemuSnapshotManager, SnapshotManager, emu::Emulator,
@@ -44,6 +44,35 @@ const MAX_INPUT_SIZE: usize = MAX_ENCODED_SCENARIO_BYTES;
 
 fn parse_env_u64(name: &str) -> Option<u64> {
     env::var(name).ok()?.parse::<u64>().ok()
+}
+
+/// The semantic sidecar directory: an explicit
+/// `MORPHEUS_LIBAFL_SDG_METADATA_DIR` override, or a sibling
+/// `<corpus-name>.sdg-metadata` of the corpus directory. The sidecar lives
+/// outside the corpus directory, so OnDiskCorpus never interprets a
+/// metadata record as a testcase.
+fn sdg_metadata_dir(corpus_dir: &Path) -> PathBuf {
+    env::var("MORPHEUS_LIBAFL_SDG_METADATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| ScenarioMetadataStore::sidecar_dir_for_corpus(corpus_dir))
+}
+
+/// Build the scenario generator from the environment and point its shared
+/// metadata store at the persistent sidecar. Generator and mutator clones
+/// share the store; records are written atomically and lazy-loaded, so
+/// seeds generated in one process or client are usable by another through
+/// the shared sidecar directory.
+fn scenario_generator_from_env(corpus_dir: &Path) -> ScenarioGenerator {
+    let generator = ScenarioGenerator::from_env()
+        .unwrap_or_else(|err| panic!("failed to load SDG rules: {err}"));
+    let metadata_dir = sdg_metadata_dir(corpus_dir);
+    if env::var("MORPHEUS_LIBAFL_DISABLE_SDG").is_err() {
+        eprintln!(
+            "[libafl/qemu_nesting] semantic metadata sidecar={}",
+            metadata_dir.display()
+        );
+    }
+    generator.with_metadata_dir(&metadata_dir)
 }
 
 const DEFAULT_MUTATIONAL_MAX_ITERATIONS: &str = "1";
@@ -153,12 +182,6 @@ fn initial_input_paths() -> Option<Vec<PathBuf>> {
     paths
 }
 
-fn scenario_generator_from_env() -> ScenarioGenerator {
-    let generator = ScenarioGenerator::from_env()
-        .unwrap_or_else(|err| panic!("failed to load SDG rules: {err}"));
-    generator
-}
-
 fn input_paths_from_manifest(manifest: &str, kind: &str) -> Option<Vec<PathBuf>> {
     let content = fs::read_to_string(&manifest)
         .unwrap_or_else(|err| panic!("failed to read {kind} input manifest {manifest}: {err}"));
@@ -210,7 +233,7 @@ pub fn fuzz() {
     let objective_dir = env::var("MORPHEUS_LIBAFL_OBJECTIVE_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("./crashes"));
-    let scenario_generator = scenario_generator_from_env();
+    let scenario_generator = scenario_generator_from_env(&corpus_dir);
     macro_rules! run_client_body {
         ($state:expr, $mgr:ident) => {{
             (|| -> Result<(), Error> {

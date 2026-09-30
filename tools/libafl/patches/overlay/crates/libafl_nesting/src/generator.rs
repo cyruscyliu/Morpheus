@@ -4,6 +4,7 @@ use core::num::NonZeroUsize;
 use libafl::{Error, generators::Generator};
 use libafl_bolts::{nonzero, rands::Rand};
 
+use crate::metadata::ScenarioMetadataStore;
 use crate::sdg::SemanticDependencyGraph;
 use crate::input::MAX_ENCODED_SCENARIO_BYTES;
 use crate::encoding::encoded_size;
@@ -16,6 +17,7 @@ use crate::input::{
 pub struct ScenarioGenerator {
     max_actions: NonZeroUsize,
     sdg: Option<SemanticDependencyGraph>,
+    metadata: ScenarioMetadataStore,
 }
 
 impl Default for ScenarioGenerator {
@@ -30,11 +32,43 @@ impl ScenarioGenerator {
         Self {
             max_actions,
             sdg: None,
+            metadata: ScenarioMetadataStore::new(),
         }
     }
 
     pub(crate) fn sdg(&self) -> Option<&SemanticDependencyGraph> {
         self.sdg.as_ref()
+    }
+
+    /// The shared semantic-corpus metadata store. Generation registers the
+    /// semantic scenario for each lowered input; a mutator cloned from the
+    /// same instance reads the same records, keyed by the SHA-256 of the
+    /// exact encoded bytes.
+    #[must_use]
+    pub fn metadata(&self) -> &ScenarioMetadataStore {
+        &self.metadata
+    }
+
+    /// Point the shared metadata store at a persistent sidecar directory of
+    /// `<digest>.json` records. Registration writes records atomically to
+    /// the sidecar and lookups lazy-load them, so seeds generated in one
+    /// process or client are usable by another through the shared
+    /// directory. Generator and mutator clones share the store.
+    #[must_use]
+    pub fn with_metadata_dir(self, dir: &std::path::Path) -> Self {
+        self.metadata.enable_persistence(dir);
+        self
+    }
+
+    /// Test constructor with a rule set; the SDG drives generation and
+    /// rule-aware mutation.
+    #[cfg(test)]
+    pub(crate) fn with_sdg(sdg: SemanticDependencyGraph) -> Self {
+        Self {
+            max_actions: nonzero!(24),
+            sdg: Some(sdg),
+            metadata: ScenarioMetadataStore::new(),
+        }
     }
 
     #[cfg(feature = "std")]
@@ -64,7 +98,21 @@ where
 {
     fn generate(&mut self, state: &mut S) -> Result<ScenarioInput, Error> {
         if let Some(sdg) = &self.sdg {
-            return Ok(sdg.generate(state.rand_mut()));
+            // An empty but valid rule directory selects the documented
+            // fallback random generation instead of aborting.
+            if !sdg.rules.is_empty() {
+                let mut scenario = sdg.generate(state.rand_mut())
+                    .map_err(|e| Error::illegal_argument(format!("SDG generation failed: {e}")))?;
+                // Find the rule to provide node metadata for lowering.
+                let rule = sdg.rules.iter().find(|r| r.name == scenario.target_rule)
+                    .ok_or_else(|| Error::illegal_argument("target rule not found"))?;
+                let input = crate::sdg::lower_scenario(&mut scenario, rule, state.rand_mut())
+                    .map_err(|e| Error::illegal_argument(format!("SDG lowering failed: {e}")))?;
+                // Persist the semantic scenario and its exact placements as
+                // corpus metadata, keyed by the SHA-256 of the encoded bytes.
+                self.metadata.register(&input, scenario);
+                return Ok(input);
+            }
         }
 
         Ok(self.random_scenario(state.rand_mut(), self.max_actions.get()))
@@ -201,6 +249,9 @@ mod tests {
     use libafl::state::HasRand;
     use libafl_bolts::rands::StdRand;
 
+    /// The env-mutating tests race when run in parallel; serialize them.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[derive(Clone, Debug)]
     struct TestState {
         rand: StdRand,
@@ -242,5 +293,54 @@ mod tests {
             assert!(input.is_valid());
             assert!(encoded_size(&input) <= MAX_ENCODED_SCENARIO_BYTES);
         }
+    }
+
+    #[test]
+    fn from_env_with_empty_rule_directory_selects_fallback() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        // An empty but valid rule directory loads an empty SDG; the
+        // integration selects the documented fallback random generation
+        // instead of aborting.
+        let dir = std::env::temp_dir().join(format!(
+            "sdg-empty-rules-env-{}-{:?}",
+            std::process::id(),
+            std::time::SystemTime::now()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        // SAFETY: test-only environment manipulation
+        unsafe { std::env::set_var("MORPHEUS_LIBAFL_SDG_RULES", &dir); }
+        // SAFETY: test-only environment manipulation
+        unsafe { std::env::remove_var("MORPHEUS_LIBAFL_DISABLE_SDG"); }
+        let generator = ScenarioGenerator::from_env()
+            .expect("an empty rule directory is valid");
+        assert!(generator.sdg().is_some_and(|sdg| sdg.rules.is_empty()));
+        // SAFETY: test-only environment manipulation
+        unsafe { std::env::remove_var("MORPHEUS_LIBAFL_SDG_RULES"); }
+
+        let mut state = TestState { rand: StdRand::with_seed(3) };
+        let mut generator = ScenarioGenerator::from_env()
+            .expect("from_env should work after the variable is removed");
+        let input = generator.generate(&mut state).expect("generator should work");
+        assert!(input.is_valid());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn from_env_with_missing_rule_directory_is_an_error() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = std::env::temp_dir().join(format!(
+            "sdg-missing-rules-env-{}-{:?}",
+            std::process::id(),
+            std::time::SystemTime::now()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        // SAFETY: test-only environment manipulation
+        unsafe { std::env::set_var("MORPHEUS_LIBAFL_SDG_RULES", &dir); }
+        // SAFETY: test-only environment manipulation
+        unsafe { std::env::remove_var("MORPHEUS_LIBAFL_DISABLE_SDG"); }
+        let result = ScenarioGenerator::from_env();
+        // SAFETY: test-only environment manipulation
+        unsafe { std::env::remove_var("MORPHEUS_LIBAFL_SDG_RULES"); }
+        assert!(result.is_err(), "a missing rule directory is a configuration error");
     }
 }

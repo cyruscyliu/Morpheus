@@ -7,12 +7,6 @@ build_dir="${MORPHEUS_SDG_EXTRACTOR_BUILD_DIR:-${tool_root}/builds/default/build
 result_file="${MORPHEUS_SDG_EXTRACTOR_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 
 bitcode_list="${MORPHEUS_SDG_EXTRACTOR_BITCODE_LIST:-}"
-llcg_dot="${MORPHEUS_SDG_EXTRACTOR_LLCG_DOT:-}"
-kallgraph_text="${MORPHEUS_SDG_EXTRACTOR_KALLGRAPH_TEXT:-}"
-points_to_json="${MORPHEUS_SDG_EXTRACTOR_POINTS_TO_JSON:-}"
-entry_list="${MORPHEUS_SDG_EXTRACTOR_ENTRY_LIST:-}"
-sink_catalog="${MORPHEUS_SDG_EXTRACTOR_SINK_CATALOG:-}"
-struct_catalog="${MORPHEUS_SDG_EXTRACTOR_STRUCT_CATALOG:-}"
 
 mkdir -p "${output_dir}"
 
@@ -22,6 +16,8 @@ nodes_file="${output_dir}/sdg-nodes.json"
 edges_file="${output_dir}/sdg-edges.json"
 sdg_files_dir="${output_dir}/sdg"
 manifest_file="${output_dir}/manifest.json"
+
+rm -rf "${sdg_files_dir}"
 
 : > "${log_file}"
 
@@ -43,7 +39,7 @@ if [ ! -f "${extapi_bc}" ]; then
   exit 1
 fi
 
-for f in "${bitcode_list}" "${llcg_dot}" "${kallgraph_text}" "${points_to_json}"; do
+for f in "${bitcode_list}"; do
   if [ -n "${f}" ] && [ ! -e "${f}" ]; then
     log "error: required input not found: ${f}"
     exit 1
@@ -55,24 +51,14 @@ if [ -n "${bitcode_list}" ] && [ -f "${bitcode_list}" ]; then
   bitcode_count=$(wc -l < "${bitcode_list}" | tr -d ' ')
 fi
 
-cg_nodes=0
-if [ -n "${llcg_dot}" ] && [ -f "${llcg_dot}" ]; then
-  cg_nodes=$(grep -cE '^\s*"[^"]+"\s*;' "${llcg_dot}" || true)
-fi
-
 log "plugin=${plugin}"
-log "bitcode files=${bitcode_count} callgraph nodes=${cg_nodes}"
+log "bitcode files=${bitcode_count}"
 
 work_dir="${output_dir}/work"
 mkdir -p "${work_dir}"
 
 OPT="${OPT:-opt-15}"
 LLVM_LINK="${LLVM_LINK:-llvm-link-15}"
-entry_arg=""
-if [ -n "${entry_list}" ] && [ -f "${entry_list}" ]; then
-  entry_arg="-sdg-entry-list=${entry_list}"
-fi
-# No external hints are required; all schemas are embedded in SdgSvfCore.
 
 # Resolve bitcode paths. llbic emits paths relative to a kbuild-* subdirectory
 # of the directory containing the bitcode list.
@@ -133,7 +119,6 @@ log "extracting from ${merged_bc}"
   -passes=sdg-extract \
   -sdg-output "${rules_file}" \
   -sdg-extapi "${extapi_bc}" \
-  ${entry_arg} \
   "${merged_bc}" \
   -o /dev/null
 
@@ -179,8 +164,7 @@ cat > "${manifest_file}" <<EOF
   "summary": "extracted SDG rules from bitcode",
   "details": {
     "output": "${output_dir}",
-    "bitcode_count": ${bitcode_count},
-    "callgraph_nodes": ${cg_nodes}
+    "bitcode_count": ${bitcode_count}
   },
   "paths": {
     "manifest": {
@@ -230,8 +214,7 @@ cat > "${result_file}" <<EOF
   "summary": "extracted SDG rules from bitcode",
   "details": {
     "output": "${output_dir}",
-    "bitcode_count": ${bitcode_count},
-    "callgraph_nodes": ${cg_nodes}
+    "bitcode_count": ${bitcode_count}
   },
   "artifacts": [
     { "path": "manifest", "location": "${manifest_file}" },

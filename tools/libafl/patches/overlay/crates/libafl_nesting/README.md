@@ -70,6 +70,44 @@ preconditions and emits a `ScenarioInput`; mutation selects a rule and applies
 its operator to the corresponding modeled value while preserving the seed
 wire invariants.
 
+## Semantic metadata sidecar
+
+Rule-aware mutation never guesses semantic placement from the wire layout.
+It reads the `SemanticScenario` recorded for the exact seed bytes from the
+shared metadata store, keyed by the SHA-256 of the encoded `ScenarioInput`:
+
+```text
+MORPHEUS_LIBAFL_SDG_METADATA_DIR=<metadata-directory>
+```
+
+When the variable is unset the harness derives a sibling directory
+`<corpus-name>.sdg-metadata` from `MORPHEUS_LIBAFL_CORPUS_DIR`. The sidecar
+stays outside the corpus directory, so `OnDiskCorpus` never interprets a
+metadata record as a testcase.
+
+Each record is one `<digest>.json` file holding the semantic scenario with
+its exact per-field placements. Registration writes the record atomically
+(temp file plus rename in the same directory) before the record can be
+evicted; lookups compute the digest from the exact current bytes, hit the
+in-memory map first, and lazy-load the sidecar record on a miss. A record
+whose internal digest disagrees with the computed digest or its file name is
+rejected as stale, and a corrupt file is ignored. The in-memory map is
+least-recently-used when a cap is configured; evicted records remain
+recoverable from the sidecar.
+
+Generator and mutator clones share one store, so seeds generated in one
+process or client are usable by another through the shared sidecar
+directory. Seeds without a record — imported or foreign wire-format seeds —
+are never rule-aware mutated; they take the documented random fallback
+instead.
+
+Child metadata is persisted immediately when a mutation commits, before the
+fuzzer evaluates the child into the corpus. A child that is never accepted
+leaves a harmless orphan record: records are digest-keyed and can only ever
+be found for those exact bytes. The encoded `ScenarioInput` remains the
+authoritative replay bytes; the sidecar is mutation provenance only and
+never affects replay or `SeedRecord` SHA verification.
+
 ## Seed-driven virtio device input
 
 The L2 QEMU seed consumer is compiled into the version-scoped qemu-cca patch

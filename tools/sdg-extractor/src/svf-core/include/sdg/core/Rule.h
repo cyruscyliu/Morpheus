@@ -4,8 +4,14 @@
 #include "sdg/core/Predicate.h"
 #include "sdg/core/SemanticSink.h"
 #include "sdg/core/SemanticSource.h"
+#include <map>
 #include <string>
 #include <vector>
+
+namespace llvm {
+class DebugLoc;
+class Instruction;
+} // namespace llvm
 
 namespace sdg {
 namespace core {
@@ -17,7 +23,14 @@ struct Edge {
   Predicate pred;
   std::string function;
   llvm::DebugLoc loc;
+  const llvm::Instruction *site = nullptr;
+  /// The basic block reached when the predicate holds: for target states,
+  /// the direction that stays on the non-error path.
+  const llvm::BasicBlock *guardedRegion = nullptr;
+  std::string evidence = "llvm";
 };
+
+using SelfEdgeMap = std::map<std::string, std::vector<Edge>>;
 
 namespace heads {
 inline constexpr const char *kBound = "head_bound";
@@ -31,6 +44,8 @@ struct Mutation {
   std::string op;  // "SampleRange", "SetValue", "FlipBit", "ClearBits" ...
   llvm::Optional<uint64_t> value;
   llvm::Optional<unsigned> bit;
+  llvm::Optional<uint64_t> min;
+  llvm::Optional<uint64_t> max;
   llvm::Optional<std::string> side; // "Above", "Below"
   std::string var;                  ///< Variable targeted by the mutation.
 };

@@ -1,4 +1,4 @@
-/* Fixture: MMIO read flows into a sink (kmalloc) size argument. */
+/* Fixture: source flows into a size sink with no explicit bound. */
 
 typedef unsigned int u32;
 typedef unsigned long size_t;
@@ -17,16 +17,13 @@ struct virtio_mmio_device {
 static struct virtio_mmio_device vm_dev;
 
 
-void *kmalloc(size_t size);
+extern void *kmalloc(size_t size);
 
 int probe(unsigned long phys) {
     vm_dev.base = ioremap(phys, 0x200);
     void *base = vm_dev.base;
-    u32 n = readl(base + 0x034); /* queue_size_max */
-    if (n > 4096)
-        return -1;
-    // The sink size is an arithmetic derivation of the source; this keeps
-    // forward-only traversal through multiplication covered.
-    void *p = kmalloc((size_t)n * 16);
-    return p ? 0 : -2;
+    u32 sz = readl(base + 0x10c); /* speed */
+    // No comparison bounds sz before passing it to kmalloc.
+    kmalloc((size_t)sz);
+    return 0;
 }

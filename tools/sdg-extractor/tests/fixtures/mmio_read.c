@@ -5,25 +5,35 @@ typedef unsigned long long u64;
 
 #define VIRTIO_MMIO_DEVICE_ID 0x008
 #define VIRTIO_MMIO_VERSION   0x004
+#define VIRTIO_MMIO_DRIVER_FEATURES 0x020
 
-static inline u32 readl(volatile void *addr) {
+__attribute__((noinline))
+static u32 readl(volatile void *addr) {
     return *(volatile u32 *)addr;
 }
 
-struct vm_dev {
+extern void *ioremap(unsigned long phys, unsigned long size);
+
+struct virtio_mmio_device {
     void *base;
-    u32 version;
-    u32 device;
 };
 
-int probe(struct vm_dev *dev) {
-    dev->version = readl(dev->base + VIRTIO_MMIO_VERSION);
-    if (dev->version < 1 || dev->version > 2) {
+static struct virtio_mmio_device vm_dev;
+
+
+int probe(unsigned long phys) {
+    vm_dev.base = ioremap(phys, 0x200);
+    void *base = vm_dev.base;
+    if (readl(base + VIRTIO_MMIO_DRIVER_FEATURES) != 0) {
+        return -3;
+    }
+    u32 version = readl(base + VIRTIO_MMIO_VERSION);
+    if (version < 1 || version > 2) {
         return -1;
     }
 
-    dev->device = readl(dev->base + VIRTIO_MMIO_DEVICE_ID);
-    if (dev->device == 0) {
+    u32 device = readl(base + VIRTIO_MMIO_DEVICE_ID);
+    if (device == 0) {
         return -2;
     }
 

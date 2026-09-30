@@ -49,6 +49,7 @@ replay_inputs=()
 seed_inputs=()
 sdg_rules="${MORPHEUS_LIBAFL_SDG_RULES:-}"
 disable_sdg="${MORPHEUS_LIBAFL_DISABLE_SDG:-}"
+sdg_metadata="${MORPHEUS_LIBAFL_SDG_METADATA_DIR:-}"
 mutational_max_iterations="${MORPHEUS_LIBAFL_MUTATIONAL_MAX_ITERATIONS:-}"
 initial_generated_seeds="${MORPHEUS_LIBAFL_INITIAL_GENERATED_SEEDS:-}"
 show_console="${MORPHEUS_LIBAFL_SHOW_CONSOLE:-false}"
@@ -1638,6 +1639,10 @@ fi
 if [ -n "${sdg_rules}" ]; then
   launch_env+=("MORPHEUS_LIBAFL_SDG_RULES=${sdg_rules}")
 fi
+# Semantic sidecar directory: derived from the corpus dir as a sibling
+# (<corpus-name>.sdg-metadata) when not set explicitly, so it stays outside
+# the corpus file enumeration.
+launch_env+=("MORPHEUS_LIBAFL_SDG_METADATA_DIR=${sdg_metadata:-${corpus_dir}.sdg-metadata}")
 if [ -n "${disable_sdg}" ]; then
   launch_env+=("MORPHEUS_LIBAFL_DISABLE_SDG=${disable_sdg}")
 fi

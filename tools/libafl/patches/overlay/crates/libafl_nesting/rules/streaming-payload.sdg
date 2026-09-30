@@ -1,4 +1,4 @@
-rule streaming-payload
-node payload_word streaming 0 0 0x0
-trigger payload_word eq 0
+rule rule:streaming-payload|target:streaming:0:0:4:payload_word|predicate:eq:0
+node streaming:0:0:4:payload_word streaming 0 0x0 4
+trigger streaming:0:0:4:payload_word head_bound eq 0
 mutation set_value 0

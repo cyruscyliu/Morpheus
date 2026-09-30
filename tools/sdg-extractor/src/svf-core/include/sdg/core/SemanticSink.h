@@ -17,6 +17,9 @@ struct SemanticSink {
   Role role;
   unsigned argIndex;
   const llvm::CallBase *call;
+  /// True when a DMA telemetry event confirms the sink's DMA lifecycle.
+  /// Evidence metadata only; telemetry never creates sinks.
+  bool telemetryConfirmed = false;
 };
 
 } // namespace core

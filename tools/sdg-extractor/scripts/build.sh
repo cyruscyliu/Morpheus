@@ -31,42 +31,15 @@ rm -rf "${build_dir}/CMakeCache.txt" "${build_dir}/CMakeFiles"
 # the patch fingerprint so repeated builds skip the rebuild.
 svf_install="${tool_root}/third_party/SVF/install"
 svf_stamp="${svf_install}/.sdg-patches-applied"
-svf_patch_file="${tool_root}/patches/svf-networking-memcpy-field-bounds.patch"
-# Hash patch content only: relative paths keep the fingerprint stable across
-# checkouts, so a moved worktree does not force an SVF rebuild.
 svf_patch_fingerprint="$(cd "${tool_root}" && sha256sum \
-  third_party/SVF/patches/*.patch \
-  patches/svf-networking-memcpy-field-bounds.patch | sha256sum | cut -d' ' -f1)"
-
-svf_patch_applied() {
-  patch -R -p1 -d "${tool_root}/third_party/SVF" -s -f --dry-run < "${svf_patch_file}" >/dev/null 2>&1
-}
-
-svf_revert_patch() {
-  if svf_patch_applied; then
-    log "sdg-extractor: reverting SVF patch to leave the submodule clean"
-    patch -R -p1 -d "${tool_root}/third_party/SVF" -s < "${svf_patch_file}"
-  fi
-}
-
-# A failed SVF build must still leave the submodule clean, so the revert
-# belongs to the exit path rather than to the success path alone.
-trap 'svf_revert_patch; morpheus_lock_release' EXIT INT TERM
+  patches/svf-*.patch | sha256sum | cut -d' ' -f1)"
 
 if [ ! -f "${svf_install}/lib/cmake/SVF/SVFConfig.cmake" ] ||
    [ ! -f "${svf_stamp}" ] ||
    [ "$(cat "${svf_stamp}" 2>/dev/null)" != "${svf_patch_fingerprint}" ]; then
-  if svf_patch_applied; then
-    log "sdg-extractor: SVF patch already applied"
-  else
-    log "sdg-extractor: applying SVF networking memcpy field-bounds patch"
-    patch -p1 -d "${tool_root}/third_party/SVF" -s < "${svf_patch_file}"
-  fi
-  "${tool_root}/third_party/SVF/build-svf.sh"
-  svf_revert_patch
+  "${tool_root}/scripts/build-svf.sh"
   printf '%s\n' "${svf_patch_fingerprint}" > "${svf_stamp}"
 fi
-svf_revert_patch
 
 cmake -S "${tool_root}" -B "${build_dir}" \
   -DCMAKE_BUILD_TYPE=Release \

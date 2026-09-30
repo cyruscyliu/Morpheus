@@ -1,0 +1,15 @@
+diff --git a/svf-llvm/CMakeLists.txt b/svf-llvm/CMakeLists.txt
+index 65ec966..dcb7263 100644
+--- a/svf-llvm/CMakeLists.txt
++++ b/svf-llvm/CMakeLists.txt
+@@ -113,7 +113,9 @@ endif()
+ # Add a custom command to compile the extapi.bc bitcode file from extapi.c
+ add_custom_command(
+   OUTPUT ${SVF_BUILD_EXTAPI_BC}
+-  COMMAND ${LLVM_CLANG} -w -S -c -fPIC -std=gnu11 -emit-llvm -o ${SVF_BUILD_EXTAPI_BC} ${EXTAPI_SRC}
++  # LLVM 15 packages on Debian/Ubuntu default to opaque pointers; force typed
++  # pointers so the produced IR can be parsed by the LLVM 15 reader used by SVF.
++  COMMAND ${LLVM_CLANG} -w -c -fPIC -std=gnu11 -emit-llvm -Xclang -no-opaque-pointers -o ${SVF_BUILD_EXTAPI_BC} ${EXTAPI_SRC}
+   COMMENT "Generating extapi.bc LLVM bitcode file..."
+   MAIN_DEPENDENCY ${EXTAPI_SRC}
+   DEPENDS ${EXTAPI_SRC}

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# opt-15 is an internal implementation detail. Evaluation runs must enter
+# through the Morpheus tool/workflow so stage state, locks, manifests,
+# artifacts, and provenance are recorded.
+
 tool_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 output_dir="${MORPHEUS_SDG_EXTRACTOR_OUTPUT:?}"
 build_dir="${MORPHEUS_SDG_EXTRACTOR_BUILD_DIR:-${tool_root}/builds/default/build}"

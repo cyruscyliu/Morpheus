@@ -62,8 +62,8 @@
   "/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/l2-disable-nqc2-plugin/raw"
 #define L2_RUN_WINDOW_FW_CFG \
   "/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/l2-run-window-ms/raw"
-#define L2_STOP_ON_READY_FW_CFG \
-  "/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/stop-on-ready/raw"
+#define L2_STOP_ON_LOGIN_FW_CFG \
+  "/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/stop-on-login/raw"
 #define L2_MODE_FW_CFG \
   "/sys/firmware/qemu_fw_cfg/by_name/opt/morpheus/l2-mode/raw"
 #define L2_ACCEL_FW_CFG \
@@ -75,7 +75,7 @@
 #define DMI_ENTRIES_DIR "/sys/firmware/dmi/entries"
 #define L2_DISABLE_NQC2_DMI "morpheus.l2_disable_nqc2_plugin=1"
 #define L2_RUN_WINDOW_DMI "morpheus.l2_run_window_ms="
-#define L2_STOP_ON_READY_DMI "morpheus.stop_on_ready=1"
+#define L2_STOP_ON_LOGIN_DMI "morpheus.stop_on_login=1"
 #define L2_MODE_DMI "morpheus.l2_mode="
 #define L2_ACCEL_DMI "morpheus.l2_accel="
 #define L2_CPU_DMI "morpheus.l2_cpu="
@@ -83,7 +83,7 @@
 #define PROC_CMDLINE_PATH "/proc/cmdline"
 #define L2_DISABLE_NQC2_CMDLINE "morpheus.l2_disable_nqc2_plugin=1"
 #define L2_RUN_WINDOW_CMDLINE "morpheus.l2_run_window_ms="
-#define L2_STOP_ON_READY_CMDLINE "morpheus.stop_on_ready=1"
+#define L2_STOP_ON_LOGIN_CMDLINE "morpheus.stop_on_login=1"
 #define L2_MODE_CMDLINE "morpheus.l2_mode="
 #define L2_ACCEL_CMDLINE "morpheus.l2_accel="
 #define L2_CPU_CMDLINE "morpheus.l2_cpu="
@@ -93,7 +93,7 @@
 #define L2_MODE_ENV "MORPHEUS_L2_MODE"
 #define L2_RUN_WINDOW_ENV "MORPHEUS_L2_RUN_WINDOW_MS"
 #define L2_MEASURE_STARTUP_ENV "MORPHEUS_L2_MEASURE_STARTUP"
-#define L2_STOP_ON_READY_ENV "MORPHEUS_L2_STOP_ON_READY"
+#define L2_STOP_ON_LOGIN_ENV "MORPHEUS_L2_STOP_ON_LOGIN"
 #define L2_STARTUP_TIMING_POLL_MS 25U
 
 static uint8_t FUZZ_INPUT[INPUT_LEN];
@@ -568,9 +568,9 @@ static bool l2_startup_measurement_enabled(void) {
                    strcasecmp(value, "yes") == 0);
 }
 
-static bool fw_cfg_stop_on_ready(bool *out) {
+static bool fw_cfg_stop_on_login(bool *out) {
   char value[8] = {0};
-  FILE *fp = fopen(L2_STOP_ON_READY_FW_CFG, "rb");
+  FILE *fp = fopen(L2_STOP_ON_LOGIN_FW_CFG, "rb");
   size_t n;
 
   if (!fp) {
@@ -581,20 +581,20 @@ static bool fw_cfg_stop_on_ready(bool *out) {
   return n > 0 && parse_l2_mode(value, out);
 }
 
-static bool proc_cmdline_stop_on_ready(bool *out) {
-  if (proc_cmdline_has_token(L2_STOP_ON_READY_CMDLINE)) {
+static bool proc_cmdline_stop_on_login(bool *out) {
+  if (proc_cmdline_has_token(L2_STOP_ON_LOGIN_CMDLINE)) {
     *out = true;
     return true;
   }
   return false;
 }
 
-static bool env_stop_on_ready(bool *out) {
-  const char *value = getenv(L2_STOP_ON_READY_ENV);
+static bool env_stop_on_login(bool *out) {
+  const char *value = getenv(L2_STOP_ON_LOGIN_ENV);
   return value && parse_l2_mode(value, out);
 }
 
-static bool dmi_stop_on_ready(bool *out) {
+static bool dmi_stop_on_login(bool *out) {
   DIR *dir = opendir(DMI_ENTRIES_DIR);
   struct dirent *entry = NULL;
 
@@ -627,7 +627,7 @@ static bool dmi_stop_on_ready(bool *out) {
     fclose(raw);
     data[len] = '\0';
 
-    if (strstr(data, L2_STOP_ON_READY_DMI) != NULL) {
+    if (strstr(data, L2_STOP_ON_LOGIN_DMI) != NULL) {
       *out = true;
       closedir(dir);
       return true;
@@ -638,12 +638,12 @@ static bool dmi_stop_on_ready(bool *out) {
   return false;
 }
 
-static bool l2_stop_on_ready_enabled(void) {
+static bool l2_stop_on_login_enabled(void) {
   bool value = false;
-  if (fw_cfg_stop_on_ready(&value) ||
-      env_stop_on_ready(&value) ||
-      proc_cmdline_stop_on_ready(&value) ||
-      dmi_stop_on_ready(&value)) {
+  if (fw_cfg_stop_on_login(&value) ||
+      env_stop_on_login(&value) ||
+      proc_cmdline_stop_on_login(&value) ||
+      dmi_stop_on_login(&value)) {
     return value;
   }
   return false;
@@ -1878,16 +1878,10 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
 
   lqprintf("stub: launched l2 pid=%u\n", (unsigned)pid);
   measure_startup = l2_startup_measurement_enabled();
-  bool stop_on_ready = l2_stop_on_ready_enabled();
-  unsigned window_ms;
-  if (stop_on_ready) {
-    window_ms = UINT_MAX;
-    lqprintf("stub: stop-on-ready enabled; run window disabled\n");
-  } else {
-    window_ms = run_window_ms();
-    lqprintf("stub: entering l2 run window pid=%u ms=%u\n", (unsigned)pid,
-             window_ms);
-  }
+  bool stop_on_login = l2_stop_on_login_enabled();
+  unsigned window_ms = run_window_ms();
+  lqprintf("stub: entering l2 run window pid=%u ms=%u stop-on-login=%u\n",
+           (unsigned)pid, window_ms, (unsigned)stop_on_login);
   unsigned evidence_wait_ms = window_ms < 5000U ? window_ms : 5000U;
   bool boot_ready = false;
   unsigned elapsed_ms = evidence_wait_ms;
@@ -1926,17 +1920,24 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
   }
   if (boot_ready) {
     append_marker("parent-boot-ready\n");
-    if (l2_stop_on_ready_enabled()) {
+    if (stop_on_login) {
       int term_status = 0;
-      lqprintf("stub: l2 boot ready; stop-on-ready requested, terminating\n");
+      /* The stop-on-login end shares the run window's cleanup: classify the
+       * outcome first, then terminate, reap, and hand back evidence. */
+      if (l2_kernel_panic_logged()) {
+        lqprintf("stub: l2 kernel panic found before stop-on-login kill\n");
+        *outcome = L2_OUTCOME_KERNEL_PANIC;
+      } else {
+        *outcome = L2_OUTCOME_RUN_WINDOW_COMPLETE;
+      }
+      lqprintf("stub: l2 boot ready; stop-on-login requested, terminating\n");
       signal_l2_process_group(pid, SIGTERM);
       if (!reap_l2_process(pid, &term_status)) {
-        lqprintf("stub: failed to reap l2 process group on stop-on-ready\n");
+        lqprintf("stub: failed to reap l2 process group on stop-on-login\n");
         return false;
       }
       log_l2_input_evidence();
-      lqprintf("stub: l2 stopped on ready\n");
-      *outcome = L2_OUTCOME_RUN_WINDOW_COMPLETE;
+      lqprintf("stub: l2 stopped on login\n");
       return true;
     }
     /* Reaching the login prompt only means the L2 guest has booted.  Keep

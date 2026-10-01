@@ -195,10 +195,10 @@
         ],
         "boolean": true
       },
-      "stop-on-ready": {
+      "stop-on-login": {
         "aliases": [
-          "stop-on-ready",
-          "stopOnReady"
+          "stop-on-login",
+          "stopOnLogin"
         ],
         "boolean": true
       }
@@ -319,7 +319,7 @@
             "l2-memory-mb",
             "runtime-subdir",
             "measure-l2-startup",
-            "stop-on-ready"
+            "stop-on-login"
           ],
           "repeatableFlags": [],
           "pathFlags": {

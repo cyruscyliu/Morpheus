@@ -13,7 +13,7 @@ l2_memory_mb="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_MEMORY_MB:-}"
 l2_runtime_subdir="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RUNTIME_SUBDIR:-morpheus-l2-runtime}"
 l1_smp_override="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L1_SMP:-}"
 measure_l2_startup="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_MEASURE_L2_STARTUP:-false}"
-stop_on_ready="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_STOP_ON_READY:-false}"
+stop_on_login="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_STOP_ON_LOGIN:-false}"
 result_file="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 state_file="${install_dir}/state.json"
 manifest_file="${run_dir}/manifest.json"
@@ -76,14 +76,14 @@ case "${measure_l2_startup}" in
     exit 1
     ;;
 esac
-case "${stop_on_ready}" in
+case "${stop_on_login}" in
   true|false) ;;
   *)
-    echo "stop-on-ready must be true or false" >&2
+    echo "stop-on-login must be true or false" >&2
     exit 1
     ;;
 esac
-if [ "${stop_on_ready}" = "true" ]; then
+if [ "${stop_on_login}" = "true" ]; then
   measure_l2_startup="true"
 fi
 if [ ! -f "${state_file}" ]; then
@@ -836,7 +836,7 @@ fi
 while :; do
   observe_l2_runtime
 
-  if [ "${stop_on_ready}" = "true" ] && [ "${l2_ready_reported}" = "true" ]; then
+  if [ "${stop_on_login}" = "true" ] && [ "${l2_ready_reported}" = "true" ]; then
     finish_ready
     exit 0
   fi

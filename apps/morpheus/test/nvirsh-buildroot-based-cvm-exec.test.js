@@ -471,7 +471,7 @@ test("buildroot-based CVM startup measurement stops at readiness", async () => {
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_SMP: "2",
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_MEMORY_MB: "512",
       MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_MEASURE_L2_STARTUP: "true",
-      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_STOP_ON_READY: "true",
+      MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_STOP_ON_LOGIN: "true",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

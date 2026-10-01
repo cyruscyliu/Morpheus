@@ -42,10 +42,6 @@ use libafl_targets::{EDGES_MAP_DEFAULT_SIZE, MAX_EDGES_FOUND, edges_map_mut_ptr}
 
 const MAX_INPUT_SIZE: usize = MAX_ENCODED_SCENARIO_BYTES;
 
-fn parse_env_u64(name: &str) -> Option<u64> {
-    env::var(name).ok()?.parse::<u64>().ok()
-}
-
 /// The semantic sidecar directory: an explicit
 /// `MORPHEUS_LIBAFL_SDG_METADATA_DIR` override, or a sibling
 /// `<corpus-name>.sdg-metadata` of the corpus directory. The sidecar lives
@@ -122,26 +118,12 @@ fn restore_blocking_stdout() {
 }
 
 fn executor_timeout(_replay_enabled: bool) -> Duration {
-    if let Some(seconds) = parse_env_u64("MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS") {
-        return Duration::from_secs(seconds);
-    }
-
-    // stop-on-ready and run-window are mutually exclusive.  When stop-on-ready
-    // is active the L2 runs until the guest signals readiness, so use a fixed
-    // long timeout instead of deriving one from the window.
-    if env::var("MORPHEUS_LIBAFL_STOP_ON_READY")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
-    {
-        return Duration::from_secs(600);
-    }
-
-    // Both fuzzing and replay need enough time for the L2 run window to finish.
-    // Use the configured window plus a safety margin so normal completions are
-    // not misclassified as timeout objectives.
-    let l2_window_ms = parse_env_u64("MORPHEUS_LIBAFL_L2_RUN_WINDOW_MS").unwrap_or(30_000);
-    let l2_window_seconds = l2_window_ms.div_ceil(1000);
-    Duration::from_secs(l2_window_seconds + 30)
+    // No host-side timeout: the L2 run window is the per-iteration bound.
+    // The stub terminates, reaps, and waits for the realm teardown on expiry
+    // (or earlier via stop-on-login), so every iteration returns on its own.
+    // A zero duration disarms the executor's break timer.  A hung cleanup is
+    // still bounded by the workflow step timeout.
+    Duration::ZERO
 }
 
 fn snapshot_manager_from_env() -> SnapshotManager {

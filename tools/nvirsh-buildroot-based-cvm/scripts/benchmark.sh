@@ -116,7 +116,7 @@ NODE
         MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_L2_MEMORY_MB="${l2_memory_mb}" \
         MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RUNTIME_SUBDIR="morpheus-l2-runtime-c${l1_smp}-${l2_smp}-r${repeat}" \
         MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_MEASURE_L2_STARTUP=true \
-        MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_STOP_ON_READY=true \
+        MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_STOP_ON_LOGIN=true \
         MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_LAUNCH_TIMEOUT_SECONDS="${launch_timeout}" \
         bash "${script_dir}/exec.sh" \
         > "${case_dir}/benchmark.stdout.log" \

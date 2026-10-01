@@ -33,7 +33,7 @@ result_file="${MORPHEUS_LIBAFL_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
 
 nvirsh_state=""
-l2_run_window_ms=""
+l2_run_window_ms="${MORPHEUS_LIBAFL_L2_RUN_WINDOW_MS:-}"
 l2_mode="vm"
 l2_accel="auto"
 l2_cpu=""
@@ -42,7 +42,7 @@ l2_smp="${MORPHEUS_LIBAFL_L2_SMP:-}"
 qemu_plugin="${MORPHEUS_LIBAFL_QEMU_PLUGIN:-}"
 qemu_plugin_el="${MORPHEUS_LIBAFL_QEMU_PLUGIN_EL:-all}"
 measure_l2_startup="${MORPHEUS_LIBAFL_MEASURE_L2_STARTUP:-false}"
-stop_on_ready="${MORPHEUS_LIBAFL_STOP_ON_READY:-false}"
+stop_on_login="${MORPHEUS_LIBAFL_STOP_ON_LOGIN:-false}"
 disable_nqc2_plugin="false"
 capture_runtime="false"
 replay_inputs=()
@@ -102,17 +102,17 @@ while [ "$#" -gt 0 ]; do
     --disable-nqc2-plugin) disable_nqc2_plugin="true" ;;
     --capture-runtime) capture_runtime="true" ;;
     --measure-l2-startup) measure_l2_startup="true" ;;
-    --stop-on-ready)
+    --stop-on-login)
       case "${2:-}" in
         true|TRUE|True|1|yes|YES|on|ON)
           shift
-          stop_on_ready="${1:-}"
+          stop_on_login="${1:-}"
           ;;
         false|FALSE|False|0|no|NO|off|OFF)
           shift
-          stop_on_ready="${1:-}"
+          stop_on_login="${1:-}"
           ;;
-        *) stop_on_ready="true" ;;
+        *) stop_on_login="true" ;;
       esac
       ;;
     *) echo "unknown qemu_nesting harness argument: $1" >&2; exit 1 ;;
@@ -134,14 +134,9 @@ if ! measure_l2_startup="$(normalize_boolean "${measure_l2_startup}")"; then
   echo "--measure-l2-startup must be a boolean (true/false)" >&2
   exit 1
 fi
-if ! stop_on_ready="$(normalize_boolean "${stop_on_ready}")"; then
-  echo "--stop-on-ready must be a boolean (true/false)" >&2
+if ! stop_on_login="$(normalize_boolean "${stop_on_login}")"; then
+  echo "--stop-on-login must be a boolean (true/false)" >&2
   exit 1
-fi
-if [ "${stop_on_ready}" = "true" ]; then
-  # stop-on-ready and run-window are mutually exclusive: the L2 runs until
-  # the guest signals readiness, not for a fixed window.
-  l2_run_window_ms=""
 fi
 
 if ! show_console="$(normalize_boolean "${show_console}")"; then
@@ -1067,11 +1062,11 @@ append_l2_fw_cfg() {
     fi
     args+=("-smbios" "type=11,value=morpheus.l2_run_window_ms=${l2_run_window_ms}")
   fi
-  if [ "${stop_on_ready}" = "true" ]; then
+  if [ "${stop_on_login}" = "true" ]; then
     if [ "${fw_cfg_supported}" = "true" ]; then
-      args+=("-fw_cfg" "name=opt/morpheus/stop-on-ready,string=1")
+      args+=("-fw_cfg" "name=opt/morpheus/stop-on-login,string=1")
     fi
-    args+=("-smbios" "type=11,value=morpheus.stop_on_ready=1")
+    args+=("-smbios" "type=11,value=morpheus.stop_on_login=1")
   fi
   if [ "${l2_mode}" != "vm" ]; then
     if [ "${fw_cfg_supported}" = "true" ]; then
@@ -1137,8 +1132,8 @@ fi
 if [ "${measure_l2_startup}" = "true" ]; then
   direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_MEASURE_STARTUP=1"
 fi
-if [ "${stop_on_ready}" = "true" ]; then
-  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_STOP_ON_READY=1"
+if [ "${stop_on_login}" = "true" ]; then
+  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_STOP_ON_LOGIN=1"
 fi
 direct_l1_stub_launch_cmd="mkdir -p /mnt && mount -t ext4 -o ro /dev/vdb /mnt && ${direct_l1_stub_env} exec ${direct_l1_share_stub_path}"
 direct_l1_share_prefix="${direct_l1_append%% init=/root/libafl_nesting_stub *}"
@@ -1633,8 +1628,8 @@ if [ -n "${qemu_plugin}" ]; then
 fi
 
 launch_env=("STUB=${stub_elf}" "MORPHEUS_LIBAFL_CORPUS_DIR=${corpus_dir}" "MORPHEUS_LIBAFL_OBJECTIVE_DIR=${objective_dir}")
-if [ "${stop_on_ready}" = "true" ]; then
-  launch_env+=("MORPHEUS_LIBAFL_STOP_ON_READY=1")
+if [ "${stop_on_login}" = "true" ]; then
+  launch_env+=("MORPHEUS_LIBAFL_STOP_ON_LOGIN=1")
 fi
 if [ -n "${sdg_rules}" ]; then
   launch_env+=("MORPHEUS_LIBAFL_SDG_RULES=${sdg_rules}")
@@ -1656,26 +1651,11 @@ if [ -n "${initial_generated_seeds}" ]; then
   launch_env+=("MORPHEUS_LIBAFL_INITIAL_GENERATED_SEEDS=${initial_generated_seeds}")
 fi
 if [ -n "${l2_run_window_ms}" ]; then
+  # The L2 run window is the per-iteration bound: the stub terminates, reaps,
+  # and hands back on expiry (or earlier via stop-on-login), so the realm
+  # teardown always runs inside the guest.  The fuzzer derives its host-side
+  # executor timeout from this window (window + 30s) as a safety net.
   launch_env+=("MORPHEUS_LIBAFL_L2_RUN_WINDOW_MS=${l2_run_window_ms}")
-  # Default non-replay executor timeout is 12s, far below CVM L2 windows.
-  # Cover the full L2 window plus the nested-CVM boot inside each iteration
-  # (it consumes several minutes of wall time under TCG) and the shutdown
-  # handback, so a normal iteration reports exit=Ok instead of a
-  # window-boundary timeout objective.
-  if [ -z "${MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS:-}" ]; then
-    executor_timeout_secs=$(( (l2_run_window_ms + 999) / 1000 + 300 ))
-    if [ "${executor_timeout_secs}" -lt 300 ]; then
-      executor_timeout_secs=300
-    fi
-    launch_env+=("MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS=${executor_timeout_secs}")
-    printf '[libafl/qemu_nesting] executor timeout seconds=%s (from l2 window %s ms)\n' \
-      "${executor_timeout_secs}" "${l2_run_window_ms}" >&2
-  else
-    launch_env+=("MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS=${MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS}")
-  fi
-elif [ "${l2_mode}" = "cvm" ]; then
-  # CVM without explicit window still needs far more than the 12s default.
-  launch_env+=("MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS=${MORPHEUS_LIBAFL_EXECUTOR_TIMEOUT_SECONDS:-300}")
 fi
 if [ "${replay_enabled}" = "true" ]; then
   launch_env+=("MORPHEUS_LIBAFL_REPLAY_INPUTS=${replay_inputs_file}" "MORPHEUS_LIBAFL_REPLAY_STATE=${replay_state_file}")

@@ -32,9 +32,6 @@ tools:
       - output-dir
       - manifest
       - log-file
-  nqc2:
-    build-version: dev
-    build-dir-key: default
   qemu:
     seed-dir: ../tools/qemu/tests/fixtures/minimal-qemu-src
     patch-dir: ../tools/qemu/patches/demo
@@ -450,48 +447,6 @@ workflows:
         stageName: qemu
         stageIndex: 0
         stageStepIndex: 2
-  nqc2-build-ci:
-    category: build
-    stages:
-      - id: qemu_fetch
-        tool: qemu
-        command: fetch
-        args:
-          - --build-version
-          - fixture
-        stageId: qemu
-        stageName: qemu
-        stageIndex: 0
-        stageStepIndex: 0
-      - id: qemu_patch
-        tool: qemu
-        command: patch
-        args:
-          - --source
-          - "{{steps.qemu_fetch.artifacts.source-dir.location}}"
-        stageId: qemu
-        stageName: qemu
-        stageIndex: 0
-        stageStepIndex: 1
-      - id: qemu_build
-        tool: qemu
-        command: build
-        args:
-          - --source
-          - "{{steps.qemu_patch.artifacts.source-dir.location}}"
-          - --build-dir-key
-          - default
-        stageId: qemu
-        stageName: qemu
-        stageIndex: 0
-        stageStepIndex: 2
-      - id: nqc2_fetch
-        tool: nqc2
-        command: fetch
-        stageId: nqc2
-        stageName: nqc2
-        stageIndex: 1
-        stageStepIndex: 0
   nvirsh-qemu-arm64-vm-exec-ci:
     category: run
     stages:

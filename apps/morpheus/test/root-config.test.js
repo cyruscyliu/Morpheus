@@ -80,12 +80,6 @@ const expectedWorkflowSteps = {
     ["qemu", "patch"],
     ["qemu", "build"],
   ],
-  "nqc2-build-ci": [
-    ["qemu", "fetch"],
-    ["qemu", "patch"],
-    ["qemu", "build"],
-    ["nqc2", "fetch"],
-  ],
   "nvirsh-qemu-arm64-vm-exec-ci": [
     ["buildroot", "fetch"],
     ["buildroot", "patch"],

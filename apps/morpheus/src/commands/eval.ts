@@ -160,14 +160,11 @@ async function handleEvalCommand(argv) {
       return fail(`evaluation entry ${entryName} is a wrapper script; only run is supported (got ${subcommand})`);
     }
   }
-  if (flags.parallel) {
-    return fail("--parallel is disabled: parallel evaluation entries currently share the libafl broker port and build-dir-key directories, which causes conflicts; run entries sequentially or see docs/parallel-workflows.md");
-  }
   const payloads = [];
-  if (names.length === 1 && !flags.parallel) {
-    payloads.push(await entryPayloadForAction(config, subcommand, names[0], jsonMode, passthrough));
-  } else if (flags.parallel) {
+  if (flags.parallel) {
     payloads.push(...(await dispatchParallel(config, subcommand, names, jsonMode, passthrough)));
+  } else if (names.length === 1) {
+    payloads.push(await entryPayloadForAction(config, subcommand, names[0], jsonMode, passthrough));
   } else {
     for (const entryName of names) {
       payloads.push(await entryPayloadForAction(config, subcommand, entryName, jsonMode, passthrough));

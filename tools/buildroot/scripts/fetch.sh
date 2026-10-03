@@ -2,6 +2,7 @@
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/state.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/lock.sh"
 
 source_dir="${MORPHEUS_BUILDROOT_SOURCE:?}"
 seed_dir="${MORPHEUS_BUILDROOT_SEED_DIR:-}"
@@ -12,6 +13,11 @@ build_version="${MORPHEUS_BUILDROOT_BUILD_VERSION:-}"
 state_file="${source_dir}/.morpheus-fetch.json"
 
 mkdir -p "$(dirname "${source_dir}")"
+
+# Serialize mutations of the shared source directory so parallel workflows
+# reuse the same cached checkout instead of racing on it.
+morpheus_lock_acquire "${source_dir}.morpheus.lock"
+trap morpheus_lock_release EXIT INT TERM
 
 mode="empty"
 input_fingerprint=""

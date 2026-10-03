@@ -3,6 +3,7 @@ set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/state.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/lock.sh"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 build_dir="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_BUILD_DIR:?}"
@@ -29,6 +30,11 @@ case "${probe_mode}" in
   *) probe_mode="false" ;;
 esac
 result_file="${MORPHEUS_NVIRSH_BUILDROOT_BASED_CVM_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
+
+# Serialize mutations of the shared CVM build directory per build-dir-key so
+# parallel workflows reuse the same cached build instead of racing on it.
+morpheus_build_lock nvirsh-buildroot-based-cvm "${build_dir_key}"
+trap morpheus_lock_release EXIT INT TERM
 
 if [[ "${build_dir}" != /* ]]; then
   build_dir="$(pwd)/${build_dir#./}"

@@ -6,6 +6,7 @@ set -euo pipefail
 # changes on the QEMU source selected by the nvirsh workflow.  This keeps the
 # ARM CCA/RME implementation and the bridge implementation on one explicit
 # QEMU baseline.
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/lock.sh"
 repo_root="${MORPHEUS_REPO_ROOT:?missing MORPHEUS_REPO_ROOT}"
 source_dir="${MORPHEUS_QEMU_LIBAFL_BRIDGE_SOURCE:?missing bridge provider source}"
 base_qemu_source="${MORPHEUS_QEMU_LIBAFL_BRIDGE_BASE_QEMU_SOURCE:?missing base QEMU source}"
@@ -42,6 +43,10 @@ fi
   echo "missing bridge provider source: ${source_dir}" >&2
   exit 1
 }
+# Serialize mutations of the shared bridge source and build directory so
+# parallel workflows reuse the same cached state instead of racing on it.
+morpheus_build_lock qemu-libafl-bridge "$(basename "${build_dir}")"
+trap morpheus_lock_release EXIT INT TERM
 [ -d "${base_qemu_source}" ] || {
   echo "missing base QEMU source: ${base_qemu_source}" >&2
   exit 1

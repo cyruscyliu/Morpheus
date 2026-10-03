@@ -2,6 +2,7 @@
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/state.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/lock.sh"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 source_dir="${MORPHEUS_QEMU_SOURCE:?}"
@@ -30,6 +31,11 @@ fi
 state_file="${source_dir}/.morpheus-fetch.json"
 
 mkdir -p "$(dirname "${source_dir}")"
+
+# Serialize mutations of the shared source directory so parallel workflows
+# reuse the same cached checkout instead of racing on it.
+morpheus_lock_acquire "${source_dir}.morpheus.lock"
+trap morpheus_lock_release EXIT INT TERM
 
 if [ -z "${archive_url}" ] && [ -z "${seed_dir}" ] && [ -z "${git_url}" ] && [ -n "${build_version}" ]; then
   archive_url="https://download.qemu.org/qemu-${build_version}.tar.xz"

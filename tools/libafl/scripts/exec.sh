@@ -1663,6 +1663,14 @@ if [ -f "${seed_inputs_file}" ] && [ -s "${seed_inputs_file}" ]; then
   launch_env+=("MORPHEUS_LIBAFL_INITIAL_INPUTS=${seed_inputs_file}")
 fi
 
+# Broker port: see morpheus_broker_port in _shared/scripts/parallelism.sh.
+# One assignment covers the broker and every spawned client because the
+# launcher children inherit the environment.  Guest-side stubs talk to the
+# fuzzer over bridge shared memory and never use this port.
+broker_port="$(morpheus_broker_port)"
+launch_env+=("BROKER_PORT=${broker_port}")
+printf '[libafl/qemu_nesting] broker port: %s\n' "${broker_port}" >&2
+
 launch_cmd=(env "${launch_env[@]}" "${fuzzer_bin}" "${args[@]}")
 
 source_log_file() {

@@ -35,6 +35,30 @@ test("reacquiring a build lock key does not deadlock", () => {
   assert.equal(result.status, 0, result.stderr);
 });
 
+test("broker port honors override and otherwise allocates bindable ports", () => {
+  const parallelismScript = path.join(submoduleRoot, "tools/_shared/scripts/parallelism.sh");
+  const overridden = spawnSync("bash", ["-c", `source '${parallelismScript}'; morpheus_broker_port`], {
+    env: { ...process.env, MORPHEUS_LIBAFL_BROKER_PORT: "13410" },
+    encoding: "utf8",
+  });
+  assert.equal(overridden.status, 0, overridden.stderr);
+  assert.equal(overridden.stdout.trim(), "13410");
+
+  const auto = spawnSync("bash", ["-c",
+    `source '${parallelismScript}'; p1=\$(morpheus_broker_port); p2=\$(morpheus_broker_port); ` +
+    "echo \"$p1 $p2\""], { encoding: "utf8" });
+  assert.equal(auto.status, 0, auto.stderr);
+  const [port1, port2] = auto.stdout.trim().split(" ");
+  assert.match(port1, /^[0-9]+$/);
+  assert.match(port2, /^[0-9]+$/);
+  assert.notEqual(port1, port2);
+  for (const port of [port1, port2]) {
+    const probe = spawnSync("python3", ["-c",
+      `import socket; s = socket.socket(); s.bind(("127.0.0.1", ${port})); s.close()`]);
+    assert.equal(probe.status, 0, `port ${port} not bindable`);
+  }
+});
+
 test("source and build locks remain independently held", () => {
   const lockScript = path.join(submoduleRoot, "tools/_shared/scripts/lock.sh");
   const lockRoot = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "morpheus-lock-test-"));

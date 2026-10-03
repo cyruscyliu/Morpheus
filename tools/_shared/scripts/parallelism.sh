@@ -94,3 +94,21 @@ morpheus_resolve_l1_qemu_memory_mb() {
     "$(morpheus_default_l1_qemu_memory_mb)" \
     "$(morpheus_default_l1_qemu_memory_mb)"
 }
+
+morpheus_broker_port() {
+  # Broker port for libafl fuzzing: honor an explicit
+  # MORPHEUS_LIBAFL_BROKER_PORT override, else allocate a free port so
+  # concurrent fuzzing workflows never collide on the default 1341.
+  if [ -n "${MORPHEUS_LIBAFL_BROKER_PORT:-}" ]; then
+    printf '%s\n' "${MORPHEUS_LIBAFL_BROKER_PORT}"
+    return 0
+  fi
+  python3 - <<'PYEOF'
+import socket
+
+sock = socket.socket()
+sock.bind(("", 0))
+print(sock.getsockname()[1])
+sock.close()
+PYEOF
+}

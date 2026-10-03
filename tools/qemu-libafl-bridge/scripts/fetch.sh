@@ -4,6 +4,7 @@ set -euo pipefail
 # The bridge source follows the same fetch contract as the native QEMU tool.
 # Keep this adapter separate so the bridge is independently configurable and
 # can later carry CCA-specific patches without changing tools/qemu.
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/lock.sh"
 repo_root="${MORPHEUS_REPO_ROOT:?missing MORPHEUS_REPO_ROOT}"
 provider_base_ref="${MORPHEUS_QEMU_LIBAFL_BRIDGE_PROVIDER_BASE_REF:-${MORPHEUS_QEMU_LIBAFL_BRIDGE_BASE_VERSION:-6e9a825c1d4e7b62d072e99a89ecd1a74c7f0d55}}"
 provider_base_version="${MORPHEUS_QEMU_LIBAFL_BRIDGE_PROVIDER_BASE_VERSION:-11.0.1}"
@@ -24,6 +25,10 @@ source_dir="${MORPHEUS_QEMU_LIBAFL_BRIDGE_SOURCE:?missing bridge source}"
 if [[ "${source_dir}" != /* ]]; then
   source_dir="${repo_root}/${source_dir#./}"
 fi
+# Serialize mutations of the shared bridge source directory so parallel
+# workflows reuse the same cached checkout instead of racing on it.
+morpheus_lock_acquire "${source_dir}.morpheus.lock"
+trap morpheus_lock_release EXIT INT TERM
 if ! git -C "${source_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "bridge provider fetch did not create a git checkout: ${source_dir}" >&2
   exit 1

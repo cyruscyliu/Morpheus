@@ -2,6 +2,7 @@
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/parallelism.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../../_shared/scripts/lock.sh"
 
 source_dir="${MORPHEUS_NQC2_SOURCE:?}"
 qemu_path="${MORPHEUS_NQC2_QEMU:-}"
@@ -18,6 +19,10 @@ reuse_build_dir="${MORPHEUS_NQC2_REUSE_BUILD_DIR:-false}"
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 version_file="${source_dir}/VERSION"
 version="${build_version}"
+
+# Serialize mutations of the shared nqc2 source and build directories.
+morpheus_build_lock nqc2 "${build_version}"
+trap morpheus_lock_release EXIT INT TERM
 
 if [ -f "${version_file}" ]; then
   version="$(tr -d '\n' < "${version_file}")"

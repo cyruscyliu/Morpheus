@@ -874,7 +874,7 @@ function commandCompose(flags) {
     ? path.resolve(String(flags["output-dir"]))
     : "";
   const title = String(
-    flags.title || "HyperArm Driver Init / Deinit Base Graph",
+    flags.title || "Driver Init / Deinit Base Graph",
   );
   const resultFile = flags["result-file"]
     ? path.resolve(String(flags["result-file"]))

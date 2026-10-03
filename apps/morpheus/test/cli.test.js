@@ -593,7 +593,7 @@ test("morpheus refuses to run unless the current directory is a workspace", () =
 
 test("workflow imports resolve a parent morpheus.yaml relative to the selected config file", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-root-import-"));
-  const projectConfigDir = path.join(projectRoot, "projects", "hyperarm");
+  const projectConfigDir = path.join(projectRoot, "projects", "synthetic");
   fs.mkdirSync(projectConfigDir, { recursive: true });
   writeConfig(
     projectRoot,
@@ -659,7 +659,7 @@ test("workflow imports do not fall back to the repository CI fixture", () => {
 
 test("workflow imports from generated project configs skip the project config", () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-config-temp-import-"));
-  const projectConfigDir = path.join(projectRoot, "projects", "hyperarm");
+  const projectConfigDir = path.join(projectRoot, "projects", "synthetic");
   const generatedConfigDir = path.join(projectConfigDir, "workspace", "tmp");
   fs.mkdirSync(generatedConfigDir, { recursive: true });
   writeConfig(

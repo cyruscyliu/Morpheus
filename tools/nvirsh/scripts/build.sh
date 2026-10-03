@@ -1332,11 +1332,11 @@ reuse_guest_qemu() {
   local installed_hash="/root/morpheus-qemu/.morpheus-source-v2.sha256"
   local source_hash="/root/morpheus-qemu-src/.morpheus-source-v2.sha256"
 
-  has_hyperarm_qemu_patch() {
+  has_instrumented_qemu_patch() {
     [ -x "$1" ] && LC_ALL=C grep -a -q 'virtio_mmio_fuzz_read' "$1"
   }
 
-  if has_hyperarm_qemu_patch "${installed_qemu}" &&
+  if has_instrumented_qemu_patch "${installed_qemu}" &&
      [ -f "${source_hash}" ] &&
      [ -f "${installed_hash}" ] &&
      cmp -s "${source_hash}" "${installed_hash}"; then
@@ -1348,7 +1348,7 @@ reuse_guest_qemu() {
     echo "installed guest qemu is stale; rebuilding"
   fi
 
-  if has_hyperarm_qemu_patch "${built_qemu}" &&
+  if has_instrumented_qemu_patch "${built_qemu}" &&
      [ -f "${source_hash}" ] &&
      [ -f /root/morpheus-qemu-src/build/.morpheus-source-v2.sha256 ] &&
      cmp -s "${source_hash}" /root/morpheus-qemu-src/build/.morpheus-source-v2.sha256; then

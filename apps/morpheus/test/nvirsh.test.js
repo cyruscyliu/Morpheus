@@ -21,7 +21,7 @@ function run(args, options = {}) {
 function makeProject() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "morpheus-nvirsh-"));
   fs.mkdirSync(path.join(root, ".morpheus"), { recursive: true });
-  const sharedCacheRoot = path.join(root, "cache", "hyperarm");
+  const sharedCacheRoot = path.join(root, "cache", "synthetic");
   const configPath = path.join(root, "morpheus.yaml");
 
   fs.writeFileSync(
@@ -29,7 +29,7 @@ function makeProject() {
     [
       "cache:",
       `  root: ${path.join(root, "cache")}`,
-      "  namespace: hyperarm",
+      "  namespace: synthetic",
       "  downloads: global",
       "  builds: global",
       "  src: global",
@@ -63,7 +63,7 @@ test("nvirsh inspect and stop use the workspace cache", () => {
   const expectedState = path.join(
     projectRoot,
     "cache",
-    "hyperarm",
+    "synthetic",
     "tools",
     "nvirsh",
     "builds",

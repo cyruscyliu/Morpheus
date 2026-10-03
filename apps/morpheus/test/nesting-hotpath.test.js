@@ -668,7 +668,7 @@ test("nested fuzzing has no synthetic L2 oracle trigger", () => {
   assert.doesNotMatch(stubSource, /0x5aa5|0xa5U|0x5aU/);
   assert.doesNotMatch(rustStubSource, /MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG/);
   assert.doesNotMatch(generatorSource, /oracle_action|0x5aa5/i);
-  assert.doesNotMatch(nvirshBuildSource, /hyperarm_oracle_bug/);
+  assert.doesNotMatch(nvirshBuildSource, /oracle_bug/);
   assert.doesNotMatch(nvirshBuildSource, /MORPHEUS_L2_ENABLE_ORACLE_TEST_BUG/);
 });
 

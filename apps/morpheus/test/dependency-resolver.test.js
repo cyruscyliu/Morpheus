@@ -72,7 +72,7 @@ test("resolveToolDependencies projects managed artifacts into the global cache",
     "  root: ./workspace",
     "cache:",
     "  root: ./cache",
-    "  namespace: hyperarm",
+    "  namespace: synthetic",
     "  downloads: global",
     "  builds: global",
     "  src: global",
@@ -112,7 +112,7 @@ test("resolveToolDependencies projects managed artifacts into the global cache",
 
     assert.equal(
       libvmm["microkit-sdk"],
-      path.join(projectRoot, "cache", "hyperarm", "tools", "microkit-sdk", "builds", "microkit-sdk-2.1.0", "install"),
+      path.join(projectRoot, "cache", "synthetic", "tools", "microkit-sdk", "builds", "microkit-sdk-2.1.0", "install"),
     );
 
     const microkit = dependencyResolver.resolveToolDependencies(
@@ -127,7 +127,7 @@ test("resolveToolDependencies projects managed artifacts into the global cache",
 
     assert.equal(
       microkit.sel4,
-      path.join(projectRoot, "cache", "hyperarm", "tools", "sel4", "builds", "sel4-c0fc3245", "source"),
+      path.join(projectRoot, "cache", "synthetic", "tools", "sel4", "builds", "sel4-c0fc3245", "source"),
     );
   });
 
@@ -143,7 +143,7 @@ test("resolveToolDependencies keeps workspace paths when cache is workspace-scop
     "  root: ./workspace",
     "cache:",
     "  root: ./cache",
-    "  namespace: hyperarm",
+    "  namespace: synthetic",
     "  downloads: workspace",
     "  builds: workspace",
     "  src: workspace",
@@ -184,7 +184,7 @@ test("resolveToolDependencies keeps workspace paths when cache is workspace-scop
 
 test("resolveToolDependencies infers cache namespace from the workspace directory name when missing", () => {
   const parentRoot = tempDir("morpheus-resolve-infer-namespace-");
-  const workspaceRoot = path.join(parentRoot, "hyperarm");
+  const workspaceRoot = path.join(parentRoot, "synthetic");
   fs.mkdirSync(workspaceRoot, { recursive: true });
   const configPath = writeConfig(workspaceRoot, [
     "cache:",
@@ -218,7 +218,7 @@ test("resolveToolDependencies infers cache namespace from the workspace director
     );
     assert.equal(
       microkit.sel4,
-      path.join(workspaceRoot, "cache", "hyperarm", "tools", "sel4", "builds", "sel4-c0fc3245", "source"),
+      path.join(workspaceRoot, "cache", "synthetic", "tools", "sel4", "builds", "sel4-c0fc3245", "source"),
     );
   });
 
@@ -274,7 +274,7 @@ test("resolveToolDependencies projects nvirsh runtime inputs through Morpheus", 
     "  root: ./workspace",
     "cache:",
     "  root: ./cache",
-    "  namespace: hyperarm",
+    "  namespace: synthetic",
     "  downloads: global",
     "  builds: global",
     "  src: global",
@@ -310,11 +310,11 @@ test("resolveToolDependencies projects nvirsh runtime inputs through Morpheus", 
 
     assert.equal(
       nvirsh.qemu,
-      path.join(projectRoot, "cache", "hyperarm", "tools", "qemu", "builds", "qemu-11.0.3-aarch64-softmmu", "install", "bin", "qemu-system-aarch64"),
+      path.join(projectRoot, "cache", "synthetic", "tools", "qemu", "builds", "qemu-11.0.3-aarch64-softmmu", "install", "bin", "qemu-system-aarch64"),
     );
     assert.equal(
       nvirsh["buildroot-output-dir"],
-      path.join(projectRoot, "cache", "hyperarm", "tools", "buildroot", "builds", "arm64-dev", "output"),
+      path.join(projectRoot, "cache", "synthetic", "tools", "buildroot", "builds", "arm64-dev", "output"),
     );
   });
 

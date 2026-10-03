@@ -6,7 +6,8 @@ Source baseline:
 - `include/linux/scatterlist.h`
 
 Cached tree used:
-- `/home/debian/Morpheus-data/cache/hyperarm/tools/buildroot/builds/arm64-dev/output/build/linux-6.18.16`
+- the buildroot-built `linux-6.18.16` tree under the managed buildroot
+  output build directory
 
 This note starts from the `virtnet_netdev` function pointers in
 `drivers/net/virtio_net.c` and does intra-procedural SG analysis on the real

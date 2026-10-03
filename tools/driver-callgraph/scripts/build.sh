@@ -7,7 +7,7 @@ llcg_dot="${MORPHEUS_DRIVER_CALLGRAPH_LLCG_DOT:?}"
 groups_file="${MORPHEUS_DRIVER_CALLGRAPH_GROUPS_FILE:-}"
 groups_overlay_file="${MORPHEUS_DRIVER_CALLGRAPH_GROUPS_OVERLAY_FILE:-}"
 prefix_file="${MORPHEUS_DRIVER_CALLGRAPH_PREFIX_FILE:-}"
-title="${MORPHEUS_DRIVER_CALLGRAPH_TITLE:-HyperArm Driver Init / Deinit Base Graph}"
+title="${MORPHEUS_DRIVER_CALLGRAPH_TITLE:-Driver Init / Deinit Base Graph}"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 if [ ! -f "${llcg_dot}" ] && [[ "${llcg_dot}" != /* ]]; then

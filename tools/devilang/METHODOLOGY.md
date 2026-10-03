@@ -393,7 +393,7 @@ later in-scope runtime event appears again.
 For real trace replay, the `.state` inputs should come from the LLVM pass
 output, not directly from `tools/devilang/examples/`.
 
-In the HyperArm workflow this means using the `devilang_exec` artifacts:
+In the workspace workflow this means using the `devilang_exec` artifacts:
 
 - `booting-state`
 - `runtime-state`

@@ -53,9 +53,9 @@
 
 - Added managed `libafl` support for nested QEMU VM fuzzing, including:
   - a script-backed `tools/libafl` descriptor and skill
-  - Hyperarm workflows for LibAFL nested fuzzing orchestration
+  - workspace workflows for LibAFL nested fuzzing orchestration
   - guest stub and patched `qemu-libafl-bridge` build artifacts
-  - nested fuzzing overlay sources under the Hyperarm workspace patches tree
+  - nested fuzzing overlay sources under the workspace patches tree
 - Upgraded the runs-viewer around a Morpheus-CLI-backed data path and a new
   interactive graph stack, including:
   - faster graph startup and cached graph layout/loading

@@ -176,11 +176,11 @@ validate_guest_qemu_seed_consumer() {
 
   for patch_list in "${qemu_patch_lists[@]}"; do
     if grep -Eiq \
-        '(^|/)(profiles|qemu-patches)/|CVE-[0-9]+|virtio-net-profile|hyperarm-virtio-mmio-(fuzz|observation)' \
+        '(^|/)(profiles|qemu-patches)/|CVE-[0-9]+|virtio-net-profile|virtio-mmio-(fuzz|observation)' \
         "${patch_list}"; then
       echo "guest QEMU contains a profile-specific patch: ${patch_list}" >&2
       grep -Ei \
-        '(^|/)(profiles|qemu-patches)/|CVE-[0-9]+|virtio-net-profile|hyperarm-virtio-mmio-(fuzz|observation)' \
+        '(^|/)(profiles|qemu-patches)/|CVE-[0-9]+|virtio-net-profile|virtio-mmio-(fuzz|observation)' \
         "${patch_list}" >&2
       exit 1
     fi

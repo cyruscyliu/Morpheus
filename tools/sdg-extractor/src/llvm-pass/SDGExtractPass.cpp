@@ -86,8 +86,8 @@ static bool sharesProvenanceWalk(const Value *V,
                                  unsigned depth);
 
 // Evidence: the partial DMA telemetry patch
-// (tools/linux/patches/linaro-cca-public-linux-upstream-v2-1558aa1d-sdg-extractor/
-//  0001-hyperarm-virtio-dma-telemetry-partial.patch). HP_DMA_TRACE expands to
+// (tools/linux/patches/linaro-cca-public-linux-upstream-v2-1558aa1d-sdg-extractor/).
+// HP_DMA_TRACE expands to
 // hp_dma_trace_publish(vdev, op, dir, size, addr, use_dma) and
 // hp_dma_trace_vq_state(vq, op, aux, kind); the opcode argument carries the
 // HP_DMA_EVENT_OP_* constants listed below. Telemetry events never create

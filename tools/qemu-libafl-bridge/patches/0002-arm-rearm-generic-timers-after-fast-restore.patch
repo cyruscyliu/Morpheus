@@ -1,0 +1,34 @@
+diff --git a/libafl/syx-snapshot/syx-snapshot.c b/libafl/syx-snapshot/syx-snapshot.c
+index 7717c384c9..3ba758311e 100644
+--- a/libafl/syx-snapshot/syx-snapshot.c
++++ b/libafl/syx-snapshot/syx-snapshot.c
+@@ -729,6 +729,29 @@ void syx_snapshot_root_restore(SyxSnapshot* snapshot)
+      */
+     g_hash_table_foreach(snapshot->rbs_dirty_list, root_restore_rb, snapshot);
+     device_restore_all(snapshot->root_snapshot->dss);
++
++#if defined(TARGET_ARM)
++    /*
++     * ARM CPU VMState restores generic-timer registers through raw_write(),
++     * which intentionally bypasses the normal register write callbacks.  If
++     * a saved QEMUTimer was not pending, the restored guest can therefore
++     * wait indefinitely for a timer interrupt that is never armed.
++     * Recalculate all generic timers from the restored register state before
++     * the vCPU resumes.  This includes the EL2 physical timer used by an L1
++     * hypervisor kernel.
++     */
++    CPUState* cpu;
++    CPU_FOREACH(cpu) {
++        ARMCPU* armcpu = ARM_CPU(cpu);
++        arm_gt_ptimer_cb(armcpu);
++        arm_gt_vtimer_cb(armcpu);
++        arm_gt_htimer_cb(armcpu);
++        arm_gt_stimer_cb(armcpu);
++        arm_gt_hvtimer_cb(armcpu);
++        arm_gt_sel2timer_cb(armcpu);
++        arm_gt_sel2vtimer_cb(armcpu);
++    }
++#endif
+ 
+     syx_cow_cache_flush_highest_layer(snapshot->bdrvs_cow_cache);
+ 

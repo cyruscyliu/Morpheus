@@ -11,8 +11,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mount.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/types.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <spawn.h>
 #include <time.h>
@@ -29,6 +32,7 @@
 #define QEMU_STDOUT_PATH RUNTIME_DIR "/qemu.stdout.log"
 #define QEMU_STDERR_PATH RUNTIME_DIR "/qemu.stderr.log"
 #define QEMU_INPUT_STATUS_PATH RUNTIME_DIR "/qemu-input.status"
+#define QEMU_QMP_PATH RUNTIME_DIR "/qmp.sock"
 #define L2_CONSOLE_PATH RUNTIME_DIR "/l2-console.log"
 #define L2_CONSOLE_ALT_PATH "/mnt/morpheus-l2-runtime/l2-console.log"
 #define L2_CONSOLE_ALT2_PATH "/run/morpheus-l2-runtime/l2-console.log"
@@ -657,6 +661,11 @@ static uint64_t monotonic_time_ns(void) {
   return ((uint64_t)now.tv_sec * 1000000000ULL) + (uint64_t)now.tv_nsec;
 }
 
+static void log_iteration_phase(const char *phase) {
+  lqprintf("stub-phase phase=%s monotonic-ns=%llu\n", phase,
+           (unsigned long long)monotonic_time_ns());
+}
+
 static void log_l2_startup_timing(uint64_t qemu_exec_start_ns,
                                   uint64_t buildroot_ready_ns) {
   uint64_t duration_ns;
@@ -852,6 +861,8 @@ static bool trace_debug_enabled(void) {
   return value && value[0] == '1';
 }
 
+static uint64_t monotonic_time_ns(void);
+
 static void dump_runtime_file(const char *name, const char *path) {
   static const char hex_digits[] = "0123456789abcdef";
   uint8_t buf[RUNTIME_DUMP_CHUNK_BYTES];
@@ -938,6 +949,7 @@ static void dump_runtime_snapshot(void) {
       "launch-l2.stderr.log",
       "qemu.stdout.log",
       "qemu.stderr.log",
+      "kernel.log",
       "qemu-input.status",
       "l2-console.log",
       "l2-console-alt.log",
@@ -950,6 +962,9 @@ static void dump_runtime_snapshot(void) {
   };
   char path[256];
 
+  lqprintf("stub-phase phase=runtime-dump-start monotonic-ns=%llu\n",
+           (unsigned long long)monotonic_time_ns());
+
   for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
     snprintf(path, sizeof(path), RUNTIME_DIR "/%s", files[i]);
     dump_runtime_file(files[i], path);
@@ -957,6 +972,8 @@ static void dump_runtime_snapshot(void) {
   dump_runtime_file("l2-console.alt.log", L2_CONSOLE_ALT_PATH);
   dump_runtime_file("l2-console.alt2.log", L2_CONSOLE_ALT2_PATH);
   lqprintf("stub: dumped runtime files to log\n");
+  lqprintf("stub-phase phase=runtime-dump-end monotonic-ns=%llu\n",
+           (unsigned long long)monotonic_time_ns());
 }
 
 static bool file_contains_any(const char *path, const char **needles,
@@ -1427,6 +1444,48 @@ static bool l2_boot_ready_logged(void) {
          file_contains_any(L2_CONSOLE_PATH, needles, needle_count);
 }
 
+static bool l2_console_contains(const char *needle) {
+  return file_contains_any(L2_CONSOLE_PATH, &needle, 1) ||
+         file_contains_any(QEMU_STDOUT_PATH, &needle, 1);
+}
+
+static int guest_input_fd = -1;
+
+static bool send_guest_line(pid_t unused, const char *line) {
+  (void)unused;
+  size_t len = strlen(line);
+  return guest_input_fd >= 0 &&
+    send(guest_input_fd, line, len, MSG_NOSIGNAL) == (ssize_t)len;
+}
+
+static unsigned poweroff_prompt_state;
+
+static void reset_guest_poweroff_prompt(void) {
+  poweroff_prompt_state = 0;
+}
+
+static void drive_guest_poweroff_prompt(pid_t qemu_pid) {
+  unsigned state = poweroff_prompt_state;
+  pid_t target = qemu_pid;
+  if (state == 0 && l2_console_contains("login:")) {
+    if (send_guest_line(target, "root\n")) {
+      poweroff_prompt_state = 1;
+      lqprintf("stub: poweroff prompt state=login-sent\n");
+    }
+  } else if (state == 1 && l2_console_contains("Password:")) {
+    if (send_guest_line(target, "root\n")) {
+      poweroff_prompt_state = 2;
+      lqprintf("stub: poweroff prompt state=password-sent\n");
+    }
+  } else if ((state == 1 || state == 2) &&
+             (l2_console_contains("# ") || l2_console_contains("#\n"))) {
+    if (send_guest_line(target, "poweroff\n")) {
+      poweroff_prompt_state = 3;
+      lqprintf("stub: poweroff prompt state=poweroff-sent\n");
+    }
+  }
+}
+
 static bool l2_buildroot_login_logged(void) {
   static const char *needles[] = {"buildroot login:"};
 
@@ -1583,6 +1642,130 @@ static bool l2_accel_is_kvm(const char *accel) {
   return strcmp(accel, "kvm") == 0;
 }
 
+static void log_l2_process_inventory(const char *when) {
+  DIR *dp = opendir("/proc");
+  struct dirent *ent;
+  unsigned qemu_tasks = 0;
+
+  if (!dp) {
+    return;
+  }
+  while ((ent = readdir(dp)) != NULL) {
+    char path[64];
+    char comm[64];
+    FILE *fp;
+    if (ent->d_name[0] < '0' || ent->d_name[0] > '9') {
+      continue;
+    }
+    snprintf(path, sizeof(path), "/proc/%s/comm", ent->d_name);
+    fp = fopen(path, "rb");
+    if (!fp) {
+      continue;
+    }
+    if (!fgets(comm, sizeof(comm), fp)) {
+      comm[0] = '\0';
+    }
+    fclose(fp);
+    if (strncmp(comm, "qemu-system-aar", 15) != 0) {
+      continue;
+    }
+    {
+      char stat_path[64];
+      char stat_buf[512];
+      FILE *sf;
+      char state = '?';
+      int ppid = -1;
+      int pgrp = -1;
+      snprintf(stat_path, sizeof(stat_path), "/proc/%s/stat", ent->d_name);
+      sf = fopen(stat_path, "rb");
+      if (sf) {
+        char *p = NULL;
+        if (fgets(stat_buf, sizeof(stat_buf), sf)) {
+          p = strrchr(stat_buf, ')');
+          if (p && p[1] == ' ') {
+            state = p[2];
+            if (sscanf(p + 3, "%d %d", &ppid, &pgrp) != 2) {
+              ppid = pgrp = -1;
+            }
+          }
+        }
+        fclose(sf);
+      }
+      lqprintf("stub: %s qemu-task pid=%s ppid=%d pgrp=%d state=%c\n", when,
+               ent->d_name, ppid, pgrp, state);
+      {
+        char detail_path[96];
+        char detail[256];
+        FILE *detail_file;
+        snprintf(detail_path, sizeof(detail_path), "/proc/%s/wchan", ent->d_name);
+        detail_file = fopen(detail_path, "rb");
+        if (detail_file) {
+          if (fgets(detail, sizeof(detail), detail_file)) {
+            detail[strcspn(detail, "\n")] = '\0';
+            lqprintf("stub: %s qemu-wchan pid=%s value=%s\n", when,
+                     ent->d_name, detail);
+          }
+          fclose(detail_file);
+        }
+      }
+      {
+        char task_dir[96];
+        DIR *td = NULL;
+        struct dirent *te;
+        snprintf(task_dir, sizeof(task_dir), "/proc/%s/task", ent->d_name);
+        td = opendir(task_dir);
+        if (td) {
+          while ((te = readdir(td)) != NULL) {
+            char task_stat[128];
+            char task_buf[256];
+            FILE *tf;
+            char task_state = '?';
+            if (te->d_name[0] < '0' || te->d_name[0] > '9') {
+              continue;
+            }
+            snprintf(task_stat, sizeof(task_stat), "%s/%s/stat", task_dir,
+                     te->d_name);
+            tf = fopen(task_stat, "rb");
+            if (!tf) {
+              continue;
+            }
+            if (fgets(task_buf, sizeof(task_buf), tf)) {
+              char *close_paren = strrchr(task_buf, ')');
+              if (close_paren && close_paren[1] == ' ') {
+                task_state = close_paren[2];
+              }
+            }
+            fclose(tf);
+            lqprintf("stub: %s qemu-thread tid=%s state=%c\n", when,
+                     te->d_name, task_state);
+          }
+          closedir(td);
+        }
+      }
+      qemu_tasks++;
+    }
+  }
+  closedir(dp);
+  {
+    char line[128];
+    FILE *mi = fopen("/proc/meminfo", "rb");
+    unsigned long memfree = 0;
+    unsigned long avail = 0;
+    if (mi) {
+      while (fgets(line, sizeof(line), mi)) {
+        if (strncmp(line, "MemFree:", 8) == 0) {
+          sscanf(line + 8, "%lu", &memfree);
+        } else if (strncmp(line, "MemAvailable:", 13) == 0) {
+          sscanf(line + 13, "%lu", &avail);
+        }
+      }
+      fclose(mi);
+    }
+    lqprintf("stub: %s qemu-tasks=%u memfree=%lukB avail=%lukB\n", when,
+             qemu_tasks, memfree, avail);
+  }
+}
+
 static void log_process_state(pid_t pid) {
   char path[64];
   char buf[256];
@@ -1690,20 +1873,187 @@ static bool prepare_l2_launcher(const char **shell_out,
 }
 
 static void signal_l2_process_group(pid_t pid, int signal_number) {
+  int group_result;
+  int group_errno = 0;
+  int leader_result;
+  int leader_errno = 0;
   if (pid <= 0) {
     return;
   }
 
   /* The launcher owns the nested QEMU descendants. Kill the whole
    * process group so a shell waiting on QEMU cannot hold up the next input. */
-  (void)kill(-pid, signal_number);
-  (void)kill(pid, signal_number);
+  group_result = kill(-pid, signal_number);
+  group_errno = errno;
+  leader_result = kill(pid, signal_number);
+  leader_errno = errno;
+  lqprintf("stub: signal pid=%u sig=%d group=%d errno=%d leader=%d errno=%d\n",
+           (unsigned)pid, signal_number, group_result, group_errno,
+           leader_result, leader_errno);
+  {
+    DIR *proc = opendir("/proc");
+    struct dirent *entry;
+    if (proc) {
+      while ((entry = readdir(proc)) != NULL) {
+        char comm_path[64];
+        char comm[64];
+        FILE *comm_file;
+        pid_t target;
+        if (entry->d_name[0] < '0' || entry->d_name[0] > '9') {
+          continue;
+        }
+        snprintf(comm_path, sizeof(comm_path), "/proc/%s/comm", entry->d_name);
+        comm_file = fopen(comm_path, "rb");
+        if (!comm_file) {
+          continue;
+        }
+        comm[0] = '\0';
+        (void)fgets(comm, sizeof(comm), comm_file);
+        fclose(comm_file);
+        if (strncmp(comm, "qemu-system-aar", 15) != 0) {
+          continue;
+        }
+        target = (pid_t)strtoul(entry->d_name, NULL, 10);
+        (void)kill(target, SIGKILL);
+        (void)syscall(SYS_tgkill, target, target, signal_number);
+      }
+      closedir(proc);
+    }
+  }
+}
+
+static void request_l2_shutdown(pid_t pid) {
+  int qmp_fd;
+  struct sockaddr_un qmp_addr;
+  if (pid <= 0) {
+    return;
+  }
+  usleep(100000U);
+  qmp_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (qmp_fd >= 0) {
+    memset(&qmp_addr, 0, sizeof(qmp_addr));
+    qmp_addr.sun_family = AF_UNIX;
+    snprintf(qmp_addr.sun_path, sizeof(qmp_addr.sun_path), "%s", QEMU_QMP_PATH);
+    if (connect(qmp_fd, (struct sockaddr *)&qmp_addr, sizeof(qmp_addr)) == 0) {
+      (void)write(qmp_fd, "{\"execute\":\"qmp_capabilities\"}\n",
+                  strlen("{\"execute\":\"qmp_capabilities\"}\n"));
+      usleep(10000U);
+      (void)write(qmp_fd, "{\"execute\":\"stop\"}\n",
+                  strlen("{\"execute\":\"stop\"}\n"));
+      usleep(10000U);
+      (void)write(qmp_fd, "{\"execute\":\"system_reset\"}\n",
+                  strlen("{\"execute\":\"system_reset\"}\n"));
+      usleep(10000U);
+      (void)write(qmp_fd, "{\"execute\":\"system_powerdown\"}\n",
+                  strlen("{\"execute\":\"system_powerdown\"}\n"));
+      usleep(10000U);
+      (void)write(qmp_fd, "{\"execute\":\"quit\"}\n",
+                  strlen("{\"execute\":\"quit\"}\n"));
+      lqprintf("stub: qmp stop-reset-powerdown-quit requested\n");
+    }
+    close(qmp_fd);
+  }
+  /* Let QEMU's signal handler request a coordinated vCPU shutdown first.
+   * SIGKILL can leave RME vCPU threads stuck in REC_ENTER with the VM fd
+   * still open, so the hard kill is only an escalation path. */
+  (void)kill(-pid, SIGINT);
+  (void)kill(pid, SIGINT);
+  usleep(100000U);
+  signal_l2_process_group(pid, SIGTERM);
+}
+
+static unsigned count_l2_group_tasks(pid_t pgrp) {
+  DIR *dp = opendir("/proc");
+  struct dirent *ent;
+  unsigned tasks = 0;
+
+  if (!dp) {
+    return 0;
+  }
+  while ((ent = readdir(dp)) != NULL) {
+    char path[64];
+    char buf[512];
+    FILE *fp;
+    char *p;
+    int task_pgrp = -1;
+    if (ent->d_name[0] < '0' || ent->d_name[0] > '9') {
+      continue;
+    }
+    snprintf(path, sizeof(path), "/proc/%s/stat", ent->d_name);
+    fp = fopen(path, "rb");
+    if (!fp) {
+      continue;
+    }
+    if (!fgets(buf, sizeof(buf), fp)) {
+      buf[0] = '\0';
+    }
+    fclose(fp);
+    p = strrchr(buf, ')');
+    if (p && p[1] == ' ' && sscanf(p + 4, "%*d %d", &task_pgrp) == 1 &&
+        task_pgrp == pgrp) {
+      tasks++;
+    }
+  }
+  closedir(dp);
+  return tasks;
+}
+
+static void ensure_l2_group_gone(pid_t pid) {
+  /* waitpid only reaps the group leader. Nested QEMU children run vCPUs with
+   * signals blocked (kvm_sigset_activate), so SIGTERM stays pending forever;
+   * only SIGKILL can interrupt them. Escalate until no task remains in the
+   * group, otherwise the KVM fd never closes and the realm leaks. */
+  for (unsigned attempt = 0; attempt < 100U; attempt++) {
+    if (count_l2_group_tasks(pid) == 0) {
+      return;
+    }
+    signal_l2_process_group(pid, SIGKILL);
+    /* Some nested-QEMU builds move the vCPU task out of the leader's
+     * signal-group bookkeeping while it is inside KVM_RUN.  Target every
+     * visible task directly as a second escalation path. */
+    {
+      DIR *proc = opendir("/proc");
+      struct dirent *entry;
+      if (proc) {
+        while ((entry = readdir(proc)) != NULL) {
+          char stat_path[64];
+          char stat_buf[256];
+          FILE *stat_file;
+          char *close_paren;
+          int task_pgrp = -1;
+          if (entry->d_name[0] < '0' || entry->d_name[0] > '9') {
+            continue;
+          }
+          snprintf(stat_path, sizeof(stat_path), "/proc/%s/stat", entry->d_name);
+          stat_file = fopen(stat_path, "rb");
+          if (!stat_file) {
+            continue;
+          }
+          if (!fgets(stat_buf, sizeof(stat_buf), stat_file)) {
+            fclose(stat_file);
+            continue;
+          }
+          fclose(stat_file);
+          close_paren = strrchr(stat_buf, ')');
+          if (close_paren && sscanf(close_paren + 3, "%*d %d", &task_pgrp) == 1 &&
+              task_pgrp == (int)pid) {
+            (void)kill((pid_t)strtoul(entry->d_name, NULL, 10), SIGKILL);
+          }
+        }
+        closedir(proc);
+      }
+    }
+    usleep(10000U);
+  }
+  lqprintf("stub: l2 process group tasks linger after SIGKILL pgrp=%u tasks=%u\n",
+           (unsigned)pid, count_l2_group_tasks(pid));
 }
 
 static bool reap_l2_process(pid_t pid, int *status) {
   for (unsigned attempt = 0; attempt < 50U; attempt++) {
     pid_t wait_ret = waitpid(pid, status, WNOHANG);
     if (wait_ret == pid) {
+      ensure_l2_group_gone(pid);
       return true;
     }
     if (wait_ret < 0) {
@@ -1722,10 +2072,12 @@ static bool reap_l2_process(pid_t pid, int *status) {
       return false;
     }
   }
+  ensure_l2_group_gone(pid);
   return true;
 }
 
-static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
+static bool launch_l2_inner(enum l2_outcome *outcome, int *outcome_detail) {
+  int input_pair[2] = {-1, -1};
   char input_env[128];
   char runtime_env[128];
   char nqc2_env[128];
@@ -1743,6 +2095,8 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
   int setup_error = 0;
   int spawn_error;
   pid_t pid;
+
+  log_l2_process_inventory("pre-spawn");
   char *argv[3];
   bool measure_startup;
   uint64_t qemu_exec_start_ns = 0;
@@ -1810,6 +2164,14 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
     goto spawn_setup_failed;
   }
   file_actions_initialized = true;
+  if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, input_pair) < 0) {
+    setup_error = errno;
+    goto spawn_setup_failed;
+  }
+  guest_input_fd = input_pair[1];
+  setup_error = posix_spawn_file_actions_adddup2(&file_actions, input_pair[0], STDIN_FILENO);
+  if (setup_error != 0) goto spawn_setup_failed;
+
   setup_error = posix_spawn_file_actions_adddup2(
       &file_actions, launch_stdout_fd, STDOUT_FILENO);
   if (setup_error != 0) {
@@ -1856,6 +2218,8 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
   argv[2] = NULL;
   spawn_error = posix_spawn(&pid, shell, &file_actions, &spawn_attributes,
                             argv, launch_environment);
+  close(input_pair[0]);
+  input_pair[0] = -1;
   posix_spawnattr_destroy(&spawn_attributes);
   spawn_attributes_initialized = false;
   posix_spawn_file_actions_destroy(&file_actions);
@@ -1877,6 +2241,8 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
   }
 
   lqprintf("stub: launched l2 pid=%u\n", (unsigned)pid);
+  log_iteration_phase("l2-spawn");
+  reset_guest_poweroff_prompt();
   measure_startup = l2_startup_measurement_enabled();
   bool stop_on_login = l2_stop_on_login_enabled();
   unsigned window_ms = run_window_ms();
@@ -1901,6 +2267,7 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
         boot_ready = true;
         break;
       }
+      if (stop_on_login) drive_guest_poweroff_prompt(pid);
       usleep(L2_STARTUP_TIMING_POLL_MS * 1000U);
       elapsed_ms += L2_STARTUP_TIMING_POLL_MS;
     }
@@ -1916,12 +2283,33 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
       usleep(sleep_ms * 1000U);
       elapsed_ms += sleep_ms;
       boot_ready = l2_boot_ready_logged();
+      if (stop_on_login) drive_guest_poweroff_prompt(pid);
     }
   }
   if (boot_ready) {
+    log_iteration_phase("l1-guest-ready");
     append_marker("parent-boot-ready\n");
     if (stop_on_login) {
       int term_status = 0;
+      lqprintf("stub: waiting for guest login and poweroff (60s budget)\n");
+      for (unsigned poll = 0; poll < 600; poll++) {
+        pid_t done = waitpid(pid, &term_status, WNOHANG);
+        if (done == pid) {
+          bool clean = WIFEXITED(term_status) && WEXITSTATUS(term_status) == 0;
+          lqprintf("stub: guest shutdown launcher-reaped clean=%u poweroff-state=%u\n",
+                   clean, poweroff_prompt_state);
+          log_l2_process_inventory("post-guest-poweroff");
+          *outcome = l2_kernel_panic_logged() ? L2_OUTCOME_KERNEL_PANIC :
+                     clean ? L2_OUTCOME_COMPLETE : L2_OUTCOME_LAUNCHER_EXIT;
+          return true;
+        }
+        if (done < 0 && errno != EINTR) return false;
+        if (l2_kernel_panic_logged()) break;
+        drive_guest_poweroff_prompt(pid);
+        usleep(100000U);
+      }
+      lqprintf("stub: guest poweroff incomplete state=%u; falling back\n", poweroff_prompt_state);
+
       /* The stop-on-login end shares the run window's cleanup: classify the
        * outcome first, then terminate, reap, and hand back evidence. */
       if (l2_kernel_panic_logged()) {
@@ -1931,11 +2319,12 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
         *outcome = L2_OUTCOME_RUN_WINDOW_COMPLETE;
       }
       lqprintf("stub: l2 boot ready; stop-on-login requested, terminating\n");
-      signal_l2_process_group(pid, SIGTERM);
+      request_l2_shutdown(pid);
       if (!reap_l2_process(pid, &term_status)) {
         lqprintf("stub: failed to reap l2 process group on stop-on-login\n");
         return false;
       }
+      log_l2_process_inventory("post-login-reap");
       log_l2_input_evidence();
       lqprintf("stub: l2 stopped on login\n");
       return true;
@@ -1961,11 +2350,12 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
     } else {
       *outcome = L2_OUTCOME_RUN_WINDOW_COMPLETE;
     }
-    signal_l2_process_group(pid, SIGTERM);
+    request_l2_shutdown(pid);
     if (!reap_l2_process(pid, &status)) {
       lqprintf("stub: failed to reap l2 process group\n");
       return *outcome == L2_OUTCOME_KERNEL_PANIC;
     }
+    log_l2_process_inventory("post-window-reap");
     log_l2_input_evidence();
     lqprintf("stub: l2 run window ended and was terminated\n");
     return true;
@@ -2007,6 +2397,7 @@ static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
   return false;
 
 spawn_setup_failed:
+  if (input_pair[0] >= 0) close(input_pair[0]);
   if (spawn_attributes_initialized) {
     posix_spawnattr_destroy(&spawn_attributes);
   }
@@ -2025,6 +2416,14 @@ spawn_setup_failed:
 
 }
 
+static bool launch_l2(enum l2_outcome *outcome, int *outcome_detail) {
+  bool ok = launch_l2_inner(outcome, outcome_detail);
+  if (guest_input_fd >= 0) close(guest_input_fd);
+  guest_input_fd = -1;
+  return ok;
+}
+
+
 int main(void) {
   lqprintf("libafl_nesting stub ready\n");
 
@@ -2034,16 +2433,25 @@ int main(void) {
       len = INPUT_LEN;
     }
 
+    log_iteration_phase("snapshot-restore-completed");
+
     log_input_probe("after-start-virt", FUZZ_INPUT, len);
     enum l2_outcome outcome = L2_OUTCOME_HARNESS_ERROR;
     int outcome_detail = 0;
-    bool launched = write_input_snapshot(FUZZ_INPUT, len) &&
-                    launch_l2(&outcome, &outcome_detail);
+    bool input_ready = write_input_snapshot(FUZZ_INPUT, len);
+    if (input_ready) {
+      log_iteration_phase("input-snapshot-written");
+    }
+    bool launched = input_ready && launch_l2(&outcome, &outcome_detail);
 
     if (!launched && outcome == L2_OUTCOME_HARNESS_ERROR) {
       lqprintf("stub: l2 harness operation failed\n");
     }
     log_l2_outcome(outcome, outcome_detail);
+    if (outcome == L2_OUTCOME_COMPLETE) {
+      dump_runtime_file("launch-l2.marker", RUNTIME_DIR "/launch-l2.marker");
+      dump_runtime_file("qemu.stderr.log", RUNTIME_DIR "/qemu.stderr.log");
+    }
     if (outcome == L2_OUTCOME_KERNEL_PANIC ||
         outcome == L2_OUTCOME_LAUNCHER_EXIT ||
         outcome == L2_OUTCOME_LAUNCHER_SIGNAL ||

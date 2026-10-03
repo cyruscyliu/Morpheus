@@ -507,7 +507,13 @@ fi
 
 runtime_dir="${MORPHEUS_L2_RUNTIME_DIR:-/mnt/morpheus-l2-runtime}"
 guest_image_dir="${MORPHEUS_L2_GUEST_IMAGE_DIR:-/mnt/guest-images}"
+phase_marker() {
+  phase_name="$1"
+  phase_ns="$(awk '{printf "%.0f", $1 * 1000000000}' /proc/uptime 2>/dev/null || true)"
+  printf 'phase=%s monotonic-ns=%s\n' "${phase_name}" "${phase_ns}" >> "${runtime_dir}/launch-l2.marker"
+}
 printf 'inner-start\n' >> "${runtime_dir}/launch-l2.marker"
+phase_marker "l2-launcher-entered"
 guest_qemu="/mnt/guest-qemu/bin/qemu-system-aarch64"
 guest_qemu_data_dir="/mnt/guest-qemu/share/qemu"
 guest_realm_measurements="/usr/bin/realm-measurements"
@@ -679,6 +685,7 @@ set -- "$@" \
   -chardev "stdio,mux=on,id=chr0,signal=off" \
   -serial "chardev:chr0" \
   -mon "chardev=chr0,mode=readline" \
+  -qmp "unix:${runtime_dir}/qmp.sock,server=on,wait=off" \
   -dtb "${guest_qemu_dtb}" \
   -kernel "${guest_image_dir}/Image" \
   -initrd "${guest_image_dir}/rootfs.cpio" \
@@ -712,6 +719,7 @@ fi
 
 rm -f "${guest_qemu_dtb}"
 printf 'dtb-generator=realm-measurements\n' >> "${launch_marker}"
+phase_marker "realm-measurements-start"
 set +e
 "${guest_realm_measurements}" \
   -c "${guest_realm_configs_dir}/qemu-max-8.2.conf" \
@@ -733,19 +741,24 @@ if [ ! -s "${guest_qemu_dtb}" ]; then
   exit 1
 fi
 printf 'dtb-generated=%s\n' "${guest_qemu_dtb}" >> "${launch_marker}"
+phase_marker "realm-measurements-end"
 
 set -- "${guest_qemu}" "$@"
 
 printf 'qemu-cmd=' >> "${launch_marker}"
 printf '%s ' "$@" >> "${launch_marker}"
 printf '\n' >> "${launch_marker}"
+phase_marker "inner-qemu-command-ready"
 printf 'qemu-seed-consumer=mmio-window\n' >> "${launch_marker}"
 printf 'qemu-mmio-trace=seed\n' >> "${launch_marker}"
 printf 'qemu-exec-start\n' >> "${launch_marker}"
+phase_marker "l1-kvm-device-visible"
+phase_marker "inner-qemu-exec"
 set +e
 "$@" >> "${guest_qemu_stdout}" 2>> "${guest_qemu_stderr}"
 qemu_status="$?"
 set -e
+phase_marker "inner-qemu-exit"
 sync
 printf 'l2-console-stat=' >> "${launch_marker}"
 if [ -e "${guest_l2_console}" ]; then
@@ -864,6 +877,27 @@ if [ "${MORPHEUS_L2_SHELL_TRACE:-0}" = "1" ]; then
   set -x
 fi
 runtime_dir="${MORPHEUS_L2_RUNTIME_DIR:-/mnt/morpheus-l2-runtime}"
+phase_marker() {
+  phase_name="$1"
+  phase_ns="$(awk '{printf "%.0f", $1 * 1000000000}' /proc/uptime 2>/dev/null || true)"
+  printf 'phase=%s monotonic-ns=%s\n' "${phase_name}" "${phase_ns}" >> "${runtime_dir}/launch-l2.marker"
+}
+kernel_log_pid=""
+start_kernel_log() {
+  : > "${runtime_dir}/kernel.log"
+  if dmesg --help 2>&1 | grep -q -- '-w'; then
+    dmesg -w >> "${runtime_dir}/kernel.log" 2>&1 &
+    kernel_log_pid="$!"
+    phase_marker "kernel-log-start"
+  fi
+}
+stop_kernel_log() {
+  if [ -n "${kernel_log_pid}" ]; then
+    kill "${kernel_log_pid}" 2>/dev/null || true
+    wait "${kernel_log_pid}" 2>/dev/null || true
+    phase_marker "kernel-log-stop"
+  fi
+}
 mount -t proc proc /proc 2>/dev/null || true
 mount -t sysfs sysfs /sys 2>/dev/null || true
 if [ ! -d "${runtime_dir}" ]; then
@@ -871,17 +905,21 @@ if [ ! -d "${runtime_dir}" ]; then
 fi
 printf 'hoststack-start\n' > "${runtime_dir}/launch-l2.marker"
 printf 'hoststack-before-inner-exec\n' >> "${runtime_dir}/launch-l2.marker"
+phase_marker "hoststack-entered"
 # The host stack is the network namespace for the nested L2 QEMU. Configure
 # its user-mode NIC before launching the inner guest so nested slirp can use
 # the outer QEMU gateway for DNS and TCP egress.
 l1_net_wait=0
-while [ ! -d /sys/class/net/eth0 ] && [ "${l1_net_wait}" -lt 30 ]; do
-  sleep 1
-  l1_net_wait=$((l1_net_wait + 1))
-done
+phase_marker "network-init-start"
+if [ -d /sys/class/net/eth0 ]; then
+  l1_net_wait=1
+fi
+phase_marker "network-device-ready"
 if [ -d /sys/class/net/eth0 ] && command -v udhcpc >/dev/null 2>&1; then
+  phase_marker "dhcp-start"
   ifconfig eth0 up >/dev/null 2>&1 || true
   udhcpc -n -q -t 3 -T 1 -i eth0 >/dev/null 2>&1 || true
+  phase_marker "dhcp-end"
 fi
 if [ -x /sbin/ip ] && [ -d /sys/class/net/eth0 ]; then
   /sbin/ip link set dev eth0 up || true
@@ -906,6 +944,7 @@ if [ -d /sys/class/net/eth0 ]; then
   printf 'nameserver 10.0.2.3\n' > /etc/resolv.conf 2>/dev/null || true
   printf 'l1-net-resolv=10.0.2.3\n' >> "${runtime_dir}/launch-l2.marker"
   if command -v nslookup >/dev/null 2>&1; then
+    phase_marker "network-probes-start"
     printf 'l1-dns=' >> "${runtime_dir}/launch-l2.marker"
     nslookup neverssl.com 10.0.2.3 >> "${runtime_dir}/launch-l2.marker" 2>&1 || true
     printf 'l1-dns-direct=' >> "${runtime_dir}/launch-l2.marker"
@@ -915,11 +954,16 @@ if [ -d /sys/class/net/eth0 ]; then
   fi
   if command -v wget >/dev/null 2>&1; then
     wget -T 10 -O /tmp/l1-neverssl.html http://neverssl.com/ >> "${runtime_dir}/launch-l2.marker" 2>&1 || true
+    phase_marker "network-probes-end"
   fi
 fi
 export MORPHEUS_L2_RUNTIME_DIR="${runtime_dir}"
 export MORPHEUS_L2_GUEST_IMAGE_DIR="${MORPHEUS_L2_GUEST_IMAGE_DIR:-/mnt/guest-images}"
+start_kernel_log
+phase_marker "inner-launch-start"
 /mnt/launch-l2.sh
+stop_kernel_log
+phase_marker "inner-launch-end"
 EOF
 fi
 chmod +x "${hoststack_launch_script}"

@@ -453,8 +453,7 @@ if [ -n "${MORPHEUS_LIBAFL_L1_SMP:-}" ]; then
   libafl_l1_smp_requested="${MORPHEUS_LIBAFL_L1_SMP}"
 elif [ "${l2_mode}" = "cvm" ] &&
       [ "${nvirsh_state_tool}" = "nvirsh-buildroot-based-cvm" ]; then
-  # The buildroot CVM L1 is TCG-emulated on the host. One vCPU avoids
-  # scheduling eight emulated CPUs while the L1 launches its nested QEMU.
+  # Keep a single emulated L1 CPU for fast snapshot consistency.
   libafl_l1_smp_requested="1"
 else
   libafl_l1_smp_requested="${l1_smp:-}"

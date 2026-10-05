@@ -2448,6 +2448,7 @@ int main(void) {
       lqprintf("stub: l2 harness operation failed\n");
     }
     log_l2_outcome(outcome, outcome_detail);
+    dump_runtime_file("mmio-dma-irq-counts.json", RUNTIME_DIR "/mmio-dma-irq-counts.json");
     if (outcome == L2_OUTCOME_COMPLETE) {
       dump_runtime_file("launch-l2.marker", RUNTIME_DIR "/launch-l2.marker");
       dump_runtime_file("qemu.stderr.log", RUNTIME_DIR "/qemu.stderr.log");

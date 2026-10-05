@@ -43,6 +43,7 @@ qemu_plugin="${MORPHEUS_LIBAFL_QEMU_PLUGIN:-}"
 qemu_plugin_el="${MORPHEUS_LIBAFL_QEMU_PLUGIN_EL:-all}"
 measure_l2_startup="${MORPHEUS_LIBAFL_MEASURE_L2_STARTUP:-false}"
 stop_on_login="${MORPHEUS_LIBAFL_STOP_ON_LOGIN:-false}"
+l2_dma_count="${MORPHEUS_LIBAFL_L2_DMA_COUNT:-false}"
 disable_nqc2_plugin="false"
 capture_runtime="false"
 replay_inputs=()
@@ -102,6 +103,19 @@ while [ "$#" -gt 0 ]; do
     --disable-nqc2-plugin) disable_nqc2_plugin="true" ;;
     --capture-runtime) capture_runtime="true" ;;
     --measure-l2-startup) measure_l2_startup="true" ;;
+    --l2-dma-count)
+      case "${2:-}" in
+        true|TRUE|True|1|yes|YES|on|ON)
+          shift
+          l2_dma_count="${1:-}"
+          ;;
+        false|FALSE|False|0|no|NO|off|OFF)
+          shift
+          l2_dma_count="${1:-}"
+          ;;
+        *) l2_dma_count="true" ;;
+      esac
+      ;;
     --stop-on-login)
       case "${2:-}" in
         true|TRUE|True|1|yes|YES|on|ON)
@@ -136,6 +150,10 @@ if ! measure_l2_startup="$(normalize_boolean "${measure_l2_startup}")"; then
 fi
 if ! stop_on_login="$(normalize_boolean "${stop_on_login}")"; then
   echo "--stop-on-login must be a boolean (true/false)" >&2
+  exit 1
+fi
+if ! l2_dma_count="$(normalize_boolean "${l2_dma_count}")"; then
+  echo "--l2-dma-count must be a boolean (true/false)" >&2
   exit 1
 fi
 
@@ -1133,6 +1151,11 @@ if [ "${measure_l2_startup}" = "true" ]; then
 fi
 if [ "${stop_on_login}" = "true" ]; then
   direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_STOP_ON_LOGIN=1"
+fi
+if [ "${l2_dma_count}" = "true" ]; then
+  # Counting switch: carries the L2 monitor observability counters
+  # (transport MMIO + all DMA) through to the L2 qemu environment.
+  direct_l1_stub_env="${direct_l1_stub_env} MORPHEUS_L2_DMA_COUNT=1"
 fi
 direct_l1_stub_launch_cmd="mkdir -p /mnt && mount -t ext4 -o ro /dev/vdb /mnt && ${direct_l1_stub_env} exec ${direct_l1_share_stub_path}"
 direct_l1_share_prefix="${direct_l1_append%% init=/root/libafl_nesting_stub *}"

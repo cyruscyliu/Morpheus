@@ -183,6 +183,13 @@
         ],
         "boolean": true
       },
+      "l2-dma-count": {
+        "aliases": [
+          "l2-dma-count",
+          "l2DmaCount"
+        ],
+        "boolean": true
+      },
       "repetitions": {
         "aliases": [
           "repetitions"
@@ -262,6 +269,13 @@
         "aliases": [
           "stop-on-login",
           "stopOnLogin"
+        ],
+        "boolean": true
+      },
+      "l2-dma-count": {
+        "aliases": [
+          "l2-dma-count",
+          "l2DmaCount"
         ],
         "boolean": true
       }
@@ -486,6 +500,7 @@
             "disable-sdg",
             "run-seconds",
             "stop-on-login",
+            "l2-dma-count",
             "build-version",
             "build-dir-key"
           ],

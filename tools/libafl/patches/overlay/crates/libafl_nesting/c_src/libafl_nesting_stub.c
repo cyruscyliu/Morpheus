@@ -34,6 +34,9 @@
 #define QEMU_INPUT_STATUS_PATH RUNTIME_DIR "/qemu-input.status"
 #define QEMU_QMP_PATH RUNTIME_DIR "/qmp.sock"
 #define L2_CONSOLE_PATH RUNTIME_DIR "/l2-console.log"
+/* Graceful shutdown budget for a run-window expiry: 600 polls of 100 ms,
+ * the same 60 s the console-driven poweroff path gets. */
+#define L2_SHUTDOWN_BUDGET_POLLS 600U
 #define L2_CONSOLE_ALT_PATH "/mnt/morpheus-l2-runtime/l2-console.log"
 #define L2_CONSOLE_ALT2_PATH "/run/morpheus-l2-runtime/l2-console.log"
 #define L2_CONSOLE_PTY_PATH RUNTIME_DIR "/l2-console.pty"
@@ -1930,36 +1933,80 @@ static void request_l2_shutdown(pid_t pid) {
   }
   usleep(100000U);
   qmp_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-  if (qmp_fd >= 0) {
-    memset(&qmp_addr, 0, sizeof(qmp_addr));
-    qmp_addr.sun_family = AF_UNIX;
-    snprintf(qmp_addr.sun_path, sizeof(qmp_addr.sun_path), "%s", QEMU_QMP_PATH);
-    if (connect(qmp_fd, (struct sockaddr *)&qmp_addr, sizeof(qmp_addr)) == 0) {
-      (void)write(qmp_fd, "{\"execute\":\"qmp_capabilities\"}\n",
-                  strlen("{\"execute\":\"qmp_capabilities\"}\n"));
-      usleep(10000U);
-      (void)write(qmp_fd, "{\"execute\":\"stop\"}\n",
-                  strlen("{\"execute\":\"stop\"}\n"));
-      usleep(10000U);
-      (void)write(qmp_fd, "{\"execute\":\"system_reset\"}\n",
-                  strlen("{\"execute\":\"system_reset\"}\n"));
-      usleep(10000U);
-      (void)write(qmp_fd, "{\"execute\":\"system_powerdown\"}\n",
-                  strlen("{\"execute\":\"system_powerdown\"}\n"));
-      usleep(10000U);
-      (void)write(qmp_fd, "{\"execute\":\"quit\"}\n",
-                  strlen("{\"execute\":\"quit\"}\n"));
-      lqprintf("stub: qmp stop-reset-powerdown-quit requested\n");
-    }
-    close(qmp_fd);
+  if (qmp_fd < 0) {
+    lqprintf("stub: qmp socket failed errno=%d\n", errno);
+    return;
   }
-  /* Let QEMU's signal handler request a coordinated vCPU shutdown first.
-   * SIGKILL can leave RME vCPU threads stuck in REC_ENTER with the VM fd
-   * still open, so the hard kill is only an escalation path. */
+  memset(&qmp_addr, 0, sizeof(qmp_addr));
+  qmp_addr.sun_family = AF_UNIX;
+  snprintf(qmp_addr.sun_path, sizeof(qmp_addr.sun_path), "%s", QEMU_QMP_PATH);
+  if (connect(qmp_fd, (struct sockaddr *)&qmp_addr, sizeof(qmp_addr)) != 0) {
+    lqprintf("stub: qmp connect failed errno=%d path=%s\n", errno,
+             QEMU_QMP_PATH);
+    close(qmp_fd);
+    return;
+  }
+  (void)write(qmp_fd, "{\"execute\":\"qmp_capabilities\"}\n",
+              strlen("{\"execute\":\"qmp_capabilities\"}\n"));
+  usleep(10000U);
+  /* system_powerdown alone: stop would pause the vCPUs so the guest
+   * never processes the ACPI event, and reset/quit kill the machine
+   * instead of shutting it down. */
+  (void)write(qmp_fd, "{\"execute\":\"system_powerdown\"}\n",
+              strlen("{\"execute\":\"system_powerdown\"}\n"));
+  lqprintf("stub: qmp system_powerdown requested\n");
+  close(qmp_fd);
+}
+
+/* Wait for the L2 launcher to exit within the budget.  With
+ * drive_poweroff the stub keeps driving the console poweroff prompt,
+ * the same end the ok path produces. */
+static bool wait_l2_exit(pid_t pid, int *status, unsigned polls,
+                         bool drive_poweroff) {
+  for (unsigned poll = 0; poll < polls; poll++) {
+    pid_t done = waitpid(pid, status, WNOHANG);
+    if (done == pid) {
+      return true;
+    }
+    if (done < 0 && errno != EINTR) {
+      return false;
+    }
+    if (drive_poweroff) {
+      drive_guest_poweroff_prompt(pid);
+    }
+    usleep(100000U);
+  }
+  return false;
+}
+
+/* Escalation for a guest that ignored the graceful powerdown.  Bounded
+ * waits everywhere: SIGKILL can leave RME vCPU threads stuck in
+ * REC_ENTER with the VM fd still open, so a wedged process must fail
+ * the iteration instead of hanging the fuzzer. */
+static void ensure_l2_group_gone(pid_t pid);
+
+static bool terminate_l2_after_graceful_failure(pid_t pid, int *status) {
+  if (pid <= 0) {
+    return false;
+  }
   (void)kill(-pid, SIGINT);
   (void)kill(pid, SIGINT);
-  usleep(100000U);
+  if (wait_l2_exit(pid, status, 30, false)) {
+    ensure_l2_group_gone(pid);
+    return true;
+  }
   signal_l2_process_group(pid, SIGTERM);
+  if (wait_l2_exit(pid, status, 50, false)) {
+    ensure_l2_group_gone(pid);
+    return true;
+  }
+  signal_l2_process_group(pid, SIGKILL);
+  if (wait_l2_exit(pid, status, 100, false)) {
+    ensure_l2_group_gone(pid);
+    return true;
+  }
+  lqprintf("stub: l2 process still alive after SIGKILL; giving up\n");
+  return false;
 }
 
 static unsigned count_l2_group_tasks(pid_t pgrp) {
@@ -2067,10 +2114,12 @@ static bool reap_l2_process(pid_t pid, int *status) {
   }
 
   signal_l2_process_group(pid, SIGKILL);
-  while (waitpid(pid, status, 0) < 0) {
-    if (errno != EINTR) {
-      return false;
-    }
+  /* Bounded wait: a SIGKILLed RME QEMU can stay in D-state with its
+   * vCPU threads stuck in REC_ENTER, so a blocking waitpid here would
+   * hang the fuzzer forever. */
+  if (!wait_l2_exit(pid, status, 100, false)) {
+    lqprintf("stub: l2 process still alive after SIGKILL\n");
+    return false;
   }
   ensure_l2_group_gone(pid);
   return true;
@@ -2311,18 +2360,21 @@ static bool launch_l2_inner(enum l2_outcome *outcome, int *outcome_detail) {
       lqprintf("stub: guest poweroff incomplete state=%u; falling back\n", poweroff_prompt_state);
 
       /* The stop-on-login end shares the run window's cleanup: classify the
-       * outcome first, then terminate, reap, and hand back evidence. */
+       * outcome first, then shut down gracefully and hand back evidence. */
       if (l2_kernel_panic_logged()) {
-        lqprintf("stub: l2 kernel panic found before stop-on-login kill\n");
+        lqprintf("stub: l2 kernel panic found before stop-on-login shutdown\n");
         *outcome = L2_OUTCOME_KERNEL_PANIC;
       } else {
         *outcome = L2_OUTCOME_RUN_WINDOW_COMPLETE;
       }
-      lqprintf("stub: l2 boot ready; stop-on-login requested, terminating\n");
+      lqprintf("stub: l2 boot ready; stop-on-login requested, powering down\n");
       request_l2_shutdown(pid);
-      if (!reap_l2_process(pid, &term_status)) {
-        lqprintf("stub: failed to reap l2 process group on stop-on-login\n");
-        return false;
+      if (!wait_l2_exit(pid, &term_status, L2_SHUTDOWN_BUDGET_POLLS, true)) {
+        lqprintf("stub: l2 shutdown budget expired; escalating\n");
+        if (!terminate_l2_after_graceful_failure(pid, &term_status)) {
+          lqprintf("stub: failed to reap l2 process group on stop-on-login\n");
+          return false;
+        }
       }
       log_l2_process_inventory("post-login-reap");
       log_l2_input_evidence();
@@ -2345,15 +2397,21 @@ static bool launch_l2_inner(enum l2_outcome *outcome, int *outcome_detail) {
     /* A run-window completion is the hot path. Diagnostics are emitted only
      * after outcome classification, unless runtime capture is explicitly on. */
     if (kernel_panic_logged) {
-      lqprintf("stub: l2 kernel panic found before timeout kill\n");
+      lqprintf("stub: l2 kernel panic found before window shutdown\n");
       *outcome = L2_OUTCOME_KERNEL_PANIC;
     } else {
       *outcome = L2_OUTCOME_RUN_WINDOW_COMPLETE;
     }
+    /* Shut the guest down the same way the ok path does: gracefully via
+     * QMP system_powerdown with the same 60 s budget the console
+     * poweroff path gets; signals are the last resort. */
     request_l2_shutdown(pid);
-    if (!reap_l2_process(pid, &status)) {
-      lqprintf("stub: failed to reap l2 process group\n");
-      return *outcome == L2_OUTCOME_KERNEL_PANIC;
+    if (!wait_l2_exit(pid, &status, L2_SHUTDOWN_BUDGET_POLLS, true)) {
+      lqprintf("stub: l2 shutdown budget expired; escalating\n");
+      if (!terminate_l2_after_graceful_failure(pid, &status)) {
+        lqprintf("stub: failed to reap l2 process group\n");
+        return *outcome == L2_OUTCOME_KERNEL_PANIC;
+      }
     }
     log_l2_process_inventory("post-window-reap");
     log_l2_input_evidence();

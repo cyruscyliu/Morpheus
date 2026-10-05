@@ -203,6 +203,60 @@ qemu_bundle_dir="${qemu_bridge_data_dir:-${bridge_source}/build/qemu-bundle/usr/
   exit 1
 }
 
+# Replay resume: when a replay stage re-runs in the same run dir (morpheus
+# workflow resume), continue where the previous invocation stopped instead of
+# replaying from input 0. The accumulated NQC2 trace is preserved as numbered
+# parts so the coverage postprocess can decode and merge all of them.
+replay_skip_count=0
+replay_prev_state_file=""
+if [ -f "${replay_state_file}" ] && [ "${#replay_inputs[@]}" -gt 0 ]; then
+  replay_prev_mode="$(node -e 'const fs=require("fs"); try { const s=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(String(s.mode || "")); } catch {}' "${replay_state_file}")"
+  if [ "${replay_prev_mode}" = "replay" ]; then
+    replay_prev_state_file="${replay_state_file}.resume-prev"
+    cp -f "${replay_state_file}" "${replay_prev_state_file}"
+    replay_skip_count="$(node - "${replay_prev_state_file}" "${runner_log_file}" <<'NODE'
+const fs = require("fs");
+let prevSkip = 0;
+try {
+  prevSkip = Number(JSON.parse(fs.readFileSync(process.argv[2], "utf8")).skip || 0) || 0;
+} catch {}
+let done = 0;
+try {
+  const fd = fs.openSync(process.argv[3], "r");
+  const size = fs.fstatSync(fd).size;
+  const buf = Buffer.alloc(1 << 24);
+  let carry = "";
+  let pos = 0;
+  const re = /executions: (\d+)/g;
+  while (pos < size) {
+    const n = fs.readSync(fd, buf, 0, buf.length, pos);
+    if (n <= 0) break;
+    pos += n;
+    const text = carry + buf.toString("utf8", 0, n);
+    let m;
+    while ((m = re.exec(text)) !== null) done = Number(m[1]) || done;
+    carry = text.slice(Math.max(0, text.length - 64));
+  }
+  fs.closeSync(fd);
+} catch {}
+process.stdout.write(String(prevSkip + done));
+NODE
+)"
+    if [ -f "${run_dir}/morpheus-l1-nqc2.trace" ]; then
+      replay_part_index=1
+      while [ -e "${run_dir}/morpheus-l1-nqc2.trace.part${replay_part_index}" ]; do
+        replay_part_index=$((replay_part_index + 1))
+      done
+      mv "${run_dir}/morpheus-l1-nqc2.trace" "${run_dir}/morpheus-l1-nqc2.trace.part${replay_part_index}"
+      echo "libafl replay resume: preserved trace part morpheus-l1-nqc2.trace.part${replay_part_index}" >&2
+    fi
+    if [ -s "${runner_log_file}" ]; then
+      cp -f "${runner_log_file}" "${runner_log_file}.resume-prev"
+    fi
+    echo "libafl replay resume: skipping ${replay_skip_count} already replayed inputs" >&2
+  fi
+fi
+
 mkdir -p "${run_dir}" "${l1_runtime_dir}" "${corpus_dir}" "${objective_dir}" "$(dirname "${result_file}")"
 find "${l1_runtime_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 find "${corpus_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
@@ -244,7 +298,7 @@ fi
 
 replay_enabled=false
 if [ "${#replay_inputs[@]}" -gt 0 ]; then
-  node - "${replay_inputs_file}" "${replay_state_file}" "${workspace_root}" "${repo_root}" "${replay_inputs[@]}" <<'NODE'
+  node - "${replay_inputs_file}" "${replay_state_file}" "${workspace_root}" "${repo_root}" "${replay_skip_count}" "${replay_prev_state_file}" "${replay_inputs[@]}" <<'NODE'
 const fs = require("fs");
 const crypto = require("crypto");
 const path = require("path");
@@ -252,7 +306,9 @@ const outputFile = process.argv[2];
 const stateFile = process.argv[3];
 const workspaceRoot = process.argv[4];
 const repoRoot = process.argv[5];
-const roots = process.argv.slice(6);
+const skipCount = parseInt(process.argv[6] || "0", 10) || 0;
+const prevStateFile = process.argv[7] || "";
+const roots = process.argv.slice(8);
 const inputs = [];
 function resolveInputPath(input) {
   const candidates = [
@@ -283,17 +339,43 @@ for (const root of roots) {
 }
 const unique = [...new Set(inputs)].sort();
 if (unique.length === 0) throw new Error("no replay inputs resolved");
-fs.writeFileSync(outputFile, `${unique.join("\n")}\n`);
-const entries = unique.map((file, index) => {
+const hashByPath = new Map();
+for (const file of unique) {
   const data = fs.readFileSync(file);
-  return { index, path: file, size: data.length, sha256: crypto.createHash("sha256").update(data).digest("hex") };
+  hashByPath.set(file, crypto.createHash("sha256").update(data).digest("hex"));
+}
+if (skipCount > 0) {
+  if (!prevStateFile || !fs.existsSync(prevStateFile)) {
+    throw new Error("replay resume requires the previous replay state in the run dir");
+  }
+  const prev = JSON.parse(fs.readFileSync(prevStateFile, "utf8"));
+  const prevInputs = prev.inputs || [];
+  if (skipCount > prevInputs.length) {
+    throw new Error(`replay resume: skip count ${skipCount} exceeds the previous input count ${prevInputs.length}`);
+  }
+  for (let i = 0; i < skipCount; i++) {
+    if (prevInputs[i].sha256 !== hashByPath.get(unique[i])) {
+      throw new Error(`replay resume: input ${i} (${unique[i]}) changed since the previous run; refusing to resume`);
+    }
+  }
+}
+const replayable = skipCount < unique.length
+  ? unique.slice(skipCount)
+  : unique.slice(unique.length - 1);
+fs.writeFileSync(outputFile, `${replayable.join("\n")}\n`);
+const entries = replayable.map((file, index) => {
+  const data = fs.readFileSync(file);
+  return { index, path: file, size: data.length, sha256: hashByPath.get(file) };
 });
+const fullInputs = unique.map((file) => ({ path: file, sha256: hashByPath.get(file) }));
 fs.writeFileSync(stateFile, JSON.stringify({
   schemaVersion: 1,
   tool: "libafl",
   mode: "replay",
-  inputCount: entries.length,
-  inputs: entries,
+  skip: Math.min(skipCount, unique.length - 1),
+  inputCount: unique.length,
+  replayCount: entries.length,
+  inputs: fullInputs,
   runtimeGroups: [],
 }, null, 2));
 NODE

@@ -29,7 +29,7 @@ if [ -d "${trace_path}" ]; then
     [ -s "${candidate}" ] || continue
     trace_files+=("${candidate}")
   done < <(
-    find "${trace_path}" -type f -name 'morpheus-nqc2.trace' -print0 | sort -z
+    find "${trace_path}" -type f \( -name 'morpheus-nqc2.trace' -o -name 'morpheus-l1-nqc2.trace*' \) -print0 | sort -z
   )
 else
   if [ ! -f "${trace_path}" ]; then
@@ -73,18 +73,23 @@ trace_index=0
 for trace_file in "${trace_files[@]}"; do
   canonical_trace="${tmp_dir}/trace-${trace_index}.etrace"
   trace_magic="$(od -An -tx1 -N2 "${trace_file}" | tr -d ' \n')"
-  if [ "${trace_magic}" = "1f8b" ]; then
-    if ! command -v gzip >/dev/null 2>&1; then
-      echo "gzip is required to process compressed NQC2 trace: ${trace_file}" >&2
-      exit 1
+    if [ "${trace_magic}" = "1f8b" ]; then
+      if ! command -v gzip >/dev/null 2>&1; then
+        echo "gzip is required to process compressed NQC2 trace: ${trace_file}" >&2
+        exit 1
+      fi
+      # A crashed replay leaves a truncated final gzip stream; keep whatever
+      # was decoded instead of failing the whole postprocess.
+      if ! gzip -cd -- "${trace_file}" > "${canonical_trace}"; then
+        if [ ! -s "${canonical_trace}" ]; then
+          echo "failed to decompress NQC2 trace: ${trace_file}" >&2
+          exit 1
+        fi
+        echo "warning: NQC2 trace is truncated, processing partial data: ${trace_file}" >&2
+      fi
+    else
+      cp "${trace_file}" "${canonical_trace}"
     fi
-    if ! gzip -cd -- "${trace_file}" > "${canonical_trace}"; then
-      echo "failed to decompress NQC2 trace: ${trace_file}" >&2
-      exit 1
-    fi
-  else
-    cp "${trace_file}" "${canonical_trace}"
-  fi
 
   # Clear the TB-chaining info flag so qemu-etrace accepts the trace for
   # coverage. Each QEMU process writes its own header.

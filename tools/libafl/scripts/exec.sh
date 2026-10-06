@@ -1015,23 +1015,45 @@ function flushRuntimeGroup() {
   pendingOutcome = null;
 }
 const logPrefix = "LQPRINTF: ";
-const content = fs.readFileSync(logFile, "utf8");
-for (const line of content.split(/\r?\n/)) {
+// Stream the log line by line: a long fuzzing campaign produces a launcher
+// log that exceeds the Node string limit, so the file cannot be read whole.
+function forEachLogLine(file, callback) {
+  const fd = fs.openSync(file, "r");
+  try {
+    const size = fs.fstatSync(fd).size;
+    const buf = Buffer.alloc(1 << 24);
+    let carry = "";
+    let pos = 0;
+    while (pos < size) {
+      const n = fs.readSync(fd, buf, 0, buf.length, pos);
+      if (n <= 0) break;
+      pos += n;
+      const text = carry + buf.toString("utf8", 0, n);
+      const lines = text.split(/\r?\n/);
+      carry = lines.pop() || "";
+      for (const line of lines) callback(line);
+    }
+    if (carry) callback(carry);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+forEachLogLine(logFile, (line) => {
   const index = line.indexOf(logPrefix);
   const message = index >= 0 ? line.slice(index + logPrefix.length) : line;
   let match = message.match(/^stub-outcome kind=(kernel-panic|launcher-exit|launcher-signal|harness-error) detail=(-?\d+)$/);
   if (match) {
     pendingOutcome = { kind: match[1], detail: Number(match[2]) };
-    continue;
+    return;
   }
   match = message.match(/^stub-runtime begin name=([A-Za-z0-9._-]+) size=(\d+) dumped=(\d+) truncated=([01])$/);
-  if (match) { resetRecord(match[1], match[2], match[3], match[4]); continue; }
+  if (match) { resetRecord(match[1], match[2], match[3], match[4]); return; }
   match = message.match(/^stub-runtime data name=([A-Za-z0-9._-]+) offset=(\d+) hex=([0-9a-f]*)$/);
   if (match) {
     const record = recordFor(match[1]);
-    if (!record || !/^(?:[0-9a-f]{2})*$/.test(match[3])) continue;
+    if (!record || !/^(?:[0-9a-f]{2})*$/.test(match[3])) return;
     record.chunks.set(Number(match[2]), Buffer.from(match[3], "hex"));
-    continue;
+    return;
   }
   match = message.match(/^stub-runtime end name=([A-Za-z0-9._-]+)$/);
   if (match) {
@@ -1040,10 +1062,10 @@ for (const line of content.split(/\r?\n/)) {
       record.complete = true;
       if (!replayMode && !pendingOutcome) writeRecordToDir(outputDir, match[1], record);
     }
-    continue;
+    return;
   }
   if (message === "stub: dumped runtime files to log") flushRuntimeGroup();
-}
+});
 flushRuntimeGroup();
 if (outcomes.length > 0) {
   fs.writeFileSync(path.join(outputDir, "outcomes.json"), JSON.stringify(outcomes, null, 2));
@@ -1062,24 +1084,43 @@ extract_l2_startup_timing_from_log() {
   node - "${runner_log_file}" "${l2_timing_file}" "${l2_smp}" <<'NODE'
 const fs = require("fs");
 const [logFile, outputFile, smpRaw] = process.argv.slice(2);
-const content = fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8") : "";
+// Stream the log in chunks: a long campaign's launcher log exceeds the Node
+// string limit, so it cannot be read whole.
 const samples = [];
-const complete = /stub-l2-startup-timing start_ns=(\d+) ready_ns=(\d+) duration_ns=(\d+)/g;
-for (const match of content.matchAll(complete)) {
-  const startNs = BigInt(match[1]);
-  const readyNs = BigInt(match[2]);
-  const durationNs = BigInt(match[3]);
-  samples.push({
-    qemu_exec_start_ns: startNs.toString(),
-    buildroot_ready_ns: readyNs.toString(),
-    duration_ms: Number(durationNs) / 1e6,
-  });
+const incomplete = [];
+{
+  const fd = fs.existsSync(logFile) ? fs.openSync(logFile, "r") : null;
+  if (fd !== null) {
+    try {
+      const size = fs.fstatSync(fd).size;
+      const buf = Buffer.alloc(1 << 24);
+      let carry = "";
+      let pos = 0;
+      while (pos < size) {
+        const n = fs.readSync(fd, buf, 0, buf.length, pos);
+        if (n <= 0) break;
+        pos += n;
+        const text = carry + buf.toString("utf8", 0, n);
+        carry = text.slice(Math.max(0, text.length - 128));
+        const complete = /stub-l2-startup-timing start_ns=(\d+) ready_ns=(\d+) duration_ns=(\d+)/g;
+        let match;
+        while ((match = complete.exec(text)) !== null) {
+          samples.push({
+            qemu_exec_start_ns: match[1],
+            buildroot_ready_ns: match[2],
+            duration_ms: Number(BigInt(match[3])) / 1e6,
+          });
+        }
+        const partial = /stub-l2-startup-timing-incomplete start_seen=(\d+) ready_seen=(\d+)/g;
+        while ((match = partial.exec(text)) !== null) {
+          incomplete.push({ start_seen: match[1] === "1", ready_seen: match[2] === "1" });
+        }
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
 }
-const incomplete = [...content.matchAll(/stub-l2-startup-timing-incomplete start_seen=(\d+) ready_seen=(\d+)/g)]
-  .map((match) => ({
-    start_seen: match[1] === "1",
-    ready_seen: match[2] === "1",
-  }));
 const smp = /^\d+$/.test(smpRaw || "") ? Number(smpRaw) : null;
 fs.writeFileSync(outputFile, `${JSON.stringify({
   schemaVersion: 1,

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# opt-15 is an internal implementation detail. Evaluation runs must enter
+# CodeQL is an internal implementation detail. Evaluation runs must enter
 # through the Morpheus tool/workflow so stage state, locks, manifests,
 # artifacts, and provenance are recorded.
 
@@ -10,7 +10,9 @@ output_dir="${MORPHEUS_SDG_EXTRACTOR_OUTPUT:?}"
 build_dir="${MORPHEUS_SDG_EXTRACTOR_BUILD_DIR:-${tool_root}/builds/default/build}"
 result_file="${MORPHEUS_SDG_EXTRACTOR_RESULT_FILE:-${MORPHEUS_SCRIPT_RESULT_FILE:?}}"
 
-bitcode_list="${MORPHEUS_SDG_EXTRACTOR_BITCODE_LIST:-}"
+# The analysis input list: source files to analyze, one path per line. The
+# flag name is retained from the replaced LLVM implementation.
+input_list="${MORPHEUS_SDG_EXTRACTOR_BITCODE_LIST:-}"
 
 mkdir -p "${output_dir}"
 
@@ -32,132 +34,170 @@ log() {
 log "sdg-extractor exec start"
 log "output_dir=${output_dir}"
 
-plugin="${build_dir}/src/llvm-pass/SDGExtractPass.so"
-extapi_bc="${tool_root}/third_party/SVF/install/lib/extapi.bc"
-if [ ! -f "${plugin}" ]; then
-  log "error: pass plugin not found at ${plugin}; run build first"
+CODEQL="${CODEQL:-codeql}"
+codeql_bin="$(command -v "${CODEQL}")"
+codeql_dist="$(cd "$(dirname "${codeql_bin}")/.." && pwd)"
+queries_dir="${tool_root}/queries"
+extract_query="${queries_dir}/sdg/SdgExtract.ql"
+if [ ! -f "${extract_query}" ]; then
+  log "error: extract query not found at ${extract_query}"
   exit 1
 fi
-if [ ! -f "${extapi_bc}" ]; then
-  log "error: SVF extapi.bc not found at ${extapi_bc}; run third_party/SVF/build-svf.sh"
+
+if [ -n "${input_list}" ] && [ ! -e "${input_list}" ]; then
+  log "error: required input not found: ${input_list}"
   exit 1
 fi
 
-for f in "${bitcode_list}"; do
-  if [ -n "${f}" ] && [ ! -e "${f}" ]; then
-    log "error: required input not found: ${f}"
-    exit 1
-  fi
-done
-
-bitcode_count=0
-if [ -n "${bitcode_list}" ] && [ -f "${bitcode_list}" ]; then
-  bitcode_count=$(wc -l < "${bitcode_list}" | tr -d ' ')
+if [ -n "${input_list}" ] && [ ! -f "${input_list}" ]; then
+  log "error: input list is not a file: ${input_list}"
+  exit 1
 fi
 
-log "plugin=${plugin}"
-log "bitcode files=${bitcode_count}"
+input_count=0
+if [ -n "${input_list}" ] && [ -f "${input_list}" ]; then
+  input_count=$(wc -l < "${input_list}" | tr -d ' ')
+fi
+
+log "input files=${input_count}"
 
 work_dir="${output_dir}/work"
 mkdir -p "${work_dir}"
 
-OPT="${OPT:-opt-15}"
-LLVM_LINK="${LLVM_LINK:-llvm-link-15}"
-
-# Resolve bitcode paths. llbic emits paths relative to a kbuild-* subdirectory
-# of the directory containing the bitcode list.
-bc_list_dir=""
-bc_search_dir=""
-if [ -n "${bitcode_list}" ] && [ -f "${bitcode_list}" ]; then
-  bc_list_dir="$(cd "$(dirname "${bitcode_list}")" && pwd)"
-  bc_search_dir="$(find "${bc_list_dir}" -maxdepth 1 -type d -name 'kbuild-*' | head -n 1)"
-fi
-
-resolve_bc() {
-  local ent="$1"
-  if [ -z "${ent}" ]; then
-    return
-  fi
-  if [ -f "${ent}" ]; then
-    printf '%s' "${ent}"
-    return
-  fi
-  if [ -n "${bc_list_dir}" ] && [ -f "${bc_list_dir}/${ent}" ]; then
-    printf '%s' "${bc_list_dir}/${ent}"
-    return
-  fi
-  if [ -n "${bc_search_dir}" ] && [ -f "${bc_search_dir}/${ent}" ]; then
-    printf '%s' "${bc_search_dir}/${ent}"
-    return
-  fi
-}
-
-# Collect existing bitcode files. If there is more than one, link them into a
-# single module so the pass can reason about cross-function dataflow.
-bc_files=()
-while IFS= read -r bc_entry; do
-  [ -z "${bc_entry}" ] && continue
-  bc_file="$(resolve_bc "${bc_entry}")"
-  if [ -z "${bc_file}" ]; then
-    log "warning: missing bitcode ${bc_entry}"
+# Collect existing source files.
+src_files=()
+while IFS= read -r entry; do
+  [ -z "${entry}" ] && continue
+  if [ ! -f "${entry}" ]; then
+    log "warning: missing source ${entry}"
     continue
   fi
-  bc_files+=("${bc_file}")
-done < "${bitcode_list}"
+  src_files+=("${entry}")
+done < "${input_list}"
 
-if [ ${#bc_files[@]} -eq 0 ]; then
-  log "error: no bitcode files to process"
+if [ ${#src_files[@]} -eq 0 ]; then
+  log "error: no source files to analyze"
   exit 1
 fi
 
-merged_bc="${work_dir}/merged.bc"
-if [ ${#bc_files[@]} -eq 1 ]; then
-  merged_bc="${bc_files[0]}"
-else
-  log "linking ${#bc_files[@]} bitcode modules into ${merged_bc}"
-  "${LLVM_LINK}" -o "${merged_bc}" "${bc_files[@]}"
-fi
+# One CodeQL database per input file. Functions with the same name across
+# translation units collapse IR extraction, so each file gets its own
+# database and its results carry the input's provenance.
+bqrs_list="${work_dir}/bqrs.list"
+: > "${bqrs_list}"
+db_root="${work_dir}/databases"
+mkdir -p "${db_root}"
 
-log "extracting from ${merged_bc}"
-"${OPT}" -load-pass-plugin "${plugin}" \
-  -passes=sdg-extract \
-  -sdg-output "${rules_file}" \
-  -sdg-extapi "${extapi_bc}" \
-  "${merged_bc}" \
-  -o /dev/null
+for src_file in "${src_files[@]}"; do
+  base="$(basename "${src_file}")"
+  base="${base%.*}"
+  db_dir="${db_root}/${base}"
+  rm -rf "${db_dir}"
+  mkdir -p "${db_dir}"
 
-# The pass writes a single combined JSON; split it into the three artifact files.
-python3 - <<PYEOF
+  build_sh="${db_dir}/build.sh"
+  {
+    printf '#!/bin/sh\n'
+    printf 'gcc -c -O1 "%s" -o /dev/null\n' "${src_file}"
+  } > "${build_sh}"
+  chmod +x "${build_sh}"
+
+  log "creating database for ${src_file}"
+  if ! "${CODEQL}" database create "${db_dir}/db" \
+      --language=cpp --overwrite \
+      --command="sh ${build_sh}" >> "${log_file}" 2>&1; then
+    log "error: database creation failed for ${src_file}"
+    exit 1
+  fi
+
+  log "extracting rules from ${src_file}"
+  bqrs="${db_dir}/extract.bqrs"
+  if ! "${CODEQL}" query run "${extract_query}" \
+      --search-path="${codeql_dist}/qlpacks:${queries_dir}" \
+      --database="${db_dir}/db" \
+      --output="${bqrs}" >> "${log_file}" 2>&1; then
+    log "error: rule extraction failed for ${src_file}"
+    exit 1
+  fi
+
+  printf '%s\n' "${bqrs}" >> "${bqrs_list}"
+done
+
+export PATH="$(dirname "${codeql_bin}"):$PATH"
+
+# Merge the per-input BQRS results into one combined JSON. Items sharing a
+# canonical (section, key) identity collapse to the first instance (the
+# type-keyed cross-file join of the replaced LLVM implementation); the
+# coverage sections (heads/predicates) are per-database counts and are
+# skipped.
+python3 - "${output_dir}" "${bqrs_list}" <<'PYEOF'
+import csv
+import io
 import json
+import os
+import subprocess
+import sys
 
-with open("${rules_file}") as f:
-    data = json.load(f)
+output_dir = sys.argv[1]
+bqrs_files = []
+with open(sys.argv[2]) as f:
+    for line in f:
+        line = line.strip()
+        if line:
+            bqrs_files.append(line)
 
-version = data.get("version", "0.2.0")
-with open("${nodes_file}", "w") as f:
-    json.dump({"version": version,
-               "count": data.get("nodes", {}).get("count", 0),
-               "nodes": data.get("nodes", {}).get("nodes", [])}, f, indent=2)
-with open("${edges_file}", "w") as f:
-    edges = data.get("edges", {})
-    json.dump({"version": version,
-               "self_count": edges.get("self_count", 0),
-               "cross_count": edges.get("cross_count", 0),
-               "self_edges": edges.get("self_edges", []),
-               "cross_edges": edges.get("cross_edges", [])}, f, indent=2)
-with open("${rules_file}", "w") as f:
-    json.dump({"version": version,
-               "count": data.get("rules", {}).get("count", 0),
-               "rules": data.get("rules", {}).get("rules", [])}, f, indent=2)
+SKIP_SECTIONS = {"heads", "predicates"}
+sections = {}
 
-print(f"merged: {data.get('nodes',{}).get('count',0)} nodes, "
-      f"{data.get('edges',{}).get('self_count',0)} self edges, "
-      f"{data.get('edges',{}).get('cross_count',0)} cross edges, "
-      f"{data.get('rules',{}).get('count',0)} rules")
+for bqrs in bqrs_files:
+    out = subprocess.run(
+        ["codeql", "bqrs", "decode", bqrs, "--format=csv"],
+        capture_output=True, text=True,
+    ).stdout
+    rows = list(csv.reader(io.StringIO(out)))
+    for row in rows[1:]:
+        if len(row) < 3:
+            continue
+        section, key, json_text = row[0], row[1], row[2]
+        if section in SKIP_SECTIONS:
+            continue
+        if section not in sections:
+            sections[section] = {}
+        sections[section].setdefault(key, json_text)
+
+def items(section):
+    return [
+        {"section": section, "key": key, "json": json.loads(text)}
+        for key, text in sorted(sections.get(section, {}).items())
+    ]
+
+src = [it["json"] for it in items("sources")]
+se = [it["json"] for it in items("self_edges")]
+ce = [it["json"] for it in items("cross_edges")]
+rl = [it["json"] for it in items("rules")]
+
+with open(os.path.join(output_dir, "sdg-nodes.json"), "w") as f:
+    json.dump({"version": "0.4.0",
+               "count": len(src),
+               "nodes": src}, f, indent=2)
+with open(os.path.join(output_dir, "sdg-edges.json"), "w") as f:
+    json.dump({"version": "0.4.0",
+               "self_count": len(se),
+               "cross_count": len(ce),
+               "self_edges": se,
+               "cross_edges": ce}, f, indent=2)
+with open(os.path.join(output_dir, "sdg-rules.json"), "w") as f:
+    json.dump({"version": "0.4.0",
+               "count": len(rl),
+               "rules": rl}, f, indent=2)
+
+print(f"merged: {len(src)} sources, {len(se)} self edges, "
+      f"{len(ce)} cross edges, {len(rl)} rules")
 PYEOF
 
-# Convert the JSON rules into the line-oriented .sdg files used by libafl.
-"${tool_root}/scripts/convert_to_sdg.py" \
+# The pass wrote a single combined JSON; convert the JSON rules into the
+# line-oriented .sdg files used by libafl.
+python3 "${tool_root}/scripts/convert_to_sdg.py" \
   --rules "${rules_file}" \
   --output "${sdg_files_dir}"
 
@@ -165,10 +205,10 @@ cat > "${manifest_file}" <<EOF
 {
   "command": "exec",
   "status": "success",
-  "summary": "extracted SDG rules from bitcode",
+  "summary": "extracted SDG rules from source",
   "details": {
     "output": "${output_dir}",
-    "bitcode_count": ${bitcode_count}
+    "input_count": ${input_count}
   },
   "paths": {
     "manifest": {
@@ -215,10 +255,10 @@ EOF
 
 cat > "${result_file}" <<EOF
 {
-  "summary": "extracted SDG rules from bitcode",
+  "summary": "extracted SDG rules from source",
   "details": {
     "output": "${output_dir}",
-    "bitcode_count": ${bitcode_count}
+    "input_count": ${input_count}
   },
   "artifacts": [
     { "path": "manifest", "location": "${manifest_file}" },

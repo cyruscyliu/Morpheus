@@ -29,7 +29,7 @@
     "schemaVersion": 1,
     "modes": ["local"],
     "local": {
-      "sourceTemplate": "tools/sdg-extractor/src",
+      "sourceTemplate": "tools/sdg-extractor/queries",
       "buildDirTemplate": "tools/sdg-extractor/builds/{buildDirKey}/build",
       "outputDirTemplate": "tools/sdg-extractor/builds/{buildDirKey}/output",
       "artifacts": {

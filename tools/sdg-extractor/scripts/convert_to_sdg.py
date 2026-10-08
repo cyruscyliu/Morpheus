@@ -309,11 +309,33 @@ def convert_rule(rule: dict) -> str:
         if var is None:
             continue
         src = var.get("source", {})
+        pred = precondition.get("predicate", {})
+        # Internal-state preconditions are expanded to their physical origins,
+        # preserving OR/PHI/select disjunctions as multiple independent
+        # precondition lines.
+        if src.get("class") == "InternalState":
+            origins = src.get("origins", [])
+            if not origins:
+                continue
+            for origin_id in origins:
+                origin_var = vars_by_id.get(origin_id)
+                if origin_var is None:
+                    continue
+                origin_src = origin_var.get("source", {})
+                try:
+                    region_for_source(origin_src)
+                except ValueError:
+                    continue
+                if predicate_is_valid(pred, origin_src):
+                    expanded = precondition.copy()
+                    expanded["src"] = origin_id
+                    valid_preconditions.append(expanded)
+            continue
         try:
             region_for_source(src)
         except ValueError:
             continue
-        if predicate_is_valid(precondition.get("predicate", {}), src):
+        if predicate_is_valid(pred, src):
             valid_preconditions.append(precondition)
     if rule.get("preconditions") and not valid_preconditions:
         raise ValueError("no physically resolvable precondition remains")

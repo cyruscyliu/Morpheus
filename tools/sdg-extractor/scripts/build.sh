@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build the sdg-extractor C++ LLVM pass and SdgSvfCore library.
-# Expects MORPHEUS_SDG_EXTRACTOR_BUILD_DIR from the managed runner.
+# Compile the sdg-extractor CodeQL query pack. Expects
+# MORPHEUS_SDG_EXTRACTOR_BUILD_DIR from the managed runner.
 
 tool_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${tool_root}/../_shared/scripts/lock.sh"
@@ -13,7 +13,11 @@ morpheus_lock_acquire "${MORPHEUS_SDG_EXTRACTOR_SOURCE:-${tool_root}}.morpheus.l
 morpheus_build_lock sdg-extractor "${build_dir_key}"
 trap morpheus_lock_release EXIT INT TERM
 
-plugin="${build_dir}/src/llvm-pass/SDGExtractPass.so"
+CODEQL="${CODEQL:-codeql}"
+codeql_bin="$(command -v "${CODEQL}")"
+codeql_dist="$(cd "$(dirname "${codeql_bin}")/.." && pwd)"
+queries_dir="${tool_root}/queries"
+extract_query="${queries_dir}/sdg/SdgExtract.ql"
 
 mkdir -p "${build_dir}"
 
@@ -21,35 +25,11 @@ log() {
   printf '%s\n' "$*" >&2
 }
 
-# Force a fresh CMake configuration if the project layout has changed.
-rm -rf "${build_dir}/CMakeCache.txt" "${build_dir}/CMakeFiles"
+log "compiling sdg-extractor query pack"
 
-# Build SVF if it has not been built yet. The networking memcpy field-bounds
-# patch lives in the parent repo, is auto-applied for the SVF build, and is
-# reverted afterwards so the SVF submodule always ends clean at its recorded
-# commit. The install directory keeps the patched build; the stamp records
-# the patch fingerprint so repeated builds skip the rebuild.
-svf_install="${tool_root}/third_party/SVF/install"
-svf_stamp="${svf_install}/.sdg-patches-applied"
-svf_patch_fingerprint="$(cd "${tool_root}" && sha256sum \
-  patches/svf-*.patch | sha256sum | cut -d' ' -f1)"
-
-if [ ! -f "${svf_install}/lib/cmake/SVF/SVFConfig.cmake" ] ||
-   [ ! -f "${svf_stamp}" ] ||
-   [ "$(cat "${svf_stamp}" 2>/dev/null)" != "${svf_patch_fingerprint}" ]; then
-  "${tool_root}/scripts/build-svf.sh"
-  printf '%s\n' "${svf_patch_fingerprint}" > "${svf_stamp}"
-fi
-
-cmake -S "${tool_root}" -B "${build_dir}" \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DLLVM_DIR=/usr/lib/llvm-15/cmake \
-  >/dev/null
-
-make -C "${build_dir}" -j"$(nproc)"
-
-if [ ! -f "${plugin}" ]; then
-  echo "error: SDGExtractPass.so was not built" >&2
+if ! "${CODEQL}" query compile "${extract_query}" \
+    --search-path="${codeql_dist}/qlpacks" >&2; then
+  echo "error: sdg-extractor query compilation failed" >&2
   exit 1
 fi
 
@@ -57,10 +37,10 @@ cat > "${build_dir}/manifest.json" <<EOF
 {
   "command": "build",
   "status": "success",
-  "summary": "built sdg-extractor LLVM pass",
+  "summary": "compiled sdg-extractor query pack",
   "details": {
     "build_dir": "${build_dir}",
-    "plugin": "${plugin}"
+    "query": "sdg/SdgExtract.ql"
   },
   "paths": {
     "build-dir": {
@@ -68,29 +48,29 @@ cat > "${build_dir}/manifest.json" <<EOF
       "runtime_path": "${build_dir}",
       "resolved_path": "${build_dir}"
     },
-    "plugin": {
-      "portable": "src/llvm-pass/SDGExtractPass.so",
-      "runtime_path": "${plugin}",
-      "resolved_path": "${plugin}"
+    "query": {
+      "portable": "sdg/SdgExtract.ql",
+      "runtime_path": "${extract_query}",
+      "resolved_path": "${extract_query}"
     }
   },
   "artifacts": {
     "build-dir": true,
-    "plugin": true
+    "query": true
   }
 }
 EOF
 
 cat > "${result_file}" <<EOF
 {
-  "summary": "built sdg-extractor LLVM pass",
+  "summary": "compiled sdg-extractor query pack",
   "details": {
     "build_dir": "${build_dir}",
-    "plugin": "${plugin}"
+    "query": "sdg/SdgExtract.ql"
   },
   "artifacts": [
     { "path": "build-dir", "location": "${build_dir}" },
-    { "path": "plugin", "location": "${plugin}" }
+    { "path": "query", "location": "${extract_query}" }
   ]
 }
 EOF

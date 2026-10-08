@@ -1,0 +1,5 @@
+name: morpheus/sdg-extractor
+version: 0.4.0
+library: false
+dependencies:
+  codeql/cpp-all: "*"

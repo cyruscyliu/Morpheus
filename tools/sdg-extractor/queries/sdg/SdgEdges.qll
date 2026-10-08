@@ -448,6 +448,60 @@ float triggerConfidence(string pred) {
 }
 
 /**
+ * A precondition on a rule: a guard whose controlled region contains the
+ * sink's execution. The gate's node id and predicate come from the same
+ * predicate-shape analysis as the head_guard self-edges; the association
+ * is control dependence on the sink's block, never name matching. A gate
+ * on the rule source itself is the trigger, not a precondition.
+ */
+predicate sdgRulePrecondition(SdgSink sink, SdgSourceNode ruleSource,
+                              SdgSourceNode gateNode, string preJson) {
+  exists(GuardCondition g, BasicBlock bb, string gatePred |
+    sink.getBasicBlock() = bb and g.controls(bb, _) and
+    (
+      // Bit-test gates: BitSet(bit) on the features node.
+      exists(BitTestSource node, int fbit, int bitValue |
+        g = node and
+        bitTestHelper(normalizeCalleeName(node.getTarget().getName()), _, fbit, _) and
+        fbit < node.getNumberOfArguments() and
+        bitValue = constValueOf(node.getArgument(fbit)) and
+        featureBitName(bitValue) != "" |
+        gateNode = node and gatePred = bitSetPred(bitValue)
+      )
+      or
+      // Comparison gates on a surface read.
+      exists(ComparisonOperation cmp, Expr varOperand, SdgSourceNode read |
+        g = cmp and
+        comparisonPredicate(cmp, varOperand, gatePred) and
+        definingReadOf(varOperand) = read |
+        gateNode = read
+      )
+      or
+      // Truth-test gates on a surface read.
+      exists(Expr cond, Expr varOperand, SdgSourceNode read |
+        g = cond and
+        truthPredicate(cond, varOperand, gatePred) and
+        definingReadOf(varOperand) = read |
+        gateNode = read
+      )
+      or
+      // Mask truth-test gates.
+      exists(BitwiseAndExpr maskExpr, Expr varOperand, SdgSourceNode read |
+        g = maskExpr and
+        maskPredicate(maskExpr, varOperand, gatePred) and
+        definingReadOf(varOperand) = read |
+        gateNode = read
+      )
+    ) and
+    gateNode != ruleSource |
+    preJson = "{\"src\":" + jsonString(gateNode.getId()) +
+              ",\"dst\":" + jsonString(ruleSource.getId()) +
+              ",\"head\":\"head_guard\"" +
+              ",\"predicate\":" + predicateJSON(gatePred) + "}"
+  )
+}
+
+/**
  * An assembled rule: a physically resolvable physical-origin source, a
  * trigger predicate, and the fired sink evidence. One row per
  * (sink, trigger); the id, predicate, and json derive from the same
@@ -459,8 +513,12 @@ predicate sdgRuleRow(SdgSink sink, string id, string pred, string json) {
     arg = sink.getArgument(sink.getArgIndex()) and
     proximate = definingReadOf(arg) and
     // Internal-state values resolve to the physical read their value came
-    // from.
+    // from. The original backs a rule only when the physical origin
+    // resolves to exactly one read; several candidate origins cannot be
+    // attributed to the sizes flowing from them.
     ruleSource = physicalOriginOf(proximate) and
+    not exists(SdgSourceNode other |
+      physicalOriginOf(proximate) = other and other != ruleSource) and
     ruleSource.isPhysicallyResolvable() and
     // The trigger: a self-edge on the physical origin (never Ne), or the
     // destination-capacity bound when no self-edge bounds the value.
@@ -500,8 +558,18 @@ predicate sdgRuleRow(SdgSink sink, string id, string pred, string json) {
            ",\"function\":" + jsonString(sink.getEnclosingFunction().getName()) +
            ",\"vars\":[" +
            "{\"id\":" + jsonString(ruleSource.getId()) +
-           ",\"source\":" + ruleSource.getSourceJSON() + "}]" +
-           ",\"preconditions\":[]," +
+           ",\"source\":" + ruleSource.getSourceJSON() + "}" +
+           concat(string vj |
+             exists(SdgSourceNode gateNode |
+               sdgRulePrecondition(sink, ruleSource, gateNode, _) |
+               vj = ",{\"id\":" + jsonString(gateNode.getId()) +
+                    ",\"source\":" + gateNode.getSourceJSON() + "}") |
+             vj, ",") +
+           "]" +
+           ",\"preconditions\":[" +
+           concat(string pj |
+             sdgRulePrecondition(sink, ruleSource, _, pj) |
+             pj, ",") + "]," +
            "\"target_state\":{\"src\":" + jsonString(ruleSource.getId()) +
            ",\"dst\":" + jsonString(ruleSource.getId()) +
            ",\"head\":" + jsonString(triggerHead) +

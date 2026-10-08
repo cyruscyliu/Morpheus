@@ -1,4 +1,11 @@
-/* Fixture: feature-bit guard controls use of another MMIO field. */
+/* Fixture: feature-bit guard controls use of another MMIO field.
+ *
+ * The feature-bit gate (bit 3 on the features register) controls the block
+ * containing the kmalloc() sink, so the extractor must emit the bit_set:3
+ * head_guard self-edge on the features node and attach the same gate to the
+ * mtu rule as a head_guard precondition (src the features node, dst the mtu
+ * node); the mtu comparison is the trigger, never a precondition.
+ */
 
 typedef unsigned int u32;
 typedef unsigned long size_t;

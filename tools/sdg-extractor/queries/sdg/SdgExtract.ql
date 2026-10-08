@@ -11,9 +11,8 @@
  *   predicates  predicate-model coverage
  *   rules       assembled rules
  *
- * The query is the main implementation; the AST source catalog
- * (tools/sdg-extractor/ast) is the comparison oracle, and
- * scripts/compare.py diffs the two result sets.
+ * The query is the main implementation; tests/fixtures pin the expected
+ * behavior per scenario.
  */
 
 import cpp

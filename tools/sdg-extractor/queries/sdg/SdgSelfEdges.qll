@@ -147,8 +147,8 @@ predicate maskPredicate(BitwiseAndExpr maskExpr, Expr varOperand,
                         string pred) {
   exists(int mask, int bit |
     varOperand = maskExpr.getLeftOperand() and
-    mask = constValueOf(maskExpr.getRightOperand()) and
-    bit in [0..29] and
+    mask = maskValueOf(maskExpr.getRightOperand()) and
+    bit in [0..31] and
     mask.bitAnd(pow2Of(bit)) = pow2Of(bit) and
     (polarityIsSet(maskExpr) and pred = bitSetPred(bit)
      or
@@ -157,8 +157,8 @@ predicate maskPredicate(BitwiseAndExpr maskExpr, Expr varOperand,
   or
   exists(int mask, int bit |
     varOperand = maskExpr.getRightOperand() and
-    mask = constValueOf(maskExpr.getLeftOperand()) and
-    bit in [0..29] and
+    mask = maskValueOf(maskExpr.getLeftOperand()) and
+    bit in [0..31] and
     mask.bitAnd(pow2Of(bit)) = pow2Of(bit) and
     (polarityIsSet(maskExpr) and pred = bitSetPred(bit)
      or

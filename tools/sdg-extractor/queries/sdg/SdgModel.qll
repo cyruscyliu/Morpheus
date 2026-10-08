@@ -79,8 +79,59 @@ string normalizeCalleeName(string name) {
 int pow2Of(int n) {
   n = 0 and result = 1
   or
-  n in [1..29] and result = 2 * pow2Of(n - 1)
+  n in [1..31] and result = 2 * pow2Of(n - 1)
 }
+
+/**
+ * The unsigned decimal text of 2^n. 2^31 is beyond the positive int range
+ * (it wraps to a negative int) and is emitted directly, so mutation masks
+ * round-trip as unsigned values.
+ */
+bindingset[n]
+string pow2Text(int n) {
+  n = 31 and result = "2147483648"
+  or
+  n in [0..30] and result = pow2Of(n).toString()
+}
+
+/**
+ * Parses a decimal digit string into a 32-bit two's-complement int: QL
+ * arithmetic wraps at the int range, so constants beyond the positive
+ * range fold into the negative half. Only plain decimal text folds.
+ */
+bindingset[v]
+int wrap32(string v) {
+  v.regexpMatch("[0-9]{1,10}") and
+  (v.length() <= 5 and result = chunkValue(v)
+   or
+   v.length() in [6..10] and
+   result = chunkValue(v.substring(0, v.length() - 5)) * 100000 +
+            chunkValue(v.substring(v.length() - 5, v.length())))
+}
+
+/** The decimal value of a digit string of at most five digits. */
+bindingset[s]
+int chunkValue(string s) {
+  s.regexpMatch("[0-9]{1,5}") and
+  (s.length() = 1 and result = digitAt(s, 0)
+   or
+   s.length() = 2 and result = digitAt(s, 0) * 10 + digitAt(s, 1)
+   or
+   s.length() = 3 and
+   result = digitAt(s, 0) * 100 + digitAt(s, 1) * 10 + digitAt(s, 2)
+   or
+   s.length() = 4 and
+   result = digitAt(s, 0) * 1000 + digitAt(s, 1) * 100 + digitAt(s, 2) * 10 +
+            digitAt(s, 3)
+   or
+   s.length() = 5 and
+   result = digitAt(s, 0) * 10000 + digitAt(s, 1) * 1000 + digitAt(s, 2) * 100 +
+            digitAt(s, 3) * 10 + digitAt(s, 4))
+}
+
+/** The decimal digit at position i. */
+bindingset[s, i]
+int digitAt(string s, int i) { result = s.charAt(i).toInt() }
 
 /** The tested bit of a BitSet / BitClear predicate text. */
 bindingset[pred]

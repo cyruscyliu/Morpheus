@@ -158,12 +158,16 @@ predicate sdgSelfEdgeRow(string nodeId, string head, string pred, string json) {
     json = selfEdgeJSON(nodeId, head, pred, andOp)
   )
   or
-  // Mask truth tests: `x & mask` guards.
+  // Mask truth tests: `x & mask` guards, head_guard when the mask expr is
+  // a real guard condition, head_bound otherwise (helper-encapsulated
+  // masks bound the value without guarding it).
   exists(BitwiseAndExpr maskExpr, Expr varOperand, SdgSourceNode read |
     maskPredicate(maskExpr, varOperand, pred) and
     definingReadOf(varOperand) = read |
     nodeId = read.getId() and
-    head = "head_guard" and
+    (exprIsGuard(maskExpr) and head = "head_guard"
+     or
+     not exprIsGuard(maskExpr) and head = "head_bound") and
     json = selfEdgeJSON(nodeId, head, pred, maskExpr)
   )
   or
@@ -246,6 +250,24 @@ predicate sdgSelfEdgeRow(string nodeId, string head, string pred, string json) {
     json = selfEdgeJSON(nodeId, head, pred, cmp)
   )
   or
+  // Offset facts: the bound of a variable used as an array offset in the
+  // same function, whether or not the bound belongs to a loop counter.
+  exists(Function f, SdgSourceNode read, ComparisonOperation cmp,
+         VariableAccess cmpAccess, VariableAccess offsetAccess |
+    comparisonPredicate(cmp, cmpAccess, pred) and
+    definingReadOf(cmpAccess) = read and
+    f = read.getEnclosingFunction() and
+    cmp.getEnclosingFunction() = f and
+    exists(ArrayExpr arr |
+      arr.getEnclosingFunction() = f and
+      offsetAccess.getTarget() = cmpAccess.getTarget() and
+      arr.getArrayOffset().getFullyConverted() = offsetAccess
+    ) |
+    nodeId = read.getId() and
+    head = "head_offset" and
+    json = selfEdgeJSON(nodeId, head, pred, cmp)
+  )
+  or
   // Call contracts: the static capacity of a destination buffer bounds the
   // size operand of a fired sink (pattern 3 lowering). The capacity
   // resolves through the destination formal's actual argument.
@@ -257,6 +279,21 @@ predicate sdgSelfEdgeRow(string nodeId, string head, string pred, string json) {
     pred = relPred("Gt", cap, "unsigned") and
     nodeId = read.getId() and
     head = "head_bound" and
+    json = selfEdgeJSON(nodeId, head, pred, sink)
+  )
+  or
+  // Call contracts: the sink contract is a head_call self-edge on the
+  // tracked operand, with the bound established by a comparison on the
+  // same variable in the sink's function.
+  exists(SdgSink sink, SdgSourceNode read, ComparisonOperation cmp,
+         Expr varOperand, string cmpPred |
+    definingReadOf(sink.getArgument(sink.getArgIndex())) = read and
+    cmp.getEnclosingFunction() = sink.getEnclosingFunction() and
+    comparisonPredicate(cmp, varOperand, cmpPred) and
+    definingReadOf(varOperand) = read |
+    pred = cmpPred and
+    nodeId = read.getId() and
+    head = "head_call" and
     json = selfEdgeJSON(nodeId, head, pred, sink)
   )
 }
@@ -333,10 +370,10 @@ class SdgCrossEdge extends Expr {
 bindingset[pred]
 string mutationJSON(string pred) {
   predicateKind(pred) = "BitSet" and
-  result = "{\"operator\":\"SetBits\",\"mask\":" + pow2Of(predicateBit(pred)).toString() + "}"
+  result = "{\"operator\":\"SetBits\",\"mask\":" + pow2Text(predicateBit(pred)) + "}"
   or
   predicateKind(pred) = "BitClear" and
-  result = "{\"operator\":\"ClearBits\",\"mask\":" + pow2Of(predicateBit(pred)).toString() + "}"
+  result = "{\"operator\":\"ClearBits\",\"mask\":" + pow2Text(predicateBit(pred)) + "}"
   or
   predicateKind(pred) = "Eq" and
   result = "{\"operator\":\"SetValue\",\"value\":" + predicateValue(pred).toString() + "}"
@@ -377,11 +414,11 @@ string mutationJSONWithVar(string pred, string var) {
            predicateValue(pred).toString() + ",\"var\":" + jsonString(var) + "}"
   or
   predicateKind(pred) = "BitSet" and
-  result = "{\"operator\":\"SetBits\",\"mask\":" + pow2Of(predicateBit(pred)).toString() +
+  result = "{\"operator\":\"SetBits\",\"mask\":" + pow2Text(predicateBit(pred)) +
            ",\"var\":" + jsonString(var) + "}"
   or
   predicateKind(pred) = "BitClear" and
-  result = "{\"operator\":\"ClearBits\",\"mask\":" + pow2Of(predicateBit(pred)).toString() +
+  result = "{\"operator\":\"ClearBits\",\"mask\":" + pow2Text(predicateBit(pred)) +
            ",\"var\":" + jsonString(var) + "}"
   or
   predicateKind(pred) = "Eq" and
@@ -427,11 +464,21 @@ predicate sdgRuleRow(SdgSink sink, string id, string pred, string json) {
     ruleSource.isPhysicallyResolvable() and
     // The trigger: a self-edge on the physical origin (never Ne), or the
     // destination-capacity bound when no self-edge bounds the value.
+    // The canonical id omits the head; when the same comparison fires
+    // under several heads, the most specific head owns the rule.
     (
       exists(string seHead, string sePred |
         sdgSelfEdgeRow(ruleSource.getId(), seHead, sePred, _) and
         predicateKind(sePred) != "Ne" |
-        triggerHead = seHead and triggerPred = sePred
+        triggerHead = seHead and triggerPred = sePred and
+        (seHead = "head_bound"
+         or
+         seHead = "head_guard" and
+         not sdgSelfEdgeRow(ruleSource.getId(), "head_bound", sePred, _)
+         or
+         seHead = "head_call" and
+         not sdgSelfEdgeRow(ruleSource.getId(), "head_bound", sePred, _) and
+         not sdgSelfEdgeRow(ruleSource.getId(), "head_guard", sePred, _))
       )
       or
       (sink.getDestArg() >= 0 and

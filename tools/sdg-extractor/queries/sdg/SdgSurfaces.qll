@@ -607,6 +607,20 @@ int constValueOf(Expr e) {
 }
 
 /**
+ * The mask constant `e` folds to: the folded constant when in range, else
+ * the 32-bit two's-complement wrap of wide literals such as 0xffffffff.
+ */
+bindingset[e]
+int maskValueOf(Expr e) {
+  result = constValueOf(e)
+  or
+  exists(string v |
+    v = e.getFullyConverted().getValue() |
+    result = wrap32(v)
+  )
+}
+
+/**
  * The byte offset `e` adds to a base address: `base + lit`, `lit + base`,
  * `base - lit`, or a plain base (offset 0). Only constants fold; unknown
  * offsets leave no result, and a candidate without a physical offset cannot
